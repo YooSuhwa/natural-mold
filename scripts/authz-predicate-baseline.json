@@ -90,11 +90,6 @@
     "count": 3
   },
   {
-    "file": "routers/marketplace.py",
-    "expression": "MarketplaceInstallation.user_id == user.id",
-    "count": 1
-  },
-  {
     "file": "services/agent_execution_acceptance.py",
     "expression": "Conversation.user_id == request.context.user_id",
     "count": 1

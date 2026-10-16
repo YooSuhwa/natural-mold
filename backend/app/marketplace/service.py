@@ -34,6 +34,8 @@ from app.authz.private_actor import require_private_actor
 from app.authz.scoping import private_scope_predicate
 from app.error_codes import marketplace_item_not_found
 from app.marketplace.access import (
+    ItemAuthorizer,
+    ListGate,
     can_install_item,
     can_view_item,
     is_owner,
@@ -74,8 +76,12 @@ def _catalog_owner_predicate(user: CurrentUser) -> ColumnElement[bool]:
     return MarketplaceItem.owner_user_id == user.id
 
 
-def _catalog_view_stmt(user: CurrentUser, context: OrgContext) -> Select[tuple[MarketplaceItem]]:
+def _catalog_view_stmt(
+    user: CurrentUser, context: OrgContext, gate: ListGate | None = None
+) -> Select[tuple[MarketplaceItem]]:
     """Match persisted visibility before any authorized read can flush staged edits."""
+    if gate is not None and gate.enforced:  # D-05: candidates, no operator bypass
+        return select(MarketplaceItem).where(gate.view_predicate())
     return select(MarketplaceItem).where(
         catalog_view_candidate_predicate(context),
         or_(
@@ -90,7 +96,13 @@ def _catalog_view_stmt(user: CurrentUser, context: OrgContext) -> Select[tuple[M
     )
 
 
-def _base_catalog_query(user: CurrentUser, context: OrgContext, *, public_listed_only: bool):
+def _base_catalog_query(
+    user: CurrentUser,
+    context: OrgContext,
+    *,
+    public_listed_only: bool,
+    gate: ListGate | None = None,
+):
     """Build a SELECT that respects the user's visibility scope (Spec §10.1).
 
     super_user      → all items, no default visibility gate.
@@ -115,7 +127,9 @@ def _base_catalog_query(user: CurrentUser, context: OrgContext, *, public_listed
     equal to the items count (1:N → existence join would duplicate).
     """
 
-    stmt = _catalog_view_stmt(user, context)
+    stmt = _catalog_view_stmt(user, context, gate)
+    if gate is not None and gate.enforced:
+        return stmt.where(gate.list_predicate(public_listed_only=public_listed_only))
     if user.is_super_user:
         return stmt
 
@@ -198,9 +212,14 @@ def _apply_filters(stmt, filters: MarketplaceItemListFilters):
     return stmt
 
 
-def _catalog_stmt(user: CurrentUser, filters: MarketplaceItemListFilters, context: OrgContext):
+def _catalog_stmt(
+    user: CurrentUser,
+    filters: MarketplaceItemListFilters,
+    context: OrgContext,
+    gate: ListGate | None = None,
+):
     public_listed_only = filters.is_listed is None
-    stmt = _base_catalog_query(user, context, public_listed_only=public_listed_only)
+    stmt = _base_catalog_query(user, context, public_listed_only=public_listed_only, gate=gate)
     stmt = _apply_filters(stmt, filters)
     if filters.installed is not None:
         exists_clause = _installed_for_user_exists(context)
@@ -208,9 +227,14 @@ def _catalog_stmt(user: CurrentUser, filters: MarketplaceItemListFilters, contex
     return stmt
 
 
-def _catalog_rows_stmt(user: CurrentUser, filters: MarketplaceItemListFilters, context: OrgContext):
+def _catalog_rows_stmt(
+    user: CurrentUser,
+    filters: MarketplaceItemListFilters,
+    context: OrgContext,
+    gate: ListGate | None = None,
+):
     return (
-        _catalog_stmt(user, filters, context)
+        _catalog_stmt(user, filters, context, gate)
         .options(
             selectinload(MarketplaceItem.latest_version),
             selectinload(MarketplaceItem.acl_entries),
@@ -224,8 +248,13 @@ def _catalog_rows_stmt(user: CurrentUser, filters: MarketplaceItemListFilters, c
     )
 
 
-def _has_post_load_filters(filters: MarketplaceItemListFilters) -> bool:
-    return bool(filters.install_state or filters.support_level or filters.category)
+def _has_post_load_filters(
+    filters: MarketplaceItemListFilters, gate: ListGate | None = None
+) -> bool:
+    # Enforced pages are confirmed row by row (BatchCheck), so they paginate like
+    # post-load filters.
+    enforced = gate is not None and gate.enforced
+    return bool(filters.install_state or filters.support_level or filters.category or enforced)
 
 
 async def _fetch_catalog_rows(
@@ -236,16 +265,17 @@ async def _fetch_catalog_rows(
     filters: MarketplaceItemListFilters,
     limit: int,
     offset: int,
+    gate: ListGate | None = None,
 ) -> list[MarketplaceItem]:
     candidate = (
-        _catalog_view_stmt(user, context)
+        _catalog_view_stmt(user, context, gate)
         .with_only_columns(MarketplaceItem.id)
         .limit(1)
         .execution_options(autoflush=False)
     )
     if await db.scalar(candidate) is None:
         return []
-    stmt = _catalog_rows_stmt(user, filters, context).limit(limit).offset(offset)
+    stmt = _catalog_rows_stmt(user, filters, context, gate).limit(limit).offset(offset)
     return list((await db.execute(stmt)).scalars().unique().all())
 
 
@@ -256,6 +286,7 @@ async def _apply_post_load_filters(
     user: CurrentUser,
     context: OrgContext,
     filters: MarketplaceItemListFilters,
+    gate: ListGate | None = None,
 ) -> list[MarketplaceItem]:
     filtered = list(rows)
 
@@ -290,6 +321,8 @@ async def _apply_post_load_filters(
             for i in filtered
             if isinstance(i.categories, list) and any(c in i.categories for c in filters.category)
         ]
+    if gate is not None:  # shadow: sample and keep; enforce: OpenFGA can_view
+        filtered = await gate.filter(filtered)
 
     return filtered
 
@@ -493,13 +526,14 @@ async def list_items(
     filters: MarketplaceItemListFilters,
     limit: int = 50,
     offset: int = 0,
+    gate: ListGate | None = None,
 ) -> Sequence[MarketplaceItemOut]:
     await require_private_actor(db, context)
     rows = await _fetch_catalog_rows(
-        db, user=user, filters=filters, limit=limit, offset=offset, context=context
+        db, user=user, filters=filters, limit=limit, offset=offset, context=context, gate=gate
     )
     rows = await _apply_post_load_filters(
-        db, rows=rows, user=user, filters=filters, context=context
+        db, rows=rows, user=user, filters=filters, context=context, gate=gate
     )
     return await _project_items(db, rows, user, context=context)
 
@@ -510,10 +544,11 @@ async def _count_catalog_items(
     user: CurrentUser,
     context: OrgContext,
     filters: MarketplaceItemListFilters,
+    gate: ListGate | None = None,
 ) -> int | None:
-    if _has_post_load_filters(filters):
+    if _has_post_load_filters(filters, gate):
         return None
-    stmt = _catalog_stmt(user, filters, context)
+    stmt = _catalog_stmt(user, filters, context, gate)
     return await db.scalar(
         select(func.count()).select_from(stmt.subquery()).execution_options(autoflush=False)
     )
@@ -527,6 +562,7 @@ async def _scan_post_filtered_page(
     filters: MarketplaceItemListFilters,
     limit: int,
     offset: int,
+    gate: ListGate | None = None,
 ) -> tuple[list[MarketplaceItem], bool, int | None]:
     batch_size = max(limit * 3, 50)
     raw_offset = 0
@@ -537,14 +573,20 @@ async def _scan_post_filtered_page(
 
     while True:
         raw_rows = await _fetch_catalog_rows(
-            db, user=user, filters=filters, limit=batch_size, offset=raw_offset, context=context
+            db,
+            user=user,
+            filters=filters,
+            limit=batch_size,
+            offset=raw_offset,
+            context=context,
+            gate=gate,
         )
         if not raw_rows:
             exhausted = True
             break
 
         filtered_rows = await _apply_post_load_filters(
-            db, rows=raw_rows, user=user, filters=filters, context=context
+            db, rows=raw_rows, user=user, filters=filters, context=context, gate=gate
         )
         for item in filtered_rows:
             if filtered_seen < offset:
@@ -575,11 +617,12 @@ async def list_items_page(
     filters: MarketplaceItemListFilters,
     limit: int = 50,
     offset: int = 0,
+    gate: ListGate | None = None,
 ) -> MarketplaceItemsPage:
     await require_private_actor(db, context)
-    if _has_post_load_filters(filters):
+    if _has_post_load_filters(filters, gate):
         rows, has_more, total = await _scan_post_filtered_page(
-            db, user=user, filters=filters, limit=limit, offset=offset, context=context
+            db, user=user, filters=filters, limit=limit, offset=offset, context=context, gate=gate
         )
     else:
         raw_rows = await _fetch_catalog_rows(
@@ -587,6 +630,8 @@ async def list_items_page(
         )
         has_more = len(raw_rows) > limit
         rows = raw_rows[:limit]
+        if gate is not None:  # shadow sample of the page (legacy rows kept)
+            rows = await gate.filter(rows)
         total = await _count_catalog_items(db, user=user, filters=filters, context=context)
 
     return MarketplaceItemsPage(
@@ -605,13 +650,30 @@ async def get_item(
     user: CurrentUser,
     context: OrgContext,
     item_id: uuid.UUID,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceItem | None:
     """Fetch an item if the user is allowed to see it.
 
     Returns ``None`` for both "doesn't exist" and "exists but hidden" so
     callers can map both to a single 404 (enumeration oracle safety).
+    With ``authorize`` (shadow/enforce, D-05) a hidden item raises the 404 instead.
     """
 
+    if authorize is not None and authorize.enforced:
+        return await authorize(item_id, None)
+    found = await _legacy_get_item(db, user=user, context=context, item_id=item_id)
+    if authorize is not None:
+        return await authorize(item_id, found)
+    return found
+
+
+async def _legacy_get_item(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    context: OrgContext,
+    item_id: uuid.UUID,
+) -> MarketplaceItem | None:
     await require_private_actor(db, context)
     candidate = (
         _catalog_view_stmt(user, context)
@@ -647,11 +709,12 @@ async def project_item(
     item: MarketplaceItem,
     user: CurrentUser,
     context: OrgContext,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceItemOut:
     """Public projection helper (router uses after ``get_item``)."""
 
     await require_private_actor(db, context)
-    current = await get_item(db, user=user, context=context, item_id=item.id)
+    current = await get_item(db, user=user, context=context, item_id=item.id, authorize=authorize)
     if current is None:
         raise marketplace_item_not_found()
     with db.no_autoflush:
@@ -664,8 +727,9 @@ async def list_versions(
     user: CurrentUser,
     context: OrgContext,
     item_id: uuid.UUID,
+    authorize: ItemAuthorizer | None = None,
 ) -> Sequence[MarketplaceVersionSummary] | None:
-    item = await get_item(db, user=user, item_id=item_id, context=context)
+    item = await get_item(db, user=user, item_id=item_id, context=context, authorize=authorize)
     if item is None:
         return None
     stmt = (
@@ -683,6 +747,7 @@ async def get_version(
     user: CurrentUser,
     context: OrgContext,
     version_id: uuid.UUID,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceVersionDetail | None:
     await require_private_actor(db, context)
     parent_id = await db.scalar(
@@ -693,7 +758,9 @@ async def get_version(
     if parent_id is None:
         return None
     with db.no_autoflush:
-        item = await get_item(db, user=user, item_id=parent_id, context=context)
+        item = await get_item(
+            db, user=user, item_id=parent_id, context=context, authorize=authorize
+        )
     if item is None:
         return None
     version = await load_item_version(db, item.id, version_id)

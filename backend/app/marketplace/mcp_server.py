@@ -18,7 +18,7 @@ from app.error_codes import (
     marketplace_item_not_found,
     marketplace_manage_forbidden,
 )
-from app.marketplace.access import can_manage_item
+from app.marketplace.access import ItemAuthorizer, can_manage_item, manageable_item
 from app.marketplace.payloads import (
     canonical_json_bytes,
     canonical_json_hash,
@@ -185,6 +185,7 @@ async def publish_mcp_server(
     user: CurrentUser,
     context: OrgContext,
     body: PublishMcpServerIn,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceItem:
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
@@ -206,17 +207,15 @@ async def publish_mcp_server(
 
     item: MarketplaceItem | None = None
     if body.item_id is not None:
-        item = await db.scalar(
-            private_scoped(
-                select(MarketplaceItem).where(MarketplaceItem.id == body.item_id),
-                MarketplaceItem,
-                context,
+        if authorize is None or not authorize.enforced:
+            item = await db.scalar(
+                private_scoped(
+                    select(MarketplaceItem).where(MarketplaceItem.id == body.item_id),
+                    MarketplaceItem,
+                    context,
+                )
             )
-        )
-        if item is None:
-            raise marketplace_item_not_found()
-        if not can_manage_item(item, user):
-            raise marketplace_manage_forbidden()
+        item = await manageable_item(body.item_id, item, user, authorize)
         if item.resource_type != "mcp":
             raise marketplace_invalid_package("marketplace item is not an MCP item")
     else:

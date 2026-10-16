@@ -435,7 +435,8 @@ class TestGate8AuthCsrf:
         import re
 
         mutation_re = re.compile(
-            r"@router\.(post|patch|delete)\([^\)]*\)\s*(?:async )?def \w+\("
+            r"@router\.(post|patch|delete)\([^\)]*\)\s*(?:@authz_policy\(.*\)\s*)?"
+            r"(?:async )?def \w+\("
             r"[\s\S]+?(?=@router\.|\Z)",
             re.MULTILINE,
         )

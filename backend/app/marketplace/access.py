@@ -18,17 +18,64 @@ here to *decide* and emit the same error code in either case.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, Protocol
+
+from app.error_codes import marketplace_item_not_found, marketplace_manage_forbidden
 
 if TYPE_CHECKING:
+    from sqlalchemy.sql.elements import ColumnElement
+
     from app.dependencies import CurrentUser
     from app.models.marketplace import MarketplaceItem, MarketplaceItemACL
 
 
-def _acl_perms_for(
-    acl_entries: Iterable[MarketplaceItemACL], user_id: uuid.UUID
-) -> set[str]:
+class ItemAuthorizer(Protocol):
+    """A route's item decision (plan 9.6, D-05), injected into the services.
+
+    ``None`` in its place keeps the legacy predicates below (``AUTHZ_MODE=legacy``).
+    ``loaded`` is the legacy loader's row (``None`` when ``enforced``: the authorizer
+    loads its own candidate); the result is the authorized row, or it raises.
+    """
+
+    @property
+    def enforced(self) -> bool: ...
+
+    async def __call__(
+        self, item_id: uuid.UUID, loaded: MarketplaceItem | None
+    ) -> MarketplaceItem: ...
+
+
+class ListGate(Protocol):
+    """Catalog list decision: enforce swaps the legacy visibility SQL for candidates."""
+
+    @property
+    def enforced(self) -> bool: ...
+
+    def view_predicate(self) -> ColumnElement[bool]: ...
+
+    def list_predicate(self, *, public_listed_only: bool) -> ColumnElement[bool]: ...
+
+    async def filter(self, rows: Sequence[MarketplaceItem]) -> list[MarketplaceItem]: ...
+
+
+async def manageable_item(
+    item_id: uuid.UUID,
+    loaded: MarketplaceItem | None,
+    user: CurrentUser,
+    authorize: ItemAuthorizer | None,
+) -> MarketplaceItem:
+    """Legacy: 404 when the loader found nothing, 403 without manage; else the route's gate."""
+    if authorize is not None:
+        return await authorize(item_id, loaded)
+    if loaded is None:
+        raise marketplace_item_not_found()
+    if not can_manage_item(loaded, user):
+        raise marketplace_manage_forbidden()
+    return loaded
+
+
+def _acl_perms_for(acl_entries: Iterable[MarketplaceItemACL], user_id: uuid.UUID) -> set[str]:
     """Permission set granted to ``user_id`` by the item's ACL rows."""
 
     return {entry.permission for entry in acl_entries if entry.user_id == user_id}
@@ -123,8 +170,11 @@ def can_manage_item(item: MarketplaceItem, user: CurrentUser) -> bool:
 
 
 __all__ = [
+    "ItemAuthorizer",
+    "ListGate",
     "can_install_item",
     "can_manage_item",
     "can_view_item",
     "is_owner",
+    "manageable_item",
 ]

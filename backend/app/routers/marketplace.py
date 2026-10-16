@@ -25,7 +25,26 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.catalog_scope import load_private_installation
+from app.authz.marketplace_access import (
+    catalog_gate,
+    item_gate,
+    require_publish,
+    require_source_share,
+)
+from app.authz.marketplace_grants import sync_item_grants
+from app.authz.marketplace_lifecycle import (
+    install_caps,
+    installation_created,
+    installation_resources_deleting,
+    item_published,
+    merge,
+)
 from app.authz.org_context import OrgContext
+from app.authz.policies import CANDIDATES, CAP, PRIVATE, RES, SUPER, authz_policy
+from app.authz.resource_lifecycle import LifecycleChange, apply_lifecycle
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import (
     CurrentUser,
     get_current_user,
@@ -68,6 +87,16 @@ from app.services import audit_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
+
+# Plan 9.6 route policies (D-05). Operators get no implicit item access when enforced;
+# only the two admin routes are SUPER (moderation: see app.authz.marketplace_access).
+LIST = CANDIDATES("marketplace_item", "can_view")
+VIEW = RES("marketplace_item", "can_view", param="item_id", min_visible="can_view")
+VERSION_VIEW = RES("marketplace_item", "can_view", param="version_id", min_visible="can_view")
+INSTALL = RES("marketplace_item", "can_install", param="item_id", min_visible="can_view")
+MANAGE = RES("marketplace_item", "can_manage", param="item_id", min_visible="can_view")
+INSTALLATION = PRIVATE("marketplace_installations", param="installation_id")
+PUBLISH = CAP("cap_publish_marketplace")
 
 
 def _item_metadata(item: MarketplaceItem) -> dict[str, object]:
@@ -153,12 +182,26 @@ async def _record_marketplace_installation_audit(
     )
 
 
+async def _grant_changes(
+    db: AsyncSession,
+    authz: AuthzService,
+    context: OrgContext,
+    item: MarketplaceItem,
+    *,
+    published: bool = False,
+) -> LifecycleChange:
+    """10.5 dual-write (and the new item's tuples) before commit; legacy: nothing."""
+    created = await item_published(db, authz, item) if published else LifecycleChange()
+    return merge(created, await sync_item_grants(db, context, item, mode=authz.mode))
+
+
 # ---------------------------------------------------------------------------
 # Catalog
 # ---------------------------------------------------------------------------
 
 
 @router.get("/items", response_model=list[MarketplaceItemOut])
+@authz_policy(LIST)
 async def list_items(
     resource_type: str | None = Query(default=None, pattern="^(agent|mcp|skill)$"),
     q: str | None = Query(default=None, max_length=120),
@@ -176,6 +219,7 @@ async def list_items(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[MarketplaceItemOut]:
     filters = MarketplaceItemListFilters(
         resource_type=resource_type,  # type: ignore[arg-type]
@@ -190,12 +234,19 @@ async def list_items(
     )
     return list(
         await catalog_service.list_items(
-            db, user=user, context=context, filters=filters, limit=limit, offset=offset
+            db,
+            user=user,
+            context=context,
+            filters=filters,
+            limit=limit,
+            offset=offset,
+            gate=catalog_gate(authz, context),
         )
     )
 
 
 @router.get("/items/page", response_model=MarketplaceItemsPage)
+@authz_policy(LIST)
 async def list_items_page(
     resource_type: str | None = Query(default=None, pattern="^(agent|mcp|skill)$"),
     q: str | None = Query(default=None, max_length=120),
@@ -213,6 +264,7 @@ async def list_items_page(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemsPage:
     filters = MarketplaceItemListFilters(
         resource_type=resource_type,  # type: ignore[arg-type]
@@ -226,18 +278,29 @@ async def list_items_page(
         is_listed=is_listed,
     )
     return await catalog_service.list_items_page(
-        db, user=user, context=context, filters=filters, limit=limit, offset=offset
+        db,
+        user=user,
+        context=context,
+        filters=filters,
+        limit=limit,
+        offset=offset,
+        gate=catalog_gate(authz, context),
     )
 
 
 @router.get("/items/{item_id}", response_model=MarketplaceItemOut)
+@authz_policy(VIEW)
 async def get_item(
     item_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
-    item = await catalog_service.get_item(db, user=user, context=context, item_id=item_id)
+    gate = item_gate(db, authz, context, user, "can_view")
+    item = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item_id, authorize=gate
+    )
     if item is None:
         # Branch (not-exists vs forbidden) is logged for ops only.
         logger.info(
@@ -246,17 +309,27 @@ async def get_item(
             item_id,
         )
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=item, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=item, user=user, context=context, authorize=gate
+    )
 
 
 @router.get("/items/{item_id}/versions", response_model=list[MarketplaceVersionSummary])
+@authz_policy(VIEW)
 async def list_versions(
     item_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[MarketplaceVersionSummary]:
-    versions = await catalog_service.list_versions(db, user=user, context=context, item_id=item_id)
+    versions = await catalog_service.list_versions(
+        db,
+        user=user,
+        context=context,
+        item_id=item_id,
+        authorize=item_gate(db, authz, context, user, "can_view"),
+    )
     if versions is None:
         logger.info(
             "marketplace_item_not_found user=%s item=%s (versions list)",
@@ -268,14 +341,20 @@ async def list_versions(
 
 
 @router.get("/versions/{version_id}", response_model=MarketplaceVersionDetail)
+@authz_policy(VERSION_VIEW)
 async def get_version(
     version_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceVersionDetail:
     version = await catalog_service.get_version(
-        db, user=user, context=context, version_id=version_id
+        db,
+        user=user,
+        context=context,
+        version_id=version_id,
+        authorize=item_gate(db, authz, context, user, "can_view"),
     )
     if version is None:
         logger.info(
@@ -297,6 +376,7 @@ async def get_version(
     response_model=MarketplaceInstallationOut,
     status_code=201,
 )
+@authz_policy(INSTALL)
 async def install_item(
     item_id: uuid.UUID,
     body: InstallMarketplaceItemIn,
@@ -305,6 +385,7 @@ async def install_item(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceInstallationOut:
     """Install a marketplace item into the user's account.
 
@@ -313,10 +394,13 @@ async def install_item(
     ``installation_id`` regardless of whether it was just created.
     """
 
+    install = item_gate(db, authz, context, user, "can_install", then=install_caps(authz, context))
     installation = await install_service.install_item(
-        db, item_id=item_id, user=user, context=context, body=body
+        db, item_id=item_id, user=user, context=context, body=body, authorize=install
     )
+    created = await installation_created(db, authz, context, installation)
     await db.commit()
+    await apply_lifecycle(created, authz)  # read-your-writes before responding (8.6)
     preparation_result = await evaluation_preparation.prepare_installed_skill_evaluation_set(
         db,
         installation=installation,
@@ -351,6 +435,7 @@ async def install_item(
     "/installations/{installation_id}/update",
     response_model=MarketplaceInstallationOut,
 )
+@authz_policy(INSTALLATION)
 async def update_installation(
     installation_id: uuid.UUID,
     body: UpdateMarketplaceInstallationIn,
@@ -359,11 +444,14 @@ async def update_installation(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceInstallationOut:
     installation = await install_service.update_installation(
         db, installation_id=installation_id, user=user, context=context, body=body
     )
+    created = await installation_created(db, authz, context, installation)
     await db.commit()
+    await apply_lifecycle(created, authz)
     await db.refresh(installation)
     await _record_marketplace_installation_audit(
         db,
@@ -381,6 +469,7 @@ async def update_installation(
     "/installations/{installation_id}",
     status_code=204,
 )
+@authz_policy(INSTALLATION)
 async def delete_installation(
     installation_id: uuid.UUID,
     request: Request,
@@ -389,15 +478,14 @@ async def delete_installation(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> Response:
-    installation = (
-        await db.execute(
-            select(MarketplaceInstallation).where(
-                MarketplaceInstallation.id == installation_id,
-                MarketplaceInstallation.user_id == user.id,
-            )
-        )
-    ).scalar_one_or_none()
+    installation = await load_private_installation(db, installation_id, context)
+    deleted = (
+        await installation_resources_deleting(db, authz, context, installation_id)
+        if delete_resource
+        else None
+    )
     await install_service.delete_installation(
         db,
         installation_id=installation_id,
@@ -415,6 +503,8 @@ async def delete_installation(
             metadata={"delete_resource": delete_resource},
         )
     await db.commit()
+    if deleted is not None:
+        await apply_lifecycle(deleted, authz)
     return Response(status_code=204)
 
 
@@ -428,6 +518,7 @@ async def delete_installation(
     response_model=MarketplaceItemOut,
     status_code=201,
 )
+@authz_policy(PUBLISH)
 async def publish_item_from_skill(
     skill_id: uuid.UUID,
     body: PublishSkillIn,
@@ -436,6 +527,7 @@ async def publish_item_from_skill(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
     """First publish — creates a new marketplace item.
 
@@ -444,10 +536,12 @@ async def publish_item_from_skill(
     a fresh item (``body.item_id`` is ignored on this route).
     """
 
+    await require_publish(db, authz, context, "skill", skill_id)
     body_copy = body.model_copy(update={"item_id": None})
     item = await publish_service.publish_skill(
         db, skill_id=skill_id, user=user, context=context, body=body_copy
     )
+    change = await _grant_changes(db, authz, context, item, published=True)
     # Audit joins the publish in a single transaction — a failure here
     # rolls back the publish instead of silently dropping the audit row.
     await _record_marketplace_item_audit(
@@ -464,13 +558,19 @@ async def publish_item_from_skill(
         },
     )
     await db.commit()
+    await apply_lifecycle(change, authz)  # read-your-writes before responding (8.6)
     # Re-fetch via the catalog service so the projection has
     # ``latest_version`` + ``acl_entries`` eager-loaded (avoids
     # MissingGreenlet on lazy access in async context).
-    loaded = await catalog_service.get_item(db, user=user, context=context, item_id=item.id)
+    view = item_gate(db, authz, context, user, "can_view")
+    loaded = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item.id, authorize=view
+    )
     if loaded is None:
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=loaded, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=loaded, user=user, context=context, authorize=view
+    )
 
 
 @router.post(
@@ -478,6 +578,7 @@ async def publish_item_from_skill(
     response_model=MarketplaceItemOut,
     status_code=201,
 )
+@authz_policy(PUBLISH)
 async def publish_item_from_mcp(
     server_id: uuid.UUID,
     body: PublishMcpServerIn,
@@ -486,11 +587,14 @@ async def publish_item_from_mcp(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
+    await require_publish(db, authz, context, "mcp", server_id)
     body_copy = body.model_copy(update={"item_id": None})
     item = await mcp_marketplace.publish_mcp_server(
         db, server_id=server_id, user=user, context=context, body=body_copy
     )
+    change = await _grant_changes(db, authz, context, item, published=True)
     # Audit + publish commit together (single transaction).
     await _record_marketplace_item_audit(
         db,
@@ -505,10 +609,16 @@ async def publish_item_from_mcp(
         },
     )
     await db.commit()
-    loaded = await catalog_service.get_item(db, user=user, context=context, item_id=item.id)
+    await apply_lifecycle(change, authz)  # read-your-writes before responding (8.6)
+    view = item_gate(db, authz, context, user, "can_view")
+    loaded = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item.id, authorize=view
+    )
     if loaded is None:
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=loaded, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=loaded, user=user, context=context, authorize=view
+    )
 
 
 @router.post(
@@ -516,6 +626,7 @@ async def publish_item_from_mcp(
     response_model=MarketplaceItemOut,
     status_code=201,
 )
+@authz_policy(PUBLISH)
 async def publish_item_from_agent(
     agent_id: uuid.UUID,
     body: PublishAgentIn,
@@ -524,11 +635,14 @@ async def publish_item_from_agent(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
+    await require_publish(db, authz, context, "agent", agent_id)
     body_copy = body.model_copy(update={"item_id": None})
     item = await agent_marketplace.publish_agent(
         db, agent_id=agent_id, user=user, context=context, body=body_copy
     )
+    change = await _grant_changes(db, authz, context, item, published=True)
     # Audit + publish commit together (single transaction).
     await _record_marketplace_item_audit(
         db,
@@ -543,16 +657,23 @@ async def publish_item_from_agent(
         },
     )
     await db.commit()
-    loaded = await catalog_service.get_item(db, user=user, context=context, item_id=item.id)
+    await apply_lifecycle(change, authz)  # read-your-writes before responding (8.6)
+    view = item_gate(db, authz, context, user, "can_view")
+    loaded = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item.id, authorize=view
+    )
     if loaded is None:
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=loaded, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=loaded, user=user, context=context, authorize=view
+    )
 
 
 @router.post(
     "/items/{item_id}/versions/from-skill/{skill_id}",
     response_model=MarketplaceItemOut,
 )
+@authz_policy(MANAGE)
 async def publish_new_version(
     item_id: uuid.UUID,
     skill_id: uuid.UUID,
@@ -562,6 +683,7 @@ async def publish_new_version(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
     """Add a new version to an existing item.
 
@@ -573,7 +695,10 @@ async def publish_new_version(
 
     # Fetch via the catalog service so ``acl_entries`` is eager-loaded
     # (lazy access would trip MissingGreenlet under the async session).
-    item = await catalog_service.get_item(db, user=user, context=context, item_id=item_id)
+    view = item_gate(db, authz, context, user, "can_view")
+    item = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item_id, authorize=view
+    )
     if item is None:
         raise marketplace_item_not_found()
 
@@ -589,9 +714,16 @@ async def publish_new_version(
         acl_user_ids=[a.user_id for a in (item.acl_entries or [])],
     )
 
+    await require_source_share(db, authz, context, "skill", skill_id)
     updated = await publish_service.publish_skill(
-        db, skill_id=skill_id, user=user, context=context, body=publish_body
+        db,
+        skill_id=skill_id,
+        user=user,
+        context=context,
+        body=publish_body,
+        authorize=item_gate(db, authz, context, user, "can_manage"),
     )
+    change = await _grant_changes(db, authz, context, updated)
     # Audit + publish commit together (single transaction).
     await _record_marketplace_item_audit(
         db,
@@ -605,16 +737,23 @@ async def publish_new_version(
         },
     )
     await db.commit()
-    loaded = await catalog_service.get_item(db, user=user, context=context, item_id=updated.id)
+    await apply_lifecycle(change, authz)  # read-your-writes before responding (8.6)
+    view = item_gate(db, authz, context, user, "can_view")
+    loaded = await catalog_service.get_item(
+        db, user=user, context=context, item_id=updated.id, authorize=view
+    )
     if loaded is None:
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=loaded, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=loaded, user=user, context=context, authorize=view
+    )
 
 
 @router.post(
     "/items/{item_id}/versions/from-agent/{agent_id}",
     response_model=MarketplaceItemOut,
 )
+@authz_policy(MANAGE)
 async def publish_new_agent_version(
     item_id: uuid.UUID,
     agent_id: uuid.UUID,
@@ -624,8 +763,12 @@ async def publish_new_agent_version(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
-    item = await catalog_service.get_item(db, user=user, context=context, item_id=item_id)
+    view = item_gate(db, authz, context, user, "can_view")
+    item = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item_id, authorize=view
+    )
     if item is None:
         raise marketplace_item_not_found()
 
@@ -639,9 +782,16 @@ async def publish_new_agent_version(
         release_notes=body.release_notes,
         acl_user_ids=[a.user_id for a in (item.acl_entries or [])],
     )
+    await require_source_share(db, authz, context, "agent", agent_id)
     updated = await agent_marketplace.publish_agent(
-        db, agent_id=agent_id, user=user, context=context, body=publish_body
+        db,
+        agent_id=agent_id,
+        user=user,
+        context=context,
+        body=publish_body,
+        authorize=item_gate(db, authz, context, user, "can_manage"),
     )
+    change = await _grant_changes(db, authz, context, updated)
     # Audit + publish commit together (single transaction).
     await _record_marketplace_item_audit(
         db,
@@ -655,16 +805,23 @@ async def publish_new_agent_version(
         },
     )
     await db.commit()
-    loaded = await catalog_service.get_item(db, user=user, context=context, item_id=updated.id)
+    await apply_lifecycle(change, authz)  # read-your-writes before responding (8.6)
+    view = item_gate(db, authz, context, user, "can_view")
+    loaded = await catalog_service.get_item(
+        db, user=user, context=context, item_id=updated.id, authorize=view
+    )
     if loaded is None:
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=loaded, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=loaded, user=user, context=context, authorize=view
+    )
 
 
 @router.post(
     "/items/{item_id}/versions/from-mcp/{server_id}",
     response_model=MarketplaceItemOut,
 )
+@authz_policy(MANAGE)
 async def publish_new_mcp_version(
     item_id: uuid.UUID,
     server_id: uuid.UUID,
@@ -674,8 +831,12 @@ async def publish_new_mcp_version(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
-    item = await catalog_service.get_item(db, user=user, context=context, item_id=item_id)
+    view = item_gate(db, authz, context, user, "can_view")
+    item = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item_id, authorize=view
+    )
     if item is None:
         raise marketplace_item_not_found()
 
@@ -689,9 +850,16 @@ async def publish_new_mcp_version(
         release_notes=body.release_notes,
         acl_user_ids=[a.user_id for a in (item.acl_entries or [])],
     )
+    await require_source_share(db, authz, context, "mcp", server_id)
     updated = await mcp_marketplace.publish_mcp_server(
-        db, server_id=server_id, user=user, context=context, body=publish_body
+        db,
+        server_id=server_id,
+        user=user,
+        context=context,
+        body=publish_body,
+        authorize=item_gate(db, authz, context, user, "can_manage"),
     )
+    change = await _grant_changes(db, authz, context, updated)
     # Audit + publish commit together (single transaction).
     await _record_marketplace_item_audit(
         db,
@@ -705,13 +873,20 @@ async def publish_new_mcp_version(
         },
     )
     await db.commit()
-    loaded = await catalog_service.get_item(db, user=user, context=context, item_id=updated.id)
+    await apply_lifecycle(change, authz)  # read-your-writes before responding (8.6)
+    view = item_gate(db, authz, context, user, "can_view")
+    loaded = await catalog_service.get_item(
+        db, user=user, context=context, item_id=updated.id, authorize=view
+    )
     if loaded is None:
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=loaded, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=loaded, user=user, context=context, authorize=view
+    )
 
 
 @router.patch("/items/{item_id}", response_model=MarketplaceItemOut)
+@authz_policy(MANAGE)
 async def patch_item(
     item_id: uuid.UUID,
     body: MarketplaceItemPatchIn,
@@ -720,11 +895,18 @@ async def patch_item(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
     item = await publish_service.patch_item(
-        db, item_id=item_id, user=user, context=context, body=body
+        db,
+        item_id=item_id,
+        user=user,
+        context=context,
+        body=body,
+        authorize=item_gate(db, authz, context, user, "can_manage"),
     )
     await db.flush()
+    change = await _grant_changes(db, authz, context, item)
     # Audit + state change commit together (single transaction) — a failure
     # here rolls back the change instead of silently dropping the audit row.
     await _record_marketplace_item_audit(
@@ -736,16 +918,23 @@ async def patch_item(
         metadata={"changed_fields": sorted(body.model_fields_set)},
     )
     await db.commit()
+    await apply_lifecycle(change, authz)  # read-your-writes before responding (8.6)
     # Re-fetch via the catalog service so the projection has
     # ``latest_version`` + ``acl_entries`` eager-loaded (avoids
     # MissingGreenlet on lazy access in async context).
-    loaded = await catalog_service.get_item(db, user=user, context=context, item_id=item.id)
+    view = item_gate(db, authz, context, user, "can_view")
+    loaded = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item.id, authorize=view
+    )
     if loaded is None:
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=loaded, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=loaded, user=user, context=context, authorize=view
+    )
 
 
 @router.post("/items/{item_id}/acl", response_model=MarketplaceItemOut)
+@authz_policy(MANAGE)
 async def replace_item_acl(
     item_id: uuid.UUID,
     body: MarketplaceItemACLIn,
@@ -754,11 +943,18 @@ async def replace_item_acl(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
     item = await publish_service.replace_acl(
-        db, item_id=item_id, user=user, context=context, body=body
+        db,
+        item_id=item_id,
+        user=user,
+        context=context,
+        body=body,
+        authorize=item_gate(db, authz, context, user, "can_manage"),
     )
     await db.flush()
+    change = await _grant_changes(db, authz, context, item)
     # Audit + state change commit together (single transaction).
     await _record_marketplace_item_audit(
         db,
@@ -769,16 +965,23 @@ async def replace_item_acl(
         metadata={"acl_user_count": len(body.user_ids), "permission": body.permission},
     )
     await db.commit()
+    await apply_lifecycle(change, authz)  # read-your-writes before responding (8.6)
     # Re-fetch via the catalog service so the projection has
     # ``latest_version`` + ``acl_entries`` eager-loaded (avoids
     # MissingGreenlet on lazy access in async context).
-    loaded = await catalog_service.get_item(db, user=user, context=context, item_id=item.id)
+    view = item_gate(db, authz, context, user, "can_view")
+    loaded = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item.id, authorize=view
+    )
     if loaded is None:
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=loaded, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=loaded, user=user, context=context, authorize=view
+    )
 
 
 @router.delete("/items/{item_id}/acl/{user_id_to_remove}", status_code=204)
+@authz_policy(MANAGE)
 async def delete_item_acl_entry(
     item_id: uuid.UUID,
     user_id_to_remove: uuid.UUID,
@@ -787,6 +990,7 @@ async def delete_item_acl_entry(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> Response:
     item = await db.get(MarketplaceItem, item_id)
     await publish_service.remove_acl_entry(
@@ -795,6 +999,10 @@ async def delete_item_acl_entry(
         user_id_to_remove=user_id_to_remove,
         user=user,
         context=context,
+        authorize=item_gate(db, authz, context, user, "can_manage"),
+    )
+    change = (
+        await _grant_changes(db, authz, context, item) if item is not None else LifecycleChange()
     )
     if item is not None:
         await _record_marketplace_item_audit(
@@ -806,10 +1014,12 @@ async def delete_item_acl_entry(
             metadata={"user_id_removed": str(user_id_to_remove)},
         )
     await db.commit()
+    await apply_lifecycle(change, authz)
     return Response(status_code=204)
 
 
 @router.post("/items/{item_id}/disable", response_model=MarketplaceItemOut)
+@authz_policy(MANAGE)
 async def disable_item(
     item_id: uuid.UUID,
     request: Request,
@@ -817,8 +1027,12 @@ async def disable_item(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
-    item = await publish_service.disable_item(db, item_id=item_id, user=user, context=context)
+    manage = item_gate(db, authz, context, user, "can_manage", moderation="disable")
+    item = await publish_service.disable_item(
+        db, item_id=item_id, user=user, context=context, authorize=manage
+    )
     await db.flush()
     # Audit + state change commit together (single transaction).
     await _record_marketplace_item_audit(
@@ -832,13 +1046,19 @@ async def disable_item(
     # Re-fetch via the catalog service so the projection has
     # ``latest_version`` + ``acl_entries`` eager-loaded (avoids
     # MissingGreenlet on lazy access in async context).
-    loaded = await catalog_service.get_item(db, user=user, context=context, item_id=item.id)
+    view = item_gate(db, authz, context, user, "can_view", moderation="disable")
+    loaded = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item.id, authorize=view
+    )
     if loaded is None:
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=loaded, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=loaded, user=user, context=context, authorize=view
+    )
 
 
 @router.post("/items/{item_id}/enable", response_model=MarketplaceItemOut)
+@authz_policy(MANAGE)
 async def enable_item(
     item_id: uuid.UUID,
     request: Request,
@@ -846,13 +1066,17 @@ async def enable_item(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
     """Disable 의 inverse — ``status: disabled → published`` 로 복원. ACL
     / visibility / is_listed 는 그대로 유지된다 — owner 가 다시 노출하려면
     별도 흐름(visibility 변경 + super_user listing approve) 을 거친다.
     """
 
-    item = await publish_service.enable_item(db, item_id=item_id, user=user, context=context)
+    manage = item_gate(db, authz, context, user, "can_manage", moderation="enable")
+    item = await publish_service.enable_item(
+        db, item_id=item_id, user=user, context=context, authorize=manage
+    )
     await db.flush()
     # Audit + state change commit together (single transaction).
     await _record_marketplace_item_audit(
@@ -863,10 +1087,15 @@ async def enable_item(
         item=item,
     )
     await db.commit()
-    loaded = await catalog_service.get_item(db, user=user, context=context, item_id=item.id)
+    view = item_gate(db, authz, context, user, "can_view", moderation="enable")
+    loaded = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item.id, authorize=view
+    )
     if loaded is None:
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=loaded, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=loaded, user=user, context=context, authorize=view
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -878,6 +1107,7 @@ async def enable_item(
     "/admin/items/{item_id}/listed",
     response_model=MarketplaceItemOut,
 )
+@authz_policy(SUPER)
 async def admin_set_item_listed(
     item_id: uuid.UUID,
     body: MarketplaceItemAdminListedIn,
@@ -886,6 +1116,7 @@ async def admin_set_item_listed(
     user: CurrentUser = Depends(require_super_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> MarketplaceItemOut:
     """Spec §10.5 — super_user가 public item의 ``is_listed``를 토글한다.
 
@@ -912,10 +1143,15 @@ async def admin_set_item_listed(
     )
     await db.commit()
 
-    loaded = await catalog_service.get_item(db, item_id=item_id, user=user, context=context)
+    view = item_gate(db, authz, context, user, "can_view", moderation="listing")
+    loaded = await catalog_service.get_item(
+        db, user=user, context=context, item_id=item_id, authorize=view
+    )
     if loaded is None:
         raise marketplace_item_not_found()
-    return await catalog_service.project_item(db, item=loaded, user=user, context=context)
+    return await catalog_service.project_item(
+        db, item=loaded, user=user, context=context, authorize=view
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -924,10 +1160,12 @@ async def admin_set_item_listed(
 
 
 @router.post("/admin/k-skill/sync")
+@authz_policy(SUPER)
 async def admin_k_skill_sync_status(
     db: AsyncSession = Depends(get_db),
     _user: CurrentUser = Depends(require_super_user),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> dict:
     """Spec §10.4 — operator inspection endpoint.
 

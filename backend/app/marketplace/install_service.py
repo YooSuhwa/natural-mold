@@ -48,7 +48,7 @@ from app.error_codes import (
     marketplace_item_not_found,
 )
 from app.exceptions import AppError
-from app.marketplace.access import can_install_item
+from app.marketplace.access import ItemAuthorizer, can_install_item
 from app.marketplace.install.agent_blueprint import (
     _install_agent_blueprint_item,
     _overwrite_agent_blueprint_installation,
@@ -98,6 +98,7 @@ async def install_item(
     user: CurrentUser,
     context: OrgContext,
     body: InstallMarketplaceItemIn,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceInstallation:
     """Install (or re-use) a marketplace item for ``user``. Caller must
     commit on success — we don't double-commit here because routers wrap
@@ -123,15 +124,20 @@ async def install_item(
     # Fix: eager-load ``acl_entries`` so the permission check stays in
     # pre-loaded memory. Version payloads are loaded only by the item-bound
     # query in ``_resolve_version`` after the item permission check.
-    item = await load_install_source_item(db, item_id, context)
-    if not can_install_item(item, user):
-        # Collapse forbidden + missing for enumeration safety.
-        logger.info(
-            "marketplace_install_forbidden user=%s item=%s",
-            user.id,
-            item_id,
-        )
-        raise marketplace_item_not_found()
+    if authorize is not None and authorize.enforced:
+        item = await authorize(item_id, None)  # D-05: OpenFGA can_install
+    else:
+        item = await load_install_source_item(db, item_id, context)
+        if authorize is not None:
+            item = await authorize(item_id, item)  # shadow: legacy answer + sample
+        elif not can_install_item(item, user):
+            # Collapse forbidden + missing for enumeration safety.
+            logger.info(
+                "marketplace_install_forbidden user=%s item=%s",
+                user.id,
+                item_id,
+            )
+            raise marketplace_item_not_found()
 
     version = await _resolve_version(db, item=item, version_id=body.version_id)
     await lock_marketplace_item_install(db, item_id=item.id)

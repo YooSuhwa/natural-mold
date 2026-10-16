@@ -6778,6 +6778,1383 @@
         ]
       }
     },
+    "/api/marketplace/admin/items/{item_id}/listed": {
+      "post": {
+        "description": "Spec \u00a710.5 \u2014 super_user\uac00 public item\uc758 ``is_listed``\ub97c \ud1a0\uae00\ud55c\ub2e4.\n\n\uce74\ud0c8\ub85c\uadf8 default filter\ub294 ``is_listed=True``\uc778 public \ud56d\ubaa9\ub9cc \uac80\uc0c9\n\uacb0\uacfc\uc5d0 \ub178\ucd9c\ud55c\ub2e4 (PRD \u00a711.7). \ubd80\uc801\uc808\ud55c public \ud56d\ubaa9\uc744 unlist\ud558\uac70\ub098\npending moderation\uc5d0\uc11c approve\ud560 \ub54c \uc0ac\uc6a9\ud55c\ub2e4. CSRF \uac80\uc99d \ud544\uc218.",
+        "operationId": "admin_set_item_listed_api_marketplace_admin_items__item_id__listed_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceItemAdminListedIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Set Item Listed",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/admin/k-skill/sync": {
+      "post": {
+        "description": "Spec \u00a710.4 \u2014 operator inspection endpoint.\n\n**Does not execute** the sync \u2014 that's an out-of-band CLI run\n(``uv run python -m app.scripts.sync_k_skill``). This endpoint just\nsurfaces the current population: how many k-skill items exist,\ntheir statuses, and the most recent ``updated_at`` so the dashboard\ncan tell whether a fresh CLI run is overdue.",
+        "operationId": "admin_k_skill_sync_status_api_marketplace_admin_k_skill_sync_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin K Skill Sync Status Api Marketplace Admin K Skill Sync Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Admin K Skill Sync Status",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/installations/{installation_id}": {
+      "delete": {
+        "operationId": "delete_installation_api_marketplace_installations__installation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "installation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Installation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "delete_resource",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Delete Resource",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Installation",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/installations/{installation_id}/update": {
+      "post": {
+        "operationId": "update_installation_api_marketplace_installations__installation_id__update_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "installation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Installation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMarketplaceInstallationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceInstallationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Installation",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items": {
+      "get": {
+        "operationId": "list_items_api_marketplace_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "resource_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(agent|mcp|skill)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resource Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "visibility",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Visibility"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "installed",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installed"
+            }
+          },
+          {
+            "in": "query",
+            "name": "install_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(active|needs_setup|disabled|uninstalled)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Install State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "support_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Support Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_listed",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Listed"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MarketplaceItemOut"
+                  },
+                  "title": "Response List Items Api Marketplace Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Items",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/from-agent/{agent_id}": {
+      "post": {
+        "operationId": "publish_item_from_agent_api_marketplace_items_from_agent__agent_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishAgentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Item From Agent",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/from-mcp/{server_id}": {
+      "post": {
+        "operationId": "publish_item_from_mcp_api_marketplace_items_from_mcp__server_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishMcpServerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Item From Mcp",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/from-skill/{skill_id}": {
+      "post": {
+        "description": "First publish \u2014 creates a new marketplace item.\n\nUse ``POST /items/{id}/versions/from-skill/{skill_id}`` to add a\nfollow-up version on an existing item; this endpoint always creates\na fresh item (``body.item_id`` is ignored on this route).",
+        "operationId": "publish_item_from_skill_api_marketplace_items_from_skill__skill_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishSkillIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Item From Skill",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/page": {
+      "get": {
+        "operationId": "list_items_page_api_marketplace_items_page_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "resource_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(agent|mcp|skill)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resource Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "visibility",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Visibility"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "installed",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installed"
+            }
+          },
+          {
+            "in": "query",
+            "name": "install_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(active|needs_setup|disabled|uninstalled)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Install State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "support_level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Support Level"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_listed",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Listed"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Items Page",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/{item_id}": {
+      "get": {
+        "operationId": "get_item_api_marketplace_items__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Item",
+        "tags": [
+          "marketplace"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_item_api_marketplace_items__item_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceItemPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Item",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/{item_id}/acl": {
+      "post": {
+        "operationId": "replace_item_acl_api_marketplace_items__item_id__acl_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceItemACLIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace Item Acl",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/{item_id}/acl/{user_id_to_remove}": {
+      "delete": {
+        "operationId": "delete_item_acl_entry_api_marketplace_items__item_id__acl__user_id_to_remove__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id_to_remove",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id To Remove",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Item Acl Entry",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/{item_id}/disable": {
+      "post": {
+        "operationId": "disable_item_api_marketplace_items__item_id__disable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disable Item",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/{item_id}/enable": {
+      "post": {
+        "description": "Disable \uc758 inverse \u2014 ``status: disabled \u2192 published`` \ub85c \ubcf5\uc6d0. ACL\n/ visibility / is_listed \ub294 \uadf8\ub300\ub85c \uc720\uc9c0\ub41c\ub2e4 \u2014 owner \uac00 \ub2e4\uc2dc \ub178\ucd9c\ud558\ub824\uba74\n\ubcc4\ub3c4 \ud750\ub984(visibility \ubcc0\uacbd + super_user listing approve) \uc744 \uac70\uce5c\ub2e4.",
+        "operationId": "enable_item_api_marketplace_items__item_id__enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enable Item",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/{item_id}/install": {
+      "post": {
+        "description": "Install a marketplace item into the user's account.\n\nReturns ``201`` for a fresh install AND for a ``reuse_or_update``\nthat reused an existing installation \u2014 the client uses the\n``installation_id`` regardless of whether it was just created.",
+        "operationId": "install_item_api_marketplace_items__item_id__install_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallMarketplaceItemIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceInstallationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Install Item",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/{item_id}/versions": {
+      "get": {
+        "operationId": "list_versions_api_marketplace_items__item_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MarketplaceVersionSummary"
+                  },
+                  "title": "Response List Versions Api Marketplace Items  Item Id  Versions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Versions",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/{item_id}/versions/from-agent/{agent_id}": {
+      "post": {
+        "operationId": "publish_new_agent_version_api_marketplace_items__item_id__versions_from_agent__agent_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceVersionFromAgentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish New Agent Version",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/{item_id}/versions/from-mcp/{server_id}": {
+      "post": {
+        "operationId": "publish_new_mcp_version_api_marketplace_items__item_id__versions_from_mcp__server_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceVersionFromMcpIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish New Mcp Version",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/items/{item_id}/versions/from-skill/{skill_id}": {
+      "post": {
+        "description": "Add a new version to an existing item.\n\nThe publish service requires the full ``PublishSkillIn`` shape so we\nsynthesize one from the existing item's current metadata + the\ncaller's ``release_notes``. Visibility / ACL stay at the item's\ncurrent settings \u2014 use ``PATCH`` for metadata edits.",
+        "operationId": "publish_new_version_api_marketplace_items__item_id__versions_from_skill__skill_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceVersionFromSkillIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish New Version",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/marketplace/versions/{version_id}": {
+      "get": {
+        "operationId": "get_version_api_marketplace_versions__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceVersionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Version",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
     "/api/mcp-server-types": {
       "get": {
         "description": "Return every entry from the curated MCP server catalog.",
@@ -22247,6 +23624,86 @@
       "title": "CredentialFieldSchema",
       "type": "object"
     },
+    "CredentialRequirementIn": {
+      "description": "Publish/k-skill import input. Adds env_map projection.",
+      "properties": {
+        "definition_key": {
+          "title": "Definition Key",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "env_map": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Env Map"
+        },
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "injection": {
+          "default": "env",
+          "enum": [
+            "env",
+            "config"
+          ],
+          "title": "Injection",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "scope": {
+          "default": "user",
+          "enum": [
+            "user",
+            "system_dependency",
+            "manual"
+          ],
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "definition_key",
+        "required",
+        "label"
+      ],
+      "title": "CredentialRequirementIn",
+      "type": "object"
+    },
     "CredentialResponse": {
       "properties": {
         "created_at": {
@@ -22357,6 +23814,41 @@
         "updated_at"
       ],
       "title": "CredentialResponse",
+      "type": "object"
+    },
+    "CredentialSummaryOut": {
+      "properties": {
+        "missing_required_count": {
+          "default": 0,
+          "title": "Missing Required Count",
+          "type": "integer"
+        },
+        "optional_count": {
+          "default": 0,
+          "title": "Optional Count",
+          "type": "integer"
+        },
+        "required_count": {
+          "default": 0,
+          "title": "Required Count",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "none",
+            "optional",
+            "required",
+            "hosted_proxy",
+            "manual_login"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "CredentialSummaryOut",
       "type": "object"
     },
     "CredentialTestResponse": {
@@ -23829,6 +25321,62 @@
       "title": "InputRespondEntry",
       "type": "object"
     },
+    "InstallMarketplaceItemIn": {
+      "properties": {
+        "credential_bindings": {
+          "additionalProperties": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Credential Bindings",
+          "type": "object"
+        },
+        "install_missing_credentials": {
+          "default": "needs_setup",
+          "enum": [
+            "reject",
+            "needs_setup"
+          ],
+          "title": "Install Missing Credentials",
+          "type": "string"
+        },
+        "install_mode": {
+          "default": "reuse_or_update",
+          "enum": [
+            "reuse_or_update",
+            "new_copy",
+            "overwrite_existing"
+          ],
+          "title": "Install Mode",
+          "type": "string"
+        },
+        "name_override": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name Override"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version Id"
+        }
+      },
+      "title": "InstallMarketplaceItemIn",
+      "type": "object"
+    },
     "InstallationResponse": {
       "additionalProperties": false,
       "properties": {
@@ -24138,6 +25686,119 @@
       "title": "LogoutResponse",
       "type": "object"
     },
+    "MarketplaceInstallationOut": {
+      "description": "Full installation row response (Spec \u00a710.3).",
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "install_status": {
+          "enum": [
+            "active",
+            "needs_setup",
+            "disabled",
+            "uninstalled"
+          ],
+          "title": "Install Status",
+          "type": "string"
+        },
+        "installed_agent_blueprint_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Installed Agent Blueprint Id"
+        },
+        "installed_agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Installed Agent Id"
+        },
+        "installed_at": {
+          "format": "date-time",
+          "title": "Installed At",
+          "type": "string"
+        },
+        "installed_mcp_server_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Installed Mcp Server Id"
+        },
+        "installed_skill_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Installed Skill Id"
+        },
+        "is_dirty": {
+          "title": "Is Dirty",
+          "type": "boolean"
+        },
+        "item_id": {
+          "format": "uuid",
+          "title": "Item Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "enum": [
+            "agent",
+            "mcp",
+            "skill"
+          ],
+          "title": "Resource Type",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "version_id": {
+          "format": "uuid",
+          "title": "Version Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "item_id",
+        "version_id",
+        "resource_type",
+        "install_status",
+        "is_dirty",
+        "installed_at",
+        "updated_at"
+      ],
+      "title": "MarketplaceInstallationOut",
+      "type": "object"
+    },
     "MarketplaceInstallationSummary": {
       "description": "Is the current user installed on this item?",
       "properties": {
@@ -24201,6 +25862,686 @@
         "installed"
       ],
       "title": "MarketplaceInstallationSummary",
+      "type": "object"
+    },
+    "MarketplaceItemACLIn": {
+      "description": "Body for ``POST /items/{item_id}/acl``.",
+      "properties": {
+        "permission": {
+          "default": "install",
+          "enum": [
+            "view",
+            "install",
+            "manage"
+          ],
+          "title": "Permission",
+          "type": "string"
+        },
+        "user_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "User Ids",
+          "type": "array"
+        }
+      },
+      "title": "MarketplaceItemACLIn",
+      "type": "object"
+    },
+    "MarketplaceItemAdminListedIn": {
+      "properties": {
+        "is_listed": {
+          "title": "Is Listed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "is_listed"
+      ],
+      "title": "MarketplaceItemAdminListedIn",
+      "type": "object"
+    },
+    "MarketplaceItemOut": {
+      "description": "Catalog row + detail response (Spec \u00a710.8).\n\nRead-only side. Service layer constructs this via ``derive_*`` helpers\nso the ORM/Pydantic mapping never leaks privileged columns\n(moderation_status, ACL membership).",
+      "properties": {
+        "acl_user_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Acl User Ids"
+        },
+        "categories": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Categories"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "credential_summary": {
+          "$ref": "#/components/schemas/CredentialSummaryOut"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "execution_profile": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Execution Profile"
+        },
+        "icon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon Id"
+        },
+        "icon_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon Url"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "installation": {
+          "$ref": "#/components/schemas/MarketplaceInstallationSummary"
+        },
+        "is_listed": {
+          "title": "Is Listed",
+          "type": "boolean"
+        },
+        "is_system": {
+          "title": "Is System",
+          "type": "boolean"
+        },
+        "latest_version": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MarketplaceVersionSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Locale"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "origin_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ResourceOriginSummaryOut"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "publication_summary": {
+          "$ref": "#/components/schemas/ResourcePublicationSummaryOut"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published At"
+        },
+        "resource_type": {
+          "enum": [
+            "agent",
+            "mcp",
+            "skill"
+          ],
+          "title": "Resource Type",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "published",
+            "deprecated",
+            "disabled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tags"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "visibility": {
+          "enum": [
+            "private",
+            "restricted",
+            "public",
+            "unlisted",
+            "system"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "resource_type",
+        "name",
+        "slug",
+        "visibility",
+        "status",
+        "is_system",
+        "is_listed",
+        "created_at",
+        "updated_at",
+        "credential_summary",
+        "publication_summary",
+        "installation"
+      ],
+      "title": "MarketplaceItemOut",
+      "type": "object"
+    },
+    "MarketplaceItemPatchIn": {
+      "description": "Metadata-only PATCH (no version mutation).\n\n``visibility`` \ub294 \uc0c8 version \uc744 \ub9cc\ub4e4\uc9c0 \uc54a\ub294 \uacbd\ub7c9 \uc804\ud658 \u2014 public \u2194 private\n\u2194 unlisted \ud1a0\uae00 (\uc608: \uc0ac\uc6a9\uc790\uac00 \uc798\ubabb public \uc73c\ub85c publish \ud55c \uac83\uc744 private\n\uc73c\ub85c \ub418\ub3cc\ub9ac\ub294 \uacbd\ub85c). ``restricted`` \ub85c \ubc14\uafb8\ub824\uba74 ACL endpoint \ub3c4 \ud568\uaed8\n\ud638\ucd9c\ud574\uc57c \ud55c\ub2e4 (ACL \ube44\uc5b4 \uc788\uc73c\uba74 ``marketplace_acl_required``).",
+      "properties": {
+        "categories": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Categories"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "icon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon Id"
+        },
+        "icon_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon Url"
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Locale"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tags"
+        },
+        "visibility": {
+          "anyOf": [
+            {
+              "enum": [
+                "private",
+                "restricted",
+                "public",
+                "unlisted"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Visibility"
+        }
+      },
+      "title": "MarketplaceItemPatchIn",
+      "type": "object"
+    },
+    "MarketplaceItemsPage": {
+      "description": "Offset page envelope for catalog screens that must not load all rows.",
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/MarketplaceItemOut"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "limit": {
+          "title": "Limit",
+          "type": "integer"
+        },
+        "next_offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Offset"
+        },
+        "offset": {
+          "title": "Offset",
+          "type": "integer"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Total"
+        }
+      },
+      "required": [
+        "items",
+        "limit",
+        "offset",
+        "has_more"
+      ],
+      "title": "MarketplaceItemsPage",
+      "type": "object"
+    },
+    "MarketplaceVersionDetail": {
+      "description": "Full version payload (Spec \u00a710.2). For ``GET /versions/{id}``.",
+      "properties": {
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "credential_requirements": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Requirements"
+        },
+        "dependency_requirements": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dependency Requirements"
+        },
+        "execution_profile": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Execution Profile"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "item_id": {
+          "format": "uuid",
+          "title": "Item Id",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "payload_kind": {
+          "enum": [
+            "skill_package",
+            "agent_spec",
+            "mcp_template"
+          ],
+          "title": "Payload Kind",
+          "type": "string"
+        },
+        "release_notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Release Notes"
+        },
+        "resource_type": {
+          "enum": [
+            "agent",
+            "mcp",
+            "skill"
+          ],
+          "title": "Resource Type",
+          "type": "string"
+        },
+        "size_bytes": {
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "source_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Commit"
+        },
+        "source_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Path"
+        },
+        "source_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Ref"
+        },
+        "version_label": {
+          "title": "Version Label",
+          "type": "string"
+        },
+        "version_number": {
+          "title": "Version Number",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "item_id",
+        "version_label",
+        "version_number",
+        "resource_type",
+        "payload_kind",
+        "content_hash",
+        "size_bytes",
+        "created_at"
+      ],
+      "title": "MarketplaceVersionDetail",
+      "type": "object"
+    },
+    "MarketplaceVersionFromAgentIn": {
+      "description": "Body for ``POST /items/{item_id}/versions/from-agent/{agent_id}``.",
+      "properties": {
+        "release_notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Release Notes"
+        }
+      },
+      "title": "MarketplaceVersionFromAgentIn",
+      "type": "object"
+    },
+    "MarketplaceVersionFromMcpIn": {
+      "description": "Body for ``POST /items/{item_id}/versions/from-mcp/{server_id}``.",
+      "properties": {
+        "release_notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Release Notes"
+        }
+      },
+      "title": "MarketplaceVersionFromMcpIn",
+      "type": "object"
+    },
+    "MarketplaceVersionFromSkillIn": {
+      "description": "Body for ``POST /items/{item_id}/versions/from-skill/{skill_id}``.",
+      "properties": {
+        "release_notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Release Notes"
+        }
+      },
+      "title": "MarketplaceVersionFromSkillIn",
+      "type": "object"
+    },
+    "MarketplaceVersionSummary": {
+      "properties": {
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "source_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Commit"
+        },
+        "version_label": {
+          "title": "Version Label",
+          "type": "string"
+        },
+        "version_number": {
+          "title": "Version Number",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "version_label",
+        "version_number",
+        "content_hash",
+        "created_at"
+      ],
+      "title": "MarketplaceVersionSummary",
       "type": "object"
     },
     "McpAppsCallParams": {
@@ -28130,6 +30471,303 @@
         "id"
       ],
       "title": "PublicChatResourceReference",
+      "type": "object"
+    },
+    "PublishAgentIn": {
+      "properties": {
+        "acl_user_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Acl User Ids",
+          "type": "array"
+        },
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Categories",
+          "type": "array"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "icon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon Id"
+        },
+        "item_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Item Id"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "release_notes": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Release Notes"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "visibility": {
+          "enum": [
+            "private",
+            "restricted",
+            "public",
+            "unlisted"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        }
+      },
+      "required": [
+        "visibility",
+        "name"
+      ],
+      "title": "PublishAgentIn",
+      "type": "object"
+    },
+    "PublishMcpServerIn": {
+      "properties": {
+        "acl_user_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Acl User Ids",
+          "type": "array"
+        },
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Categories",
+          "type": "array"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "icon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon Id"
+        },
+        "include_tool_snapshot": {
+          "default": true,
+          "title": "Include Tool Snapshot",
+          "type": "boolean"
+        },
+        "item_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Item Id"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "release_notes": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Release Notes"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "visibility": {
+          "enum": [
+            "private",
+            "restricted",
+            "public",
+            "unlisted"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        }
+      },
+      "required": [
+        "visibility",
+        "name"
+      ],
+      "title": "PublishMcpServerIn",
+      "type": "object"
+    },
+    "PublishSkillIn": {
+      "properties": {
+        "acl_user_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Acl User Ids",
+          "type": "array"
+        },
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Categories",
+          "type": "array"
+        },
+        "credential_requirements": {
+          "items": {
+            "$ref": "#/components/schemas/CredentialRequirementIn"
+          },
+          "title": "Credential Requirements",
+          "type": "array"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "icon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon Id"
+        },
+        "item_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Item Id"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "release_notes": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Release Notes"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "visibility": {
+          "enum": [
+            "private",
+            "restricted",
+            "public",
+            "unlisted"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        }
+      },
+      "required": [
+        "visibility",
+        "name"
+      ],
+      "title": "PublishSkillIn",
       "type": "object"
     },
     "RefreshResponse": {
@@ -34318,6 +36956,24 @@
         "completed_at"
       ],
       "title": "TurnTraceResponse",
+      "type": "object"
+    },
+    "UpdateMarketplaceInstallationIn": {
+      "properties": {
+        "strategy": {
+          "enum": [
+            "overwrite",
+            "install_new_copy",
+            "keep_current"
+          ],
+          "title": "Strategy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "strategy"
+      ],
+      "title": "UpdateMarketplaceInstallationIn",
       "type": "object"
     },
     "UpdateStateRequest": {

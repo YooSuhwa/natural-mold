@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.authz.org_context import OrgContext
@@ -28,10 +29,16 @@ async def load_catalog_management_candidate(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    # ACL rows are eager-loaded: ``can_manage_item`` reads them for non-owners, and a lazy
+    # load under the async session raised MissingGreenlet (500) instead of 403 (D-05).
     return await db.scalar(
         resource_candidates(
-            select(MarketplaceItem).where(MarketplaceItem.id == item_id), MarketplaceItem, context
-        )
+            select(MarketplaceItem)
+            .where(MarketplaceItem.id == item_id)
+            .options(selectinload(MarketplaceItem.acl_entries)),
+            MarketplaceItem,
+            context,
+        ).execution_options(populate_existing=True)
     )
 
 

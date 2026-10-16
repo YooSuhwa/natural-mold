@@ -47,12 +47,11 @@ from app.error_codes import (
     marketplace_acl_required,
     marketplace_invalid_package,
     marketplace_invalid_visibility,
-    marketplace_item_not_found,
     marketplace_manage_forbidden,
     marketplace_secret_detected,
     skill_not_found,
 )
-from app.marketplace.access import can_manage_item
+from app.marketplace.access import ItemAuthorizer, can_manage_item, manageable_item
 from app.marketplace.schemas import (
     MarketplaceItemACLIn,
     MarketplaceItemPatchIn,
@@ -251,6 +250,7 @@ async def publish_skill(
     user: CurrentUser,
     context: OrgContext,
     body: PublishSkillIn,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceItem:
     """Spec §6.2 — publish or version-bump a skill.
 
@@ -280,17 +280,15 @@ async def publish_skill(
     # Resolve / create the item row -----------------------------------------
     item: MarketplaceItem | None = None
     if body.item_id is not None:
-        item = await db.scalar(
-            private_scoped(
-                select(MarketplaceItem).where(MarketplaceItem.id == body.item_id),
-                MarketplaceItem,
-                context,
+        if authorize is None or not authorize.enforced:
+            item = await db.scalar(
+                private_scoped(
+                    select(MarketplaceItem).where(MarketplaceItem.id == body.item_id),
+                    MarketplaceItem,
+                    context,
+                )
             )
-        )
-        if item is None:
-            raise marketplace_item_not_found()
-        if not can_manage_item(item, user):
-            raise marketplace_manage_forbidden()
+        item = await manageable_item(body.item_id, item, user, authorize)
         if item.resource_type != "skill":
             raise marketplace_invalid_package("marketplace item is not a Skill item")
     else:
@@ -479,6 +477,20 @@ async def publish_skill(
 # ---------------------------------------------------------------------------
 
 
+async def _managed_item(
+    db: AsyncSession,
+    item_id: uuid.UUID,
+    user: CurrentUser,
+    context: OrgContext,
+    authorize: ItemAuthorizer | None,
+) -> MarketplaceItem:
+    """The legacy management candidate + ``can_manage_item``, or the route's gate (D-05)."""
+    loaded = None
+    if authorize is None or not authorize.enforced:
+        loaded = await load_catalog_management_candidate(db, item_id, context)
+    return await manageable_item(item_id, loaded, user, authorize)
+
+
 async def patch_item(
     db: AsyncSession,
     *,
@@ -486,14 +498,11 @@ async def patch_item(
     user: CurrentUser,
     context: OrgContext,
     body: MarketplaceItemPatchIn,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceItem:
     """Metadata-only patch (Spec §10.4). No version mutation."""
 
-    item = await load_catalog_management_candidate(db, item_id, context)
-    if item is None:
-        raise marketplace_item_not_found()
-    if not can_manage_item(item, user):
-        raise marketplace_manage_forbidden()
+    item = await _managed_item(db, item_id, user, context, authorize)
 
     if body.name is not None:
         item.name = body.name
@@ -653,15 +662,12 @@ async def replace_acl(
     user: CurrentUser,
     context: OrgContext,
     body: MarketplaceItemACLIn,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceItem:
     """Replace the ACL recipient list. Restricted items need ≥1 row;
     otherwise the operation is a noop replace."""
 
-    item = await load_catalog_management_candidate(db, item_id, context)
-    if item is None:
-        raise marketplace_item_not_found()
-    if not can_manage_item(item, user):
-        raise marketplace_manage_forbidden()
+    item = await _managed_item(db, item_id, user, context, authorize)
     if item.visibility == "restricted" and not body.user_ids:
         raise marketplace_acl_required()
 
@@ -682,17 +688,14 @@ async def remove_acl_entry(
     user_id_to_remove: uuid.UUID,
     user: CurrentUser,
     context: OrgContext,
+    authorize: ItemAuthorizer | None = None,
 ) -> None:
     """Drop a single user from the ACL.
 
     Refuses to leave a restricted item with zero ACL rows — caller
     should change visibility first."""
 
-    item = await load_catalog_management_candidate(db, item_id, context)
-    if item is None:
-        raise marketplace_item_not_found()
-    if not can_manage_item(item, user):
-        raise marketplace_manage_forbidden()
+    item = await _managed_item(db, item_id, user, context, authorize)
 
     rows = (
         (await db.execute(select(MarketplaceItemACL).where(MarketplaceItemACL.item_id == item.id)))
@@ -715,15 +718,12 @@ async def disable_item(
     item_id: uuid.UUID,
     user: CurrentUser,
     context: OrgContext,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceItem:
     """Spec §10.4 — soft disable. Existing installations stay but new
     installs are blocked via ``can_install_item``."""
 
-    item = await load_catalog_management_candidate(db, item_id, context)
-    if item is None:
-        raise marketplace_item_not_found()
-    if not can_manage_item(item, user):
-        raise marketplace_manage_forbidden()
+    item = await _managed_item(db, item_id, user, context, authorize)
     item.status = "disabled"
     item.is_listed = False
     item.updated_at = _now()
@@ -736,6 +736,7 @@ async def enable_item(
     item_id: uuid.UUID,
     user: CurrentUser,
     context: OrgContext,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceItem:
     """Disable 의 inverse — ``status: disabled → published``. ``is_listed`` 는
     그대로 False 유지 (public 카탈로그 노출은 super_user approve 가 별도로
@@ -744,11 +745,7 @@ async def enable_item(
     disabled 가 아닌 상태에서 enable 호출은 idempotent no-op (반환 그대로).
     """
 
-    item = await load_catalog_management_candidate(db, item_id, context)
-    if item is None:
-        raise marketplace_item_not_found()
-    if not can_manage_item(item, user):
-        raise marketplace_manage_forbidden()
+    item = await _managed_item(db, item_id, user, context, authorize)
     if item.status == "disabled":
         item.status = "published"
         item.updated_at = _now()
