@@ -415,6 +415,36 @@
     },
     {
       "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_claim",
+      "imported": "app.services.chat_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_claim",
+      "imported": "app.services.trigger_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_delivery",
+      "imported": "app.services.trigger_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_invoke",
+      "imported": "app.services.trigger_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_materialization",
+      "imported": "app.services.chat_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_materialization",
+      "imported": "app.services.trigger_service"
+    },
+    {
+      "rule": "runtime_to_services",
       "importer": "app.agent_runtime.trigger_executor",
       "imported": "app.services.chat_service"
     },
@@ -549,6 +579,14 @@
     {
       "importer": "app.agent_runtime.runtime_subagent_normalization",
       "imported": "app.agent_runtime.runtime_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.trigger_execution_invoke",
+      "imported": "app.agent_runtime.trigger_executor"
+    },
+    {
+      "importer": "app.agent_runtime.trigger_executor",
+      "imported": "app.agent_runtime.trigger_execution_invoke"
     }
   ],
   "dynamic_import_exceptions": [
