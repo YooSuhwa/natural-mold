@@ -71,6 +71,24 @@ def test_inventory_rejects_unclassified_deferred_and_legacy_routes() -> None:
     ]
 
 
+def test_inventory_rejects_later_task_paths_app_wide() -> None:
+    app = FastAPI()
+    paths = (
+        "/api/orgs/{org_id}/retention",
+        "/api/me/usage-limits",
+        "/api/auth/sso/{connection_id}/start",
+        "/auth/callback/{connection_id}",
+        "/api/admin/authz/reconcile/{job_id}",
+        "/api/tenants/{id}/models/{model_id}",
+        "/api/marketplace/items/{item_id}/tenant-publication",
+    )
+    for path in (*paths, "/api/usage-limits-history", "/api/auth/login"):
+        app.add_api_route(path, lambda: True, methods=["GET"])
+
+    found = [item for item in company_route_violations(app.routes) if item.startswith("deferred")]
+    assert found == sorted(f"deferred:GET {path}" for path in paths)
+
+
 def test_inventory_rejects_missing_csrf_response_model_and_operator_content() -> None:
     app = FastAPI()
 

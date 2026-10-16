@@ -32,7 +32,6 @@ from app.models.organization import (
 )
 from app.models.tenant_invitation import TenantInvitation
 from app.models.user import User
-from app.routers.platform_tenant_creation import router
 from tests.authz.company_administration_migration_fixture import _runner_dsns
 
 
@@ -51,7 +50,6 @@ class NativeCreationDatabase:
                 yield db
 
         app = create_app()
-        app.include_router(router)
         app.dependency_overrides[get_db] = database_session
         csrf = create_csrf_token(actor_id)
         async with AsyncClient(

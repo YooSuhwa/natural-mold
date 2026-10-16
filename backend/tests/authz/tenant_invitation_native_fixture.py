@@ -21,9 +21,6 @@ from app.models.organization import Tenant, TenantMember, TenantRoleGrant
 from app.models.refresh_token import RefreshToken
 from app.models.tenant_invitation import TenantInvitation
 from app.models.user import User
-from app.routers.invitation_accept import router as invitation_accept_router
-from app.routers.tenant_invitations import router as tenant_invitation_router
-from app.routers.tenant_members import router as tenant_members_router
 from tests.authz.company_administration_migration_fixture import _runner_dsns
 from tests.authz.tenant_invitation_fixture import seed_tenant_invitation
 from tests.conftest import AuthSession
@@ -66,9 +63,6 @@ class NativeInvitationDatabase:
                 yield db
 
         app = create_app()
-        app.include_router(tenant_invitation_router)
-        app.include_router(invitation_accept_router)
-        app.include_router(tenant_members_router)
         app.dependency_overrides[get_db] = session_override
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://native-test"

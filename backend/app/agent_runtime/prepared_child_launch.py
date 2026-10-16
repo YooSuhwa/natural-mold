@@ -238,8 +238,3 @@ _ledger = ChildLaunchLedger()
 
 def get_child_launch_ledger() -> ChildLaunchLedger:
     return _ledger
-
-
-def reset_child_launch_ledger_for_tests(ledger: ChildLaunchLedger | None = None) -> None:
-    global _ledger
-    _ledger = ledger or ChildLaunchLedger()

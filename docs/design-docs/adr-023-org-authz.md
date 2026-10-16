@@ -317,6 +317,12 @@ version nor the audit log.
   `409 default_organization_archive_forbidden`. This happens before the
   stale-version, confirmation-name and last-organization checks, and changes
   neither state nor the audit log. B11 never reassigns or clears `is_default`.
+  Policy A narrows the canonical plan, which only forbids archiving the last
+  organization (9.7 row at `org-authz-plan.html:1217`, S05 at line 1989). The
+  narrowing is a decision of the parent plan
+  (`.omo/plans/p1-company-administration.md:13`), not a chapter 19 decision of
+  the HTML plan. Because the first organization of an operator-created company
+  is its default organization, that organization can never be archived.
 
 ### Organization administrators, roles and exit
 
@@ -449,7 +455,18 @@ version nor the audit log.
   while suspended, running work ends at its next permit with
   `tenant_suspended`, and resume makes the inputs claimable again. Agent API
   keys keep the opaque B05 contract and answer `401 AGENT_API_KEY_INVALID`,
-  never `tenant_suspended`, so a key does not reveal its company's state.
+  never `tenant_suspended`, so a key does not reveal its company's state. This
+  deviates from `org-authz-plan.html:953`, which answers every non-platform
+  request of a suspended company with `403 tenant_suspended`.
+- Archive of active work (lead decision, pending user confirmation). S05
+  (`org-authz-plan.html:1989`) says archive leaves in-progress runs to finish
+  and blocks only new ones. The implementation lets only a run that carries the
+  materialization pair finish, through the closed lease contract. Every other
+  active run fails, including a legacy run that is already `running`; its
+  local task is also cancelled. Unprepared execution can still read
+  configuration, memory, credentials and history after archive, so the closed
+  lease contract cannot bound it. With `prepared_run_lease_enabled` off (the
+  default), this applies to every running run.
 - `settings.prepared_run_lease_enabled` defaults to `False`. With the flag off,
   runs use the legacy runtime behind the gateway prefix. Turning the flag on
   first needs product decisions on these prerequisites:
@@ -467,6 +484,31 @@ version nor the audit log.
   is bounded: 3 s per server and 5 s in total
   (`prepared_mcp_discovery_*_timeout_seconds`). Calls after the marker are
   bounded at 10 s per call and hold no locks.
+- Screen items without a 9.7 route have owners in the contract's screen-item
+  table: operator company-admin invite/resend/revoke (S03/S04) belongs to the
+  new follow-up B12-F1, because B12 only issues the first-admin link at
+  creation; `allow_system_models` and system-resource fanout belong to E03,
+  the monthly usage and limit column to H03, and secrets-namespace status to
+  B16.
+- Final-review F4 fixes are on the branch: member and role writes check the
+  caller's own membership (enumeration-safe 404) before company status, and
+  handing out a pending invitation's live token again records
+  `tenant.invitation_reissue`. Two F4 findings are deferred hardening:
+  F4-4, Agent API run errors keep raw exception text (pre-existing), and F4-5,
+  the `Settings` repr shows `jwt_secret` and `encryption_keys` as plain `str`
+  (a `SecretStr` change is still to do).
+- Process tooling. `backend/scripts/task10_review_binding.py` (288 pure LOC)
+  and the other `backend/scripts/task10_*` scripts are I1 review tooling,
+  retired by the B-plan process change and kept only for history. Most of the
+  growth in type escapes (`Any` and similar) is in the Task 10 runtime
+  modules.
+- Gate waivers. `ruff format --check .` reports 74 files, all of them outside
+  this branch's diff (pre-existing). `scripts/check_project_facts.py` already
+  fails at baseline `6d5323ee` because four tracked
+  `docs/exec-plans/org-authz-*.md` files are outside `active/` or
+  `completed/`. This branch adds a fifth,
+  `org-authz-company-administration-contract.md`. Moving the files is deferred
+  because sealed `.omo` records cite these paths.
 - Not yet executed: the dedicated `company-administration` PostgreSQL lane,
   canonical native `all`, and the migration roundtrip. The development sandbox
   blocks the Docker socket. Real lock contention and deadlock behaviour

@@ -7,10 +7,12 @@ enforces class order (held rows are reused without SQL).
 
 from __future__ import annotations
 
+from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped
 
 from app.authz.execution_lock_cursor import ExecutionLockCursor, ExecutionProofError, LockClass
 from app.authz.execution_transaction_tracker import inserted_in_transaction, issue_claim
@@ -21,6 +23,12 @@ from app.authz.organization_execution_proof import (
 )
 from app.authz.scoping import private_scope_predicate
 from app.models.conversation import Conversation
+
+
+class IdentifiedRow(Protocol):
+    """A locked ORM row; its ``id`` is the cursor resource key."""
+
+    id: Mapped[UUID]
 
 
 async def lock_row[T](
@@ -42,7 +50,7 @@ async def lock_row[T](
     return row
 
 
-async def lock_query[T](
+async def lock_query[T: IdentifiedRow](
     db: AsyncSession,
     lock_class: LockClass,
     statement: Select[tuple[T]],
@@ -57,7 +65,7 @@ async def lock_query[T](
     return rows[0] if rows else None
 
 
-async def lock_many[T](
+async def lock_many[T: IdentifiedRow](
     db: AsyncSession,
     lock_class: LockClass,
     statement: Select[tuple[T]],
@@ -70,7 +78,7 @@ async def lock_many[T](
         raise ExecutionProofError("execution_scope_expansion_denied")
     rows = list((await db.scalars(statement.execution_options(**issue_claim(db)))).all())
     for row in rows:
-        resource_id = row.id  # type: ignore[attr-defined]
+        resource_id = row.id
         if proof.cursor.admit(lock_class, resource_id):
             proof.cursor.record(lock_class, resource_id, row)
     return rows

@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import (
@@ -33,7 +32,6 @@ from app.models.organization import (
 from app.models.organization_group import OrgInvitation
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.routers import tenant_organizations
 from tests.authz.company_administration_migration_fixture import _runner_dsns
 from tests.authz.registration_fixture import clear_default_membership, seed_registration_default
 from tests.conftest import AuthSession, register_session
@@ -99,9 +97,6 @@ async def native_task7_client(
     sessions: NativeTask7Sessions,
 ) -> AsyncGenerator[AsyncClient, None]:
     app = create_app()
-    route_path = "/api/tenants/{tenant_id}/organizations"
-    if not any(isinstance(route, APIRoute) and route.path == route_path for route in app.routes):
-        app.include_router(tenant_organizations.router)
 
     async def database_session() -> AsyncGenerator[AsyncSession, None]:
         async with sessions.http() as db:

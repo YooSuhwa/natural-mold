@@ -27,11 +27,11 @@ from pydantic import PrivateAttr
 from sqlalchemy import Update, update
 
 from app.agent_api import prepared_execution
+from app.agent_runtime import prepared_run_inputs
 from app.agent_runtime.lease_bound_model import LeaseSendGuard
 from app.agent_runtime.lease_model_factory import LeaseModelSpec
 from app.authz.org_context import OrgContext
 from app.models.organization import Organization, OrganizationMember, Tenant, TenantMember
-from app.services import prepared_conversation_start, prepared_trigger_entry
 from tests.authz import prepared_entry_testkit as ekit
 from tests.authz import prepared_materialization_testkit as kit
 
@@ -95,7 +95,7 @@ def install_chat(
     **overrides: Any,
 ) -> None:
     seams = replace(kit.seams(factory, server or harness.server), **overrides)
-    monkeypatch.setattr(prepared_conversation_start, "materializer_seams", lambda: seams)
+    monkeypatch.setattr(prepared_run_inputs, "materializer_seams", lambda: seams)
 
 
 def install_api(monkeypatch: pytest.MonkeyPatch, factory: kit.ScriptedFactory, server: Any) -> None:
@@ -106,7 +106,7 @@ def install_api(monkeypatch: pytest.MonkeyPatch, factory: kit.ScriptedFactory, s
 
 def install_trigger(monkeypatch: pytest.MonkeyPatch, factory: kit.ScriptedFactory, server: Any):
     monkeypatch.setattr(
-        prepared_trigger_entry, "materializer_seams", lambda: kit.seams(factory, server)
+        prepared_run_inputs, "materializer_seams", lambda: kit.seams(factory, server)
     )
 
 

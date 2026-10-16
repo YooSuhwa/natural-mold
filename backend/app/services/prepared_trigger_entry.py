@@ -44,25 +44,25 @@ from typing import NoReturn
 import anyio
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime import agent_stream_runner
+from app.agent_runtime import agent_stream_runner, prepared_run_inputs
 from app.agent_runtime.identity import AgentIdentityError
 from app.agent_runtime.prepared_run_dispatch import handle_for, terminalize_prepared_run
 from app.agent_runtime.prepared_run_input_policy import (
     PreparedRunUnsupportedError,
     is_legacy_fallback,
 )
-from app.agent_runtime.prepared_run_inputs import MaterializerSeams
 from app.agent_runtime.prepared_run_transaction import materialize_and_activate
 from app.agent_runtime.runtime_config import PreparedRunLease
-from app.authz.conversation_run_scope import (
-    RunConversationTarget,
-    RunExecutionTarget,
-    lock_executable_run,
-)
+from app.authz.conversation_run_scope import lock_executable_run
 from app.exceptions import AppError
 from app.services import agent_execution_runtime as runtime
 from app.services import prepared_conversation_executor
-from app.services.agent_execution_runtime import RuntimeOwnershipRequest
+from app.services.agent_execution_lifecycle import (
+    OwnedRuntime,
+    RuntimeOwnershipRequest,
+    execution_target,
+    supervise_owned_run,
+)
 from app.services.conversation_run_state import transition_run
 from app.services.conversation_run_worker import get_run_task_registry
 from app.services.prepared_lease_cleanup import (
@@ -83,29 +83,12 @@ from app.services.prepared_trigger_resolver import (
 
 logger = logging.getLogger("app.agent_runtime.trigger_executor")
 FAILED = "prepared_trigger_failed"
-# The legacy owner's cancel-poll / terminal-transition primitives, reused as-is
-# (the ``agent_execution_runtime`` facade is at its size cap).
-_OwnedRuntime = runtime._OwnedRuntime  # noqa: SLF001
-_poll_cancel = runtime._poll_cancel  # noqa: SLF001
-_finish = runtime._finish  # noqa: SLF001
 __all__ = ["PreparedTriggerFailedError", "run_prepared_trigger"]
-
-
-def materializer_seams() -> MaterializerSeams | None:
-    """Production uses the default seams; tests patch fakes (scripted model, fake MCP)."""
-    return None
 
 
 def prepared_run_root_base() -> Path:
     """Run roots live outside the runtime data dir (the lease backend forbids sharing)."""
     return prepared_conversation_executor.prepared_run_root()
-
-
-def _target(request: RuntimeOwnershipRequest) -> RunExecutionTarget:
-    conversation = RunConversationTarget(
-        request.conversation_id, request.root_agent_id, request.context
-    )
-    return RunExecutionTarget(request.run_id, conversation)
 
 
 async def _no_schedule(_lease: PreparedRunLease) -> None:
@@ -130,7 +113,7 @@ async def _settle_queued(request: RuntimeOwnershipRequest, code: str) -> str | N
     try:
         with anyio.CancelScope(shield=True):
             async with runtime.async_session() as db:
-                run = await lock_executable_run(db, _target(request))
+                run = await lock_executable_run(db, execution_target(request))
                 outcome = None
                 if run is not None and run.runtime_materialized_at is None:
                     if run.status == "queued":
@@ -183,13 +166,13 @@ async def _materialize(
 
     lease = await materialize_and_activate(
         db,
-        _target(target.ownership),
+        execution_target(target.ownership),
         prepare_inputs=resolver,
         mark_running=mark_prepared_running(get_run_task_registry().worker_instance_id),
         fail_running=fail_prepared_run,
         schedule=scheduled,
         session_factory=lambda: runtime.async_session(),
-        seams=materializer_seams(),
+        seams=prepared_run_inputs.materializer_seams(),
     )
     return resolver, lease
 
@@ -201,7 +184,7 @@ async def _prepare(target: PreparedTriggerTarget) -> tuple[PreparedRunResolver, 
     except BaseException:
         # Cancelled at the session close after activation: never leak the lease (I24 H4).
         if activated:
-            await abandon_activated_lease(_target(target.ownership), activated[0].digest)
+            await abandon_activated_lease(execution_target(target.ownership), activated[0].digest)
             await _remove_run_root(target.ownership.run_id)
         raise
 
@@ -235,36 +218,14 @@ async def _prepare_in_session(
 @asynccontextmanager
 async def _owned_prepared(request: RuntimeOwnershipRequest, digest: str) -> AsyncIterator[None]:
     """Legacy owner supervision for a marked run; re-raises the original failure."""
-    registry = get_run_task_registry()
-    owner = _OwnedRuntime(request, registry.worker_instance_id)
-    existing = registry.get(request.run_id)
-    if existing is not None and not existing.done():
-        raise runtime.RuntimeOwnershipConflict(request.run_id, "locally_owned")
-    registry.start_current(request.run_id)
-    failure: BaseException | None = None
-    try:
-        async with anyio.create_task_group() as tasks:
-            # Cancel poll + heartbeat so another worker's stale sweep spares us (M4).
-            tasks.start_soon(_poll_cancel, owner, True)
-            try:
-                yield
-            except (GeneratorExit, anyio.get_cancelled_exc_class()) as error:
-                with anyio.CancelScope(shield=True):
-                    await _finish(owner, "canceled")
-                failure = error
-            except BaseException as error:  # noqa: BLE001  # noqa: BROAD_EXCEPT_OK
-                with anyio.CancelScope(shield=True):
-                    await fail_owned_run(owner, error, digest)  # shared error-code table (M2)
-                failure = error
-            else:
-                if not await _finish(owner, "completed"):
-                    failure = runtime.RuntimeOwnershipConflict(request.run_id, "owner_changed")
-            finally:
-                tasks.cancel_scope.cancel()
-        if failure is not None:
-            raise failure
-    finally:
-        registry.discard(request.run_id)
+    owner = OwnedRuntime(request, get_run_task_registry().worker_instance_id)
+
+    async def failed(runtime: OwnedRuntime, error: BaseException) -> None:
+        await fail_owned_run(runtime, error, digest)  # shared error-code table (M2)
+
+    # Cancel poll + heartbeat so another worker's stale sweep spares us (M4).
+    async with supervise_owned_run(owner, heartbeat=True, on_failure=failed):
+        yield
 
 
 async def run_prepared_trigger(

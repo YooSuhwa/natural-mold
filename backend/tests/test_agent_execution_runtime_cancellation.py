@@ -140,10 +140,10 @@ async def test_duplicate_cancel_during_terminal_persistence_does_not_interrupt_a
     finish_release = anyio.Event()
     finish_completed = anyio.Event()
     owner_stopped = anyio.Event()
-    original_finish = agent_execution_runtime._finish
+    original_finish = agent_execution_runtime.finish
 
     async def gated_finish(
-        runtime: agent_execution_runtime._OwnedRuntime,
+        runtime: agent_execution_runtime.OwnedRuntime,
         outcome: agent_execution_runtime.TerminalOutcome,
     ) -> bool:
         finish_entered.set()
@@ -162,7 +162,7 @@ async def test_duplicate_cancel_during_terminal_persistence_does_not_interrupt_a
         except anyio.get_cancelled_exc_class():
             owner_stopped.set()
 
-    monkeypatch.setattr(agent_execution_runtime, "_finish", gated_finish)
+    monkeypatch.setattr(agent_execution_runtime, "finish", gated_finish)
     registry = get_run_task_registry()
     async with anyio.create_task_group() as tasks:
         tasks.start_soon(owner)
@@ -195,10 +195,10 @@ async def test_shutdown_after_stop_preserves_terminal_persistence_and_last_reaso
     finish_completed = anyio.Event()
     owner_stopped = anyio.Event()
     shutdown_completed = anyio.Event()
-    original_finish = agent_execution_runtime._finish
+    original_finish = agent_execution_runtime.finish
 
     async def gated_finish(
-        runtime: agent_execution_runtime._OwnedRuntime,
+        runtime: agent_execution_runtime.OwnedRuntime,
         outcome: agent_execution_runtime.TerminalOutcome,
     ) -> bool:
         finish_entered.set()
@@ -224,7 +224,7 @@ async def test_shutdown_after_stop_preserves_terminal_persistence_and_last_reaso
     async def skip_shutdown_persistence(_run_ids: list[UUID]) -> None:
         return None
 
-    monkeypatch.setattr(agent_execution_runtime, "_finish", gated_finish)
+    monkeypatch.setattr(agent_execution_runtime, "finish", gated_finish)
     monkeypatch.setattr(agent_execution_runtime, "get_run_task_registry", lambda: registry)
     monkeypatch.setattr(
         conversation_run_worker,

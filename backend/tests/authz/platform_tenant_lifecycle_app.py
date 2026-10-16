@@ -1,9 +1,8 @@
-"""App-local mount of the operator suspend/resume router (parent Task 13 QA only).
+"""Operator suspend/resume client fixture (parent Task 13 QA).
 
-The Task 11/12/13 platform routers and the company overview router are absent
-from ``app.router_registry`` until parent Task 14, so this fixture mounts them
-on a private app instance with the real cookie/JWT/CSRF path and one database
-session per request (no auth or CSRF overrides).
+Uses the globally registered platform and company overview routers on a private
+app instance with the real cookie/JWT/CSRF path and one database session per
+request (no auth or CSRF overrides).
 """
 
 from __future__ import annotations
@@ -14,7 +13,6 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,9 +25,6 @@ from app.main import create_app
 from app.migrations.org_authz_v1.contracts import ORG, TENANT
 from app.models.organization import Tenant, TenantRoleGrant
 from app.models.user import User
-from app.routers.platform_tenant_directory import router as directory_router
-from app.routers.platform_tenant_lifecycle import router as lifecycle_router
-from app.routers.tenant_overview import router as tenant_overview_router
 from app.services import audit_service
 from app.services.tenants.versioning import etag
 from tests import conftest as shared
@@ -87,12 +82,6 @@ async def lifecycle_case(
     monkeypatch.setattr(settings, "deployment_mode", "multi_tenant")
     monkeypatch.setattr(audit_service, "async_session", shared.TestSession)
     app = create_app()
-    paths = {route.path for route in app.routes if isinstance(route, APIRoute)}
-    if "/api/tenants/{tenant_id}" not in paths:
-        app.include_router(tenant_overview_router)
-    if "/api/admin/tenants/{tenant_id}" not in paths:
-        app.include_router(directory_router)
-    app.include_router(lifecycle_router)
     app.dependency_overrides[get_db] = shared.override_get_db
     await seed_registration_default(db)
     operator = User(

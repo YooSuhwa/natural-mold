@@ -6,7 +6,6 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +21,6 @@ from app.models.organization import (
     TenantRoleGrant,
 )
 from app.models.user import User
-from app.routers.tenant_organizations import router
 from tests import conftest as shared
 from tests.authz.registration_fixture import clear_default_membership, seed_registration_default
 from tests.conftest import AuthSession, register_session
@@ -40,9 +38,6 @@ class Task7Case:
 @pytest.fixture
 async def task7_client() -> AsyncGenerator[AsyncClient, None]:
     app = create_app()
-    collection = "/api/tenants/{tenant_id}/organizations"
-    if not any(isinstance(route, APIRoute) and route.path == collection for route in app.routes):
-        app.include_router(router)
     app.dependency_overrides[get_db] = shared.override_get_db
     async with shared.TestSession() as db:
         await seed_registration_default(db)

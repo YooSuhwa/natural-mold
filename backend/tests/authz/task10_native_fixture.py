@@ -5,8 +5,8 @@ runner-owned migrated database. Every ``async_session``/``TestSession`` alias in
 already-imported ``app.*`` and ``tests.authz.*`` modules is rebound to one
 per-test engine, so the real workers, gateways, permits and testkits all run
 on separate PostgreSQL connections (real row locks). The lease flag is on, the
-scheduler is recorded instead of started, and the app-local lifecycle router is
-mounted for real archive/restore HTTP. Teardown asserts runtime cleanup: no
+scheduler is recorded instead of started, and the registered lifecycle router
+serves real archive/restore HTTP. Teardown asserts runtime cleanup: no
 active lease, no live run task, no active owned run, every pooled connection
 returned.
 """
@@ -20,7 +20,6 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
@@ -42,8 +41,6 @@ from app.config import settings
 from app.dependencies import get_db
 from app.main import create_app
 from app.models.conversation_run import ConversationRun
-from app.routers.tenant_organization_lifecycle import router as lifecycle_router
-from app.routers.tenant_organizations import router as organizations_router
 from app.services import conversation_run_worker
 from tests import conftest
 from tests.authz.company_administration_migration_fixture import _runner_dsns
@@ -101,10 +98,6 @@ def rebind_sessions(monkeypatch: pytest.MonkeyPatch, sessions: Sessions) -> None
 
 def _app(sessions: Sessions) -> Any:
     app = create_app()
-    paths = {route.path for route in app.routes if isinstance(route, APIRoute)}
-    if "/api/tenants/{tenant_id}/organizations" not in paths:
-        app.include_router(organizations_router)
-    app.include_router(lifecycle_router)
 
     async def database_session() -> AsyncGenerator[AsyncSession, None]:
         async with sessions() as db:

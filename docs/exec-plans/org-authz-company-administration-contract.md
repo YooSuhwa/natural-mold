@@ -37,7 +37,7 @@ Tasks 6–10이 이 계약을 구현할 때 정한다.
 | <code>GET /api/tenants/{tenant_id}/organizations</code> | 활성 tenant member; <code>cursor</code>, <code>limit</code> | <code>OrganizationPage {items,next_cursor,has_more}</code>. Auditor item은 <code>id,name,member_count</code>, admin만 management metadata/administrator state를 받는다. | 없음 |
 | <code>POST /api/tenants/{tenant_id}/organizations</code> | <code>can_create_org</code>; CSRF; <code>OrganizationCreate {name,default_member_role: member|builder,administrator?: active_tenant_user_id|email}</code> | tenant-local stable generated slug, requested default role, selected/no-admin state. Name is nonunique, actor receives no implicit org membership. | <code>org.create</code> plus selected-admin membership/role or org-invitation audit |
 | <code>PATCH /api/tenants/{tenant_id}/organizations/{org_id}</code> | <code>can_create_org</code>; CSRF; Organization If-Match; <code>OrganizationRename {name}</code> only | Renamed organization, unchanged slug, new Organization ETag. | <code>org.update</code> |
-| <code>POST /api/tenants/{tenant_id}/organizations/{org_id}/archive</code> | <code>can_create_org</code>; CSRF; Organization If-Match; <code>OrganizationArchive {confirm_name}</code> | Restore deadline/new Organization ETag. Authorized locked default-org request is <code>409 default_organization_archive_forbidden</code> before stale/name/last-org checks. Nondefault precedence is stale ETag, exact name, then <code>409 last_organization</code>. | <code>org.archive</code> |
+| <code>POST /api/tenants/{tenant_id}/organizations/{org_id}/archive</code> | <code>can_create_org</code>; CSRF; Organization If-Match; <code>OrganizationArchive {confirm_name}</code> | Restore deadline/new Organization ETag. Authorized locked default-org request is <code>409 default_organization_archive_forbidden</code> before stale/name/last-org checks. Nondefault precedence is stale ETag, exact name, then <code>409 last_organization</code>. Active runs without the materialization pair fail (deviation from S05, see below). | <code>org.archive</code> |
 | <code>POST /api/tenants/{tenant_id}/organizations/{org_id}/restore</code> | <code>can_create_org</code>; CSRF; Organization If-Match; no successor/default-reassignment input | Restore only inside 30 days. It does not re-enable triggers/deployments or replay work. | <code>org.restore</code> |
 | <code>GET /api/tenants/{tenant_id}/members</code> | <code>can_manage_tenant</code>; <code>cursor</code>, <code>limit</code> | <code>TenantMemberPage {items,next_cursor,has_more}</code>; identity, active/suspended/removed state, tenant roles, safe org summary only. | 없음 |
 | <code>POST /api/tenants/{tenant_id}/members</code> | <code>can_manage_tenant</code>; CSRF; Tenant If-Match; <code>TenantMemberAdd {user_id}</code> for an existing active account | Member has no implied org role; email-first enrollment uses invitations. New Tenant ETag. | <code>tenant.member_add</code> |
@@ -172,6 +172,18 @@ administrators after creation. Under this count, B11 owns 17 new routes and B12
 owns 6. This matches the 23 company/platform routes registered in
 <code>router_registry.py</code>.
 
+### Screen items without a 9.7 route
+
+S03/S04 items that no 9.7 row covers. Each has exactly one owner; none is B11/B12
+scope beyond the note.
+
+| Source | Item | Owner | Note |
+| --- | --- | --- | --- |
+| S03 <code>org-authz-plan.html:1942</code>; S04 line 1960 | Operator company-admin management (invite, resend, revoke) | B12-F1 operator company-admin invitations (follow-up) | B12 only issues the first-admin link at company creation |
+| S04 line 1964 | <code>allow_system_models</code> enforcement and system-resource fanout | E03 | catalog policy (system resource and model fanout); B12 stores the creation flag only |
+| S04 line 1960 | Monthly usage and limit column in the overview tab | H03 | company usage reader |
+| S04 line 1960 | Secrets-namespace status in the security tab | B16 | company data keys |
+
 ### Organization purge registration
 
 Permanent organization purge is not a 9.7 route and is not part of B11. B11
@@ -201,7 +213,17 @@ as follows:
 - **Policy A:** every default organization is ineligible for archive. Authorized locked
   requests return <code>409 default_organization_archive_forbidden</code>; B11 never
   reassigns/clears <code>is_default</code>. Restore may preserve a legacy archived default
-  without changing that flag.
+  without changing that flag. Policy A narrows HTML 9.7 (<code>org-authz-plan.html:1217</code>)
+  and S05 (line 1989), which forbid archiving only the last organization. It is a decision of
+  the parent plan (<code>.omo/plans/p1-company-administration.md:13</code>), not an HTML
+  chapter 19 decision. An operator-created company's first organization is its default
+  organization, so it is never archivable.
+- **Archive of active work (deviation, lead decision pending user confirmation):** S05
+  (<code>org-authz-plan.html:1989</code>) leaves in-progress runs to finish and blocks new
+  ones. Archive here fails every active run without the materialization pair, including a
+  running legacy run, whose local task is also cancelled: unprepared execution cannot be
+  bounded by the closed lease contract. With <code>prepared_run_lease_enabled</code> off,
+  this covers every running legacy run.
 - The planning baseline <code>6d5323eec9ad27f0e5e6451e0f8fb271fc9dfa55</code>,
   accepted B08 code <code>c5cea625ee1e1470e386525edf120b02178bdbaf</code>, and
   historical migration head <code>b08_agent_lifecycle</code> are immutable inputs,

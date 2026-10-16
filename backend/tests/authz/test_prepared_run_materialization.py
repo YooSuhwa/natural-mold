@@ -258,7 +258,7 @@ async def test_failure_matrix_closes_and_never_reconstructs(
         with pytest.raises(raised, match=MATCH.get(stage)):
             await transaction.materialize_and_activate(
                 tx,
-                agent_execution_runtime._execution_target(queued.request),
+                agent_execution_runtime.execution_target(queued.request),
                 prepare_inputs=prepare,
                 mark_running=mark,
                 fail_running=fail_prepared_run,

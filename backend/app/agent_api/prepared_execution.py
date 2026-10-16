@@ -75,6 +75,12 @@ from app.authz.conversation_run_scope import lock_executable_run
 from app.exceptions import AppError
 from app.services import agent_execution_runtime as owned
 from app.services import prepared_conversation_executor
+from app.services.agent_execution_lifecycle import (
+    OwnedRuntime,
+    execution_target,
+    supervise_owned_run,
+)
+from app.services.agent_execution_supervision import ack_prestart_cancel
 from app.services.conversation_run_worker import get_run_task_registry
 from app.services.prepared_lease_cleanup import (
     abandon_activated_lease,
@@ -136,7 +142,7 @@ async def _fail_unmaterialized(request: owned.RuntimeOwnershipRequest, code: str
     """Durably fail our still-queued, unmarked row (a pre-marker failure)."""
 
     async with owned.async_session() as db:
-        run = await lock_executable_run(db, owned._execution_target(request))  # noqa: SLF001
+        run = await lock_executable_run(db, execution_target(request))
         if run is None or run.status != "queued" or run.runtime_materialized_at is not None:
             await db.rollback()
             return
@@ -192,7 +198,7 @@ async def materialize_api_run(request: ApiOwnedExecution, scope: ApiScope) -> Pr
             return None
         code = getattr(exc, "code", None)
         with anyio.CancelScope(shield=True):
-            await owned._ack_prestart_cancel(ownership)  # noqa: SLF001
+            await ack_prestart_cancel(ownership)
             await _fail_unmaterialized(ownership, code if isinstance(code, str) else PREPARE_FAILED)
             await remove_run_root(_run_root_base() / str(ownership.run_id))
         public = _public(exc)
@@ -202,7 +208,7 @@ async def materialize_api_run(request: ApiOwnedExecution, scope: ApiScope) -> Pr
     cfg = prepare.execution_cfg
     if cfg is None:
         # Activated but unusable: never leave the ACTIVE lease behind (I24 H4).
-        await abandon_activated_lease(owned._execution_target(ownership), lease.digest)  # noqa: SLF001
+        await abandon_activated_lease(execution_target(ownership), lease.digest)
         await remove_run_root(_run_root_base() / str(ownership.run_id))
         raise PreparedApiRunError(METADATA_MISSING)
     return PreparedApiRun(handle_for(lease), cfg)
@@ -214,40 +220,28 @@ async def _prepared_ownership(
 ) -> AsyncIterator[None]:
     """The legacy ownership lifecycle minus the claim (materialization marked running)."""
 
-    registry = get_run_task_registry()
-    runtime = owned._OwnedRuntime(_ownership(request), registry.worker_instance_id)  # noqa: SLF001
-    run_id = request.conversation_run_id
-    existing = registry.get(run_id)
-    if existing is not None and not existing.done():
-        target = owned._execution_target(runtime.request)  # noqa: SLF001
-        await abandon_activated_lease(target, prepared.handle.digest, LOCALLY_OWNED)
-        raise owned.RuntimeOwnershipConflict(run_id, "locally_owned")
-    registry.start_current(run_id)
+    runtime = OwnedRuntime(_ownership(request), get_run_task_registry().worker_instance_id)
+    digest = prepared.handle.digest
+
+    owns_root = True
+
+    async def locally_owned() -> None:
+        nonlocal owns_root
+        owns_root = False  # the live local owner still uses this run root
+        await abandon_activated_lease(execution_target(runtime.request), digest, LOCALLY_OWNED)
+
+    async def failed(owner: OwnedRuntime, error: BaseException) -> None:
+        await fail_owned_run(owner, error, digest)
+
     try:
-        failure: BaseException | None = None
-        async with anyio.create_task_group() as tasks:
-            # Cancel poll + heartbeat so another worker's stale sweep spares us (M4).
-            tasks.start_soon(owned._poll_cancel, runtime, True)  # noqa: SLF001
-            try:
-                yield
-            except (GeneratorExit, anyio.get_cancelled_exc_class()) as error:
-                with anyio.CancelScope(shield=True):
-                    await owned._finish(runtime, "canceled")  # noqa: SLF001
-                failure = error
-            except BaseException as error:  # noqa: BLE001  # noqa: BROAD_EXCEPT_OK
-                with anyio.CancelScope(shield=True):
-                    await fail_owned_run(runtime, error, prepared.handle.digest)
-                failure = error
-            else:
-                if not await owned._finish(runtime, "completed"):  # noqa: SLF001
-                    raise owned.RuntimeOwnershipConflict(run_id, "owner_changed")
-            finally:
-                tasks.cancel_scope.cancel()
-        if failure is not None:
-            raise failure
+        # Cancel poll + heartbeat so another worker's stale sweep spares us (M4).
+        async with supervise_owned_run(
+            runtime, heartbeat=True, on_failure=failed, on_locally_owned=locally_owned
+        ):
+            yield
     finally:
-        registry.discard(run_id)
-        await remove_run_root(_run_root_base() / str(run_id))
+        if owns_root:
+            await remove_run_root(_run_root_base() / str(request.conversation_run_id))
 
 
 async def execute_prepared_wait(request: ApiOwnedExecution, prepared: PreparedApiRun) -> str:

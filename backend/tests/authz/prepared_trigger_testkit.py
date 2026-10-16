@@ -3,7 +3,7 @@
 The root agent (stored runtime policy, lease-supported provider) has one
 trigger-safe MCP tool (trusted local URL, read-only name) and optionally one
 stored linked child. Models are the I15 scripted, permit-guarded fakes and MCP
-discovery is the I15 fake server, injected through ``materializer_seams``. LLM
+discovery is the I15 fake server, injected through ``prepared_run_inputs.materializer_seams``. LLM
 keys are patched (no credential rows). The activation hook records the
 provider-send and discovery counts at the moment the lease becomes active.
 """
@@ -21,7 +21,12 @@ from langchain_core.messages import AIMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime import agent_stream_runner, credential_resolution, trigger_executor
+from app.agent_runtime import (
+    agent_stream_runner,
+    credential_resolution,
+    prepared_run_inputs,
+    trigger_executor,
+)
 from app.config import settings
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
@@ -152,7 +157,7 @@ def install(
     monkeypatch.setattr(credential_resolution, "resolve_llm_api_key_for_agent", root_key)
     monkeypatch.setattr(prepared_run_children, "resolve_llm_api_key_for_agent", child_key)
     monkeypatch.setattr(
-        prepared_trigger_entry,
+        prepared_run_inputs,
         "materializer_seams",
         lambda: kit.seams(harness.factory, harness.server),
     )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -60,30 +61,37 @@ B12_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"POST {_A}/{{tenant_id}}/resume": CompanyRoute("SUPER", 200, False),
 }
 COMPANY_ROUTES: Final = {**B11_ROUTES, **B12_ROUTES}
-# Canonical 9.7 rows owned by C05/E07/E08/E09/H03/H06/H08/I07 must stay unregistered.
-DEFERRED_ROUTES: Final = frozenset(
+# Later-task paths from the contract's route-level crosswalk (rows 7-8, 24-35, 38-57),
+# owned by C05/E07/E08/E09/H03/H06/H08/I07. Matched app-wide by path, with parameter
+# names erased, at the path itself or below it (CRUD collection/item routes).
+DEFERRED_PATHS: Final = frozenset(
     {
-        f"POST {_A}/{{tenant_id}}/export",
-        f"GET {_A}/{{tenant_id}}/exports",
-        f"POST {_A}/{{tenant_id}}/schedule-deletion",
-        f"POST {_A}/{{tenant_id}}/cancel-deletion",
-        f"GET {_A}/{{tenant_id}}/authorization-status",
-        f"POST {_A}/{{tenant_id}}/authorization/reconcile",
-        f"GET {_T}/models",
-        f"GET {_T}/credentials",
-        f"GET {_T}/llm-settings",
-        f"GET {_T}/catalog-policy",
-        f"GET {_T}/usage",
-        f"GET {_T}/audit-events",
-        f"GET {_T}/limits",
-        f"GET {_T}/domains",
-        f"GET {_T}/sso-connections",
-        f"GET {_T}/publication-requests",
-        f"GET {_T}/publication-policy",
-        f"GET {_T}/audit-retention-policy",
-        f"GET {_T}/organizations/{{org_id}}/retention",
+        "/api/admin/tenants/{}/export",
+        "/api/admin/tenants/{}/exports",
+        "/api/admin/tenants/{}/schedule-deletion",
+        "/api/admin/tenants/{}/cancel-deletion",
+        "/api/admin/authz",
+        "/api/tenants/{}/models",
+        "/api/tenants/{}/credentials",
+        "/api/tenants/{}/llm-settings",
+        "/api/tenants/{}/catalog-policy",
+        "/api/tenants/{}/usage",
+        "/api/tenants/{}/audit-events",
+        "/api/tenants/{}/limits",
+        "/api/tenants/{}/publication-requests",
+        "/api/tenants/{}/domains",
+        "/api/tenants/{}/sso-connections",
+        "/api/tenants/{}/policies",
+        "/api/marketplace/items/{}/tenant-publication",
+        "/api/orgs/{}/retention",
+        "/api/usage-limits",
+        "/api/me/usage-limits",
+        "/api/auth/sso",
+        "/api/auth/ldap",
+        "/auth/callback",
     }
 )
+_PARAM: Final = re.compile(r"\{[^}]*\}")
 _OPERATOR_CONTENT: Final[frozenset[Callable[..., object]]] = frozenset(
     {get_org_context, get_tenant_context, owned_conversation}
 )
@@ -138,20 +146,32 @@ def _route_violations(identity: str, route: APIRoute, expected: CompanyRoute) ->
     return found
 
 
+def is_deferred(path: str) -> bool:
+    """A later-task path (or a route below it), whatever its parameter names."""
+    shape = _PARAM.sub("{}", path)
+    return any(shape == item or shape.startswith(f"{item}/") for item in DEFERRED_PATHS)
+
+
 def company_route_violations(routes: Iterable[object]) -> list[str]:
     """Return every inventory, policy, CSRF, schema and deferral violation."""
     legacy = _legacy_identities()
     seen: Counter[str] = Counter()
     found: list[str] = []
     for route in routes:
-        if not isinstance(route, APIRoute) or not route.path.startswith(COMPANY_PREFIXES):
+        path = getattr(route, "path", None)
+        deferred = isinstance(path, str) and is_deferred(path)
+        if deferred and not isinstance(route, APIRoute):
+            found.append(f"deferred:{type(route).__name__} {path}")
+        if not isinstance(route, APIRoute) or not (
+            deferred or route.path.startswith(COMPANY_PREFIXES)
+        ):
             continue
         for method in sorted(route.methods):
             identity = f"{method} {route.path}"
             seen[identity] += 1
             if identity in legacy or getattr(route.endpoint, "__authz_policy__", None) == "LEGACY":
                 found.append(f"legacy:{identity}")
-            if identity in DEFERRED_ROUTES:
+            if deferred:
                 found.append(f"deferred:{identity}")
             elif identity not in COMPANY_ROUTES:
                 found.append(f"unclassified:{identity}")

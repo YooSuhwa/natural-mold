@@ -36,6 +36,7 @@ from app.agent_runtime.trigger_agent_config import TriggerConfigSource, build_tr
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.organization_execution_gateway import acquire_execution_proof, lock_row
+from app.authz.scoping import private_scope_predicate
 from app.error_codes import agent_not_found
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
@@ -103,9 +104,7 @@ async def lock_trigger_envelope(
         .where(
             AgentTrigger.id == target.trigger_id,
             AgentTrigger.agent_id == agent_id,
-            AgentTrigger.user_id == context.user_id,
-            AgentTrigger.org_id == context.org_id,
-            AgentTrigger.tenant_id == context.tenant_id,
+            private_scope_predicate(AgentTrigger, context),
         )
         .with_for_update()
         .execution_options(populate_existing=True),

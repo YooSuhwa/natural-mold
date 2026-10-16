@@ -5,9 +5,8 @@ importing its native sources (the Task 10 source contract forbids that): every
 ``async_session``/``TestSession`` alias in loaded ``app.*``/``tests.authz.*``
 modules is rebound to one runner-owned engine, the prepared lease flag is on,
 and teardown asserts no active lease, no live run task and no checked-out
-connection. Adds an app-local mount of the platform lifecycle/directory and
-company overview routers (not registered until parent Task 14), one SaaS
-operator and the seeded company member.
+connection. Uses the globally registered platform lifecycle/directory and
+company overview routers, one SaaS operator and the seeded company member.
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -40,9 +38,6 @@ from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.organization import Tenant
 from app.models.user import User
-from app.routers.platform_tenant_directory import router as directory_router
-from app.routers.platform_tenant_lifecycle import router as lifecycle_router
-from app.routers.tenant_overview import router as overview_router
 from app.schemas.agent_api import AgentApiKeyCreate, AgentDeploymentCreate
 from app.services import conversation_run_worker
 from app.services.tenants.versioning import etag
@@ -129,12 +124,6 @@ class NativeSuspension:
 
 def _app(sessions: Sessions):
     app = create_app()
-    paths = {route.path for route in app.routes if isinstance(route, APIRoute)}
-    if "/api/tenants/{tenant_id}" not in paths:
-        app.include_router(overview_router)
-    if "/api/admin/tenants/{tenant_id}" not in paths:
-        app.include_router(directory_router)
-    app.include_router(lifecycle_router)
 
     async def database_session() -> AsyncGenerator[AsyncSession, None]:
         async with sessions() as db:

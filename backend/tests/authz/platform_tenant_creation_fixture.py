@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from importlib.util import find_spec
 from uuid import UUID
 
 import pytest
@@ -29,7 +28,6 @@ from app.models.organization import (
 )
 from app.models.tenant_invitation import TenantInvitation
 from app.models.user import User
-from app.routers.tenant_overview import router as tenant_overview_router
 from app.services import audit_service
 from tests.conftest import TestSession
 
@@ -166,11 +164,6 @@ async def platform_tenant_creation_case(
     await db.commit()
 
     app: FastAPI = create_app()
-    app.include_router(tenant_overview_router)
-    if find_spec("app.routers.platform_tenant_creation") is not None:
-        from app.routers.platform_tenant_creation import router
-
-        app.include_router(router)
 
     async def current_session() -> AsyncGenerator[AsyncSession, None]:
         yield db

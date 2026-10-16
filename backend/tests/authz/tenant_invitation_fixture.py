@@ -19,7 +19,6 @@ from app.main import create_app
 from app.models.organization import TenantRoleGrant
 from app.models.tenant_invitation import TenantInvitation
 from app.models.user import User
-from app.routers.tenant_invitations import router as tenant_invitation_router
 from tests.conftest import AuthSession, override_get_db, register_session
 
 
@@ -34,7 +33,6 @@ class TenantInvitationFixture:
 @pytest.fixture
 async def tenant_invitation_client() -> AsyncGenerator[AsyncClient, None]:
     app = create_app()
-    app.include_router(tenant_invitation_router)
     app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

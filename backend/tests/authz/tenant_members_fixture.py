@@ -16,7 +16,6 @@ from app.dependencies import get_db
 from app.main import create_app
 from app.models.organization import Tenant, TenantMember, TenantRoleGrant
 from app.models.user import User
-from app.routers.tenant_members import router
 from app.services.tenants.versioning import etag
 
 PASSWORD = "correct horse"
@@ -56,7 +55,6 @@ class TenantMembersFixture:
 
 def _app(db: AsyncSession) -> FastAPI:
     app = create_app()
-    app.include_router(router)
 
     async def session() -> AsyncGenerator[AsyncSession, None]:
         yield db

@@ -19,7 +19,11 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime import agent_stream_runner, langgraph_agent_stream_runner
+from app.agent_runtime import (
+    agent_stream_runner,
+    langgraph_agent_stream_runner,
+    prepared_run_inputs,
+)
 from app.agent_runtime.lease_bound_model import LeaseSendGuard
 from app.agent_runtime.lease_model_factory import LeaseModelSpec
 from app.agent_runtime.runtime_config import AgentConfig, PreparedRunLease
@@ -84,7 +88,7 @@ def enable(
     SEEN.clear()
     harness = Harness(seeded, RecordingFactory(scripts), kit.FakeMcpServer())
     seams = kit.seams(harness.factory, harness.server)
-    monkeypatch.setattr(prepared_conversation_start, "materializer_seams", lambda: seams)
+    monkeypatch.setattr(prepared_run_inputs, "materializer_seams", lambda: seams)
     root = tmp_path / "prepared-runs"
     for module in (prepared_conversation_start, prepared_conversation_executor):
         monkeypatch.setattr(module, "prepared_run_root", lambda: root)

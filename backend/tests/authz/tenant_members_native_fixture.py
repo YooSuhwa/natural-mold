@@ -34,7 +34,6 @@ from app.models.organization import (
 from app.models.organization_group import OrgInvitation
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.routers.tenant_members import router
 from app.services.tenants.versioning import etag
 from tests.authz.company_administration_migration_fixture import _runner_dsns
 
@@ -89,7 +88,6 @@ async def tenant_member_native_sessions() -> AsyncIterator[NativeSessions]:
 
 def _app(sessions: async_sessionmaker[AsyncSession]) -> FastAPI:
     app = create_app()
-    app.include_router(router)
 
     async def database_session() -> AsyncGenerator[AsyncSession, None]:
         async with sessions() as db:

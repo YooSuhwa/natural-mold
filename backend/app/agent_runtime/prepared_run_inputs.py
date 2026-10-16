@@ -137,6 +137,14 @@ class MaterializerSeams:
     compile_child: Callable[..., Any] = create_sub_agent
 
 
+def materializer_seams() -> MaterializerSeams | None:
+    """Seams of the chat/queue and trigger entries (read call-time; tests patch fakes).
+
+    Production uses the lease model factory and real MCP discovery (``None``).
+    """
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class MaterializedRun:
     """A staged (``pending_commit``) lease."""

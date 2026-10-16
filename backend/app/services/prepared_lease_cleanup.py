@@ -7,7 +7,7 @@
   ``prepared_run_activation_failed`` in a fresh gateway session.
 * :func:`fail_owned_run` fails a running prepared run with the shared error
   code table (:mod:`app.agent_runtime.run_error_codes`) before the legacy
-  ``_finish`` terminal (which then sees a terminal row and does nothing).
+  ``finish`` terminal (which then sees a terminal row and does nothing).
 * :func:`remove_run_root` removes a run's scratch/output root after
   terminalization (best effort, never raises).
 
@@ -77,9 +77,9 @@ async def fail_owned_run(runtime: Any, error: BaseException, digest: str) -> Non
     runtime.flags.finishing = True
     code = failure_code(error)
     if code is not None:
-        target = owned._execution_target(runtime.request)  # noqa: SLF001
+        target = owned.execution_target(runtime.request)
         await _fail_durably(_sessions, target, fail_prepared_run, code, digest)
-    await owned._finish(runtime, "failed")  # noqa: SLF001
+    await owned.finish(runtime, "failed")
 
 
 async def remove_run_root(path: Path) -> None:

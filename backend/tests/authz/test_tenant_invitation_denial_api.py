@@ -18,7 +18,6 @@ from app.dependencies import get_db
 from app.main import create_app
 from app.models.audit_event import AuditEvent
 from app.models.organization import Tenant, TenantMember
-from app.routers.invitation_accept import router as invitation_accept_router
 from tests.authz.org_context_fixture import OrgFixture
 from tests.authz.tenant_invitation_fixture import seed_tenant_invitation
 
@@ -31,7 +30,6 @@ async def denial_client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         yield db
 
     app = create_app()
-    app.include_router(invitation_accept_router)
     app.dependency_overrides[get_db] = same_session
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://denial-test"

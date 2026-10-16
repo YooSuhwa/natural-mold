@@ -1,12 +1,12 @@
 [
   {
-    "file": "agent_api/runtime_service.py",
-    "expression": "AgentApiThread.user_id == principal.user_id",
+    "file": "agent_api/prepared_config.py",
+    "expression": "AgentApiRun.user_id == target.context.user_id",
     "count": 1
   },
   {
-    "file": "agent_api/runtime_service.py",
-    "expression": "AgentDeployment.user_id == principal.user_id",
+    "file": "agent_api/run_acceptance.py",
+    "expression": "AgentApiThread.user_id == principal.user_id",
     "count": 1
   },
   {
@@ -23,6 +23,11 @@
     "file": "agent_api/service.py",
     "expression": "AgentDeployment.user_id == user_id",
     "count": 5
+  },
+  {
+    "file": "agent_api/thread_runtime.py",
+    "expression": "AgentApiThread.user_id == principal.user_id",
+    "count": 1
   },
   {
     "file": "agent_runtime/assistant/tools/helpers.py",
@@ -225,8 +230,38 @@
     "count": 1
   },
   {
+    "file": "services/agent_execution_acceptance.py",
+    "expression": "Conversation.user_id == request.context.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/agent_execution_supervision.py",
+    "expression": "Agent.user_id == request.context.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/agent_execution_supervision.py",
+    "expression": "Conversation.user_id == request.context.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/agent_execution_supervision.py",
+    "expression": "ConversationRun.user_id == request.context.user_id",
+    "count": 1
+  },
+  {
     "file": "services/agent_memory_settings.py",
     "expression": "Agent.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/agent_purge_authority.py",
+    "expression": "OrganizationMember.user_id == actor_id",
+    "count": 1
+  },
+  {
+    "file": "services/agent_purge_relational.py",
+    "expression": "Agent.user_id == prepared.owner_user_id",
     "count": 1
   },
   {
@@ -305,6 +340,11 @@
     "count": 4
   },
   {
+    "file": "services/chat/history_messages.py",
+    "expression": "MessageFeedback.user_id == request.user_id",
+    "count": 1
+  },
+  {
     "file": "services/chat/messages.py",
     "expression": "MessageFeedback.user_id == user_id",
     "count": 1
@@ -340,8 +380,28 @@
     "count": 1
   },
   {
+    "file": "services/conversation_history_secrets.py",
+    "expression": "Credential.user_id == agent.user_id",
+    "count": 1
+  },
+  {
     "file": "services/conversation_run_message_links.py",
     "expression": "ConversationRun.user_id == query.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/conversation_run_prepared_denied_recovery.py",
+    "expression": "ConversationRun.user_id == row.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/conversation_run_queue_claim.py",
+    "expression": "ConversationRun.user_id == user_id",
+    "count": 1
+  },
+  {
+    "file": "services/conversation_run_queue_claim.py",
+    "expression": "ConversationRunInput.user_id == user_id",
     "count": 1
   },
   {
@@ -360,16 +420,6 @@
     "count": 1
   },
   {
-    "file": "services/conversation_run_queue_service.py",
-    "expression": "ConversationRun.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/conversation_run_queue_service.py",
-    "expression": "ConversationRunInput.user_id == user_id",
-    "count": 1
-  },
-  {
     "file": "services/conversation_run_service.py",
     "expression": "Agent.user_id == user_id",
     "count": 1
@@ -378,6 +428,11 @@
     "file": "services/conversation_run_service.py",
     "expression": "ConversationRun.user_id == user_id",
     "count": 4
+  },
+  {
+    "file": "services/conversation_run_transitions.py",
+    "expression": "ConversationRun.user_id == target.conversation.context.user_id",
+    "count": 1
   },
   {
     "file": "services/conversation_stream_service.py",
@@ -413,6 +468,11 @@
     "file": "services/memory_service.py",
     "expression": "UserMemorySettings.user_id == user_id",
     "count": 2
+  },
+  {
+    "file": "services/memory_settings_reads.py",
+    "expression": "UserMemorySettings.user_id == user_id",
+    "count": 1
   },
   {
     "file": "services/skill_builder_finalize.py",
@@ -495,6 +555,51 @@
     "count": 2
   },
   {
+    "file": "services/tenants/invitation_membership.py",
+    "expression": "TenantMember.user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "services/tenants/invitation_membership.py",
+    "expression": "TenantRoleGrant.user_id == user.id",
+    "count": 1
+  },
+  {
+    "file": "services/tenants/member_exit.py",
+    "expression": "OrganizationMember.user_id == command.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/tenants/member_write.py",
+    "expression": "TenantMember.user_id == command.actor.id",
+    "count": 1
+  },
+  {
+    "file": "services/tenants/member_write.py",
+    "expression": "TenantRoleGrant.user_id == command.actor.id",
+    "count": 1
+  },
+  {
+    "file": "services/tenants/members.py",
+    "expression": "User.id == TenantMember.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/tenants/organizations.py",
+    "expression": "OrganizationMember.user_id == OrganizationRoleGrant.principal_id",
+    "count": 1
+  },
+  {
+    "file": "services/tenants/overview.py",
+    "expression": "TenantMember.user_id == TenantRoleGrant.user_id",
+    "count": 1
+  },
+  {
+    "file": "services/tenants/roles.py",
+    "expression": "TenantRoleGrant.user_id == TenantMember.user_id",
+    "count": 1
+  },
+  {
     "file": "services/tool_service.py",
     "expression": "McpServer.user_id == user_id",
     "count": 1
@@ -510,17 +615,7 @@
     "count": 3
   },
   {
-    "file": "services/trigger_service.py",
-    "expression": "Agent.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/trigger_service.py",
-    "expression": "AgentTrigger.user_id == user_id",
-    "count": 3
-  },
-  {
-    "file": "services/trigger_service.py",
+    "file": "services/trigger_schedule_service.py",
     "expression": "AgentTriggerRun.user_id == user_id",
     "count": 1
   },

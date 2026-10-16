@@ -118,7 +118,6 @@ async def create_run(
             await db.scalars(
                 select(Conversation.id).where(
                     Conversation.agent_id == agent_id,
-                    Conversation.user_id == context.user_id,
                     private_scope_predicate(Conversation, context),
                 )
             )

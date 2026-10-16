@@ -125,9 +125,7 @@ async def test_prepared_supervision_poll_renews_heartbeat(monkeypatch: pytest.Mo
         row.status, row.worker_instance_id, row.heartbeat_at = "running", "w-i24", stale
         await tx.commit()
     monkeypatch.setattr(conversation_run_worker, "_heartbeat_interval_seconds", lambda: 0.0)
-    owner = agent_execution_runtime._OwnedRuntime(
-        runtime_request(run, agent, conversation), "w-i24"
-    )
+    owner = agent_execution_runtime.OwnedRuntime(runtime_request(run, agent, conversation), "w-i24")
 
     poll = asyncio.ensure_future(agent_execution_supervision.poll_cancel(owner, True))
     await asyncio.sleep(0.4)

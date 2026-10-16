@@ -25,7 +25,6 @@ from app.database import Base
 from app.dependencies import get_db
 from app.main import create_app
 from app.models.user import User
-from app.routers.platform_tenant_creation import router
 from app.services import audit_service
 
 FK_ACTOR_ID = UUID("23232323-2323-4323-8323-232323232323")
@@ -89,7 +88,6 @@ async def fk_tenant_creation_case(
         monkeypatch.setattr(audit_service, "async_session", observer)
         assert settings.deployment_mode == "multi_tenant"
         app = create_app()
-        app.include_router(router)
 
         async def database_session() -> AsyncGenerator[AsyncSession, None]:
             async with primary() as db:

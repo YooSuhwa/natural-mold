@@ -3498,6 +3498,10 @@ Task 17만 별도 절로 덧붙인다. 설계 근거는 ADR-023의 "B11/B12 comp
 - 경계: archive는 Policy A(기본 조직은 모두 archive
   불가)와 30일 metadata-only restore로 제한된다. 조직 영구 purge는 포함하지 않는다(아래
   등록 참조).
+- Policy A는 HTML 9.7(`org-authz-plan.html:1217`)과 S05(1989행)가 정한 "마지막 조직만
+  보관 불가"를 더 좁힌 것이다. HTML 19장 결정이 아니라 parent plan
+  (`.omo/plans/p1-company-administration.md:13`)의 결정이다. 운영자가 만든 회사의 첫 조직은
+  기본 조직이므로 archive할 수 없다.
 
 ### 진행 방식 (B안)
 
@@ -3550,6 +3554,32 @@ flag를 켜기 전에 다음 제품 결정이 필요하다.
   같은 input을 다시 claim할 수 있다. 작업을 terminalize하는 것은 archive와 member exit뿐이다.
 - **Agent API의 불투명 401:** 정지된 회사의 API key도 B05 계약대로
   `401 AGENT_API_KEY_INVALID`로 응답하며 `tenant_suspended`를 노출하지 않는다.
+  플랫폼 운영 경로 외 모든 요청을 `403 tenant_suspended`로 막는
+  `org-authz-plan.html:953`과 다르다.
+- **archive 시 진행 중 실행 처리(리드 결정, 사용자 확인 대기):** S05
+  (`org-authz-plan.html:1989`)는 "진행 중 실행은 끝까지 두고 새 실행 차단"이다. 구현은
+  materialization pair가 있는 run만 닫힌 lease 계약으로 끝까지 두고, pair가 없는 활성 run은
+  모두 실패시킨다. 이미 `running`인 legacy run도 포함되며 로컬 task도 취소된다. 준비되지 않은
+  실행은 archive 후에도 config, memory, credential, history를 읽을 수 있어 닫힌 lease
+  계약으로 경계를 지을 수 없기 때문이다. `prepared_run_lease_enabled`가 꺼져 있으면(기본값)
+  실행 중인 legacy run 전부에 적용된다.
+- **화면 항목 owner:** S03/S04의 운영자 회사 관리자 관리(초대, 재발송, 회수)는 새 후속 항목
+  B12-F1이 맡는다. B12는 회사 생성 때 첫 관리자 링크만 발급한다. S04의
+  `allow_system_models`와 시스템 자원 팬아웃은 E03, 이번 달 사용량·한도 열은 H03, 비밀 저장소
+  namespace 상태는 B16이 맡는다. 매핑은 contract 문서의 화면 항목 표에 있다.
+- **F4 수정과 보류:** 구성원·역할 쓰기는 회사 상태보다 호출자 자신의 membership을 먼저
+  확인하고(enumeration-safe 404), pending 초대의 live token을 다시 내줄 때
+  `tenant.invitation_reissue`를 남긴다(92781e8b). F4-4(Agent API run error에 원시 예외 문구,
+  기존 동작)와 F4-5(`Settings` repr이 `jwt_secret`/`encryption_keys`를 일반 `str`로 노출,
+  `SecretStr` 강화)는 후속 hardening으로 보류한다.
+- **검증 면제:** `ruff format --check .`가 보고하는 74개 파일은 모두 이 branch diff 밖의 기존
+  파일이다. `scripts/check_project_facts.py`는 baseline `6d5323ee`에서 이미 tracked
+  `docs/exec-plans/org-authz-*.md` 4개가 `active/`·`completed/` 밖이라 실패하며, 이 branch가
+  다섯 번째(`org-authz-company-administration-contract.md`)를 더한다. 봉인된 `.omo` 기록이
+  이 경로를 참조하므로 이동은 미룬다.
+- **process 도구와 type escape:** `backend/scripts/task10_review_binding.py`(순수 288 LOC)를
+  비롯한 `backend/scripts/task10_*`는 B안 전환으로 은퇴한 I1 검토 도구이며 이력용으로만
+  남긴다. `Any` 등 type escape 증가는 Task 10 runtime 모듈에 몰려 있다.
 - **trigger 출력 비영속:** lease 아래 trigger 모드의 출력 파일은 run root cleanup 때
   삭제된다. legacy와 다른 동작이며, trigger lease 출력의 artifact 영속화는 구현되지 않았다.
 - **MCP discovery 상한:** materialization lock을 잡은 채 수행하는 selected-MCP discovery는
@@ -3583,6 +3613,7 @@ artifact/file, 감사 행 각각의 삭제/보존/읽기 전용 처리와, E02 �
 - I08 — 회사별 파일 경로, rate-limit key, 공유 링크 회사 검증, Langfuse metadata.
 - B13 — tenant/platform session, 파생 작업 컨텍스트.
 - B16 — 회사별 data key와 ciphertext v2.
+- B12-F1 — 운영자 회사 관리자 초대·재발송·회수(후속). B12는 첫 관리자 링크만 발급한다.
 
 이 절은 다음 어떤 것도 주장하지 않는다: 9.7 전체, UI(B-07/B-09), 배포, provider/live
 성공, shared-DB migration, purge, fanout, audit reader, session/RLS, 암호화.
