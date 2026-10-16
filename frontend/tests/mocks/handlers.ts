@@ -28,6 +28,11 @@ import {
 const API_BASE = 'http://localhost:8001'
 
 export const handlers = [
+  // ── Organizations (sidebar switcher; empty list renders nothing) ──
+  http.get(`${API_BASE}/api/me/organizations`, () => {
+    return HttpResponse.json([])
+  }),
+
   // ── Agents ─────────────────────────────────────────────────────
   http.get(`${API_BASE}/api/agents`, () => {
     return HttpResponse.json(mockAgentList)

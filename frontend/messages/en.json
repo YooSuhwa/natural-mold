@@ -204,6 +204,13 @@
   },
   "sidebar": {
     "brand": "Moldy",
+    "orgSwitcher": {
+      "label": "Switch organization",
+      "trigger": "Current organization: {name} (switch)",
+      "current": "Current organization",
+      "unavailable": "Company unavailable",
+      "switchFailed": "Could not switch organization. Please try again."
+    },
     "nav": {
       "home": "Home",
       "connectors": "Connectors",
