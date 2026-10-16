@@ -29,6 +29,7 @@ from app.authz.error_codes import ERRORS, ErrorCode, authorization_error
             "초대받은 이메일의 계정으로 로그인해 주세요",
         ),
         ("tenant_invitation_revoked", 404, "사용할 수 없는 회사 초대 링크입니다"),
+        ("tenant_status_conflict", 409, "현재 회사 상태에서는 처리할 수 없습니다"),
     ],
 )
 def test_company_error_code_has_exact_typed_contract(

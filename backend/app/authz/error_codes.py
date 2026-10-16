@@ -46,6 +46,7 @@ ErrorCode = Literal[
     "tenant_invitation_expired",
     "tenant_invitation_email_mismatch",
     "tenant_invitation_revoked",
+    "tenant_status_conflict",
 ]
 
 
@@ -109,6 +110,7 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
             403, "초대받은 이메일의 계정으로 로그인해 주세요"
         ),
         "tenant_invitation_revoked": ErrorSpec(404, "사용할 수 없는 회사 초대 링크입니다"),
+        "tenant_status_conflict": ErrorSpec(409, "현재 회사 상태에서는 처리할 수 없습니다"),
     }
 )
 
