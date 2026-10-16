@@ -56,6 +56,9 @@ class CredentialDefinition:
     pre_authentication: PreAuthCallable | None = None
     extends: list[str] = field(default_factory=list)
     category: str = "general"
+    # 10.4/Q4: an account that belongs to one person (mail, train/forest booking, OAuth
+    # user tokens). Never lent to others: no sharing, no transfer, no ``shared`` mode.
+    personal: bool = False
 
     def serialize(self) -> dict[str, Any]:
         """JSON-friendly representation for the API catalog endpoint."""
@@ -66,6 +69,7 @@ class CredentialDefinition:
             "icon_id": self.icon_id,
             "documentation_url": self.documentation_url,
             "category": self.category,
+            "personal": self.personal,
             "extends": list(self.extends),
             "properties": [p.serialize() for p in self.properties],
             "has_test": self.test is not None,

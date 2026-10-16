@@ -9,10 +9,8 @@ transfer with such dependents answers ``409 transfer_blocked`` and lists them; t
 * agent / tool / MCP server: its own credential column (``llm_credential_id`` /
   ``credential_id``) pointing at a credential the previous owner owns — the new owner
   would run on someone else's account;
-* credential: personal account types (10.4, ``personal=True``) are never transferred —
-  the account belongs to a person. Until E-05 adds the flag to the definitions, the 10.4
-  list is pinned here (``mcp_oauth2`` counts as personal: the "조직 공용 계정" marking
-  does not exist yet).
+* credential: personal account types (10.4, the definition's ``personal`` flag, E-05)
+  are never transferred — the account belongs to a person.
 
 Not checked (stay with their rows, documented gaps): an agent's skill/tool/MCP links
 to the previous owner's private resources, its conversations and memories (user data
@@ -20,7 +18,6 @@ of each participant), and the previous owner's per-user credential bindings.
 """
 
 from collections.abc import Iterable
-from typing import Final
 from uuid import UUID
 
 from sqlalchemy import select
@@ -28,16 +25,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.error_codes import authorization_error
 from app.authz.share_targets import ShareRow
+from app.credentials.personal import is_personal_definition
 from app.models.agent import Agent
 from app.models.agent_api import AgentApiKey, AgentApiKeyDeployment, AgentDeployment
 from app.models.agent_trigger import AgentTrigger
 from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.tool import Tool
-
-PERSONAL_ACCOUNT_DEFINITIONS: Final = frozenset(
-    {"google_workspace_oauth2", "srt_account", "ktx_account", "foresttrip_account", "mcp_oauth2"}
-)
 
 
 def _ids(rows: Iterable[UUID]) -> list[str]:
@@ -85,7 +79,7 @@ async def _owner_credentials(db: AsyncSession, row: ShareRow, previous: UUID) ->
 
 async def check_transferable(db: AsyncSession, row: ShareRow, previous: UUID | None) -> None:
     """Raise ``409 transfer_blocked`` with the blocking dependents; nothing is written."""
-    if isinstance(row, Credential) and row.definition_key in PERSONAL_ACCOUNT_DEFINITIONS:
+    if isinstance(row, Credential) and is_personal_definition(row.definition_key):
         raise authorization_error("transfer_blocked", {"personal_account": row.definition_key})
     found: dict[str, list[str]] = {}
     if isinstance(row, Agent):

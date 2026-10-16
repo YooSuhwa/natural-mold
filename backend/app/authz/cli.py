@@ -1,9 +1,10 @@
-"""Operator CLI: uv run python -m app.authz.cli bootstrap|rebuild|reconcile|check|explain
-(and ``catalog-fanout``, the E-03 fanout backfill).
+"""Operator CLI: python -m app.authz.cli bootstrap|rebuild|reconcile|check|explain
+(plus ``catalog-fanout``, the E-03 fanout backfill, and ``personal-account-shares``).
 
 Exit codes: 0 success / allow / no remaining difference; 1 deny, or the store still differs
 from Postgres after the command (a dry run that found a difference, or queued repairs that
 failed to drain); 2 usage errors (argparse). Held tuples never change the exit code.
+``personal-account-shares`` is read-only (E-05): exit 1 when a share grant violates 10.4.
 """
 
 import argparse
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from app.authz.bootstrap import BootstrapResult, bootstrap
 from app.authz.catalog_fanout_backfill import backfill_catalog_fanout
 from app.authz.client import CheckQuery, FgaClient, open_client, sdk_configuration
+from app.authz.personal_account_report import personal_account_shares
 from app.authz.reconcile import (
     Mode,
     ReconcileReport,
@@ -31,7 +33,15 @@ from app.config import settings
 
 
 class Arguments(BaseModel):
-    command: Literal["bootstrap", "rebuild", "reconcile", "check", "explain", "catalog-fanout"]
+    command: Literal[
+        "bootstrap",
+        "rebuild",
+        "reconcile",
+        "check",
+        "explain",
+        "catalog-fanout",
+        "personal-account-shares",
+    ]
     user: str = ""
     relation: str = ""
     object: str = ""
@@ -86,8 +96,27 @@ async def sync(args: Arguments, store: TupleStore, sessions: Sessions | None = N
     return 1 if (report.diff and mode == "dry_run") or failed else 0
 
 
+async def report_personal_shares(args: Arguments, sessions: Sessions | None = None) -> int:
+    """List active share grants that lend a personal account (10.4); revokes nothing."""
+    async with (sessions or reconcile_sessions())() as db:
+        found = await personal_account_shares(db)
+    for share in found:
+        if args.as_json:
+            print(share.model_dump_json())
+        else:
+            accounts = ",".join(a["definition_key"] for a in share.personal_accounts)
+            print(
+                f"grant={share.grant_id} org={share.org_id} {share.resource_type}:"
+                f"{share.resource_id} -> {share.principal_type}:{share.principal_id} "
+                f"level={share.level} personal={accounts}"
+            )
+    return 1 if found else 0
+
+
 async def run(args: Arguments) -> int:
     match args.command:
+        case "personal-account-shares":
+            return await report_personal_shares(args)
         case "bootstrap":
             if not settings.migration_database_url:
                 raise ValueError("Set MIGRATION_DATABASE_URL to the migrated installation database")
@@ -186,6 +215,10 @@ def parse(argv: list[str] | None = None) -> Arguments:
     where = fanout.add_mutually_exclusive_group()
     where.add_argument("--tenant", type=UUID, help="Limit to one company")
     where.add_argument("--org", type=UUID, help="Limit to one organization")
+    shares = commands.add_parser(
+        "personal-account-shares", help="List share grants that lend a personal account (10.4)"
+    )
+    shares.add_argument("--json", dest="as_json", action="store_true", help="JSON lines")
     return Arguments.model_validate(vars(parser.parse_args(argv)))
 
 

@@ -25107,6 +25107,11 @@
           "title": "Key",
           "type": "string"
         },
+        "personal": {
+          "default": false,
+          "title": "Personal",
+          "type": "boolean"
+        },
         "properties": {
           "items": {
             "$ref": "#/components/schemas/CredentialFieldSchema"
@@ -25349,6 +25354,12 @@
           "title": "Name",
           "type": "string"
         },
+        "personal": {
+          "description": "10.4 personal account type (from the definition): sharing is disabled.",
+          "readOnly": true,
+          "title": "Personal",
+          "type": "boolean"
+        },
         "status": {
           "title": "Status",
           "type": "string"
@@ -25380,7 +25391,8 @@
         "status",
         "key_id",
         "created_at",
-        "updated_at"
+        "updated_at",
+        "personal"
       ],
       "title": "CredentialResponse",
       "type": "object"

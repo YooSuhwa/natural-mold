@@ -11,6 +11,7 @@ import { StatusChip } from '@/components/shared/status-chip'
 import { DomainIconTile } from '@/components/shared/icon'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
+import { PersonalAccountBadge } from './personal-account-badge'
 import { CredentialTestButton } from './credential-test-button'
 import {
   useCredential,
@@ -105,7 +106,12 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
             }
             title={credential.name}
             description={credential.definition_key}
-            actions={<StatusChip variant={credential.status} />}
+            actions={
+              <>
+                <PersonalAccountBadge personal={credential.personal} />
+                <StatusChip variant={credential.status} />
+              </>
+            }
           />
           <DialogShell.Body>
             <div className="flex flex-wrap gap-2">

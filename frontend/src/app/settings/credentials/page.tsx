@@ -25,6 +25,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { CredentialCreateModal } from '@/components/credential/credential-create-modal'
 import { CredentialDetailDialog } from '@/components/credential/credential-detail-dialog'
+import { PersonalAccountBadge } from '@/components/credential/personal-account-badge'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { getResourceTone, resourceStatusChipClassName } from '@/lib/resource-tones'
 import { formatDisplayDate } from '@/lib/utils/display-format'
@@ -318,6 +319,7 @@ function CredentialCard({
           />
         </span>
         <ResourceBadge tone={tone}>{providerLabel}</ResourceBadge>
+        <PersonalAccountBadge personal={credential.personal ?? definition?.personal} />
       </ResourceListCard.Header>
 
       <ResourceCardTitle>{credential.name}</ResourceCardTitle>

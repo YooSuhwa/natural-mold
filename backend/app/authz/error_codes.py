@@ -52,6 +52,7 @@ ErrorCode = Literal[
     "confirm_required",
     "transfer_name_conflict",
     "transfer_blocked",
+    "personal_account_shared",
     "tenant_suspended",
     "quota_exceeded",
     "authz_unavailable",
@@ -126,6 +127,9 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         "confirm_required": ErrorSpec(409, "위임된 계정 자원을 확인한 뒤 다시 공유해 주세요"),
         "transfer_blocked": ErrorSpec(
             409, "이전 소유자에게 묶인 항목을 먼저 정리해야 이전할 수 있습니다"
+        ),
+        "personal_account_shared": ErrorSpec(
+            409, "개인 계정 자격 증명은 다른 사람과 공유할 수 없습니다"
         ),
         "transfer_name_conflict": ErrorSpec(
             409, "새 소유자에게 같은 이름의 자원이 있습니다. 이름을 바꾼 뒤 이전하세요"

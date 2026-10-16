@@ -14,6 +14,7 @@ import { DomainIconTile } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Card } from '@/components/ui/card'
 import { DynamicFieldsForm, validateFields } from '@/components/shared/dynamic-fields-form'
+import { PersonalAccountBadge } from './personal-account-badge'
 import { CredentialTestButton } from './credential-test-button'
 import { useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { useCreateCredential, useCreateSystemCredential } from '@/lib/hooks/use-credentials'
@@ -150,7 +151,10 @@ export function CredentialCreateModal({
                       iconClassName="size-5"
                     />
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{d.display_name}</p>
+                      <p className="flex items-center gap-1.5 text-sm font-medium">
+                        <span className="truncate">{d.display_name}</span>
+                        <PersonalAccountBadge personal={d.personal} />
+                      </p>
                       <p className="truncate moldy-ui-caption text-muted-foreground">
                         {d.category}
                       </p>

@@ -12,6 +12,8 @@ outbox rows together, plus its ``grant.*`` audit events); the route commits and 
 
 * A grantee may revoke their own grant without ``can_revoke``; revocations record
   ``self_revoke``/``governance`` in the audit metadata.
+* 10.4 (E-05): a personal account credential, or a resource carrying one, is refused
+  with ``409 personal_account_shared`` (``personal_accounts``).
 * After the grant write the resource row is locked and its owner re-checked
   (org → grants → resource, the transfer order); a concurrent transfer → 409.
 
@@ -28,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz import denials
 from app.authz.grants import GrantRequest, GrantService, GrantTarget
 from app.authz.org_context import OrgContext
+from app.authz.personal_accounts import require_no_personal_accounts
 from app.authz.principal import Principal
 from app.authz.resource_lifecycle import LifecycleChange
 from app.authz.service import AuthzService
@@ -126,6 +129,7 @@ async def share(
     if not is_owner(row, ctx):
         check_self(ctx, body, held)
     await require_org_wide(db, authz, ctx, body)
+    await require_no_personal_accounts(db, row)  # 10.4, E-05: before any confirmation
     await require_delegation_confirmed(db, kind, row, body)
     same = [g for g in held if g.relation == body.level]
     others = [g for g in held if g.relation != body.level]

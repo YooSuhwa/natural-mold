@@ -46,6 +46,7 @@ async def _refresh(credentials: dict[str, Any]) -> dict[str, Any]:
 
 definition = CredentialDefinition(
     key="google_workspace_oauth2",
+    personal=True,
     display_name="Google Workspace OAuth2",
     icon_id="google",
     documentation_url="https://developers.google.com/identity/protocols/oauth2",

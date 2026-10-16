@@ -11,6 +11,7 @@ from app.credentials.field import FieldDef, FieldKind
 
 definition = CredentialDefinition(
     key="ktx_account",
+    personal=True,
     display_name="KTX (Korail) Account",
     icon_id="train",
     category="account",

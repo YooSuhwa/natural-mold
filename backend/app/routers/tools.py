@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.personal_accounts import require_unshared_for_personal
 from app.authz.policies import CANDIDATES, CAP, CATALOG, RES, authz_policy
 from app.authz.resource_gate import gate_cap
 from app.authz.resource_lifecycle import apply_lifecycle, on_resource_created, on_resource_deleted
@@ -160,6 +161,8 @@ async def update_tool(
 ) -> ToolInstanceResponse:
     tool = await tool_service.load_owned(db, tool_id, context, authz=authz, permission="can_edit")
     await tool_service.update_tool(db, tool=tool, context=context, data=payload, authz=authz)
+    if payload.credential_id is not None:
+        await require_unshared_for_personal(db, context, tool)  # 10.4, E-05
     await db.commit()
     await db.refresh(tool)
     await tool_service.record_tool_audit(

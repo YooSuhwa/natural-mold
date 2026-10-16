@@ -12,6 +12,7 @@ from app.credentials.field import FieldDef, FieldKind
 
 definition = CredentialDefinition(
     key="srt_account",
+    personal=True,
     display_name="SRT Account",
     icon_id="train",
     category="account",

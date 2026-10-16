@@ -101,6 +101,7 @@ async def _refresh(credentials: dict[str, Any]) -> dict[str, Any]:
 
 definition = CredentialDefinition(
     key="mcp_oauth2",
+    personal=True,  # 10.4: personal by default; the "조직 공용 계정" marking is not built yet
     display_name="MCP OAuth2 Client",
     icon_id="plug",
     category="mcp",
