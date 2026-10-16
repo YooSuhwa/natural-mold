@@ -34,6 +34,7 @@ import logging
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 
 from app.agent_runtime.prepared_child_launch import get_child_launch_ledger
@@ -48,6 +49,7 @@ from app.agent_runtime.prepared_run_transaction import (
     RUN_NOT_MATERIALIZABLE,
     PreparedRunTransactionError,
 )
+from app.agent_runtime.run_error_codes import PREPARED_START_FAILED
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.runtime_config import AgentConfig, PreparedRunBinding, PreparedRunLease
 from app.authz.conversation_run_scope import RunExecutionTarget
@@ -80,7 +82,7 @@ FALLBACKS: Counter[str] = Counter()
 class PreparedStartError(RuntimeError):
     """A prepared start failed before the run started; the row is still queued."""
 
-    code = "prepared_run_start_failed"
+    code = PREPARED_START_FAILED
 
     def __init__(self) -> None:
         super().__init__(self.code)
@@ -127,6 +129,27 @@ async def release_unclaimed(start: PreparedRunStart | None) -> None:
     run_id = start.binding.run_id
     get_child_launch_ledger().terminalize(run_id)
     await get_prepared_run_registry().terminalize(run_id)
+
+
+def lease_output_dir(start: PreparedRunStart | None) -> Path | None:
+    """The lease-routed ``/conversations/<thread_id>`` output dir (artifact index, M1)."""
+
+    if start is None or start.binding is None:
+        return None
+    return prepared_run_root() / str(start.binding.run_id) / "output"
+
+
+async def remove_lease_run_root(start: PreparedRunStart | None) -> None:
+    """Remove the run's scratch/output root after terminalization (best effort, M1).
+
+    Artifacts were already copied into artifact storage by the recorder.
+    """
+
+    if start is None or start.binding is None:
+        return
+    from app.services.prepared_lease_cleanup import remove_run_root
+
+    await remove_run_root(prepared_run_root() / str(start.binding.run_id))
 
 
 def _resolve_config(inputs: OwnedRunInputs) -> ResolveConfig:

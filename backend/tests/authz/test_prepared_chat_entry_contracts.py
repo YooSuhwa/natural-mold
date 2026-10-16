@@ -99,7 +99,8 @@ async def test_inputs_unlocked_fails_the_run_instead_of_falling_back(
     monkeypatch.setattr(prepared_run_adapter, "resolve_agent_context", committing)
     row = await _run(harness)
 
-    assert (row.status, row.error_code) == ("failed", "runtime_error")
+    # I24 M2: the pre-marker cause code is the run's error code (was runtime_error).
+    assert (row.status, row.error_code) == ("failed", "prepared_run_unsupported:inputs_unlocked")
     assert row.runtime_materialized_at is None and harness.leases == []
     assert prepared_conversation_start.FALLBACKS == {} and harness.prepare_agent_calls == 0
     assert kit.SENDS == []

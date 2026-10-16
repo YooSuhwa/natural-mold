@@ -14,6 +14,7 @@ from app.agent_api.access import authorize_deployment
 from app.agent_api.dependencies import ApiKeyPrincipal
 from app.agent_api.service import utc_now_naive
 from app.agent_runtime.message_utils import RuntimeMessage
+from app.agent_runtime.run_error_codes import inherited_envelope_code
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 from app.agent_runtime.streaming import StreamErrorRecord
@@ -23,6 +24,7 @@ from app.config import settings
 from app.exceptions import ConflictError, NotFoundError
 from app.models.agent_api import AgentApiRun, AgentDeployment
 from app.models.conversation import Conversation
+from app.models.conversation_run import ConversationRun
 from app.schemas.conversation_refs import JsonValue
 from app.services import chat_service
 from app.services.agent_execution_runtime import (
@@ -80,6 +82,12 @@ async def mark_run_failed(
     message: str,
 ) -> AgentApiRun:
     await db.refresh(run)
+    if run.conversation_run_id is not None:
+        # A linked envelope inherits the shared denial code of its run (I24 M2).
+        run_error = await db.scalar(
+            select(ConversationRun.error_code).where(ConversationRun.id == run.conversation_run_id)
+        )
+        code = inherited_envelope_code(run_error) or code
     run.error_code = code
     run.error_message = message
     run.finished_at = utc_now_naive()

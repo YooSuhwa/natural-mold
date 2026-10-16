@@ -35,6 +35,7 @@ from app.agent_runtime.mcp_strict_loader import DiscoverTools, default_discover
 from app.agent_runtime.runtime_config import PreparedRunLease
 from app.agent_runtime.runtime_snapshot_catalog import RuntimeSnapshotCatalog
 from app.agent_runtime.tool_access_policy import ToolOrigin
+from app.config import settings
 
 Closer = Callable[[], Awaitable[None]]
 
@@ -122,8 +123,14 @@ class PreparationInputs:
 class MaterializerSeams:
     model_factory: ModelFactory = default_model_factory
     mcp_discover: DiscoverTools = default_discover
-    mcp_per_server_timeout: float = 10.0
-    mcp_total_timeout: float = 20.0
+    # Discovery holds the materialization locks: bounded by small settings values.
+    mcp_per_server_timeout: float = field(
+        default_factory=lambda: settings.prepared_mcp_discovery_server_timeout_seconds
+    )
+    mcp_total_timeout: float = field(
+        default_factory=lambda: settings.prepared_mcp_discovery_total_timeout_seconds
+    )
+    mcp_call_timeout: float = 10.0  # post-marker per-call bound (no locks held)
     lease_checkpointer: Callable[..., Awaitable[tuple[Any, CheckpointSeed]]] = (
         default_lease_checkpointer
     )

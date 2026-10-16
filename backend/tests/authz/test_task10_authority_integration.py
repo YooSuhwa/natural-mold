@@ -1,13 +1,14 @@
 """Native PostgreSQL authority barriers against an exact archived-org lease (I23).
 
-While a leaf permit holds the canonical ``FOR SHARE`` locks, the real archive
-endpoint and one authority revocation (tenant suspension, company-member
-suspension/removal, organization-only member suspension/removal) are both
-provably blocked; once they commit, the very next tool, child-launch or
-provider dispatch is refused with the exact code even though the lease would
-bypass the archive. Participant expansion after the marker never launches.
-Tenant suspension freezes the run's terminal fields and mutates no trigger or
-deployment row (parent Task 13 owns later API/race revalidation).
+The leaf permit releases its canonical locks before the leaf I/O, so while a
+provider send is parked the real archive endpoint and one authority revocation
+(tenant suspension, company-member suspension/removal, organization-only
+member suspension/removal) both commit without waiting; the in-flight send
+completes and the very next tool, child-launch or provider dispatch is refused
+with the exact code even though the lease would bypass the archive.
+Participant expansion after the marker never launches. Tenant suspension
+freezes the run's terminal fields and mutates no trigger or deployment row
+(parent Task 13 owns later API/race revalidation).
 """
 
 from __future__ import annotations
@@ -36,7 +37,6 @@ from tests.authz.task10_runtime_barriers import (
     Barriers,
     Gate,
     Hook,
-    assert_blocked,
     finish,
     install_chat,
     tool_call,
@@ -79,38 +79,33 @@ def _first(harness: ekit.Harness, dispatch: str) -> AIMessage:
 
 @pytest.mark.parametrize("mutation", list(MUTATIONS))
 @pytest.mark.parametrize("dispatch", ["tool", "child", "provider"])
-async def test_native_revocation_blocks_then_beats_archived_lease_at_next_dispatch(
+async def test_native_revocation_commits_during_parked_leaf_and_wins_next_dispatch(
     task10_lane: Lane, tmp_path: Path, mutation: str, dispatch: str
 ) -> None:
     harness = await _chat(task10_lane, tmp_path)
     root, child = harness.seeded.root_model, harness.seeded.child_model
     parked = child if dispatch == "provider" else root
     admin = await task10_lane.admin(harness.seeded.graph.context)
-    gate, racers = Gate(), []
-
-    async def settle() -> None:  # runs right after the parked permit closed
-        archived, _ = await finish(asyncio.gather(*racers))
-        assert archived.status_code == 200
-
+    gate = Gate()
     factory = Barriers(
         {root: [_first(harness, dispatch), AIMessage("done")], child: [AIMessage("helped")]},
         gates={parked: gate},
-        hooks={parked: settle},
     )
     install_chat(task10_lane.monkeypatch, harness, factory)
 
     run = asyncio.create_task(_run(harness))
     await gate.wait_entered()
-    racers.append(asyncio.create_task(task10_lane.lifecycle(admin, "archive")))
-    racers.append(asyncio.create_task(_mutate(task10_lane, harness, mutation)))
-    await assert_blocked(*racers)
+    archive = task10_lane.lifecycle(admin, "archive")
+    archived, _ = await finish(asyncio.gather(archive, _mutate(task10_lane, harness, mutation)))
+    assert archived.status_code == 200
+    assert not run.done()  # the parked send holds no lock and is still in flight
     gate.release.set()
     row = await finish(run)
 
     assert (row.status, row.is_active, row.error_code, row.error_message) == (
         "failed",
         False,
-        "stream_error",
+        MUTATIONS[mutation][1],
         MUTATIONS[mutation][1],
     )
     assert ([root, child] if dispatch == "provider" else [root]) == kit.SENDS
@@ -211,7 +206,7 @@ async def test_native_tenant_suspension_freezes_terminal_fields_and_entry_rows(
     row = await _run(harness)
 
     frozen = (row.status, row.is_active, row.error_code, row.error_message)
-    assert frozen == ("failed", False, "stream_error", "tenant_suspended")
+    assert frozen == ("failed", False, "tenant_suspended", "tenant_suspended")
     assert row.completed_at is not None and row.started_at is not None
     assert row.runtime_materialized_at is not None
     assert row.runtime_materialization_sha256 == harness.leases[-1].digest

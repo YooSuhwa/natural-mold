@@ -283,6 +283,11 @@ class Settings(AuthzSettings):
     # (materialize under the canonical locks, then dispatch the frozen graph).
     # Off = every entry keeps the legacy ``_prepare_agent`` path.
     prepared_run_lease_enabled: bool = False
+    # Selected-MCP discovery runs inside the materialization transaction while the
+    # canonical locks are held, so archive/suspension/stop wait at most the total
+    # bound (plus the short lock transaction). Keep both small.
+    prepared_mcp_discovery_server_timeout_seconds: float = 3.0
+    prepared_mcp_discovery_total_timeout_seconds: float = 5.0
 
     # CORS allowed origins. Comma-separated origins, e.g.
     # "https://moldy.dev,https://staging.moldy.dev". Default permits the

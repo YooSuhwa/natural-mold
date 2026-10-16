@@ -2,12 +2,14 @@
 
 Dialect-agnostic (shared by the ordinary authority matrix and the native modules).
 
-A ``BarrierModel`` parks inside its first provider attempt — i.e. while the
-lease ``LeaseSendGuard`` permit holds the canonical ``FOR SHARE`` parent locks
-on its own PostgreSQL connection — until the test releases it, and may run a
-hook right after the permit closed. ``park_after`` parks any locking service
-right after it returns (its transaction still holding its row locks). Together
-they give real two-connection barriers with a deterministic winner.
+A ``BarrierModel`` parks inside its first provider attempt — i.e. inside the
+lease ``LeaseSendGuard`` permit, whose authority transaction has already
+released the canonical parent locks and its connection (lock -> decide ->
+release -> I/O) — until the test releases it, and may run a hook right after
+the send returned. Writers therefore commit while it is parked and the next
+dispatch boundary observes them. ``park_after`` parks any locking service
+right after it returns (its transaction still holding its row locks), giving
+real two-connection barriers with a deterministic winner.
 """
 
 from __future__ import annotations

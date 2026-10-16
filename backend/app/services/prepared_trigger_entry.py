@@ -34,9 +34,7 @@ output files are NOT persisted by this entry (no artifact finalization yet).
 
 from __future__ import annotations
 
-import functools
 import logging
-import shutil
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -44,7 +42,6 @@ from pathlib import Path
 from typing import NoReturn
 
 import anyio
-import anyio.to_thread
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import agent_stream_runner
@@ -68,6 +65,11 @@ from app.services import prepared_conversation_executor
 from app.services.agent_execution_runtime import RuntimeOwnershipRequest
 from app.services.conversation_run_state import transition_run
 from app.services.conversation_run_worker import get_run_task_registry
+from app.services.prepared_lease_cleanup import (
+    abandon_activated_lease,
+    fail_owned_run,
+    remove_run_root,
+)
 from app.services.prepared_run_adapter import PreparedRunRequest, PreparedRunResolver
 from app.services.prepared_run_state import fail_prepared_run, mark_prepared_running
 from app.services.prepared_trigger_resolver import (
@@ -111,12 +113,7 @@ async def _no_schedule(_lease: PreparedRunLease) -> None:
 
 
 async def _remove_run_root(run_id: uuid.UUID) -> None:
-    path = prepared_run_root_base() / str(run_id)
-    with anyio.CancelScope(shield=True):
-        try:
-            await anyio.to_thread.run_sync(functools.partial(shutil.rmtree, path, True))
-        except Exception:  # noqa: BLE001 - best-effort temp cleanup
-            logger.warning("Prepared trigger run root cleanup failed: %s", path)
+    await remove_run_root(prepared_run_root_base() / str(run_id))
 
 
 def _codes(exc: BaseException) -> tuple[str, str]:
@@ -165,7 +162,10 @@ async def _settle_unactivated(target: PreparedTriggerTarget, exc: Exception) -> 
 
 
 async def _materialize(
-    db: AsyncSession, target: PreparedTriggerTarget, messages: list
+    db: AsyncSession,
+    target: PreparedTriggerTarget,
+    messages: list,
+    activated: list[PreparedRunLease],
 ) -> tuple[PreparedRunResolver, PreparedRunLease]:
     resolver = PreparedRunResolver(
         PreparedRunRequest(
@@ -176,13 +176,18 @@ async def _materialize(
             is_trigger_mode=True,
         )
     )
+
+    async def scheduled(lease: PreparedRunLease) -> None:
+        activated.append(lease)
+        await _no_schedule(lease)
+
     lease = await materialize_and_activate(
         db,
         _target(target.ownership),
         prepare_inputs=resolver,
         mark_running=mark_prepared_running(get_run_task_registry().worker_instance_id),
         fail_running=fail_prepared_run,
-        schedule=_no_schedule,
+        schedule=scheduled,
         session_factory=lambda: runtime.async_session(),
         seams=materializer_seams(),
     )
@@ -190,12 +195,26 @@ async def _materialize(
 
 
 async def _prepare(target: PreparedTriggerTarget) -> tuple[PreparedRunResolver, PreparedRunLease]:
+    activated: list[PreparedRunLease] = []
+    try:
+        return await _prepare_in_session(target, activated)
+    except BaseException:
+        # Cancelled at the session close after activation: never leak the lease (I24 H4).
+        if activated:
+            await abandon_activated_lease(_target(target.ownership), activated[0].digest)
+            await _remove_run_root(target.ownership.run_id)
+        raise
+
+
+async def _prepare_in_session(
+    target: PreparedTriggerTarget, activated: list[PreparedRunLease]
+) -> tuple[PreparedRunResolver, PreparedRunLease]:
     locked = False
     async with runtime.async_session() as db:
         try:
             messages = await lock_trigger_envelope(db, target)
             locked = True
-            return await _materialize(db, target, messages)
+            return await _materialize(db, target, messages, activated)
         except PreparedRunUnsupportedError as exc:
             await db.rollback()
             if is_legacy_fallback(exc.reason):
@@ -214,12 +233,8 @@ async def _prepare(target: PreparedTriggerTarget) -> tuple[PreparedRunResolver, 
 
 
 @asynccontextmanager
-async def _owned_prepared(request: RuntimeOwnershipRequest) -> AsyncIterator[None]:
-    """The legacy owner's supervision for an already running (marked) prepared run.
-
-    Like ``_owned_runtime`` the failure is stored and re-raised only after the
-    task group exits, so callers see the original exception, not a group.
-    """
+async def _owned_prepared(request: RuntimeOwnershipRequest, digest: str) -> AsyncIterator[None]:
+    """Legacy owner supervision for a marked run; re-raises the original failure."""
     registry = get_run_task_registry()
     owner = _OwnedRuntime(request, registry.worker_instance_id)
     existing = registry.get(request.run_id)
@@ -229,7 +244,8 @@ async def _owned_prepared(request: RuntimeOwnershipRequest) -> AsyncIterator[Non
     failure: BaseException | None = None
     try:
         async with anyio.create_task_group() as tasks:
-            tasks.start_soon(_poll_cancel, owner)
+            # Cancel poll + heartbeat so another worker's stale sweep spares us (M4).
+            tasks.start_soon(_poll_cancel, owner, True)
             try:
                 yield
             except (GeneratorExit, anyio.get_cancelled_exc_class()) as error:
@@ -238,7 +254,7 @@ async def _owned_prepared(request: RuntimeOwnershipRequest) -> AsyncIterator[Non
                 failure = error
             except BaseException as error:  # noqa: BLE001  # noqa: BROAD_EXCEPT_OK
                 with anyio.CancelScope(shield=True):
-                    await _finish(owner, "failed")
+                    await fail_owned_run(owner, error, digest)  # shared error-code table (M2)
                 failure = error
             else:
                 if not await _finish(owner, "completed"):
@@ -263,7 +279,7 @@ async def run_prepared_trigger(
         return await runtime.run_owned_execution(target.ownership, legacy)
     cfg = resolver.execution_cfg
     try:
-        async with _owned_prepared(target.ownership):
+        async with _owned_prepared(target.ownership, lease.digest):
             if cfg is None:
                 raise PreparedTriggerFailedError(f"{FAILED}:execution_metadata_missing")
             return await agent_stream_runner.execute_prepared_agent_invoke(

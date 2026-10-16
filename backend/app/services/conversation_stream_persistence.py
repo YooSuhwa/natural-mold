@@ -53,7 +53,10 @@ def build_artifact_recorder(
     cfg: AgentConfig,
     user: CurrentUser,
     run_id: str,
+    output_dir: Path | None = None,
 ) -> ArtifactDeltaRecorder | None:
+    """``output_dir`` overrides the legacy conversation output dir: a prepared lease
+    routes ``/conversations/<thread_id>`` to its own run output root (I24 M1)."""
     if not cfg.agent_id:
         return None
     return ArtifactDeltaRecorder(
@@ -63,7 +66,9 @@ def build_artifact_recorder(
             org_context=cfg.org_context,
             agent_id=uuid.UUID(cfg.agent_id),
             assistant_msg_id=run_id,
-            output_dir=(Path(settings.conversation_output_dir) / str(conversation_id)).resolve(),
+            output_dir=(
+                output_dir or Path(settings.conversation_output_dir) / str(conversation_id)
+            ).resolve(),
             branch_checkpoint_id=cfg.checkpoint_id,
         ),
     )

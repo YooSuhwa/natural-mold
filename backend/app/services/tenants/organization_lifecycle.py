@@ -13,6 +13,7 @@ transaction. Restore applies stale ``If-Match``, then archived state, then the
 it never changes ``is_default`` and never re-enables or replays work.
 """
 
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -37,6 +38,8 @@ from app.tenancy.admin_context import (
     TenantAdminTarget,
     load_tenant_admin_context,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def _locked_target(
@@ -101,6 +104,7 @@ async def archive_organization(
 ) -> TenantOrganizationSummary:
     db = mutation.db
     paused_trigger_ids: tuple[UUID, ...] = ()
+    failed_run_ids: tuple[UUID, ...] = ()
     try:
         organization = await _locked_target(mutation, context, org_id)
         if organization.is_default:
@@ -117,6 +121,7 @@ async def archive_organization(
         archived_at = datetime.now(UTC)
         cascade = await terminalizer.cascade_organization_archive(db, organization, archived_at)
         paused_trigger_ids = cascade.paused_trigger_ids
+        failed_run_ids = cascade.denial.failed_run_ids
         organization.status = "archived"
         organization.archived_at = archived_at
         bump_version(organization)
@@ -125,8 +130,29 @@ async def archive_organization(
     except (AppError, SQLAlchemyError, ExecutionProofError):
         await db.rollback()
         raise
-    _unschedule(paused_trigger_ids)
+    _stop_local_runs(failed_run_ids)
+    try:
+        _unschedule(paused_trigger_ids)
+    except Exception:  # noqa: BLE001 - the archive is committed; never turn it into a 500
+        logger.exception("archive unschedule failed org_id=%s", org_id)
     return await _summary(mutation, organization)
+
+
+def _stop_local_runs(run_ids: tuple[UUID, ...]) -> None:
+    """Post-commit: cancel this worker's in-flight tasks of the runs the cascade failed.
+
+    Other workers observe the inactive row through their heartbeat/cancel poll.
+    """
+    if not run_ids:
+        return
+    from app.services.conversation_run_worker import get_run_task_registry
+
+    registry = get_run_task_registry()
+    for run_id in run_ids:
+        try:
+            registry.request_cancel(run_id, reason="stop")
+        except Exception:  # noqa: BLE001 - best effort after commit
+            logger.exception("archive local run cancel failed run_id=%s", run_id)
 
 
 def _unschedule(trigger_ids: tuple[UUID, ...]) -> None:

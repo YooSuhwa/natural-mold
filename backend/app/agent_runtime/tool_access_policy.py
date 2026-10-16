@@ -85,8 +85,8 @@ _GENERATED: Mapping[str, ToolAccess] = MappingProxyType(
 # source, denial code). The census records them as denied (no descriptor) and the
 # leaf guard returns the code without opening a permit or entering the handler.
 # * ``execute``: shell execution has no snapshot/run-root confinement.
-# * ``compact_conversation``: performs a provider send inside a tool handler, which
-#   would need a nested dispatch permit while the tool permit holds the locks.
+# * ``compact_conversation``: performs a provider send inside a tool handler that
+#   is not routed through a lease-owned model, so no provider permit would admit it.
 # * ``execute_in_skill``: ``skill_executor`` runs a subprocess in the *live* skill
 #   directory with injected credentials and network. Remapping it onto
 #   snapshot-materialised skill bytes is future work; until then it is denied.

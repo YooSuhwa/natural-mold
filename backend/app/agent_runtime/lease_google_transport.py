@@ -50,6 +50,9 @@ def redact_base_url(base_url: str | None) -> str | None:
     return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
+OWNED_CLIENT_IDENTITY = "fresh_lease_owned_client"
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderTransportDescriptor:
     """Non-secret, process-local facts about one lease model's transport."""
@@ -68,7 +71,9 @@ class ProviderTransportDescriptor:
         return {
             "provider": self.provider,
             "transport_kind": self.transport_kind,
-            "client_identity": self.client_identity,
+            # ``client_identity`` is an in-process ``id()``: digesting it made the
+            # material non-reproducible. Only the stable ownership fact is hashed.
+            "client_identity": OWNED_CLIENT_IDENTITY,
             "sdk_attempts": self.sdk_attempts,
             "adapter_max_retries": self.adapter_max_retries,
             "base_url": self.base_url,

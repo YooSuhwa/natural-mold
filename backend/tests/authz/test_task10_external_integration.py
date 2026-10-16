@@ -1,13 +1,14 @@
 """Native PostgreSQL Agent API + scheduled-trigger barriers for the prepared lease (I23).
 
-Agent API: a parked provider permit blocks the real archive endpoint; the
-exact lease then succeeds and projects ``succeeded`` while archive disables
-the deployment; archive-first fails the accepted unmaterialized run and its
-envelope exactly once with zero provider calls. Trigger: the dedicated
-claim-first versus archive-first two-winner race — claim-first creates one
-materialized run that finishes (its resolved-external MCP call goes through
-the archived lease), archive-first pauses the trigger and creates nothing,
-and restore never replays or re-enables it.
+Agent API: the real archive endpoint commits while a provider send is parked
+inside its permit (no lock is held across the send); the exact lease then
+succeeds and projects ``succeeded`` while archive disables the deployment;
+archive-first fails the accepted unmaterialized run and its envelope exactly
+once with zero provider calls. Trigger: the dedicated claim-first versus
+archive-first two-winner race — claim-first creates one materialized run that
+finishes (archive commits while its first send is parked; its resolved-external
+MCP call goes through the archived lease), archive-first pauses the trigger and
+creates nothing, and restore never replays or re-enables it.
 """
 
 from __future__ import annotations
@@ -30,7 +31,6 @@ from tests.authz import prepared_trigger_testkit as tkit
 from tests.authz.task10_runtime_barriers import (
     Barriers,
     Gate,
-    assert_blocked,
     finish,
     install_api,
     install_trigger,
@@ -60,7 +60,7 @@ async def _deployment_status(lane: Lane, agent_id: Any) -> str:
     return row.status
 
 
-async def test_native_agent_api_lease_first_permit_blocks_archive_then_succeeds(
+async def test_native_agent_api_archive_commits_during_parked_send_then_succeeds(
     task10_lane: Lane, tmp_path: Path
 ) -> None:
     api = await _api(task10_lane, tmp_path)
@@ -71,10 +71,10 @@ async def test_native_agent_api_lease_first_permit_blocks_archive_then_succeeds(
 
     run = asyncio.create_task(runtime_service.execute_owned_wait(api.execution))
     await gate.wait_entered()
-    archive = asyncio.create_task(task10_lane.lifecycle(admin, "archive"))
-    await assert_blocked(archive)
+    response = await finish(task10_lane.lifecycle(admin, "archive"))  # never waits on the send
+    assert not run.done()
     gate.release.set()
-    output, response = await finish(run), await finish(archive)
+    output = await finish(run)
 
     assert output == "done" and response.status_code == 200
     assert [root] == kit.SENDS and api.server.discoveries == 1
@@ -141,11 +141,10 @@ async def test_native_trigger_claim_first_finishes_through_archived_lease(
 
     claim = asyncio.create_task(tkit.execute(seeded))
     await gate.wait_entered()
-    archive = asyncio.create_task(task10_lane.lifecycle(admin, "archive"))
-    await assert_blocked(archive)
+    assert (await finish(task10_lane.lifecycle(admin, "archive"))).status_code == 200
+    assert not claim.done()  # the parked first send holds no lock
     gate.release.set()
     await finish(claim)
-    assert (await finish(archive)).status_code == 200
 
     (run,) = await tkit.trigger_runs(seeded)
     assert (run.status, run.output_preview, run.error_message) == ("success", "trigger done", None)

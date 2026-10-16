@@ -7,12 +7,15 @@ zero tools and only implements ``awrap_tool_call``. For every tool call it:
    denies unknown names, known never-dispatchable tools (``execute``,
    ``compact_conversation``, ``execute_in_skill`` — each with its own code) and
    un-intercepted ``task`` calls without SQL and without entering the handler;
-2. opens a fresh ``open_dispatch_permit(kind="tool", ...)`` and keeps it open
-   for exactly one ``handler(request)`` await;
+2. opens a fresh ``open_dispatch_permit(kind="tool", ...)`` that admits exactly
+   one ``handler(request)`` await; the permit's authority transaction is
+   already released when the handler runs, so the tool call holds no lock,
+   session or connection (a revocation committed meanwhile denies the next
+   tool/provider/child boundary, not this in-flight call);
 3. for ``live_application_resource`` tools, requires every addressed resource
    ID to be in the preloaded snapshot set; otherwise it denies before the
-   handler with ``organization_archived`` (archive observed under the permit)
-   or ``live_resource_not_prepared``.
+   handler with ``organization_archived`` (archive observed by the permit) or
+   ``live_resource_not_prepared``.
 
 The guard is bound to the lease: the census descriptor IDs must be a subset of
 ``lease.descriptor_ids`` (the only set permits are checked against), and when

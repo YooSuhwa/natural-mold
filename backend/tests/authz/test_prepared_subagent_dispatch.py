@@ -79,8 +79,9 @@ async def test_prepared_root_delegates_to_prepared_child(
 
     root, child = seeded.root_model, seeded.child_model
     assert [root, child, root] == kit.SENDS
-    # Each send holds only its own permit: no outer task-admission lock overlaps.
-    assert open_at_send == [(root, 1), (child, 1), (root, 1)]
+    # Each permit released its authority session before the send; no outer
+    # task-admission lock overlaps either.
+    assert open_at_send == [(root, 0), (child, 0), (root, 0)]
     assert spies.compiled == [] and "task" not in spies.executed
     _assert_terminal(active)
 

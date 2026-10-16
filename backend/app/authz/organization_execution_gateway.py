@@ -6,6 +6,12 @@ User KEY SHARE -> sorted Agent lifecycle -> sorted declared Conversation batch``
 and freshly requires an active Tenant, active owner memberships and an active
 user. An archived Organization is admitted only for an exact live prepared
 lease. The result is a transaction-bound :class:`ExecutionTransactionProof`.
+
+Intentional legacy-mode behaviour change: this gateway runs on every execution
+entry whether or not ``settings.prepared_run_lease_enabled`` is set. Legacy
+(unleased) chat/queue/API/trigger runs therefore also take the full lock prefix
+and fail closed on a suspended Tenant, removed owner membership, inactive user
+or archived Organization, where they previously only checked ownership.
 """
 
 from __future__ import annotations

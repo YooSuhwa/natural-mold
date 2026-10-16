@@ -22,6 +22,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
+from uuid import UUID
 
 from app.models.agent_api import AgentApiRun
 from app.models.agent_trigger_run import AgentTriggerRun
@@ -43,6 +44,8 @@ class DenialOutcome:
     lease_owned_runs: int = 0
     failed_api_runs: int = 0
     failed_trigger_runs: int = 0
+    # Runs failed here: their in-flight local tasks must be stopped post-commit (I24 H2).
+    failed_run_ids: tuple[UUID, ...] = ()
 
 
 def _now() -> datetime:
@@ -73,7 +76,7 @@ def terminalize_authority_denial(
     message = _MESSAGES[reason]
     now = _now()
     failed_runs = lease_owned = 0
-    failed_run_ids: set[object] = set()
+    failed_run_ids: dict[UUID, None] = {}
     for run in runs:
         if run.status in _RUN_TERMINAL:
             continue
@@ -86,7 +89,7 @@ def terminalize_authority_denial(
         run.error_code = reason
         run.error_message = message
         failed_runs += 1
-        failed_run_ids.add(run.id)
+        failed_run_ids[run.id] = None
     canceled = failed_inputs = 0
     for item in inputs:
         if item.status == "pending" and item.run_id is None:
@@ -114,5 +117,11 @@ def terminalize_authority_denial(
         trigger_run.error_message = reason
         trigger_failed += 1
     return DenialOutcome(
-        canceled, failed_inputs, failed_runs, lease_owned, api_failed, trigger_failed
+        canceled,
+        failed_inputs,
+        failed_runs,
+        lease_owned,
+        api_failed,
+        trigger_failed,
+        tuple(failed_run_ids),
     )

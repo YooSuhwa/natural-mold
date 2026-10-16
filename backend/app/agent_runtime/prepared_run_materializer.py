@@ -116,6 +116,7 @@ async def materialize_prepared_lease(
             list(inputs.mcp_configs),
             per_server_timeout=seams.mcp_per_server_timeout,
             total_timeout=seams.mcp_total_timeout,
+            call_timeout=seams.mcp_call_timeout,
             discover=seams.mcp_discover,
         )
         trace("mcp_discovery")

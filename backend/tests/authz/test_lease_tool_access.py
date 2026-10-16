@@ -50,21 +50,21 @@ class _Model(FakeMessagesListChatModel):
 @tool
 def update_document(document_id: str | list[str], text: str) -> str:
     """Live application tool."""
-    CALLS.append(f"update:{document_id}:open={PERMITS['open']}")
+    CALLS.append(f"update:{document_id}:in_permit={PERMITS['open'] >= 1}")
     return "updated"
 
 
 @tool
 def web_search(query: str) -> str:
     """External search."""
-    CALLS.append(f"search:open={PERMITS['open']}")
+    CALLS.append(f"search:in_permit={PERMITS['open'] >= 1}")
     return "results"
 
 
 @tool
 def nested_send(query: str) -> str:
     """A handler whose own nested permit is refused."""
-    CALLS.append(f"nested:open={PERMITS['open']}")
+    CALLS.append(f"nested:in_permit={PERMITS['open'] >= 1}")
     raise DispatchDeniedError("nested_permit_denied")
 
 
@@ -181,7 +181,7 @@ async def test_denies_live_unknown_and_unprepared_dynamic_resources(db: AsyncSes
         assert by_id[call_id].status == "error"
         assert "live_resource_not_prepared" in str(by_id[call_id].content)
     assert "descriptor_not_prepared" in str(by_id["call-unknown"].content)
-    assert sorted(CALLS) == ["search:open=1", "update:doc-1:open=1"]
+    assert sorted(CALLS) == ["search:in_permit=True", "update:doc-1:in_permit=True"]
     assert PERMITS == {"open": 0, "entered": 5}  # unknown name never reaches SQL
     assert {d.tool_call_id for d in guard.denials} == {
         "call-new",
@@ -207,7 +207,7 @@ async def test_archived_org_allows_only_preloaded_resources(db: AsyncSession) ->
     assert by_id["call-pre"].content == "updated"
     assert "organization_archived" in str(by_id["call-new"].content)
     assert by_id["call-new"].status == "error"
-    assert CALLS == ["update:doc-2:open=1"]
+    assert CALLS == ["update:doc-2:in_permit=True"]
 
 
 @pytest.mark.asyncio
@@ -289,7 +289,7 @@ async def test_handler_raised_dispatch_denial_becomes_bounded_error(db: AsyncSes
 
     messages, guard = await _run(lease, calls)
 
-    assert CALLS == ["nested:open=1"]  # the handler ran under exactly one open permit
+    assert CALLS == ["nested:in_permit=True"]  # the handler ran inside its permit
     assert [(m.tool_call_id, m.status, str(m.content)) for m in messages] == [
         ("call-nested", "error", "Tool call denied: nested_permit_denied")
     ]

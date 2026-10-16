@@ -2,12 +2,15 @@
 
 Every actual provider send — root/child primary, application retry, fallback
 candidate, summarization — goes through a lease-owned model whose
-``_agenerate``/``_astream`` run inside a freshly opened canonical dispatch
-permit. The permit stays open through the HTTP send and, for streams, through
-eager establishment (the first chunk); later chunks are a bounded read of that
-one response. A retryable failure closes the permit before the bounded backoff
-and the next application attempt opens a distinct permit, so revocation during
-backoff stops at one send. Synchronous sends and provider-side token counting
+``_agenerate``/``_astream`` attempts are each admitted by a freshly opened
+canonical dispatch permit. The permit proves authority and releases its locks,
+transaction and pooled connection before the HTTP send (and, for streams,
+before eager establishment of the first chunk; later chunks are a bounded read
+of that one response), so a provider call never holds DB resources. A
+revocation committed during the send affects the next attempt. A retryable
+failure leaves the permit before the bounded backoff and the next application
+attempt opens a distinct permit, so revocation during backoff stops at one
+send. Synchronous sends and provider-side token counting
 (``get_num_tokens*``/``get_token_ids``, which call count-tokens endpoints or
 download tokenizer files synchronously) are refused: they would bypass the
 async permit entirely.
@@ -156,7 +159,7 @@ class LeaseSendGuard:
             number += 1
 
     async def stream(self, attempt: Callable[[], AsyncIterator[T]]) -> AsyncIterator[T]:
-        """Hold the permit through eager stream establishment (first chunk)."""
+        """Admit eager stream establishment (first chunk) under one fresh permit."""
 
         number = 1
         while True:

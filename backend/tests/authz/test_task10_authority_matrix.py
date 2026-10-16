@@ -6,7 +6,7 @@ organization (raw stamp, isolating the permit) and applies one authority
 revocation. The very next dispatch — tool, child launch, or provider send —
 must be refused with the exact code, terminalizing the run with frozen fields
 and no further send, hydration or participant growth. Archive alone is
-bypassed by the exact lease and the run completes. PostgreSQL row-lock
+bypassed by the exact lease and the run completes. PostgreSQL in-flight-commit
 barriers for the same matrix live in ``test_task10_authority_integration``.
 """
 
@@ -95,7 +95,7 @@ async def test_revocation_beats_archived_lease_at_next_dispatch(
     assert (row.status, row.is_active, row.error_code, row.error_message) == (
         "failed",
         False,
-        "stream_error",
+        code,
         code,
     )
     assert row.completed_at is not None and row.runtime_materialized_at is not None

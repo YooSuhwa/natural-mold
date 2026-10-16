@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.identity import AgentIdentityError
+from app.agent_runtime.run_error_codes import denial_error_code
 from app.agent_runtime.run_secrets import collect_cfg_secret_values
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.trigger_agent_config import (
@@ -162,7 +163,21 @@ async def invoke_trigger_run(
         await db.refresh(run)
         return TriggerOutcome(run)
     except AppError as exc:
-        logger.info("Trigger %s stopped before invoke: %s", trigger_id, exc.code)
+        if prepared and isinstance(exc, AgentIdentityError):
+            # Flag on: the legacy fallback configures children after the claim, so
+            # the identity policy error arrives here; keep the legacy outcome (M3).
+            logger.warning("Trigger %s blocked by subagent identity policy: %s", trigger_id, exc)
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=conversation,
+                status="failed",
+                error_message=str(exc),
+                thread_id=str(conversation.id),
+            )
+        else:
+            logger.info("Trigger %s stopped before invoke: %s", trigger_id, exc.code)
         await db.refresh(run)
         return TriggerOutcome(run)
     except Exception as exc:
@@ -173,7 +188,8 @@ async def invoke_trigger_run(
             run=run,
             conversation=conversation,
             status="failed",
-            error_message=str(exc),
+            # A mid-run lease denial records its shared code, like the run (M2).
+            error_message=denial_error_code(exc) or str(exc),
             thread_id=str(conversation.id),
         )
         await db.refresh(run)

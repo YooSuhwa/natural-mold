@@ -15,7 +15,11 @@ construction, so ``OPENAI_API_BASE``/``OPENAI_BASE_URL``/``ANTHROPIC_BASE_URL``/
 ``ANTHROPIC_API_URL``/``LANGSMITH_GATEWAY``/``GOOGLE_GEMINI_BASE_URL`` cannot
 redirect a lease send.
 If construction fails after the owned clients exist, they are closed before
-the error propagates.
+the error propagates. A Pydantic ``ValidationError`` raised by a provider
+constructor is re-raised as :class:`LeaseModelConstructionError` (still a
+``ValueError``, like the original) naming only the rejected field locations:
+its text and ``input_value`` (which may echo the API key) never reach logs or
+run error messages (I24 L1).
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from typing import Any
 import httpx
 import httpx2
 from langchain_core.language_models import BaseChatModel
+from pydantic import ValidationError
 
 from app.agent_runtime.lease_bound_model import (
     LeaseProviderTransportError,
@@ -127,9 +132,29 @@ def _descriptor(spec: LeaseModelSpec, model: Any, owned: OwnedHttpClients, base:
     )
 
 
+class LeaseModelConstructionError(ValueError):
+    """Scrubbed provider-constructor validation failure (no input values)."""
+
+    code = "lease_model_construction_invalid"
+
+
+def _scrubbed(error: ValidationError) -> LeaseModelConstructionError:
+    locations = sorted(
+        {".".join(str(part) for part in item["loc"]) for item in error.errors(include_input=False)}
+    )
+    return LeaseModelConstructionError(f"{LeaseModelConstructionError.code}: {locations}")
+
+
 def create_lease_chat_model(spec: LeaseModelSpec, *, guard: LeaseSendGuard) -> LeaseOwnedModel:
     """Construct a new lease-owned model; the caller owns ``aclose()``."""
 
+    try:
+        return _create(spec, guard)
+    except ValidationError as error:
+        raise _scrubbed(error) from None
+
+
+def _create(spec: LeaseModelSpec, guard: LeaseSendGuard) -> LeaseOwnedModel:
     kwargs, window = _base_kwargs(spec)
     if spec.provider == "google":
         bundle = new_google_transport_bundle()

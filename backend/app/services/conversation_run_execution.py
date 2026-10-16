@@ -10,6 +10,7 @@ import uuid
 from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
+from app.agent_runtime.run_error_codes import run_error_code
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.run_metrics_types import TerminalRunState
 from app.agent_runtime.runtime_config import AgentConfig
@@ -130,6 +131,7 @@ async def _run_conversation(
             cfg=cfg,
             user=user,
             run_id=ctx.run_id,
+            output_dir=prepared_start.lease_output_dir(start),  # M1: index the lease output
         )
         async for chunk in (start.executor or executor_fn)(
             cfg,
@@ -152,7 +154,7 @@ async def _run_conversation(
             # run에 주입된 credential 값 기반 마스킹을 한 번 더 적용해 채팅 에러
             # 버블이 폴백 대신 구체적 원인을 안전하게 보이게 한다(G2 retry).
             # _run_metadata는 failed일 때만 이를 노출한다.
-            error_code = "stream_error"
+            error_code = run_error_code(ctx.error_sink[0].error, "stream_error")
             error_message = _redact_run_error_message(
                 ctx.error_sink[0].message or "", cfg.secret_values
             )
@@ -174,7 +176,7 @@ async def _run_conversation(
         finalize_needed = finalize_needed or isinstance(exc, prepared_start.PreparedStartError)
         final_status = "failed"
         failure = exc
-        error_code = "runtime_error"
+        error_code = run_error_code(exc, "runtime_error")  # shared code table (M2)
         # 스트림 바깥 예외(credential 해석/checkpointer/DB 등)는 어떤 마스킹도
         # 거치지 않았다. public_stream_error_message(블록리스트) + 값 기반
         # (cfg.secret_values) 2단 마스킹으로 주입된 credential 값 노출을 막는다.
@@ -284,6 +286,7 @@ async def _run_conversation(
                 except Exception:
                     logger.exception("attachment message_id backfill failed run_id=%s", run_id)
 
+        await prepared_start.remove_lease_run_root(start)  # after terminalization (M1)
         ctx.broker.close(error=failure)
         registry.discard(run_id)
         if finalize_needed:

@@ -22,7 +22,7 @@ LEAKED = "native_source_imported_by_ordinary"
 SURFACES: dict[str, frozenset[str]] = {
     "test_task10_chat_integration": frozenset(
         {
-            "test_native_chat_lease_first_permit_blocks_archive_then_finishes",
+            "test_native_chat_lease_first_archive_commits_during_parked_leaf_then_finishes",
             "test_native_chat_archive_first_terminalizes_without_dispatch",
             "test_native_chat_materialization_transaction_gaps",
             "test_native_chat_checkpoint_lineage_is_exact",
@@ -32,7 +32,7 @@ SURFACES: dict[str, frozenset[str]] = {
     ),
     "test_task10_external_integration": frozenset(
         {
-            "test_native_agent_api_lease_first_permit_blocks_archive_then_succeeds",
+            "test_native_agent_api_archive_commits_during_parked_send_then_succeeds",
             "test_native_agent_api_archive_first_fails_envelope_exactly_once",
             "test_native_trigger_claim_first_finishes_through_archived_lease",
             "test_native_trigger_archive_first_creates_nothing_and_restore_never_replays",
@@ -48,7 +48,7 @@ SURFACES: dict[str, frozenset[str]] = {
     ),
     "test_task10_authority_integration": frozenset(
         {
-            "test_native_revocation_blocks_then_beats_archived_lease_at_next_dispatch",
+            "test_native_revocation_commits_during_parked_leaf_and_wins_next_dispatch",
             "test_native_participant_expansion_after_archive_never_launches",
             "test_native_tenant_suspension_freezes_terminal_fields_and_entry_rows",
         }

@@ -1,9 +1,10 @@
 """Native PostgreSQL chat-entry barriers for the prepared lease (parent Task 10, I23).
 
 Real two-connection races between the owned chat worker and the app-local
-organization archive endpoint: a parked leaf permit (``FOR SHARE``) blocks the
-archive ``FOR UPDATE``; the materialization transaction commits, rolls back or
-fails activation with archive waiting; checkpoint lineage stays exact; the four
+organization archive endpoint: a leaf parked inside its permit holds no lock,
+so archive commits while it is in flight and the exact lease finishes; the
+materialization transaction commits, rolls back or fails activation with
+archive waiting; checkpoint lineage stays exact; the four
 tool classes dispatch only through the archived lease; MCP discovery timeout
 cleans up before the marker. Only the canonical runner may execute this file.
 """
@@ -75,7 +76,7 @@ def _prepared(harness: ekit.Harness, row: Any) -> None:
     assert all(after_marker is False for after_marker, _ in harness.resolutions)
 
 
-async def test_native_chat_lease_first_permit_blocks_archive_then_finishes(
+async def test_native_chat_lease_first_archive_commits_during_parked_leaf_then_finishes(
     task10_lane: Lane, tmp_path: Path
 ) -> None:
     harness = await _chat(task10_lane, tmp_path, [])
@@ -88,10 +89,10 @@ async def test_native_chat_lease_first_permit_blocks_archive_then_finishes(
 
     run = _start(harness)
     await gate.wait_entered()
-    archive = asyncio.create_task(task10_lane.lifecycle(admin, "archive"))
-    await assert_blocked(archive)
+    response = await finish(task10_lane.lifecycle(admin, "archive"))  # never waits on the leaf
+    assert not run.done()
     gate.release.set()
-    response, row = await finish(archive), await finish(run)
+    row = await finish(run)
 
     assert response.status_code == 200 and response.json()["status"] == "archived"
     _prepared(harness, row)

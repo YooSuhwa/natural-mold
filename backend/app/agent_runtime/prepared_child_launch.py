@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 import uuid
+from collections import OrderedDict
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -37,6 +38,10 @@ OPERATION_KIND = "orchestration_admission"
 CHILD_NOT_PREPARED = "child_launch_not_prepared"
 CHILD_DUPLICATE = "child_launch_duplicate"
 LEASE_TERMINAL = "prepared_run_lease_missing"
+# Closed lease IDs kept to reject late reservations; bounded so a long-lived worker
+# does not grow without limit (I24 L1). An evicted (old) lease is still refused by
+# the registry/permit, which no longer holds it.
+CLOSED_LEASE_CAP = 4096
 
 
 def child_launch_descriptor(child_id: str) -> str:
@@ -70,9 +75,10 @@ class _Slot:
 class ChildLaunchLedger:
     """Process-local winners; mutated only on the event loop without awaits."""
 
-    def __init__(self) -> None:
+    def __init__(self, closed_cap: int = CLOSED_LEASE_CAP) -> None:
         self._slots: dict[ChildLaunchKey, _Slot] = {}
-        self._closed: set[uuid.UUID] = set()
+        self._closed: OrderedDict[uuid.UUID, None] = OrderedDict()
+        self._closed_cap = closed_cap
 
     def state(self, key: ChildLaunchKey) -> ChildLaunchState | None:
         slot = self._slots.get(key)
@@ -128,7 +134,10 @@ class ChildLaunchLedger:
         must call this exactly when the prepared run terminalizes.
         """
 
-        self._closed.add(lease_id)
+        self._closed[lease_id] = None
+        self._closed.move_to_end(lease_id)
+        while len(self._closed) > self._closed_cap:
+            self._closed.popitem(last=False)
         cancelled = 0
         for key, slot in list(self._slots.items()):
             if key.lease_id != lease_id:

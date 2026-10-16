@@ -5,10 +5,23 @@ fresh short transaction takes the canonical parent locks (Tenant ->
 Organization -> owner TenantMember -> owner OrganizationMember -> User) and
 requires an active Tenant and both active owner memberships for the lease's
 exact binding. Only Organization ``archived`` is bypassed, and only for the
-exact live lease. The permit stays open (locks held) for the duration of the
-dispatched leaf, so archive and membership mutation have a deterministic
-winner; it never carries a session into the leaf and is closed before any
-child graph is awaited.
+exact live lease.
+
+Order is lock -> decide -> record -> release -> I/O: the authority
+transaction is rolled back (it only read) and its session/pooled connection
+returned *before* the context manager yields, so no row lock, transaction or
+connection is held across the dispatched leaf (provider HTTP send, tool call,
+child launch). The yielded :class:`DispatchPermit` carries no session.
+
+Parent-contract interpretation ("a serialized permit under these locks so
+archive and membership mutation have a deterministic winner"): the winner is
+decided at the permit's lock acquisition. A Tenant suspension, membership
+revocation or archive committed before the permit acquires its locks is
+observed by it (deny, or exact-lease archive bypass); one committed after the
+permit released its locks is not visible to the in-flight leaf, which
+completes, and is observed by the very next dispatch boundary. Writers
+(archive, suspension, membership mutation) therefore wait at most one short
+authority transaction, never a provider/tool call.
 """
 
 from __future__ import annotations
@@ -66,7 +79,7 @@ async def open_dispatch_permit(
     allowed_descriptors: frozenset[str],
     session_factory: SessionFactory,
 ) -> AsyncIterator[DispatchPermit]:
-    """Hold fresh canonical authority for exactly one leaf dispatch."""
+    """Prove fresh canonical authority, release it, then admit exactly one leaf."""
 
     if descriptor_id not in allowed_descriptors:
         raise DispatchDeniedError(DESCRIPTOR_NOT_PREPARED)
@@ -86,7 +99,6 @@ async def open_dispatch_permit(
         except (ExecutionProofError, PreparedRunLeaseError) as error:
             await db.rollback()
             raise DispatchDeniedError(error.code) from None
-        try:
-            yield DispatchPermit(kind, descriptor_id, proof.archived_bypass)
-        finally:
-            await db.rollback()
+        permit = DispatchPermit(kind, descriptor_id, proof.archived_bypass)
+        await db.rollback()  # read-only proof: release every lock before the leaf
+    yield permit

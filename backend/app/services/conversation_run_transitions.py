@@ -211,8 +211,12 @@ async def _heartbeat_until_terminal(run_id: uuid.UUID, registry: RunTaskRegistry
         async with _session_factory()() as session:
             run = await session.get(ConversationRun, run_id)
             if run is None or not run.is_active:
+                # Terminalized elsewhere (archive cascade, stale sweep of another
+                # worker): stop the local task; the run finalizes nothing new.
+                if run is not None:
+                    registry.request_cancel(run_id, reason="stop")
                 return
-            if run is not None and run.status == "canceling":
+            if run.status == "canceling":
                 reason = (
                     cast(CancelReason, run.cancel_reason)
                     if run.cancel_reason in {"stop", "steer", "shutdown"}

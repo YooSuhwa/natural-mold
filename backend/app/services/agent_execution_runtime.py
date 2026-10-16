@@ -5,12 +5,10 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 import anyio
-from sqlalchemy import select
-from sqlalchemy.orm import load_only, noload
 
 from app.agent_runtime.prepared_run_inputs import MaterializerSeams
 from app.agent_runtime.prepared_run_transaction import (
@@ -28,10 +26,11 @@ from app.authz.conversation_run_scope import (
 from app.authz.org_context import OrgContext
 from app.database import async_session as default_async_session
 from app.exceptions import AppError
-from app.models.agent import Agent
-from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_TERMINAL_STATUSES, ConversationRun
 from app.services import conversation_run_service
+from app.services.agent_execution_supervision import OwnerFlags
+from app.services.agent_execution_supervision import ack_prestart_cancel as _ack_prestart_cancel
+from app.services.agent_execution_supervision import poll_cancel as _poll_cancel
 from app.services.conversation_run_worker import get_run_task_registry
 from app.services.prepared_run_state import fail_prepared_run, mark_prepared_running
 
@@ -61,6 +60,7 @@ class RuntimeOwnershipConflict(RuntimeError):
 class _OwnedRuntime:
     request: RuntimeOwnershipRequest
     worker_instance_id: str
+    flags: OwnerFlags = field(default_factory=OwnerFlags, compare=False)
 
 
 def _execution_target(request: RuntimeOwnershipRequest) -> RunExecutionTarget:
@@ -95,86 +95,8 @@ async def _claim(request: RuntimeOwnershipRequest) -> _OwnedRuntime:
     return _OwnedRuntime(request, registry.worker_instance_id)
 
 
-async def _ack_prestart_cancel(request: RuntimeOwnershipRequest) -> None:
-    async with async_session() as db:
-        run = await db.scalar(
-            select(ConversationRun)
-            .join(Conversation, Conversation.id == ConversationRun.conversation_id)
-            .join(Agent, Agent.id == ConversationRun.agent_id)
-            .options(
-                load_only(
-                    ConversationRun.id,
-                    ConversationRun.conversation_id,
-                    ConversationRun.agent_id,
-                    ConversationRun.user_id,
-                    ConversationRun.status,
-                    ConversationRun.is_active,
-                    ConversationRun.worker_instance_id,
-                    ConversationRun.cancel_requested_at,
-                    ConversationRun.cancellation_acknowledged_at,
-                    ConversationRun.completed_at,
-                    raiseload=True,
-                ),
-                noload(ConversationRun.metrics),
-            )
-            .where(
-                ConversationRun.id == request.run_id,
-                ConversationRun.conversation_id == request.conversation_id,
-                ConversationRun.agent_id == request.root_agent_id,
-                ConversationRun.user_id == request.context.user_id,
-                ConversationRun.status == "canceling",
-                ConversationRun.worker_instance_id.is_(None),
-                Conversation.id == request.conversation_id,
-                Conversation.agent_id == request.root_agent_id,
-                Conversation.user_id == request.context.user_id,
-                Conversation.org_id == request.context.org_id,
-                Conversation.tenant_id == request.context.tenant_id,
-                Agent.id == request.root_agent_id,
-                Agent.user_id == request.context.user_id,
-                Agent.org_id == request.context.org_id,
-                Agent.tenant_id == request.context.tenant_id,
-            )
-            .with_for_update(of=ConversationRun)
-            .execution_options(populate_existing=True, autoflush=False)
-        )
-        if run is None:
-            return
-        await conversation_run_service.transition_run(
-            db,
-            run,
-            "canceled",
-            allow_workerless_cancellation_ack=True,
-        )
-        await db.commit()
-
-
-async def _poll_cancel(runtime: _OwnedRuntime) -> None:
-    registry = get_run_task_registry()
-    while True:
-        await anyio.sleep(_CANCEL_POLL_SECONDS)
-        async with async_session() as db:
-            row = await db.execute(
-                select(ConversationRun)
-                .options(
-                    load_only(
-                        ConversationRun.id,
-                        ConversationRun.status,
-                        ConversationRun.worker_instance_id,
-                        raiseload=True,
-                    ),
-                    noload(ConversationRun.metrics),
-                )
-                .where(ConversationRun.id == runtime.request.run_id)
-            )
-            run = row.scalar_one_or_none()
-        if run is None or run.status in RUN_TERMINAL_STATUSES:
-            return
-        if run.status == "canceling" and run.worker_instance_id == runtime.worker_instance_id:
-            registry.request_cancel(run.id, reason="stop")
-            return
-
-
 async def _finish(runtime: _OwnedRuntime, outcome: TerminalOutcome) -> bool:
+    runtime.flags.finishing = True  # our own terminal write must not trip the poll
     async with async_session() as db:
         run = await db.get(ConversationRun, runtime.request.run_id, with_for_update=True)
         if run is None or run.status in RUN_TERMINAL_STATUSES:
@@ -265,15 +187,29 @@ async def materialize_prepared_execution(
     schedule: Schedule,
     seams: MaterializerSeams | None = None,
 ) -> PreparedRunLease:
-    """Opt-in I15 lease entry; chat/API/trigger callers switch over in I16-I18."""
-    async with async_session() as db:
-        return await materialize_and_activate(
-            db,
-            _execution_target(request),
-            prepare_inputs=prepare_inputs,
-            mark_running=mark_prepared_running(get_run_task_registry().worker_instance_id),
-            fail_running=fail_prepared_run,
-            schedule=schedule,
-            session_factory=lambda: async_session(),
-            seams=seams,
-        )
+    """I15 lease entry (chat/queue/API). A failure after activation (e.g. a
+    cancellation at the session close) never leaks the ACTIVE lease (I24 H4)."""
+    from app.services.prepared_lease_cleanup import abandon_activated_lease
+
+    activated: list[PreparedRunLease] = []
+
+    async def scheduled(lease: PreparedRunLease) -> None:
+        activated.append(lease)
+        await schedule(lease)
+
+    try:
+        async with async_session() as db:
+            return await materialize_and_activate(
+                db,
+                _execution_target(request),
+                prepare_inputs=prepare_inputs,
+                mark_running=mark_prepared_running(get_run_task_registry().worker_instance_id),
+                fail_running=fail_prepared_run,
+                schedule=scheduled,
+                session_factory=lambda: async_session(),
+                seams=seams,
+            )
+    except BaseException:
+        if activated:  # idempotent if the transaction already closed it
+            await abandon_activated_lease(_execution_target(request), activated[0].digest)
+        raise

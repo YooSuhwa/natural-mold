@@ -25,6 +25,10 @@ router maps it to its opaque ``AGENT_API_*`` error). A second local owner of
 the same run (``locally_owned``) terminalizes the lease and durably fails the
 run with ``prepared_run_locally_owned``.
 
+Run roots default to ``prepared_conversation_executor.prepared_run_root()``
+(outside the runtime data root the lease backend forbids) and are removed
+after terminalization; like the trigger entry, output files are not persisted.
+
 Behaviour differences from the legacy API path:
 
 * wait mode prepares the whole lease in trigger mode, so linked children also
@@ -59,20 +63,24 @@ from app.agent_api.prepared_config import (
     ApiScope,
 )
 from app.agent_runtime import agent_stream_runner
-from app.agent_runtime.prepared_child_launch import get_child_launch_ledger
 from app.agent_runtime.prepared_run_dispatch import PreparedRunHandle, handle_for
 from app.agent_runtime.prepared_run_input_policy import (
     PreparedRunUnsupportedError,
     is_legacy_fallback,
 )
 from app.agent_runtime.prepared_run_inputs import MaterializerSeams
-from app.agent_runtime.prepared_run_registry import PreparedRunLeaseError, get_prepared_run_registry
-from app.agent_runtime.prepared_run_transaction import _fail_durably
-from app.agent_runtime.runtime_config import AgentConfig, runtime_data_dir
+from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
 from app.authz.conversation_run_scope import lock_executable_run
+from app.exceptions import AppError
 from app.services import agent_execution_runtime as owned
+from app.services import prepared_conversation_executor
 from app.services.conversation_run_worker import get_run_task_registry
+from app.services.prepared_lease_cleanup import (
+    abandon_activated_lease,
+    fail_owned_run,
+    remove_run_root,
+)
 from app.services.prepared_run_adapter import MemoryReads, PreparedRunRequest, PreparedRunResolver
 from app.services.prepared_run_state import fail_prepared_run
 
@@ -82,6 +90,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 PREPARE_FAILED = "prepared_run_prepare_failed"
 LOCALLY_OWNED = "prepared_run_locally_owned"
+METADATA_MISSING = "prepared_run_metadata_missing"
+
+
+class PreparedApiRunError(RuntimeError):
+    """A coded pre-marker failure whose text is the machine code only (no paths)."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +144,22 @@ async def _fail_unmaterialized(request: owned.RuntimeOwnershipRequest, code: str
         await db.commit()
 
 
+def _run_root_base() -> Path:
+    """Run roots live outside the runtime data root (the lease backend forbids sharing)."""
+
+    return SEAMS.run_root_base or prepared_conversation_executor.prepared_run_root()
+
+
+def _public(exc: BaseException) -> BaseException:
+    """Coded errors whose text carries more than the code (e.g. a physical run-root
+    path) are re-raised as the code alone; envelope/audit only ever see ``str(exc)``."""
+
+    code = getattr(exc, "code", None)
+    if isinstance(exc, AppError) or not isinstance(code, str) or str(exc) == code:
+        return exc
+    return PreparedApiRunError(code)
+
+
 async def materialize_api_run(request: ApiOwnedExecution, scope: ApiScope) -> PreparedApiRun | None:
     """Materialize + activate the lease; ``None`` = unsupported shape, use legacy."""
 
@@ -136,7 +169,7 @@ async def materialize_api_run(request: ApiOwnedExecution, scope: ApiScope) -> Pr
         PreparedRunRequest(
             context=request.context,
             resolve_config=config,
-            run_root_base=seams.run_root_base or runtime_data_dir() / "prepared-runs",
+            run_root_base=_run_root_base(),
             messages_history=tuple(request.messages),
             # Legacy parity: wait = invoke runner (trigger mode), stream = interactive.
             is_trigger_mode=scope == "invoke",
@@ -161,38 +194,18 @@ async def materialize_api_run(request: ApiOwnedExecution, scope: ApiScope) -> Pr
         with anyio.CancelScope(shield=True):
             await owned._ack_prestart_cancel(ownership)  # noqa: SLF001
             await _fail_unmaterialized(ownership, code if isinstance(code, str) else PREPARE_FAILED)
-        raise
+            await remove_run_root(_run_root_base() / str(ownership.run_id))
+        public = _public(exc)
+        if public is exc:
+            raise
+        raise public from exc
     cfg = prepare.execution_cfg
     if cfg is None:
-        raise RuntimeError("prepared API run has no execution metadata")
+        # Activated but unusable: never leave the ACTIVE lease behind (I24 H4).
+        await abandon_activated_lease(owned._execution_target(ownership), lease.digest)  # noqa: SLF001
+        await remove_run_root(_run_root_base() / str(ownership.run_id))
+        raise PreparedApiRunError(METADATA_MISSING)
     return PreparedApiRun(handle_for(lease), cfg)
-
-
-async def _fail_terminal(runtime: owned._OwnedRuntime, error: BaseException, digest: str) -> None:  # noqa: SLF001
-    if isinstance(error, PreparedRunLeaseError):
-        await _fail_durably(
-            lambda: owned.async_session(),
-            owned._execution_target(runtime.request),  # noqa: SLF001
-            fail_prepared_run,
-            error.code,
-            digest,
-        )
-    await owned._finish(runtime, "failed")  # noqa: SLF001
-
-
-async def _abandon_lease(runtime: owned._OwnedRuntime, digest: str) -> None:  # noqa: SLF001
-    """Close a lease this request cannot own, then durably fail its marked run."""
-
-    run_id = runtime.request.run_id
-    get_child_launch_ledger().terminalize(run_id)
-    await get_prepared_run_registry().terminalize(run_id)
-    await _fail_durably(
-        lambda: owned.async_session(),
-        owned._execution_target(runtime.request),  # noqa: SLF001
-        fail_prepared_run,
-        LOCALLY_OWNED,
-        digest,
-    )
 
 
 @asynccontextmanager
@@ -206,14 +219,15 @@ async def _prepared_ownership(
     run_id = request.conversation_run_id
     existing = registry.get(run_id)
     if existing is not None and not existing.done():
-        with anyio.CancelScope(shield=True):
-            await _abandon_lease(runtime, prepared.handle.digest)
+        target = owned._execution_target(runtime.request)  # noqa: SLF001
+        await abandon_activated_lease(target, prepared.handle.digest, LOCALLY_OWNED)
         raise owned.RuntimeOwnershipConflict(run_id, "locally_owned")
     registry.start_current(run_id)
     try:
         failure: BaseException | None = None
         async with anyio.create_task_group() as tasks:
-            tasks.start_soon(owned._poll_cancel, runtime)  # noqa: SLF001
+            # Cancel poll + heartbeat so another worker's stale sweep spares us (M4).
+            tasks.start_soon(owned._poll_cancel, runtime, True)  # noqa: SLF001
             try:
                 yield
             except (GeneratorExit, anyio.get_cancelled_exc_class()) as error:
@@ -222,7 +236,7 @@ async def _prepared_ownership(
                 failure = error
             except BaseException as error:  # noqa: BLE001  # noqa: BROAD_EXCEPT_OK
                 with anyio.CancelScope(shield=True):
-                    await _fail_terminal(runtime, error, prepared.handle.digest)
+                    await fail_owned_run(runtime, error, prepared.handle.digest)
                 failure = error
             else:
                 if not await owned._finish(runtime, "completed"):  # noqa: SLF001
@@ -233,6 +247,7 @@ async def _prepared_ownership(
             raise failure
     finally:
         registry.discard(run_id)
+        await remove_run_root(_run_root_base() / str(run_id))
 
 
 async def execute_prepared_wait(request: ApiOwnedExecution, prepared: PreparedApiRun) -> str:
@@ -262,6 +277,7 @@ async def stream_prepared_run(
                     continue
                 yield chunk
         if errors:
-            raise RuntimeError(errors[0].message)
+            # Chained so the shared error-code table sees a mid-run denial (M2).
+            raise RuntimeError(errors[0].message) from errors[0].error
         if saw_error_event:
             raise RuntimeError("Agent run failed")
