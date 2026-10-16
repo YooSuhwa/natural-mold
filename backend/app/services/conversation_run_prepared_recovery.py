@@ -11,7 +11,10 @@ cancellation acknowledged (so the queue is not left paused).
 Candidates are paired, active runs not owned by a live local task (that task
 terminalizes its own run). For a row owned by *this* worker instance the
 prepared registry is authoritative (``ensure_live_for_marker`` under the
-canonical gateway locks). A row owned by another worker is treated as
+canonical gateway locks; when the gateway is denied — archived organization,
+suspended tenant, revoked owner membership — the same decision is made under
+the narrow terminal-only locks of ``conversation_run_prepared_denied_recovery``).
+A row owned by another worker is treated as
 orphaned only when its heartbeat is stale — that is the only cross-process
 liveness signal; a remote owner with a fresh heartbeat is left alone. Runs
 without the pair stay with the ordinary queue recovery, which may freshly
@@ -44,6 +47,7 @@ from app.authz.conversation_scope import resolve_conversation_actor
 from app.config import settings
 from app.exceptions import AppError
 from app.models.conversation_run import ConversationRun
+from app.services.conversation_run_prepared_denied_recovery import terminalize_denied_orphan
 from app.services.conversation_run_state import transition_run
 from app.services.prepared_run_state import fail_prepared_run
 
@@ -83,13 +87,21 @@ async def _terminalize(session_factory: SessionFactory, row: Any) -> bool:
         try:
             context = await resolve_conversation_actor(db, row.conversation_id, row.user_id)
         except AppError:
-            return False
-        target = RunExecutionTarget(
-            row.id, RunConversationTarget(row.conversation_id, row.agent_id, context)
-        )
-        run = await lock_executable_run(db, target)
-        digest = None if run is None else run.runtime_materialization_sha256
-        if run is None or not run.is_active or digest is None:
+            context = None
+        run = None
+        if context is not None:
+            target = RunExecutionTarget(
+                row.id, RunConversationTarget(row.conversation_id, row.agent_id, context)
+            )
+            run = await lock_executable_run(db, target)
+        if run is None:
+            # Gateway denied (archived org, suspended tenant, revoked membership):
+            # worker loss must still terminalize, via the narrow terminal-only path.
+            await db.rollback()
+            async with session_factory() as denied:
+                return await terminalize_denied_orphan(denied, row)
+        digest = run.runtime_materialization_sha256
+        if not run.is_active or digest is None:
             await db.rollback()
             return False
         try:

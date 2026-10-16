@@ -3,7 +3,8 @@
 A run with the durable materialization pair but no live lease terminalizes
 without any rebuild (no resolution, hydration or provider send): ``running``
 fails ``prepared_run_lease_missing``, ``canceling`` becomes ``canceled``. A
-live local lease and a remote owner with a fresh heartbeat are left alone.
+live local lease and a remote owner with a fresh heartbeat are left alone; a
+denied gateway (suspended tenant, revoked owner membership) still terminalizes.
 """
 
 from __future__ import annotations
@@ -16,9 +17,14 @@ import pytest
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.prepared_run_registry import LEASE_MISSING, get_prepared_run_registry
+from app.agent_runtime.prepared_run_registry import (
+    LEASE_MISSING,
+    get_prepared_run_registry,
+    reset_prepared_run_registry_for_tests,
+)
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
+from app.models.organization import OrganizationMember, Tenant, TenantMember
 from app.services import (
     agent_execution_runtime,
     conversation_run_queue_worker,
@@ -147,3 +153,43 @@ async def test_live_local_lease_is_never_terminalized_by_recovery(
 
 async def _noop_schedule(_lease: Any) -> None:
     return None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("denial", ["tenant_suspended", "tenant_member", "org_member"])
+@pytest.mark.parametrize("live", [False, True])
+async def test_gateway_denied_orphan_terminalizes_but_live_lease_is_kept(
+    db: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, denial: str, live: bool
+) -> None:
+    harness, input_id, run_id, lost, _registry = await qkit.paired_then_lost(
+        db, tmp_path, monkeypatch
+    )
+    if live:
+        reset_prepared_run_registry_for_tests(lost)  # the lease is still live here
+    ctx = harness.seeded.graph.context
+    if denial == "tenant_suspended":
+        statement = update(Tenant).where(Tenant.id == ctx.tenant_id)
+    elif denial == "tenant_member":
+        statement = update(TenantMember).where(TenantMember.user_id == ctx.user_id)
+    else:
+        statement = update(OrganizationMember).where(OrganizationMember.user_id == ctx.user_id)
+    await db.execute(statement.values(status="suspended"))
+    await _set(db, run_id, heartbeat_at=utc_now_naive() - STALE)
+    resolutions = len(harness.resolutions)
+
+    failed = await terminalize_orphaned_prepared_runs(
+        session_factory=TestSession, stale_before=utc_now_naive() - timedelta(hours=1)
+    )
+
+    db.expire_all()
+    row = await db.get(ConversationRun, run_id)
+    queued = await db.get(ConversationRunInput, input_id)
+    assert row is not None and queued is not None
+    if live:
+        assert failed == [] and (row.status, queued.status) == ("running", "claimed")
+    else:
+        assert failed == [run_id]
+        assert (row.status, row.is_active, row.error_code) == ("failed", False, LEASE_MISSING)
+        assert queued.status == "failed"
+    assert len(harness.resolutions) == resolutions and kit.SENDS == []
+    await lost.terminalize(run_id)
