@@ -13,6 +13,7 @@ from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
 from pydantic import JsonValue
 
+from app.authz.policies import policy_kind
 from app.dependencies import (
     get_org_context,
     get_tenant_context,
@@ -129,7 +130,7 @@ def _route_violations(identity: str, route: APIRoute, expected: CompanyRoute) ->
     method = identity.split(" ", 1)[0]
     calls = set(_calls(route.dependant))
     found: list[str] = []
-    if getattr(route.endpoint, "__authz_policy__", None) != expected.policy:
+    if policy_kind(route.endpoint) != expected.policy:
         found.append(f"policy:{identity}")
     if (route.status_code or 200) != expected.status:
         found.append(f"status:{identity}")
@@ -169,7 +170,7 @@ def company_route_violations(routes: Iterable[object]) -> list[str]:
         for method in sorted(route.methods):
             identity = f"{method} {route.path}"
             seen[identity] += 1
-            if identity in legacy or getattr(route.endpoint, "__authz_policy__", None) == "LEGACY":
+            if identity in legacy or policy_kind(route.endpoint) == "LEGACY":
                 found.append(f"legacy:{identity}")
             if deferred:
                 found.append(f"deferred:{identity}")

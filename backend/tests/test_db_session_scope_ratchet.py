@@ -41,6 +41,7 @@ PLATFORM_REASONS: dict[str, str] = {
     "authz.shadow_diffs": "8.9 instance-wide shadow observation (no tenant_id; dropped m91)",
     "authz.reconcile": "8.6 item 8 reconcile/rebuild read every company and the outbox",
     "authz.outbox_drain": "8.6 item 6 leader drain of the instance-wide outbox",
+    "authz.outbox_apply": "8.6 item 2 post-commit apply-now of the rows a request queued",
     "authz.expiry_cleanup": "8.6 item 7 leader expiry of every company's grants + pruning",
     "authz.backlog_alert": "14.3 instance-wide outbox lag and stuck-marker alert",
     "authz.revocation_overlay": "8.6 step 4 instance-wide pending-marker hint + overlay",

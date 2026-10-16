@@ -6,7 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
-from app.authz.policies import register_legacy_policies
+from app.authz.policies import policy_kind, policy_of, register_legacy_policies
 from app.config import settings
 from app.main import create_app
 
@@ -23,9 +23,7 @@ def all_routes(monkeypatch):
 
 def test_every_route_declares_policy_when_all_routers_are_enabled(all_routes):
     # When: all endpoints are inspected.
-    missing = [
-        route.path for route in all_routes if not hasattr(route.endpoint, "__authz_policy__")
-    ]
+    missing = [route.path for route in all_routes if policy_of(route.endpoint) is None]
     # Then: policy omission cannot ship.
     assert missing == []
 
@@ -37,7 +35,7 @@ def test_legacy_route_set_cannot_grow_when_an_endpoint_is_added(all_routes):
     legacy = {
         f"{method} {route.path}"
         for route in all_routes
-        if getattr(route.endpoint, "__authz_policy__", None) == "LEGACY"
+        if policy_kind(route.endpoint) == "LEGACY"
         for method in route.methods
     }
     # Then: replacing an old route with a new legacy route also fails, even at equal counts.
@@ -50,7 +48,7 @@ def test_e2e_helpers_have_distinct_policy_when_enabled(all_routes):
     helpers = [route for route in all_routes if route.path.startswith("/api/e2e/")]
     # Then: every helper stays identifiable as test-only.
     assert len(helpers) == 5
-    assert all(getattr(route.endpoint, "__authz_policy__", None) == "E2E_ONLY" for route in helpers)
+    assert all(policy_kind(route.endpoint) == "E2E_ONLY" for route in helpers)
 
 
 def test_missing_policy_is_detectable_when_new_route_is_registered():
@@ -65,9 +63,7 @@ def test_missing_policy_is_detectable_when_new_route_is_registered():
     register_legacy_policies(app)
     routes = [route for route in app.routes if isinstance(route, APIRoute)]
     # Then: registration does not silently assign a default policy.
-    assert [r.path for r in routes if not hasattr(r.endpoint, "__authz_policy__")] == [
-        "/unclassified"
-    ]
+    assert [r.path for r in routes if policy_of(r.endpoint) is None] == ["/unclassified"]
 
 
 def test_governance_policy_is_explicit_and_never_registered_as_legacy():
@@ -84,4 +80,4 @@ def test_governance_policy_is_explicit_and_never_registered_as_legacy():
     route = next(
         route for route in app.routes if isinstance(route, APIRoute) and route.path == "/governance"
     )
-    assert getattr(route.endpoint, "__authz_policy__", None) == "GOVERNANCE"
+    assert policy_kind(route.endpoint) == "GOVERNANCE"

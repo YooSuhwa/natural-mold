@@ -9,6 +9,7 @@ enforce-mode code paths and the shadow recorder only; ``AuthzService``
 
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 from app.authz.client import CheckQuery, Consistency, ListQuery
@@ -23,6 +24,9 @@ from app.authz.service_types import (
     ShadowSample,
     Verdict,
 )
+
+if TYPE_CHECKING:
+    from app.authz.outbox import TupleWriter
 
 _Answers = dict[tuple[str, str], bool]
 
@@ -54,6 +58,14 @@ class AuthzDecisions:
         return self.mode == "enforce" and (
             not self.enforce_types or resource_type in self.enforce_types
         )
+
+    @property
+    def tuple_writer(self) -> "TupleWriter | None":
+        """The client as an outbox writer for post-commit apply; ``None`` in legacy mode."""
+        client = self._client
+        if self.mode == "legacy" or not (hasattr(client, "write") and hasattr(client, "delete")):
+            return None
+        return cast("TupleWriter", client)
 
     def condition_context(self, p: Principal) -> dict[str, int | str]:
         """Injected into every query so conditional tuples are always evaluable."""
