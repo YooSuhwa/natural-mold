@@ -20,6 +20,7 @@ from app.authz.private_actor import (
     resolve_private_actor,
 )
 from app.authz.scoping import private_scope_predicate, private_scoped
+from app.database import SessionTenant, tenant_session
 from app.database import async_session as async_session_factory
 from app.exceptions import AppError
 from app.models.agent import Agent
@@ -204,10 +205,16 @@ async def _get_default_model_name(db: AsyncSession) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _scope(tenant_id: uuid.UUID, user_id: uuid.UUID) -> SessionTenant:
+    return SessionTenant(tenant_id, user_id)
+
+
 async def run_v3_message_stream(
     session_id: uuid.UUID,
     user_id: uuid.UUID,
     content: str,
+    *,
+    tenant_id: uuid.UUID,
 ) -> AsyncGenerator[str, None]:
     """Builder v3 StateGraph로 메시지를 스트리밍한다.
 
@@ -221,7 +228,7 @@ async def run_v3_message_stream(
     from app.agent_runtime.checkpointer import get_checkpointer
     from app.agent_runtime.streaming import stream_agent_response
 
-    async with async_session_factory() as db:
+    async with tenant_session(_scope(tenant_id, user_id), maker=async_session_factory) as db:
         context = await resolve_builder_actor(db, session_id, user_id)
         tools_catalog = await get_tools_catalog(db, context)
         default_model_name = await _get_default_model_name(db)
@@ -264,6 +271,8 @@ async def run_v3_resume_stream(
     user_id: uuid.UUID,
     response: Any,
     interrupt_id: str | None = None,
+    *,
+    tenant_id: uuid.UUID,
 ) -> AsyncGenerator[str, None]:
     """interrupt 응답을 받아 Command(resume=...)로 그래프를 재개한다.
 
@@ -276,7 +285,7 @@ async def run_v3_resume_stream(
     from app.agent_runtime.checkpointer import get_checkpointer
     from app.agent_runtime.streaming import stream_agent_response
 
-    async with async_session_factory() as db:
+    async with tenant_session(_scope(tenant_id, user_id), maker=async_session_factory) as db:
         await resolve_builder_actor(db, session_id, user_id)
 
     checkpointer = get_checkpointer()

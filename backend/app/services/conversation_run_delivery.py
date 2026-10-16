@@ -14,13 +14,17 @@ from app.authz.worker_conversation_scope import (
     WorkerConversationTarget,
     load_worker_conversation,
 )
+from app.database import TenantScoped
 from app.dependencies import CurrentUser
 from app.marketplace.redaction import replace_secret_values
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service, thread_branch_service
 from app.services import conversation_stream_service as stream_service
 from app.services.conversation_audit_service import record_conversation_run_audit
-from app.services.conversation_run_task_registry import _session_factory, worker_attr
+from app.services.conversation_run_task_registry import (
+    _tenant_session,
+    worker_attr,
+)
 from app.services.conversation_run_terminal_delivery import OwnerTerminalDelivery
 from app.services.conversation_stream_service import StreamCtx
 
@@ -158,8 +162,9 @@ async def _record_run_audit(
     run: ConversationRun,
     user: CurrentUser,
     status: str | None = None,
+    tenant: TenantScoped,
 ) -> None:
-    async with _session_factory()() as session:
+    async with _tenant_session(tenant) as session:
         await record_conversation_run_audit(
             session,
             action=action,
@@ -178,7 +183,7 @@ async def _activate_latest_branch_leaf_if_needed(
 ) -> None:
     if final_status != "completed" or moldy_source not in {"edit", "regenerate"}:
         return
-    async with _session_factory()() as session:
+    async with _tenant_session(target.context) as session:
         conversation = await load_worker_conversation(session, target)
         if conversation is None:
             return
@@ -224,7 +229,7 @@ async def _backfill_turn_attachments(
 
     from app.services import chat_service
 
-    async with _session_factory()() as session:
+    async with _tenant_session(target.context) as session:
         conversation = await load_worker_conversation(session, target)
         if conversation is None:
             return

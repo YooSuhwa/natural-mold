@@ -145,7 +145,7 @@ async def prepare_runtime_components_impl(
             output_root=bindings.conversation_output_dir,
         )
         if cfg.user_id and not stored_policy:
-            async with bindings.runtime_db_session_factory() as runtime_db:
+            async with bindings.runtime_db_session_factory(cfg.org_context) as runtime_db:
                 await bindings.resolve_runtime_credentials(skill_ctx, db=runtime_db, cfg=cfg)
             bindings.add_skill_secrets_to_run(skill_ctx, cfg)
         skills_virtual_prefix = (

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.authz.platform_scope import PlatformScope
 from app.config import settings
-from app.database import async_session, engine
+from app.database import async_session, engine, platform_session, platform_sessions
 from app.scheduler_job_ids import LeaderSchedulerJobId
 from app.schemas.conversation_scope import DraftConversationCleanup
 
@@ -379,7 +379,7 @@ async def rotate_credentials_to_active_key() -> int:
     from app.credentials import rotation as credential_rotation
 
     return await credential_rotation.rotate_credentials_to_active_key(
-        session_factory=async_session,
+        session_factory=platform_sessions("scheduler.credential_rotation", maker=async_session),
         batch_size=_ROTATION_BATCH,
     )
 
@@ -508,10 +508,10 @@ async def health_check_all_active() -> dict[str, int]:
 
     from app.services import health_check as health_check_service
 
-    async with async_session() as db:
+    async with platform_session("scheduler.health_check", maker=async_session) as db:
         return await health_check_service.check_all_active(
             db,
-            session_factory=async_session,
+            session_factory=platform_sessions("scheduler.health_check", maker=async_session),
         )
 
 
@@ -536,7 +536,7 @@ async def refresh_token_gc_run() -> int:
 
     from app.services.refresh_token_gc import gc_expired_refresh_tokens
 
-    async with async_session() as db:
+    async with platform_session("scheduler.retention_gc", maker=async_session) as db:
         try:
             return await gc_expired_refresh_tokens(
                 db, retention_days=settings.refresh_token_gc_retention_days
@@ -575,7 +575,7 @@ async def draft_conversation_gc_run() -> int:
 
     from app.services import chat_service
 
-    async with async_session() as db:
+    async with platform_session("scheduler.retention_gc", maker=async_session) as db:
         try:
             return await chat_service.gc_orphan_draft_conversations(
                 db,
@@ -616,7 +616,7 @@ async def skill_draft_gc_run() -> int:
 
     from app.services import skill_draft_workspace
 
-    async with async_session() as db:
+    async with platform_session("scheduler.retention_gc", maker=async_session) as db:
         try:
             return await skill_draft_workspace.gc_stale_draft_workspaces(
                 db, retention_hours=settings.skill_draft_gc_retention_hours
@@ -650,7 +650,7 @@ async def orphan_attachment_gc_run() -> int:
 
     from app.services import chat_service
 
-    async with async_session() as db:
+    async with platform_session("scheduler.retention_gc", maker=async_session) as db:
         try:
             return await chat_service.gc_orphan_attachments(
                 db, retention_hours=settings.orphan_attachment_gc_retention_hours
@@ -689,7 +689,9 @@ async def poll_mcp_servers_health() -> dict[str, int]:
 
     from app.services import mcp_service
 
-    return await mcp_service.poll_mcp_servers_health(session_factory=async_session)
+    return await mcp_service.poll_mcp_servers_health(
+        session_factory=platform_sessions("scheduler.mcp_health", maker=async_session)
+    )
 
 
 def register_mcp_health_job() -> None:
@@ -757,7 +759,9 @@ async def sweep_stale_conversation_runs() -> None:
     """
     from app.services import conversation_run_service
 
-    await conversation_run_service.sweep_stale_conversation_runs(session_factory=async_session)
+    await conversation_run_service.sweep_stale_conversation_runs(
+        session_factory=platform_sessions("scheduler.run_sweep", maker=async_session)
+    )
 
 
 def evict_expired_brokers() -> None:

@@ -22,7 +22,7 @@ from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.auth.jwt import InvalidTokenError, decode_token
 from app.authz.org_context import OrgContext, resolve_org_context
 from app.config import settings
-from app.database import async_session, close_session_shielded
+from app.database import bind_tenant, close_session_shielded, tenant_session
 from app.exceptions import AppError
 from app.models.conversation import Conversation
 from app.services import user_service
@@ -53,7 +53,9 @@ class CurrentUser:
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    session = async_session()
+    # Unbound company session (B-13): ``get_org_context`` binds it once the
+    # caller's company is resolved; every later transaction re-applies it.
+    session = tenant_session(None)
     try:
         yield session
     finally:
@@ -164,6 +166,7 @@ async def get_org_context(
         user,
         cookie=request.cookies.get(ACTIVE_ORG_COOKIE),
     )
+    await bind_tenant(db, context)
     request.state.org_context = context
     return context
 

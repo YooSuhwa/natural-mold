@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.skill_builder.eval_cancellation import EvalRunCancelled
 from app.config import settings
-from app.database import async_session
+from app.database import async_session, platform_session
 from app.models.skill_evaluation import SkillEvaluationRun
 from app.services.skill_evaluation_llm import LlmSkillEvaluationEvaluator
 from app.services.skill_evaluation_service import effective_run_timeout_seconds
@@ -65,7 +65,7 @@ class SkillEvaluationWorker:
     _queue: deque[uuid.UUID] = field(default_factory=deque, init=False)
     _queued_ids: set[uuid.UUID] = field(default_factory=set, init=False)
     _reserved_slots: int = field(default=0, init=False)
-    _session_factory: SkillEvaluationSessionFactory = field(default=async_session, init=False)
+    _session_factory: SkillEvaluationSessionFactory | None = field(default=None, init=False)
     _task: asyncio.Task[None] | None = field(default=None, init=False)
     _active_tasks: set[asyncio.Task[None]] = field(default_factory=set, init=False)
     _semaphore: asyncio.Semaphore | None = field(default=None, init=False)
@@ -112,11 +112,10 @@ class SkillEvaluationWorker:
             self._session_factory = session_factory
         if self._task is not None and not self._task.done():
             return True
-        if self._session_factory is async_session and not (
-            await try_acquire_skill_evaluation_worker_leader()
-        ):
+        owns_database = self._session_factory is None or self._session_factory is async_session
+        if owns_database and not await try_acquire_skill_evaluation_worker_leader():
             return False
-        self._holds_leader_lock = self._session_factory is async_session
+        self._holds_leader_lock = owns_database
         if reconcile_stale:
             await self.reconcile_stale_runs(self._session_factory)
         self._stopping = asyncio.Event()
@@ -152,12 +151,18 @@ class SkillEvaluationWorker:
             self._holds_leader_lock = False
             await release_skill_evaluation_worker_leader()
 
+    def _open_session(self, factory: SkillEvaluationSessionFactory | None = None) -> AsyncSession:
+        """Interim platform scope until queue items carry ``tenant_id`` (8.8, H-03)."""
+        maker = factory or self._session_factory
+        if maker is None:
+            return platform_session("skill_evaluation.worker", maker=async_session)
+        return platform_session("skill_evaluation.worker", maker=maker)
+
     async def reconcile_stale_runs(
         self,
         session_factory: SkillEvaluationSessionFactory | None = None,
     ) -> int:
-        factory = session_factory or self._session_factory
-        async with factory() as db:
+        async with self._open_session(session_factory) as db:
             count = await self.mark_interrupted_runs(db)
             await db.commit()
             return count
@@ -289,7 +294,7 @@ class SkillEvaluationWorker:
 
     async def _execute_run_with_session(self, run_id: uuid.UUID) -> None:
         run: SkillEvaluationRun | None = None
-        async with self._session_factory() as db:
+        async with self._open_session() as db:
             try:
                 run = await self.run_once(db, run_id)
             except SkillEvaluationExecutionError as exc:

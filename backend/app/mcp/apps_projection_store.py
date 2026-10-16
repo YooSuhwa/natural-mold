@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session
+from app.database import async_session, tenant_session
 from app.models.mcp_app_invocation import McpAppInvocationBinding
 from app.schemas.mcp_apps import McpAppArtifact
 
@@ -21,7 +21,7 @@ async def load_verified_artifact(
     run_id: str,
     tool_call_id: str,
     binding_id: str,
-    session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] = async_session,
+    session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] | None = None,
 ) -> dict[str, Any] | None:
     """Load canonical data only when run, tool call, and binding all match."""
 
@@ -31,7 +31,8 @@ async def load_verified_artifact(
         parsed_binding_id = uuid.UUID(binding_id)
     except ValueError:
         return None
-    async with session_factory() as db:
+    # Unbound until the conversation's company is threaded through (tracked by B-13 ratchet).
+    async with tenant_session(None, maker=session_factory or async_session) as db:
         row = await db.scalar(
             select(McpAppInvocationBinding).where(
                 McpAppInvocationBinding.id == parsed_binding_id,

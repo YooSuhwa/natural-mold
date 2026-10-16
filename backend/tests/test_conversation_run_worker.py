@@ -9,6 +9,7 @@ import pytest
 
 from app.authz.conversation_scope import require_conversation_agent_id
 from app.authz.worker_conversation_scope import WorkerConversationTarget
+from app.database import SessionTenant
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -30,6 +31,7 @@ async def test_publish_error_persists_same_event_ids_as_live_broker() -> None:
     ctx = conversation_stream_service.prepare_stream_context(
         uuid.uuid4(),
         run_id="run-error-id-stability",
+        tenant=SessionTenant(uuid.uuid4()),
     )
     persisted: list[dict[str, Any]] = []
 

@@ -54,6 +54,7 @@ from app.agent_runtime.prepared_run_input_policy import (
 from app.agent_runtime.prepared_run_transaction import materialize_and_activate
 from app.agent_runtime.runtime_config import PreparedRunLease
 from app.authz.conversation_run_scope import lock_executable_run
+from app.database import tenant_session, tenant_sessions
 from app.exceptions import AppError
 from app.services import agent_execution_runtime as runtime
 from app.services import prepared_conversation_executor
@@ -112,7 +113,7 @@ async def _settle_queued(request: RuntimeOwnershipRequest, code: str) -> str | N
     """Fail our unmarked queued run, or ack a workerless cancel; ``None`` if neither."""
     try:
         with anyio.CancelScope(shield=True):
-            async with runtime.async_session() as db:
+            async with tenant_session(request.context, maker=runtime.async_session) as db:
                 run = await lock_executable_run(db, execution_target(request))
                 outcome = None
                 if run is not None and run.runtime_materialized_at is None:
@@ -171,7 +172,7 @@ async def _materialize(
         mark_running=mark_prepared_running(get_run_task_registry().worker_instance_id),
         fail_running=fail_prepared_run,
         schedule=scheduled,
-        session_factory=lambda: runtime.async_session(),
+        session_factory=tenant_sessions(target.ownership.context, maker=runtime.async_session),
         seams=prepared_run_inputs.materializer_seams(),
     )
     return resolver, lease
@@ -193,7 +194,7 @@ async def _prepare_in_session(
     target: PreparedTriggerTarget, activated: list[PreparedRunLease]
 ) -> tuple[PreparedRunResolver, PreparedRunLease]:
     locked = False
-    async with runtime.async_session() as db:
+    async with tenant_session(target.ownership.context, maker=runtime.async_session) as db:
         try:
             messages = await lock_trigger_envelope(db, target)
             locked = True

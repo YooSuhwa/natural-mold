@@ -19,7 +19,7 @@ from app.authz.mcp_app_scope import (
 )
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate, resource_candidates
-from app.database import async_session
+from app.database import async_session, tenant_session
 from app.mcp.apps import (
     is_ui_resource_uri,
     normalize_tool_ui_meta,
@@ -180,7 +180,7 @@ async def record_runtime_binding(
     result_meta: dict[str, Any] | None,
     structured_content: dict[str, Any] | None,
     *,
-    session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] = async_session,
+    session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]] | None = None,
 ) -> str | None:
     """Mint trusted provenance from the post-invocation runtime callback."""
 
@@ -188,7 +188,7 @@ async def record_runtime_binding(
         parsed_run_id = uuid.UUID(run_id)
     except ValueError:
         return None
-    async with session_factory() as db:
+    async with tenant_session(context.org_context, maker=session_factory or async_session) as db:
         binding_id = await mint_invocation_binding(
             db,
             BindingDraft(

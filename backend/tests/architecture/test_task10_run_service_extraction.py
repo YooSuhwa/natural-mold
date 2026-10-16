@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 
+from app.database import SessionTenant
 from app.services import (
     agent_execution_acceptance,
     agent_execution_legacy_queries,
@@ -137,7 +138,7 @@ async def test_moved_worker_and_stream_code_observe_late_session_patch(monkeypat
         await conversation_run_transitions._persist_shutdown_intent([run_id])
         monkeypatch.setattr(conversation_stream_service, "async_session", lambda s=session: s)
         await conversation_stream_persistence.finalize_trace(
-            uuid.uuid4(), str(run_id), [], [], [], success=True
+            uuid.uuid4(), str(run_id), [], [], [], success=True, tenant=SessionTenant(uuid.uuid4())
         )
 
     assert opened == ["first", "first", "second", "second"]
@@ -153,6 +154,7 @@ async def test_stream_ctx_finalize_callback_observes_late_facade_patch(monkeypat
         msg_id_sink=[],
         error_sink=[],
         langfuse_sink=[],
+        tenant=SessionTenant(uuid.uuid4()),
     )
     callback = ctx.finalize_callback(uuid.uuid4())
     for label in ("first", "second"):

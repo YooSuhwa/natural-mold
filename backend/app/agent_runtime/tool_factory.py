@@ -570,15 +570,16 @@ def _summarize_output(output: Any) -> str | None:
 def _build_tool_hook_context(
     *,
     user_uuid: _uuid.UUID | None,
+    tenant_uuid: _uuid.UUID | None,
     tool_uuid: _uuid.UUID | None,
     credential_uuid: _uuid.UUID | None,
     agent_uuid: _uuid.UUID | None,
     tool_name: str,
     definition_key: str,
 ) -> HookContext | None:
-    """Build a ``HookContext`` for a tool call. Returns ``None`` without user."""
+    """Build a ``HookContext`` for a tool call. Returns ``None`` without user/company."""
 
-    if user_uuid is None:
+    if user_uuid is None or tenant_uuid is None:
         return None
     return HookContext(
         request_id=str(_uuid.uuid4()),
@@ -589,6 +590,7 @@ def _build_tool_hook_context(
         tool_id=tool_uuid,
         credential_id=credential_uuid,
         metadata={"tool_name": tool_name, "definition_key": definition_key},
+        tenant_id=tenant_uuid,
     )
 
 
@@ -639,6 +641,7 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
     tool_uuid = _safe_uuid(tool_config.get("tool_id"))
     credential_uuid = _safe_uuid(tool_config.get("credential_id"))
     user_uuid = _safe_uuid(tool_config.get("user_id"))
+    tenant_uuid = _safe_uuid(tool_config.get("tenant_id"))
     agent_uuid = _safe_uuid(tool_config.get("agent_id"))
     tool_display_name = tool_config.get("name") or definition.display_name
 
@@ -646,6 +649,7 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
         merged = {**stored_params, **runtime_args}
         hook_ctx = _build_tool_hook_context(
             user_uuid=user_uuid,
+            tenant_uuid=tenant_uuid,
             tool_uuid=tool_uuid,
             credential_uuid=credential_uuid,
             agent_uuid=agent_uuid,

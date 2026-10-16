@@ -176,6 +176,7 @@ async def test_record_chat_execution_nonfatal_writes_event(
         user_id=TEST_USER_ID,
         thread_id=str(conversation_id),
         agent_id=None,
+        tenant_id=uuid.uuid4(),
     )
 
     rows = (
@@ -203,6 +204,7 @@ async def test_record_chat_execution_nonfatal_swallows_failure(
         user_id=TEST_USER_ID,
         thread_id="not-a-uuid",
         agent_id=None,
+        tenant_id=uuid.uuid4(),
     )
 
 
@@ -263,6 +265,7 @@ async def test_executor_records_only_chat_executions(
     )
     ctx = SkillToolContext(
         thread_id=str(uuid.uuid4()),
+        tenant_id=uuid.uuid4(),
         output_dir=tmp_path / "outputs",
         runtime_root=runtime_root,
         descriptors={"counter": descriptor},
@@ -317,6 +320,7 @@ async def test_executor_does_not_record_failed_execution(
     )
     ctx = SkillToolContext(
         thread_id=str(uuid.uuid4()),
+        tenant_id=uuid.uuid4(),
         output_dir=tmp_path / "outputs",
         runtime_root=runtime_root,
         descriptors={"counter": descriptor},

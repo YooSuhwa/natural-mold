@@ -21,15 +21,16 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def _memory_session(db: AsyncSession | None) -> AsyncIterator[AsyncSession]:
-    """The caller's (locked) session, else the legacy fresh application session."""
+async def _memory_session(db: AsyncSession | None, cfg: AgentConfig) -> AsyncIterator[AsyncSession]:
+    """The caller's (locked) session, else a fresh session in the run's company."""
 
     if db is not None:
         yield db
         return
     from app.database import async_session as _async_session_factory
+    from app.database import tenant_session
 
-    async with _async_session_factory() as session:
+    async with tenant_session(cfg.org_context, maker=_async_session_factory) as session:
         yield session
 
 
@@ -87,7 +88,7 @@ async def load_memory_context_in(
     try:
         from app.services import memory_service
 
-        async with _memory_session(db) as session:
+        async with _memory_session(db, cfg) as session:
             policy = await memory_service.resolve_effective_policy(
                 session,
                 context=cfg.org_context,
@@ -126,7 +127,7 @@ async def memory_write_policy_in(
     try:
         from app.services import memory_service
 
-        async with _memory_session(db) as session:
+        async with _memory_session(db, cfg) as session:
             policy = await memory_service.resolve_effective_policy(
                 session,
                 context=cfg.org_context,

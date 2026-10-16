@@ -38,6 +38,7 @@ from app.agent_runtime.assistant.tools.write_tools.cron import build_cron_tools
 from app.agent_runtime.assistant.tools.write_tools.tool_links import build_tool_link_tools
 from app.authz.org_context import OrgContext
 from app.database import async_session as async_session_factory
+from app.database import tenant_sessions
 
 
 def build_write_tools(
@@ -55,7 +56,7 @@ def build_write_tools(
     # monkeypatch하므로, import 시점 바인딩이 아니라 호출 시점에 모듈 전역을 읽어
     # 컨텍스트에 주입한다. 그룹 모듈은 ctx.session_factory만 사용해야 한다.
     ctx = WriteToolContext(
-        session_factory=async_session_factory,
+        session_factory=tenant_sessions(context, maker=async_session_factory),
         agent_id=agent_id,
         org_context=context,
     )

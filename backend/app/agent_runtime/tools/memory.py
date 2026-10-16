@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
-from app.database import async_session
+from app.database import async_session, tenant_session
 from app.exceptions import ValidationError
 from app.schemas.memory import (
     MAX_MEMORY_CONTENT_LENGTH,
@@ -103,7 +103,7 @@ def build_memory_tools(
     agent_id: str | None,
     conversation_id: str | None,
     is_trigger_mode: bool,
-    session_factory: SessionFactory = async_session,
+    session_factory: SessionFactory | None = None,
 ) -> list[BaseTool]:
     """Build policy-bound long-term memory tools for a Moldy agent run."""
 
@@ -120,7 +120,7 @@ def build_memory_tools(
         reason: str | None,
     ) -> str:
         normalized_reason = _normalize_optional_reason(reason)
-        async with session_factory() as db:
+        async with tenant_session(context, maker=session_factory or async_session) as db:
             policy = await memory_service.resolve_effective_policy(
                 db,
                 context=context,

@@ -21,6 +21,7 @@ from app.authz.conversation_run_scope import (
     lock_executable_run,
 )
 from app.config import settings
+from app.database import TenantScoped
 from app.error_codes import conversation_not_found
 from app.exceptions import AppError
 from app.models.conversation_run import ConversationRun
@@ -31,6 +32,7 @@ from app.services.conversation_run_task_registry import (
     CancelReason,
     RunTaskRegistry,
     _session_factory,
+    _tenant_session,
     worker_attr,
 )
 
@@ -67,8 +69,9 @@ async def _transition(
     run_metrics: RunMetricsAccumulator,
     model_name: str,
     terminal_event_for_status: Callable[[TerminalRunState], dict[str, Any]] | None = None,
+    tenant: TenantScoped,
 ) -> tuple[ConversationRun | None, TerminalRunState]:
-    async with _session_factory()() as session:
+    async with _tenant_session(tenant) as session:
         run = await session.get(ConversationRun, run_id, with_for_update=True)
         if run is None:
             return None, status
@@ -154,7 +157,7 @@ async def _transition_to_running(
     전이를 row lock 아래에서 함께 수행하고 시작 불가 사유는 호출자가 현재
     status 로 분기한다.
     """
-    async with _session_factory()() as session:
+    async with _tenant_session(target.conversation.context) as session:
         try:
             await load_agent_tree_for_execution(
                 session,

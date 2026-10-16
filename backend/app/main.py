@@ -65,7 +65,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.authz.policies import register_legacy_policies
 from app.config import settings
-from app.database import async_session
+from app.database import platform_session
 from app.hooks import register_default_hooks
 from app.models.model import Model
 from app.models.template import Template
@@ -106,7 +106,7 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     enforce_production_safety(settings)
 
     # Startup: seed default data.
-    async with async_session() as db:
+    async with platform_session("seed.startup") as db:
         # Seed default models (insert if table empty).
         result = await db.execute(select(Model).limit(1))
         if not result.scalar_one_or_none():
@@ -204,7 +204,7 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     await recover_conversation_queue()
 
     if settings.skill_evaluation_enabled:
-        await skill_evaluation_worker.start(async_session, reconcile_stale=True)
+        await skill_evaluation_worker.start(reconcile_stale=True)
 
     # Spend writer — drain queue in the background so spend rows accumulate
     # without blocking agent runs. Must start before any hook is invoked.

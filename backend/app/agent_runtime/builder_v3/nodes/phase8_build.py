@@ -18,10 +18,11 @@ from app.agent_runtime.builder_v3.nodes._helpers import (
     ensure_todos,
     make_pending_tool_card,
 )
-from app.agent_runtime.builder_v3.session_scope import require_execution_session
+from app.agent_runtime.builder_v3.session_scope import require_execution_session, state_tenant
 from app.agent_runtime.builder_v3.state import BuilderState
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.database import async_session as async_session_factory
+from app.database import tenant_session
 from app.exceptions import AppError
 from app.schemas.builder import BuilderStatus
 
@@ -45,7 +46,7 @@ async def _confirm_and_create_agent(state: BuilderState) -> tuple[str | None, st
     from app.services.builder_service import claim_for_confirming, confirm_build, get_agent_by_id
 
     try:
-        async with async_session_factory() as db:
+        async with tenant_session(state_tenant(state), maker=async_session_factory) as db:
             session = await require_execution_session(db, state)
 
             context = await resolve_private_actor(
@@ -77,7 +78,7 @@ async def _confirm_and_create_agent(state: BuilderState) -> tuple[str | None, st
 async def _persist_error(state: BuilderState, error_message: str) -> None:
     """builder_session.error_message + status=FAILED 기록 (frontend가 표시할 수 있도록)."""
     try:
-        async with async_session_factory() as db:
+        async with tenant_session(state_tenant(state), maker=async_session_factory) as db:
             row = await require_execution_session(db, state)
             row.error_message = error_message
             row.status = BuilderStatus.FAILED

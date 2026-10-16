@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import uuid
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -12,6 +13,7 @@ import pytest
 from app.agent_runtime import runtime_component_builder as builder
 from app.agent_runtime import runtime_preparation_support
 from app.agent_runtime.runtime_config import AgentConfig
+from app.database import SessionTenant
 from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID
 
@@ -226,7 +228,8 @@ def test_operation_time_helpers_resolve_original_owning_modules(
     monkeypatch.setattr("app.database.async_session", lambda: session)
     monkeypatch.setattr("app.skills.prompt.build_skills_prompt", lambda _skills: "patched")
 
-    assert runtime_preparation_support.runtime_db_session_factory() is session
+    scope = SessionTenant(uuid.uuid4())
+    assert runtime_preparation_support.runtime_db_session_factory(scope) is session
     assert runtime_preparation_support.build_runtime_skills_prompt([]) == "patched"
 
 

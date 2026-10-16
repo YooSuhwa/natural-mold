@@ -32,6 +32,10 @@ def _session_factory():
     return worker_attr("_session_factory")()
 
 
+def _tenant_session(scope: Any) -> Any:
+    return worker_attr("_tenant_session")(scope)
+
+
 class RunTaskRegistrationError(RuntimeError):
     pass
 

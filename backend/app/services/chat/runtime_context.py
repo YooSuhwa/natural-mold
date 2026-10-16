@@ -260,6 +260,7 @@ async def build_tools_config(
                 "credential_id": (str(tool.credential_id) if tool.credential_id else None),
                 # Hook-framework correlation — wire down to ``tool_factory``.
                 "user_id": str(runtime_actor_user_id),
+                "tenant_id": str(context.tenant_id),
                 "agent_id": str(agent.id),
                 "credential_subject_user_id": str(credential_subject_user_id),
             }

@@ -37,6 +37,7 @@ def _make_ctx(
         started_at=datetime.now(UTC).replace(tzinfo=None),
         credential_id=credential_id,
         metadata=metadata or {},
+        tenant_id=uuid.uuid4(),
     )
 
 

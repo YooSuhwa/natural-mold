@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.scoping import private_scope_predicate
-from app.database import async_session
+from app.database import async_session, tenant_session
 from app.dependencies import CurrentUser
 from app.models.skill_builder_session import SkillBuilderSession
 from app.models.user import User
@@ -235,7 +235,7 @@ async def _release_confirming_claim(
     """
 
     try:
-        async with async_session() as fresh:
+        async with tenant_session(context, maker=async_session) as fresh:
             await fresh.execute(
                 update(SkillBuilderSession)
                 .where(

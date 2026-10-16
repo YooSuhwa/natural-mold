@@ -33,6 +33,7 @@ from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.database import async_session as async_session_factory
+from app.database import tenant_session
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model
@@ -54,8 +55,12 @@ def build_read_tools(
 
     # ------ helpers ------
 
+    def _session() -> AsyncSession:
+        # call-time module lookup keeps ``async_session_factory`` patchable.
+        return tenant_session(context, maker=async_session_factory)
+
     async def _get_agent() -> Agent | None:
-        async with async_session_factory() as session:
+        async with _session() as session:
             return await get_agent_with_eager_load(session, agent_id, context)
 
     # ------ 1. get_agent_config ------
@@ -140,7 +145,7 @@ def build_read_tools(
         """시스템에서 사용 가능한 도구 목록을 조회합니다."""
         if await _get_agent() is None:
             return "에이전트를 찾을 수 없습니다."
-        async with async_session_factory() as session:
+        async with _session() as session:
             items = await get_tools_catalog(session, context)
             return json.dumps(items, ensure_ascii=False, indent=2)
 
@@ -165,7 +170,7 @@ def build_read_tools(
         """서브에이전트로 사용 가능한 에이전트 목록을 조회합니다."""
         if await _get_agent() is None:
             return "에이전트를 찾을 수 없습니다."
-        async with async_session_factory() as session:
+        async with _session() as session:
             result = await session.execute(
                 select(Agent.id, Agent.name, Agent.description, Agent.model_id).where(
                     private_scope_predicate(Agent, context),
@@ -200,7 +205,7 @@ def build_read_tools(
         """사용 가능한 스킬 목록을 조회합니다."""
         if await _get_agent() is None:
             return "에이전트를 찾을 수 없습니다."
-        async with async_session_factory() as session:
+        async with _session() as session:
             result = await session.execute(
                 select(Skill).where(private_scope_predicate(Skill, context)).order_by(Skill.name)
             )
@@ -219,7 +224,7 @@ def build_read_tools(
 
     async def list_available_models() -> str:
         """사용 가능한 모델 목록을 조회합니다."""
-        async with async_session_factory() as session:
+        async with _session() as session:
             result = await session.execute(select(Model))
             models = result.scalars().all()
             items = [
@@ -358,7 +363,7 @@ def build_read_tools(
         """에이전트의 크론 스케줄 목록을 조회합니다."""
         if await _get_agent() is None:
             return "에이전트를 찾을 수 없습니다."
-        async with async_session_factory() as session:
+        async with _session() as session:
             result = await session.execute(
                 select(AgentTrigger).where(
                     AgentTrigger.agent_id == agent_id,
@@ -383,7 +388,7 @@ def build_read_tools(
             return "유효하지 않은 스케줄 ID입니다."
         if await _get_agent() is None:
             return "에이전트를 찾을 수 없습니다."
-        async with async_session_factory() as session:
+        async with _session() as session:
             result = await session.execute(
                 select(AgentTrigger).where(
                     AgentTrigger.id == sid,

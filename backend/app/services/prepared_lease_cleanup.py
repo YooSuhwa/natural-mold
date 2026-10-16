@@ -30,6 +30,7 @@ from app.agent_runtime.prepared_run_registry import PreparedRunLeaseError, get_p
 from app.agent_runtime.prepared_run_transaction import ACTIVATION_FAILED, _fail_durably
 from app.agent_runtime.run_error_codes import denial_error_code
 from app.authz.conversation_run_scope import RunExecutionTarget
+from app.database import tenant_session
 from app.services.prepared_run_state import fail_prepared_run
 
 logger = logging.getLogger(__name__)
@@ -43,8 +44,8 @@ def _owned() -> Any:
     return agent_execution_runtime
 
 
-def _sessions() -> Any:
-    return _owned().async_session()
+def _sessions(target: RunExecutionTarget) -> Any:
+    return lambda: tenant_session(target.conversation.context, maker=_owned().async_session)
 
 
 async def abandon_activated_lease(
@@ -59,7 +60,7 @@ async def abandon_activated_lease(
             await get_prepared_run_registry().terminalize(run_id)
         finally:
             try:
-                await _fail_durably(_sessions, target, fail_prepared_run, code, digest)
+                await _fail_durably(_sessions(target), target, fail_prepared_run, code, digest)
             except Exception:  # noqa: BLE001 - best effort; the original error propagates
                 logger.warning("prepared run %s could not be failed after activation", run_id)
 
@@ -78,7 +79,7 @@ async def fail_owned_run(runtime: Any, error: BaseException, digest: str) -> Non
     code = failure_code(error)
     if code is not None:
         target = owned.execution_target(runtime.request)
-        await _fail_durably(_sessions, target, fail_prepared_run, code, digest)
+        await _fail_durably(_sessions(target), target, fail_prepared_run, code, digest)
     await owned.finish(runtime, "failed")
 
 

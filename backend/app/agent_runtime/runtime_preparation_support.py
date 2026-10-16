@@ -23,6 +23,7 @@ from app.agent_runtime.offload_storage import (
 )
 from app.agent_runtime.runtime_config import AgentConfig
 from app.authz.org_context import OrgContext
+from app.database import TenantScoped
 from app.marketplace.skill_runtime import SkillToolContext
 
 
@@ -167,7 +168,7 @@ class RuntimePreparationBindings:
     get_provider_middleware: Callable[[str], list[AgentMiddleware]]
     scoped_runtime_backend: ScopedBackendFactory
     build_skill_runtime_context: BuildSkillRuntimeContext
-    runtime_db_session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]]
+    runtime_db_session_factory: Callable[[TenantScoped], AbstractAsyncContextManager[AsyncSession]]
     resolve_runtime_credentials: ResolveRuntimeCredentials
     add_skill_secrets_to_run: Callable[[SkillToolContext, AgentConfig], None]
     create_skill_execute_tool: Callable[[SkillToolContext], BaseTool]
@@ -184,12 +185,12 @@ class RuntimePreparationBindings:
     session_consent_eligible_tools: frozenset[str]
 
 
-def runtime_db_session_factory() -> AbstractAsyncContextManager[AsyncSession]:
+def runtime_db_session_factory(scope: TenantScoped) -> AbstractAsyncContextManager[AsyncSession]:
     """Resolve the owning database session factory at operation time."""
 
-    from app.database import async_session
+    from app.database import async_session, tenant_session
 
-    return async_session()
+    return tenant_session(scope, maker=async_session)
 
 
 def build_runtime_skills_prompt(agent_skills: list[dict[str, Any]]) -> str:

@@ -4,6 +4,7 @@ import base64
 import json
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
@@ -12,7 +13,7 @@ from fastapi import Request
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session
+from app.database import TenantScoped, async_session, platform_session, tenant_session
 from app.dependencies import CurrentUser
 from app.models.audit_event import AuditEvent
 
@@ -181,9 +182,22 @@ async def record_self_event(
     )
 
 
-async def record_event_best_effort(**kwargs: Any) -> None:
+async def record_event_best_effort(*, tenant: TenantScoped, **kwargs: Any) -> None:
+    await _record_best_effort(lambda: tenant_session(tenant, maker=async_session), kwargs)
+
+
+async def record_platform_event_best_effort(**kwargs: Any) -> None:
+    """Platform audit (8.9): access denied before any company was resolved."""
+    await _record_best_effort(
+        lambda: platform_session("audit.platform_event", maker=async_session), kwargs
+    )
+
+
+async def _record_best_effort(
+    open_session: Callable[[], AsyncSession], kwargs: dict[str, Any]
+) -> None:
     try:
-        async with async_session() as db:
+        async with open_session() as db:
             await record_event(db, **kwargs)
             await db.commit()
     except Exception:

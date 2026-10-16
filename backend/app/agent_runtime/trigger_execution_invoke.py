@@ -23,6 +23,7 @@ from app.agent_runtime.trigger_execution_materialization import (
     TriggerOutcome,
 )
 from app.config import settings
+from app.database import tenant_session
 from app.exceptions import AppError
 from app.models.agent import Agent
 from app.services import trigger_service
@@ -136,7 +137,7 @@ async def invoke_trigger_run(
     )
 
     async def legacy_fallback() -> str:
-        async with _executor_attr("async_session")() as child_db:
+        async with tenant_session(context, maker=_executor_attr("async_session")) as child_db:
             await _configure_legacy_children(child_db, agent, cfg)
         return await invoke()
 

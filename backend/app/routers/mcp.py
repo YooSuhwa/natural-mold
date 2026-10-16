@@ -246,6 +246,7 @@ async def probe_mcp_server(
         headers=headers,
         credentials=credentials,
         user_id=user.id,
+        tenant_id=context.tenant_id,
         credential_id=payload.credential_id,
     )
     await mcp_service.record_probe_audit(

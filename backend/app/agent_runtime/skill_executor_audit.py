@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from app.database import async_session
+from app.database import SessionTenant, async_session, tenant_session
 from app.marketplace.skill_runtime import (
     ResolvedCredential,
     SkillRuntimeDescriptor,
@@ -10,6 +10,10 @@ from app.marketplace.skill_runtime import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _scope(ctx: SkillToolContext) -> SessionTenant:
+    return SessionTenant(ctx.tenant_id, ctx.user_id)
 
 
 async def record_credential_audits(
@@ -73,7 +77,7 @@ async def _write_credential_audits(
     from app.credentials import service as credential_service
 
     seen: set[str] = set()
-    async with async_session() as db:
+    async with tenant_session(_scope(ctx), maker=async_session) as db:
         for requirement_key, resolved in injected_credentials:
             credential_key = str(resolved.credential_id)
             if credential_key in seen:
@@ -119,7 +123,7 @@ async def _write_sandbox_denial(
         "thread_id": ctx.thread_id,
         "command_executable": executable,
     }
-    async with async_session() as db:
+    async with tenant_session(_scope(ctx), maker=async_session) as db:
         await audit_service.record_event(
             db,
             actor_type="user" if ctx.user_id is not None else "system",

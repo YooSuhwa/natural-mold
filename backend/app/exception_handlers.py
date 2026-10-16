@@ -28,23 +28,28 @@ def register_exception_handlers(app: FastAPI) -> None:
             from app.services import audit_service
 
             current_user = getattr(request.state, "current_user", None)
-            await audit_service.record_event_best_effort(
-                actor_type="user" if current_user else "public",
-                actor_user_id=getattr(current_user, "id", None),
-                actor_email_snapshot=getattr(current_user, "email", None),
-                owner_user_id=getattr(current_user, "id", None),
-                owner_email_snapshot=getattr(current_user, "email", None),
-                action=(
+            org_context = getattr(request.state, "org_context", None)
+            event = {
+                "actor_type": "user" if current_user else "public",
+                "actor_user_id": getattr(current_user, "id", None),
+                "actor_email_snapshot": getattr(current_user, "email", None),
+                "owner_user_id": getattr(current_user, "id", None),
+                "owner_email_snapshot": getattr(current_user, "email", None),
+                "action": (
                     "auth.csrf_denied" if exc.code == "csrf_mismatch" else "auth.access_denied"
                 ),
-                target_type="http_request",
-                target_id=request.url.path,
-                outcome="denied",
-                reason_code=exc.code,
-                reason_message=exc.message,
-                request=request,
-                metadata={"method": request.method, "path": request.url.path},
-            )
+                "target_type": "http_request",
+                "target_id": request.url.path,
+                "outcome": "denied",
+                "reason_code": exc.code,
+                "reason_message": exc.message,
+                "request": request,
+                "metadata": {"method": request.method, "path": request.url.path},
+            }
+            if org_context is None:  # denied before a company was resolved
+                await audit_service.record_platform_event_best_effort(**event)
+            else:
+                await audit_service.record_event_best_effort(tenant=org_context, **event)
         return JSONResponse(
             status_code=exc.status,
             content={"error": {"code": exc.code, "message": exc.message}},

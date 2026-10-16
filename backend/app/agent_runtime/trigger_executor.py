@@ -38,7 +38,7 @@ from app.agent_runtime.trigger_execution_materialization import (
 )
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.trigger_scope import require_trigger_actor
-from app.database import async_session
+from app.database import SessionTenant, async_session, platform_session, tenant_session
 from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
@@ -126,12 +126,27 @@ async def _resolve_fallback_chain(db, fallback_list):
 # None).
 
 
+async def _trigger_tenant(trigger_uuid: uuid.UUID) -> SessionTenant | None:
+    """8.9: the scheduler resolves the trigger row's company, then runs in it."""
+    async with platform_session("scheduler.trigger_dispatch", maker=async_session) as db:
+        row = (
+            await db.execute(
+                select(AgentTrigger.tenant_id, AgentTrigger.user_id).where(
+                    AgentTrigger.id == trigger_uuid
+                )
+            )
+        ).one_or_none()
+    return None if row is None else SessionTenant(row.tenant_id, row.user_id)
+
+
 async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTriggerRun | None:
     """Called by APScheduler when a trigger fires."""
 
     trigger_uuid = uuid.UUID(trigger_id)
+    tenant = await _trigger_tenant(trigger_uuid)
 
-    async with async_session() as db:
+    # A missing trigger keeps an unbound session; the claim logs and skips it.
+    async with tenant_session(tenant, maker=async_session) as db:
         claim = await claim_trigger_run(db, trigger_id, trigger_uuid, force=force)
         if claim is None:
             return None

@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
 from sqlalchemy import and_, func, select, update
 from sqlalchemy.engine import CursorResult
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.artifact_scope import validated_artifact_conversation
 from app.authz.org_context import OrgContext
@@ -77,7 +78,7 @@ class ArtifactDeltaRecorder:
     def __init__(
         self,
         *,
-        session_factory: async_sessionmaker[AsyncSession],
+        session_factory: Callable[[], AsyncSession],
         context: ArtifactRuntimeContext,
         storage: ArtifactStorageBackend | None = None,
     ) -> None:

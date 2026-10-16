@@ -38,6 +38,7 @@ from app.authz.worker_conversation_scope import (
     load_worker_conversation,
 )
 from app.config import settings
+from app.database import TenantScoped, platform_sessions, tenant_session
 from app.dependencies import CurrentUser
 from app.error_codes import conversation_not_found
 from app.exceptions import AppError
@@ -90,7 +91,14 @@ async_session = None
 
 
 def _session_factory():
-    return async_session or stream_service.async_session
+    """Interim: run-lifecycle writes keyed by run id until I-06 threads its company."""
+    return platform_sessions(
+        "conversation_run.lifecycle", maker=async_session or stream_service.async_session
+    )
+
+
+def _tenant_session(scope: TenantScoped):
+    return tenant_session(scope, maker=async_session or stream_service.async_session)
 
 
 _registry = RunTaskRegistry()
@@ -113,7 +121,7 @@ async def _prepare_run_metrics(
 ) -> RunMetricsAccumulator:
     """Capture the exact pre-input assistant IDs used to exclude checkpoint replay."""
     try:
-        async with _session_factory()() as session:
+        async with _tenant_session(cfg.org_context) as session:
             conversation = await load_worker_conversation(
                 session, WorkerConversationTarget(conversation_id, cfg.org_context)
             )
@@ -172,7 +180,7 @@ async def start_conversation_run(
     target = _execution_target(run_id, conversation_id, cfg)
     if user.id != target.conversation.context.user_id:
         raise conversation_not_found()
-    async with _session_factory()() as session:
+    async with _tenant_session(target.conversation.context) as session:
         try:
             await load_agent_tree_for_execution(
                 session,
@@ -188,7 +196,9 @@ async def start_conversation_run(
         if await lock_executable_run(session, target) is None:
             raise conversation_not_found()
         registry = registry or get_run_task_registry()
-        ctx = stream_service.prepare_stream_context(conversation_id, run_id=str(run_id))
+        ctx = stream_service.prepare_stream_context(
+            conversation_id, run_id=str(run_id), tenant=target.conversation.context
+        )
         task = asyncio.create_task(
             _run_conversation(
                 run_id=run_id,

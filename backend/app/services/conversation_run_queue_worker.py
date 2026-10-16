@@ -12,6 +12,7 @@ from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tre
 from app.authz.conversation_input_scope import conversation_input_parent
 from app.authz.conversation_scope import resolve_conversation_actor
 from app.authz.scoping import private_parent_scoped
+from app.database import SessionTenant, platform_session, platform_sessions, tenant_session
 from app.database import async_session as database_session
 from app.exceptions import AppError
 from app.models.conversation import Conversation
@@ -41,19 +42,29 @@ logger = logging.getLogger(__name__)
 
 
 def _session_factory():
-    return async_session or database_session
+    """Interim: queue claims/recovery keyed by input id until I-06 threads its company."""
+    return platform_sessions("conversation_run.queue", maker=async_session or database_session)
 
 
 async def dispatch_next_for_conversation(
     conversation_id: uuid.UUID,
 ) -> ConversationRunInput | None:
     """Claim, commit, then launch the next input for one conversation."""
-    async with _session_factory()() as db:
-        owner_id = await db.scalar(
-            select(Conversation.user_id).where(Conversation.id == conversation_id)
-        )
-        if owner_id is None:
-            return None
+    async with platform_session(
+        "conversation_run.queue", maker=async_session or database_session
+    ) as db:
+        owner = (
+            await db.execute(
+                select(Conversation.tenant_id, Conversation.user_id).where(
+                    Conversation.id == conversation_id
+                )
+            )
+        ).one_or_none()
+    if owner is None:
+        return None
+    owner_id = owner.user_id
+    scope = SessionTenant(owner.tenant_id, owner_id)
+    async with tenant_session(scope, maker=async_session or database_session) as db:
         try:
             context = await resolve_conversation_actor(db, conversation_id, owner_id)
         except AppError:

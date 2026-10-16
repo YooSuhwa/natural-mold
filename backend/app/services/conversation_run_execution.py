@@ -8,6 +8,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator, Callable
+from functools import partial
 from typing import Any
 
 from app.agent_runtime.run_error_codes import run_error_code
@@ -86,6 +87,7 @@ async def _run_conversation(
         )
         run, started = start.run, start.started
         cfg = start.cfg or cfg  # prepared: locked metadata + the lease's secret set
+        run_audit = partial(_record_run_audit, user=user, tenant=cfg.org_context)
         if run is None:
             logger.warning("conversation run vanished before worker start run_id=%s", run_id)
             finalize_needed = False
@@ -106,12 +108,7 @@ async def _run_conversation(
                 )
                 finalize_needed = False
             return
-        await _record_run_audit(
-            action="conversation.run_start",
-            run=run,
-            user=user,
-            status="running",
-        )
+        await run_audit(action="conversation.run_start", run=run, status="running")
         heartbeat_task = asyncio.create_task(
             worker_attr("_heartbeat_until_terminal")(run_id, registry),
             name=f"conversation-run-heartbeat-{run_id}",
@@ -213,6 +210,7 @@ async def _run_conversation(
                     success=effective_status == "completed",
                     status=_trace_status_for_run(effective_status),
                     run_status=effective_status,
+                    tenant=ctx.tenant,
                 )
             except Exception:
                 logger.exception("conversation run trace finalization failed run_id=%s", run_id)
@@ -229,6 +227,7 @@ async def _run_conversation(
                     allow_workerless_cancellation_ack=workerless_cancel_before_start,
                     run_metrics=run_metrics,
                     model_name=getattr(cfg, "model_name", "unknown"),
+                    tenant=cfg.org_context,
                     terminal_event_for_status=(
                         lambda status: terminal_delivery.terminal_events_for_status(status)[1]
                     )
@@ -242,12 +241,7 @@ async def _run_conversation(
                     terminal_delivery.publish_terminal(live_terminal, persisted_terminal)
                 action = _audit_action_for_terminal_status(effective_status)
                 if final_run is not None and action is not None:
-                    await _record_run_audit(
-                        action=action,
-                        run=final_run,
-                        user=user,
-                        status=effective_status,
-                    )
+                    await run_audit(action=action, run=final_run, status=effective_status)
                 await worker_attr("_activate_latest_branch_leaf_if_needed")(
                     target=WorkerConversationTarget(conversation_id, cfg.org_context),
                     moldy_source=moldy_source,

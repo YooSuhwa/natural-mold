@@ -41,6 +41,8 @@ class HookContext:
     model_id: uuid.UUID | None = None
     credential_id: uuid.UUID | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    # B-13: derived audit writes open this company; producers without one skip hooks.
+    tenant_id: uuid.UUID = field(kw_only=True)
 
 
 @dataclass

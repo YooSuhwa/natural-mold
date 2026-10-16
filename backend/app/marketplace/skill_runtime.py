@@ -136,6 +136,7 @@ class SkillToolContext:
     agent_id: uuid.UUID | None = None
     run_id: str | None = None
     audit_kind: SkillExecutionAuditKind = "execute_in_skill"
+    tenant_id: uuid.UUID = field(kw_only=True)  # derived audit/usage writes open this company
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +301,7 @@ def build_skill_runtime_context(
         descriptors=descriptors,
         user_id=_uuid_or_none(cfg.credential_subject_user_id or cfg.user_id),
         agent_id=_uuid_or_none(cfg.agent_id),
+        tenant_id=cfg.org_context.tenant_id,
     )
 
 

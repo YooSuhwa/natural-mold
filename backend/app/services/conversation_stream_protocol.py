@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.streaming import StreamErrorRecord, format_sse
+from app.database import TenantScoped
 from app.observability.langfuse import LangfuseTraceRecord
 
 logger = logging.getLogger("app.services.conversation_stream_service")
@@ -98,6 +99,7 @@ class StreamCtx(NamedTuple):
     msg_id_sink: list[str]
     error_sink: list[StreamErrorRecord]
     langfuse_sink: list[LangfuseTraceRecord]
+    tenant: TenantScoped
 
     def as_stream_kwargs(self) -> dict[str, Any]:
         return {
@@ -122,6 +124,7 @@ class StreamCtx(NamedTuple):
                 self.msg_id_sink,
                 self.langfuse_sink,
                 success=success,
+                tenant=self.tenant,
             )
 
         return _cb

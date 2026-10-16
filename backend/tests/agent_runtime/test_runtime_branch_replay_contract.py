@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.langgraph_streaming import stream_agent_response_langgraph
 from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
+from app.database import SessionTenant
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -203,7 +204,7 @@ def _redaction_event() -> dict[str, Any]:
 
 
 async def _collect_replay_manifest(db: AsyncSession) -> dict[str, Any]:
-    persist = build_persist_callback(_CONVERSATION_ID, _RUN_ID)
+    persist = build_persist_callback(_CONVERSATION_ID, _RUN_ID, tenant=SessionTenant(uuid.uuid4()))
     token = set_run_secrets({_SECRET})
     try:
         _ = [

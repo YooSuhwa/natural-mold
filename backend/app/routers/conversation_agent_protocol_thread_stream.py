@@ -19,7 +19,7 @@ from app.agent_runtime.protocol_events import (
 )
 from app.authz.conversation_scope import resolve_conversation_actor
 from app.authz.org_context import OrgContext
-from app.database import async_session
+from app.database import async_session, tenant_session
 from app.error_codes import conversation_not_found
 from app.routers.conversation_agent_protocol_replay import (
     _events_after_cursor,
@@ -58,7 +58,7 @@ def _latest_live_broker(conversation_id: uuid.UUID) -> EventBroker | None:
 async def _load_replay_events(
     conversation_id: uuid.UUID, context: OrgContext
 ) -> list[StoredProtocolEvent]:
-    async with async_session() as session:
+    async with tenant_session(context, maker=async_session) as session:
         fresh = await resolve_conversation_actor(session, conversation_id, context.user_id)
         if (fresh.org_id, fresh.tenant_id) != (context.org_id, context.tenant_id):
             raise conversation_not_found()

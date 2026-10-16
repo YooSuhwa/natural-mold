@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
@@ -103,6 +104,7 @@ def _stub_skill_context(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
         "app.agent_runtime.runtime_component_builder.build_skill_runtime_context",
         lambda *_args, **_kwargs: SkillToolContext(
             thread_id="t-1",
+            tenant_id=uuid.uuid4(),
             output_dir=tmp_path / "outputs",
             runtime_root=tmp_path / "runtime",
             descriptors={},
@@ -1783,6 +1785,7 @@ async def test_prepare_stored_filesystem_profile_omits_skill_execution_capabilit
         "build_skill_runtime_context",
         lambda *_args, **_kwargs: SkillToolContext(
             thread_id="t-1",
+            tenant_id=uuid.uuid4(),
             output_dir=tmp_path / "outputs",
             runtime_root=tmp_path / "runtime",
             descriptors={},

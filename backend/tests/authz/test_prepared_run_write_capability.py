@@ -61,7 +61,12 @@ async def test_exact_writes_reach_injected_writers(tmp_path: Path) -> None:
     assert calls == [
         ("factory", uuid.UUID(int=2), str(uuid.UUID(int=1))),
         ("events", str(uuid.UUID(int=1)), 1),
-        ("trace", uuid.UUID(int=2), str(uuid.UUID(int=1)), {"success": True}),
+        (
+            "trace",
+            uuid.UUID(int=2),
+            str(uuid.UUID(int=1)),
+            {"tenant": persistence.capability.binding, "success": True},
+        ),
     ]
     assert persistence.attachments([uuid.UUID(int=7)]) == (uuid.UUID(int=7),)
     assert persistence.artifact_path("out/report.md") == (tmp_path / "out/report.md").resolve()

@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
-from app.database import async_session
+from app.database import async_session, platform_session
 from app.models.agent_trigger import AgentTrigger
 from app.scheduler import (
     add_trigger_job,
@@ -109,7 +109,7 @@ async def reconcile_trigger_jobs() -> int:
     scheduler = get_scheduler()
     if not scheduler.running:
         return 0
-    async with async_session() as db:
+    async with platform_session("scheduler.trigger_reconcile", maker=async_session) as db:
         result = await db.execute(select(AgentTrigger))
         triggers = list(result.scalars().all())
         now = datetime.now(UTC).replace(tzinfo=None)

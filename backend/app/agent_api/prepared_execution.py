@@ -72,6 +72,7 @@ from app.agent_runtime.prepared_run_inputs import MaterializerSeams
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
 from app.authz.conversation_run_scope import lock_executable_run
+from app.database import tenant_session
 from app.exceptions import AppError
 from app.services import agent_execution_runtime as owned
 from app.services import prepared_conversation_executor
@@ -141,7 +142,7 @@ async def _activated(_lease: object) -> None:
 async def _fail_unmaterialized(request: owned.RuntimeOwnershipRequest, code: str) -> None:
     """Durably fail our still-queued, unmarked row (a pre-marker failure)."""
 
-    async with owned.async_session() as db:
+    async with tenant_session(request.context, maker=owned.async_session) as db:
         run = await lock_executable_run(db, execution_target(request))
         if run is None or run.status != "queued" or run.runtime_materialized_at is not None:
             await db.rollback()

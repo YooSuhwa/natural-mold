@@ -65,6 +65,7 @@ async def test_execute_in_skill_records_credential_audit_without_secret_payload(
     )
     ctx = SkillToolContext(
         thread_id="thread-audit",
+        tenant_id=uuid.uuid4(),
         output_dir=tmp_path / "outputs",
         runtime_root=runtime_root,
         descriptors={"audited": descriptor},
@@ -137,6 +138,7 @@ async def test_execute_in_skill_blocks_undeclared_network_and_audits(
     )
     ctx = SkillToolContext(
         thread_id="thread-network",
+        tenant_id=uuid.uuid4(),
         output_dir=tmp_path / "outputs",
         runtime_root=runtime_root,
         descriptors={"networked": descriptor},

@@ -27,7 +27,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session
+from app.database import SessionTenant, async_session, platform_session, tenant_session
 from app.models.skill_builder_session import JsonValue
 from app.models.skill_usage_event import SkillUsageEvent
 
@@ -118,7 +118,8 @@ async def record_evaluation_usage_nonfatal(
         else None
     )
     try:
-        async with async_session() as db:
+        # Interim: evaluation runs are written by the platform-scoped worker (H-03).
+        async with platform_session("skill_evaluation.worker", maker=async_session) as db:
             await record_evaluation_usage(
                 db,
                 skill_id=skill_id,
@@ -170,6 +171,7 @@ async def record_chat_execution_nonfatal(
     user_id: uuid.UUID,
     thread_id: str | None,
     agent_id: uuid.UUID | None,
+    tenant_id: uuid.UUID,
 ) -> None:
     """Chat-path recorder — own session, swallows every failure.
 
@@ -184,8 +186,9 @@ async def record_chat_execution_nonfatal(
             conversation_id = uuid.UUID(thread_id)
         except ValueError:
             conversation_id = None
+    scope = SessionTenant(tenant_id, user_id)
     try:
-        async with async_session() as db:
+        async with tenant_session(scope, maker=async_session) as db:
             await record_chat_execution(
                 db,
                 skill_id=skill_id,

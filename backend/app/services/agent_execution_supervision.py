@@ -22,6 +22,7 @@ import anyio
 from sqlalchemy import select
 from sqlalchemy.orm import load_only, noload
 
+from app.database import tenant_session
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_TERMINAL_STATUSES, ConversationRun
@@ -42,7 +43,7 @@ def _owned() -> Any:
 
 
 async def ack_prestart_cancel(request: Any) -> None:
-    async with _owned().async_session() as db:
+    async with tenant_session(request.context, maker=_owned().async_session) as db:
         run = await db.scalar(
             select(ConversationRun)
             .join(Conversation, Conversation.id == ConversationRun.conversation_id)
@@ -94,8 +95,8 @@ async def ack_prestart_cancel(request: Any) -> None:
         await db.commit()
 
 
-async def _heartbeat(run_id: Any) -> None:
-    async with _owned().async_session() as db:
+async def _heartbeat(run_id: Any, context: Any) -> None:
+    async with tenant_session(context, maker=_owned().async_session) as db:
         await conversation_run_service.heartbeat_run(db, run_id)
         await db.commit()
 
@@ -113,7 +114,7 @@ async def poll_cancel(runtime: Any, heartbeat: bool = False) -> None:
     next_beat = time.monotonic() + _interval()
     while True:
         await anyio.sleep(owned._CANCEL_POLL_SECONDS)  # noqa: SLF001
-        async with owned.async_session() as db:
+        async with tenant_session(runtime.request.context, maker=owned.async_session) as db:
             row = await db.execute(
                 select(ConversationRun)
                 .options(
@@ -139,7 +140,7 @@ async def poll_cancel(runtime: Any, heartbeat: bool = False) -> None:
             registry.request_cancel(run.id, reason="stop")
             return
         if heartbeat and time.monotonic() >= next_beat:
-            await _heartbeat(run_id)
+            await _heartbeat(run_id, runtime.request.context)
             next_beat = time.monotonic() + _interval()
 
 

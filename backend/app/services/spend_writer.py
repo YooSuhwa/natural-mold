@@ -34,6 +34,7 @@ import asyncio
 import contextlib
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from datetime import date as date_type
@@ -42,7 +43,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session, is_postgres
+from app.database import async_session, is_postgres, platform_session
 from app.models.daily_spend_agent import DailySpendAgent
 from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
@@ -133,7 +134,7 @@ class DailySpendUpdateQueue:
         self._task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
         # Tests mock this with their own ``async_sessionmaker``.
-        self._session_factory = async_session
+        self._session_factory: Callable[[], AsyncSession] | None = None
 
     # -- producer side -------------------------------------------------------
 
@@ -261,7 +262,10 @@ class DailySpendUpdateQueue:
             if entry.model_id is not None:
                 self._accumulate(model_buckets, (entry.date, entry.model_id), entry, cost)
 
-        async with self._session_factory() as db:
+        # Interim platform scope until queue entries carry tenant_id (8.8, H-03).
+        async with platform_session(
+            "spend_writer.flush", maker=self._session_factory or async_session
+        ) as db:
             try:
                 if user_buckets:
                     await self._upsert_user(db, user_buckets)

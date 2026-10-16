@@ -15,6 +15,7 @@ from app.agent_runtime.runtime_config import PreparedRunLease
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.conversation_run_scope import lock_executable_run
 from app.database import async_session as default_async_session
+from app.database import tenant_session, tenant_sessions
 from app.exceptions import AppError
 from app.models.conversation_run import RUN_TERMINAL_STATUSES, ConversationRun
 from app.services import conversation_run_service
@@ -36,7 +37,7 @@ _CANCEL_POLL_SECONDS = 0.1
 
 async def _claim(request: RuntimeOwnershipRequest) -> OwnedRuntime:
     registry = get_run_task_registry()
-    async with async_session() as db:
+    async with tenant_session(request.context, maker=async_session) as db:
         await load_agent_tree_for_execution(
             db,
             AgentExecutionTarget(request.root_agent_id, request.context),
@@ -58,7 +59,7 @@ async def _claim(request: RuntimeOwnershipRequest) -> OwnedRuntime:
 async def finish(runtime: OwnedRuntime, outcome: TerminalOutcome) -> bool:
     """Write the owner's terminal state; ``False`` when another worker owns the row."""
     runtime.flags.finishing = True  # our own terminal write must not trip the poll
-    async with async_session() as db:
+    async with tenant_session(runtime.request.context, maker=async_session) as db:
         run = await db.get(ConversationRun, runtime.request.run_id, with_for_update=True)
         if run is None or run.status in RUN_TERMINAL_STATUSES:
             return run is not None
@@ -129,7 +130,7 @@ async def materialize_prepared_execution(
         await schedule(lease)
 
     try:
-        async with async_session() as db:
+        async with tenant_session(request.context, maker=async_session) as db:
             return await materialize_and_activate(
                 db,
                 execution_target(request),
@@ -137,7 +138,7 @@ async def materialize_prepared_execution(
                 mark_running=mark_prepared_running(get_run_task_registry().worker_instance_id),
                 fail_running=fail_prepared_run,
                 schedule=scheduled,
-                session_factory=lambda: async_session(),
+                session_factory=tenant_sessions(request.context, maker=async_session),
                 seams=seams,
             )
     except BaseException:

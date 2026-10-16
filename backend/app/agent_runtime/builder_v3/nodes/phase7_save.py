@@ -14,9 +14,10 @@ from app.agent_runtime.builder_v3.nodes._helpers import (
     ensure_todos,
     make_tool_card,
 )
-from app.agent_runtime.builder_v3.session_scope import require_execution_session
+from app.agent_runtime.builder_v3.session_scope import require_execution_session, state_tenant
 from app.agent_runtime.builder_v3.state import BuilderState
 from app.database import async_session as async_session_factory
+from app.database import tenant_session
 from app.exceptions import AppError
 from app.schemas.builder import (
     AgentCreationIntent,
@@ -54,7 +55,7 @@ async def _persist_session(
 ) -> None:
     """builder_session에 phase 결과를 저장하고 status=PREVIEW로 전환."""
     try:
-        async with async_session_factory() as db:
+        async with tenant_session(state_tenant(state), maker=async_session_factory) as db:
             row = await require_execution_session(db, state)
             payload: dict[str, Any] = draft.model_dump(mode="json")
             # image_url은 항상 명시적으로 set — None은 사용자가 phase6에서 skip한 의미.

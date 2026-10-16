@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 
+from app.database import SessionTenant
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.model import Model
@@ -86,7 +87,7 @@ async def test_persist_callback_seeds_once_then_dedups_without_reload(
 ) -> None:
     conv_id = await _seed_conversation()
     run_id = "run-cb-cache"
-    callback = build_persist_callback(conv_id, run_id)
+    callback = build_persist_callback(conv_id, run_id, tenant=SessionTenant(uuid.uuid4()))
 
     seed_calls = 0
     real_seed = trace_storage.load_persisted_event_ids
@@ -117,7 +118,7 @@ async def test_persist_callback_failure_resets_cache_then_recovers(
 ) -> None:
     conv_id = await _seed_conversation()
     run_id = "run-cb-retry"
-    callback = build_persist_callback(conv_id, run_id)
+    callback = build_persist_callback(conv_id, run_id, tenant=SessionTenant(uuid.uuid4()))
 
     seed_calls = 0
     real_seed = trace_storage.load_persisted_event_ids

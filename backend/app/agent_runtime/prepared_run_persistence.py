@@ -56,7 +56,8 @@ class PreparedRunPersistence:
 
     async def finalize_trace(self, run_id: uuid.UUID | str, **kwargs: Any) -> None:
         exact = self.capability.require_run(run_id)
-        await self.trace_finalizer(self.capability.binding.conversation_id, str(exact), **kwargs)
+        binding = self.capability.binding
+        await self.trace_finalizer(binding.conversation_id, str(exact), tenant=binding, **kwargs)
 
     def artifact_path(self, relative: str) -> Path:
         return self.capability.output_path(relative)

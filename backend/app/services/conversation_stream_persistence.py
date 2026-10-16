@@ -5,14 +5,13 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, cast
-
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from typing import Any
 
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.runtime_config import AgentConfig
 from app.authz.org_context import OrgContext
 from app.config import settings
+from app.database import TenantScoped, tenant_session, tenant_sessions
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun, utc_now_naive
@@ -31,11 +30,12 @@ def prepare_stream_context(
     conversation_id: uuid.UUID,
     *,
     run_id: str | None = None,
+    tenant: TenantScoped,
 ) -> StreamCtx:
     broker_registry.close_for_conversation(str(conversation_id))
     resolved_run_id = run_id or str(uuid.uuid4())
     broker = broker_registry.get_or_create(resolved_run_id, conversation_id=str(conversation_id))
-    persist_cb = build_persist_callback(conversation_id, resolved_run_id)
+    persist_cb = build_persist_callback(conversation_id, resolved_run_id, tenant=tenant)
     return StreamCtx(
         run_id=resolved_run_id,
         broker=broker,
@@ -44,6 +44,7 @@ def prepare_stream_context(
         msg_id_sink=[],
         error_sink=[],
         langfuse_sink=[],
+        tenant=tenant,
     )
 
 
@@ -60,7 +61,7 @@ def build_artifact_recorder(
     if not cfg.agent_id:
         return None
     return ArtifactDeltaRecorder(
-        session_factory=cast(async_sessionmaker[AsyncSession], stream_attr("async_session")),
+        session_factory=tenant_sessions(cfg.org_context, maker=stream_attr("async_session")),
         context=ArtifactRuntimeContext(
             conversation_id=conversation_id,
             org_context=cfg.org_context,
@@ -75,7 +76,7 @@ def build_artifact_recorder(
 
 
 def build_persist_callback(
-    conversation_id: uuid.UUID, run_id: str
+    conversation_id: uuid.UUID, run_id: str, *, tenant: TenantScoped
 ) -> Callable[[list[dict[str, Any]]], Awaitable[None]]:
     # BE-P5(d): run-scoped persisted-event-id 캐시. append_events 는 partial
     # flush 마다 누적 chunk 전체 id 를 재 SELECT 했다(긴 턴에서 O(T²/64)).
@@ -89,7 +90,7 @@ def build_persist_callback(
         if not events_chunk:
             return
         try:
-            async with stream_attr("async_session")() as session:
+            async with tenant_session(tenant, maker=stream_attr("async_session")) as session:
                 if seen_event_ids is None:
                     seen_event_ids = await trace_storage.load_persisted_event_ids(
                         session, assistant_msg_id=run_id
@@ -140,10 +141,11 @@ async def finalize_trace(
     success: bool,
     status: trace_storage.TraceStatus | None = None,
     run_status: str | None = None,
+    tenant: TenantScoped,
 ) -> None:
     final_status: trace_storage.TraceStatus = status or ("completed" if success else "failed")
     trace_record = langfuse_sink[0] if langfuse_sink else None
-    async with stream_attr("async_session")() as session:
+    async with tenant_session(tenant, maker=stream_attr("async_session")) as session:
         conversation = await session.get(Conversation, conversation_id)
         if conversation is None:
             return

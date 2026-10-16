@@ -247,9 +247,9 @@ real-participant U-05 study are future gates.
 - [x] B-10 — company context, suspension and deployment modes.
 - [ ] B-11 — company administration API. candidate - verification pending (아래 B-11/B-12 candidate 절 참조).
 - [ ] B-12 — SaaS platform company administration API. candidate - verification pending (아래 B-11/B-12 candidate 절 참조).
-- [ ] B-13 — tenant/platform sessions and derived task context.
+- [ ] B-13 — tenant/platform sessions and derived task context. implemented (behind DB_RLS_ENABLED, default off) - native PostgreSQL verification pending; interim platform scopes (heartbeat/shutdown, queue, eval worker, spend writer, health polls) and request-path identity scope + checkpointer gate handed to H-03/H-07/I-06.
 - [ ] B-15 — cookie, refresh revocation and token claim contracts.
-- [ ] B-16 — company data keys and ciphertext version 2.
+- [ ] B-16 — company data keys and ciphertext version 2. implemented (TENANT_DATA_KEYS_ENABLED, default off; keys in tenants.data_keys, format 0x02, 0x01 closure marker) - native PostgreSQL verification pending; key destruction caller is E08/I07.
 
 ## B-01 implementation (2026-10-10)
 

@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 from app.config import settings
-from app.database import async_session
+from app.database import platform_session
 from app.marketplace.k_skill_importer import SyncReport, run_sync
 
 logger = logging.getLogger(__name__)
@@ -202,7 +202,7 @@ async def _run(args: argparse.Namespace) -> SyncReport:
         )
         sys.exit(1)
 
-    async with async_session() as db:
+    async with platform_session("marketplace.k_skill_sync") as db:
         report = await run_sync(
             repo_dir=sync_dir,
             builtin_storage_dir=storage_dir,

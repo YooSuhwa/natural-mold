@@ -15,7 +15,6 @@ import asyncio
 import logging
 import tempfile
 import time
-import uuid
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +32,7 @@ from app.agent_runtime.prepared_run_write_capability import (
 )
 from app.agent_runtime.runtime_config import AgentConfig, PreparedRunBinding
 from app.config import settings
+from app.database import tenant_session
 from app.models.conversation_run import ConversationRun
 from app.services.prepared_run_accounting import book_prepared_usage
 
@@ -102,7 +102,7 @@ def gated_persist(
     from app.services.conversation_stream_persistence import finalize_trace
 
     async def while_owned(events_chunk: list[dict[str, Any]]) -> None:
-        if await _row_owned(binding.run_id, worker_instance_id):
+        if await _row_owned(binding, worker_instance_id):
             await callback(events_chunk)
         else:
             logger.warning("prepared run events dropped: row not owned run_id=%s", binding.run_id)
@@ -111,10 +111,11 @@ def gated_persist(
     return persistence.events_callback(run_id)
 
 
-async def _row_owned(run_id: uuid.UUID, worker_instance_id: str) -> bool:
+async def _row_owned(binding: PreparedRunBinding, worker_instance_id: str) -> bool:
     from app.services import conversation_stream_service as stream_service
 
-    async with stream_service.async_session() as db:
+    run_id = binding.run_id
+    async with tenant_session(binding, maker=stream_service.async_session) as db:
         row = (
             await db.execute(
                 select(ConversationRun.is_active, ConversationRun.worker_instance_id).where(

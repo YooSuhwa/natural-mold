@@ -15,7 +15,7 @@ from pathlib import Path
 
 import httpx
 
-from app.database import async_session
+from app.database import async_session, platform_session
 from app.services.agent_image_paths import agent_image_dir
 from app.services.image_service import (
     IMAGE_GEN_SYSTEM_PROMPT,
@@ -47,7 +47,8 @@ async def is_image_generation_available() -> bool:
     ADR-019: 운영자가 System LLM 설정에서 image 슬롯(credential + model)을
     선택했으면 True. node가 이 결과로 phase 진입을 결정한다.
     """
-    async with async_session() as db:
+    # TODO(8.9): filter tenant_id IS NULL once per-company system LLM overrides land.
+    async with platform_session("system_llm.resolve", maker=async_session) as db:
         try:
             await resolve_system_model(db, "image")
         except SystemModelNotConfiguredError:
@@ -97,7 +98,8 @@ async def generate_agent_image(
     Raises:
         ImageGenerationError: provider 미설정 또는 호출 실패
     """
-    async with async_session() as db:
+    # TODO(8.9): filter tenant_id IS NULL once per-company system LLM overrides land.
+    async with platform_session("system_llm.resolve", maker=async_session) as db:
         try:
             resolved = await resolve_system_model(db, "image")
         except SystemModelNotConfiguredError as exc:

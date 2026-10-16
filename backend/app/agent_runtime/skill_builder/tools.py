@@ -228,6 +228,7 @@ def build_skill_builder_tools(
             credential_subject_user_id=credential_subject_user_id,
             user_id=user_id,
             agent_id=agent_id,
+            org_context=context,
         )
         try:
             data_dir = Path(settings.data_root)
