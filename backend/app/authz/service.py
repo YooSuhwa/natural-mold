@@ -6,24 +6,27 @@ OpenFGA for enforced types and fails closed (503) when it is unavailable.
 Route-facing calls (``require``, ``require_cap``, ``filter_visible``,
 ``my_permissions``, ``can_request_access``) take the legacy answer and apply the
 mode themselves. The raw ``check``/``batch_check``/``list_objects`` calls are for
-enforce-mode code paths and the shadow recorder (via ``evaluate``) only.
-Capability checks are enforced only when ``organization`` is an enforced type.
+enforce-mode code paths and the shadow recorder (via ``evaluate``/``shadow_decide``)
+only; they live on ``AuthzDecisions`` (``service_core``), where every OpenFGA allow
+passes the revocation deny overlay (D12). Capability checks are enforced only when
+``organization`` is an enforced type.
 """
 
 import logging
-from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
 from uuid import UUID
 
 from app.authz import denials
-from app.authz.client import AuthzUnavailable, CheckQuery, Consistency, ListQuery
+from app.authz.client import AuthzUnavailable
 from app.authz.config import AuthzSettings
 from app.authz.org_context import OrgContext
 from app.authz.principal import Principal
+from app.authz.revocation_overlay import RevocationOverlay
+from app.authz.service_core import AuthzDecisions
 from app.authz.service_types import (
     AuthzClient,
     AuthzMode,
     AuthzNotConsulted,
+    ShadowDecision,
     ShadowHook,
     ShadowSample,
     Verdict,
@@ -34,9 +37,11 @@ from app.exceptions import AppError
 
 __all__ = [
     "AuthzClient",
+    "AuthzDecisions",
     "AuthzMode",
     "AuthzNotConsulted",
     "AuthzService",
+    "ShadowDecision",
     "ShadowHook",
     "ShadowSample",
     "Verdict",
@@ -45,84 +50,24 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
-def _utc_now() -> datetime:
-    return datetime.now(UTC)
-
-
-class AuthzService:
-    def __init__(
-        self,
-        client: AuthzClient,
-        *,
-        mode: AuthzMode,
-        enforce_types: frozenset[str] = frozenset(),
-        shadow_hook: ShadowHook | None = None,
-        clock: Callable[[], datetime] = _utc_now,
-    ) -> None:
-        self.mode = mode
-        self.enforce_types = enforce_types
-        self._client = client
-        self._shadow_hook = shadow_hook
-        self._clock = clock
-
+class AuthzService(AuthzDecisions):
     @classmethod
     def from_settings(
-        cls, client: AuthzClient, settings: AuthzSettings, *, shadow_hook: ShadowHook | None = None
+        cls,
+        client: AuthzClient,
+        settings: AuthzSettings,
+        *,
+        shadow_hook: ShadowHook | None = None,
+        overlay: RevocationOverlay | None = None,
     ) -> "AuthzService":
         types = parse_enforce_types(settings.authz_enforce_types)
-        return cls(client, mode=settings.authz_mode, enforce_types=types, shadow_hook=shadow_hook)
-
-    def enforces(self, resource_type: str) -> bool:
-        """An empty AUTHZ_ENFORCE_TYPES enforces every type."""
-        return self.mode == "enforce" and (
-            not self.enforce_types or resource_type in self.enforce_types
+        return cls(
+            client,
+            mode=settings.authz_mode,
+            enforce_types=types,
+            shadow_hook=shadow_hook,
+            overlay=overlay,
         )
-
-    def condition_context(self, p: Principal) -> dict[str, int | str]:
-        """Injected into every query so conditional tuples are always evaluable."""
-        now = self._clock().astimezone(UTC).replace(microsecond=0, tzinfo=None)
-        return {
-            "current_time": f"{now.isoformat()}Z",
-            "run_source": p.run_source,
-            "user_ip": p.user_ip or "0.0.0.0",  # noqa: S104 - plan 7.3 sentinel, not a bind
-        }
-
-    def _consulted(self) -> AuthzClient:
-        if self.mode == "legacy":
-            raise AuthzNotConsulted("AUTHZ_MODE=legacy does not consult OpenFGA")
-        return self._client
-
-    def _query(self, p: Principal, permission: str, obj: str) -> CheckQuery:
-        return CheckQuery(
-            user=p.fga(), relation=permission, object=obj, context=self.condition_context(p)
-        )
-
-    async def check(
-        self,
-        p: Principal,
-        permission: str,
-        obj: str,
-        *,
-        consistency: Consistency = "MINIMIZE_LATENCY",
-    ) -> bool:
-        query = self._query(p, permission, obj)
-        return await self._consulted().check(query, consistency=consistency)
-
-    async def batch_check(
-        self, p: Principal, items: Sequence[tuple[str, str]]
-    ) -> dict[tuple[str, str], bool]:
-        """Duplicates are merged; the client splits into 50-item correlated batches."""
-        unique = list(dict.fromkeys(items))
-        queries = [self._query(p, permission, obj) for permission, obj in unique]
-        answers = await self._consulted().batch_check(queries)
-        return dict(zip(unique, answers, strict=True))
-
-    async def list_objects(self, p: Principal, permission: str, type_: str) -> set[str]:
-        """Small sets only; pages use candidates + filter_visible (plan 8.10)."""
-        query = ListQuery(
-            user=p.fga(), relation=permission, type=type_, context=self.condition_context(p)
-        )
-        return set(await self._consulted().list_objects(query))
 
     async def filter_visible(
         self, p: Principal, permission: str, objs: list[str], *, legacy: list[str]
@@ -157,23 +102,6 @@ class AuthzService:
             return await self.batch_check(p, items)
         except AuthzUnavailable as error:
             raise denials.authz_unavailable() from error
-
-    async def evaluate(
-        self,
-        p: Principal,
-        permission: str,
-        obj: str,
-        *,
-        min_visible: str,
-        resource_org_id: UUID | None,
-    ) -> Verdict:
-        """OpenFGA verdict per 8.4; missing/foreign resources are decided before any call."""
-        if resource_org_id is None or resource_org_id != p.org_id:
-            return Verdict.NOT_FOUND
-        answers = await self.batch_check(p, [(min_visible, obj), (permission, obj)])
-        if not answers[(min_visible, obj)]:
-            return Verdict.NOT_FOUND
-        return Verdict.ALLOW if answers[(permission, obj)] else Verdict.FORBIDDEN
 
     async def require(
         self,

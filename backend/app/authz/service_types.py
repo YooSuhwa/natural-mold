@@ -48,6 +48,18 @@ class ShadowSample:
 ShadowHook = Callable[[ShadowSample], None]
 
 
+@dataclass(frozen=True, slots=True)
+class ShadowDecision:
+    """OpenFGA's answer for a shadow sample (C-06 recorder).
+
+    ``overlay_vetoed`` marks an OpenFGA allow refused only by a pending revocation
+    marker; C-06 excludes these from legacy/OpenFGA diffs.
+    """
+
+    verdict: Verdict
+    overlay_vetoed: bool = False
+
+
 class AuthzNotConsulted(RuntimeError):
     """OpenFGA was asked for an answer while the installation runs in legacy mode."""
 

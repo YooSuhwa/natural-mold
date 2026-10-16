@@ -17,6 +17,9 @@ class Principal:
     org_id: UUID
     run_source: RunSource = "CHAT"
     user_ip: str | None = None
+    # An agent principal acting for a user (delegated run): revocations of that user
+    # also refuse the agent's decisions (D12 deny overlay).
+    acting_user_id: UUID | None = None
 
     def __post_init__(self) -> None:
         """Unparseable client IPs fall back to the 7.3 sentinel instead of failing a query."""
@@ -28,6 +31,11 @@ class Principal:
 
     def fga(self) -> str:
         return f"{self.kind}:{self.id}"
+
+    def revocation_subjects(self) -> frozenset[str]:
+        """Subjects whose pending revocation markers apply to this principal."""
+        acting = {f"user:{self.acting_user_id}"} if self.acting_user_id else set()
+        return frozenset({self.fga(), *acting})
 
     @classmethod
     def for_user(cls, ctx: OrgContext, *, user_ip: str | None = None) -> "Principal":
