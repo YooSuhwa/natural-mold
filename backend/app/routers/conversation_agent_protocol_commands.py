@@ -49,6 +49,31 @@ from app.routers.conversation_agent_protocol_runtime import (
     command_multitask_strategy,
     input_preview,
 )
+from app.routers.conversation_protocol_fork import (
+    _fork_overwrite_input,
+    _handle_input_respond_command,
+    _message_from_protocol_mapping,
+    _messages_from_protocol_input,
+    seed_run_start,
+)
+from app.routers.conversation_protocol_persistence import (
+    persist_direct_run_start,
+    persist_queued_run_start,
+)
+from app.routers.conversation_protocol_response import (
+    _RESUME_INTERRUPT_WAIT_INTERVAL_S,
+    _RESUME_INTERRUPT_WAIT_TIMEOUT_S,
+    _wait_for_interrupted_parent_run,
+    dispatch_direct_run_start,
+    dispatch_queued_run_start,
+    finalize_direct_run_start,
+)
+from app.routers.conversation_protocol_start import (
+    RunStartEntry,
+    _resource_context_error,
+    lock_run_start,
+    validate_run_start,
+)
 from app.routers.session_consent_scope import SessionConsentPayload, SessionConsentTarget
 from app.schemas.conversation_scope import ConversationAutoTitle, ConversationPromotion
 from app.services import chat_service, conversation_run_queue_service, conversation_run_service
@@ -73,46 +98,43 @@ from app.services.conversation_stream_service import resolve_agent_context
 StartConversationRun = Callable[..., Awaitable[Any]]
 AgentStreamExecutor = Callable[..., Any]
 
-# M8-2 — 인터럽트 SSE 이벤트는 스트림 도중 즉시 클라이언트에 flush되지만,
-# 부모 run의 "interrupted" 상태 커밋은 워커 finalize 단계다. 카드가 보이자마자
-# 승인하면 전이 전에 resume이 도착할 수 있어, 활성 run이 전이를 마칠 때까지
-# 짧게 기다린다 (활성 run이 아예 없으면 진짜 not-found — 즉시 포기).
-_RESUME_INTERRUPT_WAIT_TIMEOUT_S = 2.0
-_RESUME_INTERRUPT_WAIT_INTERVAL_S = 0.05
-
-
-def _resource_context_error(command: AgentCommandRequest, exc: HTTPException) -> JSONResponse:
-    code = "RESOURCE_CONTEXT_NOT_FOUND" if exc.status_code == 404 else "RESOURCE_CONTEXT_INVALID"
-    return command_error(
-        command,
-        code=code,
-        message=str(exc.detail),
-        status_code=exc.status_code,
-    )
-
-
-async def _wait_for_interrupted_parent_run(
-    db: AsyncSession,
-    *,
-    conversation_id: uuid.UUID,
-    context: OrgContext,
-) -> Any:
-    deadline = time.monotonic() + _RESUME_INTERRUPT_WAIT_TIMEOUT_S
-    while True:
-        active = await conversation_run_service.get_active_run(
-            db, conversation_id=conversation_id, context=context
-        )
-        if active is None or time.monotonic() >= deadline:
-            # 전이 직후 창일 수 있으니 마지막으로 한 번 더 조회하고 포기한다.
-            return await conversation_run_service.get_latest_interrupted_run(
-                db, conversation_id=conversation_id, context=context
-            )
-        await asyncio.sleep(_RESUME_INTERRUPT_WAIT_INTERVAL_S)
-        run = await conversation_run_service.get_latest_interrupted_run(
-            db, conversation_id=conversation_id, context=context
-        )
-        if run is not None:
-            return run
+__all__ = [
+    "AIMessage",
+    "BaseMessage",
+    "HumanMessage",
+    "SystemMessage",
+    "QueuedResourceContextInput",
+]
+__all__ += ["ConversationAutoTitle", "ConversationPromotion", "ResourceContextScope"]
+__all__ += ["SUPPORTED_MULTITASK_STRATEGIES", "_fork_overwrite_input", "_resource_context_error"]
+__all__ += ["_message_from_protocol_mapping", "_messages_from_protocol_input"]
+__all__ += ["apply_frozen_resource_context", "attachment_ids_from_protocol_input", "checkpoint_id"]
+__all__ += ["command_multitask_strategy", "conversation_run_queue_service", "input_preview"]
+__all__ += ["freeze_queued_resource_context_payload", "freeze_resource_context_payload"]
+__all__ += ["frozen_resource_context_from_payload", "input_without_protocol_attachments"]
+__all__ += ["record_conversation_run_audit", "resource_context_user_message"]
+__all__ += [
+    "_RESUME_INTERRUPT_WAIT_INTERVAL_S",
+    "_RESUME_INTERRUPT_WAIT_TIMEOUT_S",
+    "asyncio",
+    "time",
+]
+__all__ += ["_wait_for_interrupted_parent_run", "RedactedResumeArgsUnavailable", "uuid"]
+__all__ += ["SessionConsentPayload", "SessionConsentTarget", "apply_session_consent_decisions"]
+__all__ += ["build_resume_payload", "resume_run_interrupt_id", "validate_resume_payload"]
+__all__ += [
+    "interrupts_from_tasks",
+    "load_pending_interrupt_tasks",
+    "restore_redacted_resume_payload",
+]
+__all__ += ["accept_owned_execution", "OwnedExecutionRequest", "ConflictError", "HTTPException"]
+__all__ += [
+    "cfg_agent_uuid",
+    "command_success",
+    "conversation_run_service",
+    "resolve_agent_context",
+]
+__all__ += ["record_conversation_audit", "require_conversation_agent_id"]
 
 
 async def _handle_run_start_command(
@@ -126,507 +148,39 @@ async def _handle_run_start_command(
     start_run: StartConversationRun,
     executor_fn: AgentStreamExecutor,
 ) -> JSONResponse:
-    strategy = command_multitask_strategy(command)
-    if strategy not in SUPPORTED_MULTITASK_STRATEGIES:
-        return command_error(
-            command,
-            code="UNSUPPORTED_MULTITASK_STRATEGY",
-            message=f"Unsupported multitask strategy: {strategy}",
-        )
-
-    input_payload = command.params.input or {}
-    attachment_ids = attachment_ids_from_protocol_input(input_payload)
-    resolved_checkpoint_id = checkpoint_id(command)
-    runtime_input_payload = input_without_protocol_attachments(input_payload)
-    context_scope = ResourceContextScope(
-        context=context,
-        agent_id=require_conversation_agent_id(conversation),
-        conversation_id=conversation.id,
-    )
-    direct_context = None
-    if strategy == "reject":
-        try:
-            runtime_input_payload = await freeze_resource_context_payload(
-                db, context_scope, runtime_input_payload
-            )
-        except HTTPException as exc:
-            return _resource_context_error(command, exc)
-        direct_context = frozen_resource_context_from_payload(runtime_input_payload)
-    run_source = "chat"
-    if strategy != "reject" and resolved_checkpoint_id:
-        return command_error(
-            command,
-            code="QUEUED_FORK_UNSUPPORTED",
-            message="Queued edit and regenerate requests are not supported.",
-        )
-    if resolved_checkpoint_id:
-        append_messages = _messages_from_protocol_input(runtime_input_payload)
-        runtime_input_payload = await _fork_overwrite_input(
-            conversation_id=conversation.id,
-            checkpoint_id=resolved_checkpoint_id,
-            append_messages=append_messages,
-            drop_trailing_assistant=not append_messages and not attachment_ids,
-        )
-        if direct_context is not None:
-            runtime_input_payload = apply_frozen_resource_context(
-                runtime_input_payload, direct_context
-            )
-        run_source = "edit" if append_messages or attachment_ids else "regenerate"
-    preview = input_preview(input_payload)
-    try:
-        await chat_service.prepare_executable_conversation(db, conversation.id, context)
-        cfg = await resolve_agent_context(
-            db,
-            conversation.id,
-            user,
-            checkpoint_id=resolved_checkpoint_id,
-            context=context,
-        )
-        await db.commit()
-    except ConflictError as exc:
-        return command_error(
-            command,
-            code=exc.code,
-            message=exc.message,
-            status_code=exc.status,
-        )
-    if strategy != "reject":
-        pending_interrupt = await conversation_run_service.get_latest_interrupted_run(
-            db,
-            conversation_id=conversation.id,
-            context=context,
-        )
-        if pending_interrupt is not None:
-            return command_error(
-                command,
-                code="QUEUE_HITL_PENDING",
-                message="Resolve the pending approval before queueing another input.",
-            )
-        client_request_id = command.params.client_request_id or str(
-            command.id if command.id is not None else uuid.uuid4()
-        )
-        try:
-            runtime_input_payload = await freeze_queued_resource_context_payload(
-                db,
-                context_scope,
-                QueuedResourceContextInput(
-                    conversation_id=conversation.id,
-                    client_request_id=client_request_id,
-                    input_payload=runtime_input_payload,
-                ),
-            )
-        except HTTPException as exc:
-            return _resource_context_error(command, exc)
-        enqueue_result = await conversation_run_queue_service.enqueue_input_with_result(
-            db,
-            conversation_id=conversation.id,
-            context=context,
-            client_request_id=client_request_id,
-            source="chat",
-            input_payload=runtime_input_payload,
-            attachment_ids=attachment_ids,
-            checkpoint_id=None,
-            priority=100 if strategy == "interrupt" else 0,
-        )
-        queued = enqueue_result.input
-        if conversation.source == "draft":
-            await chat_service.promote_draft_conversation(
-                db,
-                ConversationPromotion(conversation.id, context, preview),
-            )
-        elif preview:
-            await chat_service.maybe_set_auto_title(
-                db, ConversationAutoTitle(conversation.id, context, preview)
-            )
-        await chat_service.touch_conversation(db, conversation.id, context)
-        await record_conversation_audit(
-            db,
-            user=user,
-            request=request,
-            action="conversation.message_send",
-            conversation_id=conversation.id,
-            agent_id=require_conversation_agent_id(conversation),
-            metadata={
-                "content_length": len(preview or ""),
-                "attachment_count": len(attachment_ids),
-                "source": "langgraph_protocol",
-            },
-        )
-        if attachment_ids:
-            await chat_service.link_attachments_to_conversation(
-                db,
-                conversation_id=conversation.id,
-                context=context,
-                attachment_ids=attachment_ids,
-            )
-            if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
-                from app.services import skill_draft_workspace
-
-                await skill_draft_workspace.copy_conversation_attachments_to_inputs(
-                    db,
-                    storage_path=cfg.draft_workspace_path,
-                    attachment_ids=attachment_ids,
-                    context=context,
-                )
-        active = await conversation_run_service.get_active_run(
-            db,
-            conversation_id=conversation.id,
-            context=context,
-        )
-        if strategy == "interrupt" and enqueue_result.created and active is not None:
-            active = await conversation_run_service.get_run_for_user(
-                db,
-                conversation_id=conversation.id,
-                run_id=active.id,
-                context=context,
-                for_update=True,
-            )
-            if active is not None:
-                await conversation_run_service.request_cancel_run(
-                    db,
-                    active,
-                    reason="steer",
-                )
-                await record_conversation_run_audit(
-                    db,
-                    action="conversation.run_steer_request",
-                    run=active,
-                    user=user,
-                    request=request,
-                    status="canceling",
-                )
-        await db.commit()
-
-        if strategy == "interrupt" and enqueue_result.created and active is not None:
-            from app.services.conversation_run_worker import get_run_task_registry
-
-            get_run_task_registry().request_cancel(active.id, reason="steer")
-        else:
-            from app.services.conversation_run_queue_worker import (
-                dispatch_next_for_conversation,
-            )
-
-            await dispatch_next_for_conversation(conversation.id)
-            await db.refresh(queued)
-        return command_success(
-            command,
-            conversation=conversation,
-            thread_id=str(conversation.id),
-            run_id=str(queued.run_id) if queued.run_id is not None else None,
-            input_id=str(queued.id),
-            input_status=queued.status,
-            revision=queued.revision,
-            position=queued.position,
-        )
-    try:
-        accepted = await accept_owned_execution(
-            db,
-            OwnedExecutionRequest(
-                conversation_id=conversation.id,
-                root_agent_id=cfg_agent_uuid(conversation),
-                context=context,
-                source="chat",
-                run_source=run_source,
-                input_preview=preview,
-                run_metadata={
-                    "protocol": "langgraph_v3",
-                    "command_id": command.id,
-                    "assistant_id": command.params.assistant_id,
-                    "checkpoint_id": resolved_checkpoint_id,
-                },
-            ),
-        )
-        run = await conversation_run_service.get_run_for_user(
-            db,
-            conversation_id=conversation.id,
-            run_id=accepted.run_id,
-            context=context,
-        )
-        if run is None:
-            raise RuntimeError("accepted conversation run was not persisted")
-        if resolved_checkpoint_id is None:
-            await conversation_run_queue_service.persist_direct_input(
-                db,
-                context=context,
-                run=run,
-                client_request_id=command.params.client_request_id or str(uuid.uuid4()),
-                input_payload=runtime_input_payload,
-                attachment_ids=attachment_ids,
-            )
-    except ConflictError as exc:
-        return command_error(
-            command,
-            code=exc.code,
-            message=exc.message,
-            status_code=exc.status,
-        )
-    except HTTPException as exc:
-        if exc.status_code == 409:
-            return command_error(
-                command,
-                code="MULTITASK_REJECTED",
-                message=str(exc.detail),
-            )
-        raise
-    run_id = run.id
-    if conversation.source == "draft":
-        await chat_service.promote_draft_conversation(
-            db,
-            ConversationPromotion(conversation.id, context, preview),
-        )
-    elif preview:
-        await chat_service.maybe_set_auto_title(
-            db, ConversationAutoTitle(conversation.id, context, preview)
-        )
-    await chat_service.touch_conversation(db, conversation.id, context)
-    await record_conversation_audit(
-        db,
-        user=user,
-        request=request,
-        action="conversation.message_send",
-        conversation_id=conversation.id,
-        agent_id=require_conversation_agent_id(conversation),
-        metadata={
-            "content_length": len(preview or ""),
-            "attachment_count": len(attachment_ids),
-            "source": "langgraph_protocol",
-        },
-    )
-    if attachment_ids:
-        await chat_service.link_attachments_to_conversation(
-            db,
-            conversation_id=conversation.id,
-            context=context,
-            attachment_ids=attachment_ids,
-        )
-        if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
-            # 빌더 챗 (AD-2/§6-3): 이번 턴 첨부를 드래프트 워크스페이스
-            # ``inputs/``로 **복사**한다 — uploads 마운트 금지.
-            from app.services import skill_draft_workspace
-
-            await skill_draft_workspace.copy_conversation_attachments_to_inputs(
-                db,
-                storage_path=cfg.draft_workspace_path,
-                attachment_ids=attachment_ids,
-                context=context,
-            )
-    await db.commit()
-
-    runtime_input_payload = resource_context_user_message(runtime_input_payload)
-
-    await start_run(
-        run_id=run_id,
-        conversation_id=conversation.id,
-        cfg=cfg,
-        user=user,
-        input_payload=runtime_input_payload,
-        moldy_source=run_source,
-        executor_fn=executor_fn,
-        attachment_ids=attachment_ids,
-    )
-    return command_success(
-        command,
+    entry = RunStartEntry(
         conversation=conversation,
-        thread_id=str(conversation.id),
-        run_id=str(run_id),
-    )
-
-
-async def _fork_overwrite_input(
-    *,
-    conversation_id: uuid.UUID,
-    checkpoint_id: str,
-    append_messages: list[BaseMessage],
-    drop_trailing_assistant: bool = False,
-) -> dict[str, Any]:
-    from app.agent_runtime.checkpointer import get_checkpointer
-    from app.services.thread_branch_service import build_fork_overwrite_input
-
-    return await build_fork_overwrite_input(
-        get_checkpointer(),
-        str(conversation_id),
-        checkpoint_id,
-        append=append_messages,
-        drop_trailing_assistant=drop_trailing_assistant,
-    )
-
-
-def _messages_from_protocol_input(input_payload: dict[str, Any]) -> list[BaseMessage]:
-    messages = input_payload.get("messages")
-    if not isinstance(messages, list):
-        return []
-
-    converted: list[BaseMessage] = []
-    for raw in messages:
-        if not isinstance(raw, dict):
-            continue
-        msg = _message_from_protocol_mapping(raw)
-        if msg is not None:
-            converted.append(msg)
-    return converted
-
-
-def _message_from_protocol_mapping(raw: dict[str, Any]) -> BaseMessage | None:
-    role = raw.get("role") or raw.get("type")
-    content = raw.get("content", "")
-    if not isinstance(content, str | list):
-        content = str(content)
-
-    message_id = raw.get("id")
-    kwargs = {"id": message_id} if isinstance(message_id, str) and message_id else {}
-
-    if role in {"human", "user"}:
-        return HumanMessage(content=content, **kwargs)
-    if role in {"ai", "assistant"}:
-        return AIMessage(content=content, **kwargs)
-    if role == "system":
-        return SystemMessage(content=content, **kwargs)
-    return None
-
-
-async def _handle_input_respond_command(
-    *,
-    conversation: Conversation,
-    command: AgentCommandRequest,
-    request: Request,
-    db: AsyncSession,
-    user: CurrentUser,
-    context: OrgContext,
-    start_run: StartConversationRun,
-    executor_fn: AgentStreamExecutor,
-) -> JSONResponse:
-    resume = build_resume_payload(command.params)
-    if not resume.interrupt_id:
-        return command_error(
-            command,
-            code="INVALID_INPUT_RESPOND",
-            message="input.respond requires interrupt_id or responses[0].interrupt_id",
-        )
-
-    parent_run = await conversation_run_service.get_latest_interrupted_run(
-        db,
-        conversation_id=conversation.id,
-        context=context,
-    )
-    if parent_run is None:
-        parent_run = await _wait_for_interrupted_parent_run(
-            db, conversation_id=conversation.id, context=context
-        )
-        if parent_run is not None:
-            # 워커 전이는 별도 세션 커밋이라, 대기 초반에 identity map에 적재된
-            # 인스턴스는 status/interrupt_id가 stale일 수 있다(R2) — PK는 정확하나
-            # 이후 필드를 읽는 코드가 오동작하지 않게 새로고침한다.
-            await db.refresh(parent_run)
-    if parent_run is None:
-        return command_error(
-            command,
-            code="RESUME_NOT_FOUND",
-            message="Resume run requires an interrupted parent run",
-        )
-
-    tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id, context=context)
-    validation_error = validate_resume_payload(resume, interrupts_from_tasks(tasks))
-    if validation_error is not None:
-        return command_error(
-            command,
-            code=validation_error.code,
-            message=validation_error.message,
-        )
-    try:
-        input_payload = await restore_redacted_resume_payload(
-            conversation=conversation,
-            resume=resume,
-            pending_interrupts=interrupts_from_tasks(tasks),
-        )
-    except RedactedResumeArgsUnavailable:
-        return command_error(
-            command,
-            code="REDACTED_EDIT_REQUIRES_REPLACEMENT",
-            message="Edited tool args still contain redacted placeholders that cannot be restored",
-        )
-    run_interrupt_id = resume_run_interrupt_id(resume, parent_run.interrupt_id)
-
-    try:
-        await chat_service.prepare_executable_conversation(db, conversation.id, context)
-    except ConflictError as exc:
-        return command_error(
-            command,
-            code=exc.code,
-            message=exc.message,
-            status_code=exc.status,
-        )
-    # Session consent must be durable before the resumed Agent is rebuilt.
-    consented_tools = await apply_session_consent_decisions(
-        db,
-        SessionConsentTarget(conversation.id, context),
-        SessionConsentPayload(resume, interrupts_from_tasks(tasks)),
-    )
-    await db.commit()
-    await chat_service.require_executable_conversation(db, conversation.id, context)
-    cfg = await resolve_agent_context(db, conversation.id, user, context=context)
-    await db.commit()
-
-    try:
-        accepted = await accept_owned_execution(
-            db,
-            OwnedExecutionRequest(
-                conversation_id=conversation.id,
-                root_agent_id=cfg_agent_uuid(conversation),
-                context=context,
-                source="chat",
-                run_source="resume",
-                input_preview=None,
-                parent_run_id=parent_run.id,
-                interrupt_id=run_interrupt_id,
-                run_metadata={
-                    "protocol": "langgraph_v3",
-                    "command_id": command.id,
-                    "parent_run_id": str(parent_run.id),
-                },
-            ),
-        )
-    except ConflictError as exc:
-        return command_error(
-            command,
-            code=exc.code,
-            message=exc.message,
-            status_code=exc.status,
-        )
-    except HTTPException as exc:
-        if exc.status_code == 409:
-            return command_error(command, code="MULTITASK_REJECTED", message=str(exc.detail))
-        raise
-    await chat_service.touch_conversation(db, conversation.id, context)
-    await record_conversation_audit(
-        db,
-        user=user,
+        command=command,
         request=request,
-        action="conversation.message_resume",
-        conversation_id=conversation.id,
-        agent_id=require_conversation_agent_id(conversation),
-        metadata={
-            "source": "langgraph_protocol",
-            "interrupt_id": run_interrupt_id,
-            **({"consented_tools": consented_tools} if consented_tools else {}),
-        },
-    )
-    run_id = accepted.run_id
-    await db.commit()
-
-    await start_run(
-        run_id=run_id,
-        conversation_id=conversation.id,
-        cfg=cfg,
+        db=db,
         user=user,
-        input_payload=input_payload,
-        moldy_source="resume",
+        context=context,
+        start_run=start_run,
         executor_fn=executor_fn,
     )
-    return command_success(
-        command,
-        conversation=conversation,
-        thread_id=str(conversation.id),
-        run_id=str(run_id),
+    validated = await validate_run_start(entry)
+    if isinstance(validated, JSONResponse):
+        return validated
+    runtime_input_payload, run_source = await seed_run_start(entry, validated)
+    preview = input_preview(validated.input_payload)
+    cfg = await lock_run_start(entry, validated.resolved_checkpoint_id)
+    if isinstance(cfg, JSONResponse):
+        return cfg
+    if validated.strategy != "reject":
+        queued_start = await persist_queued_run_start(
+            entry, validated, runtime_input_payload, preview, cfg
+        )
+        if isinstance(queued_start, JSONResponse):
+            return queued_start
+        return await dispatch_queued_run_start(entry, validated.strategy, queued_start)
+    run = await persist_direct_run_start(
+        entry, validated, run_source, preview, runtime_input_payload
+    )
+    if isinstance(run, JSONResponse):
+        return run
+    run_id = await finalize_direct_run_start(entry, validated.attachment_ids, preview, cfg, run)
+    return await dispatch_direct_run_start(
+        entry, run_id, cfg, runtime_input_payload, run_source, validated.attachment_ids
     )
 
 

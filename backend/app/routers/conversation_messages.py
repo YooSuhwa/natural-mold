@@ -33,6 +33,20 @@ from app.error_codes import (
 )
 from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
+from app.routers import chat_resume_entries, chat_run_entries
+from app.routers.chat_resume_entries import (
+    _PROTOCOL_NON_PENDING_TERMINAL_EVENTS,
+    _is_pending_interrupt,
+    _is_protocol_terminal_event,
+    _latest_pending_interrupt_trace,
+    _legacy_interrupt_id,
+    _log_resume_reject,
+)
+from app.routers.chat_run_entries import (
+    _broker_resume_generator,
+    _normalize_event_id,
+    _replay_resume_generator,
+)
 from app.schemas.conversation import MessageCreate, MessagesEnvelope, ResumeRequest
 from app.schemas.conversation_run import ConversationRunHistoryResponse
 from app.schemas.conversation_scope import ConversationAutoTitle
@@ -56,9 +70,18 @@ from app.services.conversation_stream_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["conversations"])
-_PROTOCOL_NON_PENDING_TERMINAL_EVENTS = frozenset(
-    {"completed", "complete", "canceled", "cancelled", "failed", "error", "stale"}
-)
+
+__all__ = ["AsyncGenerator", "EventBroker", "HTTPException", "Iterable", "JsonValue", "Mapping"]
+__all__ += ["ConversationAutoTitle", "MessageEvent", "OwnedExecutionRequest", "event_names"]
+__all__ += ["_PROTOCOL_NON_PENDING_TERMINAL_EVENTS", "_broker_resume_generator", "agent_not_found"]
+__all__ += ["_is_pending_interrupt", "_is_protocol_terminal_event", "_legacy_interrupt_id"]
+__all__ += ["_latest_pending_interrupt_trace", "_log_resume_reject", "_normalize_event_id"]
+__all__ += ["_replay_resume_generator", "accept_owned_execution", "broker_registry", "chat_secrets"]
+__all__ += ["conversation_not_found", "execute_agent_stream", "format_sse", "resume_agent_stream"]
+__all__ += ["load_private_conversation", "project_and_redact_protocol_data", "resume_not_found"]
+__all__ += ["record_conversation_audit", "require_conversation_agent_id", "resolve_agent_context"]
+__all__ += ["resume_interrupt_pending", "slice_events_after", "sse_response", "trace_storage"]
+__all__ += ["start_conversation_run"]
 
 
 def _cfg_agent_uuid(cfg: Any):
@@ -77,76 +100,8 @@ async def start_conversation_with_message(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    title = chat_service.conversation_title_from_content(data.content)
-    conv = await chat_service.create_conversation(db, agent_id, title, context=context)
-    # Config hydration performs its own lifecycle check and therefore starts from
-    # a clean transaction. The final acceptance below rechecks after hydration.
-    await db.commit()
-    await chat_service.prepare_executable_conversation(db, conv.id, context)
-    cfg = await resolve_agent_context(db, conv.id, user, context=context)
-    await db.commit()
-    accepted = await accept_owned_execution(
-        db,
-        OwnedExecutionRequest(
-            conversation_id=conv.id,
-            root_agent_id=agent_id,
-            context=context,
-            source="chat",
-            run_source="start",
-            input_preview=data.content,
-        ),
-    )
-    await chat_service.touch_conversation(db, conv.id, context)
-
-    if data.attachments:
-        await chat_service.link_attachments_to_conversation(
-            db,
-            conversation_id=conv.id,
-            context=context,
-            attachment_ids=[a.id for a in data.attachments],
-        )
-
-    await record_conversation_audit(
-        db,
-        user=user,
-        request=request,
-        action="conversation.create",
-        conversation_id=conv.id,
-        agent_id=agent_id,
-        title=conv.title,
-    )
-    await record_conversation_audit(
-        db,
-        user=user,
-        request=request,
-        action="conversation.message_send",
-        conversation_id=conv.id,
-        agent_id=require_conversation_agent_id(conv),
-        title=conv.title,
-        metadata={
-            "content_length": len(data.content),
-            "attachment_count": len(data.attachments or []),
-        },
-    )
-    run_id = accepted.run_id
-    await db.commit()
-
-    ctx = await start_conversation_run(
-        run_id=run_id,
-        conversation_id=conv.id,
-        cfg=cfg,
-        user=user,
-        input_payload=[{"role": "user", "content": data.content}],
-        moldy_source="chat",
-        executor_fn=execute_agent_stream,
-        attachment_ids=[a.id for a in data.attachments] if data.attachments else None,
-    )
-    return sse_response(
-        _broker_resume_generator(ctx.broker, None),
-        extra_headers={
-            "X-Run-Id": ctx.run_id,
-            "X-Conversation-Id": str(conv.id),
-        },
+    return await chat_run_entries.start_conversation_with_message(
+        agent_id=agent_id, data=data, request=request, db=db, user=user, context=context
     )
 
 
@@ -230,131 +185,6 @@ async def list_messages(
     )
 
 
-def _is_pending_interrupt(events: list[dict[str, Any]] | None) -> bool:
-    if not events:
-        return False
-    pending = False
-    for event in events:
-        if event.get("event") == event_names.MESSAGE_END:
-            data = event.get("data")
-            status = data.get("status") if isinstance(data, Mapping) else None
-            # An interrupted owner terminal closes the transport, but the
-            # graph is still waiting for a resume input. Legacy message_end
-            # events without an explicit status keep their historical
-            # non-pending interpretation.
-            if status != "interrupted":
-                pending = False
-            continue
-        if _is_protocol_terminal_event(event):
-            pending = False
-            continue
-        if event.get("event") == event_names.INTERRUPT or event.get("method") == "input.requested":
-            pending = True
-    return pending
-
-
-def _is_protocol_terminal_event(event: dict[str, Any]) -> bool:
-    if event.get("method") != "lifecycle":
-        return False
-    data = event.get("data")
-    if not isinstance(data, Mapping):
-        return False
-    status = data.get("event") or data.get("status")
-    return status in _PROTOCOL_NON_PENDING_TERMINAL_EVENTS
-
-
-async def _latest_pending_interrupt_trace(
-    db: AsyncSession,
-    conversation_id: uuid.UUID,
-) -> MessageEvent | None:
-    records = await trace_storage.get_traces_for_conversation(db, conversation_id)
-    for record in reversed(records):
-        if _is_pending_interrupt(record.events):
-            return record
-    return None
-
-
-def _legacy_interrupt_id(record: MessageEvent) -> str:
-    return f"legacy:{record.assistant_msg_id}"
-
-
-def _normalize_event_id(raw: object) -> str | None:
-    return raw if isinstance(raw, str) and raw else None
-
-
-async def _broker_resume_generator(
-    broker: EventBroker,
-    after_id: str | None,
-    *,
-    secret_values: Iterable[str] | None = None,
-) -> AsyncGenerator[str, None]:
-    async for evt in broker.subscribe(after_id=after_id):
-        yield format_sse(
-            evt["event"],
-            project_and_redact_protocol_data(
-                evt["event"], evt["data"], secret_values=secret_values
-            ),
-            event_id=_normalize_event_id(evt.get("id")),
-        )
-
-
-async def _replay_resume_generator(
-    record: MessageEvent,
-    after_id: str | None,
-    *,
-    mark_stale: bool,
-    secret_values: Iterable[str] | None = None,
-) -> AsyncGenerator[str, None]:
-    last_emitted_id: str | None = None
-    for evt in slice_events_after(record.events or [], after_id):
-        evt_name = evt.get("event")
-        if not isinstance(evt_name, str) or not evt_name:
-            logger.warning(
-                "stream_resume skip corrupt evt msg_id=%s evt_id=%s",
-                record.assistant_msg_id,
-                evt.get("id"),
-            )
-            continue
-        emitted_id = _normalize_event_id(evt.get("id"))
-        yield format_sse(
-            evt_name,
-            project_and_redact_protocol_data(
-                evt_name,
-                evt.get("data") or {},
-                secret_values=secret_values,
-            ),
-            event_id=emitted_id,
-        )
-        if emitted_id:
-            last_emitted_id = emitted_id
-
-    if mark_stale:
-        stale_id = record.last_event_id or last_emitted_id
-        yield format_sse(
-            event_names.STALE,
-            {
-                "reason": "broker_lost" if stale_id else "broker_lost_no_id",
-                "last_event_id": stale_id,
-            },
-        )
-
-
-def _log_resume_reject(
-    reason: str,
-    conversation_id: uuid.UUID,
-    run_id_str: str,
-    **extra: Any,
-) -> None:
-    suffix = " " + " ".join(f"{k}={v}" for k, v in extra.items()) if extra else ""
-    logger.info(
-        "stream_resume reject reason=%s conv=%s run_id=%s%s",
-        reason,
-        conversation_id,
-        run_id_str,
-        suffix,
-    )
-
-
 @router.get("/api/conversations/{conversation_id}/stream")
 async def stream_resume(
     conversation_id: uuid.UUID,
@@ -365,82 +195,14 @@ async def stream_resume(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
 ) -> StreamingResponse:
-    after_id = last_event_id or last_event_id_header
-    run_id_str = str(run_id)
-
-    conv = await load_private_conversation(db, conversation_id, context)
-    if conv is None:
-        _log_resume_reject("conv_unowned_or_missing", conversation_id, run_id_str, user=user.id)
-        raise resume_not_found()
-    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conv, context))
-
-    broker = broker_registry.get(run_id_str)
-    if broker is not None and not broker.is_closed:
-        if broker.conversation_id != str(conversation_id):
-            _log_resume_reject(
-                "broker_conv_mismatch",
-                conversation_id,
-                run_id_str,
-                broker_conv=broker.conversation_id,
-            )
-            raise resume_not_found()
-        logger.info(
-            "stream_resume mode=live conv=%s run_id=%s after_id=%s",
-            conversation_id,
-            run_id_str,
-            after_id,
-        )
-        return sse_response(
-            _broker_resume_generator(broker, after_id, secret_values=secrets),
-            extra_headers={
-                "X-Run-Id": run_id_str,
-                "X-Resume-Mode": "live",
-            },
-        )
-
-    record = await trace_storage.get_trace_by_msg_id(db, run_id_str)
-    if record is None:
-        _log_resume_reject("row_missing", conversation_id, run_id_str)
-        raise resume_not_found()
-    if record.conversation_id != conversation_id:
-        _log_resume_reject(
-            "row_conv_mismatch",
-            conversation_id,
-            run_id_str,
-            row_conv=record.conversation_id,
-        )
-        raise resume_not_found()
-    if _is_pending_interrupt(record.events):
-        _log_resume_reject("interrupt_pending", conversation_id, run_id_str)
-        raise resume_interrupt_pending()
-
-    is_stale = record.status == "streaming"
-    if is_stale:
-        logger.warning(
-            "stream_resume stale conv=%s run_id=%s last_event_id=%s "
-            "(broker lost while turn streaming)",
-            conversation_id,
-            run_id_str,
-            record.last_event_id,
-        )
-    logger.info(
-        "stream_resume mode=replay conv=%s run_id=%s after_id=%s status=%s",
-        conversation_id,
-        run_id_str,
-        after_id,
-        record.status,
-    )
-    return sse_response(
-        _replay_resume_generator(
-            record,
-            after_id,
-            mark_stale=is_stale,
-            secret_values=secrets,
-        ),
-        extra_headers={
-            "X-Run-Id": run_id_str,
-            "X-Resume-Mode": "replay",
-        },
+    return await chat_resume_entries.stream_resume(
+        conversation_id=conversation_id,
+        run_id=run_id,
+        last_event_id=last_event_id,
+        last_event_id_header=last_event_id_header,
+        db=db,
+        user=user,
+        context=context,
     )
 
 
@@ -454,62 +216,13 @@ async def send_message(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent_id = await chat_service.prepare_executable_conversation(db, conversation_id, context)
-    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
-    if conv is None:
-        raise conversation_not_found()
-    cfg = await resolve_agent_context(db, conversation_id, user, context=context)
-    await db.commit()
-    accepted = await accept_owned_execution(
-        db,
-        OwnedExecutionRequest(
-            conversation_id=conversation_id,
-            root_agent_id=agent_id,
-            context=context,
-            source="chat",
-            input_preview=data.content,
-        ),
-    )
-    await chat_service.maybe_set_auto_title(
-        db, ConversationAutoTitle(conversation_id, context, data.content)
-    )
-    await chat_service.touch_conversation(db, conversation_id, context)
-
-    if data.attachments:
-        await chat_service.link_attachments_to_conversation(
-            db,
-            conversation_id=conversation_id,
-            context=context,
-            attachment_ids=[a.id for a in data.attachments],
-        )
-    await record_conversation_audit(
-        db,
-        user=user,
+    return await chat_run_entries.send_message(
+        conversation_id=conversation_id,
+        data=data,
         request=request,
-        action="conversation.message_send",
-        conversation_id=conversation_id,
-        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
-        metadata={
-            "content_length": len(data.content),
-            "attachment_count": len(data.attachments or []),
-        },
-    )
-    run_id = accepted.run_id
-    await db.commit()
-
-    ctx = await start_conversation_run(
-        run_id=run_id,
-        conversation_id=conversation_id,
-        cfg=cfg,
+        db=db,
         user=user,
-        input_payload=[{"role": "user", "content": data.content}],
-        moldy_source="chat",
-        executor_fn=execute_agent_stream,
-        attachment_ids=[a.id for a in data.attachments] if data.attachments else None,
-    )
-    return sse_response(
-        _broker_resume_generator(ctx.broker, None, secret_values=cfg.secret_values),
-        extra_headers={"X-Run-Id": ctx.run_id},
+        context=context,
     )
 
 
@@ -523,80 +236,11 @@ async def resume_message(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    agent_id = await chat_service.prepare_executable_conversation(db, conversation_id, context)
-    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
-    if conv is None:
-        raise conversation_not_found()
-    decisions_payload: list[dict[str, Any]] = [
-        d.model_dump(exclude_none=True) for d in data.decisions
-    ]
-    resume_payload: dict[str, Any] = {"decisions": decisions_payload}
-    parent_run = await conversation_run_service.get_latest_interrupted_run(
-        db,
+    return await chat_resume_entries.resume_message(
         conversation_id=conversation_id,
-        context=context,
-    )
-    legacy_interrupt_trace: MessageEvent | None = None
-    if parent_run is None:
-        legacy_interrupt_trace = await _latest_pending_interrupt_trace(db, conversation_id)
-        if legacy_interrupt_trace is None:
-            raise HTTPException(
-                status_code=409,
-                detail="Resume run requires an interrupted parent run",
-            )
-
-    if parent_run is not None:
-        interrupt_id = parent_run.interrupt_id
-    else:
-        if legacy_interrupt_trace is None:
-            raise HTTPException(
-                status_code=409,
-                detail="Resume run requires an interrupted parent run",
-            )
-        interrupt_id = _legacy_interrupt_id(legacy_interrupt_trace)
-    metadata: dict[str, JsonValue] | None = None
-    if legacy_interrupt_trace is not None:
-        metadata = {"legacy_interrupt_assistant_msg_id": legacy_interrupt_trace.assistant_msg_id}
-    cfg = await resolve_agent_context(db, conversation_id, user, context=context)
-    await db.commit()
-    accepted = await accept_owned_execution(
-        db,
-        OwnedExecutionRequest(
-            conversation_id=conversation_id,
-            root_agent_id=agent_id,
-            context=context,
-            source="chat",
-            run_source="resume",
-            input_preview=None,
-            parent_run_id=parent_run.id if parent_run else None,
-            interrupt_id=interrupt_id,
-            run_metadata=metadata,
-            allow_legacy_resume=legacy_interrupt_trace is not None,
-        ),
-    )
-    await chat_service.touch_conversation(db, conversation_id, context)
-    await record_conversation_audit(
-        db,
-        user=user,
+        data=data,
         request=request,
-        action="conversation.message_resume",
-        conversation_id=conversation_id,
-        agent_id=agent_id,
-        metadata={"decision_count": len(decisions_payload)},
-    )
-    run_id = accepted.run_id
-    await db.commit()
-
-    ctx = await start_conversation_run(
-        run_id=run_id,
-        conversation_id=conversation_id,
-        cfg=cfg,
+        db=db,
         user=user,
-        input_payload=resume_payload,
-        moldy_source="resume",
-        executor_fn=resume_agent_stream,
-    )
-    return sse_response(
-        _broker_resume_generator(ctx.broker, None),
-        extra_headers={"X-Run-Id": ctx.run_id},
+        context=context,
     )

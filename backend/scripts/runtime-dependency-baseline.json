@@ -35,6 +35,16 @@
     },
     {
       "rule": "routers_to_models",
+      "importer": "app.routers.chat_resume_entries",
+      "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.chat_run_entries",
+      "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
       "importer": "app.routers.conversation_ag_ui",
       "imported": "app.models.conversation"
     },
@@ -110,6 +120,11 @@
     },
     {
       "rule": "routers_to_models",
+      "importer": "app.routers.conversation_branch_entries",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
       "importer": "app.routers.conversation_branches",
       "imported": "app.models.conversation"
     },
@@ -132,6 +147,31 @@
       "rule": "routers_to_models",
       "importer": "app.routers.conversation_messages",
       "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_protocol_fork",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_protocol_persistence",
+      "imported": "app.models.conversation_run"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_protocol_persistence",
+      "imported": "app.models.conversation_run_input"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_protocol_response",
+      "imported": "app.models.conversation_run"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_protocol_start",
+      "imported": "app.models.conversation"
     },
     {
       "rule": "routers_to_models",
