@@ -40,6 +40,7 @@ from app.services.agent_memory_settings import (
 from app.services.agent_memory_settings import (
     update_agent_settings as update_agent_settings,
 )
+from app.services.memory_settings_reads import peek_user_settings
 
 MemoryScope = Literal["user", "agent"]
 AllowedScopes = Literal["user", "agent", "both"]
@@ -218,7 +219,9 @@ async def resolve_effective_policy(
     *,
     context: OrgContext,
     agent_id: uuid.UUID | None = None,
+    persist_defaults: bool = True,
 ) -> EffectiveMemoryPolicy:
+    """``persist_defaults=False`` never inserts/commits (keeps a caller's locks)."""
     await resolve_private_actor(
         db,
         PrivateResourceActor(
@@ -227,7 +230,8 @@ async def resolve_effective_policy(
     )
     if agent_id is not None and await _get_owned_agent(db, agent_id, context) is None:
         raise agent_not_found()
-    user_settings = await get_user_settings(db, context.user_id)
+    load = get_user_settings if persist_defaults else peek_user_settings
+    user_settings = await load(db, context.user_id)
     read_enabled = bool(user_settings.memory_enabled and user_settings.memory_read_enabled)
     write_policy: WritePolicy = (
         user_settings.memory_write_policy if user_settings.memory_enabled else "off"

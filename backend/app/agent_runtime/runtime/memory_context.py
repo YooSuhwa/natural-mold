@@ -92,6 +92,8 @@ async def load_memory_context_in(
                 session,
                 context=cfg.org_context,
                 agent_id=agent_uuid,
+                # A caller-owned (prepared, locked) session must never commit.
+                persist_defaults=db is None,
             )
             if not policy.read_enabled:
                 return "", []
@@ -129,6 +131,8 @@ async def memory_write_policy_in(
                 session,
                 context=cfg.org_context,
                 agent_id=agent_uuid,
+                # A caller-owned (prepared, locked) session must never commit.
+                persist_defaults=db is None,
             )
             return policy.trigger_write_policy if is_trigger_mode else policy.write_policy
     except Exception:  # noqa: BLE001 — memory writes are optional runtime affordances

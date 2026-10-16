@@ -1,7 +1,8 @@
 """Shared prepare + hook + Langfuse body for the LangGraph v3 stream runner.
 
 Collaborators patched on ``langgraph_agent_stream_runner`` are resolved at
-call time.
+call time. ``_stream_langgraph_body`` is shared with the opt-in prepared-lease
+variant in ``langgraph_prepared_stream`` (Task 10 I19).
 """
 
 from __future__ import annotations
@@ -104,6 +105,49 @@ async def _stream_langgraph_with_secrets(
     actual_input = lc_messages if stream_input is _USE_PREPPED_LC_MESSAGES else stream_input
     if actual_input == []:
         actual_input = None
+    async for chunk in _stream_langgraph_body(
+        cfg,
+        agent=agent,
+        actual_input=actual_input,
+        config=config,
+        trace_sink=trace_sink,
+        msg_id_sink=msg_id_sink,
+        error_sink=error_sink,
+        broker=broker,
+        persist_callback=persist_callback,
+        run_id=run_id,
+        artifact_recorder=artifact_recorder,
+        moldy_source=moldy_source,
+        langfuse_sink=langfuse_sink,
+        run_metrics=run_metrics,
+    ):
+        yield chunk
+
+
+async def _stream_langgraph_body(
+    cfg: AgentConfig,
+    *,
+    agent: Any,
+    actual_input: Any,
+    config: dict[str, Any],
+    trace_sink: list[dict[str, Any]] | None,
+    msg_id_sink: list[str] | None,
+    error_sink: list[StreamErrorRecord] | None,
+    broker: Any | None,
+    persist_callback: Any | None,
+    run_id: str | None,
+    artifact_recorder: Any | None,
+    moldy_source: str,
+    langfuse_sink: list[LangfuseTraceRecord] | None,
+    run_metrics: RunMetricsAccumulator | None,
+    hooks_enabled: bool = True,
+    usage_sink: dict[str, Any] | None = None,
+) -> AsyncGenerator[str, None]:
+    """Post-preparation body shared by the legacy and prepared-lease paths.
+
+    ``usage_sink`` lets a prepared caller read the captured usage after the
+    stream (it books spend/audit outside the graph; hooks stay disabled).
+    """
 
     langgraph_attr("_append_run_message_id")(msg_id_sink, run_id)
 
@@ -118,11 +162,12 @@ async def _stream_langgraph_with_secrets(
     if langfuse_sink is not None and langfuse_ctx.trace is not None:
         langfuse_sink.append(langfuse_ctx.trace)
 
-    ctx = langgraph_attr("_hook_ctx_for_agent")(cfg)
+    # Prepared leases skip the DB-writing hooks (outside the I14 write capability).
+    ctx = langgraph_attr("_hook_ctx_for_agent")(cfg) if hooks_enabled else None
     if ctx is not None:
         await langgraph_attr("hooks").run_pre(ctx)
     started = time.monotonic()
-    usage_sink: dict[str, Any] = {}
+    usage_sink = {} if usage_sink is None else usage_sink
     stream_errors = error_sink if error_sink is not None else []
     protocol_trace = trace_sink if trace_sink is not None else []
 

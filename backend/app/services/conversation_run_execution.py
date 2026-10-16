@@ -49,7 +49,10 @@ async def _run_conversation(
     ctx: StreamCtx,
     registry: RunTaskRegistry,
     attachment_ids: list[uuid.UUID] | None = None,
+    config_transform: Callable[[AgentConfig], AgentConfig] | None = None,
 ) -> None:
+    from app.services import prepared_conversation_start as prepared_start
+
     metrics_started_at = time.monotonic()
     run_metrics = RunMetricsAccumulator(started_at=metrics_started_at)
     final_status: TerminalRunState = "completed"
@@ -71,11 +74,17 @@ async def _run_conversation(
         persist_callback=ctx.persist_cb,
         trace_sink=ctx.trace_sink,
     )
+    start: prepared_start.PreparedRunStart | None = None
     try:
-        run, started = await _transition_to_running(
+        start = await prepared_start.start_owned_run(
             _execution_target(run_id, conversation_id, cfg),
+            prepared_start.OwnedRunInputs(cfg, user, input_payload, executor_fn, config_transform),
             worker_instance_id=registry.worker_instance_id,
+            started_at=metrics_started_at,
+            transition=_transition_to_running,
         )
+        run, started = start.run, start.started
+        cfg = start.cfg or cfg  # prepared: locked metadata + the lease's secret set
         if run is None:
             logger.warning("conversation run vanished before worker start run_id=%s", run_id)
             finalize_needed = False
@@ -106,7 +115,7 @@ async def _run_conversation(
             worker_attr("_heartbeat_until_terminal")(run_id, registry),
             name=f"conversation-run-heartbeat-{run_id}",
         )
-        run_metrics = await worker_attr("_prepare_run_metrics")(
+        run_metrics = start.run_metrics or await worker_attr("_prepare_run_metrics")(
             conversation_id=conversation_id,
             cfg=cfg,
             started_at=metrics_started_at,
@@ -122,7 +131,7 @@ async def _run_conversation(
             user=user,
             run_id=ctx.run_id,
         )
-        async for chunk in executor_fn(
+        async for chunk in (start.executor or executor_fn)(
             cfg,
             input_payload,
             moldy_source=moldy_source,
@@ -161,6 +170,8 @@ async def _run_conversation(
             final_status = "canceled"
             await _publish_message_end(ctx, status="canceled")
     except Exception as exc:
+        # A failed prepared start left the row queued; finalize fails it (I15).
+        finalize_needed = finalize_needed or isinstance(exc, prepared_start.PreparedStartError)
         final_status = "failed"
         failure = exc
         error_code = "runtime_error"
@@ -177,6 +188,8 @@ async def _run_conversation(
         logger.exception("conversation run worker failed run_id=%s", run_id)
         await _publish_error(ctx, "에이전트 실행 중 오류가 발생했습니다.")
     finally:
+        # An activated lease the stream never claimed is closed (idempotent).
+        await prepared_start.release_unclaimed(start)
         if heartbeat_task is not None:
             heartbeat_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

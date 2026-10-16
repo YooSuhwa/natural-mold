@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 from sqlalchemy import select
 
+from app.config import settings
 from app.exceptions import AppError
 from app.models.conversation import Conversation
-from app.models.conversation_run import ConversationRun
+from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.services.conversation_run_cancellation_recovery import (
     finalize_workerless_cancel_before_start,
 )
+from app.services.conversation_run_prepared_recovery import terminalize_orphaned_prepared_runs
 from app.services.conversation_run_queue_launch import facade_attr
 
 logger = logging.getLogger("app.services.conversation_run_queue_worker")
@@ -19,6 +22,14 @@ logger = logging.getLogger("app.services.conversation_run_queue_worker")
 async def recover_conversation_queue() -> int:
     """Recover claim-before-launch gaps and dispatch idle persisted queues."""
     registry = facade_attr("get_run_task_registry")()
+    # Task 10 I19: a paired run without a live lease fails; it is never relaunched.
+    try:
+        await terminalize_orphaned_prepared_runs(
+            session_factory=facade_attr("_session_factory")(),
+            stale_before=utc_now_naive() - timedelta(seconds=settings.chat_run_stale_after_seconds),
+        )
+    except Exception:  # noqa: BLE001 - never block queue recovery
+        logger.exception("prepared run recovery sweep failed")
     await finalize_workerless_cancel_before_start(
         session_factory=facade_attr("_session_factory")(),
         protected_run_ids=tuple(registry.active_run_ids()),

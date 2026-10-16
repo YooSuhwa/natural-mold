@@ -9,6 +9,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.runtime_config import AgentConfig
 from app.authz.conversation_scope import require_conversation_agent_id
 from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
@@ -181,7 +182,11 @@ async def regenerate_message(
     cfg = await resolve_agent_context(
         db, conversation_id, user, context=context, checkpoint_id=checkpoint_id
     )
-    cfg = with_regeneration_guidance(cfg, target_msg)
+
+    def guidance(resolved: AgentConfig) -> AgentConfig:
+        return with_regeneration_guidance(resolved, target_msg)
+
+    cfg = guidance(cfg)
     await db.commit()
     accepted = await accept_owned_execution(
         db,
@@ -218,6 +223,7 @@ async def regenerate_message(
         input_payload=overwrite_input,
         moldy_source="regenerate",
         executor_fn=_branches_attr("execute_agent_stream"),
+        config_transform=guidance,
     )
     return sse_response(
         _broker_resume_generator(ctx.broker, None),

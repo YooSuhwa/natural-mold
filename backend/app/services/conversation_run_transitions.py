@@ -144,6 +144,7 @@ async def _transition_to_running(
     target: RunExecutionTarget,
     *,
     worker_instance_id: str,
+    start: bool = True,
 ) -> tuple[ConversationRun | None, bool]:
     """``queued -> running`` 전이 시도. ``(run, started)`` 반환.
 
@@ -185,7 +186,8 @@ async def _transition_to_running(
         run = await lock_executable_run(session, target)
         if run is None:
             return None, False
-        if run.status != "queued":
+        # ``start=False`` (prepared lease probe): classify without starting.
+        if run.status != "queued" or not start:
             return run, False
         await conversation_run_service.transition_run(
             session,

@@ -110,6 +110,7 @@ async def _stream_with_secrets(
     moldy_source: str,
     langfuse_sink: list[LangfuseTraceRecord] | None,
     hooks_enabled: bool = True,
+    usage_sink: dict[str, Any] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Inner streaming body — runs with the run-scoped secret ContextVar set.
 
@@ -141,7 +142,8 @@ async def _stream_with_secrets(
             ctx.metadata.update(hook_metadata_extra)
         await stream_attr("hooks").run_pre(ctx)
     started = time.monotonic()
-    usage_sink: dict[str, Any] = {}
+    # A prepared caller reads the captured usage after the stream (spend/audit).
+    usage_sink = {} if usage_sink is None else usage_sink
     stream_errors = error_sink if error_sink is not None else []
 
     activate = getattr(langfuse_ctx, "activate", None)
@@ -219,6 +221,7 @@ async def _run_prepared_agent_stream(
     artifact_recorder: Any | None = None,
     moldy_source: str = "chat",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
+    usage_sink: dict[str, Any] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream the exact activated lease graph.
 
@@ -246,5 +249,6 @@ async def _run_prepared_agent_stream(
             moldy_source=moldy_source,
             langfuse_sink=langfuse_sink,
             hooks_enabled=False,
+            usage_sink=usage_sink,
         ):
             yield chunk

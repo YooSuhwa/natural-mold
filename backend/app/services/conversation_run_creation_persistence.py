@@ -208,6 +208,14 @@ async def sweep_stale_conversation_runs(
         seconds=settings.chat_run_stale_after_seconds
     )
     try:
+        # Task 10 I19: orphaned paired runs fail ``prepared_run_lease_missing``.
+        from app.services.conversation_run_prepared_recovery import (
+            terminalize_orphaned_prepared_runs,
+        )
+
+        await terminalize_orphaned_prepared_runs(
+            session_factory=session_factory, stale_before=stale_before
+        )
         async with session_factory() as db:
             registry = get_run_task_registry()
             await _pause_uncertain_owned_run_queues(

@@ -43,6 +43,11 @@ _STORED_SKILL_RULES = (
     "available subagent types 중 하나여야 합니다."
 )
 
+# Deep Agents' ``DeltaChannel`` state channels (``messages``, filesystem
+# ``files``): a resume/continuation replays their history, so the seed captures
+# it in the preparation window. Pinned to the compiled graph by a test.
+DELTA_CHANNELS: tuple[str, ...] = ("files", "messages")
+
 
 @dataclass(frozen=True, slots=True)
 class PreparedChildSource:
@@ -237,6 +242,7 @@ def build_preparation_inputs(
         skills=None if skills_prefix is None else [skills_prefix],
         memory=memory or None,
         checkpoint_id=cfg.checkpoint_id,
+        delta_channels=DELTA_CHANNELS,
         versions=dict(sources.versions or {}),
         secret_values=frozenset(cfg.secret_values),
         secret_reference_ids=tuple(

@@ -46,6 +46,38 @@ def unsupported(reason: str) -> PreparedRunUnsupportedError:
     return PreparedRunUnsupportedError(reason)
 
 
+# Reasons that describe a *legacy-runnable agent shape* the lease cannot carry
+# yet: an entry may fall back to the legacy path for exactly these (shared by
+# chat/queue, Agent API and trigger entries). Any other unsupported reason
+# (``inputs_unlocked``, ``skill_source_missing:*``, ...) is a preparation
+# failure and must fail the run instead of silently running unleased.
+LEGACY_FALLBACK_REASONS: frozenset[str] = frozenset(
+    {
+        "agent_memory_file_write",
+        "child_model_missing",
+        "child_skills",
+        "llm_credential_missing",
+        "memory_tools",
+        "middleware",
+        "model_fallback",
+        "provider",
+        "provider_middleware",
+        "recursion_limit",
+        "runtime_profile",
+        "skill_execution",
+    }
+)
+
+
+def is_legacy_fallback(reason: str) -> bool:
+    """``True`` for root or ``child:<name>:`` reasons in the fallback allowlist."""
+
+    parts = reason.split(":")
+    if parts[0] == "child" and len(parts) >= 3:
+        parts = parts[2:]
+    return parts[0] in LEGACY_FALLBACK_REASONS
+
+
 def lease_model_spec(
     *,
     provider: str,

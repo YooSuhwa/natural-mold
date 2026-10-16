@@ -18,6 +18,7 @@ from typing import Any
 from langgraph.types import Command
 
 from app.agent_runtime.agent_stream_runner import _hook_ctx_for_agent, _hook_result_from_usage
+from app.agent_runtime.langgraph_prepared_stream import _run_prepared_langgraph_stream
 from app.agent_runtime.langgraph_stream_execution import (
     _USE_PREPPED_LC_MESSAGES,
     _append_run_message_id,
@@ -41,6 +42,8 @@ __all__ += ["_prepare_agent", "_stream_langgraph_with_secrets", "asyncio", "time
 __all__ += ["build_langfuse_run_context", "configure_run_metrics_callback", "hooks"]
 __all__ += ["nullcontext", "reset_run_secrets", "set_run_secrets"]
 __all__ += ["stream_agent_response_langgraph"]
+# Opt-in prepared-lease (Task 10 I19) entry point.
+__all__ += ["_run_prepared_langgraph_stream"]
 
 
 async def execute_agent_stream_langgraph(

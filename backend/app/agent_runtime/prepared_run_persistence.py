@@ -9,6 +9,18 @@ finalizer), artifacts and attachments are gated here; checkpoint descendants
 are gated by ``LeaseCheckpointSaver`` (I11); run/input/envelope terminal fields
 go through ``prepared_terminal_writer`` on rows the caller locked. I15 wires
 the concrete writers and the branch-leaf update through this adapter.
+
+Chat/queue wiring (I16/I19): mid-stream event chunks go through
+``events_callback`` with the stream's own run ID, and are additionally dropped
+once the run row is no longer active and owned by the streaming worker. The
+owning worker's *post-terminal, same-run/same-thread* writes are explicit
+exemptions that do not pass through this adapter: the terminal run
+transition with metrics/usage, trace finalization, artifact
+finalization/linking (the recorder is scoped to the run's conversation and
+assistant message), attachment ``message_id`` backfill for the IDs submitted
+with this run, branch-leaf activation for edit/regenerate, and the
+spend/audit booking (``prepared_run_accounting``). They run after the lease
+terminalized, outside ``post_marker_execution``, keyed by the bound run ID.
 """
 
 from __future__ import annotations

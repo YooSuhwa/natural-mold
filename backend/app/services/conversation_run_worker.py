@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import select
@@ -166,6 +167,7 @@ async def start_conversation_run(
     executor_fn: AgentStreamExecutor,
     registry: RunTaskRegistry | None = None,
     attachment_ids: list[uuid.UUID] | None = None,
+    config_transform: Callable[[AgentConfig], AgentConfig] | None = None,
 ) -> StreamCtx:
     target = _execution_target(run_id, conversation_id, cfg)
     if user.id != target.conversation.context.user_id:
@@ -199,6 +201,7 @@ async def start_conversation_run(
                 ctx=ctx,
                 registry=registry,
                 attachment_ids=attachment_ids,
+                config_transform=config_transform,
             ),
             name=f"conversation-run-{run_id}",
         )
