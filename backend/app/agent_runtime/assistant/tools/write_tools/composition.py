@@ -15,6 +15,7 @@ from app.agent_runtime.assistant.tools.write_tools.context import (
     WriteToolContext,
 )
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
+from app.authz.assistant_scope import keep_linkable
 from app.authz.scoping import private_scope_predicate
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_subagent import AgentSubAgentLink
@@ -129,7 +130,8 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                         Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
                     )
                 )
-                name_by_id = {row.id: row.name for row in result.all()}
+                rows = await keep_linkable(ctx.org_context, "agent", result.all())
+                name_by_id = {row.id: row.name for row in rows}
                 for sub_agent_id in sorted(name_by_id, key=lambda item: item.bytes):
                     await require_executable_agent(ctx, session, sub_agent_id)
 
@@ -228,7 +230,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                 key = s.name.lower()
                 if key not in unique_by_name:
                     unique_by_name[key] = s
-            found_skills = list(unique_by_name.values())
+            found_skills = await keep_linkable(ctx.org_context, "skill", unique_by_name.values())
             if not found_skills:
                 return f"스킬을 찾을 수 없습니다: {', '.join(skill_names)}"
 

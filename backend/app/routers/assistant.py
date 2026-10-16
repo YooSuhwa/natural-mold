@@ -9,10 +9,12 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.policies import RES, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
-from app.error_codes import agent_not_found
 from app.schemas.assistant import AssistantMessageRequest, AssistantResumeRequest
-from app.services import agent_service, assistant_service
+from app.services import agent_access_views, assistant_service
 
 router = APIRouter(prefix="/api/agents", tags=["assistant"])
 
@@ -24,6 +26,7 @@ def _assistant_thread_id(agent_id: uuid.UUID, session_id: str | None) -> str:
 
 
 @router.post("/{agent_id}/assistant/message")
+@authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
 async def send_assistant_message(
     agent_id: uuid.UUID,
     data: AssistantMessageRequest,
@@ -31,11 +34,11 @@ async def send_assistant_message(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     """Assistant에게 메시지를 보내고 SSE 스트리밍으로 응답받는다."""
-    agent = await agent_service.get_agent(db, agent_id, context)
-    if not agent:
-        raise agent_not_found()
+    # Assistant tools act with the caller's permissions and re-check per call (11.7).
+    await agent_access_views.authorized_agent(db, authz, context, agent_id, "can_edit")
 
     thread_id = _assistant_thread_id(agent_id, data.session_id)
 
@@ -57,6 +60,7 @@ async def send_assistant_message(
 
 
 @router.post("/{agent_id}/assistant/message/resume")
+@authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
 async def resume_assistant_message(
     agent_id: uuid.UUID,
     data: AssistantResumeRequest,
@@ -64,10 +68,10 @@ async def resume_assistant_message(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
-    agent = await agent_service.get_agent(db, agent_id, context)
-    if not agent:
-        raise agent_not_found()
+    # Assistant tools act with the caller's permissions and re-check per call (11.7).
+    await agent_access_views.authorized_agent(db, authz, context, agent_id, "can_edit")
 
     thread_id = _assistant_thread_id(agent_id, data.session_id)
 

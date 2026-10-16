@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
+from app.authz.assistant_scope import WRITE
 from app.authz.org_context import OrgContext
 from app.models.agent import Agent
 
@@ -36,4 +37,5 @@ async def get_agent_with_session(
     ctx: WriteToolContext,
     session: AsyncSession,
 ) -> Agent | None:
-    return await get_agent_with_eager_load(session, ctx.agent_id, ctx.org_context)
+    """The target agent for a write tool; the actor needs ``can_edit`` (plan 11.7)."""
+    return await get_agent_with_eager_load(session, ctx.agent_id, ctx.org_context, permission=WRITE)

@@ -9,6 +9,7 @@ from app.agent_runtime.assistant.tools.write_tools.context import (
     WriteToolContext,
     get_agent_with_session,
 )
+from app.authz.assistant_scope import keep_linkable
 from app.authz.scoping import private_scope_predicate, resource_candidates
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
@@ -43,7 +44,7 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                     ctx.org_context,
                 )
             )
-            found_tools = list(result.scalars().all())
+            found_tools = await keep_linkable(ctx.org_context, "tool", result.scalars().all())
             if not found_tools:
                 return f"도구를 찾을 수 없습니다: {', '.join(tool_names)}"
 
@@ -106,7 +107,7 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                     func.lower(McpTool.name).in_(lower_names),
                 )
             )
-            found = list(result.scalars().all())
+            found = await keep_linkable(ctx.org_context, "mcp_tool", result.scalars().all())
             if not found:
                 return f"MCP 도구를 찾을 수 없습니다: {', '.join(mcp_tool_names)}"
 

@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.authz.artifact_scope import private_artifact_predicate
 from app.authz.org_context import OrgContext
+from app.authz.resource_context_scope import authorize_context_skill
 from app.authz.scoping import private_scope_predicate
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
@@ -138,6 +139,9 @@ async def load_skill_source(
             AgentSkillLink.agent_id == scope.agent_id,
         )
         .execution_options(autoflush=False, populate_existing=True)
+    )
+    skill = await authorize_context_skill(
+        db, scope.context, scope.agent_id, reference.id, legacy=skill
     )
     path = _skill_entry_path(skill)
     if skill is None or path is None or not await run_in_threadpool(path.is_file):

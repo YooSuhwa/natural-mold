@@ -5,14 +5,13 @@ from __future__ import annotations
 import copy
 
 from langchain_core.tools import StructuredTool
-from sqlalchemy import func, select
 
 from app.agent_runtime.assistant.tools.write_tools.context import (
     WriteToolContext,
     get_agent_with_session,
 )
 from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
-from app.models.agent_trigger import AgentTrigger
+from app.authz.assistant_scope import actor_active_trigger_count
 from app.services.model_service import resolve_model
 
 
@@ -235,14 +234,8 @@ def build_agent_config_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                 return f"credential 사용 방식이 이미 '{normalized}'입니다."
 
             if normalized == AGENT_IDENTITY_PER_USER:
-                active_count = await session.scalar(
-                    select(func.count())
-                    .select_from(AgentTrigger)
-                    .where(
-                        AgentTrigger.agent_id == ctx.agent_id,
-                        AgentTrigger.user_id == ctx.user_id,
-                        AgentTrigger.status == "active",
-                    )
+                active_count = await actor_active_trigger_count(
+                    session, ctx.org_context, ctx.agent_id
                 )
                 if active_count:
                     return (

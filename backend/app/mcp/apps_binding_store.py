@@ -14,11 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.mcp_app_scope import (
     McpAppBindingTarget,
     McpAppRunTarget,
+    linked_tool,
     load_private_mcp_app_run,
     private_mcp_app_binding_query,
 )
 from app.authz.org_context import OrgContext
-from app.authz.scoping import private_scope_predicate, resource_candidates
+from app.authz.scoping import resource_candidates
 from app.database import async_session, tenant_session
 from app.mcp.apps import (
     is_ui_resource_uri,
@@ -29,11 +30,10 @@ from app.mcp.apps import (
 )
 from app.mcp.apps_binding_lifecycle import McpAppsError, require_live_agent_tree
 from app.mcp.domain import McpAppRuntimeContext
-from app.models.agent import Agent
 from app.models.conversation_run import ConversationRun
 from app.models.mcp_app_invocation import McpAppInvocationBinding
 from app.models.mcp_server import McpServer
-from app.models.mcp_tool import AgentMcpToolLink, McpTool
+from app.models.mcp_tool import McpTool
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,36 +61,6 @@ class AuthorizedBinding:
     server: McpServer
     origin_tool: McpTool
     org_context: OrgContext
-
-
-async def linked_tool(
-    db: AsyncSession,
-    *,
-    agent_id: uuid.UUID,
-    server_id: uuid.UUID,
-    tool_id: uuid.UUID | None,
-    tool_name: str,
-    context: OrgContext,
-) -> McpTool | None:
-    stmt = (
-        select(McpTool)
-        .join(AgentMcpToolLink, AgentMcpToolLink.mcp_tool_id == McpTool.id)
-        .join(Agent, Agent.id == AgentMcpToolLink.agent_id)
-        .join(McpServer, McpServer.id == McpTool.server_id)
-        .where(
-            AgentMcpToolLink.agent_id == agent_id,
-            McpTool.server_id == server_id,
-            McpTool.name == tool_name,
-            McpTool.enabled.is_(True),
-            private_scope_predicate(Agent, context),
-            Agent.archived_at.is_(None),
-            McpServer.status != "disabled",
-        )
-    )
-    stmt = resource_candidates(stmt, McpServer, context)
-    if tool_id is not None:
-        stmt = stmt.where(McpTool.id == tool_id)
-    return await db.scalar(stmt.execution_options(populate_existing=True, autoflush=False))
 
 
 async def mint_invocation_binding(db: AsyncSession, draft: BindingDraft) -> uuid.UUID:

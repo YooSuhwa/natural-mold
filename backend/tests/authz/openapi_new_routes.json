@@ -766,6 +766,109 @@
         ]
       }
     },
+    "/api/agents/{agent_id}/assistant/message": {
+      "post": {
+        "description": "Assistant\uc5d0\uac8c \uba54\uc2dc\uc9c0\ub97c \ubcf4\ub0b4\uace0 SSE \uc2a4\ud2b8\ub9ac\ubc0d\uc73c\ub85c \uc751\ub2f5\ubc1b\ub294\ub2e4.",
+        "operationId": "send_assistant_message_api_agents__agent_id__assistant_message_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send Assistant Message",
+        "tags": [
+          "assistant"
+        ]
+      }
+    },
+    "/api/agents/{agent_id}/assistant/message/resume": {
+      "post": {
+        "operationId": "resume_assistant_message_api_agents__agent_id__assistant_message_resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantResumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Assistant Message",
+        "tags": [
+          "assistant"
+        ]
+      }
+    },
     "/api/agents/{agent_id}/conversations": {
       "get": {
         "operationId": "list_conversations_api_agents__agent_id__conversations_get",
@@ -17211,6 +17314,84 @@
         "size_bytes"
       ],
       "title": "ArtifactTextContent",
+      "type": "object"
+    },
+    "AssistantMessageRequest": {
+      "description": "POST /api/agents/{agent_id}/assistant/message \u2014 \uba54\uc2dc\uc9c0 \uc694\uccad.",
+      "properties": {
+        "content": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "\ud074\ub77c\uc774\uc5b8\ud2b8\uac00 \uc0dd\uc131\ud55c \uc138\uc158 ID (crypto.randomUUID). \uac19\uc740 session_id\ub294 \uac19\uc740 \ub300\ud654\ub97c \uc720\uc9c0, \uc5c6\uc73c\uba74 agent_id \uae30\ubc18 \uae30\ubcf8\uac12 \uc0ac\uc6a9.",
+          "title": "Session Id"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "AssistantMessageRequest",
+      "type": "object"
+    },
+    "AssistantResumeRequest": {
+      "properties": {
+        "decisions": {
+          "items": {
+            "$ref": "#/components/schemas/Decision"
+          },
+          "minItems": 1,
+          "title": "Decisions",
+          "type": "array"
+        },
+        "display_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Text"
+        },
+        "interrupt_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Interrupt Id"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        }
+      },
+      "required": [
+        "decisions"
+      ],
+      "title": "AssistantResumeRequest",
       "type": "object"
     },
     "AuditEventPageResponse": {

@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
+from app.authz.assistant_scope import keep_linkable
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.database import async_session as async_session_factory
@@ -179,7 +180,7 @@ def build_read_tools(
                     Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
                 )
             )
-            rows = result.all()
+            rows = await keep_linkable(context, "agent", result.all())
             # model display_name은 별도 쿼리로 가져온다
             model_ids = {r.model_id for r in rows if r.model_id}
             model_names: dict[str, str] = {}
@@ -209,7 +210,7 @@ def build_read_tools(
             result = await session.execute(
                 select(Skill).where(private_scope_predicate(Skill, context)).order_by(Skill.name)
             )
-            skills = result.scalars().all()
+            skills = await keep_linkable(context, "skill", result.scalars().all())
             items = [
                 {
                     "id": str(s.id),

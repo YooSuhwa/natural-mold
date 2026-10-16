@@ -23,8 +23,6 @@ PATCH /api/triggers/{trigger_id}
 POST /api/agent-api/deployments
 POST /api/agent-api/keys
 POST /api/agent-api/keys/{api_key_id}/revoke
-POST /api/agents/{agent_id}/assistant/message
-POST /api/agents/{agent_id}/assistant/message/resume
 POST /api/agents/{agent_id}/triggers
 POST /api/marketplace/admin/items/{item_id}/listed
 POST /api/marketplace/admin/k-skill/sync

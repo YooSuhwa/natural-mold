@@ -23,6 +23,7 @@ from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.model_factory import create_chat_model
 from app.agent_runtime.runtime_component_builder import build_agent
 from app.agent_runtime.runtime_policy import ASSISTANT_RUNTIME_POLICY
+from app.authz.assistant_scope import WRITE
 from app.authz.org_context import OrgContext
 from app.error_codes import agent_not_found
 from app.services.system_credential_resolver import resolve_system_model
@@ -76,7 +77,7 @@ async def build_assistant_agent(
     # ADR-019: the assistant text model is the operator-selected ``text_primary``
     # role. Raises ``SystemModelNotConfiguredError`` if unset (surfaced by the
     # caller) — no silent ``.env`` fallback.
-    if await get_agent_with_eager_load(db, agent_id, context) is None:
+    if await get_agent_with_eager_load(db, agent_id, context, permission=WRITE) is None:
         raise agent_not_found()
     resolved = await resolve_system_model(db, "text_primary")
     model: BaseChatModel = create_chat_model(
