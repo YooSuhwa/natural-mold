@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.policies import CAP, PRIVATE, authz_policy
+from app.authz.resource_lifecycle import apply_lifecycle, on_resource_created
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     agent_creation_failed,
@@ -62,18 +66,22 @@ router = APIRouter(prefix="/api/builder", tags=["builder"])
 
 
 @router.post("", response_model=BuilderSessionResponse, status_code=201)
+@authz_policy(CAP("cap_create_agent"))
 async def start_build(
     data: BuilderStartRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     """빌드 세션을 시작한다."""
+    await authz.require_cap(context, "cap_create_agent", legacy=True)
     return await builder_service.create_session(db, context, data.user_request)
 
 
 @router.get("/{session_id}", response_model=BuilderSessionResponse)
+@authz_policy(PRIVATE("builder_sessions", param="session_id"))
 async def get_build_session(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -92,12 +100,15 @@ async def get_build_session(
     response_model=AgentResponse,
     status_code=201,
 )
+# PRIVATE session + CAP(cap_create_agent) inside (plan 9.1).
+@authz_policy(PRIVATE("builder_sessions", param="session_id"))
 async def confirm_build(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     """빌드를 확인하고 실제 에이전트를 생성한다.
 
@@ -109,6 +120,7 @@ async def confirm_build(
     session = await builder_service.get_session(db, session_id, context)
     if not session:
         raise session_not_found()
+    await authz.require_cap(context, "cap_create_agent", legacy=True)
 
     # 멱등: 이미 완료된 세션이면 기존 Agent 반환
     if session.status == BuilderStatus.COMPLETED and session.agent_id:
@@ -148,6 +160,10 @@ async def confirm_build(
 
     if not agent:
         raise agent_creation_failed("에이전트를 생성할 수 없습니다")
+    if authz.mode != "legacy":  # confirm_build committed; tuples follow in their own tx
+        created = await on_resource_created(db, agent, mode=authz.mode)
+        await db.commit()
+        await apply_lifecycle(created, authz)
     return await _scoped_agent_response(db, agent.id, context)
 
 
@@ -163,6 +179,7 @@ _SSE_HEADERS = {
 
 
 @router.post("/{session_id}/messages")
+@authz_policy(PRIVATE("builder_sessions", param="session_id"))
 async def post_message(
     session_id: uuid.UUID,
     payload: BuilderMessageRequest,
@@ -193,6 +210,7 @@ async def post_message(
 
 
 @router.post("/{session_id}/messages/resume")
+@authz_policy(PRIVATE("builder_sessions", param="session_id"))
 async def resume_message(
     session_id: uuid.UUID,
     payload: BuilderResumeRequest,
@@ -221,6 +239,7 @@ async def resume_message(
 
 
 @router.get("/{session_id}/image/{filename}")
+@authz_policy(PRIVATE("builder_sessions", param="session_id"))
 async def serve_builder_image(
     session_id: uuid.UUID,
     filename: str,

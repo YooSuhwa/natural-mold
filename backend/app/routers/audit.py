@@ -6,6 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.policies import SELF, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.exceptions import ForbiddenError
 from app.models.audit_event import AuditEvent
@@ -44,6 +45,7 @@ def _to_response(event: AuditEvent) -> AuditEventResponse:
 
 
 @router.get("", response_model=AuditEventPageResponse)
+@authz_policy(SELF)
 async def list_audit_events(
     scope: AuditScope = Query(default="mine"),
     limit: int = Query(default=50, ge=1, le=100),

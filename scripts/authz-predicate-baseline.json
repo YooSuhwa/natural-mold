@@ -170,11 +170,6 @@
     "count": 1
   },
   {
-    "file": "routers/agent_blueprints.py",
-    "expression": "AgentBlueprint.user_id == user.id",
-    "count": 2
-  },
-  {
     "file": "routers/agent_runtime_api.py",
     "expression": "AgentDeployment.user_id == principal.user_id",
     "count": 1
@@ -192,26 +187,6 @@
   {
     "file": "routers/marketplace.py",
     "expression": "MarketplaceInstallation.user_id == user.id",
-    "count": 1
-  },
-  {
-    "file": "services/agent_blueprint_service.py",
-    "expression": "Agent.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/agent_blueprint_service.py",
-    "expression": "McpServer.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/agent_blueprint_service.py",
-    "expression": "Skill.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/agent_blueprint_service.py",
-    "expression": "Tool.visible_to(user_id)",
     "count": 1
   },
   {
@@ -272,26 +247,6 @@
   {
     "file": "services/auth_service.py",
     "expression": "RefreshToken.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/builder_service.py",
-    "expression": "BuilderSession.user_id == user_id",
-    "count": 2
-  },
-  {
-    "file": "services/builder_service.py",
-    "expression": "McpServer.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/builder_service.py",
-    "expression": "Skill.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/builder_service.py",
-    "expression": "Tool.visible_to(user_id)",
     "count": 1
   },
   {

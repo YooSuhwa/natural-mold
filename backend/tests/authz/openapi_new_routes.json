@@ -353,6 +353,127 @@
         ]
       }
     },
+    "/api/agent-blueprints": {
+      "get": {
+        "operationId": "list_agent_blueprints_api_agent_blueprints_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentBlueprintOut"
+                  },
+                  "title": "Response List Agent Blueprints Api Agent Blueprints Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Agent Blueprints",
+        "tags": [
+          "agent-blueprints"
+        ]
+      }
+    },
+    "/api/agent-blueprints/{blueprint_id}": {
+      "get": {
+        "operationId": "get_agent_blueprint_api_agent_blueprints__blueprint_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blueprint_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Blueprint Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentBlueprintOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Blueprint",
+        "tags": [
+          "agent-blueprints"
+        ]
+      }
+    },
+    "/api/agent-blueprints/{blueprint_id}/create-agent": {
+      "post": {
+        "operationId": "create_agent_from_blueprint_api_agent_blueprints__blueprint_id__create_agent_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blueprint_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Blueprint Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentFromBlueprintIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Agent From Blueprint",
+        "tags": [
+          "agent-blueprints"
+        ]
+      }
+    },
     "/api/agents": {
       "get": {
         "operationId": "list_agents_api_agents_get",
@@ -1284,6 +1405,63 @@
         ]
       }
     },
+    "/api/agents/{agent_id}/usage": {
+      "get": {
+        "operationId": "get_agent_usage_api_agents__agent_id__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Usage",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
     "/api/artifacts": {
       "get": {
         "operationId": "list_artifact_library_api_artifacts_get",
@@ -1672,6 +1850,798 @@
         "summary": "Record Artifact Opened",
         "tags": [
           "artifacts"
+        ]
+      }
+    },
+    "/api/audit-events": {
+      "get": {
+        "operationId": "list_audit_events_api_audit_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "mine",
+              "enum": [
+                "mine",
+                "all"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owner_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Request Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trace_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trace Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Audit Events",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "description": "Verify credentials, mint cookies, return user + CSRF body.",
+        "operationId": "login_endpoint_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login Endpoint",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "description": "Revoke the active refresh row + clear cookies.\n\nCSRF-checked so a malicious site can't log the user out via a\ncross-origin POST.",
+        "operationId": "logout_endpoint_api_auth_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout Endpoint",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "description": "Return the authenticated user.\n\nRe-fetches the row so fields like ``last_login_at`` (not carried\non ``CurrentUser``) reflect persisted state.",
+        "operationId": "me_endpoint_api_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Me Endpoint",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/me/avatar-image": {
+      "delete": {
+        "operationId": "delete_avatar_image_endpoint_api_auth_me_avatar_image_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete Avatar Image Endpoint",
+        "tags": [
+          "auth"
+        ]
+      },
+      "get": {
+        "operationId": "get_avatar_image_endpoint_api_auth_me_avatar_image_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Avatar Image Endpoint",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "operationId": "upload_avatar_image_endpoint_api_auth_me_avatar_image_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_avatar_image_endpoint_api_auth_me_avatar_image_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Avatar Image Endpoint",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/me/profile": {
+      "patch": {
+        "operationId": "update_profile_endpoint_api_auth_me_profile_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Profile Endpoint",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "description": "Rotate the refresh cookie. No CSRF \u2014 cookie alone authorizes.",
+        "operationId": "refresh_endpoint_api_auth_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Refresh Endpoint",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "description": "Create an account + auto-login (cookies + body CSRF).\n\nFirst user signed up becomes ``is_super_user=true`` when\n``allow_first_user_as_admin`` is enabled. See ADR-016 \u00a78.4 for\noperational guidance on disabling this in production.",
+        "operationId": "register_endpoint_api_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Endpoint",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/builder": {
+      "post": {
+        "description": "\ube4c\ub4dc \uc138\uc158\uc744 \uc2dc\uc791\ud55c\ub2e4.",
+        "operationId": "start_build_api_builder_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuilderStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Build",
+        "tags": [
+          "builder"
+        ]
+      }
+    },
+    "/api/builder/{session_id}": {
+      "get": {
+        "description": "\ube4c\ub4dc \uc138\uc158 \uc0c1\ud0dc\ub97c \uc870\ud68c\ud55c\ub2e4.",
+        "operationId": "get_build_session_api_builder__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Build Session",
+        "tags": [
+          "builder"
+        ]
+      }
+    },
+    "/api/builder/{session_id}/confirm": {
+      "post": {
+        "description": "\ube4c\ub4dc\ub97c \ud655\uc778\ud558\uace0 \uc2e4\uc81c \uc5d0\uc774\uc804\ud2b8\ub97c \uc0dd\uc131\ud55c\ub2e4.\n\n\uba71\ub4f1\uc131 \ubcf4\uc7a5:\n- COMPLETED + agent_id \uc788\uc74c \u2192 \uae30\uc874 Agent \ubc18\ud658 (\uc911\ubcf5 \uc0dd\uc131 \ubc29\uc9c0)\n- CONFIRMING \u2192 409 (\ub2e4\ub978 \uc694\uccad\uc774 \ucc98\ub9ac \uc911)\n- PREVIEW \u2192 CONFIRMING \uc6d0\uc790\uc801 \uc804\ud658 \ud6c4 Agent \uc0dd\uc131",
+        "operationId": "confirm_build_api_builder__session_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Build",
+        "tags": [
+          "builder"
+        ]
+      }
+    },
+    "/api/builder/{session_id}/image/{filename}": {
+      "get": {
+        "description": "Phase 6\uc5d0\uc11c \uc0dd\uc131\ud55c \uc784\uc2dc \uc774\ubbf8\uc9c0 \ubbf8\ub9ac\ubcf4\uae30\ub97c \uc11c\ube59\ud55c\ub2e4.\n\n\uc138\uc158 \uc18c\uc720\uc790\ub9cc \uc811\uadfc \uac00\ub2a5 (\ub2e4\ub978 \uc0ac\uc6a9\uc790\uc758 builder \uc774\ubbf8\uc9c0 \uc811\uadfc \ucc28\ub2e8).",
+        "operationId": "serve_builder_image_api_builder__session_id__image__filename__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "title": "Filename",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Serve Builder Image",
+        "tags": [
+          "builder"
+        ]
+      }
+    },
+    "/api/builder/{session_id}/messages": {
+      "post": {
+        "description": "Builder v3 \u2014 \uc0ac\uc6a9\uc790 \uba54\uc2dc\uc9c0\ub97c \uc804\uc1a1\ud558\uace0 SSE \uc2a4\ud2b8\ub9bc\uc744 \ubc1b\ub294\ub2e4.\n\n\uccab \uba54\uc2dc\uc9c0: \uadf8\ub798\ud504\ub97c \ucc98\uc74c\ubd80\ud130 \uc2e4\ud589 (Phase 1\ubd80\ud130).\n\ud6c4\uc18d \uba54\uc2dc\uc9c0: \uadf8\ub798\ud504\uac00 \uc9c4\ud589 \uc911\uc774\uba74 messages\ub9cc \ucd94\uac00.",
+        "operationId": "post_message_api_builder__session_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuilderMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Message",
+        "tags": [
+          "builder"
+        ]
+      }
+    },
+    "/api/builder/{session_id}/messages/resume": {
+      "post": {
+        "description": "Builder v3 \u2014 interrupt \uc751\ub2f5\uc744 \uc804\ub2ec\ud558\uace0 \uadf8\ub798\ud504\ub97c \uc7ac\uac1c\ud55c\ub2e4.",
+        "operationId": "resume_message_api_builder__session_id__messages_resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuilderResumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Message",
+        "tags": [
+          "builder"
         ]
       }
     },
@@ -11787,6 +12757,102 @@
         ]
       }
     },
+    "/api/templates": {
+      "get": {
+        "operationId": "list_templates_api_templates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateResponse"
+                  },
+                  "title": "Response List Templates Api Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Templates",
+        "tags": [
+          "templates"
+        ]
+      }
+    },
+    "/api/templates/{template_id}": {
+      "get": {
+        "operationId": "get_template_api_templates__template_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Template",
+        "tags": [
+          "templates"
+        ]
+      }
+    },
     "/api/tenants/{tenant_id}": {
       "get": {
         "operationId": "get_company_overview_api_tenants__tenant_id__get",
@@ -13490,6 +14556,181 @@
         ]
       }
     },
+    "/api/usage/daily": {
+      "get": {
+        "description": "Daily spend aggregates for the current user.\n\nTenancy is enforced inside :func:`usage_aggregate.get_daily_spend` \u2014 the\n``user`` axis filters on ``DailySpendUser.user_id`` directly while\n``agent`` / ``model`` join through ``Agent.user_id`` so a user only ever\nsees rows they contributed to.",
+        "operationId": "get_daily_spend_api_usage_daily_get",
+        "parameters": [
+          {
+            "description": "Aggregate axis.",
+            "in": "query",
+            "name": "target_kind",
+            "required": true,
+            "schema": {
+              "description": "Aggregate axis.",
+              "enum": [
+                "user",
+                "agent",
+                "model"
+              ],
+              "title": "Target Kind",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional single target id; omit for all targets.",
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional single target id; omit for all targets.",
+              "title": "Target Id"
+            }
+          },
+          {
+            "description": "Inclusive start date (default: today - 30d).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive start date (default: today - 30d).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive end date (default: today).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive end date (default: today).",
+              "title": "To"
+            }
+          },
+          {
+            "description": "``date`` returns one row per day. ``target`` returns one row per (date, target_id) pair so the dashboard can render multi-series.",
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "default": "date",
+              "description": "``date`` returns one row per day. ``target`` returns one row per (date, target_id) pair so the dashboard can render multi-series.",
+              "enum": [
+                "date",
+                "target"
+              ],
+              "title": "Group By",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Daily Spend Api Usage Daily Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Daily Spend",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
+    "/api/usage/summary": {
+      "get": {
+        "operationId": "get_usage_summary_api_usage_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Usage Summary",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
     "/threads/{thread_id}/history": {
       "post": {
         "operationId": "get_sdk_thread_history_threads__thread_id__history_post",
@@ -13940,6 +15181,161 @@
       "title": "AgentAccessResponse",
       "type": "object"
     },
+    "AgentBlueprintOut": {
+      "properties": {
+        "categories": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Categories"
+        },
+        "created_agent_count": {
+          "default": 0,
+          "title": "Created Agent Count",
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "icon_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon Id"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "install_status": {
+          "enum": [
+            "active",
+            "needs_setup",
+            "disabled",
+            "uninstalled"
+          ],
+          "title": "Install Status",
+          "type": "string"
+        },
+        "installation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Installation Id"
+        },
+        "is_dirty": {
+          "default": false,
+          "title": "Is Dirty",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "source_marketplace_item_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Marketplace Item Id"
+        },
+        "source_marketplace_version_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Marketplace Version Id"
+        },
+        "spec": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Spec"
+        },
+        "spec_hash": {
+          "title": "Spec Hash",
+          "type": "string"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tags"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "spec_hash",
+        "install_status",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "AgentBlueprintOut",
+      "type": "object"
+    },
     "AgentBrief": {
       "description": "\uac00\ubcbc\uc6b4 \uc5d0\uc774\uc804\ud2b8 \uce74\ub4dc\uc6a9 \ud45c\ud604 (\uc11c\ube0c\uc5d0\uc774\uc804\ud2b8 \ubaa9\ub85d \ub4f1).",
       "properties": {
@@ -14291,6 +15687,88 @@
         "model_id"
       ],
       "title": "AgentCreate",
+      "type": "object"
+    },
+    "AgentCreationIntent": {
+      "description": "\uc758\ub3c4 \ubd84\uc11d \uc11c\ube0c\uc5d0\uc774\uc804\ud2b8\uc758 \uad6c\uc870\ud654\ub41c \ucd9c\ub825.",
+      "properties": {
+        "agent_description": {
+          "description": "\uc5d0\uc774\uc804\ud2b8\uc758 \uc5ed\ud560\uacfc \uae30\ub2a5\uc5d0 \ub300\ud55c \uc0c1\uc138 \uc124\uba85 (3~5\ubb38\uc7a5)",
+          "title": "Agent Description",
+          "type": "string"
+        },
+        "agent_name": {
+          "description": "\uc601\ubb38 \uc5d0\uc774\uc804\ud2b8 \uc774\ub984",
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "agent_name_ko": {
+          "description": "\ud55c\uae00 \uc5d0\uc774\uc804\ud2b8 \uc774\ub984",
+          "title": "Agent Name Ko",
+          "type": "string"
+        },
+        "constraints": {
+          "description": "\uc81c\uc57d \uc870\uac74",
+          "items": {
+            "type": "string"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "identity_mode": {
+          "default": "per_user",
+          "description": "credential \uc0ac\uc6a9 \uc8fc\uccb4: per_user \ub610\ub294 fixed",
+          "title": "Identity Mode",
+          "type": "string"
+        },
+        "output_style": {
+          "default": "\uac04\ub2e8\ud55c \uc694\uc57d\uacfc \uc8fc\uc694 \ud3ec\uc778\ud2b8",
+          "description": "\uacb0\uacfc\ubb3c \ud615\ud0dc",
+          "title": "Output Style",
+          "type": "string"
+        },
+        "primary_task_type": {
+          "description": "\uc5d0\uc774\uc804\ud2b8\uc758 \ud575\uc2ec \uc791\uc5c5 \ud55c \ubb38\uc7a5",
+          "title": "Primary Task Type",
+          "type": "string"
+        },
+        "required_capabilities": {
+          "description": "\ud544\uc218 \uae30\ub2a5",
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Capabilities",
+          "type": "array"
+        },
+        "response_tone": {
+          "default": "\uce5c\uadfc\ud558\uace0 \uce90\uc8fc\uc5bc\ud55c \uc5b4\uc870",
+          "description": "\uc751\ub2f5 \ud1a4",
+          "title": "Response Tone",
+          "type": "string"
+        },
+        "tool_preferences": {
+          "default": "",
+          "description": "\uc120\ud638\ud558\ub294 \ub3c4\uad6c \uc720\ud615",
+          "title": "Tool Preferences",
+          "type": "string"
+        },
+        "use_cases": {
+          "description": "\uc0ac\uc6a9 \uc0ac\ub840 (\ucd5c\uc18c 1\uac1c)",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Use Cases",
+          "type": "array"
+        }
+      },
+      "required": [
+        "agent_name",
+        "agent_name_ko",
+        "agent_description",
+        "primary_task_type"
+      ],
+      "title": "AgentCreationIntent",
       "type": "object"
     },
     "AgentLifecycleMetadataResponse": {
@@ -15735,6 +17213,283 @@
       "title": "ArtifactTextContent",
       "type": "object"
     },
+    "AuditEventPageResponse": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AuditEventResponse"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "AuditEventPageResponse",
+      "type": "object"
+    },
+    "AuditEventResponse": {
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "actor_api_key_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actor Api Key Id"
+        },
+        "actor_email_snapshot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actor Email Snapshot"
+        },
+        "actor_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actor Label"
+        },
+        "actor_type": {
+          "title": "Actor Type",
+          "type": "string"
+        },
+        "actor_user_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actor User Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "ip_address": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ip Address"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "outcome": {
+          "title": "Outcome",
+          "type": "string"
+        },
+        "owner_email_snapshot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Owner Email Snapshot"
+        },
+        "owner_user_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Owner User Id"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason Code"
+        },
+        "reason_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason Message"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Request Id"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "target_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Id"
+        },
+        "target_name_snapshot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Name Snapshot"
+        },
+        "target_owner_user_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Owner User Id"
+        },
+        "target_type": {
+          "title": "Target Type",
+          "type": "string"
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trace Id"
+        },
+        "user_agent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "User Agent"
+        }
+      },
+      "required": [
+        "id",
+        "actor_type",
+        "action",
+        "target_type",
+        "outcome",
+        "created_at"
+      ],
+      "title": "AuditEventResponse",
+      "type": "object"
+    },
+    "AuthResponse": {
+      "description": "Body returned by register / login / refresh.\n\nCookies carry the access + refresh JWTs (HttpOnly). The CSRF token is\n*also* shipped in a non-HttpOnly cookie (``moldy_csrf``) so the SPA\ncan read it via ``document.cookie``; we additionally return it in the\nbody for clients that prefer to keep it in JS memory.",
+      "properties": {
+        "csrf_token": {
+          "title": "Csrf Token",
+          "type": "string"
+        },
+        "user": {
+          "$ref": "#/components/schemas/UserResponse"
+        }
+      },
+      "required": [
+        "user",
+        "csrf_token"
+      ],
+      "title": "AuthResponse",
+      "type": "object"
+    },
     "Body_create_upload_api_uploads_post": {
       "properties": {
         "file": {
@@ -15747,6 +17502,20 @@
         "file"
       ],
       "title": "Body_create_upload_api_uploads_post",
+      "type": "object"
+    },
+    "Body_upload_avatar_image_endpoint_api_auth_me_avatar_image_post": {
+      "properties": {
+        "file": {
+          "contentMediaType": "application/octet-stream",
+          "title": "File",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "title": "Body_upload_avatar_image_endpoint_api_auth_me_avatar_image_post",
       "type": "object"
     },
     "Body_upload_package_skill_api_skills_upload_post": {
@@ -15782,6 +17551,218 @@
       ],
       "title": "Body_upload_skill_file_api_skills__skill_id__files_post",
       "type": "object"
+    },
+    "BuilderMessageRequest": {
+      "description": "Builder v3 \u2014 \uba54\uc2dc\uc9c0 \uc804\uc1a1 \uc694\uccad.",
+      "properties": {
+        "content": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "BuilderMessageRequest",
+      "type": "object"
+    },
+    "BuilderResumeRequest": {
+      "additionalProperties": false,
+      "description": "Builder v3 \u2014 interrupt \uc751\ub2f5 \uc694\uccad. \ud45c\uc900 HiTL wire (ADR-012).\n\n\ud45c\uc900 ``decisions: list[Decision]`` \ub9cc \uc218\uc6a9\ud55c\ub2e4 (clean break \u2014 extra\nfield \ub294 422). router \uac00 ``decisions_to_builder_response`` \uc5b4\ub311\ud130\ub85c\nbuilder graph \uac00 \uae30\ub300\ud558\ub294 native shape (dict | str) \ub85c \ubcc0\ud658\ud55c\ub2e4.\n\nDecision \u2192 builder native \ubcc0\ud658:\n- ``approve``                   \u2192 ``{\"approved\": True}``      (approval phase)\n- ``reject(message)``           \u2192 ``{\"approved\": False, \"revision_message\": ...}``\n- ``respond(message)``          \u2192 ``\"...\"``                    (ask_user / image_*)\n- ``edit(edited_action)``       \u2192 ``{\"approved\": True}``       (builder \ub294 edit \ubbf8\uc0ac\uc6a9)",
+      "properties": {
+        "decisions": {
+          "description": "\ud45c\uc900 HiTL decisions",
+          "items": {
+            "$ref": "#/components/schemas/Decision"
+          },
+          "minItems": 1,
+          "title": "Decisions",
+          "type": "array"
+        },
+        "display_text": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Text"
+        },
+        "interrupt_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Interrupt Id"
+        }
+      },
+      "required": [
+        "decisions"
+      ],
+      "title": "BuilderResumeRequest",
+      "type": "object"
+    },
+    "BuilderSessionResponse": {
+      "description": "\ube4c\ub4dc \uc138\uc158 \uc0c1\ud0dc \uc751\ub2f5.",
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "current_phase": {
+          "default": 0,
+          "title": "Current Phase",
+          "type": "integer"
+        },
+        "draft_config": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/DraftAgentConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Message"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentCreationIntent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "middlewares_result": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/MiddlewareRecommendation"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Middlewares Result"
+        },
+        "status": {
+          "$ref": "#/components/schemas/BuilderStatus"
+        },
+        "system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "System Prompt"
+        },
+        "tools_result": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/ToolRecommendation"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tools Result"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "user_request": {
+          "title": "User Request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "user_request",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "BuilderSessionResponse",
+      "type": "object"
+    },
+    "BuilderStartRequest": {
+      "description": "POST /api/builder/start \u2014 \ube4c\ub4dc \uc138\uc158 \uc2dc\uc791 \uc694\uccad.",
+      "properties": {
+        "user_request": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "User Request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_request"
+      ],
+      "title": "BuilderStartRequest",
+      "type": "object"
+    },
+    "BuilderStatus": {
+      "description": "\ube4c\ub4dc \uc138\uc158 \uc0c1\ud0dc.",
+      "enum": [
+        "building",
+        "streaming",
+        "preview",
+        "confirming",
+        "completed",
+        "failed"
+      ],
+      "title": "BuilderStatus",
+      "type": "string"
     },
     "CapabilityAssignment": {
       "additionalProperties": false,
@@ -17809,6 +19790,68 @@
       "title": "ConversationWithAgentResponse",
       "type": "object"
     },
+    "CreateAgentFromBlueprintIn": {
+      "properties": {
+        "credential_bindings": {
+          "additionalProperties": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Credential Bindings",
+          "type": "object"
+        },
+        "dependency_strategy": {
+          "default": "install_missing",
+          "enum": [
+            "reuse_existing",
+            "install_missing",
+            "always_new"
+          ],
+          "title": "Dependency Strategy",
+          "type": "string"
+        },
+        "model_fallback_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Fallback Ids"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Id"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        }
+      },
+      "title": "CreateAgentFromBlueprintIn",
+      "type": "object"
+    },
     "CredentialAuditLogResponse": {
       "properties": {
         "action": {
@@ -18994,6 +21037,73 @@
       "title": "DiscoveredModelSchema",
       "type": "object"
     },
+    "DraftAgentConfig": {
+      "description": "\ube4c\ub4dc \ud30c\uc774\ud504\ub77c\uc778 \ucd5c\uc885 \uc0b0\ucd9c\ubb3c \u2014 \uc0ac\uc6a9\uc790 \ud655\uc778\uc6a9 \uc5d0\uc774\uc804\ud2b8 \uc124\uc815 \ud504\ub9ac\ubdf0.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "identity_mode": {
+          "default": "per_user",
+          "title": "Identity Mode",
+          "type": "string"
+        },
+        "middlewares": {
+          "description": "\ubbf8\ub4e4\uc6e8\uc5b4 \uc774\ub984 \ubaa9\ub85d",
+          "items": {
+            "type": "string"
+          },
+          "title": "Middlewares",
+          "type": "array"
+        },
+        "model_name": {
+          "default": "",
+          "title": "Model Name",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "name_ko": {
+          "title": "Name Ko",
+          "type": "string"
+        },
+        "primary_task_type": {
+          "default": "",
+          "title": "Primary Task Type",
+          "type": "string"
+        },
+        "system_prompt": {
+          "title": "System Prompt",
+          "type": "string"
+        },
+        "tools": {
+          "description": "\ub3c4\uad6c \uc774\ub984 \ubaa9\ub85d",
+          "items": {
+            "type": "string"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "use_cases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Use Cases",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "name_ko",
+        "description",
+        "system_prompt"
+      ],
+      "title": "DraftAgentConfig",
+      "type": "object"
+    },
     "EditMessageRequest": {
       "description": "Edit a previous user message and re-run from there.\n\n``message_id`` identifies the user message being replaced. Backend rewinds\nto the checkpoint just before it and forks a new branch with the edited\ncontent.",
       "properties": {
@@ -19861,6 +21971,39 @@
           "type": "null"
         }
       ]
+    },
+    "LoginRequest": {
+      "description": "POST /api/auth/login payload.",
+      "properties": {
+        "email": {
+          "format": "email",
+          "title": "Email",
+          "type": "string"
+        },
+        "password": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Password",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email",
+        "password"
+      ],
+      "title": "LoginRequest",
+      "type": "object"
+    },
+    "LogoutResponse": {
+      "properties": {
+        "ok": {
+          "default": true,
+          "title": "Ok",
+          "type": "boolean"
+        }
+      },
+      "title": "LogoutResponse",
+      "type": "object"
     },
     "MarketplaceInstallationSummary": {
       "description": "Is the current user installed on this item?",
@@ -22406,6 +24549,30 @@
       "title": "MiddlewareConfigEntry",
       "type": "object"
     },
+    "MiddlewareRecommendation": {
+      "description": "\ubbf8\ub4e4\uc6e8\uc5b4 \ucd94\ucc9c \uc11c\ube0c\uc5d0\uc774\uc804\ud2b8\uc758 \uac1c\ubcc4 \ucd94\ucc9c \ud56d\ubaa9.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "middleware_name": {
+          "title": "Middleware Name",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "middleware_name",
+        "description",
+        "reason"
+      ],
+      "title": "MiddlewareRecommendation",
+      "type": "object"
+    },
     "ModelBrief": {
       "properties": {
         "context_window": {
@@ -23715,6 +25882,71 @@
       "title": "PrincipalSearchView",
       "type": "object"
     },
+    "ProfileUpdateRequest": {
+      "description": "PATCH /api/auth/me/profile payload.",
+      "properties": {
+        "avatar_color": {
+          "anyOf": [
+            {
+              "enum": [
+                "mint",
+                "sky",
+                "violet",
+                "amber",
+                "rose",
+                "slate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Avatar Color"
+        },
+        "avatar_initials": {
+          "anyOf": [
+            {
+              "maxLength": 4,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Avatar Initials"
+        },
+        "avatar_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "auto",
+                "initials"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Avatar Mode"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        }
+      },
+      "title": "ProfileUpdateRequest",
+      "type": "object"
+    },
     "PublicChatResourceReference": {
       "properties": {
         "comment": {
@@ -23767,6 +25999,20 @@
       "title": "PublicChatResourceReference",
       "type": "object"
     },
+    "RefreshResponse": {
+      "description": "Body for /api/auth/refresh \u2014 minimal since cookies do the heavy lifting.",
+      "properties": {
+        "csrf_token": {
+          "title": "Csrf Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "csrf_token"
+      ],
+      "title": "RefreshResponse",
+      "type": "object"
+    },
     "RegenerateMessageRequest": {
       "description": "Regenerate an assistant message in place.\n\nIf ``message_id`` is omitted the backend regenerates the latest assistant\nturn. Otherwise the named assistant message is replaced (its parent user\nmessage is replayed).",
       "properties": {
@@ -23784,6 +26030,69 @@
         }
       },
       "title": "RegenerateMessageRequest",
+      "type": "object"
+    },
+    "RegisterRequest": {
+      "description": "POST /api/auth/register payload.",
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "email": {
+          "format": "email",
+          "title": "Email",
+          "type": "string"
+        },
+        "invitation_token": {
+          "anyOf": [
+            {
+              "format": "password",
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Invitation Token"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "password": {
+          "maxLength": 128,
+          "minLength": 8,
+          "title": "Password",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email",
+        "password"
+      ],
+      "title": "RegisterRequest",
       "type": "object"
     },
     "ResourceOriginSummaryOut": {
@@ -27037,6 +29346,107 @@
       "title": "SystemLlmSettingUpdate",
       "type": "object"
     },
+    "TemplateResponse": {
+      "properties": {
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "recommended_model_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recommended Model Id"
+        },
+        "recommended_skill_slugs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recommended Skill Slugs"
+        },
+        "recommended_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recommended Tools"
+        },
+        "system_prompt": {
+          "title": "System Prompt",
+          "type": "string"
+        },
+        "usage_example": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Usage Example"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "category",
+        "system_prompt",
+        "recommended_tools",
+        "recommended_model_id",
+        "usage_example",
+        "created_at"
+      ],
+      "title": "TemplateResponse",
+      "type": "object"
+    },
     "TenantAdminOverview": {
       "additionalProperties": false,
       "properties": {
@@ -28768,6 +31178,40 @@
       "title": "ToolPatch",
       "type": "object"
     },
+    "ToolRecommendation": {
+      "description": "\ub3c4\uad6c \ucd94\ucc9c \uc11c\ube0c\uc5d0\uc774\uc804\ud2b8\uc758 \uac1c\ubcc4 \ucd94\ucc9c \ud56d\ubaa9.\n\n``kind`` \ub294 \ub9e4\uce6d \ub300\uc0c1 \uce74\ud14c\uace0\ub9ac\ub97c \uba85\uc2dc\ud55c\ub2e4 \u2014 phase8 confirm \ub2e8\uacc4\uac00 \uc885\ub958\ubcc4\n\ub85c \ub2e4\ub978 \ud14c\uc774\ube14/\ub9c1\ud06c\ub97c \uc0ac\uc6a9\ud558\ubbc0\ub85c (Tool / McpTool / Skill). \uae30\ubcf8\uac12\uc740\n``\"tool\"`` \ub85c backward compat \ubcf4\uc7a5 \u2014 \uae30\uc874 LLM \uc751\ub2f5\uc774 kind \ub97c \ub204\ub77d\ud574\ub3c4\nTool \ub9e4\uce6d \uacbd\ub85c\ub85c \ud758\ub7ec\uac04\ub2e4.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "kind": {
+          "default": "tool",
+          "enum": [
+            "tool",
+            "mcp",
+            "skill"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_name",
+        "description",
+        "reason"
+      ],
+      "title": "ToolRecommendation",
+      "type": "object"
+    },
     "ToolRunRequest": {
       "properties": {
         "runtime_args": {
@@ -29276,6 +31720,115 @@
         "id"
       ],
       "title": "UserPrincipal",
+      "type": "object"
+    },
+    "UserResponse": {
+      "description": "User projection returned by auth endpoints + /me.\n\nMirrors ``CurrentUser`` plus a few read-only audit fields. Excludes\n``hashed_password`` and any reset/verify tokens \u2014 those never cross\nthe API boundary.",
+      "properties": {
+        "avatar_color": {
+          "default": "mint",
+          "enum": [
+            "mint",
+            "sky",
+            "violet",
+            "amber",
+            "rose",
+            "slate"
+          ],
+          "title": "Avatar Color",
+          "type": "string"
+        },
+        "avatar_image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Avatar Image Url"
+        },
+        "avatar_initials": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Avatar Initials"
+        },
+        "avatar_mode": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "initials",
+            "image"
+          ],
+          "title": "Avatar Mode",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "email": {
+          "title": "Email",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "is_active": {
+          "default": true,
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "is_super_user": {
+          "title": "Is Super User",
+          "type": "boolean"
+        },
+        "last_login_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Login At"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "name",
+        "is_super_user",
+        "created_at"
+      ],
+      "title": "UserResponse",
       "type": "object"
     },
     "ValidationError": {

@@ -7,13 +7,16 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.agent_usage_access import agent_usage_gate
+from app.authz.policies import RES, SELF, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.services import usage_aggregate, usage_service
 
 router = APIRouter(prefix="/api", tags=["usage"])
 
 
-@router.get("/agents/{agent_id}/usage")
+@router.get("/agents/{agent_id}/usage", dependencies=[Depends(agent_usage_gate)])
+@authz_policy(RES("agent", "can_view_config", param="agent_id", min_visible="can_run"))
 async def get_agent_usage(
     agent_id: uuid.UUID,
     period: str | None = None,
@@ -23,6 +26,7 @@ async def get_agent_usage(
 
 
 @router.get("/usage/summary")
+@authz_policy(SELF)
 async def get_usage_summary(
     period: str | None = None,
     db: AsyncSession = Depends(get_db),
@@ -32,19 +36,16 @@ async def get_usage_summary(
 
 
 @router.get("/usage/daily")
+@authz_policy(SELF)
 async def get_daily_spend(
-    target_kind: Literal["user", "agent", "model"] = Query(
-        ..., description="Aggregate axis."
-    ),
+    target_kind: Literal["user", "agent", "model"] = Query(..., description="Aggregate axis."),
     target_id: uuid.UUID | None = Query(
         None, description="Optional single target id; omit for all targets."
     ),
     from_: date_type | None = Query(
         None, alias="from", description="Inclusive start date (default: today - 30d)."
     ),
-    to: date_type | None = Query(
-        None, description="Inclusive end date (default: today)."
-    ),
+    to: date_type | None = Query(None, description="Inclusive end date (default: today)."),
     group_by: Literal["date", "target"] = Query(
         "date",
         description=(
