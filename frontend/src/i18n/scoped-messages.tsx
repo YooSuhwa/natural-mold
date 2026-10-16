@@ -24,6 +24,9 @@ export const ROOT_MESSAGE_NAMESPACES = [
   // global chat navigator (in the root layout shell), which is outside the chat
   // page's own message scope — see chat-navigator / use-conversation-row-actions.
   'share',
+  // ResourceShareDialog opens from cards and detail screens of every resource
+  // family (agents, skills, tools, MCP, credentials, marketplace) — plan 13.1.
+  'sharing',
   'sidebar',
 ] as const
 

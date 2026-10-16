@@ -856,6 +856,8 @@
       "visualSettings": "Visual Settings",
       "settings": "Settings",
       "publish": "Publish to marketplace",
+      "share": "Share {name}",
+      "sharedWithMe": "Shared with me",
       "modelLabel": "Model:",
       "createdAt": "Created {date}",
       "lastUsed": "Used {time}",
@@ -1471,6 +1473,155 @@
     },
     "toast": {
       "exported": "Conversation exported"
+    }
+  },
+  "sharing": {
+    "title": "Share {name}",
+    "description": "Share with people, groups, or the whole organization at the level you choose.",
+    "loading": "Loading access",
+    "retry": "Try again",
+    "readOnly": "You can see who has access but cannot share.",
+    "share": "Share",
+    "open": "Open sharing for {name}",
+    "sharedWithMe": "Shared with me",
+    "picker": {
+      "placeholder": "Search names, emails or groups",
+      "hint": "Type at least two characters.",
+      "searching": "Searching…",
+      "error": "Search failed. Try again shortly.",
+      "empty": "No matches.",
+      "count": "{count, plural, one {# result} other {# results}}. Use the up and down arrows and press Enter to choose.",
+      "noOrganization": "Choose an organization before sharing.",
+      "groupMembers": "Group · {count, plural, one {# member} other {# members}}",
+      "type": {
+        "user": "User",
+        "group": "Group",
+        "org": "Whole organization"
+      }
+    },
+    "form": {
+      "title": "Add people",
+      "recipient": "Person or group to share with",
+      "clearRecipient": "Clear {name}",
+      "level": "Access level",
+      "levelHint": "Changing the level for the same recipient replaces the existing share.",
+      "expiry": "Expires on (optional)",
+      "expiryHint": "Only run shares can expire. Leave empty for no expiry.",
+      "submit": "Share",
+      "sharing": "Sharing…"
+    },
+    "principalType": {
+      "user": "User",
+      "group": "Group",
+      "organization": "Whole organization"
+    },
+    "level": {
+      "consumer": "Use",
+      "consumerAgent": "Run",
+      "viewer": "View",
+      "editor": "Edit",
+      "manager": "Manage",
+      "owner": "Owner",
+      "governor": "Administrator",
+      "install": "Install"
+    },
+    "levelHelp": {
+      "consumer": "Can only run or use it.",
+      "viewer": "Can view its settings.",
+      "editor": "Can change its settings.",
+      "manager": "Can edit and share it with others.",
+      "install": "Can view and install it from the marketplace."
+    },
+    "notice": {
+      "sharedAccount": "This resource calls out with its owner's credential. Recipients will call with the owner's account too.",
+      "sharedAccountAck": "I understand recipients call with the owner's account",
+      "credential": "Recipients can connect this credential to their own tools. Nobody can see the secret values.",
+      "marketplace": "Users who can view and install this restricted item. You can only revoke here for now; add recipients in the publish wizard. The last recipient can only be removed after changing the visibility."
+    },
+    "personal": {
+      "title": "A personal account is attached, so this can't be shared",
+      "hint": "Switch to per-user connections or remove the personal account, then share again."
+    },
+    "delegation": {
+      "title": "Review the delegated accounts",
+      "description": "This agent runs with the account resources below. When recipients run it, these accounts are used.",
+      "type": {
+        "credential": "Credential",
+        "tool": "Tool",
+        "mcp_server": "MCP server",
+        "agent": "Agent",
+        "skill": "Skill",
+        "other": "Resource"
+      },
+      "cancel": "Cancel",
+      "confirm": "Confirm and share"
+    },
+    "access": {
+      "title": "Who has access",
+      "empty": "Not shared with anyone yet.",
+      "you": "(you)",
+      "groupMembers": "Group · {count, plural, one {# member} other {# members}}",
+      "expires": "Until {date}",
+      "revoke": "Revoke",
+      "revokeLabel": "Revoke access for {name}"
+    },
+    "source": {
+      "governance": "Organization or company admin"
+    },
+    "revoke": {
+      "title": "Revoke access for {name}?",
+      "description": "They lose access and ongoing conversations become read-only. Share again to undo.",
+      "groupDescription": "{count, plural, one {# group member loses} other {# group members lose}} access and ongoing conversations become read-only. Share again to undo."
+    },
+    "toast": {
+      "shared": "Shared with {name}.",
+      "revoked": "Revoked access for {name}."
+    },
+    "transfer": {
+      "toggle": "Transfer ownership",
+      "description": "The new owner gets every permission on this resource. Only active members of this organization can receive it.",
+      "change": "Change",
+      "newOwner": "New owner",
+      "reasonOptional": "Reason (optional)",
+      "reasonRequired": "Reason (required)",
+      "keepManager": "Keep manage access for me after the transfer",
+      "blockedTitle": "Clean these up first",
+      "blocker": {
+        "personal_account": "Personal account credentials cannot be transferred.",
+        "triggers": "{count, plural, one {# active schedule} other {# active schedules}}",
+        "deployments": "{count, plural, one {# active API deployment} other {# active API deployments}}",
+        "api_keys": "{count, plural, one {# unrevoked API key} other {# unrevoked API keys}}",
+        "credentials": "{count, plural, one {# credential of the previous owner} other {# credentials of the previous owner}}"
+      },
+      "submit": "Transfer ownership",
+      "confirmTitle": "Transfer {resource} to {name}?",
+      "confirmDescription": "To undo, the new owner has to transfer it back.",
+      "done": "Transferred ownership to {name}."
+    },
+    "errors": {
+      "generic": "Could not complete the request. Try again.",
+      "not_found": "Not found.",
+      "permission_required": "You don't have permission.",
+      "capability_required": "You can't share with the whole organization.",
+      "transfer_name_conflict": "The new owner already has a resource with this name.",
+      "stale_version": "Someone changed this first. Try again.",
+      "conflict": "Someone changed this first. Try again.",
+      "authz_unavailable": "Try again in a moment.",
+      "marketplace_acl_required": "A restricted item needs at least one recipient. Change the visibility first.",
+      "transferBlocked": "Ownership can't be transferred yet.",
+      "personal_account_shared": "Resources that carry a personal account credential can't be shared.",
+      "grantInvalid": {
+        "default": "This recipient can't get this access.",
+        "archived": "Archived agents can't be shared or transferred.",
+        "expired": "The expiry date must be in the future.",
+        "expires_at": "Only run shares can have an expiry date.",
+        "level": "This resource doesn't support that access level.",
+        "owner": "The owner already has every permission.",
+        "principal": "Choose an active member or group of this organization.",
+        "reason_required": "Administrators must give a reason to transfer.",
+        "self_grant": "You can only lower your own access.",
+        "self_transfer": "Administrators can't transfer to themselves."
+      }
     }
   },
   "share": {
@@ -3453,9 +3604,8 @@
       },
       "acl": {
         "title": "Shared with (restricted)",
-        "empty": "No users have been shared yet. Adding users currently requires calling the ACL endpoint directly (a wizard is planned for a later slice).",
-        "revoke": "Revoke",
-        "lastTargetHint": "To remove the last target, change the visibility to another value first."
+        "summary": "{count, plural, =0 {Not shared with anyone yet.} one {Shared with # user.} other {Shared with # users.}}",
+        "manage": "Manage recipients"
       },
       "toast": {
         "requestFailed": "Request failed.",
@@ -3466,9 +3616,6 @@
         "alreadyPrivate": "The item is already private.",
         "unpublished": "Unpublished — hidden from the catalog. Already-installed copies are not affected.",
         "unpublishFailed": "Failed to unpublish the item.",
-        "aclRevoked": "Sharing revoked",
-        "aclRevokeFailed": "Failed to revoke sharing.",
-        "lastAclRequired": "A restricted item cannot drop its last ACL target. Change the visibility first.",
         "visibilityFailed": "Failed to change visibility.",
         "aclRequired": "Switching to restricted requires at least one shared user. Add a target and try again."
       },

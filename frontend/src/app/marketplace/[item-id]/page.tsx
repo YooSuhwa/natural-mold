@@ -21,6 +21,7 @@ import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
 import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { SupportBadge } from '@/components/marketplace/badges/support-badge'
 import { InstallWizard } from '@/components/marketplace/install-wizard'
+import { MarketplaceShareDialog } from '@/components/marketplace/marketplace-share-dialog'
 import { UpdateStrategyDialog } from '@/components/marketplace/update-strategy-dialog'
 import { derivePrimaryCta, getPrimaryCtaHref } from '@/components/marketplace/marketplace-card'
 import { useSession } from '@/lib/auth/session'
@@ -31,7 +32,6 @@ import {
   useMarketplaceItem,
   useMarketplaceVersions,
   usePatchMarketplaceItem,
-  useRemoveItemACL,
 } from '@/lib/hooks/use-marketplace'
 import {
   Select,
@@ -83,7 +83,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
   const disableItem = useDisableItem()
   const enableItem = useEnableItem()
   const patchItem = usePatchMarketplaceItem(itemId)
-  const removeACL = useRemoveItemACL(itemId)
+  const [shareOpen, setShareOpen] = useState(false)
   const [installOpen, setInstallOpen] = useState(false)
   const [updateOpen, setUpdateOpen] = useState(false)
 
@@ -188,15 +188,6 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
       t('toast.unpublished'),
       { fallback: t('toast.unpublishFailed') },
     )
-  }
-
-  async function handleRevokeAcl(userId: string) {
-    await runMutation(() => removeACL.mutateAsync(userId), t('toast.aclRevoked'), {
-      fallback: t('toast.aclRevokeFailed'),
-      codeMap: {
-        marketplace_acl_required: t('toast.lastAclRequired'),
-      },
-    })
   }
 
   async function handleVisibilityChange(next: MarketplaceVisibility) {
@@ -387,32 +378,15 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                 })}
               </p>
 
-              {isOwner && item.visibility === 'restricted' && item.acl_user_ids ? (
+              {isOwner && item.visibility === 'restricted' ? (
                 <div className="space-y-2 border-t border-border/60 pt-3">
                   <p className="text-sm font-medium">{t('acl.title')}</p>
-                  {item.acl_user_ids.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">{t('acl.empty')}</p>
-                  ) : (
-                    <ul className="space-y-1">
-                      {item.acl_user_ids.map((uid) => (
-                        <li
-                          key={uid}
-                          className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-xs"
-                        >
-                          <code className="font-mono">{uid}</code>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleRevokeAcl(uid)}
-                            disabled={removeACL.isPending}
-                          >
-                            {t('acl.revoke')}
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className="text-xs text-muted-foreground">{t('acl.lastTargetHint')}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('acl.summary', { count: item.acl_user_ids?.length ?? 0 })}
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
+                    {t('acl.manage')}
+                  </Button>
                 </div>
               ) : null}
             </CardContent>
@@ -420,6 +394,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
         ) : null}
 
         <InstallWizard item={item} open={installOpen} onOpenChange={setInstallOpen} />
+        <MarketplaceShareDialog item={item} open={shareOpen} onOpenChange={setShareOpen} />
         <UpdateStrategyDialog item={item} open={updateOpen} onOpenChange={setUpdateOpen} />
       </div>
     </div>

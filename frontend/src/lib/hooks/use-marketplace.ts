@@ -262,14 +262,6 @@ export function useEnableItem() {
   })
 }
 
-export function useRemoveItemACL(itemId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (userId: string) => marketplaceApi.removeACLEntry(itemId, userId),
-    onSuccess: () => invalidateAllItems(qc),
-  })
-}
-
 export function useAdminSetListed() {
   const qc = useQueryClient()
   return useMutation({

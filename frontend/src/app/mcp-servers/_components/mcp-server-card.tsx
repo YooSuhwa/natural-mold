@@ -3,6 +3,7 @@
 import { Activity, ChevronRight, Server } from 'lucide-react'
 
 import { StatusChip } from '@/components/shared/status-chip'
+import { ResourceShareButton, SharedWithMeBadge } from '@/components/sharing/resource-share-button'
 import { Button } from '@/components/ui/button'
 import {
   ResourceBadge,
@@ -81,6 +82,7 @@ export function McpServerCard({
       <ResourceListCard.MetaRow>
         <ResourceCardMeta>{toolCountLabel}</ResourceCardMeta>
         {recencyLabel ? <ResourceCardMeta>{recencyLabel}</ResourceCardMeta> : null}
+        <SharedWithMeBadge ownerId={server.user_id} />
       </ResourceListCard.MetaRow>
 
       <ResourceListCard.Footer className="justify-between">
@@ -107,6 +109,13 @@ export function McpServerCard({
           >
             {publishLabel}
           </Button>
+          <ResourceShareButton
+            resourceType="mcp_server"
+            resourceId={server.id}
+            resourceName={server.name}
+            ownerId={server.user_id}
+            sharedAccount={!!server.credential_id}
+          />
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => onOpen(server.id)}>
           {manageLabel}

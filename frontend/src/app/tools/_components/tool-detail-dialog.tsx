@@ -12,6 +12,7 @@ import { DomainIconTile } from '@/components/shared/icon'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
 import { CredentialPicker } from '@/components/credential/credential-picker'
+import { ResourceShareButton, SharedWithMeBadge } from '@/components/sharing/resource-share-button'
 import { ToolRunPanel } from './tool-run-panel'
 import { useDeleteTool, useTool, useToolType, useUpdateTool } from '@/lib/hooks/use-tools'
 
@@ -84,6 +85,7 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
             description={
               <span className="inline-flex items-center gap-2">
                 <Badge variant="secondary">{tool.definition_key}</Badge>
+                <SharedWithMeBadge ownerId={tool.user_id} />
                 <span>{tool.description}</span>
               </span>
             }
@@ -123,6 +125,13 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
                 {t('delete')}
               </Button>
             )}
+            <ResourceShareButton
+              resourceType="tool"
+              resourceId={tool.id}
+              resourceName={tool.name}
+              ownerId={tool.user_id}
+              sharedAccount={!!tool.credential_id}
+            />
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {tc('close')}
             </Button>

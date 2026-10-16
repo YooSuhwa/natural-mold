@@ -11,6 +11,7 @@ import { StatusChip } from '@/components/shared/status-chip'
 import { DomainIconTile } from '@/components/shared/icon'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
+import { ResourceShareButton } from '@/components/sharing/resource-share-button'
 import { PersonalAccountBadge } from './personal-account-badge'
 import { CredentialTestButton } from './credential-test-button'
 import {
@@ -198,6 +199,14 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
                 <Trash2 className="size-3.5" />
                 {t('delete')}
               </Button>
+            )}
+            {credential.is_system || credential.personal ? null : (
+              <ResourceShareButton
+                resourceType="credential"
+                resourceId={credential.id}
+                resourceName={credential.name}
+                ownerId={credential.user_id}
+              />
             )}
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {tc('close')}

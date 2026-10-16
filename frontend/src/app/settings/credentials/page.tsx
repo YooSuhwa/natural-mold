@@ -6,6 +6,7 @@ import { KeyRound, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { StatusChip } from '@/components/shared/status-chip'
+import { SharedWithMeBadge } from '@/components/sharing/resource-share-button'
 import { DomainIcon } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
 import { SearchInput } from '@/components/shared/search-input'
@@ -327,6 +328,7 @@ function CredentialCard({
 
       <ResourceListCard.StatusRow>
         <StatusChip variant={credential.status} className={resourceStatusChipClassName} />
+        <SharedWithMeBadge ownerId={credential.user_id} />
       </ResourceListCard.StatusRow>
 
       <ResourceListCard.MetaRow>

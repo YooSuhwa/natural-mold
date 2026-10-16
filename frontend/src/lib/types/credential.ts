@@ -76,11 +76,11 @@ export interface Credential {
   name: string
   field_keys: string[]
   is_shared: boolean
+  /** E-05 (10.4): personal account type — never shared or transferred. */
+  personal?: boolean
   // True for operator-managed system credentials (Fix Agent / builder /
   // image generation). User-facing pickers MUST hide these.
   is_system?: boolean
-  // Plan 10.4: derived from the definition; sharing is refused for these.
-  personal?: boolean
   status: CredentialStatus | string
   key_id: string
   last_used_at: string | null

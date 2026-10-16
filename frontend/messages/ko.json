@@ -856,6 +856,8 @@
       "visualSettings": "비주얼 설정",
       "settings": "설정",
       "publish": "마켓플레이스에 게시",
+      "share": "{name} 공유",
+      "sharedWithMe": "공유받음",
       "modelLabel": "모델:",
       "createdAt": "{date} 생성",
       "lastUsed": "{time} 사용",
@@ -1471,6 +1473,155 @@
     },
     "toast": {
       "exported": "대화를 내보냈어요"
+    }
+  },
+  "sharing": {
+    "title": "{name} 공유",
+    "description": "같은 조직의 사용자, 그룹, 조직 전체에 권한 단계를 골라 공유해요.",
+    "loading": "접근 목록을 불러오는 중",
+    "retry": "다시 시도",
+    "readOnly": "공유 권한이 없어 접근 목록만 볼 수 있어요.",
+    "share": "공유",
+    "open": "{name} 공유 설정 열기",
+    "sharedWithMe": "공유받음",
+    "picker": {
+      "placeholder": "이름, 이메일 또는 그룹 검색",
+      "hint": "두 글자 이상 입력하세요.",
+      "searching": "검색 중…",
+      "error": "검색하지 못했어요. 잠시 후 다시 시도하세요.",
+      "empty": "일치하는 대상이 없어요.",
+      "count": "검색 결과 {count}개. 위아래 화살표로 고르고 Enter로 선택하세요.",
+      "noOrganization": "조직을 선택한 뒤 공유할 수 있어요.",
+      "groupMembers": "그룹 · {count}명",
+      "type": {
+        "user": "사용자",
+        "group": "그룹",
+        "org": "조직 전체"
+      }
+    },
+    "form": {
+      "title": "공유 대상 추가",
+      "recipient": "공유할 사람 또는 그룹",
+      "clearRecipient": "{name} 선택 해제",
+      "level": "권한 단계",
+      "levelHint": "같은 대상의 단계를 바꾸면 기존 공유를 대체해요.",
+      "expiry": "만료일 (선택)",
+      "expiryHint": "실행 공유만 기간을 정할 수 있어요. 비워 두면 기한이 없어요.",
+      "submit": "공유",
+      "sharing": "공유 중…"
+    },
+    "principalType": {
+      "user": "사용자",
+      "group": "그룹",
+      "organization": "조직 전체"
+    },
+    "level": {
+      "consumer": "사용",
+      "consumerAgent": "실행",
+      "viewer": "보기",
+      "editor": "편집",
+      "manager": "관리",
+      "owner": "소유자",
+      "governor": "관리자 권한",
+      "install": "설치"
+    },
+    "levelHelp": {
+      "consumer": "실행하거나 사용할 수만 있어요.",
+      "viewer": "설정을 볼 수 있어요.",
+      "editor": "설정을 바꿀 수 있어요.",
+      "manager": "편집하고 다른 사람에게 공유할 수 있어요.",
+      "install": "마켓플레이스에서 보고 설치할 수 있어요."
+    },
+    "notice": {
+      "sharedAccount": "이 자원은 소유자 계정의 자격 증명으로 호출돼요. 공유받은 사람도 소유자 계정으로 호출하게 돼요.",
+      "sharedAccountAck": "소유자 계정으로 호출된다는 점을 확인했어요",
+      "credential": "공유받은 사람은 이 자격 증명을 자기 도구에 연결할 수 있어요. 비밀 값은 누구에게도 보이지 않아요.",
+      "marketplace": "제한 공개 항목을 보고 설치할 수 있는 사용자예요. 지금은 회수만 할 수 있고, 대상 추가는 게시 마법사에서 해요. 마지막 대상은 공개 범위를 바꾼 뒤에만 뺄 수 있어요."
+    },
+    "personal": {
+      "title": "개인 계정이 연결되어 있어 공유할 수 없어요",
+      "hint": "사용자마다 연결하는 방식으로 바꾸거나 개인 계정 연결을 뺀 뒤 다시 공유하세요."
+    },
+    "delegation": {
+      "title": "위임된 계정 자원을 확인하세요",
+      "description": "이 에이전트는 아래 계정 자원으로 실행돼요. 공유받은 사람이 실행하면 이 계정이 사용돼요.",
+      "type": {
+        "credential": "자격 증명",
+        "tool": "도구",
+        "mcp_server": "MCP 서버",
+        "agent": "에이전트",
+        "skill": "스킬",
+        "other": "자원"
+      },
+      "cancel": "취소",
+      "confirm": "확인하고 공유"
+    },
+    "access": {
+      "title": "접근 권한이 있는 대상",
+      "empty": "아직 공유한 대상이 없어요.",
+      "you": "(나)",
+      "groupMembers": "그룹 · {count}명",
+      "expires": "{date}까지",
+      "revoke": "회수",
+      "revokeLabel": "{name} 공유 회수"
+    },
+    "source": {
+      "governance": "조직·회사 관리자"
+    },
+    "revoke": {
+      "title": "{name}의 공유를 회수할까요?",
+      "description": "이 대상은 더 이상 접근할 수 없고, 진행 중인 대화는 읽기 전용이 돼요. 다시 공유하면 되돌릴 수 있어요.",
+      "groupDescription": "그룹 구성원 {count}명의 접근이 사라지고, 진행 중인 대화는 읽기 전용이 돼요. 다시 공유하면 되돌릴 수 있어요."
+    },
+    "toast": {
+      "shared": "{name}에게 공유했어요.",
+      "revoked": "{name}의 공유를 회수했어요."
+    },
+    "transfer": {
+      "toggle": "소유권 이전",
+      "description": "새 소유자가 이 자원의 모든 권한을 갖게 돼요. 같은 조직의 활성 구성원에게만 넘길 수 있어요.",
+      "change": "변경",
+      "newOwner": "새 소유자",
+      "reasonOptional": "사유 (선택)",
+      "reasonRequired": "사유 (필수)",
+      "keepManager": "이전한 뒤에도 나에게 관리 권한 남기기",
+      "blockedTitle": "먼저 정리해야 할 항목이 있어요",
+      "blocker": {
+        "personal_account": "개인 계정 자격 증명은 이전할 수 없어요.",
+        "triggers": "실행 중인 스케줄 {count}개",
+        "deployments": "활성 API 배포 {count}개",
+        "api_keys": "폐기되지 않은 API 키 {count}개",
+        "credentials": "이전 소유자의 자격 증명 연결 {count}개"
+      },
+      "submit": "소유권 이전",
+      "confirmTitle": "{resource}의 소유권을 {name}님에게 넘길까요?",
+      "confirmDescription": "되돌리려면 새 소유자가 다시 이전해야 해요.",
+      "done": "{name}님에게 소유권을 넘겼어요."
+    },
+    "errors": {
+      "generic": "요청을 처리하지 못했어요. 다시 시도하세요.",
+      "not_found": "찾을 수 없어요.",
+      "permission_required": "권한이 없어요.",
+      "capability_required": "조직 전체에 공유할 권한이 없어요.",
+      "transfer_name_conflict": "새 소유자에게 같은 이름의 자원이 이미 있어요.",
+      "stale_version": "다른 사람이 먼저 변경했어요. 다시 시도하세요.",
+      "conflict": "다른 사람이 먼저 변경했어요. 다시 시도하세요.",
+      "authz_unavailable": "잠시 후 다시 시도하세요.",
+      "marketplace_acl_required": "제한 공개 항목에는 대상이 한 명 이상 있어야 해요. 공개 범위를 먼저 바꾸세요.",
+      "transferBlocked": "아직 소유권을 이전할 수 없어요.",
+      "personal_account_shared": "개인 계정 자격 증명이 연결된 자원은 공유할 수 없어요.",
+      "grantInvalid": {
+        "default": "이 대상에게 이 권한을 줄 수 없어요.",
+        "archived": "보관된 에이전트는 공유하거나 이전할 수 없어요.",
+        "expired": "만료일은 오늘 이후여야 해요.",
+        "expires_at": "실행 공유에만 만료일을 정할 수 있어요.",
+        "level": "이 자원에는 이 권한 단계를 줄 수 없어요.",
+        "owner": "소유자는 이미 모든 권한을 가지고 있어요.",
+        "principal": "같은 조직의 활성 구성원이나 그룹만 선택할 수 있어요.",
+        "reason_required": "관리자로 이전할 때는 사유가 필요해요.",
+        "self_grant": "내 권한은 낮추기만 할 수 있어요.",
+        "self_transfer": "관리자는 자기 자신에게 이전할 수 없어요."
+      }
     }
   },
   "share": {
@@ -3453,9 +3604,8 @@
       },
       "acl": {
         "title": "공유 대상 (제한 공유)",
-        "empty": "공유된 사용자가 없어요. 새 사용자 추가는 ACL 엔드포인트 직접 호출이 필요합니다 (후속 슬라이스에 마법사 추가 예정).",
-        "revoke": "공유 취소",
-        "lastTargetHint": "마지막 대상을 제거하려면 먼저 공개 범위를 다른 값으로 변경하세요."
+        "summary": "{count, plural, =0 {아직 공유된 사용자가 없어요.} other {사용자 #명에게 공유했어요.}}",
+        "manage": "공유 대상 관리"
       },
       "toast": {
         "requestFailed": "요청에 실패했습니다.",
@@ -3466,9 +3616,6 @@
         "alreadyPrivate": "이미 비공개 상태입니다.",
         "unpublished": "비공개 전환 완료 — 카탈로그에서 미노출. 이미 설치된 사본은 영향 없음.",
         "unpublishFailed": "비공개 전환에 실패했습니다.",
-        "aclRevoked": "공유 취소 완료",
-        "aclRevokeFailed": "공유 취소에 실패했습니다.",
-        "lastAclRequired": "restricted 상태에서는 마지막 ACL 을 비울 수 없습니다. visibility 를 먼저 바꾸세요.",
         "visibilityFailed": "공개 범위 변경에 실패했습니다.",
         "aclRequired": "제한 공유 전환은 공유 대상이 최소 1명 필요합니다. 대상 추가 후 다시 시도하세요."
       },

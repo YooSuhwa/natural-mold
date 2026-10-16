@@ -73,6 +73,8 @@ export interface MiddlewareConfigEntry {
 
 export interface Agent {
   id: string
+  /** Shadow/enforce only (`AgentAccessResponse`); absent in legacy mode. */
+  my_permissions?: string[]
   runtime_name: string
   identity_mode: AgentIdentityMode
   name: string
@@ -117,6 +119,8 @@ export interface Agent {
 
 export interface AgentSummary {
   id: string
+  /** Shadow/enforce only (`AgentSummaryAccessResponse`); absent in legacy mode. */
+  my_permissions?: string[]
   name: string
   description: string | null
   status: string

@@ -3,10 +3,12 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { WrenchIcon, StarIcon, Settings2Icon, CpuIcon, Share2Icon } from 'lucide-react'
+import { WrenchIcon, StarIcon, Settings2Icon, CpuIcon, Share2Icon, UsersIcon } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToggleFavorite } from '@/lib/hooks/use-agents'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
+import { canShareResource } from '@/components/sharing/share-permissions'
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { formatRelativeKo } from '@/lib/utils/format-relative-time'
 import type { Agent, AgentSummary } from '@/lib/types'
@@ -14,6 +16,8 @@ import type { Agent, AgentSummary } from '@/lib/types'
 interface AgentCardProps {
   agent: Agent | AgentSummary
   onPublish?: (agent: Agent | AgentSummary) => void
+  /** Opens the resource share dialog; shown only with `can_share` (plan 13.4). */
+  onShare?: (agent: Agent | AgentSummary) => void
 }
 
 const STATUS_DOT = {
@@ -22,7 +26,7 @@ const STATUS_DOT = {
   inactive: 'moldy-status-warn moldy-status-dot',
 } as const
 
-export function AgentCard({ agent, onPublish }: AgentCardProps) {
+export function AgentCard({ agent, onPublish, onShare }: AgentCardProps) {
   const router = useRouter()
   const { mutate: toggleFavorite } = useToggleFavorite()
   const t = useTranslations('agent.card')
@@ -51,6 +55,13 @@ export function AgentCard({ agent, onPublish }: AgentCardProps) {
   const fallbackCount =
     'fallback_count' in agent ? agent.fallback_count : (agent.model_fallback_ids?.length ?? 0)
   const toolCount = 'tool_count' in agent ? agent.tool_count : agent.tools.length
+  // Shadow/enforce bodies carry `my_permissions`; legacy lists hold own agents only.
+  const permissions = agent.my_permissions
+  const canShare =
+    !!onShare && canShareResource({ myPermissions: permissions, currentUserId: null })
+  const canViewConfig = !permissions || permissions.includes('can_view_config')
+  // Only owners and administrators govern; anyone else reached it through a share.
+  const sharedWithMe = !!permissions && !permissions.includes('can_govern')
 
   return (
     <Link href={`/agents/${agent.id}`} className="moldy-card-link group">
@@ -108,6 +119,12 @@ export function AgentCard({ agent, onPublish }: AgentCardProps) {
                 +{fallbackCount} fallback
               </span>
             )}
+            {sharedWithMe ? (
+              <Badge variant="outline" className="gap-1">
+                <UsersIcon className="size-3" aria-hidden="true" />
+                {t('sharedWithMe')}
+              </Badge>
+            ) : null}
             {toolCount > 0 && (
               <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-medium">
                 <WrenchIcon className="size-3" />
@@ -137,17 +154,32 @@ export function AgentCard({ agent, onPublish }: AgentCardProps) {
                 <Share2Icon className="size-4 text-muted-foreground transition-colors hover:text-foreground" />
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={(e) => {
-                stopProp(e)
-                router.push(`/agents/${agent.id}/settings`)
-              }}
-              className="rounded-md p-1 transition-colors hover:bg-accent"
-              aria-label={t('settings')}
-            >
-              <Settings2Icon className="size-4 text-muted-foreground transition-colors hover:text-foreground" />
-            </button>
+            {canShare ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  stopProp(e)
+                  onShare?.(agent)
+                }}
+                className="rounded-md p-1 transition-colors hover:bg-accent"
+                aria-label={t('share', { name: agent.name })}
+              >
+                <UsersIcon className="size-4 text-muted-foreground transition-colors hover:text-foreground" />
+              </button>
+            ) : null}
+            {canViewConfig ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  stopProp(e)
+                  router.push(`/agents/${agent.id}/settings`)
+                }}
+                className="rounded-md p-1 transition-colors hover:bg-accent"
+                aria-label={t('settings')}
+              >
+                <Settings2Icon className="size-4 text-muted-foreground transition-colors hover:text-foreground" />
+              </button>
+            ) : null}
           </div>
         </div>
       </Card>

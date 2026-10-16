@@ -111,4 +111,42 @@ describe('AgentCard', () => {
     const link = screen.getByRole('link')
     expect(link).toHaveAttribute('href', '/agents/agent-1')
   })
+
+  describe('sharing (plan 13.4)', () => {
+    it('offers share with can_share and hides settings without can_view_config', () => {
+      const onShare = vi.fn()
+      render(
+        <AgentCard
+          agent={{ ...activeAgent, my_permissions: ['can_run', 'can_share'] }}
+          onShare={onShare}
+        />,
+      )
+      screen.getByRole('button', { name: 'Test Agent 공유' }).click()
+      expect(onShare).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-1' }))
+      expect(screen.queryByRole('button', { name: '설정' })).not.toBeInTheDocument()
+      expect(screen.getByText('공유받음')).toBeInTheDocument()
+    })
+
+    it('hides share without can_share and keeps legacy bodies unchanged', () => {
+      const { unmount } = render(
+        <AgentCard agent={{ ...activeAgent, my_permissions: ['can_run'] }} onShare={vi.fn()} />,
+      )
+      expect(screen.queryByRole('button', { name: 'Test Agent 공유' })).not.toBeInTheDocument()
+      unmount()
+      render(<AgentCard agent={activeAgent} onShare={vi.fn()} />)
+      expect(screen.getByRole('button', { name: 'Test Agent 공유' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '설정' })).toBeInTheDocument()
+      expect(screen.queryByText('공유받음')).not.toBeInTheDocument()
+    })
+
+    it('does not flag owners or governors as shared', () => {
+      render(
+        <AgentCard
+          agent={{ ...activeAgent, my_permissions: ['can_view_config', 'can_govern'] }}
+          onShare={vi.fn()}
+        />,
+      )
+      expect(screen.queryByText('공유받음')).not.toBeInTheDocument()
+    })
+  })
 })
