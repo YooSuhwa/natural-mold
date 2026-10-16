@@ -6993,6 +6993,2480 @@
         ]
       }
     },
+    "/api/skill-builder": {
+      "get": {
+        "description": "\uc0ac\uc6a9\uc790\uc758 \ube4c\ub354 \uc138\uc158 \ubaa9\ub85d (\uc2a4\ud29c\ub514\uc624 \ube4c\ub354 \ud0ed/\uc778\ub371\uc2a4, Phase 2).\n\n``skill_id``\ub294 improve \uc6d0\ubcf8\uacfc create \uc0b0\ucd9c\ubb3c(finalized) \uc591\ucabd\uc5d0 \ub9e4\uce6d \u2014\n\"\uc774 \uc2a4\ud0ac\uc758 \ube4c\ub354 \uc774\ub825\"\uc744 \ud55c \ubc88\uc5d0 \uc870\ud68c\ud55c\ub2e4. updated_at \ub0b4\ub9bc\ucc28\uc21c.",
+        "operationId": "list_skill_builder_sessions_api_skill_builder_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "skill_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Skill Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SkillBuilderStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillBuilderSessionBrief"
+                  },
+                  "title": "Response List Skill Builder Sessions Api Skill Builder Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skill Builder Sessions",
+        "tags": [
+          "skill-builder"
+        ]
+      },
+      "post": {
+        "description": "\ube4c\ub354 \ucc57 \uc138\uc158 \uc2dc\uc791 (v2, \uc2a4\ud399 AD-6).\n\n\ud788\ub4e0 \ube4c\ub354 \uc5d0\uc774\uc804\ud2b8 lazy-seed \u2192 \uc138\uc158 row \u2192 \ub4dc\ub798\ud504\ud2b8 \uc6cc\ud06c\uc2a4\ud398\uc774\uc2a4 \u2192\ndraft conversation\uc744 \ub9cc\ub4e4\uace0 ``{session, agent_id, conversation_id}``\ub97c\n\ubc18\ud658\ud55c\ub2e4. \ud504\ub860\ud2b8\ub294 \uc774 \uac12\uc73c\ub85c ``/skills/builder/[sessionId]``\uc5d0 \uc9c4\uc785\ud55c\ub2e4.",
+        "operationId": "start_skill_builder_api_skill_builder_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillBuilderStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillBuilderSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Skill Builder",
+        "tags": [
+          "skill-builder"
+        ]
+      }
+    },
+    "/api/skill-builder/{session_id}": {
+      "get": {
+        "operationId": "get_skill_builder_session_api_skill_builder__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillBuilderSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Builder Session",
+        "tags": [
+          "skill-builder"
+        ]
+      }
+    },
+    "/api/skill-builder/{session_id}/confirm": {
+      "post": {
+        "operationId": "confirm_skill_builder_session_api_skill_builder__session_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Skill Builder Session",
+        "tags": [
+          "skill-builder"
+        ]
+      }
+    },
+    "/api/skill-builder/{session_id}/files": {
+      "get": {
+        "description": "\ub4dc\ub798\ud504\ud2b8 \uc6cc\ud06c\uc2a4\ud398\uc774\uc2a4 \ud30c\uc77c \ubaa9\ub85d (\ub808\uc77c \uc18c\uc2a4 \ubdf0, M7).\n\n\uc5b4\ub311\ud130\uc640 \ub3d9\uc77c \ud544\ud130(``inputs/`` \uc81c\uc678\u00b7\ubc14\uc774\ub108\ub9ac skip)\uc758 stat \uae30\ubc18 \uc5f4\uac70\ub77c\n\uc6cc\ud06c\uc2a4\ud398\uc774\uc2a4 \uc804\uccb4 \ubc14\uc774\ud2b8\ub97c \uc77d\uc9c0 \uc54a\uace0(R2 perf), \ub514\uc2a4\ud06c \uacbd\ub85c\ub97c \uc9c1\uc811\n\ub2e4\ub8e8\uc9c0 \uc54a\uc544 traversal \ud45c\uba74\uc774 \uc5c6\ub2e4.",
+        "operationId": "list_skill_builder_files_api_skill_builder__session_id__files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillBuilderFilesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skill Builder Files",
+        "tags": [
+          "skill-builder"
+        ]
+      }
+    },
+    "/api/skill-builder/{session_id}/files/content": {
+      "get": {
+        "description": "\ub4dc\ub798\ud504\ud2b8 \ud30c\uc77c \ub0b4\uc6a9 \uc870\ud68c (\uc18c\uc720\uc790 \uc804\uc6a9, \ub808\uc77c \uc18c\uc2a4 \ubdf0\uc5b4).\n\n\uc694\uccad path\ub294 \uc5b4\ub311\ud130\uac00 \uc5f4\uac70\ud55c \uc815\uaddc\ud654 \uacbd\ub85c\uc640 **\uc815\ud655 \uc77c\uce58**\ud574\uc57c \ud55c\ub2e4 \u2014\n\ub514\uc2a4\ud06c resolve\uac00 \uc5c6\uc73c\ubbc0\ub85c ``../`` \ub958 traversal\uc740 \ub9e4\uce6d \uc2e4\ud328(404)\ub85c \ub05d\ub09c\ub2e4.",
+        "operationId": "get_skill_builder_file_content_api_skill_builder__session_id__files_content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillBuilderFileContentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Builder File Content",
+        "tags": [
+          "skill-builder"
+        ]
+      }
+    },
+    "/api/skill-builder/{session_id}/trigger-eval/run": {
+      "post": {
+        "operationId": "run_skill_builder_trigger_eval_api_skill_builder__session_id__trigger_eval_run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillBuilderSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Skill Builder Trigger Eval",
+        "tags": [
+          "skill-builder"
+        ]
+      }
+    },
+    "/api/skill-builder/{session_id}/validate": {
+      "post": {
+        "operationId": "validate_skill_builder_draft_api_skill_builder__session_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillDraftPackage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillBuilderSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Skill Builder Draft",
+        "tags": [
+          "skill-builder"
+        ]
+      }
+    },
+    "/api/skills": {
+      "get": {
+        "operationId": "list_skills_api_skills_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(text|package)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillResponse"
+                  },
+                  "title": "Response List Skills Api Skills Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skills",
+        "tags": [
+          "skills"
+        ]
+      },
+      "post": {
+        "operationId": "create_text_skill_api_skills_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Text Skill",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/upload": {
+      "post": {
+        "operationId": "upload_package_skill_api_skills_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_package_skill_api_skills_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Package Skill",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}": {
+      "delete": {
+        "operationId": "delete_skill_api_skills__skill_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Skill",
+        "tags": [
+          "skills"
+        ]
+      },
+      "get": {
+        "operationId": "get_skill_api_skills__skill_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill",
+        "tags": [
+          "skills"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_skill_metadata_api_skills__skill_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillMetadataUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Skill Metadata",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/content": {
+      "get": {
+        "operationId": "get_text_content_api_skills__skill_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillTextContentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Text Content",
+        "tags": [
+          "skills"
+        ]
+      },
+      "put": {
+        "operationId": "put_text_content_api_skills__skill_id__content_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillContentUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Text Content",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/credential-bindings": {
+      "get": {
+        "operationId": "list_skill_credential_bindings_api_skills__skill_id__credential_bindings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillCredentialBindingOut"
+                  },
+                  "title": "Response List Skill Credential Bindings Api Skills  Skill Id  Credential Bindings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skill Credential Bindings",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/credential-bindings/{requirement_key}": {
+      "delete": {
+        "operationId": "delete_skill_credential_binding_api_skills__skill_id__credential_bindings__requirement_key__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "requirement_key",
+            "required": true,
+            "schema": {
+              "title": "Requirement Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Skill Credential Binding",
+        "tags": [
+          "skills"
+        ]
+      },
+      "put": {
+        "operationId": "put_skill_credential_binding_api_skills__skill_id__credential_bindings__requirement_key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "requirement_key",
+            "required": true,
+            "schema": {
+              "title": "Requirement Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillCredentialBindingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillCredentialBindingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Skill Credential Binding",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/credential-requirements": {
+      "get": {
+        "operationId": "get_skill_credential_requirements_api_skills__skill_id__credential_requirements_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillCredentialRequirementOut"
+                  },
+                  "title": "Response Get Skill Credential Requirements Api Skills  Skill Id  Credential Requirements Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Credential Requirements",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/evaluations": {
+      "get": {
+        "operationId": "list_skill_evaluations_api_skills__skill_id__evaluations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillEvaluationSetResponse"
+                  },
+                  "title": "Response List Skill Evaluations Api Skills  Skill Id  Evaluations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skill Evaluations",
+        "tags": [
+          "skill-evaluations"
+        ]
+      },
+      "post": {
+        "operationId": "create_skill_evaluation_api_skills__skill_id__evaluations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillEvaluationSetCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillEvaluationSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Skill Evaluation",
+        "tags": [
+          "skill-evaluations"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/evaluations/prepare": {
+      "post": {
+        "operationId": "prepare_skill_evaluation_api_skills__skill_id__evaluations_prepare_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillEvaluationPrepareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillEvaluationPrepareResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prepare Skill Evaluation",
+        "tags": [
+          "skill-evaluations"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/evaluations/version-stats": {
+      "get": {
+        "operationId": "get_skill_evaluation_version_stats_api_skills__skill_id__evaluations_version_stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillEvaluationVersionStatsResponse"
+                  },
+                  "title": "Response Get Skill Evaluation Version Stats Api Skills  Skill Id  Evaluations Version Stats Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Evaluation Version Stats",
+        "tags": [
+          "skill-evaluations"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/evaluations/{evaluation_set_id}": {
+      "get": {
+        "operationId": "get_skill_evaluation_api_skills__skill_id__evaluations__evaluation_set_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evaluation_set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evaluation Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillEvaluationSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Evaluation",
+        "tags": [
+          "skill-evaluations"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/evaluations/{evaluation_set_id}/estimate": {
+      "post": {
+        "operationId": "estimate_skill_evaluation_run_api_skills__skill_id__evaluations__evaluation_set_id__estimate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evaluation_set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evaluation Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SkillEvaluationRunCreateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillEvaluationRunEstimate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Estimate Skill Evaluation Run",
+        "tags": [
+          "skill-evaluations"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/evaluations/{evaluation_set_id}/runs": {
+      "get": {
+        "operationId": "list_skill_evaluation_runs_api_skills__skill_id__evaluations__evaluation_set_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evaluation_set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evaluation Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillEvaluationRunResponse"
+                  },
+                  "title": "Response List Skill Evaluation Runs Api Skills  Skill Id  Evaluations  Evaluation Set Id  Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skill Evaluation Runs",
+        "tags": [
+          "skill-evaluations"
+        ]
+      },
+      "post": {
+        "operationId": "create_skill_evaluation_run_api_skills__skill_id__evaluations__evaluation_set_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evaluation_set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evaluation Set Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SkillEvaluationRunCreateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Data"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillEvaluationRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Skill Evaluation Run",
+        "tags": [
+          "skill-evaluations"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/evaluations/{evaluation_set_id}/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancel_skill_evaluation_run_api_skills__skill_id__evaluations__evaluation_set_id__runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evaluation_set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evaluation Set Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillEvaluationRunCancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillEvaluationRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Skill Evaluation Run",
+        "tags": [
+          "skill-evaluations"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/evaluations/{evaluation_set_id}/runs/{run_id}/case-feedback": {
+      "get": {
+        "operationId": "list_skill_evaluation_case_feedback_api_skills__skill_id__evaluations__evaluation_set_id__runs__run_id__case_feedback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evaluation_set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evaluation Set Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillCaseFeedbackResponse"
+                  },
+                  "title": "Response List Skill Evaluation Case Feedback Api Skills  Skill Id  Evaluations  Evaluation Set Id  Runs  Run Id  Case Feedback Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skill Evaluation Case Feedback",
+        "tags": [
+          "skill-evaluations"
+        ]
+      },
+      "put": {
+        "operationId": "upsert_skill_evaluation_case_feedback_api_skills__skill_id__evaluations__evaluation_set_id__runs__run_id__case_feedback_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evaluation_set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evaluation Set Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillCaseFeedbackUpsertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillCaseFeedbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upsert Skill Evaluation Case Feedback",
+        "tags": [
+          "skill-evaluations"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/evaluations/{evaluation_set_id}/runs/{run_id}/case-feedback/{case_index}": {
+      "delete": {
+        "operationId": "delete_skill_evaluation_case_feedback_api_skills__skill_id__evaluations__evaluation_set_id__runs__run_id__case_feedback__case_index__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evaluation_set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evaluation Set Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_index",
+            "required": true,
+            "schema": {
+              "title": "Case Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Skill Evaluation Case Feedback",
+        "tags": [
+          "skill-evaluations"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/export": {
+      "get": {
+        "operationId": "export_package_skill_api_skills__skill_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_evals",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Evals",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Package Skill",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/feedback": {
+      "delete": {
+        "operationId": "delete_skill_feedback_api_skills__skill_id__feedback_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Skill Feedback",
+        "tags": [
+          "skills"
+        ]
+      },
+      "get": {
+        "operationId": "get_skill_feedback_api_skills__skill_id__feedback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillFeedbackSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Feedback",
+        "tags": [
+          "skills"
+        ]
+      },
+      "put": {
+        "operationId": "upsert_skill_feedback_api_skills__skill_id__feedback_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillFeedbackUpsertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillFeedbackSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upsert Skill Feedback",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/files": {
+      "get": {
+        "operationId": "list_skill_files_api_skills__skill_id__files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillFileEntry"
+                  },
+                  "title": "Response List Skill Files Api Skills  Skill Id  Files Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skill Files",
+        "tags": [
+          "skills"
+        ]
+      },
+      "post": {
+        "operationId": "upload_skill_file_api_skills__skill_id__files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_skill_file_api_skills__skill_id__files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Skill File",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/files/{file_path}": {
+      "delete": {
+        "operationId": "delete_skill_file_api_skills__skill_id__files__file_path__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_path",
+            "required": true,
+            "schema": {
+              "title": "File Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Skill File",
+        "tags": [
+          "skills"
+        ]
+      },
+      "get": {
+        "operationId": "get_skill_file_api_skills__skill_id__files__file_path__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_path",
+            "required": true,
+            "schema": {
+              "title": "File Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill File",
+        "tags": [
+          "skills"
+        ]
+      },
+      "put": {
+        "operationId": "put_skill_file_api_skills__skill_id__files__file_path__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_path",
+            "required": true,
+            "schema": {
+              "title": "File Path",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillFileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Skill File",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/revisions": {
+      "get": {
+        "operationId": "list_skill_revisions_api_skills__skill_id__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillRevisionSummary"
+                  },
+                  "title": "Response List Skill Revisions Api Skills  Skill Id  Revisions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skill Revisions",
+        "tags": [
+          "skill-revisions"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/revisions/{revision_id}": {
+      "get": {
+        "operationId": "get_skill_revision_api_skills__skill_id__revisions__revision_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillRevisionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Revision",
+        "tags": [
+          "skill-revisions"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/revisions/{revision_id}/files": {
+      "get": {
+        "description": "\ub9ac\ube44\uc804 \uc2a4\ub0c5\uc0f7 zip\uc758 \ud30c\uc77c \ubaa9\ub85d (\ubc84\uc804 diff/\uc18c\uc2a4 \ubcf4\uae30, Phase 2).\n\n\ub514\uc2a4\ud06c \ucd94\ucd9c \uc5c6\uc774 zip \uba54\ud0c0\ub370\uc774\ud130 + head sniff\ub9cc \uc77d\ub294\ub2e4. pruned \uc2a4\ub0c5\uc0f7\uc740\n\ud30c\uc77c\uc744 \uc81c\uacf5\ud560 \uc218 \uc5c6\uc74c\uc744 \uba85\uc2dc \ud50c\ub798\uadf8\ub85c \ubc18\ud658\ud55c\ub2e4.",
+        "operationId": "list_skill_revision_files_api_skills__skill_id__revisions__revision_id__files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillRevisionFilesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skill Revision Files",
+        "tags": [
+          "skill-revisions"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/revisions/{revision_id}/files/content": {
+      "get": {
+        "description": "\ub9ac\ube44\uc804 \uc2a4\ub0c5\uc0f7\uc758 \ub2e8\uc77c \ud30c\uc77c \ud14d\uc2a4\ud2b8 (\uc18c\uc720\uc790 \uc804\uc6a9).\n\n\uc694\uccad path\ub294 zip \uc5f4\uac70 \uacbd\ub85c\uc640 **\uc815\ud655 \uc77c\uce58**\ud574\uc57c \ud55c\ub2e4 \u2014 traversal\uc740 \ub9e4\uce6d\n\uc2e4\ud328(404)\ub85c \ub05d\ub09c\ub2e4. \ubc14\uc774\ub108\ub9ac\u00b72MB \ucd08\uacfc\u00b7pruned\ub3c4 404(fail-closed).",
+        "operationId": "get_skill_revision_file_content_api_skills__skill_id__revisions__revision_id__files_content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillRevisionFileContentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Revision File Content",
+        "tags": [
+          "skill-revisions"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/revisions/{revision_id}/rollback": {
+      "post": {
+        "operationId": "rollback_skill_revision_api_skills__skill_id__revisions__revision_id__rollback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillRollbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Skill Revision",
+        "tags": [
+          "skill-revisions"
+        ]
+      }
+    },
+    "/api/skills/{skill_id}/usage": {
+      "get": {
+        "operationId": "get_skill_usage_api_skills__skill_id__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillUsageSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill Usage",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
     "/api/tenants/{tenant_id}": {
       "get": {
         "operationId": "get_company_overview_api_tenants__tenant_id__get",
@@ -9457,6 +11931,40 @@
         "file"
       ],
       "title": "Body_create_upload_api_uploads_post",
+      "type": "object"
+    },
+    "Body_upload_package_skill_api_skills_upload_post": {
+      "properties": {
+        "file": {
+          "contentMediaType": "application/octet-stream",
+          "title": "File",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "title": "Body_upload_package_skill_api_skills_upload_post",
+      "type": "object"
+    },
+    "Body_upload_skill_file_api_skills__skill_id__files_post": {
+      "properties": {
+        "file": {
+          "contentMediaType": "application/octet-stream",
+          "title": "File",
+          "type": "string"
+        },
+        "rel_path": {
+          "description": "Relative path inside the skill, eg 'scripts/run.py'",
+          "title": "Rel Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "rel_path"
+      ],
+      "title": "Body_upload_skill_file_api_skills__skill_id__files_post",
       "type": "object"
     },
     "CapabilityAssignment": {
@@ -12750,6 +15258,71 @@
         }
       ]
     },
+    "MarketplaceInstallationSummary": {
+      "description": "Is the current user installed on this item?",
+      "properties": {
+        "dirty": {
+          "default": false,
+          "title": "Dirty",
+          "type": "boolean"
+        },
+        "installation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Installation Id"
+        },
+        "installed": {
+          "title": "Installed",
+          "type": "boolean"
+        },
+        "installed_resource_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Installed Resource Id"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "active",
+                "needs_setup",
+                "disabled",
+                "uninstalled"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        },
+        "update_available": {
+          "default": false,
+          "title": "Update Available",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "installed"
+      ],
+      "title": "MarketplaceInstallationSummary",
+      "type": "object"
+    },
     "McpAppsCallParams": {
       "additionalProperties": false,
       "properties": {
@@ -14594,6 +17167,184 @@
       "title": "RegenerateMessageRequest",
       "type": "object"
     },
+    "ResourceOriginSummaryOut": {
+      "description": "Where the current user's installed resource came from.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "created_by_me",
+            "imported_by_me",
+            "built_in_k_skill",
+            "shared_with_me",
+            "community",
+            "system_seed"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "marketplace_item_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Marketplace Item Id"
+        },
+        "marketplace_version_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Marketplace Version Id"
+        },
+        "source_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Name"
+        },
+        "source_user_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source User Id"
+        }
+      },
+      "required": [
+        "kind",
+        "label"
+      ],
+      "title": "ResourceOriginSummaryOut",
+      "type": "object"
+    },
+    "ResourcePublicationSummaryOut": {
+      "description": "Whether/how the current user has published this resource.",
+      "properties": {
+        "is_listed": {
+          "default": false,
+          "title": "Is Listed",
+          "type": "boolean"
+        },
+        "item_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Item Id"
+        },
+        "latest_version_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latest Version Id"
+        },
+        "shared_user_count": {
+          "default": 0,
+          "title": "Shared User Count",
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "not_published",
+            "draft",
+            "published_private",
+            "published_restricted",
+            "published_public_listed",
+            "published_public_unlisted",
+            "published_unlisted",
+            "disabled"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "draft",
+                "published",
+                "deprecated",
+                "disabled"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        },
+        "version_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version Number"
+        },
+        "visibility": {
+          "anyOf": [
+            {
+              "enum": [
+                "private",
+                "restricted",
+                "public",
+                "unlisted",
+                "system"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Visibility"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "ResourcePublicationSummaryOut",
+      "type": "object"
+    },
     "ResumeRequest": {
       "description": "HiTL resume \uc694\uccad. LangChain ``HITLResponse`` \ud638\ud658 \ud45c\uc900 wire.",
       "properties": {
@@ -14872,6 +17623,2423 @@
         "shared_at"
       ],
       "title": "SharedConversationView",
+      "type": "object"
+    },
+    "SkillBuilderFileContentResponse": {
+      "description": "\ub4dc\ub798\ud504\ud2b8 \ud30c\uc77c \ub0b4\uc6a9 (\uc18c\uc720\uc790 \uc804\uc6a9 \uc870\ud68c \u2014 \ub808\uc77c \uc18c\uc2a4 \ubdf0\uc5b4).",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "role",
+        "content"
+      ],
+      "title": "SkillBuilderFileContentResponse",
+      "type": "object"
+    },
+    "SkillBuilderFileEntry": {
+      "description": "\ub4dc\ub798\ud504\ud2b8 \uc6cc\ud06c\uc2a4\ud398\uc774\uc2a4 \ud30c\uc77c \uc694\uc57d (\ub808\uc77c \uc18c\uc2a4 \ubdf0, M7) \u2014 \ub0b4\uc6a9 \uc5c6\uc74c.",
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "size": {
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "size",
+        "role"
+      ],
+      "title": "SkillBuilderFileEntry",
+      "type": "object"
+    },
+    "SkillBuilderFilesResponse": {
+      "properties": {
+        "files": {
+          "items": {
+            "$ref": "#/components/schemas/SkillBuilderFileEntry"
+          },
+          "title": "Files",
+          "type": "array"
+        }
+      },
+      "required": [
+        "files"
+      ],
+      "title": "SkillBuilderFilesResponse",
+      "type": "object"
+    },
+    "SkillBuilderMode": {
+      "enum": [
+        "create",
+        "improve"
+      ],
+      "title": "SkillBuilderMode",
+      "type": "string"
+    },
+    "SkillBuilderSessionBrief": {
+      "description": "\uc138\uc158 \ubaa9\ub85d\uc6a9 \uacbd\ub7c9 \uc751\ub2f5 \u2014 draft/snapshot \ub4f1 \ubb34\uac70\uc6b4 JSON \uceec\ub7fc \uc81c\uc678.",
+      "properties": {
+        "conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Conversation Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "finalized_skill_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finalized Skill Id"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/SkillBuilderMode"
+        },
+        "source_skill_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Skill Id"
+        },
+        "status": {
+          "$ref": "#/components/schemas/SkillBuilderStatus"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "user_request": {
+          "title": "User Request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "mode",
+        "status",
+        "user_request",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "SkillBuilderSessionBrief",
+      "type": "object"
+    },
+    "SkillBuilderSessionResponse": {
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "base_content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Base Content Hash"
+        },
+        "base_skill_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Base Skill Version"
+        },
+        "base_snapshot": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Base Snapshot"
+        },
+        "changelog_draft": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Changelog Draft"
+        },
+        "compatibility_result": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Compatibility Result"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Conversation Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "current_phase": {
+          "title": "Current Phase",
+          "type": "integer"
+        },
+        "draft_package": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Draft Package"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Message"
+        },
+        "eval_result": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Eval Result"
+        },
+        "finalized_skill_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finalized Skill Id"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Intent"
+        },
+        "messages": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Messages"
+        },
+        "mode": {
+          "$ref": "#/components/schemas/SkillBuilderMode"
+        },
+        "source_skill_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Skill Id"
+        },
+        "status": {
+          "$ref": "#/components/schemas/SkillBuilderStatus"
+        },
+        "trigger_eval_result": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trigger Eval Result"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        },
+        "user_request": {
+          "title": "User Request",
+          "type": "string"
+        },
+        "validation_result": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Validation Result"
+        }
+      },
+      "required": [
+        "id",
+        "user_id",
+        "user_request",
+        "mode",
+        "status",
+        "current_phase",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "SkillBuilderSessionResponse",
+      "type": "object"
+    },
+    "SkillBuilderStartRequest": {
+      "properties": {
+        "mode": {
+          "$ref": "#/components/schemas/SkillBuilderMode",
+          "default": "create"
+        },
+        "source_skill_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Skill Id"
+        },
+        "user_request": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "User Request",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_request"
+      ],
+      "title": "SkillBuilderStartRequest",
+      "type": "object"
+    },
+    "SkillBuilderStatus": {
+      "enum": [
+        "active",
+        "abandoned",
+        "collecting",
+        "drafting",
+        "review",
+        "confirming",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "SkillBuilderStatus",
+      "type": "string"
+    },
+    "SkillCaseFeedbackResponse": {
+      "properties": {
+        "case_index": {
+          "title": "Case Index",
+          "type": "integer"
+        },
+        "comment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Comment"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "verdict": {
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "case_index",
+        "verdict",
+        "updated_at"
+      ],
+      "title": "SkillCaseFeedbackResponse",
+      "type": "object"
+    },
+    "SkillCaseFeedbackUpsertRequest": {
+      "properties": {
+        "case_index": {
+          "minimum": 0.0,
+          "title": "Case Index",
+          "type": "integer"
+        },
+        "comment": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Comment"
+        },
+        "verdict": {
+          "enum": [
+            "agree",
+            "disagree"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_index",
+        "verdict"
+      ],
+      "title": "SkillCaseFeedbackUpsertRequest",
+      "type": "object"
+    },
+    "SkillContentUpdate": {
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "SkillContentUpdate",
+      "type": "object"
+    },
+    "SkillCreate": {
+      "description": "Create a text-kind skill via JSON.\n\nPackage-kind skills are uploaded as multipart files to\n``POST /api/skills/upload``.",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "name": {
+          "maxLength": 150,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Slug"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version"
+        }
+      },
+      "required": [
+        "name",
+        "content"
+      ],
+      "title": "SkillCreate",
+      "type": "object"
+    },
+    "SkillCredentialBindingIn": {
+      "properties": {
+        "credential_id": {
+          "format": "uuid",
+          "title": "Credential Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "credential_id"
+      ],
+      "title": "SkillCredentialBindingIn",
+      "type": "object"
+    },
+    "SkillCredentialBindingOut": {
+      "description": "An existing binding row.",
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "credential_id": {
+          "format": "uuid",
+          "title": "Credential Id",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "requirement_key": {
+          "title": "Requirement Key",
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "skill",
+            "agent_skill"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "requirement_key",
+        "credential_id",
+        "scope",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "SkillCredentialBindingOut",
+      "type": "object"
+    },
+    "SkillCredentialRequirementOut": {
+      "description": "One ``credential_requirements`` entry stored on the skill row.\n\nMirror of ``app.marketplace.schemas.CredentialRequirementOut`` but kept\nhere so ``app.schemas.skill`` does not import from ``app.marketplace``\n(avoid a cycle when the marketplace schemas evolve).",
+      "properties": {
+        "definition_key": {
+          "title": "Definition Key",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "injection": {
+          "default": "env",
+          "enum": [
+            "env",
+            "config"
+          ],
+          "title": "Injection",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "scope": {
+          "default": "user",
+          "enum": [
+            "user",
+            "system_dependency",
+            "manual"
+          ],
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "definition_key",
+        "required",
+        "label"
+      ],
+      "title": "SkillCredentialRequirementOut",
+      "type": "object"
+    },
+    "SkillDraftFile": {
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "media_type": {
+          "default": "text/plain",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/components/schemas/SkillDraftFileRole",
+          "default": "skill"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "title": "SkillDraftFile",
+      "type": "object"
+    },
+    "SkillDraftFileRole": {
+      "enum": [
+        "skill",
+        "script",
+        "reference",
+        "asset",
+        "metadata",
+        "eval"
+      ],
+      "type": "string"
+    },
+    "SkillDraftPackage": {
+      "properties": {
+        "benchmark": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Input"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Benchmark"
+        },
+        "changelog_draft": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Input"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Changelog Draft"
+        },
+        "compatibility_result": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Input"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Compatibility Result"
+        },
+        "credential_requirements": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Input"
+            },
+            "type": "object"
+          },
+          "title": "Credential Requirements",
+          "type": "array"
+        },
+        "description": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "evals": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Input"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Evals"
+        },
+        "execution_profile": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Input"
+          },
+          "title": "Execution Profile",
+          "type": "object"
+        },
+        "files": {
+          "items": {
+            "$ref": "#/components/schemas/SkillDraftFile"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Slug",
+          "type": "string"
+        },
+        "validation_issues": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Input"
+            },
+            "type": "object"
+          },
+          "title": "Validation Issues",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "slug",
+        "description"
+      ],
+      "title": "SkillDraftPackage",
+      "type": "object"
+    },
+    "SkillEvaluationPrepareRequest": {
+      "properties": {
+        "allow_llm_generation": {
+          "default": true,
+          "title": "Allow Llm Generation",
+          "type": "boolean"
+        },
+        "force": {
+          "default": false,
+          "title": "Force",
+          "type": "boolean"
+        }
+      },
+      "title": "SkillEvaluationPrepareRequest",
+      "type": "object"
+    },
+    "SkillEvaluationPrepareResponse": {
+      "properties": {
+        "case_count": {
+          "minimum": 0.0,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "evaluation_set_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Evaluation Set Id"
+        },
+        "payload_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Payload Hash"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        },
+        "source_kind": {
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "source_kind",
+        "case_count"
+      ],
+      "title": "SkillEvaluationPrepareResponse",
+      "type": "object"
+    },
+    "SkillEvaluationRunCancelRequest": {
+      "properties": {
+        "reason": {
+          "default": "user",
+          "maxLength": 120,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "title": "SkillEvaluationRunCancelRequest",
+      "type": "object"
+    },
+    "SkillEvaluationRunCreateRequest": {
+      "properties": {
+        "baseline_comparison": {
+          "default": true,
+          "title": "Baseline Comparison",
+          "type": "boolean"
+        }
+      },
+      "title": "SkillEvaluationRunCreateRequest",
+      "type": "object"
+    },
+    "SkillEvaluationRunEstimate": {
+      "properties": {
+        "case_count": {
+          "minimum": 0.0,
+          "title": "Case Count",
+          "type": "integer"
+        },
+        "estimated_cost_usd": {
+          "minimum": 0.0,
+          "title": "Estimated Cost Usd",
+          "type": "number"
+        },
+        "estimated_seconds": {
+          "minimum": 0.0,
+          "title": "Estimated Seconds",
+          "type": "integer"
+        },
+        "estimated_tokens_in": {
+          "default": 0,
+          "minimum": 0.0,
+          "title": "Estimated Tokens In",
+          "type": "integer"
+        },
+        "estimated_tokens_out": {
+          "default": 0,
+          "minimum": 0.0,
+          "title": "Estimated Tokens Out",
+          "type": "integer"
+        },
+        "model_call_count": {
+          "minimum": 0.0,
+          "title": "Model Call Count",
+          "type": "integer"
+        },
+        "pricing_available": {
+          "default": false,
+          "title": "Pricing Available",
+          "type": "boolean"
+        },
+        "runner_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runner Model"
+        },
+        "timeout_seconds": {
+          "minimum": 1.0,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        },
+        "uses_baseline_comparison": {
+          "title": "Uses Baseline Comparison",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "case_count",
+        "model_call_count",
+        "estimated_seconds",
+        "timeout_seconds",
+        "estimated_cost_usd",
+        "uses_baseline_comparison"
+      ],
+      "title": "SkillEvaluationRunEstimate",
+      "type": "object"
+    },
+    "SkillEvaluationRunResponse": {
+      "properties": {
+        "benchmark": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Benchmark"
+        },
+        "cancellation_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cancellation Reason"
+        },
+        "cancellation_requested_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cancellation Requested At"
+        },
+        "case_results": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Case Results"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completed At"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Message"
+        },
+        "evaluation_set_id": {
+          "format": "uuid",
+          "title": "Evaluation Set Id",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "runner_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runner Model"
+        },
+        "skill_content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Skill Content Hash"
+        },
+        "skill_id": {
+          "format": "uuid",
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "skill_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Skill Version"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "status": {
+          "$ref": "#/components/schemas/SkillEvaluationRunStatus"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Summary"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Usage"
+        }
+      },
+      "required": [
+        "id",
+        "skill_id",
+        "evaluation_set_id",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "SkillEvaluationRunResponse",
+      "type": "object"
+    },
+    "SkillEvaluationRunStatus": {
+      "enum": [
+        "queued",
+        "running",
+        "grading",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "SkillEvaluationRunStatus",
+      "type": "string"
+    },
+    "SkillEvaluationSetCreate": {
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "evals": {
+          "items": {
+            "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Input"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "title": "Evals",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "evals"
+      ],
+      "title": "SkillEvaluationSetCreate",
+      "type": "object"
+    },
+    "SkillEvaluationSetResponse": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "evals": {
+          "items": {
+            "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+          },
+          "title": "Evals",
+          "type": "array"
+        },
+        "expectations_schema_version": {
+          "title": "Expectations Schema Version",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "latest_run": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/SkillEvaluationRunResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "skill_id": {
+          "format": "uuid",
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "skill_id",
+        "name",
+        "source_kind",
+        "evals",
+        "expectations_schema_version",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "SkillEvaluationSetResponse",
+      "type": "object"
+    },
+    "SkillEvaluationVersionStatsResponse": {
+      "properties": {
+        "avg_pass_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Avg Pass Rate"
+        },
+        "content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content Hash"
+        },
+        "first_run_at": {
+          "format": "date-time",
+          "title": "First Run At",
+          "type": "string"
+        },
+        "last_run_at": {
+          "format": "date-time",
+          "title": "Last Run At",
+          "type": "string"
+        },
+        "latest_measured": {
+          "default": false,
+          "title": "Latest Measured",
+          "type": "boolean"
+        },
+        "latest_pass_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latest Pass Rate"
+        },
+        "latest_pass_rate_delta": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latest Pass Rate Delta"
+        },
+        "run_count": {
+          "minimum": 0.0,
+          "title": "Run Count",
+          "type": "integer"
+        },
+        "skill_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Skill Version"
+        }
+      },
+      "required": [
+        "run_count",
+        "first_run_at",
+        "last_run_at"
+      ],
+      "title": "SkillEvaluationVersionStatsResponse",
+      "type": "object"
+    },
+    "SkillFeedbackMineResponse": {
+      "properties": {
+        "comment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Comment"
+        },
+        "rating": {
+          "title": "Rating",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rating",
+        "updated_at"
+      ],
+      "title": "SkillFeedbackMineResponse",
+      "type": "object"
+    },
+    "SkillFeedbackSummaryResponse": {
+      "properties": {
+        "down_count": {
+          "minimum": 0.0,
+          "title": "Down Count",
+          "type": "integer"
+        },
+        "mine": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/SkillFeedbackMineResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skill_id": {
+          "format": "uuid",
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "up_count": {
+          "minimum": 0.0,
+          "title": "Up Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "skill_id",
+        "up_count",
+        "down_count"
+      ],
+      "title": "SkillFeedbackSummaryResponse",
+      "type": "object"
+    },
+    "SkillFeedbackUpsertRequest": {
+      "properties": {
+        "comment": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Comment"
+        },
+        "rating": {
+          "enum": [
+            "up",
+            "down"
+          ],
+          "title": "Rating",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rating"
+      ],
+      "title": "SkillFeedbackUpsertRequest",
+      "type": "object"
+    },
+    "SkillFileEntry": {
+      "properties": {
+        "is_dir": {
+          "title": "Is Dir",
+          "type": "boolean"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "size": {
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "size",
+        "is_dir"
+      ],
+      "title": "SkillFileEntry",
+      "type": "object"
+    },
+    "SkillFileUpdate": {
+      "description": "PUT body for setting a single file inside a package skill.",
+      "properties": {
+        "content": {
+          "description": "UTF-8 text body. Binary files use upload endpoint.",
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "SkillFileUpdate",
+      "type": "object"
+    },
+    "SkillHealthSummary": {
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "success",
+            "info",
+            "warning",
+            "error",
+            "neutral"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "ready",
+            "needs_evaluation",
+            "needs_rerun",
+            "needs_credentials",
+            "evaluation_running",
+            "evaluation_failed",
+            "low_confidence"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "label",
+        "reason",
+        "severity"
+      ],
+      "title": "SkillHealthSummary",
+      "type": "object"
+    },
+    "SkillLatestEvaluationStatus": {
+      "enum": [
+        "queued",
+        "running",
+        "grading",
+        "completed",
+        "failed",
+        "cancelled",
+        "missing",
+        "stale",
+        "partial",
+        "passed"
+      ],
+      "type": "string"
+    },
+    "SkillLatestEvaluationSummary": {
+      "properties": {
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completed At"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created At"
+        },
+        "evaluation_set_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Evaluation Set Id"
+        },
+        "latest_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latest Run Id"
+        },
+        "pass_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pass Rate"
+        },
+        "skill_content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Skill Content Hash"
+        },
+        "status": {
+          "$ref": "#/components/schemas/SkillLatestEvaluationStatus"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "SkillLatestEvaluationSummary",
+      "type": "object"
+    },
+    "SkillMetadataUpdate": {
+      "description": "Patch metadata fields only \u2014 content edits use a separate endpoint.",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 150,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version"
+        }
+      },
+      "title": "SkillMetadataUpdate",
+      "type": "object"
+    },
+    "SkillResponse": {
+      "properties": {
+        "content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content Hash"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "credential_requirements": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Requirements"
+        },
+        "current_revision_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Revision Id"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "execution_profile": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Execution Profile"
+        },
+        "health": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/SkillHealthSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "installation": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MarketplaceInstallationSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "package"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_modified_at": {
+          "format": "date-time",
+          "title": "Last Modified At",
+          "type": "string"
+        },
+        "latest_evaluation_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/SkillLatestEvaluationSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "origin_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ResourceOriginSummaryOut"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "package_metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Package Metadata"
+        },
+        "publication_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ResourcePublicationSummaryOut"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size_bytes": {
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "storage_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Storage Path"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "used_by_count": {
+          "title": "Used By Count",
+          "type": "integer"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slug",
+        "description",
+        "kind",
+        "version",
+        "storage_path",
+        "content_hash",
+        "size_bytes",
+        "used_by_count",
+        "package_metadata",
+        "last_modified_at",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "SkillResponse",
+      "type": "object"
+    },
+    "SkillRevisionDetail": {
+      "properties": {
+        "changed_files": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Changed Files"
+        },
+        "changelog_items": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Changelog Items"
+        },
+        "changelog_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Changelog Summary"
+        },
+        "compatibility_result": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Compatibility Result"
+        },
+        "content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content Hash"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "evaluation_summary": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Evaluation Summary"
+        },
+        "file_count": {
+          "default": 0,
+          "title": "File Count",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata_json": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+          },
+          "title": "Metadata Json",
+          "type": "object"
+        },
+        "operation": {
+          "$ref": "#/components/schemas/SkillRevisionOperation"
+        },
+        "parent_revision_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Revision Id"
+        },
+        "restored_from_revision_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Restored From Revision Id"
+        },
+        "revision_number": {
+          "title": "Revision Number",
+          "type": "integer"
+        },
+        "size_bytes": {
+          "default": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "skill_id": {
+          "format": "uuid",
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "skill_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Skill Version"
+        }
+      },
+      "required": [
+        "id",
+        "skill_id",
+        "revision_number",
+        "operation",
+        "created_at",
+        "metadata_json"
+      ],
+      "title": "SkillRevisionDetail",
+      "type": "object"
+    },
+    "SkillRevisionFileContentResponse": {
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "title": "SkillRevisionFileContentResponse",
+      "type": "object"
+    },
+    "SkillRevisionFileEntry": {
+      "properties": {
+        "is_binary": {
+          "title": "Is Binary",
+          "type": "boolean"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "size": {
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "size",
+        "is_binary"
+      ],
+      "title": "SkillRevisionFileEntry",
+      "type": "object"
+    },
+    "SkillRevisionFilesResponse": {
+      "properties": {
+        "files": {
+          "items": {
+            "$ref": "#/components/schemas/SkillRevisionFileEntry"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "snapshot_pruned": {
+          "title": "Snapshot Pruned",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "snapshot_pruned",
+        "files"
+      ],
+      "title": "SkillRevisionFilesResponse",
+      "type": "object"
+    },
+    "SkillRevisionOperation": {
+      "enum": [
+        "create",
+        "manual_metadata_update",
+        "manual_content_update",
+        "manual_file_update",
+        "builder_create",
+        "builder_improvement",
+        "rollback"
+      ],
+      "title": "SkillRevisionOperation",
+      "type": "string"
+    },
+    "SkillRevisionSummary": {
+      "properties": {
+        "changelog_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Changelog Summary"
+        },
+        "content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content Hash"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "file_count": {
+          "default": 0,
+          "title": "File Count",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/components/schemas/SkillRevisionOperation"
+        },
+        "revision_number": {
+          "title": "Revision Number",
+          "type": "integer"
+        },
+        "size_bytes": {
+          "default": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "skill_id": {
+          "format": "uuid",
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "skill_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Skill Version"
+        }
+      },
+      "required": [
+        "id",
+        "skill_id",
+        "revision_number",
+        "operation",
+        "created_at"
+      ],
+      "title": "SkillRevisionSummary",
+      "type": "object"
+    },
+    "SkillRollbackResponse": {
+      "properties": {
+        "revision": {
+          "$ref": "#/components/schemas/SkillRevisionSummary"
+        },
+        "skill": {
+          "$ref": "#/components/schemas/SkillResponse"
+        }
+      },
+      "required": [
+        "skill",
+        "revision"
+      ],
+      "title": "SkillRollbackResponse",
+      "type": "object"
+    },
+    "SkillTextContentResponse": {
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "SkillTextContentResponse",
+      "type": "object"
+    },
+    "SkillUsageDailyPointResponse": {
+      "properties": {
+        "cost_usd": {
+          "title": "Cost Usd",
+          "type": "number"
+        },
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "execution_count": {
+          "title": "Execution Count",
+          "type": "integer"
+        },
+        "tokens_in": {
+          "title": "Tokens In",
+          "type": "integer"
+        },
+        "tokens_out": {
+          "title": "Tokens Out",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "date",
+        "tokens_in",
+        "tokens_out",
+        "cost_usd",
+        "execution_count"
+      ],
+      "title": "SkillUsageDailyPointResponse",
+      "type": "object"
+    },
+    "SkillUsageSummaryResponse": {
+      "properties": {
+        "chat_execution_count": {
+          "title": "Chat Execution Count",
+          "type": "integer"
+        },
+        "cost_usd": {
+          "title": "Cost Usd",
+          "type": "number"
+        },
+        "daily": {
+          "items": {
+            "$ref": "#/components/schemas/SkillUsageDailyPointResponse"
+          },
+          "title": "Daily",
+          "type": "array"
+        },
+        "days": {
+          "title": "Days",
+          "type": "integer"
+        },
+        "evaluation_run_count": {
+          "title": "Evaluation Run Count",
+          "type": "integer"
+        },
+        "priced_event_count": {
+          "title": "Priced Event Count",
+          "type": "integer"
+        },
+        "skill_id": {
+          "format": "uuid",
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "tokens_in": {
+          "title": "Tokens In",
+          "type": "integer"
+        },
+        "tokens_out": {
+          "title": "Tokens Out",
+          "type": "integer"
+        },
+        "unpriced_token_event_count": {
+          "title": "Unpriced Token Event Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "skill_id",
+        "days",
+        "tokens_in",
+        "tokens_out",
+        "cost_usd",
+        "priced_event_count",
+        "unpriced_token_event_count",
+        "evaluation_run_count",
+        "chat_execution_count",
+        "daily"
+      ],
+      "title": "SkillUsageSummaryResponse",
       "type": "object"
     },
     "SubscribeRequest": {
@@ -16876,6 +22044,44 @@
         {
           "additionalProperties": {
             "$ref": "#/components/schemas/app__schemas__conversation_refs__JsonValue-Output"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "app__schemas__skill_builder__JsonValue-Input": {
+      "anyOf": [
+        {
+          "$ref": "#/components/schemas/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Input"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Input"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "app__schemas__skill_builder__JsonValue-Output": {
+      "anyOf": [
+        {
+          "$ref": "#/components/schemas/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app__schemas__skill_builder__JsonValue-Output"
           },
           "type": "object"
         }

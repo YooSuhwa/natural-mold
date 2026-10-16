@@ -12,6 +12,7 @@ from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
+from app.authz.runtime import legacy_service
 from app.dependencies import CurrentUser
 from app.exceptions import AppError
 from app.models.skill import Skill
@@ -20,6 +21,8 @@ from app.models.skill_revision import SkillRevision
 from app.routers import skill_evaluations_support, skill_revisions
 from app.services import skill_evaluation_service, skill_revision_service
 from app.skills import service as skills
+
+LEGACY = legacy_service()
 
 if TYPE_CHECKING:
     from tests.authz.private_scope_fixture import PrivateScopes
@@ -81,7 +84,7 @@ async def test_public_child_denial_precedes_pending_private_sql(
         match surface:
             case "revision_files":
                 await skill_revisions.list_skill_revision_files(
-                    own_skill.id, target_revision, db=db, user=user, context=own
+                    own_skill.id, target_revision, db=db, user=user, context=own, authz=LEGACY
                 )
             case "rollback":
                 await skill_revisions.rollback_skill_revision(
@@ -92,6 +95,7 @@ async def test_public_child_denial_precedes_pending_private_sql(
                     user=user,
                     context=own,
                     _csrf=None,
+                    authz=LEGACY,
                 )
             case "evaluation":
                 authorized = await skills.get_skill(db, own_skill.id, own)

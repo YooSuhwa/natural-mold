@@ -77,8 +77,7 @@ async def prune_revisions_for_skill(
     user_id: uuid.UUID,
     now: datetime | None = None,
 ) -> list[SkillRevision]:
-    if skill.user_id != user_id:
-        return []
+    # The caller authorized ``skill`` (D-03); revision history is skill-scoped.
     # limit=None 필수 — 기본 100 창만 보면 창 밖 리비전이 영구히 prune에서
     # 빠져 스냅샷 디스크가 샌다 (R5).
     revisions = await skill_revision_service.list_revisions(

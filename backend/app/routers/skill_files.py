@@ -7,12 +7,15 @@ from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.policies import RES, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.authz.skill_access import SKILL_MIN_VISIBLE, authorize_skill
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     invalid_file_path,
     invalid_skill_package,
     skill_file_not_found,
-    skill_not_found,
 )
 from app.models.skill import Skill
 from app.models.skill_revision import SkillRevision
@@ -31,13 +34,15 @@ router = APIRouter(prefix="/api/skills/{skill_id}/files", tags=["skills"])
 
 
 @router.get("", response_model=list[SkillFileEntry])
+@authz_policy(RES("skill", "can_view", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def list_skill_files(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[SkillFileEntry]:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, context=context)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_view")
     return [
         SkillFileEntry(path=item.path, size=item.size, is_dir=item.is_dir)
         for item in skill_service.get_skill_files(skill)
@@ -45,14 +50,16 @@ async def list_skill_files(
 
 
 @router.get("/{file_path:path}")
+@authz_policy(RES("skill", "can_view", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def get_skill_file(
     skill_id: uuid.UUID,
     file_path: str,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> Response:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, context=context)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_view")
     try:
         data = skill_service.get_file_bytes(skill, file_path)
     except FileNotFoundError:
@@ -64,6 +71,7 @@ async def get_skill_file(
 
 
 @router.put("/{file_path:path}", response_model=SkillResponse)
+@authz_policy(RES("skill", "can_edit", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def put_skill_file(
     skill_id: uuid.UUID,
     file_path: str,
@@ -73,8 +81,9 @@ async def put_skill_file(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillResponse:
-    skill = await _load_package_skill_or_404(db, skill_id=skill_id, context=context)
+    skill = await _load_package_skill(db, authz, context, skill_id)
     revision_parent = await skill_revision_mutations.prepare_mutation_parent(
         db,
         skill=skill,
@@ -116,6 +125,7 @@ async def put_skill_file(
 
 
 @router.delete("/{file_path:path}", response_model=SkillResponse)
+@authz_policy(RES("skill", "can_edit", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def delete_skill_file(
     skill_id: uuid.UUID,
     file_path: str,
@@ -124,8 +134,9 @@ async def delete_skill_file(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillResponse:
-    skill = await _load_package_skill_or_404(db, skill_id=skill_id, context=context)
+    skill = await _load_package_skill(db, authz, context, skill_id)
     revision_parent = await skill_revision_mutations.prepare_mutation_parent(
         db,
         skill=skill,
@@ -160,6 +171,7 @@ async def delete_skill_file(
 
 
 @router.post("", response_model=SkillResponse, status_code=201)
+@authz_policy(RES("skill", "can_edit", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def upload_skill_file(
     skill_id: uuid.UUID,
     file: UploadFile,
@@ -169,8 +181,9 @@ async def upload_skill_file(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillResponse:
-    skill = await _load_package_skill_or_404(db, skill_id=skill_id, context=context)
+    skill = await _load_package_skill(db, authz, context, skill_id)
     body = await file.read()
     revision_parent = await skill_revision_mutations.prepare_mutation_parent(
         db,
@@ -212,19 +225,10 @@ async def upload_skill_file(
     return await serialize_skill(db, updated, ResourceViewContext(user, context))
 
 
-async def _load_skill_or_404(
-    db: AsyncSession, *, skill_id: uuid.UUID, context: OrgContext
+async def _load_package_skill(
+    db: AsyncSession, authz: AuthzService, context: OrgContext, skill_id: uuid.UUID
 ) -> Skill:
-    skill = await skill_service.get_skill(db, skill_id, context)
-    if not skill:
-        raise skill_not_found()
-    return skill
-
-
-async def _load_package_skill_or_404(
-    db: AsyncSession, *, skill_id: uuid.UUID, context: OrgContext
-) -> Skill:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, context=context)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_edit")
     if skill.kind != "package":
         raise invalid_skill_package("file-level mutations are only valid for package skills")
     return skill

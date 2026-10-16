@@ -6,6 +6,11 @@ from fastapi import APIRouter, Depends, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.policies import CAP, authz_policy
+from app.authz.resource_lifecycle import apply_lifecycle
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.authz.skill_access import CREATE_SKILL, require_create_skill, skill_created
 from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import invalid_skill_package, marketplace_secret_detected
@@ -31,6 +36,7 @@ router = APIRouter(prefix="/api/skills", tags=["skills"])
 
 
 @router.post("/upload", response_model=SkillResponse, status_code=201)
+@authz_policy(CAP(CREATE_SKILL))
 async def upload_package_skill(
     file: UploadFile,
     request: Request,
@@ -38,7 +44,9 @@ async def upload_package_skill(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillResponse:
+    await require_create_skill(authz, context)
     file_data = await file.read()
     try:
         skill = await skill_service.create_package_skill(
@@ -64,6 +72,7 @@ async def upload_package_skill(
         await db.rollback()
         summary = ", ".join(f"{finding.path} ({finding.kind})" for finding in findings[:5])
         raise marketplace_secret_detected(f"package contains potential secrets: {summary}")
+    created = await skill_created(db, authz, skill)
     revision = await skill_revision_mutations.create_initial_revision(
         db,
         skill=skill,
@@ -107,4 +116,5 @@ async def upload_package_skill(
         result=preparation_result,
     )
     await db.commit()
+    await apply_lifecycle(created, authz)  # read-your-writes before responding (8.6)
     return await serialize_skill(db, skill, ResourceViewContext(user, context))

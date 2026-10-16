@@ -97,12 +97,15 @@ async def list_revisions(
     ``limit=None``은 전수 열거 — retention prune처럼 의미상 무제한 순회가
     필요한 소비자용이다. 기본 100 창만 보면 창 밖(>100번째) 리비전이 영구히
     prune 대상에서 빠져 스냅샷 디스크가 새는 잠복 계약 파손이 된다 (R5).
+
+    Revisions belong to the skill: the caller has already authorized ``skill``
+    (``app.authz.skill_access.authorize_skill``), so ``user_id`` no longer narrows
+    the history (plan 9.4, D-03; owner-only in legacy because only owners load it).
     """
-    if skill.user_id != user_id:
-        return []
+    del user_id  # kept for call compatibility; authorization happens upstream
     stmt = (
         select(SkillRevision)
-        .where(SkillRevision.skill_id == skill.id, SkillRevision.user_id == user_id)
+        .where(SkillRevision.skill_id == skill.id)
         .order_by(desc(SkillRevision.revision_number))
     )
     if limit is not None:
@@ -118,15 +121,10 @@ async def get_revision(
     user_id: uuid.UUID,
     revision_id: uuid.UUID,
 ) -> SkillRevision | None:
-    if skill.user_id != user_id:
-        return None
+    del user_id  # the caller authorized ``skill`` (see ``list_revisions``)
     result = await db.execute(
         select(SkillRevision)
-        .where(
-            SkillRevision.id == revision_id,
-            SkillRevision.skill_id == skill.id,
-            SkillRevision.user_id == user_id,
-        )
+        .where(SkillRevision.id == revision_id, SkillRevision.skill_id == skill.id)
         .execution_options(autoflush=False, populate_existing=True)
     )
     return result.scalar_one_or_none()

@@ -150,43 +150,40 @@ async def test_list_revisions_returns_newest_first(db: AsyncSession, tmp_path) -
 
 
 @pytest.mark.asyncio
-async def test_get_revision_is_user_scoped(db: AsyncSession, tmp_path) -> None:
+async def test_get_revision_is_skill_scoped(db: AsyncSession, tmp_path) -> None:
+    """D-03: the route authorized the skill; a revision of skill B never leaks via A."""
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await create_test_text_skill(
-            db,
-            TextSkillCreation(
-                name="Revision Demo",
-                slug="revision-demo",
-                description="Use when testing revision snapshots.",
-                content=_skill_content(),
-            ),
-            unit_context(TEST_USER_ID),
-        )
-        revision = await skill_revision_service.create_revision_for_skill(
-            db,
-            skill=skill,
-            user_id=TEST_USER_ID,
-            operation="create",
+        skills = [
+            await create_test_text_skill(
+                db,
+                TextSkillCreation(
+                    name=f"Revision Demo {suffix}",
+                    slug=f"revision-demo-{suffix}",
+                    description="Use when testing revision snapshots.",
+                    content=_skill_content(),
+                ),
+                unit_context(TEST_USER_ID),
+            )
+            for suffix in ("a", "b")
+        ]
+        skill_a, skill_b = skills
+        revision_a, revision_b = [
+            await skill_revision_service.create_revision_for_skill(
+                db, skill=skill, user_id=TEST_USER_ID, operation="create"
+            )
+            for skill in skills
+        ]
+
+    async def get(skill, revision):
+        return await skill_revision_service.get_revision(
+            db, skill=skill, user_id=TEST_USER_ID, revision_id=revision.id
         )
 
-    assert (
-        await skill_revision_service.get_revision(
-            db,
-            skill=skill,
-            user_id=TEST_USER_ID,
-            revision_id=revision.id,
-        )
-        == revision
-    )
-    assert (
-        await skill_revision_service.get_revision(
-            db,
-            skill=skill,
-            user_id=revision.id,
-            revision_id=revision.id,
-        )
-        is None
-    )
+    assert await get(skill_a, revision_a) == revision_a
+    assert await get(skill_a, revision_b) is None
+    assert await get(skill_b, revision_a) is None
+    listed = await skill_revision_service.list_revisions(db, skill=skill_a, user_id=TEST_USER_ID)
+    assert revision_b not in listed
 
 
 @pytest.mark.asyncio

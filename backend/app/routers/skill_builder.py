@@ -6,6 +6,10 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.authz.skill_access import authorize_builder_target
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     invalid_skill_package,
@@ -75,6 +79,7 @@ def _session_response(
 
 
 @router.post("", response_model=SkillBuilderSessionResponse, status_code=201)
+@authz_policy(PRIVATE("skill_builder_sessions"))
 async def start_skill_builder(
     data: SkillBuilderStartRequest,
     request: Request,
@@ -82,6 +87,7 @@ async def start_skill_builder(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillBuilderSessionResponse:
     """빌더 챗 세션 시작 (v2, 스펙 AD-6).
 
@@ -91,6 +97,8 @@ async def start_skill_builder(
     """
 
     await require_system_llm(db, user=user, request=request)
+    source_skill_id = data.source_skill_id if data.mode is SkillBuilderMode.IMPROVE else None
+    await authorize_builder_target(db, authz, context, source_skill_id)
     try:
         session = await skill_builder_service.create_session(
             db,
@@ -141,6 +149,7 @@ async def start_skill_builder(
 
 
 @router.get("", response_model=list[SkillBuilderSessionBrief])
+@authz_policy(PRIVATE("skill_builder_sessions"))
 async def list_skill_builder_sessions(
     skill_id: uuid.UUID | None = Query(None),
     status: SkillBuilderStatus | None = Query(None),
@@ -166,6 +175,7 @@ async def list_skill_builder_sessions(
 
 
 @router.get("/{session_id}", response_model=SkillBuilderSessionResponse)
+@authz_policy(PRIVATE("skill_builder_sessions", param="session_id"))
 async def get_skill_builder_session(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -178,6 +188,7 @@ async def get_skill_builder_session(
 
 
 @router.get("/{session_id}/files", response_model=SkillBuilderFilesResponse)
+@authz_policy(PRIVATE("skill_builder_sessions", param="session_id"))
 async def list_skill_builder_files(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -204,6 +215,7 @@ async def list_skill_builder_files(
 
 
 @router.get("/{session_id}/files/content", response_model=SkillBuilderFileContentResponse)
+@authz_policy(PRIVATE("skill_builder_sessions", param="session_id"))
 async def get_skill_builder_file_content(
     session_id: uuid.UUID,
     path: str = Query(..., min_length=1, max_length=500),
@@ -228,6 +240,7 @@ async def get_skill_builder_file_content(
 
 
 @router.post("/{session_id}/validate", response_model=SkillBuilderSessionResponse)
+@authz_policy(PRIVATE("skill_builder_sessions", param="session_id"))
 async def validate_skill_builder_draft(
     session_id: uuid.UUID,
     draft: SkillDraftPackage,
@@ -272,6 +285,7 @@ async def validate_skill_builder_draft(
 
 
 @router.post("/{session_id}/confirm", response_model=SkillResponse, status_code=201)
+@authz_policy(PRIVATE("skill_builder_sessions", param="session_id"))
 async def confirm_skill_builder_session(
     session_id: uuid.UUID,
     request: Request,
@@ -279,8 +293,10 @@ async def confirm_skill_builder_session(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillResponse:
     session = await get_session_or_404(db, session_id=session_id, context=context)
+    await authorize_builder_target(db, authz, context, session.source_skill_id)
     existing = await completed_skill(db, session=session, context=context)
     if existing is not None:
         # bare model_validate는 used_by_count(항상 0 컬럼)·health 등 enrichment를

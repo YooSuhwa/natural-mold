@@ -525,11 +525,6 @@
     "count": 1
   },
   {
-    "file": "services/skill_revision_service.py",
-    "expression": "SkillRevision.user_id == user_id",
-    "count": 2
-  },
-  {
     "file": "services/tenants/invitation_membership.py",
     "expression": "TenantMember.user_id == user.id",
     "count": 1

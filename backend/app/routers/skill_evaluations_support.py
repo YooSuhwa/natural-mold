@@ -5,11 +5,9 @@ import uuid
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.error_codes import (
     skill_evaluation_set_not_found,
-    skill_not_found,
     system_llm_not_configured,
 )
 from app.models.skill import Skill
@@ -20,19 +18,6 @@ from app.services.system_credential_resolver import (
     SystemModelNotConfiguredError,
     resolve_system_model,
 )
-from app.skills import service as skill_service
-
-
-async def load_skill_or_404(
-    db: AsyncSession,
-    *,
-    skill_id: uuid.UUID,
-    context: OrgContext,
-) -> Skill:
-    skill = await skill_service.get_skill(db, skill_id, context)
-    if skill is None:
-        raise skill_not_found()
-    return skill
 
 
 async def load_evaluation_set_or_404(

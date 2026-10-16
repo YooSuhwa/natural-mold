@@ -40,7 +40,7 @@ def test_legacy_route_set_cannot_grow_when_an_endpoint_is_added(all_routes):
     }
     # Then: replacing an old route with a new legacy route also fails, even at equal counts.
     assert legacy <= allowed
-    assert len(legacy) <= 186
+    assert len(legacy) <= 139
 
 
 def test_e2e_helpers_have_distinct_policy_when_enabled(all_routes):

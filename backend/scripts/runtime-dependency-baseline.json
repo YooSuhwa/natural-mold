@@ -321,11 +321,6 @@
     {
       "rule": "routers_to_models",
       "importer": "app.routers.skill_revisions",
-      "imported": "app.models.skill"
-    },
-    {
-      "rule": "routers_to_models",
-      "importer": "app.routers.skill_revisions",
       "imported": "app.models.skill_revision"
     },
     {
