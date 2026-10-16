@@ -59,14 +59,22 @@ def grant_row(grant: ResourceGrant) -> rows.GrantRow:
 
 
 async def active_grant_rows(
-    db: AsyncSession, resource_type: str, resource_id: UUID, *, exclude: UUID | None = None
+    db: AsyncSession,
+    resource_type: str,
+    resource_id: UUID,
+    *,
+    exclude: UUID | None = None,
+    org_id: UUID | None = None,
 ) -> list[rows.GrantRow]:
-    """Every active grant on one object (all organizations visible to the session)."""
+    """Every active grant on one object (all organizations visible to the session, or
+    only ``org_id``'s rows: ``grant_projection.org_scope``)."""
     query = select(ResourceGrant).where(
         ResourceGrant.resource_type == resource_type,
         ResourceGrant.resource_id == resource_id,
         ResourceGrant.state == "active",
     )
+    if org_id is not None:
+        query = query.where(ResourceGrant.org_id == org_id)
     if exclude is not None:
         query = query.where(ResourceGrant.id != exclude)
     found = await db.scalars(query.order_by(ResourceGrant.id))

@@ -1,4 +1,5 @@
-"""Operator CLI: uv run python -m app.authz.cli bootstrap|rebuild|reconcile|check|explain.
+"""Operator CLI: uv run python -m app.authz.cli bootstrap|rebuild|reconcile|check|explain
+(and ``catalog-fanout``, the E-03 fanout backfill).
 
 Exit codes: 0 success / allow / no remaining difference; 1 deny, or the store still differs
 from Postgres after the command (a dry run that found a difference, or queued repairs that
@@ -16,6 +17,7 @@ from pydantic import BaseModel, JsonValue, TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.authz.bootstrap import BootstrapResult, bootstrap
+from app.authz.catalog_fanout_backfill import backfill_catalog_fanout
 from app.authz.client import CheckQuery, FgaClient, open_client, sdk_configuration
 from app.authz.reconcile import (
     Mode,
@@ -29,12 +31,13 @@ from app.config import settings
 
 
 class Arguments(BaseModel):
-    command: Literal["bootstrap", "rebuild", "reconcile", "check", "explain"]
+    command: Literal["bootstrap", "rebuild", "reconcile", "check", "explain", "catalog-fanout"]
     user: str = ""
     relation: str = ""
     object: str = ""
     tenant: UUID | None = None
     org: UUID | None = None
+    actor: UUID | None = None
     apply: bool = False
     as_json: bool = False
 
@@ -126,6 +129,13 @@ async def run(args: Arguments) -> int:
                     )
             tree = TypeAdapter(dict[str, JsonValue]).validate_python(result.tree.to_dict())
             print(TypeAdapter(dict[str, JsonValue]).dump_json(tree).decode())
+        case "catalog-fanout":
+            if args.actor is None:  # argparse requires it; direct callers must pass it too
+                raise ValueError("--actor is required")
+            result = await backfill_catalog_fanout(
+                reconcile_sessions(), args.actor, tenant_id=args.tenant, org_id=args.org
+            )
+            print(f"catalog-fanout organizations={result.organizations} queued={result.queued}")
         case _:
             assert_never(args.command)
     return 0
@@ -164,6 +174,18 @@ def parse(argv: list[str] | None = None) -> Arguments:
     )
     explain.add_argument("--relation", required=True)
     explain.add_argument("--object", required=True)
+    fanout = commands.add_parser(
+        "catalog-fanout",
+        help=(
+            "Queue catalog policy fanout grants (E-03 backfill). Re-run immediately before "
+            "switching AUTHZ_MODE to shadow/enforce: policy edits made in legacy mode are "
+            "stored but not projected"
+        ),
+    )
+    fanout.add_argument("--actor", type=UUID, required=True, help="Operator user id")
+    where = fanout.add_mutually_exclusive_group()
+    where.add_argument("--tenant", type=UUID, help="Limit to one company")
+    where.add_argument("--org", type=UUID, help="Limit to one organization")
     return Arguments.model_validate(vars(parser.parse_args(argv)))
 
 

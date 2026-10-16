@@ -1,17 +1,20 @@
-"""Catalog inventory selects only global system resources and this company's models."""
+"""Catalog inventory selects only global system resources and this company's models;
+the impact preview counts this organization's agents linking one item (S09)."""
 
 from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import Uuid, column, or_, select
+from sqlalchemy import Uuid, column, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent import Agent
 from app.models.mcp_server import McpServer
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.model import Model
-from app.models.organization import Tenant
-from app.models.skill import Skill
-from app.models.tool import Tool
+from app.models.organization import Organization, Tenant
+from app.models.skill import AgentSkillLink, Skill
+from app.models.tool import AgentToolLink, Tool
 from app.schemas.org_catalog import CatalogKind
 
 
@@ -24,12 +27,13 @@ class CatalogEntry:
     available: bool = True
 
 
-async def company_catalog_settings(db: AsyncSession, tenant_id: UUID) -> Tenant:
+async def company_catalog_settings(
+    db: AsyncSession, tenant_id: UUID, *, lock: bool = True
+) -> Tenant:
+    """The company row (locked for writers; ``lock=False`` for read-only previews)."""
+    query = select(Tenant).where(Tenant.id == tenant_id)
     row = await db.scalar(
-        select(Tenant)
-        .where(Tenant.id == tenant_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
+        (query.with_for_update() if lock else query).execution_options(populate_existing=True)
     )
     if row is None:
         from app.authz.error_codes import authorization_error
@@ -50,18 +54,64 @@ async def catalog_entries(db: AsyncSession, tenant_id: UUID) -> tuple[CatalogEnt
         CatalogEntry("model", key, name, "company" if company else "platform", visible)
         for key, name, visible, company in models
     ]
+    # A disabled system tool or MCP server is unavailable: never fanned out, never enabled.
     tools = await db.execute(
-        select(Tool.id, Tool.name).where(Tool.is_system.is_(True), Tool.user_id.is_(None))
+        select(Tool.id, Tool.name, Tool.enabled).where(
+            Tool.is_system.is_(True), Tool.user_id.is_(None)
+        )
     )
-    entries.extend(CatalogEntry("tool", key, name, "platform") for key, name in tools)
+    entries.extend(CatalogEntry("tool", key, name, "platform", on) for key, name, on in tools)
+    # System skills and MCP servers keep the seeding operator in ``user_id`` (NOT NULL);
+    # a platform row is one without organization and company (as candidates/runtime say).
     skills = await db.execute(
-        select(Skill.id, Skill.name).where(Skill.is_system.is_(True), Skill.user_id.is_(None))
+        select(Skill.id, Skill.name).where(
+            Skill.is_system.is_(True), Skill.org_id.is_(None), Skill.tenant_id.is_(None)
+        )
     )
     entries.extend(CatalogEntry("skill", key, name, "platform") for key, name in skills)
     servers = await db.execute(
-        select(McpServer.id, McpServer.name).where(
-            McpServer.is_system.is_(True), McpServer.user_id.is_(None)
+        select(McpServer.id, McpServer.name, McpServer.status).where(
+            McpServer.is_system.is_(True),
+            McpServer.org_id.is_(None),
+            McpServer.tenant_id.is_(None),
         )
     )
-    entries.extend(CatalogEntry("mcp_server", key, name, "platform") for key, name in servers)
+    entries.extend(
+        CatalogEntry("mcp_server", key, name, "platform", status != "disabled")
+        for key, name, status in servers
+    )
     return tuple(sorted(entries, key=lambda item: (item.kind, item.name.casefold(), item.id)))
+
+
+async def catalog_impact(
+    db: AsyncSession, organization: Organization, kind: CatalogKind, item_id: UUID
+) -> tuple[int, int]:
+    """(agents of the organization linking the item, agents that cannot run without it).
+
+    Only a model is required today (the primary ``model_id``); per-link ``required`` flags
+    for tools, skills and MCP servers arrive with F-01 (m86).
+    """
+    agents = select(Agent.id).where(
+        Agent.org_id == organization.id,
+        Agent.tenant_id == organization.tenant_id,
+        Agent.archived_at.is_(None),
+    )
+    match kind:
+        case "model":
+            linked = agents.where(Agent.model_id == item_id)
+        case "tool":
+            linked = agents.join(AgentToolLink, AgentToolLink.agent_id == Agent.id).where(
+                AgentToolLink.tool_id == item_id
+            )
+        case "skill":
+            linked = agents.join(AgentSkillLink, AgentSkillLink.agent_id == Agent.id).where(
+                AgentSkillLink.skill_id == item_id
+            )
+        case "mcp_server":
+            linked = (
+                agents.join(AgentMcpToolLink, AgentMcpToolLink.agent_id == Agent.id)
+                .join(McpTool, McpTool.id == AgentMcpToolLink.mcp_tool_id)
+                .where(McpTool.server_id == item_id)
+            )
+    affected = await db.scalar(select(func.count()).select_from(linked.distinct().subquery()))
+    return int(affected or 0), int(affected or 0) if kind == "model" else 0

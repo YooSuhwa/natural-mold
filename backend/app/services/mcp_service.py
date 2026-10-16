@@ -52,8 +52,8 @@ logger = logging.getLogger(__name__)
 
 
 def server_candidates(context: OrgContext) -> ColumnElement[bool]:
-    """MCP lists never surface system servers (legacy parity; catalog fanout is E-03)."""
-    return candidate_predicate(McpServer, "mcp_server", context, platform=False)
+    """Enforced candidates include system servers; the E-03 catalog fanout decides them."""
+    return candidate_predicate(McpServer, "mcp_server", context, platform=True)
 
 
 # -- Queries -------------------------------------------------------------------

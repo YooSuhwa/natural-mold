@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.policies import SELF, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.schemas.tenant_organizations import (
     TenantOrganizationAdminPage,
@@ -73,8 +75,9 @@ async def post_organization(
     payload: TenantOrganizationCreate,
     context: TenantAdminContext = Depends(tenant_context),
     mutation: TenantOrganizationMutation = Depends(mutation_request),
+    authz: AuthzService = Depends(get_authz),
 ) -> JSONResponse:
-    result = await create_organization(mutation, context, payload)
+    result = await create_organization(mutation, context, payload, authz)
     return JSONResponse(
         status_code=201,
         content=result.model_dump(mode="json"),

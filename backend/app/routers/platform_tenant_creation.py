@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.policies import SUPER, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_db, require_saas_platform_operator, verify_csrf
 from app.schemas.admin_tenant import PlatformTenantCreate, PlatformTenantCreateResult
 from app.services.platform.tenant_creation import PlatformTenantCreation, create_platform_tenant
@@ -29,5 +31,6 @@ async def creation_context(
 async def create_company(
     payload: PlatformTenantCreate,
     context: PlatformTenantCreation = Depends(creation_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> PlatformTenantCreateResult:
-    return await create_platform_tenant(context, payload)
+    return await create_platform_tenant(context, payload, authz)

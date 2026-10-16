@@ -47,8 +47,9 @@ class GatedResource[T]:
 
 
 TOOL = GatedResource("tool", Tool, "can_use", _tool_not_found)
-# System MCP servers stay unreachable (legacy parity) until catalog fanout (E-03).
-MCP_SERVER = GatedResource("mcp_server", McpServer, "can_use", mcp_server_not_found, False)
+# System MCP servers are decided in the caller's organization by the catalog fanout (E-03);
+# legacy loaders still never return them.
+MCP_SERVER = GatedResource("mcp_server", McpServer, "can_use", mcp_server_not_found)
 # System credentials stay behind the SUPER system-credential routes.
 CREDENTIAL = GatedResource("credential", Credential, "can_use", credential_not_found, False)
 LLM_MODEL = GatedResource("llm_model", Model, "can_use", model_not_found)

@@ -15,7 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import create_tenant_invitation_token
 from app.authz import audit_actions
+from app.authz.catalog_fanout import sync_organization
 from app.authz.error_codes import authorization_error
+from app.authz.resource_lifecycle import LifecycleChange, apply_lifecycle
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser
 from app.exceptions import AppError
 from app.models.organization import Organization, Tenant
@@ -57,7 +60,9 @@ class PlatformTenantCreation:
 
 
 async def create_platform_tenant(
-    creation: PlatformTenantCreation, payload: PlatformTenantCreate
+    creation: PlatformTenantCreation,
+    payload: PlatformTenantCreate,
+    authz: AuthzService | None = None,
 ) -> PlatformTenantCreateResult:
     """Create a company, its default organization, invite, and audit atomically."""
     with creation.db.no_autoflush:
@@ -110,6 +115,7 @@ async def create_platform_tenant(
         expires_at=now + timedelta(days=7),
     )
 
+    fanout = LifecycleChange()
     try:
         creation.db.add(tenant)
         await creation.db.flush()
@@ -132,6 +138,10 @@ async def create_platform_tenant(
             request=creation.request,
             metadata={"tenant_id": str(tenant_id), "org_id": str(organization_id)},
         )
+        if authz is not None:  # E-03: platform catalog fans out to the first organization
+            fanout = await sync_organization(
+                creation.db, organization, creation.actor.id, mode=authz.mode
+            )
         await creation.db.flush()
         await creation.db.commit()
     except IntegrityError as error:
@@ -149,6 +159,8 @@ async def create_platform_tenant(
     except (AppError, SQLAlchemyError):
         await creation.db.rollback()
         raise
+    if authz is not None:
+        await apply_lifecycle(fanout, authz)
 
     return PlatformTenantCreateResult(
         tenant=AdminTenantDetail(

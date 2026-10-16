@@ -33,7 +33,7 @@ from app.authz.grant_completion import (
     complete_revocations,
     marker_refs,
 )
-from app.authz.grant_projection import change_ops, lock_object
+from app.authz.grant_projection import change_ops, lock_object, org_scope
 from app.authz.grant_validation import (
     GrantRequest,
     GrantTarget,
@@ -88,7 +88,10 @@ class GrantService:
         marker = None
         if existing is not None and after is not before:
             marker = await _record(db, existing)
-        await lock_object(db, target.resource_type, target.resource_id)
+        scope = org_scope(
+            target.resource_type, request.grant_kind, request.principal_type, ctx.org_id
+        )
+        await lock_object(db, target.resource_type, target.resource_id, org_id=scope)
         current = await _active(db, target, request)
         if _identity(current) != _identity(existing) or (
             current is not None and grant_row(current) != before
@@ -138,7 +141,8 @@ class GrantService:
         """Marker, ``revoking`` and per-key deletes; ``None`` = closed meanwhile (roll back)."""
         now = self._clock()
         await _record(db, found)
-        await lock_object(db, found.resource_type, found.resource_id)
+        scope = org_scope(found.resource_type, found.grant_kind, found.principal_type, found.org_id)
+        await lock_object(db, found.resource_type, found.resource_id, org_id=scope)
         grant = await db.scalar(
             select(ResourceGrant).where(
                 ResourceGrant.id == found.id, ResourceGrant.state == "active"

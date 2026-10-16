@@ -10325,6 +10325,75 @@
         ]
       }
     },
+    "/api/orgs/{org_id}/catalog-policy/impact": {
+      "get": {
+        "description": "Agents of this organization affected by turning one item off (S09 confirmation).",
+        "operationId": "get_catalog_policy_impact_api_orgs__org_id__catalog_policy_impact_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "model",
+                "tool",
+                "skill",
+                "mcp_server"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogImpactView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Catalog Policy Impact",
+        "tags": [
+          "organization catalog"
+        ]
+      }
+    },
     "/api/orgs/{org_id}/groups": {
       "get": {
         "operationId": "list_groups_api_orgs__org_id__groups_get",
@@ -22856,6 +22925,42 @@
         "granted_at"
       ],
       "title": "CapabilityGrantView",
+      "type": "object"
+    },
+    "CatalogImpactView": {
+      "description": "What turning one item off affects in this organization (S09 confirmation).",
+      "properties": {
+        "affected_agents": {
+          "title": "Affected Agents",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "required_agents": {
+          "title": "Required Agents",
+          "type": "integer"
+        },
+        "type": {
+          "enum": [
+            "model",
+            "tool",
+            "skill",
+            "mcp_server"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "id",
+        "affected_agents",
+        "required_agents"
+      ],
+      "title": "CatalogImpactView",
       "type": "object"
     },
     "CatalogItemView": {

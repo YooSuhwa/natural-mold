@@ -27,23 +27,46 @@ from app.models.marketplace import MarketplaceItem
 Key = tuple[str, str, str]
 
 
-async def lock_object(db: AsyncSession, resource_type: str, resource_id: UUID) -> None:
+def org_scope(
+    resource_type: str, grant_kind: str, principal_type: str, org_id: UUID
+) -> UUID | None:
+    """The organization whose rows alone can share a key with this grant, or ``None``.
+
+    A catalog fanout grant (``system_fanout``, organization principal, not a marketplace
+    item) projects only keys whose subject names its organization (``organization:O`` /
+    ``organization:O#member``). Any other row projecting such a key is a grant with that
+    organization as principal, and ``check_principal`` makes that principal the grant's
+    own ``org_id``; platform resource rows project no tuples. So locking and recomputing
+    over that organization's rows is exact, and other organizations' fanouts of the same
+    object are neither locked nor read. Marketplace fanouts share the cross-org ``tenant``
+    key and stay object-wide.
+    """
+    fanout = grant_kind == "system_fanout" and principal_type == "organization"
+    return org_id if fanout and resource_type != "marketplace_item" else None
+
+
+async def lock_object(
+    db: AsyncSession, resource_type: str, resource_id: UUID, *, org_id: UUID | None = None
+) -> None:
     """Serialize changes of one object before reading its remaining rows (8.6).
 
     Order (after any organization row lock): the marketplace item row, then every live
-    grant on the object by id. Two revocations of grants sharing a key then see each
-    other's ``revoking`` state, so the last one always deletes the shared tuple.
+    grant on the object by id (only ``org_id``'s rows when given: ``org_scope``). Two
+    revocations of grants sharing a key then see each other's ``revoking`` state, so the
+    last one always deletes the shared tuple.
     """
     if resource_type == "marketplace_item":
         await db.scalar(
             select(MarketplaceItem.id).where(MarketplaceItem.id == resource_id).with_for_update()
         )
+    scoped = () if org_id is None else (ResourceGrant.org_id == org_id,)
     await db.scalars(
         select(ResourceGrant)
         .where(
             ResourceGrant.resource_type == resource_type,
             ResourceGrant.resource_id == resource_id,
             ResourceGrant.state.in_(("active", "revoking")),
+            *scoped,
         )
         .order_by(ResourceGrant.id)
         .with_for_update()
@@ -80,8 +103,11 @@ async def _remaining(db: AsyncSession, row: rows.GrantRow, now: datetime) -> lis
     Cross-row admission (``tuple_filters``) is not reapplied: only organization fanout
     grants share keys today and organization principals are always admitted.
     """
+    scope = org_scope(row.resource_type, row.grant_kind, row.principal_type, row.org_id)
     others: list[rows.Row] = [
-        *await active_grant_rows(db, row.resource_type, row.resource_id, exclude=row.id)
+        *await active_grant_rows(
+            db, row.resource_type, row.resource_id, exclude=row.id, org_id=scope
+        )
     ]
     if row.resource_type == "marketplace_item":
         item = await marketplace_item_row(db, row.resource_id)

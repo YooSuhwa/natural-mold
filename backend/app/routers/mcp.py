@@ -55,7 +55,13 @@ from app.schemas.mcp import (
 )
 from app.services import mcp_registry as mcp_registry_service
 from app.services import mcp_service
-from app.services.mcp_server_view import export_names, masked, secret_readers
+from app.services.mcp_server_view import (
+    export_names,
+    masked,
+    secret_readers,
+    visible_args,
+    visible_url,
+)
 
 router = APIRouter(prefix="/api/mcp-servers", tags=["mcp"])
 # Catalog of well-known MCP servers — separate prefix so router mount paths
@@ -74,9 +80,9 @@ def _server_to_response(server: McpServer, readable: bool = True) -> McpServerRe
         name=server.name,
         description=server.description,
         transport=server.transport,
-        url=server.url,
+        url=visible_url(server, readable),
         command=server.command,
-        args=server.args or [],
+        args=visible_args(server, readable),
         env_vars=(server.env_vars or {}) if readable else masked(server.env_vars),
         headers=(server.headers or {}) if readable else masked(server.headers),
         credential_id=server.credential_id,
@@ -411,9 +417,9 @@ async def export_servers(
         out[names[row.id]] = McpExportEntry(
             transport=row.transport,
             command=row.command,
-            args=list(row.args or []),
+            args=visible_args(row, readable),
             env=dict(row.env_vars or {}) if readable else masked(row.env_vars),
-            url=row.url,
+            url=visible_url(row, readable),
             headers=dict(row.headers or {}) if readable else masked(row.headers),
             credential_id=row.credential_id,
             description=row.description,

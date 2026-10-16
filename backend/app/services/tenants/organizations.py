@@ -10,7 +10,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
+from app.authz.catalog_fanout import sync_organization
 from app.authz.error_codes import authorization_error
+from app.authz.resource_lifecycle import LifecycleChange, apply_lifecycle
+from app.authz.service import AuthzService
 from app.authz.tenant_org_write_locks import lock_tenant_org_write
 from app.dependencies import CurrentUser
 from app.exceptions import AppError
@@ -151,8 +154,10 @@ async def create_organization(
     mutation: TenantOrganizationMutation,
     context: AdminContext,
     payload: schemas.TenantOrganizationCreate,
+    authz: AuthzService | None = None,
 ) -> schemas.TenantOrganizationCreateResult:
     db = mutation.db
+    fanout = LifecycleChange()
     try:
         with db.no_autoflush:
             fresh = await load_context(
@@ -193,10 +198,14 @@ async def create_organization(
             request=mutation.request,
             metadata={"tenant_id": str(fresh.tenant.id), "slug": organization.slug},
         )
+        if authz is not None:  # E-03: allowed catalog items fan out to the new organization
+            fanout = await sync_organization(db, organization, fresh.actor.id, mode=authz.mode)
         await db.commit()
     except (AppError, SQLAlchemyError):
         await db.rollback()
         raise
+    if authz is not None:
+        await apply_lifecycle(fanout, authz)
     projection = (await _projections(db, [organization]))[0]
     return schemas.TenantOrganizationCreateResult(
         organization=schemas.TenantOrganizationSummary.from_projection(projection),

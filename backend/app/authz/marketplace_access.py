@@ -21,7 +21,7 @@ missing capability never distinguishes a hidden item from a missing one.
 """
 
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 from uuid import UUID
 
@@ -65,7 +65,8 @@ AfterAuthorized = Callable[[Item], Awaitable[None]]
 SOURCES: dict[str, GatedResource[Skill] | GatedResource[Agent] | GatedResource[McpServer]] = {
     "skill": GatedResource("skill", Skill, "can_use", skill_not_found),
     "agent": GatedResource("agent", Agent, "can_run", agent_not_found, False),
-    "mcp": MCP_SERVER,
+    # Platform servers are catalog fanout targets, never publish sources (D-05 404 kept).
+    "mcp": replace(MCP_SERVER, platform=False),
 }
 
 

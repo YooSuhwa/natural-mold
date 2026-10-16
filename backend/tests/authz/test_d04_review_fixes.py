@@ -89,20 +89,26 @@ async def test_export_keeps_owned_and_granted_same_name_rows_apart(
     assert sorted(exported) == ["srv", "srv (Other)"]
 
 
-async def test_system_mcp_server_is_unreachable_when_enforced(
+async def test_system_mcp_server_is_decided_by_catalog_fanout_when_enforced(
     client: AsyncClient, db, authz: AuthzSwitch
 ) -> None:
+    # E-03 resolved the D-04 deferral: OpenFGA (the org fanout) decides system servers.
     system = McpServer(
         user_id=OTHER_USER_ID, is_system=True, name="sys", transport="stdio", command="x"
     )
     db.add(system)
     await db.commit()
     obj = f"mcp_server:{system.id}"
-    authz.use(allow(("can_use", obj), ("can_view", obj), ("can_edit", obj)))
+    query = {"target_kind": "mcp_server", "target_id": str(system.id)}
+    authz.use(allow())  # catalog item off: no fanout tuple, hidden like a missing row
     detail = await client.get(f"/api/mcp-servers/{system.id}")
     assert (detail.status_code, detail.json()["error"]["code"]) == (404, "MCP_SERVER_NOT_FOUND")
-    query = {"target_kind": "mcp_server", "target_id": str(system.id)}
     assert (await client.get("/api/health/history", params=query)).status_code == 404
+    authz.use(allow(("can_use", obj), ("can_view", obj)))
+    assert (await client.get(f"/api/mcp-servers/{system.id}")).status_code == 200
+    assert (await client.get("/api/health/history", params=query)).status_code == 200
+    listed = (await client.get("/api/mcp-servers")).json()
+    assert str(system.id) in {row["id"] for row in listed}
 
 
 @pytest.fixture

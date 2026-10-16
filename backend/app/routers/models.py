@@ -20,6 +20,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.catalog_item_fanout import commit_item_change
 from app.authz.model_access import (
     load_owned_credential,
     model_test_credential,
@@ -126,7 +127,7 @@ async def create_model(
         action="model.create",
         model=model,
     )
-    await db.commit()
+    await commit_item_change(db, request, user.id, "model", model.id)  # E-03 fanout
     return serialize_model(model)
 
 
@@ -155,7 +156,7 @@ async def update_model(
         model=model,
         metadata={"changed_fields": changed_fields},
     )
-    await db.commit()
+    await commit_item_change(db, request, user.id, "model", model_id)  # E-03 fanout
     return serialize_model(model)
 
 
@@ -181,7 +182,7 @@ async def delete_model(
         model=model,
     )
     await model_service.delete_model(db, model=model)
-    await db.commit()
+    await commit_item_change(db, request, user.id, "model", model_id)  # E-03 fanout
     return
 
 

@@ -47,3 +47,13 @@ class CatalogPolicyView(BaseModel):
     model_config = ConfigDict(frozen=True)
     items: tuple[CatalogItemView, ...]
     updated_at: datetime
+
+
+class CatalogImpactView(BaseModel):
+    """What turning one item off affects in this organization (S09 confirmation)."""
+
+    model_config = ConfigDict(frozen=True)
+    type: CatalogKind
+    id: UUID
+    affected_agents: int
+    required_agents: int
