@@ -173,6 +173,12 @@ async def _revoke_all_active(db: AsyncSession, user_id: uuid.UUID) -> None:
     )
 
 
+async def revoke_all_refresh_tokens(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Public force-logout seam for company membership lifecycle (plan 8.1)."""
+
+    await _revoke_all_active(db, user_id)
+
+
 def _aware(dt: datetime) -> datetime:
     """Coerce a naive datetime (SQLite test rows) to UTC-aware."""
 
@@ -251,14 +257,14 @@ async def _perform_rotation(
     return access, new_refresh, csrf
 
 
-def _lock_select(stmt, db: AsyncSession):
-    """Apply ``SELECT ... FOR UPDATE`` on Postgres, plain SELECT on SQLite.
+def _lock_select(stmt, db: AsyncSession, *, read: bool = False):
+    """Apply ``SELECT ... FOR UPDATE`` (``FOR SHARE`` if ``read``) on Postgres only.
 
     SQLite (test path) ignores row locks safely because the test runner
     never executes concurrent writers against the same session.
     """
 
-    return stmt.with_for_update() if is_postgres(db) else stmt
+    return stmt.with_for_update(read=read) if is_postgres(db) else stmt
 
 
 # Maximum forward jumps through the chain when a tab race forces us to
@@ -289,6 +295,11 @@ async def rotate_refresh(
     of a race observes the winner's revocation and follows the chain
     instead of producing an orphaned leg (HANDOFF #2b).
 
+    The user row is share-locked *before* the token row. Company exit holds the
+    user row FOR UPDATE before revoking (B-15), so both sides lock user -> token:
+    a rotation racing a last-company removal either commits first (and its new
+    leg is revoked by the exit) or waits and then observes the revocation.
+
     Returns ``(access, refresh, csrf, user)`` so the router can set
     cookies and respond with the latest user projection.
     """
@@ -297,6 +308,11 @@ async def rotate_refresh(
         payload = decode_token(refresh_token, expected_type="refresh")
     except InvalidTokenError as exc:
         raise _invalid_refresh() from exc
+    try:
+        user_id = uuid.UUID(payload.sub)
+    except ValueError as exc:
+        raise _invalid_refresh() from exc
+    await db.execute(_lock_select(select(User.id).where(User.id == user_id), db, read=True))
 
     digest = hash_refresh_token(refresh_token)
     # First fetch already holds the lock — saves one round-trip in the
@@ -310,7 +326,6 @@ async def rotate_refresh(
         # Hash unknown — token forged or already GC'd.
         raise _invalid_refresh()
 
-    user_id = uuid.UUID(payload.sub)
     last_user_id = locked.user_id
 
     for _ in range(_MAX_CHAIN_FOLLOW):

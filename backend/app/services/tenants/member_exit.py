@@ -11,6 +11,7 @@ from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
 from app.authz.org_control import OrgControlActor, OrgControlContext
 from app.authz.org_member_exit import MemberExitPlan, apply_member_exit, preflight_member_exit
+from app.authz.session_revocation import revoke_sessions_without_company
 from app.authz.tenant_org_write_locks import lock_tenant_org_write
 from app.models.organization import OrganizationMember, TenantMember, TenantRoleGrant
 from app.models.user import User
@@ -126,6 +127,7 @@ async def exit_tenant_member(command: TenantMemberExitRequest) -> TenantMemberEx
             user.last_active_org_id = None
         await record_tenant_exit(command)
         await db.flush()
+        await revoke_sessions_without_company(db, command.user_id)
     return TenantMemberExitResult(organization_ids)
 
 
