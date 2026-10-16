@@ -24,6 +24,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             "tenant_suspended",
             "tenant_unavailable",
             "permission_required",
+            "capability_required",
         }:
             from app.services import audit_service
 
@@ -50,10 +51,10 @@ def register_exception_handlers(app: FastAPI) -> None:
                 await audit_service.record_platform_event_best_effort(**event)
             else:
                 await audit_service.record_event_best_effort(tenant=org_context, **event)
-        return JSONResponse(
-            status_code=exc.status,
-            content={"error": {"code": exc.code, "message": exc.message}},
-        )
+        error: dict[str, object] = {"code": exc.code, "message": exc.message}
+        if exc.details is not None:
+            error["details"] = jsonable_encoder(exc.details)
+        return JSONResponse(status_code=exc.status, content={"error": error})
 
     @app.exception_handler(ExecutionProofError)
     async def execution_proof_error_handler(

@@ -47,6 +47,10 @@ ErrorCode = Literal[
     "tenant_invitation_email_mismatch",
     "tenant_invitation_revoked",
     "tenant_status_conflict",
+    "capability_required",
+    "tenant_suspended",
+    "quota_exceeded",
+    "authz_unavailable",
 ]
 
 
@@ -111,13 +115,19 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         ),
         "tenant_invitation_revoked": ErrorSpec(404, "사용할 수 없는 회사 초대 링크입니다"),
         "tenant_status_conflict": ErrorSpec(409, "현재 회사 상태에서는 처리할 수 없습니다"),
+        "capability_required": ErrorSpec(403, "이 기능을 사용할 권한이 없습니다"),
+        "tenant_suspended": ErrorSpec(403, "회사가 정지되었습니다"),
+        "quota_exceeded": ErrorSpec(429, "사용 한도를 초과했습니다"),
+        "authz_unavailable": ErrorSpec(
+            503, "권한을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요"
+        ),
     }
 )
 
 
-def authorization_error(code: ErrorCode) -> AppError:
+def authorization_error(code: ErrorCode, details: Mapping[str, object] | None = None) -> AppError:
     spec = ERRORS[code]
-    return AppError(code=code, message=spec.message, status=spec.status)
+    return AppError(code=code, message=spec.message, status=spec.status, details=details)
 
 
 def agent_archived() -> AppError:
