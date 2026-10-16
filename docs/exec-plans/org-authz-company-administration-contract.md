@@ -94,6 +94,104 @@ A semicolon splits bundled source paths; each path has one owner.
 | 1226 | organization retention | E08 |
 | 1227 | scoped/self usage limits | H06 |
 
+### Route-level crosswalk (Task 15, candidate - verification pending)
+
+이 표는 위 18개 source row를 method+path 단위로 펼친 것이다. 각 행은 owner가 정확히
+하나다. B11/B12 행의 "candidate router"는 <code>backend/app/router_registry.py</code>에
+한 번씩 등록된 구현 파일이며, 이는 검증 대기 중인 candidate이지 채택 기록이 아니다.
+Later-task 행은 이 branch에서 route를 등록하지 않는다. CRUD로 묶인 source path는
+collection/item 경로 묶음을 한 행으로 센다. 합계는 57행이다(B11 17, B12 6, later 34).
+
+| # | Source row | Method and path | Owner | Candidate router / note |
+| --- | --- | --- | --- | --- |
+| 1 | 1210 | <code>GET /api/admin/tenants</code> | B12 | <code>platform_tenant_directory.py</code> |
+| 2 | 1210 | <code>POST /api/admin/tenants</code> | B12 | <code>platform_tenant_creation.py</code> |
+| 3 | 1210 | <code>GET /api/admin/tenants/{tenant_id}</code> | B12 | <code>platform_tenant_directory.py</code> |
+| 4 | 1210 | <code>PATCH /api/admin/tenants/{tenant_id}</code> | B12 | <code>platform_tenant_directory.py</code> |
+| 5 | 1210 | <code>POST /api/admin/tenants/{tenant_id}/suspend</code> | B12 | <code>platform_tenant_lifecycle.py</code> |
+| 6 | 1210 | <code>POST /api/admin/tenants/{tenant_id}/resume</code> | B12 | <code>platform_tenant_lifecycle.py</code> |
+| 7 | 1210 | <code>POST /api/admin/tenants/{id}/export</code> | I07 | not registered |
+| 8 | 1210 | <code>POST /api/admin/tenants/{id}/schedule-deletion</code> | I07 | not registered |
+| 9 | 1211 | <code>GET /api/tenants/{tenant_id}</code> | B11 | <code>tenant_overview.py</code> |
+| 10 | 1211 | <code>PATCH /api/tenants/{tenant_id}</code> | B11 | <code>tenant_overview.py</code> |
+| 11 | 1212 | <code>GET /api/tenants/{tenant_id}/organizations</code> | B11 | <code>tenant_organizations.py</code> |
+| 12 | 1212 | <code>POST /api/tenants/{tenant_id}/organizations</code> | B11 | <code>tenant_organizations.py</code>; initial administrator in body, later changes via B04 |
+| 13 | 1212 | <code>PATCH /api/tenants/{tenant_id}/organizations/{org_id}</code> | B11 | <code>tenant_organizations.py</code> |
+| 14 | 1213 | <code>GET /api/tenants/{tenant_id}/members</code> | B11 | <code>tenant_members.py</code> |
+| 15 | 1213 | <code>POST /api/tenants/{tenant_id}/members</code> | B11 | <code>tenant_members.py</code> |
+| 16 | 1213 | <code>PATCH /api/tenants/{tenant_id}/members/{user_id}</code> | B11 | <code>tenant_members.py</code> |
+| 17 | 1213 | <code>DELETE /api/tenants/{tenant_id}/members/{user_id}</code> | B11 | <code>tenant_members.py</code> |
+| 18 | 1213 | <code>GET /api/tenants/{tenant_id}/roles</code> | B11 | <code>tenant_members.py</code> |
+| 19 | 1213 | <code>PUT /api/tenants/{tenant_id}/roles/{user_id}</code> | B11 | <code>tenant_members.py</code> |
+| 20 | 1213 | <code>GET /api/tenants/{tenant_id}/invitations</code> | B11 | <code>tenant_invitations.py</code> |
+| 21 | 1213 | <code>POST /api/tenants/{tenant_id}/invitations</code> | B11 | <code>tenant_invitations.py</code> |
+| 22 | 1213 | <code>POST /api/tenants/{tenant_id}/invitations/{invitation_id}/resend</code> | B11 | <code>tenant_invitations.py</code> |
+| 23 | 1213 | <code>DELETE /api/tenants/{tenant_id}/invitations/{invitation_id}</code> | B11 | <code>tenant_invitations.py</code> |
+| 24 | 1214 | CRUD <code>/api/tenants/{tenant_id}/models</code> | E07 | not registered |
+| 25 | 1214 | CRUD <code>/api/tenants/{tenant_id}/credentials</code> | E07 | not registered |
+| 26 | 1214 | <code>GET·PUT /api/tenants/{tenant_id}/llm-settings</code> | E07 | not registered |
+| 27 | 1214 | <code>GET·PUT /api/tenants/{tenant_id}/catalog-policy</code> | E07 | not registered |
+| 28 | 1215 | <code>GET /api/tenants/{tenant_id}/usage</code> | H03 | not registered |
+| 29 | 1215 | <code>GET /api/tenants/{tenant_id}/audit-events</code> | H03 | not registered |
+| 30 | 1215 | <code>GET /api/tenants/{tenant_id}/limits</code> | H06 | not registered |
+| 31 | 1216 | <code>GET /api/admin/authz/status</code> | C05 | not registered |
+| 32 | 1216 | <code>GET /api/admin/authz/failures</code> | C05 | not registered |
+| 33 | 1216 | <code>POST /api/admin/authz/failures/{id}/retry</code> | C05 | not registered |
+| 34 | 1216 | <code>POST /api/admin/authz/reconcile</code> | C05 | not registered |
+| 35 | 1216 | <code>GET /api/admin/authz/reconcile/{job_id}</code> | C05 | not registered |
+| 36 | 1217 | <code>POST /api/tenants/{tenant_id}/organizations/{org_id}/archive</code> | B11 | <code>tenant_organization_lifecycle.py</code>; bounded by Policy A, no purge |
+| 37 | 1217 | <code>POST /api/tenants/{tenant_id}/organizations/{org_id}/restore</code> | B11 | <code>tenant_organization_lifecycle.py</code>; 30-day metadata-only restore |
+| 38 | 1218 | <code>GET /api/admin/tenants/{id}/exports</code> | I07 | not registered |
+| 39 | 1218 | <code>POST /api/admin/tenants/{id}/cancel-deletion</code> | I07 | not registered |
+| 40 | 1219 | <code>POST /api/marketplace/items/{id}/tenant-publication</code> | E09 | not registered |
+| 41 | 1219 | <code>DELETE /api/marketplace/items/{id}/tenant-publication</code> | E09 | not registered |
+| 42 | 1220 | <code>GET /api/tenants/{tenant_id}/publication-requests</code> | E09 | not registered |
+| 43 | 1220 | <code>POST /api/tenants/{tenant_id}/publication-requests/{id}/approve</code> | E09 | not registered |
+| 44 | 1220 | <code>POST /api/tenants/{tenant_id}/publication-requests/{id}/reject</code> | E09 | not registered |
+| 45 | 1221 | CRUD <code>/api/tenants/{tenant_id}/domains</code> | H08 | not registered |
+| 46 | 1221 | <code>POST /api/tenants/{tenant_id}/domains/{id}/verify</code> | H08 | not registered |
+| 47 | 1222 | CRUD <code>/api/tenants/{tenant_id}/sso-connections</code> | H08 | not registered |
+| 48 | 1222 | <code>POST /api/tenants/{tenant_id}/sso-connections/{id}/test</code> | H08 | not registered |
+| 49 | 1222 | <code>POST /api/tenants/{tenant_id}/sso-connections/{id}/activate</code> | H08 | not registered |
+| 50 | 1223 | <code>POST /api/auth/sso/discover</code> | H08 | not registered |
+| 51 | 1223 | <code>GET /api/auth/sso/{connection_id}/start</code> | H08 | not registered |
+| 52 | 1223 | <code>GET /auth/callback/{connection_id}</code> | H08 | not registered |
+| 53 | 1224 | <code>POST /api/auth/ldap/{connection_id}/login</code> | H08 | not registered |
+| 54 | 1225 | <code>GET·PUT /api/tenants/{tenant_id}/policies</code> | E09 | not registered; route owner E09 (publication policy). E08 adds the audit-retention field and H06 the default-limit field to the same schema as field-level dependents, not as separate routes |
+| 55 | 1226 | <code>GET·PUT /api/orgs/{org_id}/retention</code> | E08 | not registered |
+| 56 | 1227 | <code>GET·PUT /api/usage-limits</code> | H06 | not registered |
+| 57 | 1227 | <code>GET /api/me/usage-limits</code> | H06 | not registered |
+
+Existing routes that B11 extends are not 9.7 company rows and are not counted
+above. Their owners do not change. <code>POST /api/invitations/accept</code> (source row
+1196, B05) and <code>POST /api/auth/register</code> (B05) add only the
+<code>tv1.</code> company-token branch. The B04 routes
+<code>POST /api/orgs/{org_id}/members</code> and <code>PUT /api/orgs/{org_id}/roles</code>
+(source rows 1195 and 1198) remain the only routes that change organization
+administrators after creation. Under this count, B11 owns 17 new routes and B12
+owns 6. This matches the 23 company/platform routes registered in
+<code>router_registry.py</code>.
+
+### Organization purge registration
+
+Permanent organization purge is not a 9.7 route and is not part of B11. B11
+stops at archive (with a 30-day restore window) and restore. Purge is registered
+as follows:
+
+- **E08** owns scheduled purge, under retention policy, of an organization whose
+  restore window has passed, together with the <code>retention_sweep</code> job.
+- **I07** owns the operator CLI/API for company-level permanent deletion,
+  including cascaded deletion of its organizations.
+- **Dependency:** purge cannot start until a per-resource disposition contract
+  exists. That contract must define deletion, preservation or read-only
+  retention for agents, conversations and retained history, credentials, skills
+  and MCP, triggers and deployments, artifacts and files, and audit rows. It
+  must also define the order of transfers through the E02 transfer extension
+  and the C04 grant/outbox revocation. Until then, archived organizations stay
+  in the archived state.
+- B12 does not include I07 export, deletion scheduling, deletion cancellation or
+  permanent deletion.
+
 ## Exclusions, policy A, and history
 
 - B11/B12 do not implement E07 catalogs, H03 readers, H06 limits, C05 operations,

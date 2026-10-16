@@ -245,8 +245,8 @@ real-participant U-05 study are future gates.
 - [x] B-08 — ownership constraints and agent archive lifecycle.
 - [ ] B-09 — frontend state reset and transport inspection.
 - [x] B-10 — company context, suspension and deployment modes.
-- [ ] B-11 — company administration API.
-- [ ] B-12 — SaaS platform company administration API.
+- [ ] B-11 — company administration API. candidate - verification pending (아래 B-11/B-12 candidate 절 참조).
+- [ ] B-12 — SaaS platform company administration API. candidate - verification pending (아래 B-11/B-12 candidate 절 참조).
 - [ ] B-13 — tenant/platform sessions and derived task context.
 - [ ] B-15 — cookie, refresh revocation and token claim contracts.
 - [ ] B-16 — company data keys and ciphertext version 2.
@@ -3461,3 +3461,128 @@ manifest SHA-256은 `df500998aac88c91facfc8f4cf66111beef53794698803c521df8acc222
 lifecycle 및 Conversation-owned retained-history 범위에 한정한다. C02/C04 grant
 projection/outbox, E08 retention scheduling/policy, U04 full UI, live provider·human-browser
 검증과 나머지 P0–P8은 계속 남아 있다.
+
+## B-11/B-12 candidate - verification pending (2026-10-16, Asia/Seoul)
+
+이 절은 B11 회사 관리 API와 B12 SaaS 운영자 회사 관리 API의 **candidate 상태**만
+기록한다. parent Task 16의 candidate 게이트, F1–F6 독립 검토, Task 17의 기록이 아직
+없으므로 B11과 B12는 위 checklist에서도 미체크로 남는다. 상태 전환은 Task 16B 이후
+Task 17만 별도 절로 덧붙인다. 설계 근거는 ADR-023의 "B11/B12 company administration
+(candidate - verification pending)" 절에, route 계약과 9.7 route 단위 crosswalk(57행)는
+`org-authz-company-administration-contract.md`에 있다.
+
+### 기준 SHA (따로 기록)
+
+- 채택된 B08 SHA(이력 입력, 변경 없음): `c5cea625ee1e1470e386525edf120b02178bdbaf`.
+  근거는 위 "B-08 Task 15 adopted validation" 절이다.
+- 계획 baseline: `6d5323eec9ad27f0e5e6451e0f8fb271fc9dfa55`.
+- 작성 시점의 candidate HEAD: `da84a76964d4fa91255832846f5b7ff58211ed30`
+  (`feature/org-authz`, baseline 이후 48개 커밋). 이 문서 변경은 그 뒤에 커밋되므로,
+  Task 16은 문서 커밋을 포함한 새 candidate SHA를 고정하고 검증해야 한다. 이 SHA는 게이트를
+  통과한 기준점이 아니다.
+- Migration: `b11_company_administration`의 부모는 `b08_agent_lifecycle` 하나다. 최종
+  head와 ancestry, roundtrip 검증은 Task 16이 맡는다.
+
+### candidate 범위 (구현, 검증 대기)
+
+- B11 신규 route 17개: overview, 조직 목록/생성/이름 변경, archive/restore, 회사 구성원,
+  역할, 회사 초대. 기존 `POST /api/invitations/accept`와 `POST /api/auth/register`에는
+  `tv1.` 회사 토큰 분기만 추가했다.
+- B12 신규 route 6개: 운영자 회사 목록, 생성, 상세, 메타데이터 수정, 정지, 재개.
+- 구현 파일은 `router_registry.py`에 한 번씩 등록되어 있다(da84a769). 신규 route
+  OpenAPI snapshot과 company route inventory test도 함께 들어갔다.
+- 조직 archive는 실행 진입 직렬화와 함께 들어갔다. 이를 위해 parent Task 10의 I-unit
+  계열이 추가되었다: gateway, `PreparedRunLease` registry, lease-bound
+  checkpoint/tool/snapshot/provider leaf, dispatch permit, archive terminalizer,
+  chat/queue/API/trigger prepared entry, recovery.
+- 경계: archive는 Policy A(기본 조직은 모두 archive
+  불가)와 30일 metadata-only restore로 제한된다. 조직 영구 purge는 포함하지 않는다(아래
+  등록 참조).
+
+### 진행 방식 (B안)
+
+검증 과잉으로 진척이 멈춘 문제 때문에 2026-10-16에 진행 방식을 B안으로 바꿨다. 근거는
+`.omo/evidence/company-administration/b-plan-process-change-20261016.md`다. 각 단위는
+실패 테스트 → 구현 → Ruff/Pyright → 필요 시 격리 PostgreSQL → 독립 리뷰 1회 → 커밋
+순서로 진행한다. 봉인 체인과 메타 검증 도구는 새로 만들지 않는다. 같은 기록에 따르면, 단위별
+전체 일반 스위트에는 HEAD와 대조해 같은 환경 실패(16 failed/36 errors: 샌드박스 소켓,
+공유 data 등)만 남았다. Task 14 커밋(da84a769) 시점에는 그중 실제 결함이던 항목(조직 보관
+fixture의 `archived_at` 누락, 미검토 OpenAPI snapshot)을 고쳐 8 failed/36 errors(모두 샌드박스
+소켓·포트·외부 실행 환경)만 남았다. 이 결과는 Task 16의 unfiltered 전체 스위트 게이트를 대신하지 않는다.
+
+### 아직 실행하지 않은 검증
+
+- **native PostgreSQL lane 미실행.** 개발 샌드박스가 Docker 소켓을 차단한다. Task 14가
+  등록한 전용 `company-administration` lane(신규 integration module 26개와 legacy race
+  node 13개), canonical native `all`, migration roundtrip 모두 아직 실행하지 않았다.
+  integration marker가 붙은 native module은 collect만 되었다. 따라서 실제 PostgreSQL에서의
+  lock 경합, deadlock 부재, barrier race 결과(membership add/accept, archive와
+  prepared-lease의 다섯 entry family, archive와 trigger claim, B08 agent archive 호환)는
+  아직 증명되지 않았다. SQLite 일반 테스트로는 이를 증명할 수 없다.
+- Task 16 Stage A/B의 다음 항목도 아직 없다: 전체 backend unfiltered 실행
+  (`-m "not integration"`만 허용), full Ruff/Pyright/format, ratchet, assembled HTTP
+  witness, F1–F6 receipt.
+
+### 기본값과 켜기 전 선결 조건
+
+`settings.prepared_run_lease_enabled`의 기본값은 `False`다. 기본 상태에서는 모든 실행이
+gateway prefix 뒤의 legacy runtime으로 돈다. 다만 gateway 자체는 flag와 무관하게 모든 실행
+진입에 적용되므로, legacy run도 정지, owner membership 상실, archive에서 fail-closed한다.
+flag를 켜기 전에 다음 제품 결정이 필요하다.
+
+1. OpenAI moderation middleware 처리. 이 middleware는 lease 밖에서 송신한다.
+2. fallback model chain.
+3. `recursion_limit`.
+4. legacy 호환 정책 `agent_memory_file_write`.
+5. 기본 memory 정책 `ask`(memory tools).
+
+이 결정 전에는 대부분의 에이전트가 legacy로 fallback한다.
+
+### 기록된 편차와 결정
+
+- **Dispatch permit:** 계획 원문은 "serialized permit under these locks"로, permit을
+  leaf 동안 보유하는 해석이 가능했다. 구현은 lock → decide → record → release 후에 I/O를
+  수행한다. provider 송신, tool 호출, child launch 동안에는 lock, transaction, connection을
+  보유하지 않는다. 승자는 permit이 lock을 잡는 시점에 정해진다. 그 이후에 커밋된 정지,
+  회수, archive는 진행 중인 leaf에는 보이지 않고, 다음 dispatch 경계에서 반영된다.
+- **정지는 대기 작업을 종료하지 않음:** pending input은 pending으로 남고, 정지 중에는
+  claim되지 않는다. 실행 중인 run은 다음 permit에서 `tenant_suspended`로 끝난다. 재개 후에는
+  같은 input을 다시 claim할 수 있다. 작업을 terminalize하는 것은 archive와 member exit뿐이다.
+- **Agent API의 불투명 401:** 정지된 회사의 API key도 B05 계약대로
+  `401 AGENT_API_KEY_INVALID`로 응답하며 `tenant_suspended`를 노출하지 않는다.
+- **trigger 출력 비영속:** lease 아래 trigger 모드의 출력 파일은 run root cleanup 때
+  삭제된다. legacy와 다른 동작이며, trigger lease 출력의 artifact 영속화는 구현되지 않았다.
+- **MCP discovery 상한:** materialization lock을 잡은 채 수행하는 selected-MCP discovery는
+  서버당 3초, 전체 5초로 제한된다. marker 이후의 호출은 10초이며 lock을 잡지 않는다.
+- **이번 변경과 무관한 기존 버그(main에도 존재, 미수정):** 저장된 자식 에이전트의 legacy
+  config에서 `MissingGreenlet`이 난다(`subagents.py:118`). legacy
+  `execute_agent_stream`/`resume_agent_stream`은 worker의 `run_metrics` kwarg를 받지 않는다.
+
+### 조직 purge 등록
+
+조직 영구 purge는 **E08/I07**에 등록한다. E08은 restore 기간이 지난 조직을 보존 정책에 따라
+예약 purge하고 `retention_sweep`을 맡는다. I07은 회사 영구 삭제 운영 CLI/API와 소속 조직의
+연쇄 삭제를 맡는다. purge는 **resource disposition 계약**이 생긴 뒤에만 시작할 수 있다. 이
+계약은 에이전트, 대화와 retained history, 자격 증명, skill/MCP, trigger/deployment,
+artifact/file, 감사 행 각각의 삭제/보존/읽기 전용 처리와, E02 이전 및 C04 회수의 순서를
+정해야 한다. 그 전까지 archive된 조직은 archive 상태로 남는다. B12는 I07(export, 삭제 예약,
+삭제 취소, 영구 삭제)을 포함하지 않는다.
+
+### 남은 task (B11/B12 밖)
+
+- C04 — GrantService, outbox, 회수 순서. member exit seam의 outbox 확장 owner다.
+- E02 — 구성원 제거 흐름과 자원 이전. `resource_transfer_required` 해소의 owner다.
+- E03 — catalog policy와 runtime fanout.
+- E07 — 회사 모델, 공용 자격 증명, 서비스 LLM, 회사 카탈로그 route.
+- E08 — 보존 정책, `retention_sweep`, 조직 purge(I07과 공동), 감사 보존 field.
+- E09 — 회사 공개 게시 정책, 승인 흐름, `/policies` route owner.
+- H03 — 회사 usage/audit reader.
+- H06 — 한도(회사/조직/사용자/에이전트), `/limits`, `/usage-limits`.
+- H08 — 도메인 확인, SSO/LDAP route.
+- I07 — 회사 export, 삭제 예약/취소, 영구 삭제.
+- I08 — 회사별 파일 경로, rate-limit key, 공유 링크 회사 검증, Langfuse metadata.
+- B13 — tenant/platform session, 파생 작업 컨텍스트.
+- B16 — 회사별 data key와 ciphertext v2.
+
+이 절은 다음 어떤 것도 주장하지 않는다: 9.7 전체, UI(B-07/B-09), 배포, provider/live
+성공, shared-DB migration, purge, fanout, audit reader, session/RLS, 암호화.

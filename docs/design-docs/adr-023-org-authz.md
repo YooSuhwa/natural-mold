@@ -207,3 +207,267 @@ Enforced FGA errors deny with 503, while private reads remain independent.
   from DB on every request until a mutation-aware process cache exists; such a
   cache must preserve immediate removal/suspension behavior. Self organization
   listing/switching is not resource permission enforcement.
+
+## B11/B12 company administration (candidate - verification pending)
+
+This section records the design of the B11 company administration API and the
+B12 SaaS operator API as implemented on `feature/org-authz` after the B08
+baseline `c5cea625ee1e1470e386525edf120b02178bdbaf`. It describes a candidate.
+The aggregate gate (parent Task 16), the F1–F6 reviews and the native
+PostgreSQL lanes have not run, so nothing here records adoption of B11 or B12.
+The route-by-route contract and the 9.7 ownership crosswalk are in
+[the company administration contract](../exec-plans/org-authz-company-administration-contract.md).
+The candidate state is in [the execution record](../exec-plans/org-authz-progress.md).
+
+### Schema: a dedicated company invitation table
+
+- Migration `b11_company_administration` has exactly one parent,
+  `b08_agent_lifecycle`. It adds `tenant_invitations`,
+  `organizations.archived_at` and the `conversation_runs` materialization
+  pair. It does not reuse `org_invitations` with a nullable `org_id`, for three
+  reasons. First, a company administrator need not belong to any organization.
+  Second, a nullable scope would weaken the organization FK and pending-row
+  invariants that every B05 organization-invitation consumer relies on, and
+  each of those consumers would need a null branch. Third, a company invitation
+  grants no organization membership, so its acceptance rules differ.
+- `tenant_invitations` stores a normalized (`lower(trim())`) email, a role of
+  NULL, `admin` or `auditor`, a status of `pending`, `accepted` or `revoked`
+  (a check constraint enforces the matching timestamp state), a unique token
+  hash of exactly 64 lowercase hex digits, `expires_at > created_at`,
+  actor/timestamp pairs, and a partial index on pending
+  `(tenant_id, email, role)`.
+- A check constraint ties `organizations.archived_at` to
+  `status = 'archived'`. The migration backfills legacy archived rows from
+  `updated_at`.
+- `conversation_runs.runtime_materialized_at` and
+  `runtime_materialization_sha256` are both set or both NULL, and the digest is
+  64-hex. Together they are the durable cross-process marker of a prepared run.
+
+### Token purpose and redaction
+
+- A company token has the form `tv1.<invitation id hex>.<HMAC-SHA256>`. The
+  MAC key is the JWT secret and the message is
+  `"moldy/tenant-invitation/v1\0" || invitation_id.bytes`. Because the purpose
+  string is separate from organization invitation tokens, one token cannot be
+  replayed as the other. `POST /api/invitations/accept` and
+  `POST /api/auth/register` select the company path by the `tv1.` prefix and
+  use the B05 organization path otherwise.
+- Only the SHA-256 of the token is stored. Tokens last seven days and can be
+  used once. Because the plaintext can be rebuilt from the row ID, an
+  idempotent create retry can return the same link. If the JWT secret has been
+  rotated, the rebuilt token no longer matches the stored hash, and the
+  response carries `token: null` until someone resends the invitation. Resend
+  revokes the original and any same-content pending rows, then creates a
+  replacement row with a new ID, so the token is new too.
+- The plaintext link appears only in the create and resend responses and in
+  the B12 company-creation response (for the first administrator). Lists,
+  revocations and every other view omit both the token and its hash. Member
+  views expose only a safe company identity and status. Auditor views expose
+  counts and organization `name`/`member_count`. Administrator views add
+  management metadata. Every view omits the secrets namespace, raw settings,
+  key material, catalog, usage, audit and content IDs.
+
+### If-Match
+
+The Tenant ETag is the quoted ISO-8601 UTC value of `tenants.updated_at`. Each
+mutation advances that value by at least 1 µs, so two writes in the same clock
+tick still get different ETags. The Organization ETag is the quoted ISO-8601
+UTC value of `organizations.updated_at`. A missing, malformed or stale value
+returns `409 stale_version`.
+
+| ETag | Routes |
+| --- | --- |
+| Tenant | B11 `PATCH /api/tenants/{tenant_id}`; members POST, PATCH and DELETE; `PUT .../roles/{user_id}`; invitations POST, resend and DELETE. B12 `PATCH /api/admin/tenants/{tenant_id}`, suspend and resume |
+| Organization | `PATCH .../organizations/{org_id}` (rename), archive, restore |
+| None | `POST .../organizations` (create), `POST /api/invitations/accept`, `POST /api/auth/register`, B12 `POST /api/admin/tenants` |
+
+Precedence follows the contract. Invitation create checks ETag syntax first.
+A same-content pending retry then returns `200` before the staleness
+comparison, so a retry that sends a well-formed but stale ETag still gets the
+idempotent result. Archiving a default organization returns `409` before the
+ETag check. Suspend and resume take the Tenant lock, then check If-Match, then
+treat a repeat of the current state as a no-op that changes neither the
+version nor the audit log.
+
+### Membership lock order and default registration
+
+- Every membership-derived write and every invitation acceptance follows the
+  same order. It first locks `Tenant` by primary key, sorting several tenants
+  by UUID bytes. It then locks every affected existing `Organization` in
+  ascending UUID-byte order. Only then does it lock the child rows
+  (invitation, `TenantMember`, `OrganizationMember`, role, group and
+  capability rows, envelopes) in stable table/key order. Under those locks it
+  checks authority, target eligibility, membership state and preconditions
+  again. Router and dependency reads, and invitation hash hints, are
+  non-authoritative. No path locks an Organization before its Tenant
+  (`app/authz/tenant_org_write_locks.py`).
+- Public default registration is fixed to the bootstrap install company
+  `DEFAULT_COMPANY_ID = uuid5(NAMESPACE_URL, "moldy/default-tenant")` and its
+  `is_default` organization. A `default` organization that an operator creates
+  for a new company is never a public default-registration target.
+  Company-token registration creates only a tenant membership with an
+  optional role. It enrols in no organization and sets neither
+  `last_active_org_id` nor the active-organization cookie. When
+  `allow_first_user_as_admin` is set, it also locks the fixed default Tenant,
+  in sorted order, to serialize the first-user check.
+- Default-organization archive policy (Policy A): no default organization can
+  be archived. That includes a legacy default that is already archived. Once
+  authority and the locks have been resolved without revealing whether the
+  organization exists, a locked `is_default` row returns
+  `409 default_organization_archive_forbidden`. This happens before the
+  stale-version, confirmation-name and last-organization checks, and changes
+  neither state nor the audit log. B11 never reassigns or clears `is_default`.
+
+### Organization administrators, roles and exit
+
+- `OrganizationCreate.administrator` may name an active tenant member, or an
+  email that receives an organization invitation. After creation,
+  administrators are managed only through the existing B04 routes
+  `POST /api/orgs/{org_id}/members` and `PUT /api/orgs/{org_id}/roles`, which
+  keep the Organization ETag and the last-administrator guard. B11 adds no
+  duplicate administrator route.
+- `PUT /api/tenants/{tenant_id}/roles/{user_id}` replaces the whole set of
+  tenant roles. `{"roles": []}` is valid and leaves an active plain member. The
+  final active company administrator cannot be role-cleared, suspended or
+  removed. A tenant role never grants organization or content access.
+- Exit seam: organization removal is split into the transaction-neutral
+  functions `preflight_member_exit` and `apply_member_exit`. Company removal
+  locks the Tenant and every affected Organization, preflights every
+  membership, and then, in one caller transaction, applies the per-organization
+  effects, the tenant-role deletion and `TenantMember.status = removed`.
+  Covered owned resources abort with `409 resource_transfer_required`. Nothing
+  is transferred automatically. E02 (transfer) and C04 (grant outbox) are the
+  registered extension owners of this seam.
+
+### Identifiers
+
+- Tenant slug: supplied by the operator, globally unique (`uq_tenants_slug`),
+  lowercase ASCII alphanumerics and hyphens, 3–40 characters, starting and
+  ending with an alphanumeric. The secrets namespace is
+  `tenants/{tenant_id}` (unique) and is never derived from the slug.
+- Organization slug: derived on the server from the name by `slugify` (falling
+  back to `org`), cut to 120 characters, and made unique within the tenant by
+  `-2`, `-3`, … suffixes. Renaming keeps the slug. Names need not be unique.
+  The first organization of an operator-created company has the slug
+  `default`. The two algorithms are separate on purpose: a tenant slug is an
+  external identifier, while an organization slug is tenant-local.
+
+### Prepared runs and archive
+
+- `PreparedRunLease` (`app/agent_runtime/runtime_config.py`) belongs to one
+  process. It holds the compiled root and child runtimes, converted messages,
+  the LangGraph config, the lease-bound checkpointer and seed, immutable
+  snapshots, tool access classes and resolved secret values. Pickling or
+  copying it raises an error. Only its non-secret digest is persisted, together
+  with `runtime_materialized_at` and the `queued -> running` transition, while
+  the materialization locks are held. The process-local registry moves a lease
+  through `reserved -> pending_commit -> active [-> dispatching] ->
+  terminalizing -> removed` and retires removed run IDs, so a lost lease is
+  never rebuilt.
+- After the marker, the access contract is closed:
+  - The checkpoint saver reads only the frozen seed and the checkpoints this
+    lease wrote under the exact thread, namespace and `moldy_run_id`. Any
+    other access fails with `checkpoint_lineage_denied`.
+  - Every tool belongs to exactly one class: `snapshot_safe`,
+    `resolved_external`, `run_output` or `live_application_resource`.
+    Classification is closed, nothing defaults to `snapshot_safe`, and live
+    resources are limited to IDs preloaded into the lease.
+  - The snapshot backend serves sealed snapshot paths and writes only below
+    run-owned roots, which are kept separate from the shared data root.
+  - Preparation, MCP discovery, credential resolution, memory loading, global
+    checkpoint access and initial history loading all fail with
+    `post_marker_hydration_denied`.
+- Every execution entry (chat, queue/worker, Agent API, trigger, subagent)
+  goes through `organization_execution_gateway`. The gateway locks
+  `Tenant -> Organization -> owner TenantMember -> owner OrganizationMember ->
+  User (KEY SHARE) -> sorted Agent lifecycle -> sorted Conversation` and
+  requires an active Tenant, both owner memberships active, and an active user.
+  An archived Organization is admitted only for the exact live lease. The
+  gateway runs whether or not the lease flag is set, so legacy runs now also
+  fail closed on suspension, owner-membership loss or archive.
+- The lock order that covers all entries and organization archive is
+  `Tenant, Organization, TenantMember, OrganizationMember, User, Agent
+  lifecycle, AgentTrigger, AgentDeployment, Conversation, Run, Input,
+  Envelope, Queue` (`ExecutionLockCursor` admits only ascending positions).
+  Agent locks come before Trigger and Deployment locks, which matches the
+  source order of the standalone B08 agent archive, restore and purge
+  (`Agent lifecycle -> Agent -> AgentTrigger -> AgentDeployment`). Those B08
+  paths take no parent row after Agent. A trigger claim enters the gateway and
+  the Agent tree before it locks the trigger.
+- Terminal states. Organization archive, and the reusable `tenant_suspended`
+  writer seam, apply one projection to rows that are already locked:
+  - an unclaimed pending input becomes `canceled`, keeps `run_id = NULL`, and
+    its revision increases by 1;
+  - a claimed input stays bound and becomes `failed`;
+  - a run without the materialization pair becomes `failed`, inactive, with
+    `completed_at` set and the exact `error_code`/`error_message`;
+  - a linked API run becomes `failed` with `finished_at`, the same code and its
+    link kept;
+  - a linked trigger run becomes `failed` with `error_message = reason`;
+  - live API and trigger envelopes that never linked to a run fail with the
+    same code.
+
+  Active triggers are paused (`next_run_at` cleared) and active deployments
+  are disabled. Agent rows are never archived. A run that carries the
+  materialization pair is left to finish through the closed contract. If its
+  lease is lost, every dispatch fails with `prepared_run_lease_missing` and
+  recovery terminalizes it (`running` becomes `failed`, `canceling` becomes
+  `canceled`) without reading the agent or config and without rebuilding.
+  Recovery under a denied gateway uses narrow terminal-only locks. A single
+  table (`app/agent_runtime/run_error_codes.py`) maps errors to run codes:
+  `tenant_suspended`, `forbidden`, `organization_archived`,
+  `prepared_run_lease_missing` and `prepared_run_start_failed`. Nothing is
+  retried or replayed automatically. Unpaired runs remain in ordinary queue
+  recovery, which may prepare them again.
+- Restore changes metadata only. It requires an archived row less than 30 days
+  old (`organization_restore_expired` once the window has passed,
+  `organization_unavailable` if the row is not archived), and it clears only
+  the status and `archived_at`. It never changes `is_default`, re-enables a
+  trigger or deployment, or requeues or replays canceled or failed work. After
+  a restore, callers submit new requests and an administrator re-enables each
+  entry point explicitly. Permanent organization purge is out of B11 scope and
+  is registered to E08/I07.
+
+### Recorded deviations and gates
+
+- Dispatch permit. The plan asks for "a serialized permit under these locks so
+  archive and membership mutation have a deterministic winner." The
+  implementation (`lease_dispatch_permit.py`) works as lock, then decide, then
+  record, then release, and only then performs the I/O. The short authority
+  transaction rolls back and returns its connection before the provider send,
+  tool call, backend call or child launch. No lock is held across that leaf
+  call. The winner is decided when the permit takes its locks. A suspension,
+  revocation or archive committed before that point is observed, as a denial
+  or as the exact-lease archive bypass. One committed after the release is not
+  seen by the in-flight leaf call, which runs to its end, and is observed at
+  the next dispatch boundary. Writers therefore wait for at most one short
+  transaction, never for a provider or tool call.
+- Suspension. Suspension changes only `tenants.status` and `updated_at`, and
+  records `tenant.suspend`/`tenant.resume`. Memberships, roles, refresh tokens,
+  organizations, triggers and deployments are untouched. Queued and admitted
+  work is not terminalized: pending inputs stay pending and are not claimed
+  while suspended, running work ends at its next permit with
+  `tenant_suspended`, and resume makes the inputs claimable again. Agent API
+  keys keep the opaque B05 contract and answer `401 AGENT_API_KEY_INVALID`,
+  never `tenant_suspended`, so a key does not reveal its company's state.
+- `settings.prepared_run_lease_enabled` defaults to `False`. With the flag off,
+  runs use the legacy runtime behind the gateway prefix. Turning the flag on
+  first needs product decisions on these prerequisites:
+  - the OpenAI moderation middleware, which sends outside the lease;
+  - fallback model chains;
+  - `recursion_limit`;
+  - the legacy compatibility policy for `agent_memory_file_write`;
+  - the default memory policy `ask` (memory tools).
+
+  Until those are decided, most agents fall back to the legacy runtime.
+- Under a lease, trigger-mode output files are deleted with the run root when
+  the run is cleaned up. Legacy runs keep them. Artifact persistence for
+  trigger lease output is not implemented.
+- Selected-MCP discovery runs while the materialization locks are held, so it
+  is bounded: 3 s per server and 5 s in total
+  (`prepared_mcp_discovery_*_timeout_seconds`). Calls after the marker are
+  bounded at 10 s per call and hold no locks.
+- Not yet executed: the dedicated `company-administration` PostgreSQL lane,
+  canonical native `all`, and the migration roundtrip. The development sandbox
+  blocks the Docker socket. Real lock contention and deadlock behaviour
+  therefore remain unproven, because SQLite ordinary tests cannot show them.
