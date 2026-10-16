@@ -156,7 +156,7 @@ async def _credential_payloads(
     payloads: dict[UUID, dict[str, JsonValue]] = {}
     for credential in credentials:
         try:
-            payload = await credential_service.decrypt_with_external(credential.data_encrypted)
+            payload = await credential_service.decrypt_with_external(credential)
         except (CipherError, OSError, ValueError, RuntimeError, KeyError) as error:
             raise HistorySecretSourceError("credential source could not be resolved") from error
         if _contains_external_marker(payload):

@@ -34,6 +34,7 @@ from app.authz.platform_scope import PlatformScope
 from app.authz.scoping import private_scoped
 from app.config import settings
 from app.credentials import service as credential_service
+from app.credentials import tenant_encryption
 from app.credentials.creation import CredentialCreation
 from app.dependencies import CurrentUser
 from app.models.credential import Credential
@@ -79,10 +80,7 @@ async def _upsert_credential(
         )
         logger.info("seed_e2e_llm: created credential %s", creation.name)
     else:
-        blob, key_id, field_keys = credential_service.encrypt_data(data)
-        cred.data_encrypted = blob
-        cred.key_id = key_id
-        cred.field_keys = field_keys
+        await tenant_encryption.seal(cred, data, db=db)
         await db.flush()
         logger.info("seed_e2e_llm: refreshed credential %s", creation.name)
     return cred

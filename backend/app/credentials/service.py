@@ -25,6 +25,7 @@ from app.authz.private_actor import (
     resolve_private_actor,
 )
 from app.authz.scoping import private_scoped
+from app.credentials import tenant_encryption
 from app.credentials.creation import CredentialCreation
 from app.credentials.external_secrets import resolve_external_refs
 from app.credentials.mutation_scope import (
@@ -38,6 +39,7 @@ from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
 from app.security import cipher
 from app.security.key_provider import get_active_key, get_keys
+from app.security.tenant_keys import TenantDataKey
 from app.services import audit_service
 
 logger = logging.getLogger(__name__)
@@ -94,8 +96,9 @@ def encrypt_data(data: dict[str, Any]) -> tuple[str, str, list[str]]:
 
 
 def decrypt_data(blob: str) -> dict[str, Any]:
-    """Decrypt ``blob`` to a dict."""
+    """Decrypt an instance-key (0x01) ``blob`` to a dict; 0x02 needs its row."""
 
+    tenant_encryption.require_row_context(blob)
     plaintext = cipher.decrypt(blob, get_keys())
     parsed = json.loads(plaintext)
     if not isinstance(parsed, dict):
@@ -103,10 +106,17 @@ def decrypt_data(blob: str) -> dict[str, Any]:
     return parsed
 
 
-async def decrypt_with_external(blob: str) -> dict[str, Any]:
-    """Decrypt and resolve any ``__external__`` references in the payload."""
+async def decrypt_with_external(source: Credential | str) -> dict[str, Any]:
+    """Decrypt and resolve any ``__external__`` references in the payload.
 
-    raw = decrypt_data(blob)
+    Pass the ``Credential`` row so company-key (0x02) ciphertext can be bound
+    to its company/table/row AAD; a bare blob only decrypts format 0x01.
+    """
+
+    if isinstance(source, Credential):
+        raw = await tenant_encryption.open_payload(source)
+    else:
+        raw = decrypt_data(source)
     return await resolve_external_refs(raw)
 
 
@@ -261,7 +271,7 @@ async def get_provider_keys(
             # env_key already represents the highest-priority credential.
             continue
         try:
-            payload = await decrypt_with_external(cred.data_encrypted)
+            payload = await decrypt_with_external(cred)
         except Exception:  # noqa: BLE001 — bad cipher / missing key shouldn't crash startup
             logger.exception(
                 "get_provider_keys: failed to decrypt credential %s (%s)",
@@ -341,21 +351,19 @@ async def create(
         case unreachable:
             assert_never(unreachable)
 
-    blob, key_id, field_keys = encrypt_data(dict(creation.data))
     cred = Credential(
+        id=uuid.uuid4(),
         user_id=user_id,
         org_id=org_id,
         tenant_id=tenant_id,
         scope=scope,
         definition_key=creation.definition_key,
         name=creation.name,
-        data_encrypted=blob,
-        key_id=key_id,
-        field_keys=field_keys,
         is_shared=creation.is_shared,
         is_system=is_system,
         status="active",
     )
+    await tenant_encryption.seal(cred, dict(creation.data), db=db)
     db.add(cred)
     await db.flush()
     await write_audit_log(
@@ -382,15 +390,12 @@ async def update(
     if patch.data is not None:
         payload = dict(patch.data)
         if credential.definition_key in OAUTH_DEFINITIONS:
-            existing = decrypt_data(credential.data_encrypted)
+            existing = await tenant_encryption.open_payload(credential, db=db)
             if not _oauth_identity_changed(existing, payload):
                 for key in OAUTH_PRESERVED_FIELDS:
                     if key in existing and key not in payload:
                         payload[key] = existing[key]
-        blob, key_id, field_keys = encrypt_data(payload)
-        credential.data_encrypted = blob
-        credential.key_id = key_id
-        credential.field_keys = field_keys
+        await tenant_encryption.seal(credential, payload, db=db)
         metadata["data_changed"] = True
     if patch.is_shared is not None:
         credential.is_shared = patch.is_shared
@@ -438,21 +443,25 @@ async def re_encrypt_with_active_key(
     *,
     actor_user_id: uuid.UUID | None = None,
     source: str = "rotation",
+    key: TenantDataKey | None = None,
 ) -> Credential:
     """Re-encrypt ``credential.data_encrypted`` with the active key.
 
     The blob is decrypted with whichever key it was originally written under
-    (``cipher.decrypt`` walks all configured keys), then re-encrypted with the
-    current active key. ``key_id`` is updated and a ``rotate`` audit log is
-    written. Caller commits.
+    (instance keys for 0x01, the company key named in a 0x02 blob), then
+    re-encrypted with the current active key — the company's active data key
+    for company-scoped rows when ``TENANT_DATA_KEYS_ENABLED`` is on, else the
+    active instance key. ``key_id`` is updated and a ``rotate`` audit log is
+    written. ``key`` pins a specific company key (company key rotation).
+    Caller commits.
     """
 
-    plaintext = decrypt_data(credential.data_encrypted)
-    new_blob, new_key_id, _ = encrypt_data(plaintext)
-    if new_key_id == credential.key_id and new_blob == credential.data_encrypted:
+    previous_blob = credential.data_encrypted
+    plaintext = await tenant_encryption.open_payload(credential, db=db)
+    await tenant_encryption.seal(credential, plaintext, db=db, key=key)
+    new_key_id = credential.key_id
+    if credential.data_encrypted == previous_blob:
         return credential
-    credential.data_encrypted = new_blob
-    credential.key_id = new_key_id
     await write_audit_log(
         db,
         credential_id=credential.id,

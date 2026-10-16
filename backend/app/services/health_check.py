@@ -65,7 +65,7 @@ async def check_model(
     payload: dict[str, Any] = {}
     if credential is not None:
         try:
-            payload = await credential_service.decrypt_with_external(credential.data_encrypted)
+            payload = await credential_service.decrypt_with_external(credential)
         except Exception as exc:  # noqa: BLE001 — surface as unhealthy
             return await _record(
                 db,

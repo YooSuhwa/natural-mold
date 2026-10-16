@@ -15,6 +15,7 @@ class AuthzSettings(BaseSettings):
     db_rls_enabled: bool = False
     migration_database_url: str = ""
     data_key_provider: Literal["local", "transit"] = "local"
+    tenant_data_keys_enabled: bool = False
     sso_enabled: bool = True
     authz_mode: Literal["legacy", "shadow", "enforce"] = "legacy"
     authz_enforce_types: str = ""

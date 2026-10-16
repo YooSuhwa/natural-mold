@@ -77,7 +77,7 @@ async def _load_credential_payload(
     if credential_id is None:
         return None
     row = await load_scoped_credential(db, credential_id, context)
-    return await credential_service.decrypt_with_external(row.data_encrypted)
+    return await credential_service.decrypt_with_external(row)
 
 
 async def run_tool(

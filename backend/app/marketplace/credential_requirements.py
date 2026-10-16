@@ -395,7 +395,7 @@ async def resolve_credential_bindings(
         from app.credentials import service as credential_service
 
         try:
-            decrypted = await credential_service.decrypt_with_external(credential.data_encrypted)
+            decrypted = await credential_service.decrypt_with_external(credential)
         except Exception:
             if req.required:
                 missing.append(req.key)

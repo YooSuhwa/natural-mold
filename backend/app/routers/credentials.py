@@ -372,7 +372,7 @@ async def test_credential(
             status_code=400,
             detail=f"definition '{cred.definition_key}' is not registered",
         )
-    data = await credential_service.decrypt_with_external(cred.data_encrypted)
+    data = await credential_service.decrypt_with_external(cred)
     result = await CredentialTester().run(definition, data)
     payload = result.to_dict()
     await credential_service.record_test(

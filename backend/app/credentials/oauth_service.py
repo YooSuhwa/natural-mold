@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.credentials import service as credential_service
+from app.credentials import tenant_encryption
 from app.credentials.mcp_oauth_client import (
     build_authorization_url,
     build_pkce_pair,
@@ -148,10 +149,7 @@ async def persist_credential_payload(
     cred: Credential,
     data: dict[str, Any],
 ) -> None:
-    blob, key_id, field_keys = credential_service.encrypt_data(data)
-    cred.data_encrypted = blob
-    cred.key_id = key_id
-    cred.field_keys = field_keys
+    await tenant_encryption.seal(cred, data)
 
 
 async def gc_oauth_states(db: AsyncSession, *, now: datetime) -> None:
@@ -195,7 +193,7 @@ async def start_oauth(
             status_code=400,
             detail=f"definition '{cred.definition_key}' does not support OAuth2",
         )
-    data = await credential_service.decrypt_with_external(cred.data_encrypted)
+    data = await credential_service.decrypt_with_external(cred)
     redirect_uri = data.get("redirect_uri") or fallback_redirect_uri
     code_verifier: str | None = None
     if cred.definition_key == "mcp_oauth2":
@@ -307,7 +305,7 @@ async def handle_callback(
             detail=f"definition '{cred.definition_key}' does not support OAuth2",
         )
 
-    data = await credential_service.decrypt_with_external(cred.data_encrypted)
+    data = await credential_service.decrypt_with_external(cred)
     # Use the authorization-code grant: hand the code off to pre_authentication
     # by stashing it in the data payload; definition implementations switch on
     # presence of ``authorization_code``.

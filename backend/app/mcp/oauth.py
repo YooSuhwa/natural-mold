@@ -23,7 +23,7 @@ async def ensure_fresh_token(credential: Credential) -> dict[str, Any]:
     responsible for persisting any updates back to the row.
     """
 
-    data = await credential_service.decrypt_with_external(credential.data_encrypted)
+    data = await credential_service.decrypt_with_external(credential)
     if not is_token_expired(data):
         return data
 

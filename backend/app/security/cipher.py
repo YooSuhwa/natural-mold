@@ -6,6 +6,8 @@
 - Output is a single Base64-encoded blob: ``[version 1B][salt 32B][authTag 16B][ciphertext]``.
 - The HKDF info string ``moldy-encryption-v1`` and version byte ``0x01`` identify
   this scheme.
+- Company-scoped secrets may instead use format ``0x02`` (per-company data key,
+  see the section at the end of this module and ``app.security.tenant_keys``).
 
 Multi-key handling (rotation):
 - The active key encrypts new data; all configured keys are tried in order
@@ -26,6 +28,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher as _AesCipher
 from cryptography.hazmat.primitives.ciphers import algorithms, modes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 # -- Constants (do not change without bumping FORMAT_VERSION) ----------------
@@ -58,6 +61,10 @@ class InvalidKeyError(CipherError):
 
 class DecryptionError(CipherError):
     """Raised when decryption fails (bad key, corrupted blob, wrong version)."""
+
+
+class TenantKeyError(DecryptionError):
+    """A company data key is unavailable, misconfigured or used without row context."""
 
 
 # -- Key utilities -----------------------------------------------------------
@@ -129,9 +136,7 @@ def decrypt(blob_b64: str, candidate_keys: list[CipherKey]) -> str:
         raise DecryptionError(f"blob is not valid base64: {exc}") from exc
 
     if len(blob) < _MIN_BLOB_LEN:
-        raise DecryptionError(
-            f"blob too short ({len(blob)} bytes, need at least {_MIN_BLOB_LEN})"
-        )
+        raise DecryptionError(f"blob too short ({len(blob)} bytes, need at least {_MIN_BLOB_LEN})")
 
     version = blob[0:1]
     if version != FORMAT_VERSION:
@@ -147,9 +152,7 @@ def decrypt(blob_b64: str, candidate_keys: list[CipherKey]) -> str:
     for key in candidate_keys:
         try:
             aes_key, iv = _derive(key.raw, salt)
-            decryptor = _AesCipher(
-                algorithms.AES(aes_key), modes.GCM(iv, auth_tag)
-            ).decryptor()
+            decryptor = _AesCipher(algorithms.AES(aes_key), modes.GCM(iv, auth_tag)).decryptor()
             plaintext = decryptor.update(ciphertext) + decryptor.finalize()
             return plaintext.decode("utf-8")
         except InvalidTag as exc:
@@ -170,3 +173,79 @@ def identify_active_key_id(keys: list[CipherKey]) -> str:
     if not keys:
         raise InvalidKeyError("no keys configured")
     return keys[0].key_id
+
+
+# -- Format 0x02: company data key (envelope encryption, B-16) ---------------
+#
+# ``[0x02][company key id 6B][nonce 12B][authTag 16B][ciphertext]``. The AES-GCM
+# AAD is the header plus ``tenant_aad(...)`` so a blob cannot be moved to another
+# company, table, row or field. The data key itself is wrapped by the instance key
+# (``key_provider.wrap_data_key``) and stored in ``tenants.data_keys``.
+
+TENANT_FORMAT_VERSION = b"\x02"
+TENANT_KEY_ID_LEN = 6
+_TENANT_HEADER_LEN = 1 + TENANT_KEY_ID_LEN
+_TENANT_MIN_LEN = _TENANT_HEADER_LEN + IV_LEN + AUTH_TAG_LEN
+
+
+def _b64decode(blob_b64: str) -> bytes:
+    try:
+        return base64.b64decode(blob_b64.encode("ascii"), validate=True)
+    except (ValueError, base64.binascii.Error) as exc:  # type: ignore[attr-defined]
+        raise DecryptionError("blob is not valid base64") from exc
+
+
+def blob_version(blob_b64: str) -> int:
+    """Return the format version byte of a stored blob (1 = instance key, 2 = company key)."""
+
+    blob = _b64decode(blob_b64)
+    if not blob:
+        raise DecryptionError("blob is empty")
+    return blob[0]
+
+
+def tenant_aad(*, tenant_id: object, table: str, row_id: object, field: str) -> bytes:
+    """Associated data that pins a company ciphertext to one company/table/row/field."""
+
+    return "|".join(("moldy-tenant-v1", str(tenant_id), table, str(row_id), field)).encode()
+
+
+def encrypt_tenant(plaintext: str, *, data_key: bytes, key_id: str, aad: bytes) -> str:
+    """Encrypt with a company data key into format 0x02."""
+
+    key_id_raw = bytes.fromhex(key_id)
+    if len(key_id_raw) != TENANT_KEY_ID_LEN or len(data_key) != AES_KEY_LEN:
+        raise InvalidKeyError("company data key or key id has an invalid length")
+    header = TENANT_FORMAT_VERSION + key_id_raw
+    nonce = os.urandom(IV_LEN)
+    sealed = AESGCM(data_key).encrypt(nonce, plaintext.encode("utf-8"), header + aad)
+    ciphertext, auth_tag = sealed[:-AUTH_TAG_LEN], sealed[-AUTH_TAG_LEN:]
+    return base64.b64encode(header + nonce + auth_tag + ciphertext).decode("ascii")
+
+
+def _tenant_blob(blob_b64: str) -> bytes:
+    blob = _b64decode(blob_b64)
+    if len(blob) < _TENANT_MIN_LEN or blob[0:1] != TENANT_FORMAT_VERSION:
+        raise DecryptionError("blob is not a company-key (0x02) ciphertext")
+    return blob
+
+
+def tenant_blob_key_id(blob_b64: str) -> str:
+    """Return the company key id (hex) embedded in a format 0x02 blob."""
+
+    return _tenant_blob(blob_b64)[1:_TENANT_HEADER_LEN].hex()
+
+
+def decrypt_tenant(blob_b64: str, *, data_key: bytes, aad: bytes) -> str:
+    """Decrypt a format 0x02 blob; wrong key or AAD raises ``DecryptionError``."""
+
+    blob = _tenant_blob(blob_b64)
+    header = blob[:_TENANT_HEADER_LEN]
+    nonce = blob[_TENANT_HEADER_LEN : _TENANT_HEADER_LEN + IV_LEN]
+    auth_tag = blob[_TENANT_HEADER_LEN + IV_LEN : _TENANT_MIN_LEN]
+    ciphertext = blob[_TENANT_MIN_LEN:]
+    try:
+        plaintext = AESGCM(data_key).decrypt(nonce, ciphertext + auth_tag, header + aad)
+    except (InvalidTag, ValueError) as exc:
+        raise DecryptionError("company data key could not decrypt the blob") from exc
+    return plaintext.decode("utf-8")

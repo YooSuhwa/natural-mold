@@ -219,7 +219,7 @@ async def build_tools_config(
         if credential.id in credential_cache:
             return cached
         try:
-            cached = await credential_service.decrypt_with_external(credential.data_encrypted)
+            cached = await credential_service.decrypt_with_external(credential)
         except Exception:  # noqa: BLE001 — surface as missing creds, never crash chat
             logger.exception(
                 "credential decryption failed for credential %s",

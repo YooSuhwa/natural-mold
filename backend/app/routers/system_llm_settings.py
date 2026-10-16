@@ -35,21 +35,15 @@ router = APIRouter(prefix="/api/system-llm-settings", tags=["system-llm-settings
 
 # Credential definition_keys that are valid LLM providers for a system slot.
 # (ADR-019 — openai / anthropic / openrouter / litellm-style openai_compatible)
-_LLM_DEFINITION_KEYS = frozenset(
-    {"openai", "anthropic", "openrouter", "openai_compatible"}
-)
+_LLM_DEFINITION_KEYS = frozenset({"openai", "anthropic", "openrouter", "openai_compatible"})
 
 # Unified message for any invalid credential selection. Distinguishing
 # "missing" from "wrong type" only in the server log avoids leaking which
 # system credentials exist (enumeration oracle, security.md).
-_INVALID_CREDENTIAL_DETAIL = (
-    "credential_id must reference an existing system LLM credential"
-)
+_INVALID_CREDENTIAL_DETAIL = "credential_id must reference an existing system LLM credential"
 
 
-async def _build_out(
-    db: AsyncSession, setting: SystemLlmSetting
-) -> SystemLlmSettingOut:
+async def _build_out(db: AsyncSession, setting: SystemLlmSetting) -> SystemLlmSettingOut:
     """Materialize a settings row into the API shape.
 
     ``provider`` comes from ``credential.definition_key`` (no decrypt).
@@ -68,15 +62,11 @@ async def _build_out(
             credential_name = cred.name
             provider = cred.definition_key
             try:
-                payload = await credential_service.decrypt_with_external(
-                    cred.data_encrypted
-                )
+                payload = await credential_service.decrypt_with_external(cred)
                 raw = payload.get("base_url")
                 base_url = str(raw) if raw else None
             except Exception:  # noqa: BLE001
-                logger.exception(
-                    "System LLM credential %s decryption failed", cred.id
-                )
+                logger.exception("System LLM credential %s decryption failed", cred.id)
 
     configured = setting.credential_id is not None and bool(setting.model_name)
     return SystemLlmSettingOut(
@@ -140,9 +130,7 @@ async def update_system_llm_setting(
             )
             raise HTTPException(status_code=422, detail=_INVALID_CREDENTIAL_DETAIL)
 
-    result = await db.execute(
-        select(SystemLlmSetting).where(SystemLlmSetting.role == role)
-    )
+    result = await db.execute(select(SystemLlmSetting).where(SystemLlmSetting.role == role))
     setting = result.scalar_one_or_none()
     if setting is None:
         setting = SystemLlmSetting(role=role)

@@ -207,7 +207,7 @@ async def _decrypt_api_key(cred: Credential) -> str | None:
     """Decrypt and pluck out the conventional ``api_key`` / ``token`` field."""
 
     try:
-        payload = await credential_service.decrypt_with_external(cred.data_encrypted)
+        payload = await credential_service.decrypt_with_external(cred)
     except Exception:  # noqa: BLE001 — surface as missing key
         logger.exception("LLM credential %s decryption failed", cred.id)
         return None

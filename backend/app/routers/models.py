@@ -227,7 +227,7 @@ async def test_registered_model(
                 "default_credential_id."
             ),
         )
-    data = await credential_service.decrypt_with_external(cred.data_encrypted)
+    data = await credential_service.decrypt_with_external(cred)
 
     result = await run_model_test(
         provider=model.provider,
@@ -279,7 +279,7 @@ async def test_preview_model(
     """
 
     cred = await _load_owned_credential(db, payload.credential_id, context)
-    data = await credential_service.decrypt_with_external(cred.data_encrypted)
+    data = await credential_service.decrypt_with_external(cred)
 
     result = await run_model_test(
         provider=payload.provider,
