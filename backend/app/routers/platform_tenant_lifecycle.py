@@ -1,7 +1,4 @@
-"""SaaS operator company suspend/resume HTTP boundary.
-
-Not globally registered here: parent Task 14 alone edits ``router_registry``.
-"""
+"""SaaS operator company suspend/resume HTTP boundary."""
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse

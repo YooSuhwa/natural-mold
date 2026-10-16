@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, assert_never
 
 import pytest
@@ -92,7 +93,9 @@ async def test_revoked_assistant_loader_rejects_before_target_sql(
             mutation = update(Tenant).where(Tenant.id == own.tenant_id).values(status="suspended")
         case "organization":
             mutation = (
-                update(Organization).where(Organization.id == own.org_id).values(status="archived")
+                update(Organization)
+                .where(Organization.id == own.org_id)
+                .values(status="archived", archived_at=datetime.now(UTC))
             )
         case unreachable:
             assert_never(unreachable)

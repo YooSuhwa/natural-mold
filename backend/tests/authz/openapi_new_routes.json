@@ -1,5 +1,358 @@
 {
   "paths": {
+    "/api/admin/tenants": {
+      "get": {
+        "operationId": "list_companies_api_admin_tenants_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "suspended",
+                    "deletion_scheduled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformTenantPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Companies",
+        "tags": [
+          "platform company administration"
+        ]
+      },
+      "post": {
+        "operationId": "create_company_api_admin_tenants_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformTenantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformTenantCreateResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Company",
+        "tags": [
+          "platform company administration"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}": {
+      "get": {
+        "operationId": "get_company_api_admin_tenants__tenant_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTenantDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Company",
+        "tags": [
+          "platform company administration"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_company_api_admin_tenants__tenant_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformTenantMetadataPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTenantDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Company",
+        "tags": [
+          "platform company administration"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/resume": {
+      "post": {
+        "operationId": "resume_company_api_admin_tenants__tenant_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PlatformTenantLifecycleRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTenantDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Company",
+        "tags": [
+          "platform company administration"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/suspend": {
+      "post": {
+        "operationId": "suspend_company_api_admin_tenants__tenant_id__suspend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PlatformTenantLifecycleRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTenantDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suspend Company",
+        "tags": [
+          "platform company administration"
+        ]
+      }
+    },
     "/api/agents/archived": {
       "get": {
         "operationId": "list_archived_agent_metadata_api_agents_archived_get",
@@ -2113,6 +2466,1211 @@
           "organization assignments"
         ]
       }
+    },
+    "/api/tenants/{tenant_id}": {
+      "get": {
+        "operationId": "get_company_overview_api_tenants__tenant_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TenantAdminOverview"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TenantAuditorOverview"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TenantOverview"
+                    }
+                  ],
+                  "title": "Response Get Company Overview Api Tenants  Tenant Id  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Company Overview",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_company_overview_api_tenants__tenant_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantOverviewPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TenantAdminOverview"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TenantAuditorOverview"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TenantOverview"
+                    }
+                  ],
+                  "title": "Response Patch Company Overview Api Tenants  Tenant Id  Patch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Company Overview",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/invitations": {
+      "get": {
+        "operationId": "get_invitations_api_tenants__tenant_id__invitations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantInvitationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Invitations",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "post": {
+        "operationId": "post_invitation_api_tenants__tenant_id__invitations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantInvitationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantInvitationCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Invitation",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/invitations/{invitation_id}": {
+      "delete": {
+        "operationId": "delete_invitation_api_tenants__tenant_id__invitations__invitation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Invitation",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/invitations/{invitation_id}/resend": {
+      "post": {
+        "operationId": "post_invitation_resend_api_tenants__tenant_id__invitations__invitation_id__resend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantInvitationCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Invitation Resend",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/members": {
+      "get": {
+        "operationId": "get_members_api_tenants__tenant_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantMemberPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Members",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "post": {
+        "operationId": "post_member_api_tenants__tenant_id__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantMemberAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantMemberAdminView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Member",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/members/{user_id}": {
+      "delete": {
+        "operationId": "delete_member_api_tenants__tenant_id__members__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Member",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_member_api_tenants__tenant_id__members__user_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantMemberStatusPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantMemberAdminView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Member",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/organizations": {
+      "get": {
+        "operationId": "get_organizations_api_tenants__tenant_id__organizations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TenantOrganizationAdminPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TenantOrganizationAuditorPage"
+                    }
+                  ],
+                  "title": "Response Get Organizations Api Tenants  Tenant Id  Organizations Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Organizations",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "post": {
+        "operationId": "post_organization_api_tenants__tenant_id__organizations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantOrganizationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantOrganizationCreateResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Organization",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/organizations/{org_id}": {
+      "patch": {
+        "operationId": "patch_organization_api_tenants__tenant_id__organizations__org_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantOrganizationRename"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantOrganizationSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Organization",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/organizations/{org_id}/archive": {
+      "post": {
+        "operationId": "post_organization_archive_api_tenants__tenant_id__organizations__org_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantOrganizationArchive"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantOrganizationSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Organization Archive",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/organizations/{org_id}/restore": {
+      "post": {
+        "operationId": "post_organization_restore_api_tenants__tenant_id__organizations__org_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantOrganizationSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Organization Restore",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/roles": {
+      "get": {
+        "operationId": "get_roles_api_tenants__tenant_id__roles_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantRolePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Roles",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/roles/{user_id}": {
+      "put": {
+        "operationId": "put_roles_api_tenants__tenant_id__roles__user_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantRoleReplacement"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantRoleView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Roles",
+        "tags": [
+          "company administration"
+        ]
+      }
     }
   },
   "schemas": {
@@ -2149,6 +3707,67 @@
         "tenant_id"
       ],
       "title": "ActiveOrganizationResponse",
+      "type": "object"
+    },
+    "AdminTenantDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "active_member_count": {
+          "title": "Active Member Count",
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "limits": {
+          "$ref": "#/components/schemas/TenantLimitSummary"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "organization_count": {
+          "title": "Organization Count",
+          "type": "integer"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "suspended",
+            "deletion_scheduled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slug",
+        "status",
+        "created_at",
+        "updated_at",
+        "limits",
+        "organization_count",
+        "active_member_count"
+      ],
+      "title": "AdminTenantDetail",
       "type": "object"
     },
     "AgentLifecycleMetadataResponse": {
@@ -4447,9 +6066,16 @@
     "InvitationAccepted": {
       "properties": {
         "org_id": {
-          "format": "uuid",
-          "title": "Org Id",
-          "type": "string"
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Org Id"
         },
         "tenant_id": {
           "format": "uuid",
@@ -5043,6 +6669,227 @@
       "title": "OrganizationView",
       "type": "object"
     },
+    "PlatformTenantCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_system_models": {
+          "default": false,
+          "title": "Allow System Models",
+          "type": "boolean"
+        },
+        "concurrent_run_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Concurrent Run Limit"
+        },
+        "first_admin_email": {
+          "format": "email",
+          "title": "First Admin Email",
+          "type": "string"
+        },
+        "first_organization_name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "First Organization Name",
+          "type": "string"
+        },
+        "member_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Member Limit"
+        },
+        "monthly_spend_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Monthly Spend Limit"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "maxLength": 40,
+          "minLength": 3,
+          "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$",
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "slug",
+        "first_admin_email",
+        "first_organization_name"
+      ],
+      "title": "PlatformTenantCreate",
+      "type": "object"
+    },
+    "PlatformTenantCreateResult": {
+      "additionalProperties": false,
+      "properties": {
+        "invitation": {
+          "$ref": "#/components/schemas/TenantInvitationCreated"
+        },
+        "organization": {
+          "$ref": "#/components/schemas/TenantOrganizationSummary"
+        },
+        "tenant": {
+          "$ref": "#/components/schemas/AdminTenantDetail"
+        }
+      },
+      "required": [
+        "tenant",
+        "organization",
+        "invitation"
+      ],
+      "title": "PlatformTenantCreateResult",
+      "type": "object"
+    },
+    "PlatformTenantLifecycleRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        }
+      },
+      "title": "PlatformTenantLifecycleRequest",
+      "type": "object"
+    },
+    "PlatformTenantMetadataPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_system_models": {
+          "default": false,
+          "title": "Allow System Models",
+          "type": "boolean"
+        },
+        "concurrent_run_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Concurrent Run Limit"
+        },
+        "member_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Member Limit"
+        },
+        "monthly_spend_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Monthly Spend Limit"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        }
+      },
+      "title": "PlatformTenantMetadataPatch",
+      "type": "object"
+    },
+    "PlatformTenantPage": {
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AdminTenantDetail"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "has_more"
+      ],
+      "title": "PlatformTenantPage",
+      "type": "object"
+    },
     "PrincipalSearchView": {
       "properties": {
         "display_name": {
@@ -5248,6 +7095,1029 @@
         "granted_at"
       ],
       "title": "RoleGrantView",
+      "type": "object"
+    },
+    "TenantAdminOverview": {
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "enum": [
+            "member",
+            "auditor",
+            "admin"
+          ],
+          "title": "Access",
+          "type": "string"
+        },
+        "active_admin_count": {
+          "title": "Active Admin Count",
+          "type": "integer"
+        },
+        "active_member_count": {
+          "title": "Active Member Count",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "organization_count": {
+          "title": "Organization Count",
+          "type": "integer"
+        },
+        "organizations": {
+          "items": {
+            "$ref": "#/components/schemas/TenantOrganizationAuditorSummary"
+          },
+          "title": "Organizations",
+          "type": "array"
+        },
+        "slug": {
+          "maxLength": 40,
+          "minLength": 3,
+          "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$",
+          "title": "Slug",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "suspended",
+            "deletion_scheduled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slug",
+        "status",
+        "updated_at",
+        "access",
+        "active_member_count",
+        "organization_count",
+        "organizations",
+        "active_admin_count"
+      ],
+      "title": "TenantAdminOverview",
+      "type": "object"
+    },
+    "TenantAuditorOverview": {
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "enum": [
+            "member",
+            "auditor",
+            "admin"
+          ],
+          "title": "Access",
+          "type": "string"
+        },
+        "active_member_count": {
+          "title": "Active Member Count",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "organization_count": {
+          "title": "Organization Count",
+          "type": "integer"
+        },
+        "organizations": {
+          "items": {
+            "$ref": "#/components/schemas/TenantOrganizationAuditorSummary"
+          },
+          "title": "Organizations",
+          "type": "array"
+        },
+        "slug": {
+          "maxLength": 40,
+          "minLength": 3,
+          "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$",
+          "title": "Slug",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "suspended",
+            "deletion_scheduled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slug",
+        "status",
+        "updated_at",
+        "access",
+        "active_member_count",
+        "organization_count",
+        "organizations"
+      ],
+      "title": "TenantAuditorOverview",
+      "type": "object"
+    },
+    "TenantInvitationCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "email": {
+          "format": "email",
+          "title": "Email",
+          "type": "string"
+        },
+        "roles": {
+          "default": [],
+          "items": {
+            "enum": [
+              "admin",
+              "auditor"
+            ],
+            "type": "string"
+          },
+          "maxItems": 1,
+          "title": "Roles",
+          "type": "array"
+        }
+      },
+      "required": [
+        "email"
+      ],
+      "title": "TenantInvitationCreate",
+      "type": "object"
+    },
+    "TenantInvitationCreated": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "email": {
+          "format": "email",
+          "title": "Email",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "enum": [
+                "admin",
+                "auditor"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Role"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "accepted",
+            "revoked",
+            "expired"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Token"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "role",
+        "expires_at",
+        "created_at",
+        "status",
+        "token"
+      ],
+      "title": "TenantInvitationCreated",
+      "type": "object"
+    },
+    "TenantInvitationPage": {
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TenantInvitationView"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "has_more"
+      ],
+      "title": "TenantInvitationPage",
+      "type": "object"
+    },
+    "TenantInvitationView": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "email": {
+          "format": "email",
+          "title": "Email",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "enum": [
+                "admin",
+                "auditor"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Role"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "accepted",
+            "revoked",
+            "expired"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "role",
+        "expires_at",
+        "created_at",
+        "status"
+      ],
+      "title": "TenantInvitationView",
+      "type": "object"
+    },
+    "TenantLimitSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_system_models": {
+          "default": false,
+          "title": "Allow System Models",
+          "type": "boolean"
+        },
+        "concurrent_run_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Concurrent Run Limit"
+        },
+        "member_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Member Limit"
+        },
+        "monthly_spend_limit": {
+          "anyOf": [
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Monthly Spend Limit"
+        }
+      },
+      "title": "TenantLimitSummary",
+      "type": "object"
+    },
+    "TenantMemberAdd": {
+      "additionalProperties": false,
+      "properties": {
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "title": "TenantMemberAdd",
+      "type": "object"
+    },
+    "TenantMemberAdminView": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "email": {
+          "format": "email",
+          "title": "Email",
+          "type": "string"
+        },
+        "roles": {
+          "items": {
+            "enum": [
+              "admin",
+              "auditor"
+            ],
+            "type": "string"
+          },
+          "title": "Roles",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "suspended",
+            "removed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "display_name",
+        "status",
+        "roles",
+        "created_at",
+        "email"
+      ],
+      "title": "TenantMemberAdminView",
+      "type": "object"
+    },
+    "TenantMemberPage": {
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TenantMemberAdminView"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "has_more"
+      ],
+      "title": "TenantMemberPage",
+      "type": "object"
+    },
+    "TenantMemberStatusPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "active",
+            "suspended"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "TenantMemberStatusPatch",
+      "type": "object"
+    },
+    "TenantOrganizationAdminPage": {
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TenantOrganizationSummary"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "has_more"
+      ],
+      "title": "TenantOrganizationAdminPage",
+      "type": "object"
+    },
+    "TenantOrganizationAdministrator": {
+      "additionalProperties": false,
+      "properties": {
+        "email": {
+          "anyOf": [
+            {
+              "format": "email",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Email"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "User Id"
+        }
+      },
+      "title": "TenantOrganizationAdministrator",
+      "type": "object"
+    },
+    "TenantOrganizationArchive": {
+      "additionalProperties": false,
+      "properties": {
+        "confirm_name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Confirm Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "confirm_name"
+      ],
+      "title": "TenantOrganizationArchive",
+      "type": "object"
+    },
+    "TenantOrganizationAuditorPage": {
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TenantOrganizationAuditorSummary"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "has_more"
+      ],
+      "title": "TenantOrganizationAuditorPage",
+      "type": "object"
+    },
+    "TenantOrganizationAuditorSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "member_count": {
+          "title": "Member Count",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "member_count"
+      ],
+      "title": "TenantOrganizationAuditorSummary",
+      "type": "object"
+    },
+    "TenantOrganizationCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "administrator": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/TenantOrganizationAdministrator"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "default_member_role": {
+          "default": "member",
+          "enum": [
+            "member",
+            "builder"
+          ],
+          "title": "Default Member Role",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "TenantOrganizationCreate",
+      "type": "object"
+    },
+    "TenantOrganizationCreateResult": {
+      "additionalProperties": false,
+      "properties": {
+        "administrator": {
+          "discriminator": {
+            "mapping": {
+              "invitation": "#/components/schemas/TenantOrganizationInvitationAdministrator",
+              "member": "#/components/schemas/TenantOrganizationMemberAdministrator",
+              "none": "#/components/schemas/TenantOrganizationNoAdministrator"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/TenantOrganizationNoAdministrator"
+            },
+            {
+              "$ref": "#/components/schemas/TenantOrganizationMemberAdministrator"
+            },
+            {
+              "$ref": "#/components/schemas/TenantOrganizationInvitationAdministrator"
+            }
+          ],
+          "title": "Administrator"
+        },
+        "organization": {
+          "$ref": "#/components/schemas/TenantOrganizationSummary"
+        }
+      },
+      "required": [
+        "organization",
+        "administrator"
+      ],
+      "title": "TenantOrganizationCreateResult",
+      "type": "object"
+    },
+    "TenantOrganizationInvitationAdministrator": {
+      "additionalProperties": false,
+      "properties": {
+        "invitation": {
+          "$ref": "#/components/schemas/InvitationCreated"
+        },
+        "kind": {
+          "const": "invitation",
+          "default": "invitation",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "invitation"
+      ],
+      "title": "TenantOrganizationInvitationAdministrator",
+      "type": "object"
+    },
+    "TenantOrganizationMemberAdministrator": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "member",
+          "default": "member",
+          "title": "Kind",
+          "type": "string"
+        },
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "title": "TenantOrganizationMemberAdministrator",
+      "type": "object"
+    },
+    "TenantOrganizationNoAdministrator": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "none",
+          "default": "none",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "TenantOrganizationNoAdministrator",
+      "type": "object"
+    },
+    "TenantOrganizationRename": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "TenantOrganizationRename",
+      "type": "object"
+    },
+    "TenantOrganizationSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "administrator_user_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Administrator User Id"
+        },
+        "default_member_role": {
+          "enum": [
+            "member",
+            "builder"
+          ],
+          "title": "Default Member Role",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "is_default": {
+          "title": "Is Default",
+          "type": "boolean"
+        },
+        "member_count": {
+          "title": "Member Count",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "suspended",
+            "archived"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slug",
+        "status",
+        "is_default",
+        "default_member_role",
+        "member_count",
+        "administrator_user_id",
+        "updated_at"
+      ],
+      "title": "TenantOrganizationSummary",
+      "type": "object"
+    },
+    "TenantOverview": {
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "enum": [
+            "member",
+            "auditor",
+            "admin"
+          ],
+          "title": "Access",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "maxLength": 40,
+          "minLength": 3,
+          "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$",
+          "title": "Slug",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "suspended",
+            "deletion_scheduled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slug",
+        "status",
+        "updated_at",
+        "access"
+      ],
+      "title": "TenantOverview",
+      "type": "object"
+    },
+    "TenantOverviewPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "TenantOverviewPatch",
+      "type": "object"
+    },
+    "TenantRolePage": {
+      "additionalProperties": false,
+      "properties": {
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TenantRoleView"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "has_more"
+      ],
+      "title": "TenantRolePage",
+      "type": "object"
+    },
+    "TenantRoleReplacement": {
+      "additionalProperties": false,
+      "properties": {
+        "roles": {
+          "items": {
+            "enum": [
+              "admin",
+              "auditor"
+            ],
+            "type": "string"
+          },
+          "title": "Roles",
+          "type": "array"
+        }
+      },
+      "required": [
+        "roles"
+      ],
+      "title": "TenantRoleReplacement",
+      "type": "object"
+    },
+    "TenantRoleView": {
+      "additionalProperties": false,
+      "properties": {
+        "roles": {
+          "items": {
+            "enum": [
+              "admin",
+              "auditor"
+            ],
+            "type": "string"
+          },
+          "title": "Roles",
+          "type": "array"
+        },
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "roles"
+      ],
+      "title": "TenantRoleView",
       "type": "object"
     },
     "UserPrincipal": {

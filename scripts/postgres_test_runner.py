@@ -194,6 +194,7 @@ def _run_scenario(
             "run-lifecycle+stream-resume": 0,
             "queue-concurrency": 0,
             "agent-lifecycle": 0,
+            "company-administration": 0,
             "success": 0,
             "child_failure": 23,
             "sigint": 130,
@@ -227,6 +228,7 @@ def _run_scenario(
                     "run-lifecycle+stream-resume",
                     "queue-concurrency",
                     "agent-lifecycle",
+                    "company-administration",
                 }
                 else None,
                 "tmpfs_storage": tmpfs_owned,

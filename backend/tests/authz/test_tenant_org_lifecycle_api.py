@@ -210,9 +210,11 @@ async def test_contract_has_no_successor_field(lifecycle_client: AsyncClient) ->
     assert set(schema["TenantOrganizationArchive"]["properties"]) == {"confirm_name"}
 
 
-def test_router_is_not_globally_registered_before_task_14() -> None:
+def test_router_is_globally_registered_once_by_task_14() -> None:
     registry = Path(__file__).resolve().parents[2] / "app" / "router_registry.py"
-    assert "tenant_organization_lifecycle" not in registry.read_text()
+    assert (
+        registry.read_text().count("app.include_router(tenant_organization_lifecycle.router)") == 1
+    )
 
 
 async def test_archive_audit_content_and_version_advance(

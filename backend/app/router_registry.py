@@ -36,6 +36,9 @@ def include_app_routers(app: FastAPI) -> None:
         org_members,
         org_search,
         orgs,
+        platform_tenant_creation,
+        platform_tenant_directory,
+        platform_tenant_lifecycle,
         shares,
         skill_builder,
         skill_builder_trigger,
@@ -48,6 +51,11 @@ def include_app_routers(app: FastAPI) -> None:
         skills,
         system_llm_settings,
         templates,
+        tenant_invitations,
+        tenant_members,
+        tenant_organization_lifecycle,
+        tenant_organizations,
+        tenant_overview,
         tools,
         triggers,
         uploads,
@@ -84,6 +92,14 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(org_groups.router)
     app.include_router(org_group_members.router)
     app.include_router(org_assignments.router)
+    app.include_router(tenant_overview.router)
+    app.include_router(tenant_organizations.router)
+    app.include_router(tenant_organization_lifecycle.router)
+    app.include_router(tenant_members.router)
+    app.include_router(tenant_invitations.router)
+    app.include_router(platform_tenant_directory.router)
+    app.include_router(platform_tenant_creation.router)
+    app.include_router(platform_tenant_lifecycle.router)
     app.include_router(shares.router)
     app.include_router(templates.router)
     app.include_router(skill_builder.router)

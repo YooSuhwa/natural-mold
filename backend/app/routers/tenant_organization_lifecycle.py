@@ -1,7 +1,4 @@
-"""Company organization archive/restore HTTP boundary.
-
-Not globally registered here: parent Task 14 alone edits ``router_registry``.
-"""
+"""Company organization archive/restore HTTP boundary."""
 
 from uuid import UUID
 

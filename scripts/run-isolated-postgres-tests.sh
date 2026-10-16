@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: run-isolated-postgres-tests.sh <all|migration-roundtrip|self-test|stream-resume|queue-concurrency|agent-lifecycle> --manifest <evidence-json>" >&2
+  echo "usage: run-isolated-postgres-tests.sh <all|migration-roundtrip|self-test|stream-resume|queue-concurrency|agent-lifecycle|company-administration> --manifest <evidence-json>" >&2
   echo "   or: run-isolated-postgres-tests.sh run-lifecycle stream-resume --manifest <evidence-json>" >&2
   exit 64
 }
@@ -12,7 +12,7 @@ if [[ $# -eq 4 && "$1" == "run-lifecycle" && "$2" == "stream-resume" && "$3" == 
   manifest="$4"
 elif [[ $# -eq 3 && "$2" == "--manifest" ]]; then
   case "$1" in
-    all|migration-roundtrip|self-test|stream-resume|queue-concurrency|agent-lifecycle) mode="$1" ;;
+    all|migration-roundtrip|self-test|stream-resume|queue-concurrency|agent-lifecycle|company-administration) mode="$1" ;;
     *) usage ;;
   esac
   manifest="$3"

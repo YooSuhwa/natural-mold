@@ -467,6 +467,7 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
             "run-lifecycle+stream-resume",
             "queue-concurrency",
             "agent-lifecycle",
+            "company-administration",
         ),
     )
     parser.add_argument("--manifest", required=True, type=Path)
@@ -503,6 +504,7 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
                 "run-lifecycle+stream-resume",
                 "queue-concurrency",
                 "agent-lifecycle",
+                "company-administration",
             }:
                 verify_evidence_directory(evidence)
                 scenarios = [
@@ -533,6 +535,7 @@ def run_cli(run_scenario: ScenarioRunner, build_early_interrupt: EarlyInterruptB
                     "run-lifecycle+stream-resume",
                     "queue-concurrency",
                     "agent-lifecycle",
+                    "company-administration",
                 }
                 else "all"
             )

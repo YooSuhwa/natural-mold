@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Final, Literal
 
 import psycopg
+from postgres_company_suite import company_administration_argv
 from postgres_runner_contract import LaneDsns, parse_lane_dsns
 from postgres_runner_process import process_groups_stopped as process_groups_stopped
 from postgres_runner_process import process_identity_sha256 as process_identity_sha256
@@ -31,6 +32,7 @@ ExternalScenarioKind = Literal[
     "run-lifecycle+stream-resume",
     "queue-concurrency",
     "agent-lifecycle",
+    "company-administration",
 ]
 ScenarioKind = Literal[
     "all",
@@ -39,6 +41,7 @@ ScenarioKind = Literal[
     "run-lifecycle+stream-resume",
     "queue-concurrency",
     "agent-lifecycle",
+    "company-administration",
     "success",
     "child_failure",
     "sigint",
@@ -343,6 +346,9 @@ def run_test_child(env: dict[str, str], kind: ScenarioKind) -> tuple[int, str]:
             "-m",
             "integration",
         ],
+        "company-administration": company_administration_argv(
+            str(BACKEND_ROOT / ".venv/bin/pytest")
+        ),
         "success": [sys.executable, "-c", "raise SystemExit(0)"],
         "child_failure": [sys.executable, "-c", "raise SystemExit(23)"],
         "sigint": [
@@ -351,6 +357,8 @@ def run_test_child(env: dict[str, str], kind: ScenarioKind) -> tuple[int, str]:
             "import os,signal;os.kill(os.getpid(),signal.SIGINT)",
         ],
     }
+    # company-administration keeps the 600s named-lane budget; it is unmeasured and should be
+    # revisited after the first native run of that lane.
     result = run_command(commands[kind], env=env, timeout=900 if kind == "all" else 600)
     target = parse_lane_dsns(
         LaneDsns(

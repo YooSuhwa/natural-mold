@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, assert_never
 
 import pytest
@@ -74,7 +75,7 @@ async def test_private_catalog_consumer_rechecks_captured_actor(
             await db.execute(
                 update(Organization)
                 .where(Organization.id == context.org_id)
-                .values(status="archived")
+                .values(status="archived", archived_at=datetime.now(UTC))
                 .execution_options(synchronize_session=False)
             )
         case unreachable:
