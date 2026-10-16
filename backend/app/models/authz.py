@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import JsonValue
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -18,7 +19,11 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy import Identity as SqlIdentity
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql.compiler import SQLCompiler
+from sqlalchemy.sql.functions import FunctionElement
 
 from app.authz.model_version import model_versions
 from app.database import Base
@@ -130,8 +135,33 @@ class ResourceGrant(Identity, Base):
     source_link: Mapped[dict[str, JsonValue] | None] = mapped_column(JSON)
 
 
+class _NextOutboxSeq(FunctionElement[int]):
+    """INSERT-time queue position: the identity sequence on PostgreSQL (C-04 migration).
+
+    SQLite has no identity for a non-key column; there ``max + 1`` runs inside the INSERT,
+    which is serial because SQLite has one writer. The outbox inserts one row per statement.
+    """
+
+    type = BigInteger()
+    inherit_cache = True
+
+
+@compiles(_NextOutboxSeq)
+def _next_seq_default(element: _NextOutboxSeq, compiler: SQLCompiler, **kw: object) -> str:
+    return "(SELECT COALESCE(MAX(seq), 0) + 1 FROM authz_outbox)"
+
+
+@compiles(_NextOutboxSeq, "postgresql")
+def _next_seq_postgres(element: _NextOutboxSeq, compiler: SQLCompiler, **kw: object) -> str:
+    return "nextval(pg_get_serial_sequence('authz_outbox', 'seq'))"
+
+
 class AuthzOutbox(Identity, Created, Base):
-    """Transactional OpenFGA projection queue; writes/deletes are idempotent downstream."""
+    """Transactional OpenFGA projection queue; writes/deletes are idempotent downstream.
+
+    ``seq`` orders rows by INSERT (taken while the writer holds its row locks), never by a
+    clock; ``tuple_key`` (``user relation object``) indexes the per-key ordering check.
+    """
 
     __tablename__ = "authz_outbox"
     __table_args__ = (
@@ -144,8 +174,18 @@ class AuthzOutbox(Identity, Created, Base):
             postgresql_where=text("processed_at IS NULL"),
             sqlite_where=text("processed_at IS NULL"),
         ),
+        Index("uq_authz_outbox_seq", "seq", unique=True),
+        Index(
+            "ix_authz_outbox_key_pending",
+            "tuple_key",
+            "seq",
+            postgresql_where=text("processed_at IS NULL"),
+            sqlite_where=text("processed_at IS NULL"),
+        ),
         PrimaryKeyConstraint(name="pk_authz_outbox"),
     )
+    seq: Mapped[int] = mapped_column(BigInteger, SqlIdentity(), default=_NextOutboxSeq())
+    tuple_key: Mapped[str] = mapped_column(String(255))
     op: Mapped[str] = mapped_column(String(10))
     tuple: Mapped[dict[str, JsonValue]] = mapped_column(JSON)
     source_table: Mapped[str] = mapped_column(String(80))

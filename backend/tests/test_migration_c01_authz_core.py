@@ -52,6 +52,7 @@ def migrated(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Connection, Modu
         context = MigrationContext.configure(connection)
         monkeypatch.setattr(alembic_op, "_proxy", Operations(context), raising=False)
         migration.upgrade()
+        _load("c04_outbox_sequence").upgrade()  # the ORM contract includes the C-04 columns
         yield connection, migration
     engine.dispose()
 
@@ -59,7 +60,7 @@ def migrated(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Connection, Modu
 def test_single_head_chain_follows_b11() -> None:
     script = ScriptDirectory.from_config(Config(str(BACKEND_ROOT / "alembic.ini")))
 
-    assert script.get_heads() == ["c01_marketplace_acl_grants"]
+    assert script.get_heads() == ["c04_outbox_sequence"]
     core = script.get_revision("c01_authz_core")
     grants = script.get_revision("c01_marketplace_acl_grants")
     assert core is not None and grants is not None

@@ -146,5 +146,5 @@ def test_native_acl_copy_roundtrip_and_constraints() -> None:
         command.upgrade(lane.config, "head")
         with lane.engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "c01_marketplace_acl_grants"
+                "c04_outbox_sequence"
             )

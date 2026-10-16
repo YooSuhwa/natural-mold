@@ -27,6 +27,7 @@ __all__ = [
     "RelationTuple",
     "TupleRuleError",
     "expected_tuples",
+    "principal_ref",
     "tuples_for",
 ]
 
@@ -45,6 +46,11 @@ def _principal(principal_type: str, principal_id: UUID, relation: str) -> str:
             return f"{_ref(principal_type, principal_id)}#member"
         case _:
             raise TupleRuleError(f"unknown principal type {principal_type!r}")
+
+
+def principal_ref(principal_type: str, principal_id: UUID, relation: str) -> str:
+    """The FGA subject a grant principal projects to (also its revocation marker subject)."""
+    return _principal(principal_type, principal_id, relation)
 
 
 def _org_and_owner(kind: str, rid: UUID, org: UUID | None, owner: UUID | None, system: bool):

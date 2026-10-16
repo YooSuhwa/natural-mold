@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator, Awaitable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from time import monotonic
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 import anyio
 from aiohttp import ClientError
@@ -14,15 +14,24 @@ from openfga_sdk.client import (
     ClientConfiguration,
     OpenFgaClient,
 )
+from openfga_sdk.client.models import (
+    ClientTuple,
+    ClientWriteRequest,
+    ClientWriteRequestOnDuplicateWrites,
+    ClientWriteRequestOnMissingDeletes,
+    ConflictOptions,
+)
 from openfga_sdk.client.models.batch_check_item import ClientBatchCheckItem
 from openfga_sdk.client.models.batch_check_request import ClientBatchCheckRequest
 from openfga_sdk.client.models.list_objects_request import ClientListObjectsRequest
 from openfga_sdk.configuration import RetryParams
 from openfga_sdk.credentials import CredentialConfiguration, Credentials
 from openfga_sdk.exceptions import ApiException, FgaValidationException
+from openfga_sdk.models.relationship_condition import RelationshipCondition
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, TypeAdapter, ValidationError
 
 from app.authz.config import AuthzSettings
+from app.authz.tuple_types import RelationTuple
 
 T = TypeVar("T")
 Consistency = Literal["MINIMIZE_LATENCY", "HIGHER_CONSISTENCY"]
@@ -168,6 +177,34 @@ class FgaClient:
             )
         )
         return TypeAdapter(tuple[str, ...]).validate_python(response.objects)
+
+    async def write(self, tuples: Sequence[RelationTuple]) -> None:
+        """Idempotent tuple write (duplicates ignored), used by the outbox (8.6)."""
+        if tuples:
+            await self._run("write", self._write(tuples, deletes=False))
+
+    async def delete(self, tuples: Sequence[RelationTuple]) -> None:
+        """Idempotent tuple delete (missing tuples ignored); conditions are not part of the key."""
+        if tuples:
+            await self._run("delete", self._write(tuples, deletes=True))
+
+    async def _write(self, tuples: Sequence[RelationTuple], *, deletes: bool) -> None:
+        keys = [_client_tuple(item, with_condition=not deletes) for item in tuples]
+        body = ClientWriteRequest(None, keys) if deletes else ClientWriteRequest(keys)
+        options: dict[str, Any] = {
+            "conflict": ConflictOptions(
+                on_duplicate_writes=ClientWriteRequestOnDuplicateWrites.IGNORE,
+                on_missing_deletes=ClientWriteRequestOnMissingDeletes.IGNORE,
+            )
+        }
+        await self.sdk.write(body, options)
+
+
+def _client_tuple(item: RelationTuple, *, with_condition: bool) -> ClientTuple:
+    condition = None
+    if with_condition and item.condition is not None:
+        condition = RelationshipCondition(name=item.condition.name, context=item.condition.context)
+    return ClientTuple(item.user, item.relation, item.object, condition=condition)
 
 
 @asynccontextmanager

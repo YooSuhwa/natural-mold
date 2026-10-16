@@ -48,6 +48,7 @@ ErrorCode = Literal[
     "tenant_invitation_revoked",
     "tenant_status_conflict",
     "capability_required",
+    "grant_invalid",
     "tenant_suspended",
     "quota_exceeded",
     "authz_unavailable",
@@ -116,6 +117,7 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         "tenant_invitation_revoked": ErrorSpec(404, "사용할 수 없는 회사 초대 링크입니다"),
         "tenant_status_conflict": ErrorSpec(409, "현재 회사 상태에서는 처리할 수 없습니다"),
         "capability_required": ErrorSpec(403, "이 기능을 사용할 권한이 없습니다"),
+        "grant_invalid": ErrorSpec(422, "이 대상에게 이 권한을 줄 수 없습니다"),
         "tenant_suspended": ErrorSpec(403, "회사가 정지되었습니다"),
         "quota_exceeded": ErrorSpec(429, "사용 한도를 초과했습니다"),
         "authz_unavailable": ErrorSpec(
