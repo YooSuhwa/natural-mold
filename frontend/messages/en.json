@@ -4608,6 +4608,10 @@
     }
   },
   "credentials": {
+    "personalAccount": {
+      "badge": "Personal account",
+      "hint": "Personal account credentials can't be shared with others or transferred to another owner."
+    },
     "page": {
       "title": "Credentials",
       "description": "Manage API keys and OAuth grants used by tools and MCP servers.",
