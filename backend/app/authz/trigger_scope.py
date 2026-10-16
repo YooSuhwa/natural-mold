@@ -1,8 +1,15 @@
-"""Validate detached Trigger roots and references before claiming a durable run."""
+"""Validate detached Trigger roots and references before claiming a durable run.
+
+At fire time the trigger owner must still hold ``agent#can_run`` (plan 11.6, D-06),
+decided by the process service (``runtime_authz()``; legacy: no-op). A denial is an
+``AppError`` the claim logs and skips; recording ``permission_revoked`` runs is F-08.
+"""
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz import runtime
+from app.authz.conversation_agent_checks import require_agent_run
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.scoping import private_scope_predicate
@@ -42,4 +49,5 @@ async def require_trigger_actor(db: AsyncSession, trigger: AgentTrigger) -> OrgC
             )
             if conversation_id is None:
                 raise conversation_not_found()
-        return context
+    await require_agent_run(context, agent_id, authz=runtime.runtime_authz())
+    return context

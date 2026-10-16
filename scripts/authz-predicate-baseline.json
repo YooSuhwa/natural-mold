@@ -10,21 +10,6 @@
     "count": 1
   },
   {
-    "file": "agent_api/service.py",
-    "expression": "Agent.user_id == user_id",
-    "count": 2
-  },
-  {
-    "file": "agent_api/service.py",
-    "expression": "AgentApiKey.user_id == user_id",
-    "count": 2
-  },
-  {
-    "file": "agent_api/service.py",
-    "expression": "AgentDeployment.user_id == user_id",
-    "count": 5
-  },
-  {
     "file": "agent_api/thread_runtime.py",
     "expression": "AgentApiThread.user_id == principal.user_id",
     "count": 1
@@ -92,11 +77,6 @@
   {
     "file": "mcp/auth.py",
     "expression": "Credential.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "routers/agent_runtime_api.py",
-    "expression": "AgentDeployment.user_id == principal.user_id",
     "count": 1
   },
   {

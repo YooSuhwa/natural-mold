@@ -5,7 +5,11 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_agent_checks import require_agent_run
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     agent_identity_requires_fixed,
@@ -26,6 +30,9 @@ from app.schemas.trigger import (
 from app.services import audit_service, trigger_service
 
 router = APIRouter(tags=["triggers"])
+# Triggers are PRIVATE; create/update/run-now also re-check agent#can_run (plan 9.1, D-06).
+TRIGGERS = PRIVATE("agent_triggers")
+TRIGGER = PRIVATE("agent_triggers", param="trigger_id")
 
 
 def _trigger_metadata(trigger: AgentTrigger) -> dict[str, object]:
@@ -84,6 +91,7 @@ def _map_trigger_validation(exc: ValueError) -> None:
 
 
 @router.get("/api/triggers", response_model=list[TriggerResponse])
+@authz_policy(TRIGGERS)
 async def list_all_triggers(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
@@ -93,6 +101,7 @@ async def list_all_triggers(
 
 
 @router.get("/api/triggers/summary", response_model=TriggerSummaryResponse)
+@authz_policy(TRIGGERS)
 async def trigger_summary(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
@@ -102,6 +111,7 @@ async def trigger_summary(
 
 
 @router.patch("/api/triggers/{trigger_id}", response_model=TriggerResponse)
+@authz_policy(TRIGGER)
 async def update_trigger_global(
     trigger_id: uuid.UUID,
     data: TriggerUpdate,
@@ -110,10 +120,12 @@ async def update_trigger_global(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     trigger = await trigger_service.get_trigger(db, trigger_id, context)
     if not trigger:
         raise trigger_not_found()
+    await require_agent_run(context, trigger.agent_id, authz=authz)
     try:
         updated = await trigger_service.update_trigger(db, trigger, data, context=context)
     except ValueError as exc:
@@ -134,6 +146,7 @@ async def update_trigger_global(
 
 
 @router.delete("/api/triggers/{trigger_id}", status_code=204)
+@authz_policy(TRIGGER)
 async def delete_trigger_global(
     trigger_id: uuid.UUID,
     request: Request,
@@ -156,6 +169,7 @@ async def delete_trigger_global(
 
 
 @router.post("/api/triggers/{trigger_id}/run-now", response_model=TriggerRunResponse)
+@authz_policy(TRIGGER)
 async def run_trigger_now(
     trigger_id: uuid.UUID,
     request: Request,
@@ -163,10 +177,12 @@ async def run_trigger_now(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     trigger = await trigger_service.get_trigger(db, trigger_id, context)
     if not trigger:
         raise trigger_not_found()
+    await require_agent_run(context, trigger.agent_id, authz=authz)
 
     from app.agent_runtime.trigger_executor import execute_trigger
 
@@ -193,6 +209,7 @@ async def run_trigger_now(
 
 
 @router.get("/api/triggers/{trigger_id}/runs", response_model=list[TriggerRunResponse])
+@authz_policy(TRIGGER)
 async def list_trigger_runs(
     trigger_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -209,6 +226,7 @@ async def list_trigger_runs(
     "/api/agents/{agent_id}/triggers",
     response_model=list[TriggerResponse],
 )
+@authz_policy(TRIGGERS)
 async def list_agent_triggers(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -226,6 +244,7 @@ async def list_agent_triggers(
     response_model=TriggerResponse,
     status_code=201,
 )
+@authz_policy(TRIGGERS)
 async def create_trigger(
     agent_id: uuid.UUID,
     data: TriggerCreate,
@@ -234,10 +253,12 @@ async def create_trigger(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     agent = await trigger_service.get_owned_agent(db, agent_id, context)
     if not agent:
         raise agent_not_found()
+    await require_agent_run(context, agent_id, authz=authz)
     try:
         trigger = await trigger_service.create_trigger(db, agent_id, context, data)
     except ValueError as exc:
@@ -257,6 +278,7 @@ async def create_trigger(
     "/api/agents/{agent_id}/triggers/{trigger_id}",
     response_model=TriggerResponse,
 )
+@authz_policy(TRIGGER)
 async def update_agent_trigger(
     agent_id: uuid.UUID,
     trigger_id: uuid.UUID,
@@ -266,10 +288,12 @@ async def update_agent_trigger(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     trigger = await trigger_service.get_trigger(db, trigger_id, context)
     if not trigger or trigger.agent_id != agent_id:
         raise trigger_not_found()
+    await require_agent_run(context, agent_id, authz=authz)
     try:
         updated = await trigger_service.update_trigger(db, trigger, data, context=context)
     except ValueError as exc:
@@ -293,6 +317,7 @@ async def update_agent_trigger(
     "/api/agents/{agent_id}/triggers/{trigger_id}",
     status_code=204,
 )
+@authz_policy(TRIGGER)
 async def delete_agent_trigger(
     agent_id: uuid.UUID,
     trigger_id: uuid.UUID,

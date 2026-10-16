@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.agent_api.access import authorize_deployment, ensure_key_can_access_deployment
 from app.agent_api.dependencies import ApiKeyPrincipal, refresh_api_key_principal
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
+from app.authz.agent_api_access import require_can_deploy
 from app.authz.agent_api_scope import private_api_thread_parents_predicate
 from app.exceptions import ConflictError, NotFoundError
 from app.models.agent_api import AgentApiThread, AgentDeployment
@@ -124,4 +125,10 @@ async def get_thread_for_public_id(
         ensure_key_can_access_deployment(principal, thread.deployment)
     except NotFoundError:
         raise NotFoundError("AGENT_API_THREAD_NOT_FOUND", "thread not found") from None
+    await require_can_deploy(
+        principal.context,
+        thread.deployment.agent_id,
+        not_found=NotFoundError("AGENT_API_THREAD_NOT_FOUND", "thread not found"),
+        opaque=True,
+    )
     return thread

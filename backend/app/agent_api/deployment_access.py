@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.agent_api.access import ensure_key_can_access_deployment
 from app.agent_api.dependencies import ApiKeyPrincipal, refresh_api_key_principal
+from app.authz.agent_api_access import require_can_deploy
 from app.authz.agent_api_scope import private_deployment_predicate
 from app.exceptions import ForbiddenError, NotFoundError
 from app.models.agent_api import AgentDeployment
@@ -41,6 +42,12 @@ async def resolve_deployment_for_agent_id(
         raise NotFoundError("AGENT_DEPLOYMENT_NOT_FOUND", "deployment not found")
 
     ensure_key_can_access_deployment(principal, deployment)
+    await require_can_deploy(
+        principal.context,
+        deployment.agent_id,
+        not_found=NotFoundError("AGENT_DEPLOYMENT_NOT_FOUND", "deployment not found"),
+        opaque=True,
+    )
 
     if required_scope == "stream" and not deployment.allow_streaming:
         raise ForbiddenError("AGENT_API_STREAM_DISABLED", "streaming is disabled")

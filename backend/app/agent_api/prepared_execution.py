@@ -71,9 +71,10 @@ from app.agent_runtime.prepared_run_input_policy import (
 from app.agent_runtime.prepared_run_inputs import MaterializerSeams
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
+from app.authz.agent_api_access import fresh_decision_scope, require_can_deploy
 from app.authz.conversation_run_scope import lock_executable_run
 from app.database import tenant_session
-from app.exceptions import AppError
+from app.exceptions import AppError, NotFoundError
 from app.services import agent_execution_runtime as owned
 from app.services import prepared_conversation_executor
 from app.services.agent_execution_lifecycle import (
@@ -186,9 +187,19 @@ async def materialize_api_run(request: ApiOwnedExecution, scope: ApiScope) -> Pr
     prepare = ApiPreparedRunResolver(inner, config)
     ownership = _ownership(request)
     try:
-        lease = await owned.materialize_prepared_execution(
-            ownership, prepare_inputs=prepare, schedule=_activated, seams=seams.materializer
-        )
+        with fresh_decision_scope():
+            # D-06: re-decide the key owner's can_deploy before the gateway locks; the
+            # locked resolver's authorize_deployment reuses this decision (no call under locks).
+            await require_can_deploy(
+                request.context,
+                request.root_agent_id,
+                not_found=NotFoundError("AGENT_DEPLOYMENT_NOT_FOUND", "deployment not found"),
+                opaque=True,
+                fresh=True,
+            )
+            lease = await owned.materialize_prepared_execution(
+                ownership, prepare_inputs=prepare, schedule=_activated, seams=seams.materializer
+            )
     except BaseException as exc:
         if isinstance(exc, PreparedRunUnsupportedError) and is_legacy_fallback(exc.reason):
             logger.info(

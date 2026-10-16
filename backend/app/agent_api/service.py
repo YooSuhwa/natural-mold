@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.agent_api.security import generate_api_key
 from app.agent_runtime.identity import AGENT_IDENTITY_FIXED
 from app.agent_runtime.runtime_policy import RuntimePolicyV1, resolve_runtime_policy
+from app.authz.agent_api_access import require_can_deploy
 from app.authz.agent_api_scope import private_api_key_predicate, private_deployment_predicate
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.org_context import OrgContext
@@ -32,6 +33,10 @@ from app.schemas.agent_api import (
 )
 
 FIXED_IDENTITY_REASON_CODE = "fixed_identity_required"
+# Existing denials reused when the caller lost agent#can_deploy (D-06).
+_AGENT_MISSING = ("AGENT_NOT_FOUND", "agent not found")
+_DEPLOYMENT_MISSING = ("AGENT_DEPLOYMENT_NOT_FOUND", "deployment not found")
+_UNAVAILABLE = ("AGENT_API_DEPLOYMENT_NOT_FOUND", "one or more deployments are unavailable")
 
 
 def utc_now_naive() -> datetime:
@@ -159,6 +164,7 @@ async def create_deployment(
         )
     if agent_id is None:
         raise NotFoundError("AGENT_NOT_FOUND", "agent not found")
+    await require_can_deploy(context, agent_id, not_found=NotFoundError(*_AGENT_MISSING))
     executable = await load_agent_tree_for_execution(
         db, AgentExecutionTarget(data.agent_id, context)
     )
@@ -226,6 +232,7 @@ async def update_deployment(
     row = result.scalar_one_or_none()
     if row is None:
         raise NotFoundError("AGENT_DEPLOYMENT_NOT_FOUND", "deployment not found")
+    await require_can_deploy(context, row.agent_id, not_found=NotFoundError(*_DEPLOYMENT_MISSING))
     if data.status == "active":
         await load_agent_tree_for_execution(db, AgentExecutionTarget(row.agent_id, context))
     if data.status is not None:
@@ -279,6 +286,10 @@ async def create_api_key(
             "select at least one deployment or allow all deployments",
         )
     deployments = await _load_deployments_for_key(db, context, data.deployment_ids)
+    for deployment in deployments:  # every linked deployment's agent (plan 9.2)
+        await require_can_deploy(
+            context, deployment.agent_id, not_found=ValidationError(*_UNAVAILABLE)
+        )
     generated = generate_api_key()
     row = AgentApiKey(
         user_id=context.user_id,
