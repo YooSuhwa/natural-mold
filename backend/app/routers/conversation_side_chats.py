@@ -5,7 +5,11 @@ import uuid
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_agent_checks import require_scoped_agent_permission
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import (
     CurrentUser,
     get_current_user,
@@ -26,6 +30,7 @@ router = APIRouter(tags=["conversations"])
     response_model=ConversationResponse,
     status_code=201,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def create_side_chat(
     conversation_id: uuid.UUID,
     request: Request,
@@ -34,9 +39,12 @@ async def create_side_chat(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> ConversationResponse:
     """Open the parent's independent same-agent side chat, creating it once."""
     parent = await owned_conversation(conversation_id, db, context)
+    if parent.agent_id is not None:  # agentless parents keep the legacy agent_not_found
+        await require_scoped_agent_permission(db, context, parent.agent_id, "can_run", authz=authz)
     conversation, created = await conversation_side_chat_service.get_or_create_side_chat(
         db, parent.id, context
     )
@@ -62,6 +70,7 @@ async def create_side_chat(
     "/api/conversations/{conversation_id}/side-chats/save",
     response_model=ConversationResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def save_side_chat(
     conversation_id: uuid.UUID,
     request: Request,

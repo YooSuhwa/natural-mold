@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_input_scope import owned_input_predicate
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import held_conversation, lock_many, lock_query
@@ -94,7 +95,6 @@ async def _pending_input_for_update(
     context: OrgContext,
     expected_revision: int,
 ) -> ConversationRunInput:
-    user_id = context.user_id
     await require_queue_executable(db, conversation_id, context)
     await lock_owned_conversation(
         db,
@@ -108,7 +108,7 @@ async def _pending_input_for_update(
         .where(
             ConversationRunInput.id == input_id,
             ConversationRunInput.conversation_id == conversation_id,
-            ConversationRunInput.user_id == user_id,
+            owned_input_predicate(context),
         )
         .with_for_update(),
     )
@@ -175,7 +175,6 @@ async def reorder_pending_inputs(
     ordered_input_ids: list[uuid.UUID],
     expected_revisions: dict[uuid.UUID, int],
 ) -> list[ConversationRunInput]:
-    user_id = context.user_id
     await require_queue_executable(db, conversation_id, context)
     await lock_owned_conversation(
         db,
@@ -188,7 +187,7 @@ async def reorder_pending_inputs(
         select(ConversationRunInput)
         .where(
             ConversationRunInput.conversation_id == conversation_id,
-            ConversationRunInput.user_id == user_id,
+            owned_input_predicate(context),
             ConversationRunInput.status == "pending",
         )
         .with_for_update(),

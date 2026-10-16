@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.policies import PRIVATE, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.models.message_feedback import MessageFeedback
 from app.schemas.feedback import MessageFeedbackCreate, MessageFeedbackResponse
@@ -25,12 +26,15 @@ from app.schemas.feedback import MessageFeedbackCreate, MessageFeedbackResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["feedback"])
+# TODO(D-10): PRIVATE stays MessageFeedback.user_id-scoped; plan 9.3's conversation-ownership
+# dependency and message_id-in-conversation check would change legacy responses.
 
 
 @router.post(
     "/api/messages/{message_id}/feedback",
     response_model=MessageFeedbackResponse,
 )
+@authz_policy(PRIVATE("message_feedbacks"))
 async def upsert_feedback(
     message_id: str,
     data: MessageFeedbackCreate,
@@ -73,6 +77,7 @@ async def upsert_feedback(
     "/api/messages/{message_id}/feedback",
     status_code=204,
 )
+@authz_policy(PRIVATE("message_feedbacks"))
 async def clear_feedback(
     message_id: str,
     db: AsyncSession = Depends(get_db),
@@ -94,6 +99,7 @@ async def clear_feedback(
     "/api/conversations/{conversation_id}/feedback",
     response_model=list[MessageFeedbackResponse],
 )
+@authz_policy(PRIVATE("message_feedbacks"))
 async def list_feedback_for_conversation(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

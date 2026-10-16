@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.schemas.mcp_apps import (
     McpAppsCallToolCommand,
@@ -25,6 +26,7 @@ router = APIRouter(tags=["mcp-apps"])
 @router.post(
     "/api/conversations/{conversation_id}/runs/{run_id}/mcp-apps/{tool_call_id}",
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def execute_mcp_apps_command(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,

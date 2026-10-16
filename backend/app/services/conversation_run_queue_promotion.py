@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_input_scope import owned_input_predicate
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import lock_query
@@ -40,7 +41,6 @@ async def promote_pending_input(
     expected_revision: int,
 ) -> PromotedConversationInput:
     """Promote one pending input and persist predecessor cancellation in one transaction."""
-    user_id = context.user_id
     await require_queue_executable(db, conversation_id, context)
     conversation = await lock_owned_conversation(
         db,
@@ -72,7 +72,7 @@ async def promote_pending_input(
         .where(
             ConversationRunInput.id == input_id,
             ConversationRunInput.conversation_id == conversation_id,
-            ConversationRunInput.user_id == user_id,
+            owned_input_predicate(context),
         )
         .with_for_update(),
     )

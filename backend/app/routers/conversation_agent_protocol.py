@@ -7,7 +7,10 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.event_broker import registry as broker_registry
+from app.authz.conversation_agent_checks import bind_request_authz
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.routers import conversation_agent_protocol_state as state_api
 from app.routers.conversation_agent_protocol_attach import wait_for_live_broker_or_terminal
@@ -82,6 +85,7 @@ def _active_thread_next_nodes(run: object | None) -> list[str]:
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/commands")
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def post_thread_command(
     conversation_id: uuid.UUID,
     thread_id: str,
@@ -91,6 +95,7 @@ async def post_thread_command(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    _authz: AuthzService = Depends(bind_request_authz),
 ) -> JSONResponse:
     conversation = await get_owned_thread(
         db,
@@ -110,6 +115,7 @@ async def post_thread_command(
 
 
 @router.get("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/state")
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_thread_state(
     conversation_id: uuid.UUID,
     thread_id: str,
@@ -198,6 +204,7 @@ async def get_thread_state(
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/state")
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def update_thread_state(
     conversation_id: uuid.UUID,
     thread_id: str,
@@ -223,6 +230,7 @@ async def update_thread_state(
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/history")
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_thread_history(
     conversation_id: uuid.UUID,
     thread_id: str,
@@ -244,6 +252,7 @@ async def get_thread_history(
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/stream/events")
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def subscribe_thread_events(
     conversation_id: uuid.UUID,
     thread_id: str,
@@ -351,6 +360,7 @@ async def subscribe_thread_events(
 
 
 @router.get("/api/conversations/{conversation_id}/langgraph/state")
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_compat_thread_state(
     conversation_id: uuid.UUID,
     request: Request,

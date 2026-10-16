@@ -69,6 +69,11 @@ def private_run_predicate(context: OrgContext) -> ColumnElement[bool]:
     )
 
 
+def owned_run_predicate(context: OrgContext) -> ColumnElement[bool]:
+    """Owner match for run rows read under their already scoped private Conversation."""
+    return ConversationRun.user_id == context.user_id
+
+
 def resume_parent_predicate(child: type[ConversationRun]) -> ColumnElement[bool]:
     return and_(
         child.parent_run_id == ConversationRun.id,

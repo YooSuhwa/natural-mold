@@ -10,7 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
+from app.authz.conversation_agent_checks import require_agent_permission
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import (
     CurrentUser,
     get_current_user,
@@ -43,10 +47,28 @@ from app.services.conversation_run_message_links import RunMessageLinkQuery, lis
 router = APIRouter(tags=["conversations"])
 
 
+async def _require_trace_config(
+    conversation: Conversation, context: OrgContext, authz: AuthzService
+) -> None:
+    """Debug traces expose tool args and prompts: ``agent#can_view_config`` (9.3).
+
+    Legacy keeps owner-only access, so the legacy answer is the owned conversation.
+    """
+    if conversation.agent_id is not None:
+        await require_agent_permission(
+            context,
+            conversation.agent_id,
+            "can_view_config",
+            authz=authz,
+            resource_org_id=conversation.org_id,
+        )
+
+
 @router.get(
     "/api/conversations/{conversation_id}/run-message-links",
     response_model=list[ConversationRunMessageLinkResponse],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_conversation_run_message_links(
     conversation_id: uuid.UUID,
     message_id: Annotated[list[ConversationRunMessageKey], Query(min_length=1, max_length=50)],
@@ -107,6 +129,7 @@ async def _run_status_by_message_event_id(
     "/api/conversations/{conversation_id}/traces",
     response_model=list[TurnTraceResponse],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def list_traces(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -150,13 +173,16 @@ async def list_traces(
     "/api/conversations/{conversation_id}/debug/traces",
     response_model=DebugTraceListResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def list_debug_traces(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     conversation: Conversation = Depends(owned_conversation),
+    authz: AuthzService = Depends(get_authz),
 ):
+    await _require_trace_config(conversation, context, authz)
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
     secrets = tuple(
         await chat_secrets.collect_conversation_secret_values(db, conversation, context)
@@ -184,6 +210,7 @@ async def list_debug_traces(
     "/api/conversations/{conversation_id}/debug/traces/{trace_id}",
     response_model=DebugTraceDetailResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_debug_trace_detail(
     conversation_id: uuid.UUID,
     trace_id: str,
@@ -191,7 +218,9 @@ async def get_debug_trace_detail(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     conversation: Conversation = Depends(owned_conversation),
+    authz: AuthzService = Depends(get_authz),
 ):
+    await _require_trace_config(conversation, context, authz)
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
     record = next(
         (item for item in records if trace_id in {item.external_trace_id, item.assistant_msg_id}),

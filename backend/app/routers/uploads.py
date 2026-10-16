@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.attachment_scope import private_attachment_predicate
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.config import settings
 from app.dependencies import get_db, get_org_context, verify_csrf
@@ -116,6 +117,7 @@ async def _get_owned_attachment(
 
 
 @router.post("/api/uploads", response_model=UploadResponse, status_code=201)
+@authz_policy(PRIVATE("message_attachments"))
 async def create_upload(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
@@ -165,6 +167,7 @@ async def create_upload(
 
 
 @router.get("/api/uploads/{upload_id}")
+@authz_policy(PRIVATE("message_attachments", param="upload_id"))
 async def get_upload(
     upload_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -207,6 +210,7 @@ async def get_upload(
 
 
 @router.get("/api/uploads/{upload_id}/content", response_model=ArtifactTextContent)
+@authz_policy(PRIVATE("message_attachments", param="upload_id"))
 async def get_upload_content(
     upload_id: uuid.UUID,
     response: Response,

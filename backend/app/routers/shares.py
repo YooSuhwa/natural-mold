@@ -27,6 +27,7 @@ from app.agent_runtime.message_utils import parse_msg_id
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.authz.conversation_scope import resolve_conversation_actor
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, SHARE_TOKEN, authz_policy
 from app.config import settings
 from app.dependencies import (
     CurrentUser,
@@ -218,6 +219,7 @@ async def _get_public_share_visible_artifact(
     response_model=ShareLinkResponse | None,
     dependencies=[Depends(owned_conversation)],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_active_share(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -235,6 +237,7 @@ async def get_active_share(
     "/api/conversations/{conversation_id}/share",
     response_model=ShareLinkResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def create_share(
     conversation_id: uuid.UUID,
     request: Request,
@@ -267,6 +270,7 @@ async def create_share(
     "/api/conversations/{conversation_id}/share",
     status_code=204,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def revoke_share(
     conversation_id: uuid.UUID,
     request: Request,
@@ -297,11 +301,14 @@ async def revoke_share(
 
 # ---------------------------------------------------------------------------
 # Public visitor endpoints (no auth)
+# TODO(9.3 follow-up): enforce org allow_public_share_links on create and on every
+# public read before the cache, with the policy version in the cache key.
 # ---------------------------------------------------------------------------
 
 
 @router.get("/api/shares/{share_token}", response_model=SharedConversationView)
 @limiter.limit(settings.share_public_rate_limit)
+@authz_policy(SHARE_TOKEN())
 async def get_public_share(
     request: Request,
     share_token: str,
@@ -368,6 +375,7 @@ async def get_public_share(
 
 @router.get("/api/shares/{share_token}/messages", response_model=MessagesEnvelope)
 @limiter.limit(settings.share_public_rate_limit)
+@authz_policy(SHARE_TOKEN())
 async def get_public_share_messages(
     request: Request,
     share_token: str,
@@ -405,6 +413,7 @@ async def get_public_share_messages(
 
 @router.get("/api/shares/{share_token}/artifacts", response_model=list[ArtifactSummary])
 @limiter.limit(settings.share_public_rate_limit)
+@authz_policy(SHARE_TOKEN())
 async def list_public_share_artifacts(
     request: Request,
     share_token: str,
@@ -425,6 +434,7 @@ async def list_public_share_artifacts(
 
 @router.get("/api/shares/{share_token}/artifacts/{artifact_id}", response_model=ArtifactSummary)
 @limiter.limit(settings.share_public_rate_limit)
+@authz_policy(SHARE_TOKEN())
 async def get_public_share_artifact(
     request: Request,
     share_token: str,
@@ -450,6 +460,7 @@ async def get_public_share_artifact(
 
 @router.get("/api/shares/{share_token}/artifacts/{artifact_id}/content")
 @limiter.limit(settings.share_public_rate_limit)
+@authz_policy(SHARE_TOKEN())
 async def get_public_share_artifact_content(
     request: Request,
     share_token: str,
@@ -492,6 +503,7 @@ async def get_public_share_artifact_content(
 
 @router.get("/api/shares/{share_token}/artifacts/{artifact_id}/download")
 @limiter.limit(settings.share_public_rate_limit)
+@authz_policy(SHARE_TOKEN())
 async def download_public_share_artifact(
     request: Request,
     share_token: str,

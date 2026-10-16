@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_agent_checks import agent_run_permitted
+from app.authz.conversation_input_scope import owned_input_predicate
+from app.authz.conversation_run_scope import owned_run_predicate
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import lock_query
@@ -33,8 +36,9 @@ async def claim_next_input(
     context: OrgContext,
 ) -> ClaimedConversationInput | None:
     """Bind the next eligible input to a run under the conversation row lock."""
-    user_id = context.user_id
     agent_id = await require_queue_executable(db, conversation_id, context)
+    if not await agent_run_permitted(context, agent_id):
+        return None
     conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
@@ -52,7 +56,7 @@ async def claim_next_input(
     unacknowledged_predecessor = await db.scalar(
         select(ConversationRun.id).where(
             ConversationRun.conversation_id == conversation_id,
-            ConversationRun.user_id == user_id,
+            owned_run_predicate(context),
             ConversationRun.cancel_requested_at.is_not(None),
             ConversationRun.cancellation_acknowledged_at.is_(None),
         )
@@ -69,7 +73,7 @@ async def claim_next_input(
         select(ConversationRunInput)
         .where(
             ConversationRunInput.conversation_id == conversation_id,
-            ConversationRunInput.user_id == user_id,
+            owned_input_predicate(context),
             ConversationRunInput.status == "pending",
         )
         .order_by(

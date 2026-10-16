@@ -20,6 +20,7 @@ from app.authz.agent_execution_scope import (
     AgentExecutionTarget,
     load_agent_tree_for_execution,
 )
+from app.authz.conversation_agent_checks import require_agent_run
 from app.authz.conversation_scope import lock_private_conversation
 from app.authz.error_codes import agent_archived
 from app.authz.org_context import OrgContext
@@ -118,9 +119,17 @@ async def prepare_executable_conversation(
     db: AsyncSession,
     conversation_id: uuid.UUID,
     context: OrgContext,
+    *,
+    agent_checked: bool = False,
 ) -> uuid.UUID:
-    """Initialize policy, then reacquire lifecycle authority for config hydration."""
-    await require_executable_conversation(db, conversation_id, context)
+    """Initialize policy, then reacquire lifecycle authority for config hydration.
+
+    The single ``agent#can_run`` decision of a chat run, unless the caller made it
+    before creating the conversation (``agent_checked``).
+    """
+    agent_id = await require_executable_conversation(db, conversation_id, context)
+    if not agent_checked:
+        await require_agent_run(context, agent_id)
     try:
         await ensure_conversation_runtime_policy(
             db, ConversationPolicyTarget(conversation_id, context)

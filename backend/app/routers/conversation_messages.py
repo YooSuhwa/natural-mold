@@ -15,8 +15,11 @@ from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.streaming import format_sse
+from app.authz.conversation_agent_checks import bind_request_authz
 from app.authz.conversation_scope import load_private_conversation, require_conversation_agent_id
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.service import AuthzService
 from app.dependencies import (
     CurrentUser,
     get_current_user,
@@ -91,6 +94,7 @@ def _cfg_agent_uuid(cfg: Any):
 
 
 @router.post("/api/agents/{agent_id}/conversations/start")
+@authz_policy(PRIVATE("conversations"))
 async def start_conversation_with_message(
     agent_id: uuid.UUID,
     data: MessageCreate,
@@ -99,6 +103,7 @@ async def start_conversation_with_message(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    _authz: AuthzService = Depends(bind_request_authz),
 ):
     return await chat_run_entries.start_conversation_with_message(
         agent_id=agent_id, data=data, request=request, db=db, user=user, context=context
@@ -109,6 +114,7 @@ async def start_conversation_with_message(
     "/api/conversations/{conversation_id}/messages",
     response_model=MessagesEnvelope,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def list_messages(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -186,6 +192,7 @@ async def list_messages(
 
 
 @router.get("/api/conversations/{conversation_id}/stream")
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def stream_resume(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
@@ -207,6 +214,7 @@ async def stream_resume(
 
 
 @router.post("/api/conversations/{conversation_id}/messages")
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def send_message(
     conversation_id: uuid.UUID,
     data: MessageCreate,
@@ -215,6 +223,7 @@ async def send_message(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    _authz: AuthzService = Depends(bind_request_authz),
 ):
     return await chat_run_entries.send_message(
         conversation_id=conversation_id,
@@ -227,6 +236,7 @@ async def send_message(
 
 
 @router.post("/api/conversations/{conversation_id}/messages/resume")
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def resume_message(
     conversation_id: uuid.UUID,
     data: ResumeRequest,
@@ -235,6 +245,7 @@ async def resume_message(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    _authz: AuthzService = Depends(bind_request_authz),
 ):
     return await chat_resume_entries.resume_message(
         conversation_id=conversation_id,

@@ -15,6 +15,7 @@ from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.streaming import format_sse
+from app.authz.conversation_agent_checks import require_scoped_agent_permission
 from app.authz.conversation_scope import require_conversation_agent_id
 from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
@@ -48,11 +49,12 @@ async def start_conversation_with_message(
     context: OrgContext,
 ) -> StreamingResponse:
     title = chat_service.conversation_title_from_content(data.content)
+    await require_scoped_agent_permission(db, context, agent_id, "can_run")
     conv = await chat_service.create_conversation(db, agent_id, title, context=context)
     # Config hydration performs its own lifecycle check and therefore starts from
     # a clean transaction. The final acceptance below rechecks after hydration.
     await db.commit()
-    await chat_service.prepare_executable_conversation(db, conv.id, context)
+    await chat_service.prepare_executable_conversation(db, conv.id, context, agent_checked=True)
     cfg = await resolve_agent_context(db, conv.id, user, context=context)
     await db.commit()
     accepted = await accept_owned_execution(

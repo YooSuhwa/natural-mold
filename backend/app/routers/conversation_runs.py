@@ -15,6 +15,7 @@ from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.streaming import format_sse
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
 from app.config import settings
 from app.dependencies import (
     CurrentUser,
@@ -129,6 +130,7 @@ def _retryable_attach_error() -> HTTPException:
     response_model=ConversationRunHistoryResponse | None,
     dependencies=[Depends(owned_conversation)],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_active_conversation_run(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -147,6 +149,7 @@ async def get_active_conversation_run(
     "/api/conversations/{conversation_id}/runs/{run_id}/stream",
     dependencies=[Depends(owned_conversation)],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def stream_conversation_run(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
@@ -225,6 +228,7 @@ async def stream_conversation_run(
     "/api/conversations/{conversation_id}/runs/{run_id}/cancel",
     response_model=ConversationRunResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def cancel_conversation_run(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
@@ -246,6 +250,7 @@ async def cancel_conversation_run(
 
 
 @router.post("/threads/{thread_id}/runs/{run_id}/cancel")
+@authz_policy(PRIVATE("conversations", param="thread_id"))
 async def cancel_langgraph_sdk_run(
     thread_id: uuid.UUID,
     run_id: uuid.UUID,
@@ -277,6 +282,7 @@ async def cancel_langgraph_sdk_run(
     response_model=ConversationRunHistoryResponse,
     dependencies=[Depends(owned_conversation)],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_conversation_run(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,

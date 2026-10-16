@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
 from app.config import settings
 from app.dependencies import (
     CurrentUser,
@@ -29,6 +30,7 @@ router = APIRouter(tags=["conversations"])
     response_model=list[FileItem],
     dependencies=[Depends(owned_conversation)],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def list_conversation_files(
     conversation_id: uuid.UUID,
     context: OrgContext = Depends(get_org_context),
@@ -52,6 +54,7 @@ async def list_conversation_files(
     "/api/conversations/{conversation_id}/files/{file_path:path}",
     dependencies=[Depends(owned_conversation)],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_conversation_file(
     conversation_id: uuid.UUID,
     file_path: str,

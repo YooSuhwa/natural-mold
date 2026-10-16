@@ -395,28 +395,8 @@
     "count": 1
   },
   {
-    "file": "services/conversation_run_queue_claim.py",
-    "expression": "ConversationRun.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/conversation_run_queue_claim.py",
-    "expression": "ConversationRunInput.user_id == user_id",
-    "count": 1
-  },
-  {
     "file": "services/conversation_run_queue_mutations.py",
     "expression": "Agent.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/conversation_run_queue_mutations.py",
-    "expression": "ConversationRunInput.user_id == user_id",
-    "count": 2
-  },
-  {
-    "file": "services/conversation_run_queue_promotion.py",
-    "expression": "ConversationRunInput.user_id == user_id",
     "count": 1
   },
   {
@@ -428,11 +408,6 @@
     "file": "services/conversation_run_service.py",
     "expression": "ConversationRun.user_id == user_id",
     "count": 4
-  },
-  {
-    "file": "services/conversation_run_transitions.py",
-    "expression": "ConversationRun.user_id == target.conversation.context.user_id",
-    "count": 1
   },
   {
     "file": "services/conversation_stream_service.py",

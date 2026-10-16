@@ -6,7 +6,11 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_agent_checks import require_scoped_agent_permission
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, RES, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import agent_not_found, memory_not_found, memory_proposal_not_found
 from app.schemas.memory import (
@@ -28,6 +32,7 @@ router = APIRouter(tags=["memory"])
 
 
 @router.get("/api/me/memory-settings", response_model=UserMemorySettingsOut)
+@authz_policy(PRIVATE("user_memory_settings"))
 async def get_user_memory_settings(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
@@ -37,6 +42,7 @@ async def get_user_memory_settings(
 
 
 @router.patch("/api/me/memory-settings", response_model=UserMemorySettingsOut)
+@authz_policy(PRIVATE("user_memory_settings"))
 async def update_user_memory_settings(
     payload: UserMemorySettingsUpdate,
     db: AsyncSession = Depends(get_db),
@@ -51,12 +57,16 @@ async def update_user_memory_settings(
     "/api/agents/{agent_id}/memory-settings",
     response_model=AgentMemorySettingsOut,
 )
+# TODO(F-09): RES agent#can_edit is checked, but memory_service is still owner-scoped.
+@authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
 async def get_agent_memory_settings(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> AgentMemorySettingsOut:
+    await require_scoped_agent_permission(db, context, agent_id, "can_edit", authz=authz)
     settings = await memory_service.get_agent_settings(db, agent_id, context)
     if settings is None:
         raise agent_not_found()
@@ -67,6 +77,8 @@ async def get_agent_memory_settings(
     "/api/agents/{agent_id}/memory-settings",
     response_model=AgentMemorySettingsOut,
 )
+# TODO(F-09): RES agent#can_edit is checked, but memory_service is still owner-scoped.
+@authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
 async def update_agent_memory_settings(
     agent_id: uuid.UUID,
     payload: AgentMemorySettingsUpdate,
@@ -74,7 +86,9 @@ async def update_agent_memory_settings(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> AgentMemorySettingsOut:
+    await require_scoped_agent_permission(db, context, agent_id, "can_edit", authz=authz)
     settings = await memory_service.update_agent_settings(db, agent_id, context, payload)
     if settings is None:
         raise agent_not_found()
@@ -82,6 +96,7 @@ async def update_agent_memory_settings(
 
 
 @router.get("/api/memories", response_model=list[MemoryRecordOut])
+@authz_policy(PRIVATE("memory_records"))
 async def list_memories(
     scope: Literal["all", "user", "agent"] = Query("all"),
     agent_id: uuid.UUID | None = None,
@@ -101,6 +116,7 @@ async def list_memories(
 
 
 @router.post("/api/memories", response_model=MemoryRecordOut, status_code=201)
+@authz_policy(PRIVATE("memory_records"))
 async def create_memory(
     payload: MemoryRecordCreate,
     db: AsyncSession = Depends(get_db),
@@ -115,6 +131,7 @@ async def create_memory(
 
 
 @router.patch("/api/memories/{memory_id}", response_model=MemoryRecordOut)
+@authz_policy(PRIVATE("memory_records", param="memory_id"))
 async def update_memory(
     memory_id: uuid.UUID,
     payload: MemoryRecordUpdate,
@@ -135,6 +152,7 @@ async def update_memory(
 
 
 @router.delete("/api/memories/{memory_id}", status_code=204)
+@authz_policy(PRIVATE("memory_records", param="memory_id"))
 async def delete_memory(
     memory_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -153,6 +171,7 @@ async def delete_memory(
 
 
 @router.post("/api/memory-proposals", response_model=MemoryProposalOut, status_code=201)
+@authz_policy(PRIVATE("memory_proposals"))
 async def create_memory_proposal(
     payload: MemoryProposalCreate,
     db: AsyncSession = Depends(get_db),
@@ -171,6 +190,7 @@ async def create_memory_proposal(
 
 
 @router.get("/api/memory-proposals/{proposal_id}", response_model=MemoryProposalOut)
+@authz_policy(PRIVATE("memory_proposals", param="proposal_id"))
 async def get_memory_proposal(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -191,6 +211,7 @@ async def get_memory_proposal(
     "/api/memory-proposals/{proposal_id}/approve",
     response_model=MemoryProposalApprovalOut,
 )
+@authz_policy(PRIVATE("memory_proposals", param="proposal_id"))
 async def approve_memory_proposal(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -216,6 +237,7 @@ async def approve_memory_proposal(
     "/api/memory-proposals/{proposal_id}/edit-and-approve",
     response_model=MemoryProposalApprovalOut,
 )
+@authz_policy(PRIVATE("memory_proposals", param="proposal_id"))
 async def edit_and_approve_memory_proposal(
     proposal_id: uuid.UUID,
     payload: MemoryProposalEditApprove,
@@ -241,6 +263,7 @@ async def edit_and_approve_memory_proposal(
 
 
 @router.post("/api/memory-proposals/{proposal_id}/reject", response_model=MemoryProposalOut)
+@authz_policy(PRIVATE("memory_proposals", param="proposal_id"))
 async def reject_memory_proposal(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
 from app.dependencies import get_db, get_org_context, owned_conversation, verify_csrf
 from app.error_codes import file_not_found
 from app.models.conversation import Conversation
@@ -27,6 +28,7 @@ router = APIRouter(tags=["artifacts"])
     response_model=list[ArtifactSummary],
     dependencies=[Depends(owned_conversation)],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def list_conversation_artifacts(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -44,6 +46,7 @@ async def list_conversation_artifacts(
     response_model=ArtifactSummary,
     dependencies=[Depends(owned_conversation)],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_conversation_artifact(
     conversation_id: uuid.UUID,
     artifact_id: uuid.UUID,
@@ -65,6 +68,7 @@ async def get_conversation_artifact(
     "/api/conversations/{conversation_id}/artifacts/{artifact_id}/content",
     dependencies=[Depends(owned_conversation)],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_conversation_artifact_content(
     conversation_id: uuid.UUID,
     artifact_id: uuid.UUID,
@@ -104,6 +108,7 @@ async def get_conversation_artifact_content(
     "/api/conversations/{conversation_id}/artifacts/{artifact_id}/download",
     dependencies=[Depends(owned_conversation)],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def download_conversation_artifact(
     conversation_id: uuid.UUID,
     artifact_id: uuid.UUID,
@@ -137,6 +142,7 @@ async def download_conversation_artifact(
     "/api/conversations/{conversation_id}/artifacts/{artifact_id}",
     status_code=204,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def delete_conversation_artifact(
     conversation_id: uuid.UUID,
     artifact_id: uuid.UUID,
@@ -160,6 +166,7 @@ async def delete_conversation_artifact(
 
 
 @router.get("/api/artifacts", response_model=ArtifactLibraryPage)
+@authz_policy(PRIVATE("conversation_artifacts"))
 async def list_artifact_library(
     q: str | None = Query(None),
     agent_id: uuid.UUID | None = Query(None),
@@ -185,6 +192,7 @@ async def list_artifact_library(
 
 
 @router.get("/api/artifacts/stats", response_model=ArtifactLibraryStats)
+@authz_policy(PRIVATE("conversation_artifacts"))
 async def get_artifact_library_stats(
     db: AsyncSession = Depends(get_db),
     context: OrgContext = Depends(get_org_context),
@@ -193,6 +201,7 @@ async def get_artifact_library_stats(
 
 
 @router.get("/api/artifacts/recent", response_model=list[ArtifactSummary])
+@authz_policy(PRIVATE("conversation_artifacts"))
 async def list_recent_artifacts(
     limit: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
@@ -202,6 +211,7 @@ async def list_recent_artifacts(
 
 
 @router.patch("/api/artifacts/{artifact_id}", response_model=ArtifactSummary)
+@authz_policy(PRIVATE("conversation_artifacts", param="artifact_id"))
 async def update_artifact(
     artifact_id: uuid.UUID,
     data: ArtifactFavoriteUpdate,
@@ -223,6 +233,7 @@ async def update_artifact(
 
 
 @router.post("/api/artifacts/{artifact_id}/opened", response_model=ArtifactSummary)
+@authz_policy(PRIVATE("conversation_artifacts", param="artifact_id"))
 async def record_artifact_opened(
     artifact_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -242,6 +253,7 @@ async def record_artifact_opened(
 
 
 @router.get("/api/artifacts/{artifact_id}/content")
+@authz_policy(PRIVATE("conversation_artifacts", param="artifact_id"))
 async def get_artifact_library_content(
     artifact_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -274,6 +286,7 @@ async def get_artifact_library_content(
 
 
 @router.get("/api/artifacts/{artifact_id}/download")
+@authz_policy(PRIVATE("conversation_artifacts", param="artifact_id"))
 async def download_artifact_library_item(
     artifact_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

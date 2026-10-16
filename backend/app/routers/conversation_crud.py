@@ -5,7 +5,11 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_agent_checks import require_agent_run
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import (
     CurrentUser,
     get_current_user,
@@ -92,6 +96,7 @@ async def _conversation_responses_with_active_runs(
     "/api/conversations/page",
     response_model=ConversationWithAgentListEnvelope,
 )
+@authz_policy(PRIVATE("conversations"))
 async def list_global_conversations_page(
     limit: int = Query(30, ge=1, le=100),
     cursor: str | None = Query(None),
@@ -127,6 +132,7 @@ async def list_global_conversations_page(
     "/api/conversations/{conversation_id}",
     response_model=ConversationWithAgentResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_conversation_detail(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -143,6 +149,7 @@ async def get_conversation_detail(
     "/api/agents/{agent_id}/conversations/page",
     response_model=ConversationListEnvelope,
 )
+@authz_policy(PRIVATE("conversations"))
 async def list_conversations_page(
     agent_id: uuid.UUID,
     limit: int = Query(30, ge=1, le=100),
@@ -178,6 +185,7 @@ async def list_conversations_page(
     "/api/agents/{agent_id}/conversations",
     response_model=list[ConversationResponse],
 )
+@authz_policy(PRIVATE("conversations"))
 async def list_conversations(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -196,6 +204,7 @@ async def list_conversations(
     response_model=ConversationResponse,
     status_code=201,
 )
+@authz_policy(PRIVATE("conversations"))
 async def create_conversation(
     agent_id: uuid.UUID,
     data: ConversationCreate,
@@ -204,10 +213,12 @@ async def create_conversation(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     agent = await chat_service.get_agent_with_tools(db, agent_id, context)
     if not agent:
         raise agent_not_found()
+    await require_agent_run(context, agent_id, authz=authz)  # legacy gate above: in scope
     conv = await chat_service.create_conversation(db, agent_id, data.title, context=context)
     await record_conversation_audit(
         db,
@@ -227,6 +238,7 @@ async def create_conversation(
     response_model=ConversationResponse,
     status_code=201,
 )
+@authz_policy(PRIVATE("conversations"))
 async def create_draft_conversation(
     agent_id: uuid.UUID,
     request: Request,
@@ -234,10 +246,12 @@ async def create_draft_conversation(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     agent = await chat_service.get_agent_with_tools(db, agent_id, context)
     if not agent:
         raise agent_not_found()
+    await require_agent_run(context, agent_id, authz=authz)  # legacy gate above: in scope
     conv = await chat_service.create_conversation(db, agent_id, context=context, source="draft")
     await record_conversation_audit(
         db,
@@ -256,6 +270,7 @@ async def create_draft_conversation(
     "/api/conversations/{conversation_id}",
     response_model=ConversationResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def update_conversation(
     conversation_id: uuid.UUID,
     data: ConversationUpdate,
@@ -287,6 +302,7 @@ async def update_conversation(
     "/api/conversations/{conversation_id}/read",
     response_model=ConversationResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def mark_conversation_read(
     conversation_id: uuid.UUID,
     request: Request,
@@ -311,6 +327,7 @@ async def mark_conversation_read(
 
 
 @router.delete("/api/conversations/{conversation_id}", status_code=204)
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def delete_conversation(
     conversation_id: uuid.UUID,
     request: Request,

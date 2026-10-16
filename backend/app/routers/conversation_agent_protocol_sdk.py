@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.routers import conversation_agent_protocol_state as state_api
 from app.routers.conversation_agent_protocol_contracts import HistoryRequest
@@ -16,6 +17,7 @@ router = APIRouter(tags=["conversations"])
 
 
 @router.post("/threads/{thread_id}/history")
+@authz_policy(PRIVATE("conversations", param="thread_id"))
 async def get_sdk_thread_history(
     thread_id: uuid.UUID,
     request: HistoryRequest,

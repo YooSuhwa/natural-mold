@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.message_utils import content_to_text
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
 from app.dependencies import get_db, get_org_context, owned_conversation, verify_csrf
 from app.schemas.conversation_pinned_summary import (
     PinConversationSummaryRequest,
@@ -136,6 +137,7 @@ async def _load_sources(
     "/api/conversations/{conversation_id}/pinned-summary",
     response_model=PinnedConversationSummaryEnvelope,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def read_pinned_summary(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -156,6 +158,7 @@ async def read_pinned_summary(
     "/api/conversations/{conversation_id}/pinned-summary",
     response_model=PinnedConversationSummaryResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def write_pinned_summary(
     conversation_id: uuid.UUID,
     data: PinConversationSummaryRequest,
@@ -185,6 +188,7 @@ async def write_pinned_summary(
     "/api/conversations/{conversation_id}/pinned-summary",
     status_code=status.HTTP_204_NO_CONTENT,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def delete_pinned_summary(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

@@ -19,6 +19,7 @@ from app.authz.conversation_run_scope import (
     RunConversationTarget,
     RunExecutionTarget,
     lock_executable_run,
+    owned_run_predicate,
 )
 from app.config import settings
 from app.database import TenantScoped
@@ -173,7 +174,7 @@ async def _transition_to_running(
                     ConversationRun.id == target.run_id,
                     ConversationRun.conversation_id == target.conversation.conversation_id,
                     ConversationRun.agent_id == target.conversation.agent_id,
-                    ConversationRun.user_id == target.conversation.context.user_id,
+                    owned_run_predicate(target.conversation.context),
                 )
                 .with_for_update()
                 .execution_options(populate_existing=True, autoflush=False)

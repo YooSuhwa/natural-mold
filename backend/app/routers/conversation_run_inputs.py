@@ -5,8 +5,11 @@ import uuid
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_agent_checks import bind_request_authz, require_agent_run
 from app.authz.conversation_scope import load_private_conversation, require_private_conversation
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.schemas.conversation_refs import ConversationRef, conversation_ref
 from app.schemas.conversation_run_input import (
@@ -54,6 +57,7 @@ async def _executable_conversation(
     "/api/conversations/{conversation_id}/run-inputs",
     response_model=ConversationRunInputListResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def list_conversation_run_inputs(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -76,6 +80,7 @@ async def list_conversation_run_inputs(
     "/api/conversations/{conversation_id}/run-inputs/{input_id}",
     response_model=ConversationRunInputResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def edit_conversation_run_input(
     conversation_id: uuid.UUID,
     input_id: uuid.UUID,
@@ -111,6 +116,7 @@ async def edit_conversation_run_input(
     "/api/conversations/{conversation_id}/run-inputs/{input_id}",
     response_model=ConversationRunInputResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def delete_conversation_run_input(
     conversation_id: uuid.UUID,
     input_id: uuid.UUID,
@@ -136,6 +142,7 @@ async def delete_conversation_run_input(
     "/api/conversations/{conversation_id}/run-inputs/{input_id}/promote",
     response_model=ConversationRunInputResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def promote_conversation_run_input(
     conversation_id: uuid.UUID,
     input_id: uuid.UUID,
@@ -144,6 +151,7 @@ async def promote_conversation_run_input(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    _authz: AuthzService = Depends(bind_request_authz),
 ) -> ConversationRunInputResponse:
     await _executable_conversation(db, conversation_id, context)
     promoted = await promote_pending_input(
@@ -168,6 +176,7 @@ async def promote_conversation_run_input(
     "/api/conversations/{conversation_id}/run-inputs/reorder",
     response_model=list[ConversationRunInputResponse],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def reorder_conversation_run_inputs(
     conversation_id: uuid.UUID,
     payload: ConversationRunInputReorderRequest,
@@ -192,14 +201,17 @@ async def reorder_conversation_run_inputs(
     "/api/conversations/{conversation_id}/run-inputs/resume",
     response_model=ConversationRunInputListResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def resume_conversation_run_inputs(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(bind_request_authz),
 ) -> ConversationRunInputListResponse:
-    await _executable_conversation(db, conversation_id, context)
+    executable = await _executable_conversation(db, conversation_id, context)
+    await require_agent_run(context, executable.agent_id, authz=authz)
     await conversation_run_queue_service.resume_queue(
         db,
         conversation_id=conversation_id,

@@ -5,8 +5,11 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_agent_checks import bind_request_authz
 from app.authz.conversation_scope import require_conversation_agent_id
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.service import AuthzService
 from app.dependencies import (
     CurrentUser,
     get_current_user,
@@ -59,6 +62,7 @@ __all__ += ["with_regeneration_guidance"]
 
 
 @router.post("/api/conversations/{conversation_id}/messages/edit")
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def edit_message(
     conversation_id: uuid.UUID,
     data: EditMessageRequest,
@@ -67,6 +71,7 @@ async def edit_message(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    _authz: AuthzService = Depends(bind_request_authz),
 ):
     return await conversation_branch_entries.edit_message(
         conversation_id=conversation_id,
@@ -79,6 +84,7 @@ async def edit_message(
 
 
 @router.post("/api/conversations/{conversation_id}/messages/regenerate")
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def regenerate_message(
     conversation_id: uuid.UUID,
     data: RegenerateMessageRequest,
@@ -87,6 +93,7 @@ async def regenerate_message(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    _authz: AuthzService = Depends(bind_request_authz),
     conv: Conversation = Depends(owned_conversation),
 ):
     return await conversation_branch_entries.regenerate_message(
@@ -104,6 +111,7 @@ async def regenerate_message(
     "/api/conversations/{conversation_id}/messages/switch-branch",
     status_code=204,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def switch_branch(
     conversation_id: uuid.UUID,
     data: SwitchBranchRequest,

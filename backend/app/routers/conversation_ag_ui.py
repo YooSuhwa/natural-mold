@@ -19,6 +19,7 @@ from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
 from app.dependencies import (
     CurrentUser,
     get_current_user,
@@ -146,6 +147,7 @@ def _headers(run_id: str, mode: str) -> dict[str, str]:
 @router.get(
     "/api/conversations/{conversation_id}/runs/{run_id}/ag-ui-stream",
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def stream_conversation_run_ag_ui(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
