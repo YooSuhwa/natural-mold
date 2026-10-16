@@ -6507,6 +6507,42 @@
         ]
       }
     },
+    "/api/grants/{grant_id}": {
+      "delete": {
+        "operationId": "delete_grant_api_grants__grant_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Grant",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "health_check_api_health_get",
@@ -11737,6 +11773,956 @@
         "summary": "Replace Roles",
         "tags": [
           "organization assignments"
+        ]
+      }
+    },
+    "/api/resources/agent/{resource_id}/access": {
+      "get": {
+        "operationId": "get_access_agent_api_resources_agent__resource_id__access_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Access Agent",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/agent/{resource_id}/grants": {
+      "get": {
+        "operationId": "list_grants_agent_api_resources_agent__resource_id__grants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Grants Agent",
+        "tags": [
+          "sharing"
+        ]
+      },
+      "post": {
+        "operationId": "create_grant_agent_api_resources_agent__resource_id__grants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Grant Agent",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/agent/{resource_id}/transfer": {
+      "post": {
+        "operationId": "transfer_ownership_agent_api_resources_agent__resource_id__transfer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnershipTransfer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipTransferResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Ownership Agent",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/credential/{resource_id}/access": {
+      "get": {
+        "operationId": "get_access_credential_api_resources_credential__resource_id__access_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Access Credential",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/credential/{resource_id}/grants": {
+      "get": {
+        "operationId": "list_grants_credential_api_resources_credential__resource_id__grants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Grants Credential",
+        "tags": [
+          "sharing"
+        ]
+      },
+      "post": {
+        "operationId": "create_grant_credential_api_resources_credential__resource_id__grants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Grant Credential",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/credential/{resource_id}/transfer": {
+      "post": {
+        "operationId": "transfer_ownership_credential_api_resources_credential__resource_id__transfer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnershipTransfer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipTransferResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Ownership Credential",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/mcp_server/{resource_id}/access": {
+      "get": {
+        "operationId": "get_access_mcp_server_api_resources_mcp_server__resource_id__access_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Access Mcp Server",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/mcp_server/{resource_id}/grants": {
+      "get": {
+        "operationId": "list_grants_mcp_server_api_resources_mcp_server__resource_id__grants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Grants Mcp Server",
+        "tags": [
+          "sharing"
+        ]
+      },
+      "post": {
+        "operationId": "create_grant_mcp_server_api_resources_mcp_server__resource_id__grants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Grant Mcp Server",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/mcp_server/{resource_id}/transfer": {
+      "post": {
+        "operationId": "transfer_ownership_mcp_server_api_resources_mcp_server__resource_id__transfer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnershipTransfer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipTransferResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Ownership Mcp Server",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/skill/{resource_id}/access": {
+      "get": {
+        "operationId": "get_access_skill_api_resources_skill__resource_id__access_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Access Skill",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/skill/{resource_id}/grants": {
+      "get": {
+        "operationId": "list_grants_skill_api_resources_skill__resource_id__grants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Grants Skill",
+        "tags": [
+          "sharing"
+        ]
+      },
+      "post": {
+        "operationId": "create_grant_skill_api_resources_skill__resource_id__grants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Grant Skill",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/skill/{resource_id}/transfer": {
+      "post": {
+        "operationId": "transfer_ownership_skill_api_resources_skill__resource_id__transfer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnershipTransfer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipTransferResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Ownership Skill",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/tool/{resource_id}/access": {
+      "get": {
+        "operationId": "get_access_tool_api_resources_tool__resource_id__access_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Access Tool",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/tool/{resource_id}/grants": {
+      "get": {
+        "operationId": "list_grants_tool_api_resources_tool__resource_id__grants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Grants Tool",
+        "tags": [
+          "sharing"
+        ]
+      },
+      "post": {
+        "operationId": "create_grant_tool_api_resources_tool__resource_id__grants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Grant Tool",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/tool/{resource_id}/transfer": {
+      "post": {
+        "operationId": "transfer_ownership_tool_api_resources_tool__resource_id__transfer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnershipTransfer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipTransferResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Ownership Tool",
+        "tags": [
+          "sharing"
         ]
       }
     },
@@ -17859,6 +18845,102 @@
     }
   },
   "schemas": {
+    "AccessEntry": {
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "grant_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Grant Id"
+        },
+        "level": {
+          "enum": [
+            "consumer",
+            "viewer",
+            "editor",
+            "manager",
+            "owner",
+            "governor"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "principal": {
+          "$ref": "#/components/schemas/PrincipalView"
+        },
+        "revocable": {
+          "title": "Revocable",
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "owner",
+            "direct",
+            "group",
+            "organization",
+            "governance"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grant_id",
+        "principal",
+        "level",
+        "source",
+        "revocable"
+      ],
+      "title": "AccessEntry",
+      "type": "object"
+    },
+    "AccessList": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AccessEntry"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "my_permissions": {
+          "items": {
+            "enum": [
+              "can_share",
+              "can_revoke",
+              "can_govern"
+            ],
+            "type": "string"
+          },
+          "title": "My Permissions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items",
+        "my_permissions"
+      ],
+      "title": "AccessList",
+      "type": "object"
+    },
     "ActiveOrganizationRequest": {
       "additionalProperties": false,
       "properties": {
@@ -25278,6 +26360,124 @@
       "title": "GenerateImageResponse",
       "type": "object"
     },
+    "GrantCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "confirm_delegation": {
+          "default": false,
+          "title": "Confirm Delegation",
+          "type": "boolean"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "level": {
+          "enum": [
+            "consumer",
+            "viewer",
+            "editor",
+            "manager"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "principal": {
+          "$ref": "#/components/schemas/PrincipalRef"
+        }
+      },
+      "required": [
+        "principal",
+        "level"
+      ],
+      "title": "GrantCreate",
+      "type": "object"
+    },
+    "GrantList": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/GrantView"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "GrantList",
+      "type": "object"
+    },
+    "GrantView": {
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "grant_id": {
+          "format": "uuid",
+          "title": "Grant Id",
+          "type": "string"
+        },
+        "granted_at": {
+          "format": "date-time",
+          "title": "Granted At",
+          "type": "string"
+        },
+        "granted_by": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Granted By"
+        },
+        "level": {
+          "enum": [
+            "consumer",
+            "viewer",
+            "editor",
+            "manager"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "principal": {
+          "$ref": "#/components/schemas/PrincipalRef"
+        }
+      },
+      "required": [
+        "grant_id",
+        "principal",
+        "level",
+        "expires_at",
+        "granted_by",
+        "granted_at"
+      ],
+      "title": "GrantView",
+      "type": "object"
+    },
     "GroupCreate": {
       "additionalProperties": false,
       "properties": {
@@ -30361,6 +31561,88 @@
       "title": "OrganizationView",
       "type": "object"
     },
+    "OwnershipTransfer": {
+      "additionalProperties": false,
+      "properties": {
+        "keep_manager": {
+          "default": false,
+          "title": "Keep Manager",
+          "type": "boolean"
+        },
+        "new_owner_id": {
+          "format": "uuid",
+          "title": "New Owner Id",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "new_owner_id"
+      ],
+      "title": "OwnershipTransfer",
+      "type": "object"
+    },
+    "OwnershipTransferResult": {
+      "properties": {
+        "manager_grant_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Manager Grant Id"
+        },
+        "owner_id": {
+          "format": "uuid",
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "previous_owner_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Previous Owner Id"
+        },
+        "resource_id": {
+          "format": "uuid",
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "title": "Resource Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id",
+        "owner_id",
+        "previous_owner_id"
+      ],
+      "title": "OwnershipTransferResult",
+      "type": "object"
+    },
     "PinConversationSummaryRequest": {
       "description": "Select an existing assistant message as the conversation summary.",
       "properties": {
@@ -30687,6 +31969,31 @@
       "title": "PreviewTestRequest",
       "type": "object"
     },
+    "PrincipalRef": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "user",
+            "group",
+            "organization"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "id"
+      ],
+      "title": "PrincipalRef",
+      "type": "object"
+    },
     "PrincipalSearchView": {
       "properties": {
         "display_name": {
@@ -30736,6 +32043,53 @@
         "display_name"
       ],
       "title": "PrincipalSearchView",
+      "type": "object"
+    },
+    "PrincipalView": {
+      "additionalProperties": false,
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "member_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Member Count"
+        },
+        "type": {
+          "enum": [
+            "user",
+            "group",
+            "organization"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "id"
+      ],
+      "title": "PrincipalView",
       "type": "object"
     },
     "ProfileUpdateRequest": {

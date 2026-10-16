@@ -40,6 +40,7 @@ def include_app_routers(app: FastAPI) -> None:
         platform_tenant_creation,
         platform_tenant_directory,
         platform_tenant_lifecycle,
+        resource_shares,
         shares,
         skill_builder,
         skill_builder_trigger,
@@ -107,6 +108,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(platform_tenant_creation.router)
     app.include_router(platform_tenant_lifecycle.router)
     app.include_router(shares.router)
+    app.include_router(resource_shares.router)
     app.include_router(templates.router)
     app.include_router(skill_builder.router)
     app.include_router(skill_builder_trigger.router)

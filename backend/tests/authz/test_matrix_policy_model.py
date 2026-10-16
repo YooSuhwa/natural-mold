@@ -31,7 +31,11 @@ ALLOWED: Final = frozenset(
 )
 # Health routes pick the type from ``target_kind``; the decorator names the MCP-server
 # permission, the model branch is decided in-route as ``llm_model#can_use`` (9.5).
-DYNAMIC_TYPES: Final = {"{target_kind}": ("mcp_server",)}
+# ``DELETE /api/grants/{grant_id}`` decides on the grant's resource type (E-01).
+DYNAMIC_TYPES: Final = {
+    "{target_kind}": ("mcp_server",),
+    "{resource_type}": ("agent", "skill", "tool", "mcp_server", "credential"),
+}
 
 
 def _relations() -> dict[str, frozenset[str]]:

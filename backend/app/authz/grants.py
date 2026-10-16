@@ -16,7 +16,7 @@ access can shrink), then the object (``lock_object``), then the queue rows.
 Policy (who may share what, stage caps, owner self-revocation) is the caller's (E-01).
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -50,6 +50,7 @@ from app.authz.tuple_rows import GrantRow
 from app.models.authz import AuthzRevocation, ResourceGrant
 from app.services import audit_service
 
+AuditExtra = Mapping[str, object] | None  # caller facts merged into the audit metadata
 __all__ = ["GrantChange", "GrantRequest", "GrantService", "GrantTarget"]
 
 
@@ -108,12 +109,14 @@ class GrantService:
         await _audit(db, ctx.user_id, _grant_action(request, before), grant, before)
         return GrantChange(grant, tuple(ids))
 
-    async def revoke(self, db: AsyncSession, ctx: OrgContext, grant_id: UUID) -> GrantChange:
+    async def revoke(
+        self, db: AsyncSession, ctx: OrgContext, grant_id: UUID, *, audit: AuditExtra = None
+    ) -> GrantChange:
         """8.6 steps 1-2 in the caller's transaction; step 3 runs when the deletes land."""
         found = await db.get(ResourceGrant, grant_id, populate_existing=True)
         if found is None or found.org_id != ctx.org_id or found.state != "active":
             raise authorization_error("not_found")
-        change = await self._close(db, found, ctx.user_id)
+        change = await self._close(db, found, ctx.user_id, audit)
         if change is None:
             raise authorization_error("conflict")
         return change
@@ -130,7 +133,7 @@ class GrantService:
         return await self._close(db, found, None)
 
     async def _close(
-        self, db: AsyncSession, found: ResourceGrant, actor: UUID | None
+        self, db: AsyncSession, found: ResourceGrant, actor: UUID | None, extra: AuditExtra = None
     ) -> GrantChange | None:
         """Marker, ``revoking`` and per-key deletes; ``None`` = closed meanwhile (roll back)."""
         now = self._clock()
@@ -153,7 +156,8 @@ class GrantService:
             await complete_revocations(db, [grant.id], now=now)
         delegation = grant.grant_kind == "delegation"
         action = audit_actions.DELEGATION_REVOKE if delegation else audit_actions.GRANT_REVOKE
-        await _audit(db, actor, audit_actions.GRANT_EXPIRE if actor is None else action, grant)
+        action = audit_actions.GRANT_EXPIRE if actor is None else action
+        await _audit(db, actor, action, grant, extra=extra)
         return GrantChange(grant, tuple(ids))
 
     async def list_grants(
@@ -253,8 +257,11 @@ async def _audit(
     action: str,
     grant: ResourceGrant,
     before: GrantRow | None = None,
+    *,
+    extra: AuditExtra = None,
 ) -> None:
     metadata: dict[str, object] = {
+        **(extra or {}),
         "grant_id": str(grant.id),
         "org_id": str(grant.org_id),
         "relation": grant.relation,

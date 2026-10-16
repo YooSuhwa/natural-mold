@@ -49,6 +49,9 @@ ErrorCode = Literal[
     "tenant_status_conflict",
     "capability_required",
     "grant_invalid",
+    "confirm_required",
+    "transfer_name_conflict",
+    "transfer_blocked",
     "tenant_suspended",
     "quota_exceeded",
     "authz_unavailable",
@@ -120,6 +123,13 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         "tenant_status_conflict": ErrorSpec(409, "현재 회사 상태에서는 처리할 수 없습니다"),
         "capability_required": ErrorSpec(403, "이 기능을 사용할 권한이 없습니다"),
         "grant_invalid": ErrorSpec(422, "이 대상에게 이 권한을 줄 수 없습니다"),
+        "confirm_required": ErrorSpec(409, "위임된 계정 자원을 확인한 뒤 다시 공유해 주세요"),
+        "transfer_blocked": ErrorSpec(
+            409, "이전 소유자에게 묶인 항목을 먼저 정리해야 이전할 수 있습니다"
+        ),
+        "transfer_name_conflict": ErrorSpec(
+            409, "새 소유자에게 같은 이름의 자원이 있습니다. 이름을 바꾼 뒤 이전하세요"
+        ),
         "tenant_suspended": ErrorSpec(403, "회사가 정지되었습니다"),
         "quota_exceeded": ErrorSpec(429, "사용 한도를 초과했습니다"),
         "authz_unavailable": ErrorSpec(
