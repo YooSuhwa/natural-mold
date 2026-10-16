@@ -439,6 +439,42 @@
       "imported": "app.agent_runtime.ag_ui_adapter"
     },
     {
+      "importer": "app.agent_runtime.agent_invoke_runner",
+      "imported": "app.agent_runtime.agent_stream_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.agent_stream_execution",
+      "imported": "app.agent_runtime.agent_stream_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.agent_stream_facade_bindings",
+      "imported": "app.agent_runtime.agent_stream_runner"
+    },
+    {
+      "importer": "app.agent_runtime.agent_stream_facade_bindings",
+      "imported": "app.agent_runtime.langgraph_agent_stream_runner"
+    },
+    {
+      "importer": "app.agent_runtime.agent_stream_runner",
+      "imported": "app.agent_runtime.agent_invoke_runner"
+    },
+    {
+      "importer": "app.agent_runtime.agent_stream_runner",
+      "imported": "app.agent_runtime.agent_stream_execution"
+    },
+    {
+      "importer": "app.agent_runtime.langgraph_agent_stream_runner",
+      "imported": "app.agent_runtime.agent_stream_runner"
+    },
+    {
+      "importer": "app.agent_runtime.langgraph_agent_stream_runner",
+      "imported": "app.agent_runtime.langgraph_stream_execution"
+    },
+    {
+      "importer": "app.agent_runtime.langgraph_stream_execution",
+      "imported": "app.agent_runtime.agent_stream_facade_bindings"
+    },
+    {
       "importer": "app.agent_runtime.model_facade_bindings",
       "imported": "app.agent_runtime.model_factory"
     },
