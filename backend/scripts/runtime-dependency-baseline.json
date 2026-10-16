@@ -439,6 +439,26 @@
       "imported": "app.agent_runtime.ag_ui_adapter"
     },
     {
+      "importer": "app.agent_runtime.model_facade_bindings",
+      "imported": "app.agent_runtime.model_factory"
+    },
+    {
+      "importer": "app.agent_runtime.model_factory",
+      "imported": "app.agent_runtime.model_fallback_factory"
+    },
+    {
+      "importer": "app.agent_runtime.model_factory",
+      "imported": "app.agent_runtime.model_provider_builders"
+    },
+    {
+      "importer": "app.agent_runtime.model_fallback_factory",
+      "imported": "app.agent_runtime.model_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.model_provider_builders",
+      "imported": "app.agent_runtime.model_facade_bindings"
+    },
+    {
       "importer": "app.agent_runtime.runtime.models",
       "imported": "app.agent_runtime.runtime_component_builder"
     },
@@ -447,12 +467,52 @@
       "imported": "app.agent_runtime.runtime.models"
     },
     {
+      "importer": "app.agent_runtime.runtime_agent_builder",
+      "imported": "app.agent_runtime.runtime_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_agent_builder",
+      "imported": "app.agent_runtime.runtime_subagent_normalization"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_agent_preparation",
+      "imported": "app.agent_runtime.runtime_facade_bindings"
+    },
+    {
       "importer": "app.agent_runtime.runtime_component_builder",
       "imported": "app.agent_runtime.runtime.models"
     },
     {
       "importer": "app.agent_runtime.runtime_component_builder",
       "imported": "app.agent_runtime.runtime.reliability"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_component_builder",
+      "imported": "app.agent_runtime.runtime_agent_builder"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_component_builder",
+      "imported": "app.agent_runtime.runtime_agent_preparation"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_component_builder",
+      "imported": "app.agent_runtime.runtime_preparation_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_component_builder",
+      "imported": "app.agent_runtime.runtime_subagent_normalization"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_facade_bindings",
+      "imported": "app.agent_runtime.runtime_component_builder"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_preparation_bindings",
+      "imported": "app.agent_runtime.runtime_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_subagent_normalization",
+      "imported": "app.agent_runtime.runtime_facade_bindings"
     }
   ],
   "dynamic_import_exceptions": [
