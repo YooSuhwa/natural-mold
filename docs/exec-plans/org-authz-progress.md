@@ -243,7 +243,7 @@ real-participant U-05 study are future gates.
 - [x] B-06 — organization filters for private data.
 - [ ] B-07 — organization switching and administration UI. 1차 implemented (switcher, org settings, company directory, members, groups, roles/capabilities; Vitest/lint:i18n pass) - E2E and invitation-accept page pending; org policy/catalog settings UI later.
 - [x] B-08 — ownership constraints and agent archive lifecycle.
-- [ ] B-09 — frontend state reset and transport inspection.
+- [ ] B-09 — frontend state reset and transport inspection. implemented — E2E pending (OrgContextProvider: request gate + unmount placeholder → query/storage/module-cache purge → landing → new Jotai store; org-scoped abort signal on apiFetch/upload/SSE/LangGraph transport, apiFetchBinary + object-URL loader for chat images and state-file downloads; harness org-switch-reset.test.tsx). Follow-up: UserAvatar still loads its image by direct URL (user-scoped, not org-scoped).
 - [x] B-10 — company context, suspension and deployment modes.
 - [ ] B-11 — company administration API. candidate - verification pending (아래 B-11/B-12 candidate 절 참조).
 - [ ] B-12 — SaaS platform company administration API. candidate - verification pending (아래 B-11/B-12 candidate 절 참조).

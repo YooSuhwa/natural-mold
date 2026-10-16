@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen, userEvent } from '../../../../tests/test-utils'
 import { DeepAgentsStatePanel } from '../deepagents-state-panel'
 import type { DeepAgentsStateSnapshot } from '@/lib/chat/langgraph-runtime/deepagents-state'
+import { downloadApiFile } from '@/lib/hooks/use-api-object-url'
+
+vi.mock('@/lib/hooks/use-api-object-url', () => ({
+  downloadApiFile: vi.fn(async () => undefined),
+}))
 
 const state: DeepAgentsStateSnapshot = {
   todos: [
@@ -78,18 +83,21 @@ describe('DeepAgentsStatePanel', () => {
     expect(screen.getByText('텍스트')).toBeInTheDocument()
     const previewButton = screen.getByRole('button', { name: '최종 보고서 미리보기 열기' })
     const copyButton = screen.getByRole('button', { name: '최종 보고서 복사' })
-    const downloadLink = screen.getByRole('link', { name: '최종 보고서 다운로드' })
+    const downloadButton = screen.getByRole('button', { name: '최종 보고서 다운로드' })
     expect(previewButton).toBeEnabled()
     expect(copyButton).toBeEnabled()
-    expect(downloadLink).toHaveAttribute('href', '/api/artifacts/artifact-md/download')
     expect(screen.getByRole('button', { name: 'analysis.py 복사' })).toBeEnabled()
-    downloadLink.addEventListener('click', (event) => event.preventDefault())
     await user.click(previewButton)
     await user.click(copyButton)
-    await user.click(downloadLink)
+    await user.click(downloadButton)
     expect(onOpenPreview).toHaveBeenCalledWith(previewState.files[0])
     expect(onCopyFile).toHaveBeenCalledWith(previewState.files[0])
     expect(onDownloadFile).toHaveBeenCalledWith(previewState.files[0])
+    // Downloads go through apiFetchBinary (plan 13.10), not a bare href.
+    expect(downloadApiFile).toHaveBeenCalledWith(
+      'http://localhost:8001/api/artifacts/artifact-md/download',
+      expect.any(String),
+    )
     expect(screen.queryByText('assistant transcript')).not.toBeInTheDocument()
   })
 

@@ -19,20 +19,19 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
-import { useActiveOrganization, useSwitchActiveOrganization } from '@/lib/hooks/use-organizations'
+import { useActiveOrganization } from '@/lib/hooks/use-organizations'
+import { useOrgContext } from '@/lib/providers/org-context-provider'
 
 export function OrganizationSwitcher() {
   const t = useTranslations('sidebar.orgSwitcher')
   const { organizations, activeOrganization } = useActiveOrganization()
-  const switchOrganization = useSwitchActiveOrganization()
+  const { isSwitching, switchOrganization } = useOrgContext()
 
   if (organizations.length === 0) return null
 
   function selectOrganization(orgId: string) {
-    if (switchOrganization.isPending || orgId === activeOrganization?.id) return
-    switchOrganization.mutate(orgId, {
-      onError: () => toast.error(t('switchFailed')),
-    })
+    if (isSwitching || orgId === activeOrganization?.id) return
+    switchOrganization(orgId).catch(() => toast.error(t('switchFailed')))
   }
 
   const triggerLabel = activeOrganization
@@ -48,7 +47,8 @@ export function OrganizationSwitcher() {
               <DropdownMenuTrigger
                 render={<SidebarMenuButton tooltip={triggerLabel} />}
                 aria-label={triggerLabel}
-                disabled={switchOrganization.isPending}
+                disabled={isSwitching}
+                aria-busy={isSwitching}
                 data-testid="organization-switcher-trigger"
               >
                 <Building2Icon className="size-4" />

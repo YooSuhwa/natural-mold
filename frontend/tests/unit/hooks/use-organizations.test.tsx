@@ -57,30 +57,24 @@ describe('organization hooks', () => {
     expect(result.current.activeOrganization).toBeNull()
   })
 
-  it('switching flips is_active and resets org-scoped queries only', async () => {
+  it('the switch mutation only posts; OrgContextProvider sequences the reset', async () => {
     vi.mocked(meOrganizationsApi.setActive).mockResolvedValue({
       org_id: 'org-2',
       tenant_id: 'tenant-1',
     })
-    vi.mocked(meOrganizationsApi.list).mockImplementation(
-      () => new Promise<OrganizationSummary[]>(() => undefined),
-    )
     const { Wrapper, queryClient } = setup()
     queryClient.setQueryData(['agents'], ['agent-from-org-1'])
-    queryClient.setQueryData(['auth', 'session'], { id: 'user-1' })
     queryClient.setQueryData(organizationQueryKeys.mine, [ALPHA, BETA])
 
     const { result } = renderHook(() => useSwitchActiveOrganization(), { wrapper: Wrapper })
     await act(() => result.current.mutateAsync('org-2'))
 
     expect(meOrganizationsApi.setActive).toHaveBeenCalledWith('org-2')
-    expect(queryClient.getQueryData(['agents'])).toBeUndefined()
-    expect(queryClient.getQueryData(['auth', 'session'])).toEqual({ id: 'user-1' })
+    // Purging before the org subtree unmounts would let mounted observers
+    // refetch previous-org keys; see org-switch-reset.test.tsx.
+    expect(queryClient.getQueryData(['agents'])).toEqual(['agent-from-org-1'])
     const mine = queryClient.getQueryData<OrganizationSummary[]>(organizationQueryKeys.mine)
-    expect(mine?.map((org) => [org.id, org.is_active])).toEqual([
-      ['org-1', false],
-      ['org-2', true],
-    ])
+    expect(mine?.map((org) => org.is_active)).toEqual([true, false])
   })
 
   it('a failed switch keeps caches', async () => {

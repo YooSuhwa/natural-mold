@@ -30,6 +30,7 @@ import { ErrorState } from '@/components/shared/error-state'
 import { FormMode } from './_components/form-mode/form-mode'
 import { RightPanel, type RightTab } from './_components/right-panel/right-panel'
 import { useAgentSettingsDraft } from './_hooks/use-agent-settings-draft'
+import { useRegisterUnsavedOrgDraft } from '@/lib/org-scope/unsaved-drafts'
 
 type LeftTab = 'form' | 'visual'
 
@@ -145,6 +146,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     }
   }, [])
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  useRegisterUnsavedOrgDraft(isDirty)
 
   useEffect(() => {
     if (!isDirty) return

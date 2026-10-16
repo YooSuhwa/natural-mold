@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { useAui } from '@assistant-ui/react'
+import { useAui, useAuiState } from '@assistant-ui/react'
 import type { ResourceContextReference } from '@/lib/chat/context/resource-context'
+import { useRegisterUnsavedOrgDraft } from '@/lib/org-scope/unsaved-drafts'
 import { useSideChat } from './side-chat-context'
 
 /** Keep an unsent side draft when the responsive dialog mounts a new runtime. */
@@ -14,6 +15,10 @@ export function useSideChatDraft(
   const workspace = useSideChat()
   const draft = workspace?.draft
   const isSide = Boolean(conversationId && conversationId === workspace?.sideId)
+  const hasUnsentText = useAuiState(
+    (state) => state.composer.isEditing && state.composer.text.trim() !== '',
+  )
+  useRegisterUnsavedOrgDraft(isSide && hasUnsentText)
   const latest = useRef(references)
   useEffect(() => {
     latest.current = references

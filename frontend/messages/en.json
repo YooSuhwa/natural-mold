@@ -433,7 +433,9 @@
       "current": "Current organization",
       "unavailable": "Company unavailable",
       "switchFailed": "Could not switch organization. Please try again.",
-      "choose": "Choose organization"
+      "choose": "Choose organization",
+      "switching": "Switching organization…",
+      "discardDraftsConfirm": "You have unsaved changes. Switching organization discards them. Switch anyway?"
     },
     "nav": {
       "home": "Home",

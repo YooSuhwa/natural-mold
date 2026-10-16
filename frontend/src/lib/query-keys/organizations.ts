@@ -28,17 +28,19 @@ export const organizationQueryKeys = {
 }
 
 /**
- * Query roots that do not depend on the active organization. Everything else
- * (agents, conversations, credentials, ...) is org-scoped on the backend and
- * must be reset when the active organization changes.
+ * Query roots kept across an organization switch: the session and the user's
+ * own organization list (the switcher needs it while the new org loads).
+ * Everything else — resource lists, org administration (keyed by the previous
+ * org id) and the company directory (the target org may be in another
+ * company) — is cancelled and removed (plan 13.11).
  */
-const ORG_INDEPENDENT_ROOTS: readonly (readonly string[])[] = [
+const RETAINED_ACROSS_ORG_SWITCH: readonly (readonly string[])[] = [
   ['auth'],
   organizationQueryKeys.mine,
-  ['tenant-organizations'],
-  organizationQueryKeys.orgAdminRoot,
 ]
 
-export function isOrgIndependentQueryKey(queryKey: readonly unknown[]): boolean {
-  return ORG_INDEPENDENT_ROOTS.some((root) => root.every((part, index) => queryKey[index] === part))
+export function isRetainedAcrossOrgSwitch(queryKey: readonly unknown[]): boolean {
+  return RETAINED_ACROSS_ORG_SWITCH.some((root) =>
+    root.every((part, index) => queryKey[index] === part),
+  )
 }

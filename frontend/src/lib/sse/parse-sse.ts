@@ -2,6 +2,7 @@ import { fetchEventSource, type EventSourceMessage } from '@microsoft/fetch-even
 import { API_BASE, fireSessionExpired } from '@/lib/api/client'
 import { ApiError, parseApiErrorBody } from '@/lib/api/errors'
 import { csrfStore } from '@/lib/auth/csrf'
+import { withOrgScopeSignal } from '@/lib/org-scope/org-scope-signal'
 
 /** Error thrown when a stream POST/GET returns a non-2xx with a parseable
  *  ``{error: {code, message}}`` body. Carries the structured fields so the
@@ -165,10 +166,12 @@ export function createHeadIndexQueue<T>({
 export async function* streamSSEPost<TEvent extends string>(
   path: string,
   body: Record<string, unknown>,
-  signal: AbortSignal | undefined,
+  callerSignal: AbortSignal | undefined,
   defaultEvent: TEvent,
   options?: StreamSSEPostOptions,
 ): AsyncGenerator<SSEEvent<TEvent>> {
+  // Org switch aborts the stream too (plan 13.11).
+  const signal = withOrgScopeSignal(path, callerSignal)
   // Callback-driven fetchEventSource → generator로 bridge.
   const buffer = createHeadIndexQueue<SSEEvent<TEvent>>()
   let resolver: (() => void) | null = null
@@ -333,9 +336,10 @@ export class StreamHttpError extends Error {
 
 export async function* streamSSEGetResume<TEvent extends string>(
   path: string,
-  signal: AbortSignal | undefined,
+  callerSignal: AbortSignal | undefined,
   options: StreamSSEGetResumeOptions<TEvent>,
 ): AsyncGenerator<SSEEvent<TEvent>> {
+  const signal = withOrgScopeSignal(path, callerSignal)
   const url = new URL(`${API_BASE}${path}`)
   if (options.runId) url.searchParams.set('run_id', options.runId)
   if (options.lastEventId) url.searchParams.set('last_event_id', options.lastEventId)

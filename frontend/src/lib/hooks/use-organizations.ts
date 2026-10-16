@@ -8,7 +8,7 @@ import {
   tenantOrganizationsApi,
   tenantsApi,
 } from '@/lib/api/organizations'
-import { isOrgIndependentQueryKey, organizationQueryKeys } from '@/lib/query-keys/organizations'
+import { organizationQueryKeys } from '@/lib/query-keys/organizations'
 import type {
   CapabilityAssignment,
   CapabilityGrantView,
@@ -18,7 +18,6 @@ import type {
   GroupPatch,
   MemberStatus,
   OrganizationPatch,
-  OrganizationSummary,
   Principal,
   PrincipalSearchType,
   RoleGrantView,
@@ -54,19 +53,14 @@ export function useActiveOrganization() {
   }
 }
 
+/**
+ * POST /api/me/active-org only. The 13.11 reset (gate, unmount, cache/storage
+ * purge, org list update, landing, remount) is sequenced by
+ * OrgContextProvider so nothing from the previous org re-renders or refetches.
+ */
 export function useSwitchActiveOrganization() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: (orgId: string) => meOrganizationsApi.setActive(orgId),
-    onSuccess: async (result) => {
-      qc.setQueryData<OrganizationSummary[]>(organizationQueryKeys.mine, (current) =>
-        current?.map((org) => ({ ...org, is_active: org.id === result.org_id })),
-      )
-      // Reset (not just invalidate) so the previous org's data never flashes
-      // while the new org's data loads.
-      await qc.resetQueries({ predicate: (q) => !isOrgIndependentQueryKey(q.queryKey) })
-      await qc.invalidateQueries({ queryKey: organizationQueryKeys.mine })
-    },
   })
 }
 

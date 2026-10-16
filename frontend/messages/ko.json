@@ -433,7 +433,9 @@
       "current": "현재 조직",
       "unavailable": "사용할 수 없는 회사",
       "switchFailed": "조직을 전환하지 못했습니다. 다시 시도해 주세요.",
-      "choose": "조직 선택"
+      "choose": "조직 선택",
+      "switching": "조직을 전환하는 중입니다…",
+      "discardDraftsConfirm": "저장하지 않은 변경사항이 있습니다. 조직을 전환하면 변경사항이 사라집니다. 전환할까요?"
     },
     "nav": {
       "home": "홈",

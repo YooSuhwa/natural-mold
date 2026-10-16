@@ -1,6 +1,7 @@
 import { render, screen, userEvent, waitFor } from '../../test-utils'
 import { OrganizationSwitcher } from '@/components/layout/organization-switcher'
 import { meOrganizationsApi } from '@/lib/api/organizations'
+import { OrgContextProvider } from '@/lib/providers/org-context-provider'
 import { makeOrganization } from '../../unit/hooks/organization-fixtures'
 
 const toastError = vi.hoisted(() => vi.fn())
@@ -26,6 +27,14 @@ vi.mock('@/components/ui/sidebar', () => ({
   },
 }))
 
+function renderSwitcher() {
+  return render(
+    <OrgContextProvider>
+      <OrganizationSwitcher />
+    </OrgContextProvider>,
+  )
+}
+
 const ALPHA = makeOrganization()
 const BETA = makeOrganization({ id: 'org-2', name: 'Beta', is_default: false, is_active: false })
 const SUSPENDED = makeOrganization({
@@ -43,7 +52,7 @@ describe('OrganizationSwitcher', () => {
 
   it('renders nothing when the user has no organizations', async () => {
     vi.mocked(meOrganizationsApi.list).mockResolvedValue([])
-    const { container } = render(<OrganizationSwitcher />)
+    const { container } = renderSwitcher()
     await waitFor(() => expect(meOrganizationsApi.list).toHaveBeenCalled())
     expect(container).toBeEmptyDOMElement()
   })
@@ -57,7 +66,7 @@ describe('OrganizationSwitcher', () => {
     vi.mocked(meOrganizationsApi.list)
       .mockResolvedValueOnce([ALPHA, BETA, SUSPENDED])
       .mockResolvedValue([{ ...ALPHA, is_active: false }, { ...BETA, is_active: true }, SUSPENDED])
-    render(<OrganizationSwitcher />)
+    renderSwitcher()
 
     const trigger = await screen.findByTestId('organization-switcher-trigger')
     expect(trigger).toHaveTextContent('Alpha')
@@ -75,7 +84,7 @@ describe('OrganizationSwitcher', () => {
 
   it('does not call the API when the current organization is re-selected', async () => {
     vi.mocked(meOrganizationsApi.list).mockResolvedValue([ALPHA, BETA])
-    render(<OrganizationSwitcher />)
+    renderSwitcher()
     await userEvent.click(await screen.findByTestId('organization-switcher-trigger'))
     await userEvent.click(await screen.findByRole('menuitem', { name: /Alpha/ }))
     expect(meOrganizationsApi.setActive).not.toHaveBeenCalled()
@@ -84,7 +93,7 @@ describe('OrganizationSwitcher', () => {
   it('toasts when switching fails', async () => {
     vi.mocked(meOrganizationsApi.list).mockResolvedValue([ALPHA, BETA])
     vi.mocked(meOrganizationsApi.setActive).mockRejectedValue(new Error('forbidden'))
-    render(<OrganizationSwitcher />)
+    renderSwitcher()
     await userEvent.click(await screen.findByTestId('organization-switcher-trigger'))
     await userEvent.click(await screen.findByRole('menuitem', { name: /Beta/ }))
     await waitFor(() =>
@@ -97,7 +106,7 @@ describe('OrganizationSwitcher', () => {
 describe('OrganizationSwitcher without a resolvable active org', () => {
   it('prompts to choose an organization', async () => {
     vi.mocked(meOrganizationsApi.list).mockResolvedValue([{ ...ALPHA, is_active: false }])
-    render(<OrganizationSwitcher />)
+    renderSwitcher()
     expect(await screen.findByTestId('organization-switcher-trigger')).toHaveTextContent(
       '조직 선택',
     )

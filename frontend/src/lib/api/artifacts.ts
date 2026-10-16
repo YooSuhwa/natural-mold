@@ -1,4 +1,4 @@
-import { apiFetch } from './client'
+import { apiFetch, apiFetchBinary } from './client'
 import type {
   ArtifactLibraryPage,
   ArtifactLibraryParams,
@@ -41,9 +41,8 @@ export function getArtifactTextContent(artifactId: string): Promise<ArtifactText
 }
 
 export async function getArtifactArrayBuffer(url: string): Promise<ArrayBuffer> {
-  const response = await fetch(url, { credentials: 'include' })
-  if (!response.ok) throw new Error(`Failed to fetch artifact: ${response.status}`)
-  return response.arrayBuffer()
+  const blob = await apiFetchBinary(url)
+  return blob.arrayBuffer()
 }
 
 export function listArtifactLibrary(
