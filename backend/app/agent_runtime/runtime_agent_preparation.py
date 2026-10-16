@@ -19,6 +19,7 @@ from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.run_secrets import add_run_secrets, collect_secret_values
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
 from app.agent_runtime.runtime_facade_bindings import runtime_attr
+from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.agent_runtime.runtime_preparation import (
     prepare_runtime_components_impl as _prepare_runtime_components_impl,
 )
@@ -176,6 +177,7 @@ async def _prepare_runtime_components(
     scope_offload_backend: bool = False,
 ) -> RuntimeComponents:
     """Build reusable Deep Agents runtime pieces for a parent or child agent."""
+    assert_pre_marker("_prepare_runtime_components")
     if cfg.runtime_profile == "skill_builder":
         return await runtime_attr("_prepare_skill_builder_components")(
             cfg,
@@ -209,6 +211,7 @@ async def _prepare_agent(
     (a) ``ask_user`` 도구 미주입(호출 시 영원히 hang), (b) HiTL ``interrupt_on``
     을 None 으로 강제 override 하여 위험 도구 승인 게이트도 자동 통과.
     """
+    assert_pre_marker("_prepare_agent")
     prepare_started = time.perf_counter()
     last_mark = prepare_started
     timings: dict[str, int] = {}

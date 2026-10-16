@@ -4,6 +4,7 @@ import logging
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
+from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.config import settings
 
 if TYPE_CHECKING:
@@ -90,6 +91,7 @@ async def shutdown_checkpointer() -> None:
 
 def get_checkpointer() -> AsyncPostgresSaver:
     """checkpointer 싱글턴 반환. 초기화 전 호출 시 RuntimeError."""
+    assert_pre_marker("get_checkpointer")
     if _checkpointer is None:
         raise RuntimeError("Checkpointer not initialized. Call init_checkpointer() first.")
     return _checkpointer

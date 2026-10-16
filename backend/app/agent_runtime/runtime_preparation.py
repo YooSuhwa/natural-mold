@@ -12,6 +12,7 @@ from typing import Any
 from langchain_core.tools import BaseTool
 
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
+from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.agent_runtime.runtime_policy_capabilities import STORED_RESERVED_TOOL_NAMES
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
 
@@ -45,6 +46,7 @@ async def prepare_runtime_components_impl(
     bindings: RuntimePreparationBindings,
 ) -> RuntimeComponents:
     """Build standard or trigger components before Deep Agents graph creation."""
+    assert_pre_marker("prepare_runtime_components_impl")
 
     last_mark = bindings.perf_counter()
 

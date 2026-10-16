@@ -4,12 +4,22 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
 
 from app.agent_runtime.runtime_facade_bindings import runtime_attr
+from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.agent_runtime.runtime_preparation_support import (
     RuntimePreparationBindings as _RuntimePreparationBindings,
 )
 from app.config import settings
+
+
+def _guarded_credentials(resolve: Any) -> Any:
+    async def resolve_runtime_credentials(*args: Any, **kwargs: Any) -> Any:
+        assert_pre_marker("resolve_runtime_credentials")
+        return await resolve(*args, **kwargs)
+
+    return resolve_runtime_credentials
 
 
 def _runtime_preparation_bindings() -> _RuntimePreparationBindings:
@@ -40,7 +50,9 @@ def _runtime_preparation_bindings() -> _RuntimePreparationBindings:
         scoped_runtime_backend=runtime_attr("_scoped_runtime_backend"),
         build_skill_runtime_context=runtime_attr("build_skill_runtime_context"),
         runtime_db_session_factory=runtime_attr("_runtime_db_session_factory_impl"),
-        resolve_runtime_credentials=runtime_attr("resolve_runtime_credentials"),
+        resolve_runtime_credentials=_guarded_credentials(
+            runtime_attr("resolve_runtime_credentials")
+        ),
         add_skill_secrets_to_run=runtime_attr("_add_skill_secrets_to_run"),
         create_skill_execute_tool=runtime_attr("_create_skill_execute_tool"),
         build_skills_prompt=runtime_attr("_build_runtime_skills_prompt_impl"),

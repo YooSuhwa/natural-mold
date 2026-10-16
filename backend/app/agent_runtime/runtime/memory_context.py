@@ -11,6 +11,7 @@ import uuid as _uuid
 from typing import Any
 
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ async def _load_memory_context(cfg: AgentConfig) -> tuple[str, list[dict[str, An
     Returns ``(prompt, briefs)`` — ``briefs`` feed the ``moldy.memory_recalled``
     stream-head event so the chat can show which memories informed this run.
     """
+    assert_pre_marker("_load_memory_context")
 
     user_uuid = _parse_uuid(cfg.user_id)
     if user_uuid is None:
