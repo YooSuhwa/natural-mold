@@ -26,7 +26,7 @@ export function OrganizationSwitcher() {
   const { organizations, activeOrganization } = useActiveOrganization()
   const switchOrganization = useSwitchActiveOrganization()
 
-  if (!activeOrganization) return null
+  if (organizations.length === 0) return null
 
   function selectOrganization(orgId: string) {
     if (switchOrganization.isPending || orgId === activeOrganization?.id) return
@@ -35,7 +35,9 @@ export function OrganizationSwitcher() {
     })
   }
 
-  const triggerLabel = t('trigger', { name: activeOrganization.name })
+  const triggerLabel = activeOrganization
+    ? t('trigger', { name: activeOrganization.name })
+    : t('choose')
 
   return (
     <SidebarGroup className="py-0">
@@ -51,10 +53,14 @@ export function OrganizationSwitcher() {
               >
                 <Building2Icon className="size-4" />
                 <span className="flex min-w-0 flex-1 flex-col text-left">
-                  <span className="truncate text-sm font-semibold">{activeOrganization.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {activeOrganization.tenant_name}
+                  <span className="truncate text-sm font-semibold">
+                    {activeOrganization?.name ?? t('choose')}
                   </span>
+                  {activeOrganization ? (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {activeOrganization.tenant_name}
+                    </span>
+                  ) : null}
                 </span>
                 <ChevronsUpDownIcon className="size-4 text-muted-foreground" />
               </DropdownMenuTrigger>
@@ -62,7 +68,7 @@ export function OrganizationSwitcher() {
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>{t('label')}</DropdownMenuLabel>
                   {organizations.map((org) => {
-                    const isActive = org.id === activeOrganization.id
+                    const isActive = org.is_active
                     const isUnavailable = org.tenant_status !== 'active'
                     return (
                       <DropdownMenuItem

@@ -12,10 +12,11 @@ from app.routers.orgs import mutation_request, org_members_context
 from app.schemas.org_assignments import (
     CapabilityAssignment,
     CapabilityGrantView,
+    GrantDirectoryQuery,
     RoleAssignment,
     RoleGrantView,
 )
-from app.schemas.org_groups import DirectoryPage, DirectoryQuery
+from app.schemas.org_groups import DirectoryPage
 from app.services.orgs import capabilities, roles
 from app.services.orgs.info import OrgMutationRequest
 from app.services.orgs.versioning import etag
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/api/orgs/{org_id}", tags=["organization assignments"
 @router.get("/roles", response_model=DirectoryPage[RoleGrantView])
 @authz_policy(SELF)
 async def list_roles(
-    query: Annotated[DirectoryQuery, Query()],
+    query: Annotated[GrantDirectoryQuery, Query()],
     context: OrgControlContext = Depends(org_members_context),
     mutation: OrgMutationRequest = Depends(mutation_request),
 ) -> JSONResponse:
@@ -54,7 +55,7 @@ async def replace_roles(
 @router.get("/capabilities", response_model=DirectoryPage[CapabilityGrantView])
 @authz_policy(SELF)
 async def list_capabilities(
-    query: Annotated[DirectoryQuery, Query()],
+    query: Annotated[GrantDirectoryQuery, Query()],
     context: OrgControlContext = Depends(org_members_context),
     mutation: OrgMutationRequest = Depends(mutation_request),
 ) -> JSONResponse:

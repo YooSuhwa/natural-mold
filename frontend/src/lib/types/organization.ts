@@ -26,6 +26,8 @@ export interface OrganizationSummary {
   tenant_name: string
   tenant_status: TenantStatus
   is_default: boolean
+  /** True for the org the server resolves for this browser's active-org cookie. */
+  is_active: boolean
   roles: OrgRole[]
   capabilities: OrgCapability[]
 }
@@ -86,12 +88,14 @@ export interface TenantOrganizationAuditorSummary {
 }
 
 export interface TenantOrganizationAdminPage {
+  view: 'admin'
   items: TenantOrganizationSummary[]
   next_cursor: string | null
   has_more: boolean
 }
 
 export interface TenantOrganizationAuditorPage {
+  view: 'auditor'
   items: TenantOrganizationAuditorSummary[]
   next_cursor: string | null
   has_more: boolean
@@ -104,10 +108,19 @@ export interface TenantOrganizationPageQuery {
   limit?: number
 }
 
-/** Mirrors backend `InvitationCreated` loosely: only the fields the UI reads are typed. */
+export type InvitationRole = 'member' | 'builder' | 'admin' | 'auditor'
+export type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired'
+
+/** Backend `InvitationCreated`. `token` is a one-time secret: never log or persist it. */
 export interface TenantOrganizationInvitation {
+  id: string
+  email: string
+  role: InvitationRole
+  group_ids: string[]
+  expires_at: string
+  created_at: string
+  status: InvitationStatus
   token: string | null
-  [key: string]: unknown
 }
 
 export type TenantOrganizationAdministratorResult =
@@ -124,5 +137,140 @@ export interface TenantOrganizationCreateResult {
 export function isTenantOrganizationAdminPage(
   page: TenantOrganizationPage,
 ): page is TenantOrganizationAdminPage {
-  return page.items.every((item) => 'status' in item)
+  return page.view === 'admin'
+}
+
+// ----------------------------- organization administration -----------------------------
+
+/** Backend `OrgControlPermission`. */
+export type OrgControlPermission = 'can_manage_members' | 'can_manage_policy'
+export type RegistrationPolicy = 'default_org' | 'invite_only' | 'closed'
+
+export interface OrganizationSettings {
+  default_member_role: DefaultMemberRole
+  allow_public_share_links: boolean
+  registration_policy: RegistrationPolicy | null
+}
+
+/** `GET /api/orgs/{org_id}`. `updated_at` is the org version every org write must echo. */
+export interface OrganizationView {
+  id: string
+  tenant_id: string
+  name: string
+  slug: string
+  status: OrganizationStatus
+  is_default: boolean
+  settings: OrganizationSettings
+  updated_at: string
+  permissions: OrgControlPermission[]
+}
+
+export interface OrganizationPatch {
+  name?: string
+  settings?: Partial<OrganizationSettings>
+}
+
+export interface DirectoryQuery {
+  cursor?: string | null
+  limit?: number
+}
+
+/** Backend `DirectoryPage[...]`; `updated_at` is the current org version. */
+/** Role/capability list query; `principal` narrows to one principal's full grant set. */
+export interface GrantDirectoryQuery extends DirectoryQuery {
+  principal?: Principal | null
+}
+
+/** `GET /api/tenants/{tenant_id}` (subset). `access` is the caller's company authority. */
+export interface TenantOverview {
+  id: string
+  name: string
+  slug: string
+  status: TenantStatus
+  updated_at: string
+  access: 'member' | 'auditor' | 'admin'
+}
+
+export interface DirectoryPage<Entry> {
+  items: Entry[]
+  next_cursor: string | null
+  has_more: boolean
+  updated_at: string
+}
+
+export type MemberStatus = 'active' | 'suspended' | 'removed'
+
+export interface MemberView {
+  user_id: string
+  display_name: string
+  email: string | null
+  status: MemberStatus
+  joined_at: string
+  removed_at: string | null
+}
+
+export interface GroupView {
+  id: string
+  org_id: string
+  name: string
+  description: string | null
+  source: 'manual' | 'idp'
+  created_at: string
+  updated_at: string
+}
+
+export interface GroupCreate {
+  name: string
+  description?: string | null
+}
+
+export interface GroupPatch {
+  name?: string
+  description?: string | null
+}
+
+export interface GroupMemberView {
+  user_id: string
+  display_name: string
+  email: string | null
+  added_at: string
+}
+
+export type RolePrincipal = { type: 'user'; id: string } | { type: 'group'; id: string }
+export type Principal = RolePrincipal | { type: 'organization'; id: string }
+
+export interface RoleGrantView {
+  id: string
+  principal: RolePrincipal
+  role: OrgRole
+  granted_by: string | null
+  granted_at: string
+}
+
+export interface RoleAssignment {
+  principal: RolePrincipal
+  roles: OrgRole[]
+}
+
+export interface CapabilityGrantView {
+  id: string
+  principal: Principal
+  capability: OrgCapability
+  granted_by: string | null
+  granted_at: string
+}
+
+export interface CapabilityAssignment {
+  principal: Principal
+  capabilities: OrgCapability[]
+}
+
+export type PrincipalSearchType = 'user' | 'group' | 'org'
+
+export interface PrincipalSearchView {
+  type: PrincipalSearchType
+  id: string
+  display_name: string
+  email: string | null
+  member_count: number | null
 }

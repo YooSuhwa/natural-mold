@@ -1,81 +1,71 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Provider as JotaiProvider, createStore } from 'jotai'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { meOrganizationsApi, tenantOrganizationsApi } from '@/lib/api/organizations'
+import { ApiError } from '@/lib/api/errors'
+import { meOrganizationsApi, orgAdminApi, tenantOrganizationsApi } from '@/lib/api/organizations'
 import {
-  fallbackActiveOrganization,
-  resolveActiveOrganization,
+  isStaleVersionError,
   useActiveOrganization,
+  useAddOrgMember,
   useRenameTenantOrganization,
   useSwitchActiveOrganization,
 } from '@/lib/hooks/use-organizations'
 import { organizationQueryKeys } from '@/lib/query-keys/organizations'
-import { activeOrganizationIdAtom } from '@/lib/stores/organization-store'
+import type { OrganizationSummary } from '@/lib/types/organization'
 import { makeOrganization } from './organization-fixtures'
 
 vi.mock('@/lib/api/organizations', () => ({
   meOrganizationsApi: { list: vi.fn(), setActive: vi.fn() },
   tenantOrganizationsApi: { rename: vi.fn() },
+  orgAdminApi: { addMember: vi.fn() },
 }))
 
 const ALPHA = makeOrganization()
-const BETA = makeOrganization({ id: 'org-2', name: 'Beta', is_default: false })
+const BETA = makeOrganization({ id: 'org-2', name: 'Beta', is_default: false, is_active: false })
 
 function setup() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  const store = createStore()
   function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <JotaiProvider store={store}>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      </JotaiProvider>
-    )
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
-  return { queryClient, store, Wrapper }
+  return { queryClient, Wrapper }
 }
 
-describe('active organization resolution', () => {
-  it('mirrors the backend fallback order and skips unavailable companies', () => {
-    const suspended = makeOrganization({
-      id: 'org-0',
-      tenant_name: 'Aaa',
-      tenant_status: 'suspended',
-    })
-    expect(fallbackActiveOrganization([BETA, suspended, ALPHA])?.id).toBe('org-1')
-    expect(fallbackActiveOrganization([])).toBeNull()
-  })
-
-  it('prefers the remembered selection only while it is still a membership', () => {
-    expect(resolveActiveOrganization([ALPHA, BETA], 'org-2')?.id).toBe('org-2')
-    expect(resolveActiveOrganization([ALPHA, BETA], 'gone')?.id).toBe('org-1')
-  })
-})
-
 describe('organization hooks', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    window.localStorage.clear()
-  })
+  beforeEach(() => vi.clearAllMocks())
 
-  it('loads my organizations and exposes the active one', async () => {
-    vi.mocked(meOrganizationsApi.list).mockResolvedValue([ALPHA, BETA])
+  it('exposes the server-flagged active organization', async () => {
+    vi.mocked(meOrganizationsApi.list).mockResolvedValue([
+      { ...ALPHA, is_active: false },
+      { ...BETA, is_active: true },
+    ])
     const { Wrapper } = setup()
     const { result } = renderHook(() => useActiveOrganization(), { wrapper: Wrapper })
     await waitFor(() => expect(result.current.organizations).toHaveLength(2))
-    expect(result.current.activeOrganization?.id).toBe('org-1')
+    expect(result.current.activeOrganization?.id).toBe('org-2')
   })
 
-  it('switching remembers the org and resets org-scoped queries only', async () => {
+  it('has no active organization when the server flags none', async () => {
+    vi.mocked(meOrganizationsApi.list).mockResolvedValue([{ ...ALPHA, is_active: false }])
+    const { Wrapper } = setup()
+    const { result } = renderHook(() => useActiveOrganization(), { wrapper: Wrapper })
+    await waitFor(() => expect(result.current.organizations).toHaveLength(1))
+    expect(result.current.activeOrganization).toBeNull()
+  })
+
+  it('switching flips is_active and resets org-scoped queries only', async () => {
     vi.mocked(meOrganizationsApi.setActive).mockResolvedValue({
       org_id: 'org-2',
       tenant_id: 'tenant-1',
     })
-    const { Wrapper, queryClient, store } = setup()
+    vi.mocked(meOrganizationsApi.list).mockImplementation(
+      () => new Promise<OrganizationSummary[]>(() => undefined),
+    )
+    const { Wrapper, queryClient } = setup()
     queryClient.setQueryData(['agents'], ['agent-from-org-1'])
     queryClient.setQueryData(['auth', 'session'], { id: 'user-1' })
     queryClient.setQueryData(organizationQueryKeys.mine, [ALPHA, BETA])
@@ -84,24 +74,23 @@ describe('organization hooks', () => {
     await act(() => result.current.mutateAsync('org-2'))
 
     expect(meOrganizationsApi.setActive).toHaveBeenCalledWith('org-2')
-    expect(store.get(activeOrganizationIdAtom)).toBe('org-2')
     expect(queryClient.getQueryData(['agents'])).toBeUndefined()
     expect(queryClient.getQueryData(['auth', 'session'])).toEqual({ id: 'user-1' })
-    expect(queryClient.getQueryData(organizationQueryKeys.mine)).toEqual([ALPHA, BETA])
+    const mine = queryClient.getQueryData<OrganizationSummary[]>(organizationQueryKeys.mine)
+    expect(mine?.map((org) => [org.id, org.is_active])).toEqual([
+      ['org-1', false],
+      ['org-2', true],
+    ])
   })
 
-  it('a failed switch keeps the previous selection and caches', async () => {
+  it('a failed switch keeps caches', async () => {
     vi.mocked(meOrganizationsApi.setActive).mockRejectedValue(new Error('forbidden'))
-    const { Wrapper, queryClient, store } = setup()
-    store.set(activeOrganizationIdAtom, 'org-1')
+    const { Wrapper, queryClient } = setup()
     queryClient.setQueryData(['agents'], ['kept'])
-
     const { result } = renderHook(() => useSwitchActiveOrganization(), { wrapper: Wrapper })
     await act(async () => {
       await expect(result.current.mutateAsync('org-2')).rejects.toThrow('forbidden')
     })
-
-    expect(store.get(activeOrganizationIdAtom)).toBe('org-1')
     expect(queryClient.getQueryData(['agents'])).toEqual(['kept'])
   })
 
@@ -138,5 +127,22 @@ describe('organization hooks', () => {
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: organizationQueryKeys.tenantAll('tenant-1'),
     })
+  })
+
+  it('org writes refetch the org subtree even when the version is stale', async () => {
+    const stale = new ApiError(409, 'stale_version', 'stale')
+    vi.mocked(orgAdminApi.addMember).mockRejectedValue(stale)
+    const { Wrapper, queryClient } = setup()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const { result } = renderHook(() => useAddOrgMember('org-1'), { wrapper: Wrapper })
+    await act(async () => {
+      await expect(result.current.mutateAsync({ userId: 'user-9', version: 'v1' })).rejects.toBe(
+        stale,
+      )
+    })
+    expect(orgAdminApi.addMember).toHaveBeenCalledWith('org-1', 'user-9', 'v1')
+    expect(isStaleVersionError(stale)).toBe(true)
+    expect(isStaleVersionError(new Error('x'))).toBe(false)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: organizationQueryKeys.orgAll('org-1') })
   })
 })

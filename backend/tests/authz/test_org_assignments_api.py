@@ -107,3 +107,42 @@ async def test_assignment_reads_and_writes_are_admin_only(
         response = await raw_client.get(f"/api/orgs/{org_fixture.first}/{resource}")
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "permission_required"
+
+
+async def test_grant_lists_filter_to_one_principals_full_set(
+    db: AsyncSession,
+    raw_client: AsyncClient,
+    org_fixture: OrgFixture,
+) -> None:
+    # Given: an admin user plus a group granted the auditor role.
+    await grant_admin(db, org_fixture)
+    group = Group(org_id=org_fixture.first, tenant_id=org_fixture.tenant, name="Filter target")
+    db.add(group)
+    await db.commit()
+    base = f"/api/orgs/{org_fixture.first}"
+    original = await raw_client.get(f"{base}/roles")
+    headers = {**org_fixture.session.headers(), "If-Match": original.headers["etag"]}
+    assigned = await raw_client.put(
+        f"{base}/roles",
+        json={"principal": {"type": "group", "id": str(group.id)}, "roles": ["auditor"]},
+        headers=headers,
+    )
+    assert assigned.status_code == 200
+    # When: each list is filtered to the group, page size 1 so paging must be honoured.
+    group_filter = f"principal_type=group&principal_id={group.id}"
+    first = await raw_client.get(f"{base}/roles?{group_filter}&limit=1")
+    # Then: only that principal's grants are returned.
+    assert first.status_code == 200
+    rows = first.json()["items"]
+    assert [(row["principal"]["id"], row["role"]) for row in rows] == [(str(group.id), "auditor")]
+    assert first.json()["has_more"] is False
+    user_rows = (
+        await raw_client.get(f"{base}/roles?principal_type=user&principal_id={org_fixture.user.id}")
+    ).json()["items"]
+    assert {row["role"] for row in user_rows} == {"admin"}
+    assert all(row["principal"]["type"] == "user" for row in user_rows)
+    capabilities = await raw_client.get(f"{base}/capabilities?{group_filter}")
+    assert capabilities.status_code == 200 and capabilities.json()["items"] == []
+    # And: a half-specified filter is rejected rather than silently ignored.
+    partial = await raw_client.get(f"{base}/roles?principal_type=group")
+    assert partial.status_code == 422

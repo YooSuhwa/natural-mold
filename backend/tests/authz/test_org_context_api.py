@@ -60,6 +60,39 @@ async def test_list_includes_only_current_company_and_org_memberships(
     }
 
 
+async def test_list_marks_exactly_the_org_the_cookie_resolves_to(
+    raw_client: AsyncClient,
+    org_fixture: OrgFixture,
+) -> None:
+    # Given: the member switches to the second organization.
+    switched = await raw_client.post(
+        "/api/me/active-org",
+        json={"org_id": str(org_fixture.second)},
+        headers=org_fixture.session.headers(),
+    )
+    assert switched.status_code == 200
+    raw_client.cookies.set(ACTIVE_ORG_COOKIE, str(org_fixture.second))
+    # When: the self navigation list is read with that cookie.
+    rows = (await raw_client.get("/api/me/organizations")).json()
+    # Then: only the selected organization is flagged active.
+    assert {row["id"]: row["is_active"] for row in rows} == {
+        str(org_fixture.first): False,
+        str(org_fixture.second): True,
+    }
+    # And: without a cookie the saved preference (last_active_org_id) is the active org.
+    raw_client.cookies.delete(ACTIVE_ORG_COOKIE)
+    fallback = (await raw_client.get("/api/me/organizations")).json()
+    assert {row["id"]: row["is_active"] for row in fallback} == {
+        str(org_fixture.first): False,
+        str(org_fixture.second): True,
+    }
+    # And: a cookie the user cannot use marks nothing active instead of failing the list.
+    raw_client.cookies.set(ACTIVE_ORG_COOKIE, str(uuid4()))
+    response = await raw_client.get("/api/me/organizations")
+    assert response.status_code == 200
+    assert not any(row["is_active"] for row in response.json())
+
+
 async def test_switch_requires_csrf_before_target_lookup(
     raw_client: AsyncClient,
     org_fixture: OrgFixture,

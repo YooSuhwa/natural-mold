@@ -9,8 +9,8 @@ from app.authz.org_assignment_queries import role_query
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
 from app.authz.org_principals import PrincipalTarget, validate_principal
 from app.models.organization import OrganizationRoleGrant
-from app.schemas.org_assignments import RoleAssignment, RoleGrantView
-from app.schemas.org_groups import DirectoryPage, DirectoryQuery
+from app.schemas.org_assignments import GrantDirectoryQuery, RoleAssignment, RoleGrantView
+from app.schemas.org_groups import DirectoryPage
 from app.services.orgs.assignment_common import AssignmentWrite, finish_assignment_write
 from app.services.orgs.groups import members_write_context
 from app.services.orgs.info import OrgMutationRequest
@@ -31,7 +31,7 @@ def role_view(row: OrganizationRoleGrant) -> RoleGrantView:
 
 
 async def list_roles(
-    db: AsyncSession, context: OrgControlContext, query: DirectoryQuery
+    db: AsyncSession, context: OrgControlContext, query: GrantDirectoryQuery
 ) -> DirectoryPage[RoleGrantView]:
     context = await load_org_control(
         db,
@@ -42,6 +42,11 @@ async def list_roles(
         ),
     )
     statement = role_query(context)
+    if query.principal_type is not None and query.principal_id is not None:
+        statement = statement.where(
+            OrganizationRoleGrant.principal_type == query.principal_type,
+            OrganizationRoleGrant.principal_id == query.principal_id,
+        )
     position = decode_cursor(query.cursor, context.organization.id)
     if position is not None:
         statement = statement.where(OrganizationRoleGrant.id > position)

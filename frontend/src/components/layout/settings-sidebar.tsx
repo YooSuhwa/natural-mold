@@ -7,6 +7,8 @@ import {
   ArrowLeftIcon,
   BarChart3Icon,
   BrainIcon,
+  Building2Icon,
+  BuildingIcon,
   CalendarClockIcon,
   Code2Icon,
   FilesIcon,
@@ -14,10 +16,12 @@ import {
   KeyRoundIcon,
   MonitorCogIcon,
   ShieldCheckIcon,
+  ShieldIcon,
   SlidersHorizontalIcon,
   StoreIcon,
   UsersRoundIcon,
   UserIcon,
+  UsersIcon,
 } from 'lucide-react'
 
 import { SidebarBrandHeader } from '@/components/layout/sidebar-brand-header'
@@ -36,7 +40,13 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { orgAccess } from '@/features/organizations/lib/access'
 import { useSession } from '@/lib/auth/session'
+import {
+  useActiveOrganization,
+  useOrganizationInfo,
+  useTenantOverview,
+} from '@/lib/hooks/use-organizations'
 import { useTriggerSummary } from '@/lib/hooks/use-triggers'
 
 export function SettingsSidebar() {
@@ -46,6 +56,12 @@ export function SettingsSidebar() {
   const tSettings = useTranslations('appSettings')
   const { data: user } = useSession()
   const { data: triggerSummary } = useTriggerSummary()
+  const { activeOrganization } = useActiveOrganization()
+  const { data: organizationInfo } = useOrganizationInfo(activeOrganization?.id)
+  const { data: tenantOverview } = useTenantOverview(activeOrganization?.tenant_id)
+  const access = orgAccess(activeOrganization, organizationInfo?.permissions)
+  // Plain company members get 403 from the directory; hide it once that is known.
+  const showCompanyDirectory = tenantOverview?.access !== 'member'
 
   const baseSections: SidebarNavSectionConfig[] = [
     {
@@ -83,6 +99,50 @@ export function SettingsSidebar() {
     },
   ]
 
+  const organizationSections: SidebarNavSectionConfig[] = activeOrganization
+    ? [
+        {
+          label: tSettings('nav.organization'),
+          items: [
+            {
+              href: '/settings/organization',
+              label: tSettings('nav.organizationSettings'),
+              icon: Building2Icon,
+              exact: true,
+            },
+            {
+              href: '/settings/organization/members',
+              label: tSettings('nav.organizationMembers'),
+              icon: UsersIcon,
+            },
+            {
+              href: '/settings/organization/groups',
+              label: tSettings('nav.organizationGroups'),
+              icon: UsersRoundIcon,
+            },
+            ...(access.canReadGrants
+              ? [
+                  {
+                    href: '/settings/organization/roles',
+                    label: tSettings('nav.organizationRoles'),
+                    icon: ShieldIcon,
+                  },
+                ]
+              : []),
+            ...(showCompanyDirectory
+              ? [
+                  {
+                    href: '/settings/company',
+                    label: tSettings('nav.companyOrganizations'),
+                    icon: BuildingIcon,
+                  },
+                ]
+              : []),
+          ],
+        },
+      ]
+    : []
+
   const adminSections: SidebarNavSectionConfig[] = user?.is_super_user
     ? [
         {
@@ -113,7 +173,7 @@ export function SettingsSidebar() {
       ]
     : []
 
-  const sections = [...baseSections, ...adminSections]
+  const sections = [...baseSections, ...organizationSections, ...adminSections]
   const activeMenuClass = 'moldy-sidebar-nav-item'
   const isSidebarCollapsed = state === 'collapsed'
 

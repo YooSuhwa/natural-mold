@@ -6,6 +6,7 @@ vi.mock('@/lib/api/client', () => ({ apiFetch }))
 
 import {
   meOrganizationsApi,
+  orgAdminApi,
   organizationVersionHeader,
   tenantOrganizationsApi,
 } from '@/lib/api/organizations'
@@ -76,5 +77,73 @@ describe('tenantOrganizationsApi', () => {
       method: 'POST',
       headers: ifMatch,
     })
+  })
+})
+
+describe('orgAdminApi', () => {
+  beforeEach(() => apiFetch.mockReset())
+  const ifMatch = { 'If-Match': '"v1"' }
+
+  it('reads org info and paged directories with encoded ids', async () => {
+    await orgAdminApi.get('org/1')
+    expect(apiFetch).toHaveBeenLastCalledWith('/api/orgs/org%2F1')
+    await orgAdminApi.listMembers('org-1', { cursor: 'c1', limit: 10 })
+    expect(apiFetch).toHaveBeenLastCalledWith('/api/orgs/org-1/members?cursor=c1&limit=10')
+    await orgAdminApi.listGroupMembers('org-1', 'g/1')
+    expect(apiFetch).toHaveBeenLastCalledWith('/api/orgs/org-1/groups/g%2F1/members')
+  })
+
+  it('sends the org version on every write', async () => {
+    await orgAdminApi.update('org-1', { name: 'N' }, 'v1')
+    expect(apiFetch).toHaveBeenLastCalledWith('/api/orgs/org-1', {
+      method: 'PATCH',
+      headers: ifMatch,
+      body: JSON.stringify({ name: 'N' }),
+    })
+    await orgAdminApi.setMemberStatus('org-1', 'u1', 'suspended', 'v1')
+    expect(apiFetch).toHaveBeenLastCalledWith('/api/orgs/org-1/members/u1', {
+      method: 'PATCH',
+      headers: ifMatch,
+      body: JSON.stringify({ status: 'suspended' }),
+    })
+    await orgAdminApi.removeMember('org-1', 'u1', 'v1')
+    expect(apiFetch).toHaveBeenLastCalledWith('/api/orgs/org-1/members/u1', {
+      method: 'DELETE',
+      headers: ifMatch,
+    })
+    await orgAdminApi.replaceRoles(
+      'org-1',
+      { principal: { type: 'group', id: 'g1' }, roles: ['builder'] },
+      'v1',
+    )
+    expect(apiFetch).toHaveBeenLastCalledWith('/api/orgs/org-1/roles', {
+      method: 'PUT',
+      headers: ifMatch,
+      body: JSON.stringify({ principal: { type: 'group', id: 'g1' }, roles: ['builder'] }),
+    })
+    await orgAdminApi.removeGroupMember('org-1', 'g1', 'u1', 'v1')
+    expect(apiFetch).toHaveBeenLastCalledWith('/api/orgs/org-1/groups/g1/members/u1', {
+      method: 'DELETE',
+      headers: ifMatch,
+    })
+  })
+
+  it('filters grant lists to one principal', async () => {
+    await orgAdminApi.listRoles('org-1', { principal: { type: 'group', id: 'g1' }, cursor: 'c2' })
+    expect(apiFetch).toHaveBeenLastCalledWith(
+      '/api/orgs/org-1/roles?principal_type=group&principal_id=g1&cursor=c2',
+    )
+    await orgAdminApi.listCapabilities('org-1', {
+      principal: { type: 'organization', id: 'org-1' },
+      limit: 200,
+    })
+    expect(apiFetch).toHaveBeenLastCalledWith(
+      '/api/orgs/org-1/capabilities?principal_type=organization&principal_id=org-1&limit=200',
+    )
+  })
+
+  it('searches principals with a type filter', async () => {
+    await orgAdminApi.searchPrincipals('org-1', 'kim', ['user', 'group'])
+    expect(apiFetch).toHaveBeenLastCalledWith('/api/orgs/org-1/principals?q=kim&types=user%2Cgroup')
   })
 })

@@ -1,9 +1,9 @@
 """Self organization navigation; mutable cookie selection requires CSRF."""
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.cookies import set_active_org_cookie
+from app.auth.cookies import ACTIVE_ORG_COOKIE, set_active_org_cookie
 from app.authz.policies import SELF, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.schemas.organization import (
@@ -19,10 +19,13 @@ router = APIRouter(prefix="/api/me", tags=["organizations"])
 @router.get("/organizations", response_model=list[OrganizationSummary])
 @authz_policy(SELF)
 async def list_organizations(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[OrganizationSummary]:
-    return await org_service.list_user_organizations(db, user.id)
+    return await org_service.list_user_organizations(
+        db, user, active_cookie=request.cookies.get(ACTIVE_ORG_COOKIE)
+    )
 
 
 @router.post(

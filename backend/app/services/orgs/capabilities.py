@@ -7,8 +7,12 @@ from app.authz.org_assignment_queries import capability_query
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
 from app.authz.org_principals import PrincipalTarget, validate_principal
 from app.models.organization_group import OrgCapabilityGrant
-from app.schemas.org_assignments import CapabilityAssignment, CapabilityGrantView
-from app.schemas.org_groups import DirectoryPage, DirectoryQuery
+from app.schemas.org_assignments import (
+    CapabilityAssignment,
+    CapabilityGrantView,
+    GrantDirectoryQuery,
+)
+from app.schemas.org_groups import DirectoryPage
 from app.services.orgs.assignment_common import AssignmentWrite, finish_assignment_write
 from app.services.orgs.groups import members_write_context
 from app.services.orgs.info import OrgMutationRequest
@@ -29,7 +33,7 @@ def capability_view(row: OrgCapabilityGrant) -> CapabilityGrantView:
 
 
 async def list_capabilities(
-    db: AsyncSession, context: OrgControlContext, query: DirectoryQuery
+    db: AsyncSession, context: OrgControlContext, query: GrantDirectoryQuery
 ) -> DirectoryPage[CapabilityGrantView]:
     context = await load_org_control(
         db,
@@ -40,6 +44,11 @@ async def list_capabilities(
         ),
     )
     statement = capability_query(context)
+    if query.principal_type is not None and query.principal_id is not None:
+        statement = statement.where(
+            OrgCapabilityGrant.principal_type == query.principal_type,
+            OrgCapabilityGrant.principal_id == query.principal_id,
+        )
     position = decode_cursor(query.cursor, context.organization.id)
     if position is not None:
         statement = statement.where(OrgCapabilityGrant.id > position)

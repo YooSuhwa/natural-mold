@@ -68,6 +68,7 @@ class TenantOrganizationAuditorSummary(BaseModel):
 class TenantOrganizationAuditorPage(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    view: Literal["auditor"] = "auditor"
     items: tuple[TenantOrganizationAuditorSummary, ...]
     next_cursor: str | None
     has_more: bool
@@ -116,6 +117,7 @@ class TenantOrganizationSummary(BaseModel):
 class TenantOrganizationAdminPage(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    view: Literal["admin"] = "admin"
     items: tuple[TenantOrganizationSummary, ...]
     next_cursor: str | None
     has_more: bool

@@ -27,18 +27,18 @@ vi.mock('@/components/ui/sidebar', () => ({
 }))
 
 const ALPHA = makeOrganization()
-const BETA = makeOrganization({ id: 'org-2', name: 'Beta', is_default: false })
+const BETA = makeOrganization({ id: 'org-2', name: 'Beta', is_default: false, is_active: false })
 const SUSPENDED = makeOrganization({
   id: 'org-3',
   name: 'Gamma',
   tenant_name: 'Other Co',
   tenant_status: 'suspended',
+  is_active: false,
 })
 
 describe('OrganizationSwitcher', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    window.localStorage.clear()
   })
 
   it('renders nothing when the user has no organizations', async () => {
@@ -54,6 +54,9 @@ describe('OrganizationSwitcher', () => {
       org_id: 'org-2',
       tenant_id: 'tenant-1',
     })
+    vi.mocked(meOrganizationsApi.list)
+      .mockResolvedValueOnce([ALPHA, BETA, SUSPENDED])
+      .mockResolvedValue([{ ...ALPHA, is_active: false }, { ...BETA, is_active: true }, SUSPENDED])
     render(<OrganizationSwitcher />)
 
     const trigger = await screen.findByTestId('organization-switcher-trigger')
@@ -88,5 +91,15 @@ describe('OrganizationSwitcher', () => {
       expect(toastError).toHaveBeenCalledWith('조직을 전환하지 못했습니다. 다시 시도해 주세요.'),
     )
     expect(screen.getByTestId('organization-switcher-trigger')).toHaveTextContent('Alpha')
+  })
+})
+
+describe('OrganizationSwitcher without a resolvable active org', () => {
+  it('prompts to choose an organization', async () => {
+    vi.mocked(meOrganizationsApi.list).mockResolvedValue([{ ...ALPHA, is_active: false }])
+    render(<OrganizationSwitcher />)
+    expect(await screen.findByTestId('organization-switcher-trigger')).toHaveTextContent(
+      '조직 선택',
+    )
   })
 })

@@ -11,6 +11,7 @@ export function makeOrganization(
     tenant_name: 'Hancom',
     tenant_status: 'active',
     is_default: true,
+    is_active: true,
     roles: ['admin'],
     capabilities: [],
     ...overrides,

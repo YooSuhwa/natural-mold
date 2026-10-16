@@ -202,6 +202,229 @@
       "skipToMain": "본문으로 건너뛰기"
     }
   },
+  "orgAdmin": {
+    "common": {
+      "noOrganization": "선택된 조직이 없습니다",
+      "noOrganizationDescription": "사이드바에서 조직을 선택하거나 조직 초대를 받아 주세요.",
+      "previous": "이전",
+      "next": "다음",
+      "cancel": "취소",
+      "save": "저장",
+      "close": "닫기"
+    },
+    "errors": {
+      "invalid_cursor": "목록 위치 정보가 올바르지 않습니다. 처음부터 다시 불러와 주세요.",
+      "stale_version": "다른 사람이 먼저 변경했습니다. 최신 내용을 불러왔으니 다시 시도해 주세요.",
+      "organization_archive_name_mismatch": "조직 이름이 일치하지 않습니다.",
+      "organization_restore_expired": "조직 복원 가능 기간이 지났습니다.",
+      "default_organization_archive_forbidden": "기본 조직은 보관할 수 없습니다.",
+      "last_admin": "마지막 관리자는 제거하거나 강등할 수 없습니다.",
+      "last_organization": "회사의 마지막 조직은 보관할 수 없습니다.",
+      "permission_required": "이 작업을 할 권한이 없습니다.",
+      "policy_locked": "회사 정책으로 잠겨 있어 변경할 수 없습니다.",
+      "conflict": "현재 상태와 충돌해 처리하지 못했습니다.",
+      "not_found": "대상을 찾을 수 없습니다.",
+      "forbidden": "권한이 없습니다.",
+      "generic": "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요."
+    },
+    "picker": {
+      "placeholder": "이름 또는 이메일로 검색",
+      "hint": "두 글자 이상 입력하세요.",
+      "searching": "검색 중...",
+      "empty": "검색 결과가 없습니다.",
+      "type": {
+        "user": "사용자",
+        "group": "그룹",
+        "org": "조직 전체"
+      }
+    },
+    "settings": {
+      "title": "조직 설정",
+      "description": "현재 조직의 이름과 보관 상태를 관리합니다.",
+      "readOnly": "조직 관리자만 변경할 수 있습니다.",
+      "rename": {
+        "title": "조직 이름",
+        "description": "구성원에게 보이는 조직 이름입니다.",
+        "label": "이름",
+        "slug": "주소 식별자: {slug}",
+        "submit": "이름 저장",
+        "saved": "조직 이름을 저장했습니다."
+      },
+      "lifecycle": {
+        "title": "보관",
+        "description": "보관한 조직은 회사 조직 목록에서 기간 내에 복원할 수 있습니다."
+      },
+      "archive": {
+        "description": "조직을 보관하면 구성원이 더 이상 이 조직을 사용할 수 없습니다.",
+        "defaultForbidden": "기본 조직은 보관할 수 없습니다.",
+        "open": "조직 보관",
+        "title": "조직을 보관할까요?",
+        "confirmDescription": "확인을 위해 조직 이름을 정확히 입력해 주세요.",
+        "confirmLabel": "조직 이름 입력: {name}",
+        "submit": "보관",
+        "done": "조직을 보관했습니다."
+      },
+      "restore": {
+        "description": "이 조직은 보관된 상태입니다.",
+        "submit": "조직 복원",
+        "done": "조직을 복원했습니다."
+      }
+    },
+    "members": {
+      "title": "멤버",
+      "description": "조직 구성원을 조회하고 관리합니다.",
+      "add": {
+        "title": "멤버 추가",
+        "description": "회사 사용자 중에서 검색해 조직에 추가합니다.",
+        "submit": "추가",
+        "done": "멤버를 추가했습니다."
+      },
+      "list": {
+        "title": "구성원",
+        "empty": "구성원이 없습니다.",
+        "name": "이름",
+        "status": "상태",
+        "joined": "참여일",
+        "actions": "작업"
+      },
+      "status": {
+        "active": "활성",
+        "suspended": "정지",
+        "removed": "제거됨"
+      },
+      "actions": {
+        "suspend": "정지",
+        "reactivate": "재활성화",
+        "remove": "제거"
+      },
+      "remove": {
+        "title": "멤버를 제거할까요?",
+        "description": "{name} 님을 조직에서 제거합니다. 사용자 계정은 삭제되지 않습니다."
+      }
+    },
+    "groups": {
+      "title": "그룹",
+      "description": "조직 그룹과 그룹 구성원을 관리합니다.",
+      "list": {
+        "title": "그룹 목록",
+        "empty": "그룹이 없습니다."
+      },
+      "source": {
+        "manual": "직접 관리",
+        "idp": "외부 연동"
+      },
+      "create": {
+        "open": "그룹 만들기",
+        "title": "새 그룹"
+      },
+      "edit": {
+        "open": "편집",
+        "title": "그룹 편집"
+      },
+      "delete": {
+        "open": "삭제",
+        "title": "그룹을 삭제할까요?",
+        "description": "{name} 그룹과 그룹에 부여된 역할이 삭제됩니다."
+      },
+      "form": {
+        "name": "그룹 이름",
+        "description": "설명"
+      },
+      "members": {
+        "toggle": "구성원",
+        "empty": "그룹 구성원이 없습니다.",
+        "add": "그룹에 추가",
+        "remove": "빼기"
+      }
+    },
+    "roles": {
+      "title": "역할 및 권한",
+      "description": "사용자와 그룹에 조직 역할과 기능 권한을 부여합니다.",
+      "rowLegend": "{name} ({type}) 권한",
+      "saveFor": "{name} 저장",
+      "loadFailed": "전체 권한 목록을 불러오지 못했습니다.",
+      "noAccess": "조직 관리자만 볼 수 있습니다.",
+      "pick": "선택",
+      "empty": "부여된 항목이 없습니다.",
+      "saved": "변경 사항을 저장했습니다.",
+      "roleSection": {
+        "title": "역할",
+        "description": "관리자, 빌더, 감사자 역할을 부여합니다."
+      },
+      "capabilitySection": {
+        "title": "기능 권한",
+        "description": "에이전트·도구 생성 등 개별 기능 권한을 부여합니다."
+      },
+      "role": {
+        "admin": "관리자",
+        "builder": "빌더",
+        "auditor": "감사자"
+      },
+      "capability": {
+        "cap_create_agent": "에이전트 만들기",
+        "cap_create_skill": "스킬 만들기",
+        "cap_create_tool": "도구 만들기",
+        "cap_register_mcp": "MCP 서버 등록",
+        "cap_connect_database": "데이터베이스 연결",
+        "cap_share_org_wide": "조직 전체 공유",
+        "cap_publish_marketplace": "마켓플레이스 게시"
+      },
+      "principal": {
+        "user": "사용자",
+        "group": "그룹",
+        "organization": "조직 전체"
+      }
+    },
+    "company": {
+      "title": "회사 조직 목록",
+      "description": "회사에 속한 조직을 조회하고 새 조직을 만듭니다.",
+      "list": {
+        "title": "{company}의 조직",
+        "adminView": "회사 관리자 보기",
+        "auditorView": "회사 감사자 보기 (요약 정보만 표시)",
+        "empty": "조직이 없습니다.",
+        "name": "이름",
+        "status": "상태",
+        "members": "구성원 수",
+        "actions": "작업",
+        "default": "기본 조직"
+      },
+      "status": {
+        "active": "활성",
+        "suspended": "정지",
+        "archived": "보관됨"
+      },
+      "restore": "복원",
+      "restoreDone": "조직을 복원했습니다.",
+      "create": {
+        "open": "조직 만들기",
+        "title": "새 조직",
+        "description": "회사에 새 조직을 만듭니다.",
+        "name": "조직 이름",
+        "defaultRole": "기본 구성원 역할",
+        "role": {
+          "member": "멤버",
+          "builder": "빌더"
+        },
+        "adminEmail": "관리자 이메일 (선택)",
+        "adminEmailHint": "회사 사용자가 아니면 초대가 발송됩니다.",
+        "submit": "만들기"
+      },
+      "created": {
+        "title": "조직을 만들었습니다",
+        "description": "{name} 조직이 생성되었습니다.",
+        "noAdministrator": "지정된 관리자가 없습니다.",
+        "memberAdministrator": "기존 회사 사용자를 관리자로 지정했습니다.",
+        "invitationSent": "{email} 님에게 관리자 초대를 만들었습니다.",
+        "invitationExpires": "초대 만료: {date}",
+        "tokenOnce": "초대 코드는 지금 한 번만 복사할 수 있습니다. 안전한 경로로만 전달해 주세요.",
+        "copyToken": "초대 코드 복사",
+        "tokenCopied": "초대 코드를 복사했습니다.",
+        "tokenCopyFailed": "초대 코드를 복사하지 못했습니다.",
+        "tokenUnavailable": "초대 코드가 응답에 포함되지 않았습니다."
+      }
+    }
+  },
   "sidebar": {
     "brand": "Moldy",
     "orgSwitcher": {
@@ -209,7 +432,8 @@
       "trigger": "현재 조직: {name} (전환)",
       "current": "현재 조직",
       "unavailable": "사용할 수 없는 회사",
-      "switchFailed": "조직을 전환하지 못했습니다. 다시 시도해 주세요."
+      "switchFailed": "조직을 전환하지 못했습니다. 다시 시도해 주세요.",
+      "choose": "조직 선택"
     },
     "nav": {
       "home": "홈",
@@ -3920,7 +4144,13 @@
       "marketplaceAdmin": "운영자 관리",
       "systemCredentials": "시스템 자격증명",
       "systemLlm": "시스템 LLM 설정",
-      "adminAudit": "전체 활동 기록"
+      "adminAudit": "전체 활동 기록",
+      "organization": "조직",
+      "organizationSettings": "조직 설정",
+      "organizationMembers": "멤버",
+      "organizationGroups": "그룹",
+      "organizationRoles": "역할 및 권한",
+      "companyOrganizations": "회사 조직 목록"
     },
     "profile": {
       "title": "프로필",

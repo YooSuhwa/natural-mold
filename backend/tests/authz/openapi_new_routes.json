@@ -817,6 +817,44 @@
             }
           },
           {
+            "in": "query",
+            "name": "principal_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "user",
+                    "group",
+                    "organization"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "principal_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal Id"
+            }
+          },
+          {
             "in": "header",
             "name": "If-Match",
             "required": false,
@@ -2353,6 +2391,44 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "principal_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "user",
+                    "group",
+                    "organization"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "principal_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Principal Id"
             }
           },
           {
@@ -6546,6 +6622,11 @@
           "title": "Id",
           "type": "string"
         },
+        "is_active": {
+          "default": false,
+          "title": "Is Active",
+          "type": "boolean"
+        },
         "is_default": {
           "title": "Is Default",
           "type": "boolean"
@@ -7637,6 +7718,12 @@
             }
           ],
           "title": "Next Cursor"
+        },
+        "view": {
+          "const": "admin",
+          "default": "admin",
+          "title": "View",
+          "type": "string"
         }
       },
       "required": [
@@ -7718,6 +7805,12 @@
             }
           ],
           "title": "Next Cursor"
+        },
+        "view": {
+          "const": "auditor",
+          "default": "auditor",
+          "title": "View",
+          "type": "string"
         }
       },
       "required": [

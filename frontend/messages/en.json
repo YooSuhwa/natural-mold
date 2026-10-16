@@ -202,6 +202,229 @@
       "skipToMain": "Skip to main content"
     }
   },
+  "orgAdmin": {
+    "common": {
+      "noOrganization": "No organization selected",
+      "noOrganizationDescription": "Pick an organization in the sidebar or accept an organization invitation.",
+      "previous": "Previous",
+      "next": "Next",
+      "cancel": "Cancel",
+      "save": "Save",
+      "close": "Close"
+    },
+    "errors": {
+      "invalid_cursor": "The list position is invalid. Please reload from the start.",
+      "stale_version": "Someone else changed this first. The latest data was reloaded; please try again.",
+      "organization_archive_name_mismatch": "The organization name does not match.",
+      "organization_restore_expired": "The restore window for this organization has expired.",
+      "default_organization_archive_forbidden": "The default organization cannot be archived.",
+      "last_admin": "The last administrator cannot be removed or demoted.",
+      "last_organization": "The company's last organization cannot be archived.",
+      "permission_required": "You do not have permission to do this.",
+      "policy_locked": "This is locked by company policy.",
+      "conflict": "This conflicts with the current state.",
+      "not_found": "The target could not be found.",
+      "forbidden": "Access denied.",
+      "generic": "The request could not be completed. Please try again later."
+    },
+    "picker": {
+      "placeholder": "Search by name or email",
+      "hint": "Type at least two characters.",
+      "searching": "Searching...",
+      "empty": "No results.",
+      "type": {
+        "user": "User",
+        "group": "Group",
+        "org": "Whole organization"
+      }
+    },
+    "settings": {
+      "title": "Organization settings",
+      "description": "Manage the current organization's name and archive state.",
+      "readOnly": "Only organization administrators can change this.",
+      "rename": {
+        "title": "Organization name",
+        "description": "The name members see.",
+        "label": "Name",
+        "slug": "Identifier: {slug}",
+        "submit": "Save name",
+        "saved": "Organization name saved."
+      },
+      "lifecycle": {
+        "title": "Archive",
+        "description": "Archived organizations can be restored from the company organization list within the restore window."
+      },
+      "archive": {
+        "description": "Archiving stops members from using this organization.",
+        "defaultForbidden": "The default organization cannot be archived.",
+        "open": "Archive organization",
+        "title": "Archive this organization?",
+        "confirmDescription": "Type the organization name exactly to confirm.",
+        "confirmLabel": "Type the organization name: {name}",
+        "submit": "Archive",
+        "done": "Organization archived."
+      },
+      "restore": {
+        "description": "This organization is archived.",
+        "submit": "Restore organization",
+        "done": "Organization restored."
+      }
+    },
+    "members": {
+      "title": "Members",
+      "description": "View and manage organization members.",
+      "add": {
+        "title": "Add member",
+        "description": "Search company users and add them to this organization.",
+        "submit": "Add",
+        "done": "Member added."
+      },
+      "list": {
+        "title": "Members",
+        "empty": "No members.",
+        "name": "Name",
+        "status": "Status",
+        "joined": "Joined",
+        "actions": "Actions"
+      },
+      "status": {
+        "active": "Active",
+        "suspended": "Suspended",
+        "removed": "Removed"
+      },
+      "actions": {
+        "suspend": "Suspend",
+        "reactivate": "Reactivate",
+        "remove": "Remove"
+      },
+      "remove": {
+        "title": "Remove this member?",
+        "description": "{name} will be removed from the organization. Their user account is not deleted."
+      }
+    },
+    "groups": {
+      "title": "Groups",
+      "description": "Manage organization groups and their members.",
+      "list": {
+        "title": "Groups",
+        "empty": "No groups."
+      },
+      "source": {
+        "manual": "Manual",
+        "idp": "Identity provider"
+      },
+      "create": {
+        "open": "Create group",
+        "title": "New group"
+      },
+      "edit": {
+        "open": "Edit",
+        "title": "Edit group"
+      },
+      "delete": {
+        "open": "Delete",
+        "title": "Delete this group?",
+        "description": "The {name} group and the roles granted to it will be deleted."
+      },
+      "form": {
+        "name": "Group name",
+        "description": "Description"
+      },
+      "members": {
+        "toggle": "Members",
+        "empty": "No group members.",
+        "add": "Add to group",
+        "remove": "Remove"
+      }
+    },
+    "roles": {
+      "title": "Roles & capabilities",
+      "description": "Grant organization roles and capabilities to users and groups.",
+      "rowLegend": "Grants for {name} ({type})",
+      "saveFor": "Save {name}",
+      "loadFailed": "Could not load the full grant set.",
+      "noAccess": "Only organization administrators can view this.",
+      "pick": "Select",
+      "empty": "Nothing granted yet.",
+      "saved": "Changes saved.",
+      "roleSection": {
+        "title": "Roles",
+        "description": "Grant the administrator, builder and auditor roles."
+      },
+      "capabilitySection": {
+        "title": "Capabilities",
+        "description": "Grant individual capabilities such as creating agents or tools."
+      },
+      "role": {
+        "admin": "Administrator",
+        "builder": "Builder",
+        "auditor": "Auditor"
+      },
+      "capability": {
+        "cap_create_agent": "Create agents",
+        "cap_create_skill": "Create skills",
+        "cap_create_tool": "Create tools",
+        "cap_register_mcp": "Register MCP servers",
+        "cap_connect_database": "Connect databases",
+        "cap_share_org_wide": "Share org-wide",
+        "cap_publish_marketplace": "Publish to marketplace"
+      },
+      "principal": {
+        "user": "User",
+        "group": "Group",
+        "organization": "Whole organization"
+      }
+    },
+    "company": {
+      "title": "Company organizations",
+      "description": "View the company's organizations and create new ones.",
+      "list": {
+        "title": "Organizations in {company}",
+        "adminView": "Company administrator view",
+        "auditorView": "Company auditor view (summary only)",
+        "empty": "No organizations.",
+        "name": "Name",
+        "status": "Status",
+        "members": "Members",
+        "actions": "Actions",
+        "default": "Default"
+      },
+      "status": {
+        "active": "Active",
+        "suspended": "Suspended",
+        "archived": "Archived"
+      },
+      "restore": "Restore",
+      "restoreDone": "Organization restored.",
+      "create": {
+        "open": "Create organization",
+        "title": "New organization",
+        "description": "Create a new organization in this company.",
+        "name": "Organization name",
+        "defaultRole": "Default member role",
+        "role": {
+          "member": "Member",
+          "builder": "Builder"
+        },
+        "adminEmail": "Administrator email (optional)",
+        "adminEmailHint": "An invitation is created if they are not a company user yet.",
+        "submit": "Create"
+      },
+      "created": {
+        "title": "Organization created",
+        "description": "{name} was created.",
+        "noAdministrator": "No administrator was assigned.",
+        "memberAdministrator": "An existing company user was made administrator.",
+        "invitationSent": "An administrator invitation was created for {email}.",
+        "invitationExpires": "Invitation expires: {date}",
+        "tokenOnce": "The invitation code can be copied only now. Share it through a secure channel.",
+        "copyToken": "Copy invitation code",
+        "tokenCopied": "Invitation code copied.",
+        "tokenCopyFailed": "Could not copy the invitation code.",
+        "tokenUnavailable": "The response did not include an invitation code."
+      }
+    }
+  },
   "sidebar": {
     "brand": "Moldy",
     "orgSwitcher": {
@@ -209,7 +432,8 @@
       "trigger": "Current organization: {name} (switch)",
       "current": "Current organization",
       "unavailable": "Company unavailable",
-      "switchFailed": "Could not switch organization. Please try again."
+      "switchFailed": "Could not switch organization. Please try again.",
+      "choose": "Choose organization"
     },
     "nav": {
       "home": "Home",
@@ -3920,7 +4144,13 @@
       "marketplaceAdmin": "Marketplace Admin",
       "systemCredentials": "System Credentials",
       "systemLlm": "System LLM Settings",
-      "adminAudit": "All Activity"
+      "adminAudit": "All Activity",
+      "organization": "Organization",
+      "organizationSettings": "Organization settings",
+      "organizationMembers": "Members",
+      "organizationGroups": "Groups",
+      "organizationRoles": "Roles & capabilities",
+      "companyOrganizations": "Company organizations"
     },
     "profile": {
       "title": "Profile",

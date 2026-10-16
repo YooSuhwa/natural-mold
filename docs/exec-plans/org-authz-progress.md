@@ -241,7 +241,7 @@ real-participant U-05 study are future gates.
 - [x] B-04 — organization control APIs and focused/native/full backend gates; runtime fanout remains E-03.
 - [x] B-05 — registration policies, atomic invitation acceptance/resend and signup scope/bootstrap.
 - [x] B-06 — organization filters for private data.
-- [ ] B-07 — organization switching and administration UI.
+- [ ] B-07 — organization switching and administration UI. 1차 implemented (switcher, org settings, company directory, members, groups, roles/capabilities; Vitest/lint:i18n pass) - E2E and invitation-accept page pending; org policy/catalog settings UI later.
 - [x] B-08 — ownership constraints and agent archive lifecycle.
 - [ ] B-09 — frontend state reset and transport inspection.
 - [x] B-10 — company context, suspension and deployment modes.

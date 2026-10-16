@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.org_groups import DirectoryQuery
 from app.schemas.organization import OrgCapability, OrgRole
 
 
@@ -81,3 +82,16 @@ class CapabilityGrantView(BaseModel):
     capability: OrgCapability
     granted_by: UUID | None
     granted_at: datetime
+
+
+class GrantDirectoryQuery(DirectoryQuery):
+    """Optional exact-principal filter so a client can load one principal's full grant set."""
+
+    principal_type: Literal["user", "group", "organization"] | None = None
+    principal_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def principal_filter_is_complete(self) -> "GrantDirectoryQuery":
+        if (self.principal_type is None) != (self.principal_id is None):
+            raise ValueError("principal_type and principal_id must be supplied together")
+        return self

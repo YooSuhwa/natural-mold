@@ -27,6 +27,7 @@ class OrganizationSummary(BaseModel):
     tenant_name: str
     tenant_status: Literal["active", "suspended", "deletion_scheduled"]
     is_default: bool
+    is_active: bool = False
     roles: tuple[OrgRole, ...] = ()
     capabilities: tuple[OrgCapability, ...] = ()
 
