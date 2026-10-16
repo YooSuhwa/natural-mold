@@ -21,6 +21,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.policies import CANDIDATES, RES, SELF, SUPER, authz_policy
+from app.authz.resource_gate import (
+    CREDENTIAL,
+    gate_list,
+    gate_row,
+    org_context_when_consulted,
+)
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.credentials import service as credential_service
 from app.dependencies import (
     CurrentUser,
@@ -57,6 +66,7 @@ router = APIRouter(prefix="/api/models", tags=["models"])
 
 
 @router.get("")
+@authz_policy(CANDIDATES("llm_model", "can_use"))
 async def list_models(
     include_hidden: bool = Query(
         False,
@@ -67,25 +77,32 @@ async def list_models(
     ),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext | None = Depends(org_context_when_consulted),
+    authz: AuthzService = Depends(get_authz),
 ):
     if include_hidden and not user.is_super_user:
         raise super_user_required()
-    return await model_service.list_models(db, include_hidden=include_hidden)
+    rows = await model_service.list_models(db, include_hidden=include_hidden)
+    if context is None or include_hidden:  # legacy, or the operator catalog page
+        return rows
+    return await gate_list(authz, context, "llm_model", "can_use", rows, lambda row: row["id"])
 
 
 @router.get("/{model_id}")
+@authz_policy(RES("llm_model", "can_use", param="model_id", min_visible="can_use"))
 async def get_model(
     model_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext | None = Depends(org_context_when_consulted),
+    authz: AuthzService = Depends(get_authz),
 ):
-    model = await model_service.get_model(db, model_id)
-    if not model:
-        raise model_not_found()
+    model = await model_service.load_model(db, model_id, context, authz)
     return serialize_model(model)
 
 
 @router.post("", status_code=201)
+@authz_policy(SUPER)
 async def create_model(
     payload: ModelCreate,
     request: Request,
@@ -116,6 +133,7 @@ async def create_model(
 
 
 @router.patch("/{model_id}")
+@authz_policy(SUPER)
 async def update_model(
     model_id: uuid.UUID,
     payload: ModelUpdate,
@@ -144,6 +162,7 @@ async def update_model(
 
 
 @router.delete("/{model_id}", status_code=204)
+@authz_policy(SUPER)
 async def delete_model(
     model_id: uuid.UUID,
     request: Request,
@@ -172,12 +191,15 @@ async def delete_model(
 
 
 async def _load_owned_credential(
-    db: AsyncSession, credential_id: uuid.UUID, context: OrgContext
+    db: AsyncSession, credential_id: uuid.UUID, context: OrgContext, authz: AuthzService
 ) -> Credential:
-    cred = await credential_service.get_for_user(db, credential_id, context)
-    if cred is None:
-        raise credential_not_found()
-    return cred
+    async def legacy() -> Credential:
+        cred = await credential_service.get_for_user(db, credential_id, context)
+        if cred is None:
+            raise credential_not_found()
+        return cred
+
+    return await gate_row(authz, db, context, CREDENTIAL, credential_id, "can_use", legacy)
 
 
 def _request_meta(request: Request) -> tuple[str | None, str | None]:
@@ -186,6 +208,7 @@ def _request_meta(request: Request) -> tuple[str | None, str | None]:
 
 
 @router.post("/{model_id}/test", response_model=ModelTestResponse)
+@authz_policy(RES("llm_model", "can_use", param="model_id", min_visible="can_use"))
 async def test_registered_model(
     model_id: uuid.UUID,
     request: Request,
@@ -201,6 +224,7 @@ async def test_registered_model(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> ModelTestResponse:
     """Probe a registered ``Model`` row using a Credential.
 
@@ -209,9 +233,7 @@ async def test_registered_model(
     credential for this model).
     """
 
-    model = await model_service.get_model(db, model_id)
-    if model is None:
-        raise model_not_found()
+    model = await model_service.load_model(db, model_id, context, authz)
 
     cred = await resolve_credential_for_model(db, model, credential_id, context)
     if cred is None:
@@ -263,6 +285,7 @@ async def test_registered_model(
 
 
 @router.post("/test-preview", response_model=ModelTestResponse)
+@authz_policy(SELF)
 async def test_preview_model(
     payload: ModelTestPreviewRequest,
     request: Request,
@@ -270,6 +293,7 @@ async def test_preview_model(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> ModelTestResponse:
     """Probe an unregistered ``provider:model_name`` combo (Custom ID flow).
 
@@ -278,7 +302,7 @@ async def test_preview_model(
     pasted-in ID before committing it to the table.
     """
 
-    cred = await _load_owned_credential(db, payload.credential_id, context)
+    cred = await _load_owned_credential(db, payload.credential_id, context, authz)
     data = await credential_service.decrypt_with_external(cred)
 
     result = await run_model_test(

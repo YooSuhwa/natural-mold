@@ -17,6 +17,7 @@ from typing import Any, assert_never
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.candidates import candidate_predicate
 from app.authz.org_context import OrgContext
 from app.authz.platform_scope import PlatformScope
 from app.authz.private_actor import (
@@ -134,6 +135,18 @@ async def list_for_user(db: AsyncSession, context: OrgContext) -> list[Credentia
     result = await db.execute(
         private_scoped(select(Credential), Credential, context)
         .where(Credential.is_system.is_(False))
+        .order_by(Credential.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def list_candidates(db: AsyncSession, context: OrgContext) -> list[Credential]:
+    """Enforced list page: own and granted non-system rows, confirmed by BatchCheck (8.10)."""
+
+    await require_private_actor(db, context)
+    result = await db.execute(
+        select(Credential)
+        .where(candidate_predicate(Credential, "credential", context))
         .order_by(Credential.created_at.desc())
     )
     return list(result.scalars().all())

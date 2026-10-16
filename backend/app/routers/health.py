@@ -19,7 +19,20 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.authz.policies import CANDIDATES, RES, authz_policy
+from app.authz.resource_gate import (
+    CREDENTIAL,
+    LLM_MODEL,
+    gate_list,
+    gate_row,
+    gate_unchecked,
+    org_context_when_consulted,
+    require_same_org,
+)
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.credentials import service as credential_service
+from app.credentials.validation import require_credential_use
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     credential_not_found,
@@ -142,27 +155,35 @@ def _summary_from(
 
 
 @router.get("/models", response_model=list[HealthSummaryEntry])
+@authz_policy(CANDIDATES("llm_model", "can_use"))
 async def list_model_health(
     db: AsyncSession = Depends(get_db),
     _: CurrentUser = Depends(get_current_user),
+    context: OrgContext | None = Depends(org_context_when_consulted),
+    authz: AuthzService = Depends(get_authz),
 ):
     models = (await db.execute(select(Model))).scalars().all()
+    if context is not None:
+        models = await gate_list(authz, context, "llm_model", "can_use", models, lambda m: m.id)
     latest = await _latest_for(db, "model", [m.id for m in models])
     return [_summary_from("model", m.id, m.display_name, latest.get(m.id)) for m in models]
 
 
 @router.get("/mcp-servers", response_model=list[HealthSummaryEntry])
+@authz_policy(CANDIDATES("mcp_server", "can_view"))
 async def list_mcp_health(
     db: AsyncSession = Depends(get_db),
     _: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ):
-    servers = await mcp_service.list_servers(db, context)
+    servers = await mcp_service.list_servers(db, context, authz=authz, permission="can_view")
     latest = await _latest_for(db, "mcp_server", [s.id for s in servers])
     return [_summary_from("mcp_server", s.id, s.name, latest.get(s.id)) for s in servers]
 
 
 @router.get("/history", response_model=list[HealthHistoryEntry])
+@authz_policy(RES("{target_kind}", "can_view", param="target_id", min_visible="can_use"))
 async def get_history(
     target_kind: Literal["model", "mcp_server"] = Query(...),
     target_id: uuid.UUID = Query(...),
@@ -170,9 +191,12 @@ async def get_history(
     db: AsyncSession = Depends(get_db),
     _: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ):
     if target_kind == "mcp_server":
-        await mcp_service.load_owned(db, target_id, context)
+        await mcp_service.load_owned(db, target_id, context, authz=authz)
+    else:  # no legacy check for models (D-10)
+        await gate_unchecked(authz, db, context, LLM_MODEL, target_id, "can_use")
     return (
         (
             await db.execute(
@@ -191,6 +215,7 @@ async def get_history(
 
 
 @router.post("/check", response_model=HealthHistoryEntry)
+@authz_policy(RES("{target_kind}", "can_edit", param="target_id", min_visible="can_use"))
 async def check_now(
     target_kind: Literal["model", "mcp_server"] = Query(...),
     target_id: uuid.UUID = Query(...),
@@ -199,6 +224,7 @@ async def check_now(
     _: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     """Run a probe immediately and return the resulting history row.
 
@@ -209,13 +235,21 @@ async def check_now(
     """
 
     if target_kind == "model":
-        model = await db.get(Model, target_id)
-        if model is None:
-            raise model_not_found()
-        credential = await resolve_credential_for_model(db, model, credential_id, context)
+
+        async def legacy_model() -> Model:
+            row = await db.get(Model, target_id)
+            if row is None:
+                raise model_not_found()
+            return row
+
+        model = await gate_row(authz, db, context, LLM_MODEL, target_id, "can_use", legacy_model)
+        if credential_id is not None:  # same owner lookup and 404 as the resolver's explicit tier
+            credential = await require_credential_use(
+                db, credential_id=credential_id, context=context, authz=authz
+            )
+        else:
+            credential = await resolve_credential_for_model(db, model, None, context)
         if credential is None:
-            if credential_id is not None:
-                raise HTTPException(status_code=404, detail="credential not found")
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -223,17 +257,29 @@ async def check_now(
                     "model's default_credential_id."
                 ),
             )
+        require_same_org(authz, credential, context.org_id)  # platform model: caller's org
         history = await health_check_service.check_model(db, model=model, credential=credential)
     else:
         # MCP servers carry their own credential reference; fall back to
         # the manual lookup we used before.
-        server = await mcp_service.load_owned(db, target_id, context)
+        server = await mcp_service.load_owned(
+            db, target_id, context, authz=authz, permission="can_edit"
+        )
         credential: Credential | None = None
         selected_credential_id = credential_id or server.credential_id
         if selected_credential_id is not None:
-            credential = await credential_service.get_for_user(db, selected_credential_id, context)
-            if credential is None:
-                raise credential_not_found()
+            chosen = selected_credential_id
+
+            async def legacy_credential() -> Credential:
+                row = await credential_service.get_for_user(db, chosen, context)
+                if row is None:
+                    raise credential_not_found()
+                return row
+
+            credential = await gate_row(
+                authz, db, context, CREDENTIAL, chosen, "can_use", legacy_credential
+            )
+            require_same_org(authz, credential, server.org_id)
         history = await health_check_service.check_mcp_server(
             db, server=server, credential=credential
         )

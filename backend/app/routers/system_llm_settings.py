@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.policies import SUPER, authz_policy
 from app.credentials import service as credential_service
 from app.dependencies import (
     CurrentUser,
@@ -82,6 +83,7 @@ async def _build_out(db: AsyncSession, setting: SystemLlmSetting) -> SystemLlmSe
 
 
 @router.get("", response_model=list[SystemLlmSettingOut])
+@authz_policy(SUPER)
 async def list_system_llm_settings(
     db: AsyncSession = Depends(get_db),
     _user: CurrentUser = Depends(require_super_user),
@@ -102,6 +104,7 @@ async def list_system_llm_settings(
 
 
 @router.put("/{role}", response_model=SystemLlmSettingOut)
+@authz_policy(SUPER)
 async def update_system_llm_setting(
     role: str,
     payload: SystemLlmSettingUpdate,

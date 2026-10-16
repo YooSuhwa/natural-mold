@@ -17,7 +17,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, String, Text, or_
+from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -56,12 +56,9 @@ class Tool(NullableOrgScope, Base):
         {"extend_existing": True},
     )
 
-    @classmethod
-    def visible_to(cls, user_id: uuid.UUID):
-        """System (user_id IS NULL) or owned rows — the single policy point
-        for tool visibility (BE-D4). Was copy-pasted as an or_() predicate in
-        7+ call sites, where one drifted edit would fork the policy."""
-        return or_(cls.user_id == user_id, cls.user_id.is_(None))
+    # Visibility is not a model concern: owner/platform candidates come from
+    # ``app.authz.scoping.resource_candidates`` and decisions from
+    # ``app.authz.resource_gate`` (tool#can_use/can_view, plan 9.5).
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
 

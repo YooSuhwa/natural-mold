@@ -4,14 +4,13 @@ The legacy answer is always the existing private lookup (``skill_service.get_ski
 / ``list_skills``), so ``AUTHZ_MODE=legacy`` issues the same queries and raises the
 same ``SKILL_NOT_FOUND``. Only shadow/enforce read candidate rows
 (``candidates.candidate_predicate``: owned, shared through an active grant, or a
-platform skill, narrowed to the current org) so OpenFGA can be asked about skills
+platform skill, all within the current org) so OpenFGA can be asked about skills
 the caller does not own. Another organization's row stays 404 (8.4) even when granted.
 """
 
-from typing import cast
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -24,7 +23,7 @@ from app.authz.resource_lifecycle import (
     on_resource_created,
     on_resource_deleted,
 )
-from app.authz.service import AuthzMode, AuthzService, Verdict
+from app.authz.service import AuthzService, Verdict
 from app.error_codes import skill_not_found
 from app.models.skill import Skill
 from app.skills import service as skill_service
@@ -34,9 +33,8 @@ CREATE_SKILL = "cap_create_skill"
 
 
 def _candidate_predicate(context: OrgContext) -> ColumnElement[bool]:
-    # Grants are company-wide; a skill stays in its own org (8.4: other org -> 404).
-    in_org = or_(Skill.org_id == context.org_id, Skill.org_id.is_(None))
-    return and_(candidate_predicate(Skill, "skill", context, platform=True), in_org)
+    # candidate_predicate keeps shared rows in the current org (8.4: other org -> 404).
+    return candidate_predicate(Skill, "skill", context, platform=True)
 
 
 async def _candidate(db: AsyncSession, skill_id: UUID, context: OrgContext) -> Skill | None:
@@ -160,9 +158,9 @@ async def authorize_builder_target(
 
 async def skill_created(db: AsyncSession, authz: AuthzService, skill: Skill) -> LifecycleChange:
     """Queue the new skill's tuples (legacy: no-op); ``apply_lifecycle`` after commit."""
-    return await on_resource_created(db, skill, mode=cast("AuthzMode", authz.mode))
+    return await on_resource_created(db, skill, mode=authz.mode)
 
 
 async def skill_deleted(db: AsyncSession, authz: AuthzService, skill: Skill) -> LifecycleChange:
     """Queue the deleted skill's tuple removals before ``db.delete`` (legacy: no-op)."""
-    return await on_resource_deleted(db, skill, mode=cast("AuthzMode", authz.mode))
+    return await on_resource_deleted(db, skill, mode=authz.mode)

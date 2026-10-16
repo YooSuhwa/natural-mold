@@ -46,7 +46,7 @@ class AuthzDecisions:
         clock: Callable[[], datetime] = _utc_now,
         overlay: RevocationOverlay | None = None,
     ) -> None:
-        self.mode = mode
+        self.mode: AuthzMode = mode
         self.enforce_types = enforce_types
         self._client = client
         self._shadow_hook = shadow_hook

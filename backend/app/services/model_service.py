@@ -17,7 +17,11 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.resource_gate import LLM_MODEL, gate_row
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser
+from app.error_codes import model_not_found
 from app.models.agent import Agent
 from app.models.model import Model
 from app.schemas.model import ModelCreate, ModelUpdate
@@ -90,6 +94,25 @@ async def list_models(db: AsyncSession, *, include_hidden: bool = False) -> list
 async def get_model(db: AsyncSession, model_id: uuid.UUID) -> Model | None:
     result = await db.execute(select(Model).where(Model.id == model_id))
     return result.scalar_one_or_none()
+
+
+async def load_model(
+    db: AsyncSession, model_id: uuid.UUID, context: OrgContext | None, authz: AuthzService
+) -> Model:
+    """Catalog lookup is the legacy answer; ``llm_model#can_use`` decides when consulted.
+
+    ``context`` is None only in legacy mode (``org_context_when_consulted``).
+    """
+
+    async def legacy() -> Model:
+        model = await get_model(db, model_id)
+        if not model:
+            raise model_not_found()
+        return model
+
+    if context is None:
+        return await legacy()
+    return await gate_row(authz, db, context, LLM_MODEL, model_id, "can_use", legacy)
 
 
 def serialize_model(model: Model, *, agent_count: int = 0) -> dict:

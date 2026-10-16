@@ -77,3 +77,17 @@ async def test_platform_rows_join_only_when_requested(db: AsyncSession):
     assert set(both) == {system.id, mine.id}
     with pytest.raises(ValueError, match="no platform"):
         await candidate_ids(db, Agent, "agent", world.ctx, platform=True)
+
+
+async def test_another_orgs_granted_row_is_never_a_candidate(db: AsyncSession):
+    world = await seed_world(db)
+    me = OrgContext(org_id=world.ctx.org_id, tenant_id=world.tenant, user_id=world.member)
+    elsewhere = await _agent(db, world, world.other_ctx)
+    db.add_all(
+        [
+            _grant(world, elsewhere, "user", me.user_id),
+            _grant(world, elsewhere, "organization", me.org_id),
+        ]
+    )
+    await db.commit()
+    assert elsewhere.id not in set(await candidate_ids(db, Agent, "agent", me))

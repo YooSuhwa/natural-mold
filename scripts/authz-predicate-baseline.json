@@ -85,11 +85,6 @@
     "count": 1
   },
   {
-    "file": "credentials/service.py",
-    "expression": "Credential.user_id == user_id",
-    "count": 2
-  },
-  {
     "file": "marketplace/access.py",
     "expression": "item.owner_user_id == user.id",
     "count": 1
@@ -175,11 +170,6 @@
     "count": 1
   },
   {
-    "file": "models/tool.py",
-    "expression": "def visible_to",
-    "count": 1
-  },
-  {
     "file": "routers/agent_blueprints.py",
     "expression": "AgentBlueprint.user_id == user.id",
     "count": 2
@@ -198,11 +188,6 @@
     "file": "routers/feedback.py",
     "expression": "MessageFeedback.user_id == user.id",
     "count": 3
-  },
-  {
-    "file": "routers/health.py",
-    "expression": "McpServer.user_id == user.id",
-    "count": 1
   },
   {
     "file": "routers/marketplace.py",
@@ -415,16 +400,6 @@
     "count": 1
   },
   {
-    "file": "services/mcp_service.py",
-    "expression": "Credential.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/mcp_service.py",
-    "expression": "McpServer.user_id == user_id",
-    "count": 4
-  },
-  {
     "file": "services/memory_service.py",
     "expression": "Agent.user_id == user_id",
     "count": 2
@@ -568,21 +543,6 @@
     "file": "services/tenants/roles.py",
     "expression": "TenantRoleGrant.user_id == TenantMember.user_id",
     "count": 1
-  },
-  {
-    "file": "services/tool_service.py",
-    "expression": "McpServer.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/tool_service.py",
-    "expression": "Skill.user_id == user_id",
-    "count": 1
-  },
-  {
-    "file": "services/tool_service.py",
-    "expression": "Tool.visible_to(user_id)",
-    "count": 3
   },
   {
     "file": "services/trigger_schedule_service.py",

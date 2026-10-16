@@ -4,9 +4,12 @@ A candidate is a superset that ``AuthzService.filter_visible`` confirms with Bat
 being a candidate grants nothing. For a resource type the caller's candidates are:
 
 * owned: ``owner = me`` in the current organization and company;
-* shared: a same-company, non-system row with an active ``resource_grants`` row whose
-  principal is me, one of my groups in the current organization, or the current
-  organization itself (``allowed_org``/``consumer`` fanout of company rows included);
+* shared: a non-system row of the current organization with an active
+  ``resource_grants`` row whose principal is me, one of my groups in the current
+  organization, or the current organization itself. Another organization's row is
+  never a candidate, even when granted (8.4: 404). Company-wide sharing reaches an
+  organization only as a company row (no organization) granted to the current
+  organization (``allowed_org``/``consumer`` fanout), or as a platform row;
 * platform (``platform=True`` only): system rows with no organization and no company
   (system tools, MCP servers, skills; OpenFGA's fanout decides the organization).
 
@@ -27,15 +30,27 @@ from app.models.authz import ResourceGrant
 from app.models.organization_group import GroupMember
 
 
+def _active_grants(resource_type: str, ctx: OrgContext) -> Select[tuple[UUID]]:
+    return select(ResourceGrant.resource_id).where(
+        ResourceGrant.resource_type == resource_type,
+        ResourceGrant.state == "active",
+        ResourceGrant.tenant_id == ctx.tenant_id,
+    )
+
+
+def org_granted_resource_ids(resource_type: str, ctx: OrgContext) -> Select[tuple[UUID]]:
+    """Ids granted to the current organization itself (company-row fanout)."""
+    return _active_grants(resource_type, ctx).where(
+        ResourceGrant.principal_type == "organization", ResourceGrant.principal_id == ctx.org_id
+    )
+
+
 def granted_resource_ids(resource_type: str, ctx: OrgContext) -> Select[tuple[UUID]]:
     """Ids of ``resource_type`` objects with an active grant to me, my groups or my org."""
     my_groups = select(GroupMember.group_id).where(
         GroupMember.user_id == ctx.user_id, GroupMember.org_id == ctx.org_id
     )
-    return select(ResourceGrant.resource_id).where(
-        ResourceGrant.resource_type == resource_type,
-        ResourceGrant.state == "active",
-        ResourceGrant.tenant_id == ctx.tenant_id,
+    return _active_grants(resource_type, ctx).where(
         or_(
             and_(ResourceGrant.principal_type == "user", ResourceGrant.principal_id == ctx.user_id),
             and_(
@@ -65,17 +80,25 @@ def candidate_predicate(
         model.org_id == ctx.org_id,
         model.tenant_id == ctx.tenant_id,
     )
+    not_system = () if system is None else (system.is_(False),)
     shared = and_(
+        model.org_id == ctx.org_id,
         model.tenant_id == ctx.tenant_id,
         model.id.in_(granted_resource_ids(resource_type, ctx)),
-        *(() if system is None else (system.is_(False),)),
+        *not_system,
+    )
+    company = and_(
+        model.org_id.is_(None),
+        model.tenant_id == ctx.tenant_id,
+        model.id.in_(org_granted_resource_ids(resource_type, ctx)),
+        *not_system,
     )
     catalog: ColumnElement[bool] = false()
     if platform:
         if system is None:
             raise ValueError(f"{model.__name__} has no platform (is_system) rows")
         catalog = and_(system.is_(True), model.org_id.is_(None), model.tenant_id.is_(None))
-    return or_(owned, shared, catalog)
+    return or_(owned, shared, company, catalog)
 
 
 async def candidate_ids(
