@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import uuid
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, NoReturn
 
 from deepagents.middleware.filesystem import FilesystemPermission
 from langchain_core.language_models import BaseChatModel
@@ -157,3 +159,57 @@ class RuntimeComponents:
     memory_sources: list[str] | None
     permissions: list[FilesystemPermission]
     interrupt_on: dict[str, Any] | None
+
+
+ToolAccessClass = Literal[
+    "snapshot_safe",
+    "resolved_external",
+    "run_output",
+    "live_application_resource",
+]
+TOOL_ACCESS_CLASSES: frozenset[str] = frozenset(
+    ("snapshot_safe", "resolved_external", "run_output", "live_application_resource")
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedRunBinding:
+    """Exact run/conversation/user/org/tenant identity a prepared lease is bound to."""
+
+    tenant_id: uuid.UUID
+    org_id: uuid.UUID
+    user_id: uuid.UUID
+    agent_id: uuid.UUID
+    conversation_id: uuid.UUID
+    run_id: uuid.UUID
+    thread_id: str
+    participant_paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, eq=False, slots=True)
+class PreparedRunLease:
+    """Process-local, fully prepared run (parent Task 10).
+
+    Holds the compiled root/child runtimes, converted messages, LangGraph
+    config, lease-bound checkpointer and seed, immutable snapshots, tool access
+    classes and resolved secret values. Only ``digest`` (non-secret) is ever
+    persisted; the lease itself refuses pickling/copying so it cannot be
+    reconstructed from durable rows.
+    """
+
+    binding: PreparedRunBinding
+    token: str = field(repr=False)
+    digest: str
+    runnable: Any = field(repr=False)
+    child_runnables: Mapping[str, Any] = field(repr=False)
+    messages: tuple[Any, ...] = field(repr=False)
+    config: Mapping[str, Any] = field(repr=False)
+    checkpointer: Any = field(repr=False)
+    checkpoint_seed: Any = field(repr=False)
+    snapshots: Mapping[str, Any] = field(repr=False)
+    tool_access: Mapping[str, ToolAccessClass]
+    secret_values: frozenset[str] = field(repr=False)
+    close: Callable[[], Awaitable[None]] | None = field(default=None, repr=False)
+
+    def __reduce_ex__(self, protocol: object) -> NoReturn:
+        raise TypeError("PreparedRunLease is process-local and cannot be serialized or copied")
