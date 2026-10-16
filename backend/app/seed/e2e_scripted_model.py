@@ -84,7 +84,9 @@ async def _seed_scripted_system_llm(db: AsyncSession) -> None:
 
     existing = (
         await db.execute(
-            select(SystemLlmSetting).where(SystemLlmSetting.role == "text_primary").limit(1)
+            select(SystemLlmSetting)
+            .where(SystemLlmSetting.role == "text_primary", SystemLlmSetting.tenant_id.is_(None))
+            .limit(1)
         )
     ).scalar_one_or_none()
     if existing is not None and existing.credential_id is not None and existing.model_name:

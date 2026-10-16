@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
 from app.authz.assistant_scope import keep_linkable
+from app.authz.company_catalog import model_scope
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.database import async_session as async_session_factory
@@ -226,7 +227,9 @@ def build_read_tools(
     async def list_available_models() -> str:
         """사용 가능한 모델 목록을 조회합니다."""
         async with _session() as session:
-            result = await session.execute(select(Model))
+            result = await session.execute(  # visible, platform + caller company (E-07)
+                select(Model).where(Model.is_visible.is_(True), model_scope(context.tenant_id))
+            )
             models = result.scalars().all()
             items = [
                 {

@@ -56,7 +56,8 @@ async def resolve_model_pricing(db: AsyncSession, model_name: str | None) -> Mod
     rows = (
         await db.execute(
             select(Model.cost_per_input_token, Model.cost_per_output_token).where(
-                Model.model_name == model_name
+                Model.model_name == model_name,
+                Model.tenant_id.is_(None),  # platform runner pricing, never a company row
             )
         )
     ).all()

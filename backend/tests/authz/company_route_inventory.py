@@ -69,7 +69,23 @@ E09_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"POST {_T}/publication-requests/{{item_id}}/approve": CompanyRoute("GOVERNANCE", 200, False),
     f"POST {_T}/publication-requests/{{item_id}}/reject": CompanyRoute("GOVERNANCE", 200, False),
 }
-COMPANY_ROUTES: Final = {**B11_ROUTES, **B12_ROUTES, **E09_ROUTES}
+# E-07 company settings tier: models, shared credentials, catalog policy, service LLM.
+_G: Final = "GOVERNANCE"
+E07_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_T}/catalog-policy": CompanyRoute(_G, 200, False),
+    f"PUT {_T}/catalog-policy": CompanyRoute(_G, 200, True),
+    f"GET {_T}/llm-settings": CompanyRoute(_G, 200, False),
+    f"PUT {_T}/llm-settings": CompanyRoute(_G, 200, False),
+    f"GET {_T}/models": CompanyRoute(_G, 200, False),
+    f"POST {_T}/models": CompanyRoute(_G, 201, False),
+    f"PATCH {_T}/models/{{model_id}}": CompanyRoute(_G, 200, False),
+    f"DELETE {_T}/models/{{model_id}}": CompanyRoute(_G, 204, False),
+    f"GET {_T}/credentials": CompanyRoute(_G, 200, False),
+    f"POST {_T}/credentials": CompanyRoute(_G, 201, False),
+    f"PATCH {_T}/credentials/{{credential_id}}": CompanyRoute(_G, 200, False),
+    f"DELETE {_T}/credentials/{{credential_id}}": CompanyRoute(_G, 204, False),
+}
+COMPANY_ROUTES: Final = {**B11_ROUTES, **B12_ROUTES, **E09_ROUTES, **E07_ROUTES}
 # Later-task paths from the contract's route-level crosswalk (rows 7-8, 24-35, 38-57),
 # owned by C05/E07/E08/E09/H03/H06/H08/I07. Matched app-wide by path, with parameter
 # names erased, at the path itself or below it (CRUD collection/item routes).
@@ -80,10 +96,6 @@ DEFERRED_PATHS: Final = frozenset(
         "/api/admin/tenants/{}/schedule-deletion",
         "/api/admin/tenants/{}/cancel-deletion",
         "/api/admin/authz",
-        "/api/tenants/{}/models",
-        "/api/tenants/{}/credentials",
-        "/api/tenants/{}/llm-settings",
-        "/api/tenants/{}/catalog-policy",
         "/api/tenants/{}/usage",
         "/api/tenants/{}/audit-events",
         "/api/tenants/{}/limits",

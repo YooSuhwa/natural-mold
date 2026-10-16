@@ -77,12 +77,15 @@ async def get_or_create_skill_builder_agent(db: AsyncSession, context: OrgContex
 async def _seed_model_id(db: AsyncSession, model_name: str) -> uuid.UUID:
     """FK 충족용 모델 id — 시스템 모델과 같은 ``model_name`` 우선, 없으면 카탈로그 첫 행."""
 
-    result = await db.execute(select(Model.id).where(Model.model_name == model_name).limit(1))
+    platform = Model.tenant_id.is_(None)  # a hidden system agent never binds a company model
+    result = await db.execute(
+        select(Model.id).where(platform, Model.model_name == model_name).limit(1)
+    )
     model_id = result.scalar_one_or_none()
     if model_id is not None:
         return model_id
     result = await db.execute(
-        select(Model.id).order_by(Model.created_at.asc(), Model.id.asc()).limit(1)
+        select(Model.id).where(platform).order_by(Model.created_at.asc(), Model.id.asc()).limit(1)
     )
     model_id = result.scalar_one_or_none()
     if model_id is None:

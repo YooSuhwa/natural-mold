@@ -172,7 +172,11 @@ async def seed_e2e_llm(db: AsyncSession) -> Model | None:
     # 4) System LLM text_primary + text_fallback -> system credential + model.
     for role in _E2E_LLM_ROLES:
         setting = (
-            await db.execute(select(SystemLlmSetting).where(SystemLlmSetting.role == role).limit(1))
+            await db.execute(
+                select(SystemLlmSetting)
+                .where(SystemLlmSetting.role == role, SystemLlmSetting.tenant_id.is_(None))
+                .limit(1)
+            )
         ).scalar_one_or_none()
         if setting is None:
             db.add(SystemLlmSetting(role=role, credential_id=system_cred.id, model_name=model_name))

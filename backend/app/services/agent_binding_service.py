@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.company_catalog import model_scope
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate, resource_candidates
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
@@ -88,17 +89,19 @@ async def _validate_tool_ids_owned(
         )
 
 
-async def _validate_model_fallback_ids(db: AsyncSession, fallback_ids: list[uuid.UUID]) -> None:
-    """Every fallback id must reference a model row in the catalog.
-
-    The catalog is shared across users (no per-user ownership), so we only
-    check existence here. Ordering and deduplication are the caller's
-    responsibility — we treat the list as opaque.
+async def _validate_model_fallback_ids(
+    db: AsyncSession, fallback_ids: list[uuid.UUID], tenant_id: uuid.UUID | None = None
+) -> None:
+    """Every fallback id must reference a platform model or one of the caller company's
+    models (E-07); another company's model reads as unknown. Ordering and deduplication
+    are the caller's responsibility — we treat the list as opaque.
     """
 
     if not fallback_ids:
         return
-    result = await db.execute(select(Model.id).where(Model.id.in_(fallback_ids)))
+    result = await db.execute(
+        select(Model.id).where(Model.id.in_(fallback_ids), model_scope(tenant_id))
+    )
     valid = {row[0] for row in result.all()}
     invalid = [str(i) for i in fallback_ids if i not in valid]
     if invalid:
@@ -138,8 +141,14 @@ async def _validate_agent_binding_ids(
     with db.no_autoflush:
         if data.sub_agent_ids:
             await _validate_sub_agent_ids_owned(db, data.sub_agent_ids, context)
+        if data.model_id is not None:  # FK covers existence; block other companies' models
+            foreign = await db.scalar(
+                select(Model.id).where(Model.id == data.model_id, ~model_scope(context.tenant_id))
+            )
+            if foreign is not None:
+                raise HTTPException(status_code=400, detail="Unknown model_id")
         if data.model_fallback_ids:
-            await _validate_model_fallback_ids(db, data.model_fallback_ids)
+            await _validate_model_fallback_ids(db, data.model_fallback_ids, context.tenant_id)
         if data.tool_ids:
             await _validate_tool_ids_owned(db, data.tool_ids, context)
         if data.mcp_tool_ids:

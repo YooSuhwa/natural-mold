@@ -81,7 +81,7 @@ async def list_models(
 ):
     if include_hidden and not user.is_super_user:
         raise super_user_required()
-    rows = await model_service.list_models(db, include_hidden=include_hidden)
+    rows = await model_service.list_models(db, include_hidden=include_hidden, context=context)
     if context is None or include_hidden:  # legacy, or the operator catalog page
         return rows
     return await gate_list(authz, context, "llm_model", "can_use", rows, lambda row: row["id"])

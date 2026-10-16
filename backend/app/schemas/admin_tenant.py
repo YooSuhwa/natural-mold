@@ -32,7 +32,8 @@ class TenantLimitSummary(BaseModel):
                 "member_limit": tenant.limits.get("member_limit"),
                 "monthly_spend_limit": tenant.limits.get("monthly_spend_limit"),
                 "concurrent_run_limit": tenant.limits.get("concurrent_run_limit"),
-                "allow_system_models": tenant.limits.get("allow_system_models", False),
+                # Absent = allowed, as the catalog and service LLM resolve it (E-07).
+                "allow_system_models": tenant.limits.get("allow_system_models", True) is not False,
             }
         )
 

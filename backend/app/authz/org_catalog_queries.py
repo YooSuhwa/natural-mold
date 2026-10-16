@@ -1,14 +1,16 @@
 """Catalog inventory selects only global system resources and this company's models;
-the impact preview counts this organization's agents linking one item (S09)."""
+company shared credentials are listed for their fanout (E-07); the impact preview counts
+this organization's agents linking one item (S09)."""
 
 from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import Uuid, column, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
+from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.model import Model
@@ -43,11 +45,9 @@ async def company_catalog_settings(
 
 
 async def catalog_entries(db: AsyncSession, tenant_id: UUID) -> tuple[CatalogEntry, ...]:
-    # m81 already owns this physical column; B-08 will promote its ORM mapping.
-    company_column = column("tenant_id", Uuid())
     models = await db.execute(
-        select(Model.id, Model.display_name, Model.is_visible, company_column).where(
-            or_(company_column.is_(None), company_column == tenant_id)
+        select(Model.id, Model.display_name, Model.is_visible, Model.tenant_id).where(
+            or_(Model.tenant_id.is_(None), Model.tenant_id == tenant_id)
         )
     )
     entries = [
@@ -81,6 +81,21 @@ async def catalog_entries(db: AsyncSession, tenant_id: UUID) -> tuple[CatalogEnt
         for key, name, status in servers
     )
     return tuple(sorted(entries, key=lambda item: (item.kind, item.name.casefold(), item.id)))
+
+
+async def company_credential_ids(db: AsyncSession, tenant_id: UUID) -> tuple[UUID, ...]:
+    """Active company shared credentials (``scope='tenant'``, no organization)."""
+    found = await db.scalars(
+        select(Credential.id)
+        .where(
+            Credential.scope == "tenant",
+            Credential.tenant_id == tenant_id,
+            Credential.org_id.is_(None),
+            Credential.status == "active",
+        )
+        .order_by(Credential.id)
+    )
+    return tuple(found)
 
 
 async def catalog_impact(

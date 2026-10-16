@@ -273,7 +273,7 @@ async def estimate_run_priced(
     runner_model = (
         await db.execute(
             select(SystemLlmSetting.model_name)
-            .where(SystemLlmSetting.role == "text_primary")
+            .where(SystemLlmSetting.role == "text_primary", SystemLlmSetting.tenant_id.is_(None))
             .limit(1)
         )
     ).scalar_one_or_none()

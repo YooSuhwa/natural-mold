@@ -20,7 +20,7 @@ from app.models.authz import AuthzOutbox, ResourceGrant
 from app.models.organization import OrganizationMember
 from app.models.tool import AgentToolLink
 from tests.authz.d04_support import OwnerStore
-from tests.authz.e03_support import Catalog, can_use, physical_model_scope, seed_catalog
+from tests.authz.e03_support import Catalog, can_use, seed_catalog
 from tests.authz.test_org_groups_api import grant_admin
 from tests.conftest import TestSession, make_user
 
@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from tests.authz.org_context_fixture import OrgFixture
 
 pytest_plugins = ["tests.authz.org_context_fixture"]
-__all__ = ["physical_model_scope"]  # autouse fixture re-export
 
 
 @pytest.fixture

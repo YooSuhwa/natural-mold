@@ -104,9 +104,10 @@ async def resource_scope(
     db: AsyncSession, resource_type: str, resource_id: UUID
 ) -> ResourceScope | None:
     """The stored scope of a grant target; types without a table yet are unknown (``None``)."""
-    if resource_type == "llm_model":  # platform catalog row, shared by fanout only
-        found = await db.scalar(select(Model.id).where(Model.id == resource_id))
-        return None if found is None else ResourceScope(None, None)
+    if resource_type == "llm_model":  # platform or company catalog row, fanout only
+        found = await db.execute(select(Model.tenant_id).where(Model.id == resource_id))
+        row = found.first()
+        return None if row is None else ResourceScope(None, row[0])
     if resource_type == "mcp_tool":
         server = await db.scalar(select(McpTool.server_id).where(McpTool.id == resource_id))
         return None if server is None else await resource_scope(db, "mcp_server", server)

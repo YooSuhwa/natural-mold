@@ -12,13 +12,10 @@ from app.models.organization import Organization, Tenant
 from tests.authz.e03_support import (
     active_members,
     can_use,
-    physical_model_scope,
     seed_catalog,
 )
 from tests.authz.grant_testkit import Clock, seed_world, service
 from tests.conftest import TestSession
-
-__all__ = ["physical_model_scope"]  # autouse fixture re-export
 
 
 async def _fanout_grants(db: AsyncSession, org_id) -> list[ResourceGrant]:

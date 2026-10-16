@@ -12,13 +12,22 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
-from app.authz.catalog_fanout import enabled_entries, expected_fanout, stored_policy, sync_fanout
+from app.authz.catalog_fanout import (
+    company_allows,
+    credential_fanout,
+    enabled_entries,
+    expected_fanout,
+    stored_policy,
+    sync_fanout,
+)
+from app.authz.company_catalog import CompanyTier, company_tier
 from app.authz.error_codes import authorization_error
 from app.authz.org_catalog_queries import (
     CatalogEntry,
     catalog_entries,
     catalog_impact,
     company_catalog_settings,
+    company_credential_ids,
 )
 from app.authz.org_context import OrgContext
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
@@ -39,7 +48,7 @@ from app.services.orgs.versioning import bump_version, require_current_version, 
 @dataclass(frozen=True, slots=True)
 class CatalogState:
     inventory: tuple[CatalogEntry, ...]
-    company_policy: CatalogPolicy
+    company: CompanyTier
     organization_policy: CatalogPolicy
 
 
@@ -53,7 +62,7 @@ async def catalog_state(
     company = await company_catalog_settings(db, context.organization.tenant_id, lock=lock)
     return CatalogState(
         inventory=await catalog_entries(db, company.id),
-        company_policy=stored_policy(company.settings),
+        company=company_tier(company),
         organization_policy=stored_policy(context.organization.settings),
     )
 
@@ -61,7 +70,7 @@ async def catalog_state(
 def catalog_view(context: OrgControlContext, state: CatalogState) -> CatalogPolicyView:
     items: list[CatalogItemView] = []
     for entry in state.inventory:
-        company_enabled = entry.available and state.company_policy.enabled_for(entry.kind, entry.id)
+        company_enabled = company_allows(state.company, entry, context.organization.id)
         organization_enabled = state.organization_policy.enabled_for(entry.kind, entry.id)
         items.append(
             CatalogItemView(
@@ -117,9 +126,7 @@ async def update_catalog_policy(
         entry = inventory.get((item.type, item.id))
         if entry is None:
             raise authorization_error("not_found")
-        if item.enabled and (
-            not entry.available or not state.company_policy.enabled_for(item.type, item.id)
-        ):
+        if item.enabled and not company_allows(state.company, entry, context.organization.id):
             raise authorization_error("catalog_policy_locked")
     canonical = CatalogPolicy(
         items=tuple(sorted(payload.items, key=lambda row: (row.type, row.id)))
@@ -156,9 +163,7 @@ async def update_catalog_policy(
         },
     )
     await mutation.db.commit()
-    return catalog_view(context, CatalogState(state.inventory, state.company_policy, canonical)), (
-        change
-    )
+    return catalog_view(context, CatalogState(state.inventory, state.company, canonical)), (change)
 
 
 async def _sync_fanout(
@@ -173,7 +178,9 @@ async def _sync_fanout(
     actor = OrgContext(
         org_id=organization.id, tenant_id=organization.tenant_id, user_id=context.actor.id
     )
-    want = expected_fanout(enabled_entries(state.inventory, state.company_policy, policy))
+    entries = enabled_entries(state.inventory, state.company, policy, organization.id)
+    credentials = await company_credential_ids(mutation.db, organization.tenant_id)
+    want = expected_fanout(entries) | credential_fanout(credentials, state.company, organization.id)
     change = await sync_fanout(mutation.db, actor, want)
     await mutation.db.refresh(organization, ["updated_at", "authz_epoch"])
     return change

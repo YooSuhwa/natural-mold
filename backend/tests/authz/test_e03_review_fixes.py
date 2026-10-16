@@ -28,12 +28,12 @@ from tests.authz.d04_support import (
     authz,
     seed_scope,
 )
-from tests.authz.e03_support import can_use, physical_model_scope, seed_catalog
+from tests.authz.e03_support import can_use, seed_catalog
 from tests.authz.grant_testkit import Clock, seed_world, service
 from tests.authz.unit_scope_fixture import TEST_ORG_ID
 from tests.conftest import TEST_USER_ID, TestSession
 
-__all__ = ["authz", "physical_model_scope"]  # fixture re-exports
+__all__ = ["authz"]  # fixture re-exports
 
 
 class Recording(GrantService):

@@ -1,11 +1,9 @@
 """E-03 catalog fanout fixtures: platform catalog rows, a model-faithful ``can_use`` probe."""
 
-from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from uuid import UUID
 
-import pytest
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.fake import FakeTupleStore
@@ -14,19 +12,6 @@ from app.models.model import Model
 from app.models.organization import OrganizationMember
 from app.models.tool import Tool
 from tests.conftest import make_user
-
-
-@pytest.fixture(autouse=True)
-async def physical_model_scope(db: AsyncSession) -> AsyncGenerator[None, None]:
-    """m81 owns ``models.tenant_id`` physically; the ORM mapping is B-08."""
-    await db.execute(text("ALTER TABLE models ADD COLUMN tenant_id UUID"))
-    await db.commit()
-    try:
-        yield
-    finally:
-        await db.rollback()
-        await db.execute(text("ALTER TABLE models DROP COLUMN tenant_id"))
-        await db.commit()
 
 
 @dataclass(frozen=True, slots=True)

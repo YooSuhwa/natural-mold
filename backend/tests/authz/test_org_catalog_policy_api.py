@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,18 +18,6 @@ if TYPE_CHECKING:
     from tests.authz.org_context_fixture import OrgFixture
 
 pytest_plugins = ["tests.authz.org_context_fixture"]
-
-
-@pytest.fixture(autouse=True)
-async def physical_model_scope(db: AsyncSession) -> AsyncGenerator[None, None]:
-    await db.execute(text("ALTER TABLE models ADD COLUMN tenant_id UUID"))
-    await db.commit()
-    try:
-        yield
-    finally:
-        await db.rollback()
-        await db.execute(text("ALTER TABLE models DROP COLUMN tenant_id"))
-        await db.commit()
 
 
 async def catalog_fixture(db: AsyncSession, fixture: OrgFixture) -> tuple[Model, Tool, Model]:

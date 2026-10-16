@@ -169,11 +169,11 @@ async def get_for_user(
 
 
 async def list_system(db: AsyncSession) -> list[Credential]:
-    """Return operator-managed system credentials regardless of owner."""
+    """Platform credentials only: company shared ones are ``is_system`` too (E-07)."""
 
     result = await db.execute(
         select(Credential)
-        .where(Credential.is_system.is_(True))
+        .where(Credential.is_system.is_(True), Credential.tenant_id.is_(None))
         .order_by(Credential.created_at.desc())
     )
     return list(result.scalars().all())
@@ -186,6 +186,7 @@ async def get_system(db: AsyncSession, credential_id: uuid.UUID) -> Credential |
         select(Credential).where(
             Credential.id == credential_id,
             Credential.is_system.is_(True),
+            Credential.tenant_id.is_(None),
         )
     )
     return result.scalar_one_or_none()
@@ -200,6 +201,7 @@ async def find_system_by_definition(db: AsyncSession, definition_key: str) -> Cr
         select(Credential)
         .where(
             Credential.is_system.is_(True),
+            Credential.tenant_id.is_(None),
             Credential.definition_key == definition_key,
             Credential.status == "active",
         )
@@ -267,6 +269,7 @@ async def get_provider_keys(
         .where(
             Credential.definition_key.in_(LLM_DEFINITION_TO_ENV_KEY.keys()),
             Credential.status == "active",
+            Credential.scope != "tenant",  # a company key never becomes a global fallback
         )
         .order_by(Credential.is_system.desc(), Credential.created_at.desc())
     )

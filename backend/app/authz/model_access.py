@@ -20,6 +20,13 @@ from app.models.model import Model
 from app.services.credential_resolver import resolve_credential_for_model
 
 
+def require_company_model(model: Model, tenant_id: UUID | None) -> Model:
+    """Platform rows or the caller company's own models, in every mode (E-07)."""
+    if model.tenant_id is not None and model.tenant_id != tenant_id:
+        raise model_not_found()
+    return model
+
+
 def require_visible_model(model: Model, user: CurrentUser) -> Model:
     """The model list's rows, in every mode: hidden models are operator-only (D-10)."""
     if not (model.is_visible or user.is_super_user):
@@ -36,10 +43,10 @@ async def load_model_target(
         row = await db.get(Model, model_id)
         if row is None:
             raise model_not_found()
-        return row
+        return require_company_model(row, context.tenant_id)
 
     model = await gate_row(authz, db, context, LLM_MODEL, model_id, "can_use", legacy)
-    return require_visible_model(model, user)
+    return require_visible_model(require_company_model(model, context.tenant_id), user)
 
 
 async def load_owned_credential(

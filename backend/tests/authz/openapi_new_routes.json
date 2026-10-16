@@ -16192,6 +16192,321 @@
         ]
       }
     },
+    "/api/tenants/{tenant_id}/catalog-policy": {
+      "get": {
+        "operationId": "get_company_catalog_policy_api_tenants__tenant_id__catalog_policy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCatalogPolicyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Company Catalog Policy",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "put": {
+        "operationId": "put_company_catalog_policy_api_tenants__tenant_id__catalog_policy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCatalogPolicyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Company Catalog Policy",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/credentials": {
+      "get": {
+        "operationId": "get_company_credentials_api_tenants__tenant_id__credentials_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TenantCredentialView"
+                  },
+                  "title": "Response Get Company Credentials Api Tenants  Tenant Id  Credentials Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Company Credentials",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "post": {
+        "operationId": "post_company_credential_api_tenants__tenant_id__credentials_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantCredentialCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCredentialView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Company Credential",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/credentials/{credential_id}": {
+      "delete": {
+        "operationId": "delete_company_credential_route_api_tenants__tenant_id__credentials__credential_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Company Credential Route",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_company_credential_api_tenants__tenant_id__credentials__credential_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantCredentialUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantCredentialView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Company Credential",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
     "/api/tenants/{tenant_id}/invitations": {
       "get": {
         "operationId": "get_invitations_api_tenants__tenant_id__invitations_get",
@@ -16457,6 +16772,100 @@
           }
         },
         "summary": "Post Invitation Resend",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/llm-settings": {
+      "get": {
+        "operationId": "get_company_llm_settings_api_tenants__tenant_id__llm_settings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantLlmSettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Company Llm Settings",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "put": {
+        "operationId": "put_company_llm_setting_api_tenants__tenant_id__llm_settings_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantLlmSettingUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantLlmSettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Company Llm Setting",
         "tags": [
           "company administration"
         ]
@@ -16735,6 +17144,207 @@
           }
         },
         "summary": "Patch Member",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/models": {
+      "get": {
+        "operationId": "get_company_models_api_tenants__tenant_id__models_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantModelList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Company Models",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "post": {
+        "operationId": "post_company_model_api_tenants__tenant_id__models_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantModelCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantModelView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Company Model",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/models/{model_id}": {
+      "delete": {
+        "operationId": "delete_company_model_route_api_tenants__tenant_id__models__model_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Company Model Route",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_company_model_api_tenants__tenant_id__models__model_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantModelUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantModelView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Company Model",
         "tags": [
           "company administration"
         ]
@@ -36809,6 +37419,246 @@
       "title": "TenantAuditorOverview",
       "type": "object"
     },
+    "TenantCatalogItemView": {
+      "properties": {
+        "company_enabled": {
+          "title": "Company Enabled",
+          "type": "boolean"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "platform_available": {
+          "title": "Platform Available",
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "platform",
+            "company"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "model",
+            "tool",
+            "skill",
+            "mcp_server"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "id",
+        "name",
+        "source",
+        "platform_available",
+        "company_enabled"
+      ],
+      "title": "TenantCatalogItemView",
+      "type": "object"
+    },
+    "TenantCatalogPolicyView": {
+      "properties": {
+        "allow_system_models": {
+          "title": "Allow System Models",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TenantCatalogItemView"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "allow_system_models",
+        "updated_at"
+      ],
+      "title": "TenantCatalogPolicyView",
+      "type": "object"
+    },
+    "TenantCredentialCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_org_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 500,
+          "title": "Allowed Org Ids",
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/pydantic__types__JsonValue"
+          },
+          "title": "Data",
+          "type": "object"
+        },
+        "definition_key": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Definition Key",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "definition_key",
+        "name",
+        "data"
+      ],
+      "title": "TenantCredentialCreate",
+      "type": "object"
+    },
+    "TenantCredentialUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_org_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 500,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Org Ids"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/pydantic__types__JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Data"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "active",
+                "disabled"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        }
+      },
+      "title": "TenantCredentialUpdate",
+      "type": "object"
+    },
+    "TenantCredentialView": {
+      "description": "Values are never returned, only field names (S07).",
+      "properties": {
+        "allowed_org_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Allowed Org Ids",
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "definition_key": {
+          "title": "Definition Key",
+          "type": "string"
+        },
+        "field_keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Field Keys",
+          "type": "array"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "definition_key",
+        "name",
+        "field_keys",
+        "status",
+        "allowed_org_ids",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "TenantCredentialView",
+      "type": "object"
+    },
     "TenantInvitationCreate": {
       "additionalProperties": false,
       "properties": {
@@ -37051,6 +37901,144 @@
       "title": "TenantLimitSummary",
       "type": "object"
     },
+    "TenantLlmSettingUpdate": {
+      "additionalProperties": false,
+      "description": "Both ``null`` drops the company override (inherit the platform default).",
+      "properties": {
+        "credential_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Id"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Name"
+        },
+        "role": {
+          "enum": [
+            "text_primary",
+            "text_fallback",
+            "image"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "title": "TenantLlmSettingUpdate",
+      "type": "object"
+    },
+    "TenantLlmSettingView": {
+      "properties": {
+        "configured": {
+          "title": "Configured",
+          "type": "boolean"
+        },
+        "credential_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Id"
+        },
+        "credential_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Name"
+        },
+        "inherits": {
+          "title": "Inherits",
+          "type": "boolean"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Name"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "inherits",
+        "credential_id",
+        "credential_name",
+        "provider",
+        "model_name",
+        "configured"
+      ],
+      "title": "TenantLlmSettingView",
+      "type": "object"
+    },
+    "TenantLlmSettingsView": {
+      "properties": {
+        "allow_system_models": {
+          "title": "Allow System Models",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TenantLlmSettingView"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items",
+        "allow_system_models"
+      ],
+      "title": "TenantLlmSettingsView",
+      "type": "object"
+    },
     "TenantMemberAdd": {
       "additionalProperties": false,
       "properties": {
@@ -37170,6 +38158,551 @@
         "status"
       ],
       "title": "TenantMemberStatusPatch",
+      "type": "object"
+    },
+    "TenantModelCreate": {
+      "description": "A company model (``models.tenant_id``) and the organizations it reaches.",
+      "properties": {
+        "allowed_org_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 500,
+          "title": "Allowed Org Ids",
+          "type": "array"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Base Url"
+        },
+        "context_window": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Context Window"
+        },
+        "cost_per_input_token": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cost Per Input Token"
+        },
+        "cost_per_output_token": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cost Per Output Token"
+        },
+        "default_credential_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Credential Id"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "input_modalities": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Input Modalities"
+        },
+        "is_default": {
+          "default": false,
+          "title": "Is Default",
+          "type": "boolean"
+        },
+        "is_visible": {
+          "default": true,
+          "title": "Is Visible",
+          "type": "boolean"
+        },
+        "max_output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Output Tokens"
+        },
+        "model_name": {
+          "title": "Model Name",
+          "type": "string"
+        },
+        "output_modalities": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Output Modalities"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "enum": [
+                "openrouter",
+                "litellm",
+                "manual"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source"
+        },
+        "supports_function_calling": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Supports Function Calling"
+        },
+        "supports_reasoning": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Supports Reasoning"
+        },
+        "supports_vision": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Supports Vision"
+        }
+      },
+      "required": [
+        "provider",
+        "model_name",
+        "display_name"
+      ],
+      "title": "TenantModelCreate",
+      "type": "object"
+    },
+    "TenantModelList": {
+      "properties": {
+        "allow_system_models": {
+          "title": "Allow System Models",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TenantModelView"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items",
+        "allow_system_models"
+      ],
+      "title": "TenantModelList",
+      "type": "object"
+    },
+    "TenantModelUpdate": {
+      "description": "Company models accept every field; platform models only ``allowed_org_ids``\n(``null`` = every organization of the company).",
+      "properties": {
+        "allowed_org_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 500,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Org Ids"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Base Url"
+        },
+        "context_window": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Context Window"
+        },
+        "cost_per_input_token": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cost Per Input Token"
+        },
+        "cost_per_output_token": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cost Per Output Token"
+        },
+        "default_credential_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Credential Id"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "input_modalities": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Input Modalities"
+        },
+        "is_default": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Is Default"
+        },
+        "is_visible": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Is Visible"
+        },
+        "max_output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Output Tokens"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Name"
+        },
+        "output_modalities": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Output Modalities"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "enum": [
+                "openrouter",
+                "litellm",
+                "manual"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source"
+        },
+        "supports_function_calling": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Supports Function Calling"
+        },
+        "supports_reasoning": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Supports Reasoning"
+        },
+        "supports_vision": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Supports Vision"
+        }
+      },
+      "title": "TenantModelUpdate",
+      "type": "object"
+    },
+    "TenantModelView": {
+      "properties": {
+        "allowed_org_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Org Ids"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Base Url"
+        },
+        "company_enabled": {
+          "title": "Company Enabled",
+          "type": "boolean"
+        },
+        "default_credential_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Credential Id"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "is_default": {
+          "title": "Is Default",
+          "type": "boolean"
+        },
+        "is_visible": {
+          "title": "Is Visible",
+          "type": "boolean"
+        },
+        "model_name": {
+          "title": "Model Name",
+          "type": "string"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "requires_company_key": {
+          "title": "Requires Company Key",
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "platform",
+            "company"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "provider",
+        "model_name",
+        "display_name",
+        "base_url",
+        "is_default",
+        "is_visible",
+        "default_credential_id",
+        "company_enabled",
+        "requires_company_key",
+        "allowed_org_ids"
+      ],
+      "title": "TenantModelView",
       "type": "object"
     },
     "TenantOrganizationAdminPage": {
@@ -40032,6 +41565,7 @@
           "type": "object"
         }
       ]
-    }
+    },
+    "pydantic__types__JsonValue": {}
   }
 }

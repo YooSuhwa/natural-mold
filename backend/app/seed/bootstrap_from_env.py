@@ -120,7 +120,9 @@ async def bootstrap_system_credentials(db: AsyncSession) -> list[Credential]:
         return []
 
     existing_rows = await db.execute(
-        select(Credential.definition_key, Credential.name).where(Credential.is_system.is_(True))
+        select(Credential.definition_key, Credential.name).where(
+            Credential.is_system.is_(True), Credential.tenant_id.is_(None)
+        )
     )
     existing = {(row[0], row[1]) for row in existing_rows.all()}
 

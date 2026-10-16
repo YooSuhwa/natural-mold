@@ -89,7 +89,8 @@ async def list_system_llm_settings(
     _user: CurrentUser = Depends(require_super_user),
 ) -> list[SystemLlmSettingOut]:
     """All role slots (text_primary / text_fallback / image). Super_user only."""
-    result = await db.execute(select(SystemLlmSetting))
+    # Platform defaults only; company overrides live under /api/tenants/{id}/llm-settings.
+    result = await db.execute(select(SystemLlmSetting).where(SystemLlmSetting.tenant_id.is_(None)))
     by_role = {s.role: s for s in result.scalars().all()}
     out: list[SystemLlmSettingOut] = []
     for role in SYSTEM_LLM_ROLES:
@@ -133,7 +134,11 @@ async def update_system_llm_setting(
             )
             raise HTTPException(status_code=422, detail=_INVALID_CREDENTIAL_DETAIL)
 
-    result = await db.execute(select(SystemLlmSetting).where(SystemLlmSetting.role == role))
+    result = await db.execute(
+        select(SystemLlmSetting).where(
+            SystemLlmSetting.role == role, SystemLlmSetting.tenant_id.is_(None)
+        )
+    )
     setting = result.scalar_one_or_none()
     if setting is None:
         setting = SystemLlmSetting(role=role)

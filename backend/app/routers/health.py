@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.company_catalog import model_scope
 from app.authz.model_access import load_model_target
 from app.authz.org_context import OrgContext
 from app.authz.policies import CANDIDATES, RES, authz_policy
@@ -160,7 +161,8 @@ async def list_model_health(
     context: OrgContext | None = Depends(org_context_when_consulted),
     authz: AuthzService = Depends(get_authz),
 ):
-    models = (await db.execute(select(Model))).scalars().all()
+    company = context.tenant_id if context is not None else None  # E-07: never another's
+    models = (await db.execute(select(Model).where(model_scope(company)))).scalars().all()
     if context is not None:
         models = await gate_list(authz, context, "llm_model", "can_use", models, lambda m: m.id)
     latest = await _latest_for(db, "model", [m.id for m in models])

@@ -53,8 +53,11 @@ def include_app_routers(app: FastAPI) -> None:
         skills,
         system_llm_settings,
         templates,
+        tenant_catalog,
+        tenant_credentials,
         tenant_invitations,
         tenant_members,
+        tenant_models,
         tenant_organization_lifecycle,
         tenant_organizations,
         tenant_overview,
@@ -99,6 +102,9 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(org_assignments.router)
     app.include_router(tenant_overview.router)
     app.include_router(tenant_policies.router)
+    app.include_router(tenant_catalog.router)
+    app.include_router(tenant_models.router)
+    app.include_router(tenant_credentials.router)
     app.include_router(tenant_publication_requests.router)
     app.include_router(tenant_organizations.router)
     app.include_router(tenant_organization_lifecycle.router)

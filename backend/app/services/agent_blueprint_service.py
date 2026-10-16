@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
 from app.agent_runtime.runtime_policy import RuntimePolicyV1
+from app.authz.company_catalog import model_scope
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.scoping import private_scoped
@@ -36,6 +37,7 @@ async def _resolve_model_id(
     *,
     spec: dict[str, Any],
     requested_model_id: uuid.UUID | None,
+    tenant_id: uuid.UUID | None = None,  # caller company: platform + its models (E-07)
 ) -> uuid.UUID:
     if requested_model_id is not None:
         # The override is caller-supplied input. A missing OR operator-hidden
@@ -47,6 +49,7 @@ async def _resolve_model_id(
             select(Model.id).where(
                 Model.id == requested_model_id,
                 Model.is_visible.is_(True),
+                model_scope(tenant_id),
             )
         )
         if model_id is None:
@@ -57,7 +60,7 @@ async def _resolve_model_id(
     agent_spec = raw_agent_spec if isinstance(raw_agent_spec, dict) else {}
     raw_model_spec = agent_spec.get("model")
     model_spec = raw_model_spec if isinstance(raw_model_spec, dict) else {}
-    model_id = await _resolve_model_descriptor(db, model_spec=model_spec)
+    model_id = await _resolve_model_descriptor(db, model_spec=model_spec, tenant_id=tenant_id)
     if model_id is not None:
         return model_id
 
@@ -68,6 +71,7 @@ async def _resolve_model_descriptor(
     db: AsyncSession,
     *,
     model_spec: dict[str, Any],
+    tenant_id: uuid.UUID | None = None,
 ) -> uuid.UUID | None:
     preferred_id = model_spec.get("preferred_model_id")
     if preferred_id:
@@ -76,6 +80,7 @@ async def _resolve_model_descriptor(
                 select(Model.id).where(
                     Model.id == uuid.UUID(str(preferred_id)),
                     Model.is_visible.is_(True),
+                    model_scope(tenant_id),
                 )
             )
         except ValueError:
@@ -95,6 +100,7 @@ async def _resolve_model_descriptor(
             Model.provider == str(provider),
             Model.model_name == str(model_name),
             Model.is_visible.is_(True),
+            model_scope(tenant_id),
         )
         if base_url is None:
             stmt = stmt.where(Model.base_url.is_(None))
@@ -112,6 +118,7 @@ async def _resolve_model_fallback_ids(
     *,
     spec: dict[str, Any],
     requested_model_fallback_ids: list[uuid.UUID] | None,
+    tenant_id: uuid.UUID | None = None,
 ) -> list[uuid.UUID] | None:
     if requested_model_fallback_ids is not None:
         return requested_model_fallback_ids
@@ -124,7 +131,7 @@ async def _resolve_model_fallback_ids(
     for row in rows:
         if not isinstance(row, dict):
             raise marketplace_invalid_package("model fallback is malformed")
-        model_id = await _resolve_model_descriptor(db, model_spec=row)
+        model_id = await _resolve_model_descriptor(db, model_spec=row, tenant_id=tenant_id)
         if model_id is None:
             raise model_not_found()
         if model_id not in fallback_ids:
@@ -275,15 +282,21 @@ async def create_agent_from_blueprint(
             context=actor_context,
         )
         agent_spec = mapping(spec.get("agent"))
-        model_id = await _resolve_model_id(db, spec=spec, requested_model_id=body.model_id)
+        tenant_id = actor_context.tenant_id
+        model_id = await _resolve_model_id(
+            db, spec=spec, requested_model_id=body.model_id, tenant_id=tenant_id
+        )
         model_fallback_ids = await _resolve_model_fallback_ids(
             db,
             spec=spec,
             requested_model_fallback_ids=body.model_fallback_ids,
+            tenant_id=tenant_id,
         )
         if model_fallback_ids:
             valid_fallbacks = set(
-                await db.scalars(select(Model.id).where(Model.id.in_(model_fallback_ids)))
+                await db.scalars(
+                    select(Model.id).where(Model.id.in_(model_fallback_ids), model_scope(tenant_id))
+                )
             )
             invalid = [
                 str(model_id) for model_id in model_fallback_ids if model_id not in valid_fallbacks
