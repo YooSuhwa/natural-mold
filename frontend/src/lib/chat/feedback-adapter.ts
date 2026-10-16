@@ -18,7 +18,7 @@ export function useChatFeedbackAdapter(
   getActiveRating: (messageId: string) => 'up' | 'down' | undefined,
   options?: {
     readonly onMutate?: () => void
-    readonly resolveMessageId?: (messageId: string) => string
+    readonly resolveMessageId?: (messageId: string) => string | undefined
   },
 ): FeedbackAdapter | undefined {
   const { onMutate, resolveMessageId } = options ?? {}
@@ -27,7 +27,10 @@ export function useChatFeedbackAdapter(
     return {
       submit: ({ message, type }) => {
         const next: 'up' | 'down' = type === 'positive' ? 'up' : 'down'
-        const messageId = resolveMessageId?.(message.id) ?? message.id
+        const messageId = resolveMessageId ? resolveMessageId(message.id) : message.id
+        // Not yet in the messages query: the server would 404 an unknown id, so skip
+        // persisting; the next messages refresh supplies the public id.
+        if (!messageId) return
         const current = getActiveRating(messageId)
         const promise =
           current === next
@@ -48,7 +51,7 @@ export function useChatFeedbackAdapter(
 export function resolveFeedbackMessageId(
   publicIds: ReadonlyMap<string, string>,
   messageId: string,
-): string {
+): string | undefined {
   const sourceId = sourceMessageIdFromThreadMessageId(messageId)
-  return publicIds.get(messageId) ?? (sourceId ? publicIds.get(sourceId) : undefined) ?? messageId
+  return publicIds.get(messageId) ?? (sourceId ? publicIds.get(sourceId) : undefined)
 }

@@ -300,9 +300,9 @@ async def revoke_share(
 
 
 # ---------------------------------------------------------------------------
-# Public visitor endpoints (no auth)
-# TODO(9.3 follow-up): enforce org allow_public_share_links on create and on every
-# public read before the cache, with the policy version in the cache key.
+# Public visitor endpoints (no auth). Every read resolves the token through
+# ``load_share_with_conversation_and_agent`` first, which also applies the org's
+# ``allow_public_share_links`` setting before any cache lookup (D-10).
 # ---------------------------------------------------------------------------
 
 

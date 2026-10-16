@@ -36,10 +36,11 @@ from app.authz.private_actor import (
     resolve_private_actor,
 )
 from app.authz.scoping import private_scope_predicate, private_scoped
-from app.error_codes import agent_not_found
+from app.error_codes import agent_not_found, public_share_links_disabled
 from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.organization import Organization
 from app.models.share_link import ShareLink
 from app.services.agent_lifecycle_locks import read_agent_tree
 
@@ -79,10 +80,22 @@ async def get_active_share_for_conversation(
     return result.scalar_one_or_none()
 
 
+async def public_links_allowed(db: AsyncSession, org_id: uuid.UUID) -> bool:
+    """The organization's ``allow_public_share_links`` setting (default on)."""
+    settings = await db.scalar(
+        select(Organization.settings)
+        .where(Organization.id == org_id)
+        .execution_options(autoflush=False)
+    )
+    return (settings or {}).get("allow_public_share_links") is not False
+
+
 async def create_or_get_active_share(
     db: AsyncSession, conversation: Conversation, context: OrgContext
 ) -> ShareLink:
     conversation = await require_private_conversation(db, conversation.id, context)
+    if not await public_links_allowed(db, context.org_id):
+        raise public_share_links_disabled()
     if conversation.agent_id is None:
         raise agent_not_found()
     await load_agent_tree_for_execution(db, AgentExecutionTarget(conversation.agent_id, context))
@@ -177,7 +190,9 @@ async def load_share_with_conversation_and_agent(
             .limit(1)
         )
         link = result.scalar_one_or_none()
-        if link is None:
+        # Checked on every public read before any snapshot cache, so turning the
+        # setting off takes effect immediately without keying the cache on it.
+        if link is None or not await public_links_allowed(db, link.org_id):
             return None
 
         conv_result = await db.execute(

@@ -33,7 +33,7 @@ describe('feedback identity', () => {
         ['public-answer', 'public-answer'],
       ])
       expect(resolveFeedbackMessageId(ids, id)).toBe('public-answer')
-      expect(resolveFeedbackMessageId(ids, 'unknown::moldy-turn-2')).toBe('unknown::moldy-turn-2')
+      expect(resolveFeedbackMessageId(ids, 'unknown::moldy-turn-2')).toBeUndefined()
     },
   )
 
@@ -64,4 +64,13 @@ describe('feedback identity', () => {
       }
     },
   )
+
+  it('skips persisting while the public id is unresolved', () => {
+    const { result } = renderHook(() =>
+      useChatFeedbackAdapter('conversation', vi.fn(), { resolveMessageId: () => undefined }),
+    )
+    act(() => result.current?.submit({ message: assistantMessage(), type: 'positive' }))
+    expect(feedbackApi.set).not.toHaveBeenCalled()
+    expect(feedbackApi.clear).not.toHaveBeenCalled()
+  })
 })

@@ -255,11 +255,6 @@
     },
     {
       "rule": "routers_to_models",
-      "importer": "app.routers.models",
-      "imported": "app.models.credential"
-    },
-    {
-      "rule": "routers_to_models",
       "importer": "app.routers.shares",
       "imported": "app.models.conversation"
     },

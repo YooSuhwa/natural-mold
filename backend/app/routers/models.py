@@ -17,17 +17,17 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.model_access import (
+    load_owned_credential,
+    model_test_credential,
+    require_visible_model,
+)
 from app.authz.org_context import OrgContext
 from app.authz.policies import CANDIDATES, RES, SELF, SUPER, authz_policy
-from app.authz.resource_gate import (
-    CREDENTIAL,
-    gate_list,
-    gate_row,
-    org_context_when_consulted,
-)
+from app.authz.resource_gate import gate_list, org_context_when_consulted
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
 from app.credentials import service as credential_service
@@ -40,11 +40,9 @@ from app.dependencies import (
     verify_csrf,
 )
 from app.error_codes import (
-    credential_not_found,
     model_not_found,
     super_user_required,
 )
-from app.models.credential import Credential
 from app.schemas.model import (
     ModelCreate,
     ModelTestPreviewRequest,
@@ -52,9 +50,9 @@ from app.schemas.model import (
     ModelUpdate,
 )
 from app.services import model_service
-from app.services.credential_resolver import resolve_credential_for_model
 from app.services.model_service import serialize_model
 from app.services.model_test import run_model_test
+from app.services.model_test_audit import record_model_test
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -98,7 +96,7 @@ async def get_model(
     authz: AuthzService = Depends(get_authz),
 ):
     model = await model_service.load_model(db, model_id, context, authz)
-    return serialize_model(model)
+    return serialize_model(require_visible_model(model, user))
 
 
 @router.post("", status_code=201)
@@ -190,23 +188,6 @@ async def delete_model(
 # -- Test surface ------------------------------------------------------------
 
 
-async def _load_owned_credential(
-    db: AsyncSession, credential_id: uuid.UUID, context: OrgContext, authz: AuthzService
-) -> Credential:
-    async def legacy() -> Credential:
-        cred = await credential_service.get_for_user(db, credential_id, context)
-        if cred is None:
-            raise credential_not_found()
-        return cred
-
-    return await gate_row(authz, db, context, CREDENTIAL, credential_id, "can_use", legacy)
-
-
-def _request_meta(request: Request) -> tuple[str | None, str | None]:
-    client = request.client.host if request.client else None
-    return client, request.headers.get("user-agent")
-
-
 @router.post("/{model_id}/test", response_model=ModelTestResponse)
 @authz_policy(RES("llm_model", "can_use", param="model_id", min_visible="can_use"))
 async def test_registered_model(
@@ -233,22 +214,10 @@ async def test_registered_model(
     credential for this model).
     """
 
-    model = await model_service.load_model(db, model_id, context, authz)
-
-    cred = await resolve_credential_for_model(db, model, credential_id, context)
-    if cred is None:
-        # Disambiguate so existing 404-on-invalid-credential clients keep
-        # working while still giving a useful 422 when the user simply has
-        # no default bound.
-        if credential_id is not None:
-            raise credential_not_found()
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "no usable credential — pass credential_id or set the model's "
-                "default_credential_id."
-            ),
-        )
+    model = require_visible_model(
+        await model_service.load_model(db, model_id, context, authz), user
+    )
+    cred = await model_test_credential(db, model, credential_id, context, authz)
     data = await credential_service.decrypt_with_external(cred)
 
     result = await run_model_test(
@@ -261,24 +230,17 @@ async def test_registered_model(
     )
 
     payload = result.to_dict()
-    ip, user_agent = _request_meta(request)
-    await credential_service.write_audit_log(
+    await record_model_test(
         db,
+        request,
         credential_id=cred.id,
         actor_user_id=user.id,
-        action="test",
-        source="api",
-        ip=ip,
-        user_agent=user_agent,
+        payload=payload,
         metadata={
             "model_id": str(model.id),
             "provider": model.provider,
             "model_name": model.model_name,
-            "success": payload["success"],
         },
-        error=None
-        if payload["success"]
-        else (payload["error"]["message"] if payload.get("error") else None),
     )
     await db.commit()
     return ModelTestResponse(**payload)
@@ -302,7 +264,7 @@ async def test_preview_model(
     pasted-in ID before committing it to the table.
     """
 
-    cred = await _load_owned_credential(db, payload.credential_id, context, authz)
+    cred = await load_owned_credential(db, payload.credential_id, context, authz)
     data = await credential_service.decrypt_with_external(cred)
 
     result = await run_model_test(
@@ -313,24 +275,17 @@ async def test_preview_model(
     )
 
     body = result.to_dict()
-    ip, user_agent = _request_meta(request)
-    await credential_service.write_audit_log(
+    await record_model_test(
         db,
+        request,
         credential_id=cred.id,
         actor_user_id=user.id,
-        action="test",
-        source="api",
-        ip=ip,
-        user_agent=user_agent,
+        payload=body,
         metadata={
             "preview": True,
             "provider": payload.provider,
             "model_name": payload.model_name,
-            "success": body["success"],
         },
-        error=None
-        if body["success"]
-        else (body["error"]["message"] if body.get("error") else None),
     )
     await db.commit()
     return ModelTestResponse(**body)

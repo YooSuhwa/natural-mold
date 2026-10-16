@@ -5,14 +5,17 @@ from __future__ import annotations
 import uuid
 from datetime import UTC as _FIXTURE_UTC
 from datetime import datetime as _fixture_datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from langchain_core.messages import AIMessage
 
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.user import User
+from app.services.thread_branch_service import MessageTree, MessageTreeNode
 from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession
 
@@ -51,7 +54,21 @@ async def _seed_conversation() -> uuid.UUID:
 async def test_feedback_upsert_then_toggle(client: AsyncClient):
     conv_id = await _seed_conversation()
     msg_id = "msg-abc-123"
+    # Upsert checks the message is in the conversation's checkpoint (D-10).
+    node = MessageTreeNode(
+        message=AIMessage(id=msg_id, content="a"), parent_id=None, introduced_by_checkpoint_id="c"
+    )
+    tree = MessageTree(nodes=[node], active_tip_message_id=msg_id, active_checkpoint_id="c")
+    with (
+        patch("app.agent_runtime.checkpointer.get_checkpointer"),
+        patch(
+            "app.services.thread_branch_service.build_message_tree", AsyncMock(return_value=tree)
+        ),
+    ):
+        await _rate_toggle_and_clear(client, conv_id, msg_id)
 
+
+async def _rate_toggle_and_clear(client: AsyncClient, conv_id: uuid.UUID, msg_id: str) -> None:
     # POST → up
     resp = await client.post(
         f"/api/messages/{msg_id}/feedback",

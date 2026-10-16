@@ -106,6 +106,10 @@ def share_not_found() -> NotFoundError:
     return NotFoundError("SHARE_NOT_FOUND", "공유 링크를 찾을 수 없습니다")
 
 
+def message_not_found() -> NotFoundError:
+    return NotFoundError("MESSAGE_NOT_FOUND", "메시지를 찾을 수 없습니다")
+
+
 def memory_not_found() -> NotFoundError:
     return NotFoundError("MEMORY_NOT_FOUND", "메모리를 찾을 수 없습니다")
 
@@ -240,6 +244,13 @@ def super_user_required() -> ForbiddenError:
 
 def credential_forbidden() -> ForbiddenError:
     return ForbiddenError("FORBIDDEN", "권한이 없습니다")
+
+
+def public_share_links_disabled() -> ForbiddenError:
+    """The organization's ``allow_public_share_links`` setting is off (plan 9.3)."""
+    return ForbiddenError(
+        "PUBLIC_SHARE_LINKS_DISABLED", "이 조직은 공개 공유 링크를 허용하지 않습니다"
+    )
 
 
 # ---------------------------------------------------------------------------

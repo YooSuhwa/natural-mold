@@ -18,14 +18,13 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.model_access import load_model_target
 from app.authz.org_context import OrgContext
 from app.authz.policies import CANDIDATES, RES, authz_policy
 from app.authz.resource_gate import (
     CREDENTIAL,
-    LLM_MODEL,
     gate_list,
     gate_row,
-    gate_unchecked,
     org_context_when_consulted,
     require_same_org,
 )
@@ -36,7 +35,6 @@ from app.credentials.validation import require_credential_use
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     credential_not_found,
-    model_not_found,
 )
 from app.models.credential import Credential
 from app.models.health_check_history import HealthCheckHistory
@@ -189,14 +187,14 @@ async def get_history(
     target_id: uuid.UUID = Query(...),
     limit: int = Query(30, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    _: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     authz: AuthzService = Depends(get_authz),
 ):
     if target_kind == "mcp_server":
         await mcp_service.load_owned(db, target_id, context, authz=authz)
-    else:  # no legacy check for models (D-10)
-        await gate_unchecked(authz, db, context, LLM_MODEL, target_id, "can_use")
+    else:  # the platform catalog row is the legacy answer (D-10)
+        await load_model_target(db, authz, context, target_id, user)
     return (
         (
             await db.execute(
@@ -221,7 +219,7 @@ async def check_now(
     target_id: uuid.UUID = Query(...),
     credential_id: uuid.UUID | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    _: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
     authz: AuthzService = Depends(get_authz),
@@ -235,14 +233,7 @@ async def check_now(
     """
 
     if target_kind == "model":
-
-        async def legacy_model() -> Model:
-            row = await db.get(Model, target_id)
-            if row is None:
-                raise model_not_found()
-            return row
-
-        model = await gate_row(authz, db, context, LLM_MODEL, target_id, "can_use", legacy_model)
+        model = await load_model_target(db, authz, context, target_id, user)
         if credential_id is not None:  # same owner lookup and 404 as the resolver's explicit tier
             credential = await require_credential_use(
                 db, credential_id=credential_id, context=context, authz=authz

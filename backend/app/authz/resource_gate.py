@@ -119,9 +119,8 @@ async def gate_unchecked[T](
     row_id: UUID,
     permission: str,
 ) -> None:
-    """A route without a legacy check (legacy allow): shadow samples it, enforce decides.
-
-    Fixing the legacy gap itself is D-10; only the enforce answer is 8.4 here.
+    """No legacy check here (legacy allow; the caller's service keeps its own owner
+    lookup): shadow samples it, enforce decides (8.4).
     """
     if authz.mode == "legacy":
         return

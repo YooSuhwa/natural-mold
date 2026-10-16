@@ -7,7 +7,6 @@ import uuid
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
-from sqlalchemy import event
 
 from app.auth.jwt import create_access_token
 from app.authz.fake import FakeAuthz
@@ -28,10 +27,10 @@ from tests.authz.agent_route_fixture import (
     shadow,
 )
 from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
-from tests.conftest import TEST_USER_ID, TestSession, engine
+from tests.conftest import TEST_USER_ID, TestSession
 
 pytestmark = pytest.mark.asyncio
-# The usage gate reads the session itself (not via overridable Depends), so send a token.
+# A real token: the enforce cases also hold without the auth dependency overrides.
 BEARER = {"Authorization": f"Bearer {create_access_token(TEST_USER_ID)}"}
 DRAFT = {"name": "Bot", "name_ko": "봇", "system_prompt": "p", "tools": [], "middlewares": []}
 
@@ -75,31 +74,7 @@ async def test_every_d07_route_declares_a_non_legacy_policy():
     assert {kinds[f"POST /api/auth/{p}"] for p in ("login", "register", "refresh")} == {"PUBLIC"}
 
 
-async def test_legacy_agent_usage_still_answers_without_a_session(raw_client: AsyncClient):
-    agent_id = await seed_agent(owner=OTHER_USER_ID)
-    response = await raw_client.get(f"/api/agents/{agent_id}/usage")
-    assert response.status_code == 200 and response.json()["total_tokens"] == 0
-
-
-async def test_legacy_agent_usage_adds_no_sql_even_with_a_session(raw_client: AsyncClient):
-    agent_id = await seed_agent(owner=OTHER_USER_ID)
-    statements: list[str] = []
-
-    def count(*args: object) -> None:
-        statements.append(str(args[2]))
-
-    event.listen(engine.sync_engine, "before_cursor_execute", count)
-    try:
-        counts = []
-        for headers in ({}, BEARER):
-            statements.clear()
-            response = await raw_client.get(f"/api/agents/{agent_id}/usage", headers=headers)
-            assert response.status_code == 200
-            counts.append(list(statements))
-    finally:
-        event.remove(engine.sync_engine, "before_cursor_execute", count)
-    assert len(counts[0]) == len(counts[1]) == 1  # only the pre-P3 token_usages aggregate
-    assert "token_usages" in counts[1][0]
+# Legacy session/owner checks for agent usage moved to test_d10_health_models_usage.py.
 
 
 async def test_enforce_agent_usage_without_a_session_is_401(
@@ -131,7 +106,7 @@ async def test_enforce_agent_usage_needs_can_view_config(client: AsyncClient, te
 async def test_shadow_agent_usage_answers_legacy_and_samples(
     client: AsyncClient, test_app: FastAPI
 ):
-    agent_id = await seed_agent(owner=OTHER_USER_ID)
+    agent_id = await seed_agent(owner=TEST_USER_ID)
     samples: list[ShadowSample] = []
     with authz_override(test_app, shadow(samples)):
         response = await client.get(f"/api/agents/{agent_id}/usage", headers=BEARER)
