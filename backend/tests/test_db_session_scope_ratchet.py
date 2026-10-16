@@ -38,6 +38,7 @@ PLATFORM_REASONS: dict[str, str] = {
     "audit.platform_event": "8.9 audit: platform events (denied before a company)",
     "skill_evaluation.worker": "interim 8.8 queue items carry tenant_id (H-03)",
     "spend_writer.flush": "interim 8.8 spend queue items carry tenant_id (H-03)",
+    "authz.shadow_diffs": "8.9 instance-wide shadow observation (no tenant_id; dropped m91)",
     "conversation_run.lifecycle": "interim run-id keyed lifecycle writes (I-06 threading)",
     "conversation_run.queue": "interim queue claim/recovery; dispatch resolves company",
 }
