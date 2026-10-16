@@ -32,6 +32,7 @@ from typing import Literal, Protocol
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import reconcile_holds as holds
@@ -59,6 +60,7 @@ logger = logging.getLogger(__name__)
 Mode = Literal["dry_run", "fill", "repair"]
 Sessions = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 SAMPLE = 20
+REPAIR_LOCK_ID = 0x4D4F4C4459524543  # pg advisory key for repair runs
 
 
 class TupleStore(Protocol):
@@ -81,6 +83,7 @@ class ReconcileReport(BaseModel):
     held: int = 0
     queued: int = 0
     failed: int = 0
+    skipped: bool = False  # another repair run held the lock
     outbox_ids: list[UUID] = []
     sample_missing: list[str] = []
     sample_extra: list[str] = []
@@ -180,6 +183,33 @@ async def reconcile_store(
 ) -> ReconcileReport:
     """One run; ``drain`` applies the queued rows before returning (``failed`` counts rest)."""
     stamp = now or datetime.now(UTC)
+    if mode != "repair":
+        return await _run(sessions, store, mode, tenant_id, org_id, drain, job_id, stamp)
+    async with sessions() as guard:  # held open for the run: the lock is transaction-scoped
+        if not await _try_repair_lock(guard):
+            logger.warning("authz_reconcile_skipped", extra={"reason": "repair_in_progress"})
+            return ReconcileReport(scope="store", mode=mode, skipped=True)
+        return await _run(sessions, store, mode, tenant_id, org_id, drain, job_id, stamp)
+
+
+async def _try_repair_lock(db: AsyncSession) -> bool:
+    """One repair at a time across processes (daily job, CLI, admin); no-op off PostgreSQL."""
+    if db.get_bind().dialect.name != "postgresql":
+        return True
+    query = text("select pg_try_advisory_xact_lock(:key)")
+    return bool(await db.scalar(query, {"key": REPAIR_LOCK_ID}))
+
+
+async def _run(
+    sessions: Sessions,
+    store: TupleStore,
+    mode: Mode,
+    tenant_id: UUID | None,
+    org_id: UUID | None,
+    drain: bool,
+    job_id: UUID | None,
+    stamp: datetime,
+) -> ReconcileReport:
     started, job = stamp - holds.HOLD_MARGIN, job_id or uuid4()
     async with sessions() as db:
         parts = await holds.partitions(db, tenant_id, org_id)

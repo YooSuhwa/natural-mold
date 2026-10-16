@@ -18,6 +18,7 @@ from app.database import async_session, platform_session
 from app.models.agent_trigger import AgentTrigger
 from app.scheduler import (
     add_trigger_job,
+    authz_job_run,
     build_trigger_schedule_fingerprint,
     cleanup_skill_runtime_roots,
     draft_conversation_gc_run,
@@ -30,6 +31,7 @@ from app.scheduler import (
     poll_mcp_servers_health,
     recover_conversation_queue,
     refresh_token_gc_run,
+    register_authz_jobs,
     register_broker_eviction_job,
     register_catalog_update_job,
     register_conversation_queue_recovery_job,
@@ -87,6 +89,13 @@ async def run_leader_scheduler_job(job_id: LeaderSchedulerJobId) -> None:
             cleanup_skill_runtime_roots()
         case LeaderSchedulerJobId.BROKER_EVICTION:
             evict_expired_brokers()
+        case (
+            LeaderSchedulerJobId.AUTHZ_OUTBOX_DRAIN
+            | LeaderSchedulerJobId.AUTHZ_RECONCILE
+            | LeaderSchedulerJobId.AUTHZ_EXPIRY
+            | LeaderSchedulerJobId.AUTHZ_ALERT
+        ):
+            await authz_job_run(job_id)
         case unreachable:
             assert_never(unreachable)
 
@@ -167,6 +176,7 @@ async def activate_scheduler() -> None:
     register_skill_draft_gc_job()
     cleanup_skill_runtime_roots()
     register_skill_runtime_cleanup_job()
+    register_authz_jobs()
     trigger_count = await reconcile_trigger_jobs()
     if scheduler_was_started:
         scheduler.resume()

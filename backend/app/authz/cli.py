@@ -79,7 +79,8 @@ async def sync(args: Arguments, store: TupleStore, sessions: Sessions | None = N
         drain=True,
     )
     _print(report, args.as_json)
-    return 1 if (report.diff and mode == "dry_run") or report.failed else 0
+    failed = report.failed or report.skipped  # skipped: another repair holds the lock
+    return 1 if (report.diff and mode == "dry_run") or failed else 0
 
 
 async def run(args: Arguments) -> int:

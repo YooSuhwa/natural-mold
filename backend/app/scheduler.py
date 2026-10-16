@@ -883,3 +883,41 @@ def register_broker_eviction_job() -> None:
         _BROKER_EVICTION_INTERVAL_SECONDS,
         _BROKER_EVICTION_TTL_SECONDS,
     )
+
+
+# ---------------------------------------------------------------------------
+# C-05 authorization sync (plan 8.6): bodies in ``app.authz.jobs``
+# ---------------------------------------------------------------------------
+
+
+async def authz_job_run(job_id: LeaderSchedulerJobId) -> None:
+    """Outbox drain / reconcile / expiry cleanup / backlog alert; no-op in legacy mode."""
+
+    from app.authz import jobs
+
+    await jobs.run_job(job_id, settings)
+
+
+def register_authz_jobs() -> None:
+    """Register the authz leader jobs; drop persisted ones the mode no longer schedules."""
+
+    from app.authz import jobs
+
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        return
+    planned = jobs.schedule(settings)
+    for job_id in set(jobs.JOBS) - {job_id for job_id, _ in planned}:
+        if scheduler.get_job(job_id) is not None:
+            scheduler.remove_job(job_id)
+    for job_id, trigger in planned:
+        scheduler.add_job(
+            _leader_job_runner(),
+            trigger,
+            id=job_id,
+            args=[job_id],
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+    logger.info("Scheduled authz jobs: %s", ", ".join(job_id for job_id, _ in planned) or "none")

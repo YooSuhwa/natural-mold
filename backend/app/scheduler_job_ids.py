@@ -17,3 +17,7 @@ class LeaderSchedulerJobId(StrEnum):
     CONVERSATION_RUN_STALE_SWEEP = "conversation_run_stale_sweep"
     SKILL_RUNTIME_CLEANUP = "skill_runtime_cleanup"
     BROKER_EVICTION = "broker_eviction"
+    AUTHZ_OUTBOX_DRAIN = "authz_outbox_drain"
+    AUTHZ_RECONCILE = "authz_reconcile"
+    AUTHZ_EXPIRY = "authz_expiry_cleanup"
+    AUTHZ_ALERT = "authz_backlog_alert"
