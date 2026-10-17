@@ -16,6 +16,7 @@ import {
 interface AuthRequiredArgs {
   reason?: string
   items?: unknown
+  attempt?: number
   hitl_action_index?: number
   hitl_interrupt_id?: string | null
 }
@@ -44,7 +45,9 @@ export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequired
     setState('sending')
     setFailed(false)
     try {
-      const decision = toRespond(response)
+      // G-06: the attempt lets the server refuse an answer to an older re-ask.
+      const attempt = typeof args?.attempt === 'number' ? args.attempt : undefined
+      const decision = { ...toRespond(response), ...(attempt !== undefined && { attempt }) }
       if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
         await hitl.registerDecision(
           args.hitl_action_index,

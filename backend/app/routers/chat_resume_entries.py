@@ -20,6 +20,7 @@ from app.dependencies import CurrentUser
 from app.error_codes import conversation_not_found, resume_interrupt_pending, resume_not_found
 from app.models.message_event import MessageEvent
 from app.routers.chat_run_entries import _broker_resume_generator, _replay_resume_generator
+from app.routers.conversation_agent_protocol_interrupts import require_allowed_rest_resume
 from app.schemas.conversation import ResumeRequest
 from app.services import chat_service, conversation_run_service, trace_storage
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
@@ -208,9 +209,7 @@ async def resume_message(
     conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
     if conv is None:
         raise conversation_not_found()
-    decisions_payload: list[dict[str, Any]] = [
-        d.model_dump(exclude_none=True) for d in data.decisions
-    ]
+    decisions_payload = [d.model_dump(exclude_none=True) for d in data.decisions]
     resume_payload: dict[str, Any] = {"decisions": decisions_payload}
     parent_run = await conversation_run_service.get_latest_interrupted_run(
         db,
@@ -235,6 +234,7 @@ async def resume_message(
                 detail="Resume run requires an interrupted parent run",
             )
         interrupt_id = _legacy_interrupt_id(legacy_interrupt_trace)
+    await require_allowed_rest_resume(db, conv, context, interrupt_id, resume_payload)
     metadata: dict[str, JsonValue] | None = None
     if legacy_interrupt_trace is not None:
         metadata = {"legacy_interrupt_assistant_msg_id": legacy_interrupt_trace.assistant_msg_id}

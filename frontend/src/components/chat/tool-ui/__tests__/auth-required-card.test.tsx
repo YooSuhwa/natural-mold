@@ -23,8 +23,9 @@ const args = {
   hitl_interrupt_id: 'int-1',
 }
 
-function Card() {
-  return renderCard({ args, status: { type: 'requires-action' } })
+function Card({ attempt }: { attempt?: number }) {
+  const cardArgs = attempt === undefined ? args : { ...args, attempt }
+  return renderCard({ args: cardArgs, status: { type: 'requires-action' } })
 }
 
 describe('AuthRequiredCard', () => {
@@ -64,5 +65,21 @@ describe('AuthRequiredCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'retry' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('resumeFailed')
     expect(screen.getByRole('button', { name: 'retry' })).toBeEnabled()
+  })
+
+  it('sends the attempt it answers so a stale card is refused by the server', async () => {
+    const registerDecision = vi.fn().mockResolvedValue(undefined)
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <Card attempt={2} />
+      </HiTLContext.Provider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'skip' }))
+    await waitFor(() => expect(registerDecision).toHaveBeenCalled())
+    expect(registerDecision.mock.calls[0]?.[1]).toEqual({
+      type: 'respond',
+      message: 'skip',
+      attempt: 2,
+    })
   })
 })

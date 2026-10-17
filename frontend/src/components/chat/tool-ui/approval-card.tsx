@@ -513,15 +513,20 @@ export function ApprovalCard({
   const onInteract = useMemo(() => extend, [extend])
 
   // 도구별 allowed_decisions 게이팅 — 카드가 받은 화이트리스트대로 버튼을 노출.
-  // 빈/누락이면 approve+reject만(edit 제외) — standard-interrupt의 reviewForAction
-  // fallback과 동일. execute_in_skill(approve,reject)엔 수정 버튼이 뜨지 않는다.
+  // 누락(undefined)이면 approve+reject만(edit 제외). 빈 배열은 interrupt의 review
+  // config를 읽을 수 없다는 뜻(standard-interrupt reviewForAction fallback) — 서버가
+  // 모든 결정을 거부하므로(G-06 fail-closed) 버튼 없이 안내만 보인다.
+  // execute_in_skill(approve,reject)엔 수정 버튼이 뜨지 않는다.
   const allowedDecisions = useMemo(
     () => new Set(args?.allowed_decisions ?? []),
     [args?.allowed_decisions],
   )
-  const canApprove = allowedDecisions.size === 0 || allowedDecisions.has('approve')
+  const noReviewConfig = Array.isArray(args?.allowed_decisions) && allowedDecisions.size === 0
+  const canApprove =
+    !noReviewConfig && (allowedDecisions.size === 0 || allowedDecisions.has('approve'))
   const canEdit = allowedDecisions.has('edit')
-  const canReject = allowedDecisions.size === 0 || allowedDecisions.has('reject')
+  const canReject =
+    !noReviewConfig && (allowedDecisions.size === 0 || allowedDecisions.has('reject'))
 
   // "모두 승인"을 위해 미결정 카드의 승인 콜백을 그룹 컨테이너에 등록. 결정되거나
   // (localResult) 사용자가 이미 거부/수정 흐름에 들어간 카드(decision/showEdit)는
@@ -645,6 +650,12 @@ export function ApprovalCard({
             {t('allowForSession')}
           </label>
         </div>
+      )}
+
+      {noReviewConfig && (
+        <p data-testid="approval-no-review-config" className="text-xs text-muted-foreground">
+          {t('noReviewConfig')}
+        </p>
       )}
 
       {/* Action buttons */}

@@ -28,6 +28,7 @@ from app.routers.conversation_agent_protocol_interrupts import (
 )
 from app.routers.conversation_agent_protocol_resume import (
     build_resume_payload,
+    resume_decision_metadata,
     resume_run_interrupt_id,
     validate_resume_payload,
 )
@@ -177,11 +178,7 @@ async def _handle_input_respond_command(
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id, context=context)
     validation_error = validate_resume_payload(resume, interrupts_from_tasks(tasks))
     if validation_error is not None:
-        return command_error(
-            command,
-            code=validation_error.code,
-            message=validation_error.message,
-        )
+        return validation_error.response(command)
     try:
         input_payload = await restore_redacted_resume_payload(
             conversation=conversation,
@@ -232,6 +229,7 @@ async def _handle_input_respond_command(
                     "protocol": "langgraph_v3",
                     "command_id": command.id,
                     "parent_run_id": str(parent_run.id),
+                    **resume_decision_metadata(resume, interrupts_from_tasks(tasks)),
                 },
             ),
         )

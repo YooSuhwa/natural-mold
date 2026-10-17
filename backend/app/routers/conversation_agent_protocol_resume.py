@@ -4,8 +4,15 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from app.routers.conversation_agent_protocol_contracts import AgentCommandParams
+from fastapi.responses import JSONResponse
+
+from app.routers.conversation_agent_protocol_contracts import (
+    AgentCommandParams,
+    AgentCommandRequest,
+    command_error,
+)
 from app.routers.conversation_agent_protocol_interrupts import ThreadInterrupt
+from app.routers.conversation_resume_decisions import auth_decision_record, decision_problem
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +33,12 @@ class ResumePayload:
 class ResumeValidationError:
     code: str
     message: str
+    status_code: int = 200
+
+    def response(self, command: AgentCommandRequest) -> JSONResponse:
+        return command_error(
+            command, code=self.code, message=self.message, status_code=self.status_code
+        )
 
 
 def build_resume_payload(params: AgentCommandParams) -> ResumePayload:
@@ -69,6 +82,7 @@ def validate_resume_payload(
         return None
 
     pending_by_id = {interrupt["id"]: tuple(interrupt["ns"]) for interrupt in pending_interrupts}
+    values = {interrupt["id"]: interrupt["value"] for interrupt in pending_interrupts}
     seen_ids: set[str] = set()
     for submitted in resume.submitted:
         if submitted.interrupt_id in seen_ids:
@@ -88,7 +102,30 @@ def validate_resume_payload(
                 code="STALE_INTERRUPT",
                 message="input.respond namespace does not match the pending interrupt",
             )
+        # G-06: the answer must be allowed by the pending interrupt (11.5).
+        problem = decision_problem(submitted.response, values[submitted.interrupt_id])
+        if problem is not None:
+            return ResumeValidationError(*problem)
     return None
+
+
+def resume_decision_metadata(
+    resume: ResumePayload, pending_interrupts: Sequence[ThreadInterrupt]
+) -> dict[str, Any]:
+    """Run metadata recording ``auth_required`` answers (retry/skip/cancel, attempt)."""
+
+    values = {interrupt["id"]: interrupt["value"] for interrupt in pending_interrupts}
+    records = [
+        record
+        for submitted in resume.submitted
+        if (
+            record := auth_decision_record(
+                submitted.interrupt_id, submitted.response, values.get(submitted.interrupt_id)
+            )
+        )
+        is not None
+    ]
+    return {"resume_decisions": records} if records else {}
 
 
 def resume_run_interrupt_id(

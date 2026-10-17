@@ -550,6 +550,8 @@ export interface Decision {
    * 미들웨어로 내려보낸다 (비표준 decision 필드는 langchain 검증을 깨뜨림).
    */
   scope?: 'session'
+  /** `auth_required` only (G-06): the re-ask being answered; the server refuses a stale one. */
+  attempt?: number
 }
 
 /** POST `/conversations/:id/messages/resume` 표준 body. */

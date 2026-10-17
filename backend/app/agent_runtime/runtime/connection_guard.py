@@ -38,13 +38,12 @@ from langchain_core.messages.tool import ToolCall
 from langchain_core.tools import BaseTool
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
-from langgraph.types import Command, interrupt
+from langgraph.types import Command
 
 from app.agent_runtime.runtime.connection_guard_items import (
     ConnectionBlockedError,
     auth_interrupt_of,
     bundle,
-    decision_of,
     notify_owner,
     refusal,
     resolved,
@@ -54,6 +53,7 @@ from app.agent_runtime.runtime.connection_guard_policy import (
     GuardMode,
     build_connection_guard_policy,
 )
+from app.agent_runtime.runtime.connection_guard_resume import ask, recorded_answers
 from app.authz.runtime_access_planner import runtime_access_enforced
 
 GUARD_NAME = "ConnectionGuardMiddleware"
@@ -78,10 +78,6 @@ def _run_key() -> str:
     except RuntimeError:
         return "unknown"
     return str(configurable.get("moldy_run_id") or configurable.get("thread_id") or "unknown")
-
-
-def _asked(payload: dict[str, Any], attempt: int) -> object:
-    return interrupt({**payload, "attempt": attempt})
 
 
 class ConnectionGuardMiddleware(AgentMiddleware):
@@ -111,8 +107,8 @@ class ConnectionGuardMiddleware(AgentMiddleware):
         pending = [call for call in pending if call["id"] not in skip]
         messages: list[ToolMessage] = list(refused)
         jump: str | None = None
-        problems, attempt = await self._problems(pending), 0
-        while problems:
+        problems, attempt, recorded = await self._problems(pending), 0, recorded_answers()
+        while problems or attempt < recorded:  # G-03: replay a waiting answer
             done |= {message.tool_call_id for message in messages}
             owner = [p for p in problems if p[2]["fixable_by"] == "owner"]
             owner = [p for p in owner if p[0]["id"] not in done]
@@ -120,19 +116,22 @@ class ConnectionGuardMiddleware(AgentMiddleware):
             messages += [refusal(call, "owner_reconnect_required") for call, _, _ in owner]
             mine = [p for p in problems if p[2]["fixable_by"] != "owner"]
             payload = bundle((reason, item) for _, reason, item in mine)
-            if payload is None:
+            if payload is None and (self.policy.mode != "interrupt" or attempt >= recorded):
                 break
-            if self.policy.mode == "raise":
+            if self.policy.mode == "raise" and payload is not None:
                 raise ConnectionBlockedError(payload)
             if self.policy.mode == "refuse":
                 messages += [refusal(call, "auth_required") for call, _, _ in mine]
                 break
-            attempt += 1
-            decision = decision_of(_asked(payload, attempt))
+            decision, attempt = ask(payload or {}, attempt, recorded)
+            # Repaired since asked: the answer applies to the calls the guard watches.
+            asked = [c for c, _, _ in mine] or [
+                c for c in pending if c["name"] in self.policy.guarded
+            ]
             if decision in ("retry", None):  # 11.5: re-read; still broken → ask again
-                problems = await self._problems([call for call, _, _ in mine])
+                problems = await self._problems(asked)
                 continue
-            calls = [call for call, _, _ in mine] if decision == "skip" else pending
+            calls = asked if decision == "skip" else pending
             done |= {message.tool_call_id for message in messages}
             code = "skipped" if decision == "skip" else "cancelled"
             messages += [refusal(call, code) for call in calls if call["id"] not in done]
@@ -206,10 +205,9 @@ class ConnectionGuardMiddleware(AgentMiddleware):
             return {"messages": replaced} if replaced else None
         if self.policy.mode == "raise":
             raise ConnectionBlockedError(payload)
-        attempt = 0
+        attempt, recorded = 0, recorded_answers()
         while True:
-            attempt += 1
-            decision = decision_of(_asked(payload, attempt))
+            decision, attempt = ask(payload, attempt, recorded)  # the latest recorded answer wins
             if decision is None or (decision == "retry" and await self._still_broken(payload)):
                 continue  # 11.5: still not connected → the same interrupt again
             break

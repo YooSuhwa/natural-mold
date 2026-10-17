@@ -39,9 +39,10 @@ function reviewForAction(
 ): ReviewConfig {
   return (
     reviewConfigs[index] ??
+    // No readable review config: offer nothing (the server refuses every decision, G-06).
     reviewConfigs.find((config) => config.action_name === action.name) ?? {
       action_name: action.name,
-      allowed_decisions: ['approve', 'reject'],
+      allowed_decisions: [],
     }
   )
 }

@@ -478,6 +478,20 @@ describe('ApprovalCard', () => {
     expect(screen.queryByText('edit')).toBeNull()
   })
 
+  it('shows no decision buttons when the review config is missing (empty allow-list)', () => {
+    renderCard({
+      approval_id: 'gate-none',
+      tool_name: 'delete_record',
+      tool_args: { id: 7 },
+      allowed_decisions: [],
+    })
+
+    expect(screen.getByTestId('approval-no-review-config')).toHaveTextContent('noReviewConfig')
+    expect(screen.queryByText('approve')).toBeNull()
+    expect(screen.queryByText('reject')).toBeNull()
+    expect(screen.queryByText('edit')).toBeNull()
+  })
+
   it('shows approve, edit, and reject when all are allowed', () => {
     renderCard({
       approval_id: 'gate-2',

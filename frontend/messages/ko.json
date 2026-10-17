@@ -1885,7 +1885,8 @@
       "invalidFieldValue": "값 형식이 올바르지 않습니다",
       "pendingCount": "승인 대기 {count}건",
       "approveAll": "모두 승인",
-      "allowForSession": "이 세션에서 계속 허용"
+      "allowForSession": "이 세션에서 계속 허용",
+      "noReviewConfig": "검토 설정을 읽을 수 없어 이 작업은 여기서 응답할 수 없습니다."
     },
     "authRequired": {
       "title": "연결이 필요합니다",

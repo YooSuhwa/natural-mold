@@ -1885,7 +1885,8 @@
       "invalidFieldValue": "Invalid value format",
       "pendingCount": "{count} pending approvals",
       "approveAll": "Approve all",
-      "allowForSession": "Allow for the rest of this session"
+      "allowForSession": "Allow for the rest of this session",
+      "noReviewConfig": "This action can't be answered here because its review settings are missing."
     },
     "authRequired": {
       "title": "Connection required",

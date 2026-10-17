@@ -29112,6 +29112,17 @@
     "Decision": {
       "description": "\ub2e8\uc77c tool_call\uc5d0 \ub300\ud55c \uc778\uac04 \uacb0\uc815.\n\nLangChain ``HumanInTheLoopMiddleware``\uc758 ``HITLResponse.decisions[i]``\uc640\n\ub3d9\uc77c shape (1:1 \ub9e4\uce6d). router\uc5d0\uc11c \uac80\uc99d\ud55c \ub4a4 ``model_dump(exclude_none=True)``\n\ub85c dict \uc9c1\ub82c\ud654\ud558\uc5ec ``Command(resume={\"decisions\": [dict, ...]})``\ub85c \uc1a1\uc2e0\ud55c\ub2e4\n(LangChain \ubbf8\ub4e4\uc6e8\uc5b4\ub294 ``NotRequired`` TypedDict\ub97c \ubc1b\uc74c).\n\n- ``approve``: \ucd94\uac00 \ud544\ub4dc \uc5c6\uc74c.\n- ``edit``: ``edited_action={\"name\": str, \"args\": dict}`` \ud544\uc218.\n- ``reject``: ``message`` \uc120\ud0dd (\uc5c6\uc73c\uba74 \ubbf8\ub4e4\uc6e8\uc5b4\uac00 \uae30\ubcf8 \uba54\uc2dc\uc9c0 \uc0dd\uc131).\n- ``respond``: ``message`` \ud544\uc218 (synthetic ToolMessage content).",
       "properties": {
+        "attempt": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attempt"
+        },
         "edited_action": {
           "anyOf": [
             {
