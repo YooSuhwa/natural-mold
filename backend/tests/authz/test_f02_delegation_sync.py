@@ -232,3 +232,35 @@ async def test_an_update_without_link_lists_writes_no_delegation(
     response = await client.put(f"/api/agents/{agent.id}", json={"name": "renamed"})
     assert response.status_code == 200, response.text
     assert await _delegations(agent.id) == {}
+
+
+async def test_kept_broken_link_is_reattached_only_when_named(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    """F-03 (10.6): ``reattach_ids`` re-delegates a kept broken link under the editor."""
+    agent, tool = await add_agent(db), await add_tool(db)
+    db.add(
+        AgentToolLink(
+            agent_id=agent.id,
+            tool_id=tool.id,
+            delegated_by=OTHER_USER_ID,
+            required=True,
+            link_status="broken",
+            broken_reason="delegator_lost_access",
+        )
+    )
+    await db.commit()
+    body = {"tool_ids": [str(tool.id)], "reattach_ids": [str(tool.id)]}
+    response = await client.put(f"/api/agents/{agent.id}", json=body)
+    assert response.status_code == 200, response.text
+    async with TestSession() as check:
+        link = await check.get(AgentToolLink, (agent.id, tool.id))
+        assert link is not None
+        assert (link.delegated_by, link.required, link.link_status, link.broken_reason) == (
+            TEST_USER_ID,
+            True,
+            "active",
+            None,
+        )
+    assert set(await _delegations(agent.id)) == {("tool", tool.id)}
+    assert "delegation.reattach" in await audit_actions(agent.id)

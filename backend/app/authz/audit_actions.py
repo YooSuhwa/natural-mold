@@ -46,6 +46,8 @@ GRANT_CREATE: Final = "grant.create"
 GRANT_REVOKE: Final = "grant.revoke"
 DELEGATION_CREATE: Final = "delegation.create"
 DELEGATION_REVOKE: Final = "delegation.revoke"
+DELEGATION_BROKEN: Final = "delegation.broken"  # F-03 validator (10.6)
+DELEGATION_REATTACH: Final = "delegation.reattach"  # F-03: editor re-attaches (10.6)
 GRANT_UPDATE: Final = "grant.update"
 GRANT_EXPIRE: Final = "grant.expire"
 # E-09 company publication (14.1 "정책·한도"); ``_cancel`` is the publisher's withdrawal.

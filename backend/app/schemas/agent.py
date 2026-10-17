@@ -127,6 +127,9 @@ class AgentUpdate(BaseModel):
     runtime_policy: RuntimePolicyV1 | None = None
     # D17 (E-06): the caller saw the accounts a shared agent now lends (confirm_required).
     confirm_delegation: bool = False
+    # F-03 (10.6): kept broken links (tool / MCP tool / skill / subagent ids) the caller
+    # re-attaches under their own delegation; other kept broken links stay broken.
+    reattach_ids: list[uuid.UUID] | None = None
 
     @field_validator("opener_questions")
     @classmethod

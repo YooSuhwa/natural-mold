@@ -21,4 +21,5 @@ class LeaderSchedulerJobId(StrEnum):
     AUTHZ_RECONCILE = "authz_reconcile"
     AUTHZ_EXPIRY = "authz_expiry_cleanup"
     AUTHZ_ALERT = "authz_backlog_alert"
+    AUTHZ_DELEGATION_VALIDATE = "authz_delegation_validate"
     RETENTION_SWEEP = "retention_sweep"

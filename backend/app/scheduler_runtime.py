@@ -96,6 +96,7 @@ async def run_leader_scheduler_job(job_id: LeaderSchedulerJobId) -> None:
             | LeaderSchedulerJobId.AUTHZ_RECONCILE
             | LeaderSchedulerJobId.AUTHZ_EXPIRY
             | LeaderSchedulerJobId.AUTHZ_ALERT
+            | LeaderSchedulerJobId.AUTHZ_DELEGATION_VALIDATE
         ):
             await authz_job_run(job_id)
         case LeaderSchedulerJobId.RETENTION_SWEEP:

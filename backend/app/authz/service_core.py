@@ -99,15 +99,25 @@ class AuthzDecisions:
         return allowed and not await self._revoked(p, [obj])
 
     async def batch_check(
-        self, p: Principal, items: Sequence[tuple[str, str]]
+        self,
+        p: Principal,
+        items: Sequence[tuple[str, str]],
+        *,
+        consistency: Consistency = "MINIMIZE_LATENCY",
     ) -> dict[tuple[str, str], bool]:
         """Duplicates are merged; the client splits into 50-item correlated batches."""
-        return await self._vetoed(p, await self._fga_batch(p, items))
+        return await self._vetoed(p, await self._fga_batch(p, items, consistency))
 
-    async def _fga_batch(self, p: Principal, items: Sequence[tuple[str, str]]) -> _Answers:
+    async def _fga_batch(
+        self,
+        p: Principal,
+        items: Sequence[tuple[str, str]],
+        consistency: Consistency = "MINIMIZE_LATENCY",
+    ) -> _Answers:
         unique = list(dict.fromkeys(items))
         queries = [self._query(p, permission, obj) for permission, obj in unique]
-        return dict(zip(unique, await self._consulted().batch_check(queries), strict=True))
+        answers = await self._consulted().batch_check(queries, consistency=consistency)
+        return dict(zip(unique, answers, strict=True))
 
     async def _vetoed(self, p: Principal, answers: _Answers) -> _Answers:
         revoked = await self._revoked(p, [obj for (_, obj), ok in answers.items() if ok])

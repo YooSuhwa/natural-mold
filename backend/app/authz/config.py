@@ -33,6 +33,7 @@ class AuthzSettings(BaseSettings):
     openfga_timeout_ms: int = Field(default=800, gt=0)
     authz_outbox_poll_seconds: float = Field(default=2, gt=0)
     authz_reconcile_cron: str = "0 3 * * *"
+    authz_delegation_cron: str = "30 3 * * *"  # F-03 daily delegation validator (10.6)
     authz_shadow_max_rps: int = Field(default=50, ge=0)
     registration_policy: Literal["default_org", "invite_only", "closed"] = "default_org"
     default_org_name: str = "기본 조직"

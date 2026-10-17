@@ -19,6 +19,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.delegation_sweep import revalidate_grant, revalidate_object
 from app.authz.org_context import OrgContext
 from app.authz.policies import RES, authz_policy
 from app.authz.resource_lifecycle import apply_lifecycle
@@ -78,6 +79,13 @@ def _register(kind: ShareType) -> None:
         view = grant_view(result.grant)
         await db.commit()
         await apply_lifecycle(result.change, authz)
+        await revalidate_object(  # a stage change may narrow access (10.2, 10.6)
+            authz,
+            context.org_id,
+            context.tenant_id,
+            (kind.name, resource_id),
+            trigger="grant_update",
+        )
         response.status_code = 201 if result.created else 200
         return view
 
@@ -102,6 +110,13 @@ def _register(kind: ShareType) -> None:
         result = await transfer(db, authz, context, kind, resource_id, body)
         await db.commit()
         await apply_lifecycle(result.change, authz)
+        await revalidate_object(  # 10.7: delegations stay and are re-checked
+            authz,
+            context.org_id,
+            context.tenant_id,
+            (kind.name, resource_id),
+            trigger="ownership_transfer",
+        )
         return result.body
 
     routes: list[tuple[str, str, Endpoint, type, int]] = [
@@ -136,4 +151,5 @@ async def delete_grant(
     change = await revoke_share(db, authz, context, grant_id)
     await db.commit()
     await apply_lifecycle(change, authz)
+    await revalidate_grant(authz, context.org_id, context.tenant_id, grant_id)  # 10.2 → 10.6
     return Response(status_code=204)

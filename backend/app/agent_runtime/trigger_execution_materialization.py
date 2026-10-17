@@ -18,6 +18,7 @@ from app.agent_runtime.identity import (
 )
 from app.agent_runtime.runtime_policy import ResolvedRuntimePolicy, RuntimePolicySnapshotError
 from app.agent_runtime.trigger_execution_claim import TriggerClaim
+from app.authz.broken_links import blocked_reason
 from app.authz.org_context import OrgContext
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
@@ -94,6 +95,15 @@ async def materialize_trigger_run(
             conversation=None,
             status="skipped",
             error_message="end_at reached",
+        )
+        await db.refresh(run)
+        return TriggerOutcome(run)
+
+    if claim.blocked_links:  # F-03 (10.6): a required link is broken
+        reason = blocked_reason(claim.blocked_links)
+        logger.warning("Trigger %s blocked: %s", trigger_id, reason)
+        await trigger_service.finish_trigger_run(
+            db, trigger=trigger, run=run, conversation=None, status="failed", error_message=reason
         )
         await db.refresh(run)
         return TriggerOutcome(run)

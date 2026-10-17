@@ -22955,6 +22955,21 @@
           ],
           "title": "Opener Questions"
         },
+        "reattach_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reattach Ids"
+        },
         "runtime_policy": {
           "anyOf": [
             {

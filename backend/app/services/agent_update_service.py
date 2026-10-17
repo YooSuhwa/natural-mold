@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -18,6 +19,7 @@ from app.authz.attach_rules import (
     require_attachable,
     require_shared_attach,
 )
+from app.authz.broken_links import assert_no_runtime_view
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_prefix import mark_org_writer
 from app.error_codes import agent_not_found
@@ -27,7 +29,7 @@ from app.models.mcp_tool import AgentMcpToolLink
 from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink
 from app.schemas.agent import AgentUpdate
-from app.services.agent_binding_service import _validate_agent_binding_ids, relink
+from app.services.agent_binding_service import Reattach, _validate_agent_binding_ids, relink
 from app.services.agent_query_service import get_agent
 
 
@@ -48,6 +50,7 @@ async def toggle_favorite(db: AsyncSession, agent: Agent, context: OrgContext) -
 async def update_agent(
     db: AsyncSession, agent: Agent, data: AgentUpdate, *, context: OrgContext
 ) -> Agent:
+    assert_no_runtime_view(db)  # F-03: a run-prep session hides broken links
     if any(
         v is not None
         for v in (data.tool_ids, data.mcp_tool_ids, data.skill_ids, data.sub_agent_ids)
@@ -60,13 +63,14 @@ async def update_agent(
     agent = scoped
     if data.sub_agent_ids is not None and agent.id in data.sub_agent_ids:
         raise HTTPException(status_code=400, detail="Cannot add self as sub-agent")
-    await _validate_agent_binding_ids(db, data, context)
+    heal = Reattach(context.user_id, frozenset(data.reattach_ids or ()))  # F-03 (10.6)
+    await _validate_agent_binding_ids(db, _without_kept_broken(data, agent, heal), context)
     # D17 (E-06): added account resources need can_share; a shared agent re-confirms.
     await require_attachable(
         db,
         context,
-        tool_ids=_added(data.tool_ids, {link.tool_id for link in agent.tool_links}),
-        mcp_tool_ids=_added(data.mcp_tool_ids, {link.mcp_tool_id for link in agent.mcp_tool_links}),
+        tool_ids=_added(data.tool_ids, _linked(agent.tool_links, "tool_id", heal)),
+        mcp_tool_ids=_added(data.mcp_tool_ids, _linked(agent.mcp_tool_links, "mcp_tool_id", heal)),
     )
     relinks = (data.tool_ids, data.mcp_tool_ids, data.skill_ids, data.sub_agent_ids)
     before = await attach_baseline(db, agent.id) if any(v is not None for v in relinks) else None
@@ -74,10 +78,10 @@ async def update_agent(
         await lock_delegations(db, context)
     added = await added_keys(
         db,
-        tool_ids=_added(data.tool_ids, {link.tool_id for link in agent.tool_links}),
-        mcp_tool_ids=_added(data.mcp_tool_ids, {link.mcp_tool_id for link in agent.mcp_tool_links}),
-        skill_ids=_added(data.skill_ids, {link.skill_id for link in agent.skill_links}),
-        agent_ids=_added(data.sub_agent_ids, {link.sub_agent_id for link in agent.sub_agent_links}),
+        tool_ids=_added(data.tool_ids, _linked(agent.tool_links, "tool_id", heal)),
+        mcp_tool_ids=_added(data.mcp_tool_ids, _linked(agent.mcp_tool_links, "mcp_tool_id", heal)),
+        skill_ids=_added(data.skill_ids, _linked(agent.skill_links, "skill_id", heal)),
+        agent_ids=_added(data.sub_agent_ids, _linked(agent.sub_agent_links, "sub_agent_id", heal)),
     )
     actor = context.user_id  # F-02: delegator of the link rows created below
     if data.identity_mode is not None and data.identity_mode != agent.identity_mode:
@@ -118,6 +122,7 @@ async def update_agent(
             data.tool_ids,
             lambda link: link.tool_id,
             lambda tid: AgentToolLink(tool_id=tid, delegated_by=actor),
+            heal,
         )
     if data.mcp_tool_ids is not None:
         agent.mcp_tool_links = relink(
@@ -125,6 +130,7 @@ async def update_agent(
             data.mcp_tool_ids,
             lambda link: link.mcp_tool_id,
             lambda mid: AgentMcpToolLink(mcp_tool_id=mid, delegated_by=actor),
+            heal,
         )
     if data.skill_ids is not None:
         agent.skill_links = relink(
@@ -132,6 +138,7 @@ async def update_agent(
             data.skill_ids,
             lambda link: link.skill_id,
             lambda sid: AgentSkillLink(skill_id=sid, delegated_by=actor),
+            heal,
         )
     if data.sub_agent_ids is not None:
         # 자기참조 방어: DB CHECK 제약과 이중 가드
@@ -140,10 +147,12 @@ async def update_agent(
             data.sub_agent_ids,
             lambda link: link.sub_agent_id,
             lambda sid: AgentSubAgentLink(sub_agent_id=sid, delegated_by=actor),
+            heal,
         )
         for idx, link in enumerate(agent.sub_agent_links):
             link.position = idx
     await db.flush()
+    await heal.audit(db, agent.id)
     if before is not None:
         lent = await require_shared_attach(
             db, context, agent.id, before, confirm=data.confirm_delegation
@@ -156,6 +165,33 @@ async def update_agent(
         ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
     )
     return agent
+
+
+def _linked(links: list[Any], attr: str, heal: Reattach) -> set[uuid.UUID]:
+    """Ids of kept links; a broken one being re-attached counts as added (10.6, F-03)."""
+    return {
+        getattr(link, attr)
+        for link in links
+        if link.link_status != "broken" or getattr(link, attr) not in heal.ids
+    }
+
+
+def _without_kept_broken(data: AgentUpdate, agent: Agent, heal: Reattach) -> AgentUpdate:
+    """Kept broken links not re-attached are not re-validated (they must not block)."""
+    lists = {
+        "tool_ids": (agent.tool_links, "tool_id"),
+        "mcp_tool_ids": (agent.mcp_tool_links, "mcp_tool_id"),
+        "skill_ids": (agent.skill_links, "skill_id"),
+        "sub_agent_ids": (agent.sub_agent_links, "sub_agent_id"),
+    }
+    update: dict[str, list[uuid.UUID]] = {}
+    for name, (links, attr) in lists.items():
+        ids = getattr(data, name)
+        if ids is None:
+            continue
+        broken = {getattr(link, attr) for link in links if link.link_status == "broken"}
+        update[name] = [i for i in ids if i not in broken - heal.ids]
+    return data.model_copy(update=update)
 
 
 def _added(ids: list[uuid.UUID] | None, linked: set[uuid.UUID]) -> list[uuid.UUID]:

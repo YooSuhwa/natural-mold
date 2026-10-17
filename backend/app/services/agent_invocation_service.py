@@ -25,7 +25,6 @@ from app.agent_runtime.runtime_policy import (
 )
 from app.agent_runtime.subagents import build_subagents_config
 from app.authz.org_context import OrgContext
-from app.authz.runtime_capability_scope import require_runtime_capability_tree
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import ConflictError, ValidationError
@@ -33,6 +32,7 @@ from app.models.agent import Agent
 from app.models.model import Model
 from app.services import chat_service
 from app.services.conversation_runtime_policy import snapshot_from_conversation
+from app.services.runtime_links import runnable_agent
 
 InvocationSource = Literal["chat", "trigger", "api"]
 
@@ -177,7 +177,7 @@ async def build_agent_config_for_loaded_agent(
     include_subagents: bool = True,
 ) -> AgentConfig:
     """``include_subagents=False`` (prepared-lease adapters) skips legacy child compilation."""
-    require_runtime_capability_tree(agent, context)
+    agent = await runnable_agent(db, agent, context)  # F-03: no broken links (10.6)
     if agent.model is None:
         raise ValidationError("AGENT_MODEL_REQUIRED", "agent has no model bound")
     if source == "api" and agent.identity_mode != AGENT_IDENTITY_FIXED:

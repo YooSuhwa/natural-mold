@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.delegation_links import DelegationScope
+from app.authz.delegation_sweep import revalidate_after
 from app.authz.member_exit_preview import member_exit_preview
 from app.authz.org_control import OrgControlContext
 from app.authz.policies import SELF, authz_policy
@@ -31,6 +33,15 @@ async def member_mutation_request(
     mutation: OrgMutationRequest = Depends(mutation_request),
 ) -> MemberMutationRequest:
     return MemberMutationRequest(request=mutation, user_id=user_id)
+
+
+async def _validate_delegations(
+    mutation: MemberMutationRequest, context: OrgControlContext, authz: AuthzService
+) -> None:
+    """10.7 item (5): the leaver's delegations are re-checked after the exit applied."""
+    scope = DelegationScope(context.organization.id, delegators=frozenset({mutation.user_id}))
+    tenant_id = context.organization.tenant_id
+    await revalidate_after(authz, scope, tenant_id, trigger="member_exit")
 
 
 @router.get("", response_model=DirectoryPage[MemberView])
@@ -100,6 +111,7 @@ async def remove_member_with_settlement(
     their entry points and remove the membership in one transaction."""
     outcome = await members.remove_member(mutation, context, authz, payload)
     await apply_lifecycle(outcome.change, authz)
+    await _validate_delegations(mutation, context, authz)
     return JSONResponse(
         content=outcome.view().model_dump(mode="json"),
         headers={"ETag": etag(context.organization.updated_at)},
@@ -115,4 +127,5 @@ async def remove_member(
 ) -> Response:
     outcome = await members.remove_member(mutation, context, authz)
     await apply_lifecycle(outcome.change, authz)
+    await _validate_delegations(mutation, context, authz)
     return Response(status_code=204)

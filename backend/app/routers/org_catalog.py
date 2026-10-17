@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.delegation_sweep import revalidate_outbox
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
 from app.authz.policies import SELF, authz_policy
 from app.authz.resource_lifecycle import apply_lifecycle
@@ -47,6 +48,8 @@ async def put_catalog_policy(
 ) -> JSONResponse:
     result, change = await update_catalog_policy(mutation, context, payload, mode=authz.mode)
     await apply_lifecycle(change, authz)  # 8.6 item 2: before responding
+    org = context.organization  # catalog items turned off: their delegations (10.6)
+    await revalidate_outbox(authz, org.id, org.tenant_id, change.outbox_ids, trigger="catalog")
     return JSONResponse(
         content=result.model_dump(mode="json"), headers={"ETag": etag(result.updated_at)}
     )

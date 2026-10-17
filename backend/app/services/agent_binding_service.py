@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -11,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.attach_candidates import shared_attachable
+from app.authz.audit_actions import DELEGATION_REATTACH
 from app.authz.company_catalog import model_scope
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate, resource_candidates
@@ -20,6 +23,7 @@ from app.models.mcp_tool import McpTool
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.schemas.agent import AgentCreate, AgentUpdate
+from app.services import audit_service
 
 
 def _build_tool_links(
@@ -34,11 +38,45 @@ def relink[L](
     ids: list[uuid.UUID],
     key: Callable[[L], uuid.UUID],
     make: Callable[[uuid.UUID], L],
+    heal: Callable[[L, uuid.UUID], None] | None = None,
 ) -> list[L]:
     """The link list for ``ids``: kept links are reused, so their delegator, ``required``
-    and ``link_status`` survive an update (10.6, F-02); only new ids get new rows."""
+    and ``link_status`` survive an update (10.6, F-02); only new ids get new rows. A kept
+    broken link is offered to ``heal`` (explicit re-attach, F-03)."""
     kept = {key(link): link for link in current}
-    return [kept.pop(i) if i in kept else make(i) for i in ids]
+    links = [kept.pop(i) if i in kept else make(i) for i in ids]
+    for link in links:
+        if heal is not None and getattr(link, "link_status", None) == "broken":
+            heal(link, key(link))
+    return links
+
+
+@dataclass(slots=True)
+class Reattach:
+    """``relink(heal=...)``: re-delegate the kept broken links named in ``ids`` (10.6)."""
+
+    actor: uuid.UUID
+    ids: frozenset[uuid.UUID]
+    healed: list[uuid.UUID] = field(default_factory=list)
+
+    def __call__(self, link: Any, rid: uuid.UUID) -> None:
+        if rid in self.ids:
+            link.link_status, link.broken_reason, link.delegated_by = "active", None, self.actor
+            self.healed.append(rid)
+
+    async def audit(self, db: AsyncSession, agent_id: uuid.UUID) -> None:
+        if not self.healed:
+            return
+        await audit_service.record_event(
+            db,
+            actor_type="user",
+            actor_user_id=self.actor,
+            action=DELEGATION_REATTACH,
+            target_type="agent",
+            target_id=agent_id,
+            outcome="success",
+            metadata={"resource_ids": sorted(str(rid) for rid in self.healed)},
+        )
 
 
 async def _widen(

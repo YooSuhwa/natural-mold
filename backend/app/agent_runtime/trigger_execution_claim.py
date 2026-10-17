@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.broken_links import broken_required, use_runtime_link_view
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import acquire_execution_proof, lock_row
@@ -32,6 +33,7 @@ class TriggerClaim:
     blocked_tools: list[Any]
     tools_config: list[dict[str, Any]]
     run: AgentTriggerRun
+    blocked_links: list[dict[str, object]] = field(default_factory=list)  # F-03 (10.6)
 
 
 async def claim_trigger_run(
@@ -66,9 +68,11 @@ async def claim_trigger_run(
         )
         if trigger is None:
             return None
+        use_runtime_link_view(db)  # F-03 (10.6): broken links are never bound to a run
         agent = await chat_service.get_agent_with_tools(db, trigger.agent_id, context)
         if agent is None:
             return None
+        blocked_links = await broken_required(db, agent.id)  # run recorded as failed
         blocked_tools = await chat_service.trigger_blocked_tools_for_agent_tree(
             agent, context=context, db=db
         )
@@ -91,4 +95,4 @@ async def claim_trigger_run(
         trigger,
         source="run_now" if force else "scheduled",
     )
-    return TriggerClaim(trigger, context, agent, blocked_tools, tools_config, run)
+    return TriggerClaim(trigger, context, agent, blocked_tools, tools_config, run, blocked_links)

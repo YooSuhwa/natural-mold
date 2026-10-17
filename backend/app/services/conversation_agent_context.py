@@ -23,7 +23,6 @@ from app.agent_runtime.runtime_policy import (
 from app.agent_runtime.subagents import build_subagents_config
 from app.authz.conversation_scope import require_private_conversation
 from app.authz.org_context import OrgContext
-from app.authz.runtime_capability_scope import require_runtime_capability_tree
 from app.authz.skill_builder_scope import private_skill_builder_predicate
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
@@ -32,6 +31,7 @@ from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER
 from app.services import chat_service
 from app.services.conversation_runtime_policy import snapshot_from_conversation
 from app.services.conversation_stream_protocol import stream_attr
+from app.services.runtime_links import runnable_agent
 
 
 async def resolve_agent_context(
@@ -62,7 +62,7 @@ async def resolve_agent_context(
     if agent is None:
         raise agent_not_found()
 
-    require_runtime_capability_tree(agent, context)
+    agent = await runnable_agent(db, agent, context)  # F-03: no broken links (10.6)
 
     try:
         runtime_policy = snapshot_from_conversation(conv)

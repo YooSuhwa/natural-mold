@@ -1,4 +1,5 @@
-"""C-05 leader jobs: outbox drain, daily reconcile, expiry cleanup, backlog alert (8.6, 14.3).
+"""C-05 leader jobs: outbox drain, daily reconcile, expiry cleanup, backlog alert (8.6, 14.3)
+and the F-03 daily delegation validator (10.6).
 
 ``app.scheduler.register_authz_jobs`` registers them and the fenced
 ``run_leader_scheduler_job`` dispatches them. Nothing is scheduled and every run is a
@@ -27,10 +28,13 @@ from sqlalchemy import and_, delete, func, or_, select
 
 from app.authz.client import open_client
 from app.authz.config import AuthzSettings
+from app.authz.delegation_retry import revalidate_finalized
+from app.authz.delegation_sweep import run_delegation_sweep
 from app.authz.grants import GrantService
 from app.authz.outbox import ALERT_ATTEMPTS, OutboxRun, Sessions, TupleWriter, process_outbox
 from app.authz.reconcile import TupleStore, reconcile_sessions, run_reconcile_job
 from app.authz.revocations import oldest_pending_at
+from app.authz.runtime import runtime_authz
 from app.database import platform_sessions
 from app.models.authz import AuthzOutbox, AuthzRevocation, ResourceGrant
 from app.scheduler_job_ids import LeaderSchedulerJobId as JobId
@@ -41,6 +45,7 @@ JOBS: tuple[JobId, ...] = (
     JobId.AUTHZ_RECONCILE,
     JobId.AUTHZ_EXPIRY,
     JobId.AUTHZ_ALERT,
+    JobId.AUTHZ_DELEGATION_VALIDATE,
 )
 MAINTENANCE_SECONDS = 60
 EXPIRY_BATCH = 100
@@ -78,17 +83,16 @@ def schedule(config: AuthzSettings) -> list[tuple[JobId, BaseTrigger]]:
         (JobId.AUTHZ_EXPIRY, every),
         (JobId.AUTHZ_ALERT, every),
     ]
-    try:
-        found.append(
-            (
-                JobId.AUTHZ_RECONCILE,
-                CronTrigger.from_crontab(config.authz_reconcile_cron, timezone=UTC),
-            )
-        )
-    except ValueError:
-        logger.exception(
-            "invalid authz_reconcile_cron=%r; reconcile not scheduled", config.authz_reconcile_cron
-        )
+    daily = (
+        (JobId.AUTHZ_RECONCILE, "authz_reconcile_cron"),
+        (JobId.AUTHZ_DELEGATION_VALIDATE, "authz_delegation_cron"),  # F-03 (10.6)
+    )
+    for job, name in daily:
+        cron = getattr(config, name)
+        try:
+            found.append((job, CronTrigger.from_crontab(cron, timezone=UTC)))
+        except ValueError:
+            logger.exception("invalid %s=%r; %s not scheduled", name, cron, job.value)
     return found
 
 
@@ -170,8 +174,7 @@ async def _expire_one(service: GrantService, sessions: Sessions, grant_id: UUID)
     except Exception:  # one bad grant must not block the rest; retried next tick
         logger.exception("authz_grant_expiry_failed", extra={"grant_id": str(grant_id)})
         return False
-    await service.apply(change)
-    # TODO(E-02, 10.6): run delegation_validator for the expired grant (8.6 item 9).
+    await service.apply(change)  # 8.6 item 9: its marker is re-validated once finalized
     return True
 
 
@@ -239,6 +242,9 @@ async def run_job(job: JobId, config: AuthzSettings, *, opener: Opener | None = 
         if job is JobId.AUTHZ_ALERT:
             await check_backlog(platform_sessions("authz.backlog_alert"))
             return
+        if job is JobId.AUTHZ_DELEGATION_VALIDATE:
+            await run_delegation_sweep(runtime_authz())
+            return
         idle = job is JobId.AUTHZ_OUTBOX_DRAIN
         if idle and not await has_due_rows(platform_sessions("authz.outbox_drain")):
             return
@@ -257,3 +263,4 @@ async def _with_store(job: JobId, store: TupleStore) -> None:
         sessions = platform_sessions("authz.expiry_cleanup")
         await expire_grants(sessions, store)
         await prune(sessions)
+        await revalidate_finalized(runtime_authz())  # F-03: settled revocations (10.6)

@@ -116,7 +116,7 @@ async def link_grants(db: AsyncSession, agent_ids: set[UUID]) -> list[ResourceGr
     return [g for g in rows if (g.source_link or {}).get("link") in LINK_SOURCES.values()]
 
 
-def _request(kind: str, agent_id: UUID) -> GrantRequest:
+def delegation_request(kind: str, agent_id: UUID) -> GrantRequest:
     mcp = kind == "mcp_server"
     return GrantRequest(
         "consumer",
@@ -191,6 +191,8 @@ async def sync_agent_delegations(
     service: GrantService | None = None,
 ) -> LifecycleChange:
     """Grant ``added`` objects still linked, revoke unlinked ones (see module doc)."""
+    if db.sync_session.info.get("authz.runtime_link_view"):  # F-03 broken_links view
+        raise RuntimeError("delegations synced on a session with the runtime link view")
     await db.flush()
     wanted = await linked_objects(db, agent_id, kinds)  # ``kinds``: only these link types
     found = await link_grants(db, {agent_id})
@@ -205,7 +207,9 @@ async def sync_agent_delegations(
     for key in sorted(stale, key=_order):
         outbox += (await grants.revoke(db, ctx, held[key].id)).outbox_ids
     for kind, rid in sorted(new, key=_order):
-        change = await grants.grant(db, ctx, GrantTarget(kind, rid), _request(kind, agent_id))
+        change = await grants.grant(
+            db, ctx, GrantTarget(kind, rid), delegation_request(kind, agent_id)
+        )
         outbox += change.outbox_ids
     db.sync_session.info.setdefault(_PENDING, []).extend(outbox)
     return LifecycleChange(tuple(outbox))

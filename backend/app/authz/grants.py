@@ -16,7 +16,7 @@ access can shrink), then the object (``lock_object``), then the queue rows.
 Policy (who may share what, stage caps, owner self-revocation) is the caller's (E-01).
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
+from app.authz.grant_audit import AuditExtra, audit_grant
 from app.authz.grant_completion import (
     GRANTS_TABLE,
     MARKERS_TABLE,
@@ -48,9 +49,7 @@ from app.authz.revocations import finalize_revocations, record_revocation
 from app.authz.tuple_loaders import grant_row
 from app.authz.tuple_rows import GrantRow
 from app.models.authz import AuthzRevocation, ResourceGrant
-from app.services import audit_service
 
-AuditExtra = Mapping[str, object] | None  # caller facts merged into the audit metadata
 __all__ = ["GrantChange", "GrantRequest", "GrantService", "GrantTarget"]
 
 
@@ -109,7 +108,7 @@ class GrantService:
         ids = await enqueue(db, ops, source_table=source[0], source_id=source[1], now=now)
         if marker is not None and not ids:
             await finalize_revocations(db, [marker.id], now=now)
-        await _audit(db, ctx.user_id, _grant_action(request, before), grant, before)
+        await audit_grant(db, ctx.user_id, _grant_action(request, before), grant, before)
         return GrantChange(grant, tuple(ids))
 
     async def revoke(
@@ -124,6 +123,16 @@ class GrantService:
             raise authorization_error("conflict")
         return change
 
+    async def revoke_as_system(
+        self, db: AsyncSession, grant_id: UUID, *, audit: AuditExtra = None
+    ) -> GrantChange | None:
+        """Close an active grant for the platform (no user actor; F-03 delegation
+        validator). ``None`` when it is no longer active (closed meanwhile)."""
+        found = await db.get(ResourceGrant, grant_id, populate_existing=True)
+        if found is None or found.state != "active":
+            return None
+        return await self._close(db, found, None, audit, system=True)
+
     async def expire(self, db: AsyncSession, grant_id: UUID) -> GrantChange | None:
         """8.6 item 7: close an active grant past ``expires_at`` like a revocation.
 
@@ -136,7 +145,13 @@ class GrantService:
         return await self._close(db, found, None)
 
     async def _close(
-        self, db: AsyncSession, found: ResourceGrant, actor: UUID | None, extra: AuditExtra = None
+        self,
+        db: AsyncSession,
+        found: ResourceGrant,
+        actor: UUID | None,
+        extra: AuditExtra = None,
+        *,
+        system: bool = False,
     ) -> GrantChange | None:
         """Marker, ``revoking`` and per-key deletes; ``None`` = closed meanwhile (roll back)."""
         now = self._clock()
@@ -148,7 +163,7 @@ class GrantService:
                 ResourceGrant.id == found.id, ResourceGrant.state == "active"
             )
         )
-        if grant is None or (actor is None and not _expired(grant, now)):
+        if grant is None or (actor is None and not system and not _expired(grant, now)):
             return None
         before = grant_row(grant)
         grant.state = "revoking"
@@ -160,8 +175,8 @@ class GrantService:
             await complete_revocations(db, [grant.id], now=now)
         delegation = grant.grant_kind == "delegation"
         action = audit_actions.DELEGATION_REVOKE if delegation else audit_actions.GRANT_REVOKE
-        action = audit_actions.GRANT_EXPIRE if actor is None else action
-        await _audit(db, actor, action, grant, extra=extra)
+        action = audit_actions.GRANT_EXPIRE if actor is None and not system else action
+        await audit_grant(db, actor, action, grant, extra=extra)
         return GrantChange(grant, tuple(ids))
 
     async def list_grants(
@@ -239,50 +254,8 @@ def _assign(grant: ResourceGrant, row: GrantRow, request: GrantRequest, actor: U
         grant.granted_at, grant.granted_by = row.granted_at, actor
 
 
-def _terms(row: GrantRow | ResourceGrant) -> dict[str, object]:
-    expires = row.expires_at.isoformat() if row.expires_at else None
-    return {
-        "expires_at": expires,
-        "condition": row.condition_name,
-        "context": row.condition_context,
-    }
-
-
 def _expired(grant: ResourceGrant, now: datetime) -> bool:
     expires = grant.expires_at
     if grant.state != "active" or expires is None:
         return False
     return (expires if expires.tzinfo else expires.replace(tzinfo=UTC)) <= now
-
-
-async def _audit(
-    db: AsyncSession,
-    actor: UUID | None,
-    action: str,
-    grant: ResourceGrant,
-    before: GrantRow | None = None,
-    *,
-    extra: AuditExtra = None,
-) -> None:
-    metadata: dict[str, object] = {
-        **(extra or {}),
-        "grant_id": str(grant.id),
-        "org_id": str(grant.org_id),
-        "relation": grant.relation,
-        "principal_type": grant.principal_type,
-        "principal_id": str(grant.principal_id),
-        "grant_kind": grant.grant_kind,
-        **_terms(grant),
-    }
-    if before is not None:
-        metadata["before"] = _terms(before)
-    await audit_service.record_event(
-        db,
-        actor_type="user" if actor is not None else "system",
-        actor_user_id=actor,
-        action=action,
-        target_type=grant.resource_type,
-        target_id=grant.resource_id,
-        outcome="success",
-        metadata=metadata,
-    )
