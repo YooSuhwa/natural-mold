@@ -1,4 +1,4 @@
-"""Principal lookup is constrained to the selected org and throttled per authenticated user."""
+"""Principal lookup is constrained to the selected org and throttled per (company, user)."""
 
 from dataclasses import dataclass
 from typing import Annotated
@@ -12,7 +12,7 @@ from app.authz.org_context import OrgContext
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
 from app.authz.policies import SELF, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context
-from app.rate_limit import limiter
+from app.rate_limit import caller_key, limiter
 from app.schemas.org_search import PrincipalSearchQuery, PrincipalSearchView
 from app.services.orgs.search import search_principals
 
@@ -43,11 +43,7 @@ async def search_context(
     )
 
 
-def principal_rate_key(request: Request) -> str:
-    actor: object = getattr(request.state, "current_user", None)
-    if isinstance(actor, CurrentUser):
-        return f"principal-search:{actor.id}"
-    return "principal-search:unauthenticated"
+principal_rate_key = caller_key("principal-search")  # per (company, user), I-08
 
 
 @router.get("/{org_id}/principals", response_model=list[PrincipalSearchView])

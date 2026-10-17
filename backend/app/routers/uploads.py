@@ -5,8 +5,10 @@ Single endpoint:
 - GET  /api/uploads/{id} → serves the file inline so the frontend can render
   previews via ``<img src=…>`` / ``<a href=…>``.
 
-Files are stored on local disk under ``settings.upload_dir`` keyed by UUID;
-S3 migration would only swap the storage backend, not the API shape.
+Files are stored on local disk under ``settings.upload_dir`` keyed by UUID, in
+the uploader's company folder ``tenants/<tenant_id>/`` (I-08); a row whose path
+names another company reads as 404. S3 migration would only swap the storage
+backend, not the API shape.
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ from app.error_codes import file_not_found
 from app.models.message_attachment import MessageAttachment
 from app.schemas.artifact import ArtifactTextContent
 from app.schemas.upload import UploadResponse
+from app.storage.paths import TENANTS_DIR, ForeignTenantPathError, upload_file_path
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +72,8 @@ def _is_textual_mime(mime: str) -> bool:
     return base.startswith("text/") or base == "application/json"
 
 
-def _ensure_dir() -> Path:
-    base = Path(settings.upload_dir)
+def _ensure_dir(tenant_id: uuid.UUID) -> Path:
+    base = Path(settings.upload_dir) / TENANTS_DIR / str(tenant_id)
     base.mkdir(parents=True, exist_ok=True)
     return base
 
@@ -116,6 +119,13 @@ async def _get_owned_attachment(
     return row
 
 
+def _attachment_path(row: MessageAttachment) -> Path:
+    try:
+        return upload_file_path(row.storage_path, row.tenant_id)
+    except ForeignTenantPathError:
+        raise file_not_found() from None
+
+
 @router.post("/api/uploads", response_model=UploadResponse, status_code=201)
 @authz_policy(PRIVATE("message_attachments"))
 async def create_upload(
@@ -144,7 +154,7 @@ async def create_upload(
         )
 
     upload_id = uuid.uuid4()
-    base = await asyncio.to_thread(_ensure_dir)
+    base = await asyncio.to_thread(_ensure_dir, context.tenant_id)
     ext = _safe_extension(file.filename or "")
     storage_path = base / f"{upload_id}{ext}"
     await asyncio.to_thread(_write_upload_file, storage_path, contents)
@@ -184,7 +194,7 @@ async def get_upload(
     """
 
     row = await _get_owned_attachment(db, upload_id, context)
-    path = Path(row.storage_path)
+    path = _attachment_path(row)
     exists = await asyncio.to_thread(path.is_file)
     if not exists:
         raise file_not_found()
@@ -228,7 +238,7 @@ async def get_upload_content(
     row = await _get_owned_attachment(db, upload_id, context)
     if not _is_textual_mime(row.mime_type):
         raise file_not_found()
-    path = Path(row.storage_path)
+    path = _attachment_path(row)
     if not await asyncio.to_thread(path.is_file):
         raise file_not_found()
 

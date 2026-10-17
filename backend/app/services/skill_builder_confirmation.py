@@ -248,6 +248,7 @@ async def _confirm_improve(
         partial(
             replace_skill_storage,
             skill_id=skill.id,
+            tenant_id=skill.tenant_id,
             current_kind=skill.kind,
             current_storage_path=skill.storage_path,
             zip_bytes=zip_bytes,

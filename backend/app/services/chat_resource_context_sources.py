@@ -21,7 +21,7 @@ from app.models.skill import AgentSkillLink, Skill
 from app.schemas.chat_resource_context import ChatResourceReference
 from app.services.artifact_storage import ArtifactStorageBackend
 from app.services.chat_resource_context_errors import ResourceContextNotFoundError
-from app.storage.paths import resolve_data_path
+from app.storage.paths import ForeignTenantPathError, resolve_company_data_path, upload_file_path
 
 _TEXTUAL_MIME_EXACT: Final = {"application/json", "application/xml"}
 
@@ -76,7 +76,10 @@ async def load_file_source(
     )
     if attachment is None:
         raise ResourceContextNotFoundError()
-    path = Path(attachment.storage_path)
+    try:
+        path = upload_file_path(attachment.storage_path, attachment.tenant_id)
+    except ForeignTenantPathError:
+        raise ResourceContextNotFoundError() from None
     if not await run_in_threadpool(path.is_file):
         raise ResourceContextNotFoundError()
     digest = await run_in_threadpool(_sha256_path, path)
@@ -110,7 +113,9 @@ async def load_artifact_source(
         raise ResourceContextNotFoundError()
     version = await _artifact_version(db, artifact, reference.version_id)
     try:
-        path = await request.storage.local_path(object_key=version.object_key)
+        path = await request.storage.local_path(
+            object_key=version.object_key, tenant_id=artifact.tenant_id
+        )
     except (FileNotFoundError, ValueError) as exc:
         raise ResourceContextNotFoundError() from exc
     exact_reference = reference.model_copy(update={"version_id": version.id})
@@ -210,7 +215,10 @@ async def _artifact_version(
 def _skill_entry_path(skill: Skill | None) -> Path | None:
     if skill is None or skill.storage_path is None:
         return None
-    root = resolve_data_path(skill.storage_path)
+    try:
+        root = resolve_company_data_path(skill.storage_path, skill.tenant_id)
+    except ForeignTenantPathError:
+        return None
     return root / "SKILL.md" if skill.kind == "package" else root
 
 

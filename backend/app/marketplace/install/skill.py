@@ -34,8 +34,10 @@ from app.marketplace.install.common import (
 )
 from app.marketplace.install.snapshot import (
     _copy_snapshot,
+    _existing_skill_dir,
     _rel_install_storage,
     _replace_skill_snapshot,
+    _skill_dir,
     _target_for,
 )
 from app.marketplace.schemas import InstallMarketplaceItemIn
@@ -60,9 +62,10 @@ def _apply_version_metadata_to_skill(
     """Refresh DB metadata after an in-place marketplace overwrite."""
 
     payload = version.payload or {}
+    skill_dir = _existing_skill_dir(skill)
     skill.description = item.description
     skill.kind = _payload_skill_kind(version)
-    skill.storage_path = ensure_relative(_rel_install_storage(skill.id, version))
+    skill.storage_path = ensure_relative(_rel_install_storage(skill_dir, version))
     skill.content_hash = version.content_hash
     skill.size_bytes = int(version.size_bytes or 0)
     skill.version = payload.get("version")
@@ -98,12 +101,13 @@ async def _install_skill_item(
 
     # ----- create new install -------------------------------------------
     skill_id = uuid.uuid4()
-    target = _target_for(skill_id)
+    skill_dir = _skill_dir(skill_id, context.tenant_id)
+    target = _target_for(skill_dir)
     tmp = target.with_suffix(".install.tmp")
     if tmp.exists():
         await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
 
-    await _copy_snapshot(version, tmp)
+    await _copy_snapshot(version, tmp, context.tenant_id)
 
     payload = version.payload or {}
     name = body.name_override or payload.get("name") or item.name
@@ -118,7 +122,7 @@ async def _install_skill_item(
         slug=_slugify(name),
         description=item.description,
         kind=_payload_skill_kind(version),
-        storage_path=ensure_relative(_rel_install_storage(skill_id, version)),
+        storage_path=ensure_relative(_rel_install_storage(skill_dir, version)),
         content_hash=version.content_hash,
         size_bytes=int(version.size_bytes or 0),
         version=payload.get("version"),

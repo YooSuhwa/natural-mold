@@ -2,112 +2,22 @@ from __future__ import annotations
 
 import logging
 import os
-import re
-from contextlib import AbstractContextManager, nullcontext
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 
-from app.agent_runtime.run_secrets import get_run_secrets
 from app.config import settings
-from app.marketplace.redaction import replace_secret_values
+from app.observability.langfuse_context import LangfuseRunContext as LangfuseRunContext
+from app.observability.langfuse_context import LangfuseTraceRecord as LangfuseTraceRecord
+from app.observability.langfuse_metadata import _metadata_for_run, _tags_for_run
+from app.observability.langfuse_redaction import capture_io_enabled
+from app.observability.langfuse_redaction import redact_payload as redact_payload
 
 logger = logging.getLogger(__name__)
 
 _CLIENT: Any | None = None
 _CLIENT_KEY: tuple[Any, ...] | None = None
-_SECRET_VALUE_KEYS = (
-    "api_key",
-    "apikey",
-    "authorization",
-    "bearer",
-    "credential",
-    "password",
-    "refresh_token",
-    "secret",
-    "token",
-)
-_TOKEN_RE = re.compile(r"\b(sk|pk|pat|Bearer)[-_A-Za-z0-9]{12,}\b")
-_HEX_SECRET_RE = re.compile(r"\b[a-fA-F0-9]{32,}\b")
-
-
-@dataclass(frozen=True)
-class LangfuseTraceRecord:
-    provider: str
-    trace_id: str
-    trace_url: str | None = None
-
-
-@dataclass
-class LangfuseRunContext:
-    enabled: bool
-    trace: LangfuseTraceRecord | None = None
-    callback: Any | None = None
-    client: Any | None = None
-    metadata: dict[str, Any] | None = None
-    tags: list[str] | None = None
-    root_name: str = "agent.chat"
-
-    def configure_config(self, config: dict[str, Any]) -> dict[str, Any]:
-        if not self.enabled or self.callback is None:
-            return config
-
-        merged = dict(config)
-        merged_callbacks = list(merged.get("callbacks") or [])
-        merged_callbacks.append(self.callback)
-        merged["callbacks"] = merged_callbacks
-        merged["metadata"] = {**(merged.get("metadata") or {}), **(self.metadata or {})}
-
-        merged_tags = list(merged.get("tags") or [])
-        for tag in self.tags or []:
-            if tag not in merged_tags:
-                merged_tags.append(tag)
-        merged["tags"] = merged_tags
-        return merged
-
-    def activate(
-        self,
-        *,
-        input_payload: Any | None = None,
-        output_payload: Any | None = None,
-    ) -> AbstractContextManager[Any]:
-        if not self.enabled or self.client is None or self.trace is None:
-            return nullcontext()
-        if not hasattr(self.client, "start_as_current_observation"):
-            return nullcontext()
-
-        payload = redact_payload(input_payload)
-        if not settings.langfuse_capture_input_output:
-            payload = "[redacted: input/output capture disabled]"
-
-        kwargs: dict[str, Any] = {
-            "as_type": "span",
-            "name": self.root_name,
-            "trace_context": {"trace_id": self.trace.trace_id},
-        }
-        if payload is not None:
-            kwargs["input"] = payload
-        if output_payload is not None:
-            kwargs["output"] = redact_payload(output_payload)
-
-        try:
-            return self.client.start_as_current_observation(**kwargs)
-        except Exception:
-            logger.warning("Langfuse root span creation failed", exc_info=True)
-            return nullcontext()
-
-    def flush(self) -> None:
-        if not self.enabled or self.client is None:
-            return
-        flusher = getattr(self.client, "flush", None)
-        if not callable(flusher):
-            return
-        try:
-            flusher()
-        except Exception:
-            logger.warning("Langfuse flush failed", exc_info=True)
 
 
 def _has_langfuse_config() -> bool:
@@ -146,7 +56,7 @@ def _client_key() -> tuple[Any, ...]:
         _langfuse_base_url(),
         _sample_rate(),
         settings.langfuse_redaction_enabled,
-        settings.langfuse_capture_input_output,
+        capture_io_enabled(),
     )
 
 
@@ -172,7 +82,7 @@ def _get_langfuse_client() -> Any:
         "base_url": _langfuse_base_url(),
         "sample_rate": _sample_rate(),
     }
-    if settings.langfuse_redaction_enabled or not settings.langfuse_capture_input_output:
+    if settings.langfuse_redaction_enabled or not capture_io_enabled():
         kwargs["mask"] = redact_payload
 
     try:
@@ -225,41 +135,6 @@ def _trace_url_for_id(client: Any, trace_id: str) -> str | None:
     return f"{base}/traces/{trace_id}"
 
 
-def _tags_for_run(cfg: Any, *, source: str) -> list[str]:
-    tags = ["moldy", "agent-chat", f"source:{source}"]
-    agent_id = getattr(cfg, "agent_id", None)
-    if agent_id:
-        tags.append(f"agent:{agent_id}")
-    return tags
-
-
-def _metadata_for_run(cfg: Any, *, run_id: str, source: str) -> dict[str, Any]:
-    user_id = getattr(cfg, "user_id", None)
-    conversation_id = getattr(cfg, "thread_id", None)
-    agent_id = getattr(cfg, "agent_id", None)
-    agent_name = getattr(cfg, "agent_name", None)
-    model_id = getattr(cfg, "model_id", None)
-    checkpoint_id = getattr(cfg, "checkpoint_id", None)
-    return {
-        "langfuse_user_id": str(user_id) if user_id else None,
-        "langfuse_session_id": str(conversation_id) if conversation_id else None,
-        "langfuse_tags": _tags_for_run(cfg, source=source),
-        "moldy_user_id": str(user_id) if user_id else None,
-        "moldy_agent_id": str(agent_id) if agent_id else None,
-        "moldy_agent_name": str(agent_name) if agent_name else None,
-        "moldy_conversation_id": str(conversation_id) if conversation_id else None,
-        "moldy_run_id": run_id,
-        "moldy_model_id": str(model_id) if model_id else None,
-        "moldy_checkpoint_id": str(checkpoint_id) if checkpoint_id else None,
-        "moldy_route": (
-            f"/agents/{agent_id}/conversations/{conversation_id}"
-            if agent_id and conversation_id
-            else None
-        ),
-        "moldy_source": source,
-    }
-
-
 def build_langfuse_run_context(
     cfg: Any,
     *,
@@ -291,66 +166,6 @@ def build_langfuse_run_context(
     except Exception:
         logger.warning("Langfuse tracing disabled for this run", exc_info=True)
         return LangfuseRunContext(enabled=False)
-
-
-def _mask_run_secrets(text: str) -> str:
-    """Strip the active run's known injected secret values from ``text``.
-
-    ADR-021 M3 — the Langfuse ``mask`` callback runs synchronously inside the
-    run's async task (span attributes are masked at observation
-    creation/update/end, NOT deferred to a background flush thread; see
-    ``langfuse/_client/span.py``), so the run-scoped ContextVar is live here.
-    We read it directly rather than snapshotting at capture-registration time.
-
-    No-op when no run is active (``get_run_secrets()`` returns ``None`` — unit
-    tests, trigger mode) or the set is empty. Reuses the shared exact-substring
-    ``replace_secret_values`` (ReDoS-impossible) instead of new heuristics.
-    """
-
-    secrets = get_run_secrets()
-    if not secrets:
-        return text
-    return replace_secret_values(text, secrets, placeholder="[redacted]")
-
-
-def redact_payload(data: Any, **_kwargs: Any) -> Any:
-    if not settings.langfuse_capture_input_output:
-        if isinstance(data, dict):
-            redacted = {}
-            for key, value in data.items():
-                if str(key).lower() in {"input", "output", "messages", "content", "prompt"}:
-                    redacted[key] = "[redacted]"
-                else:
-                    redacted[key] = redact_payload(value)
-            return redacted
-        if isinstance(data, list):
-            return [redact_payload(item) for item in data]
-        if isinstance(data, str):
-            return "[redacted]"
-        return data
-
-    if not settings.langfuse_redaction_enabled:
-        return data
-
-    if isinstance(data, dict):
-        result: dict[Any, Any] = {}
-        for key, value in data.items():
-            key_l = str(key).lower()
-            if any(secret in key_l for secret in _SECRET_VALUE_KEYS):
-                result[key] = "[redacted]"
-            else:
-                result[key] = redact_payload(value)
-        return result
-    if isinstance(data, list):
-        return [redact_payload(item) for item in data]
-    if isinstance(data, str):
-        # Value-based masking FIRST (ADR-021): strip the run's known injected
-        # secrets by exact substring, then fall back to the key/value
-        # heuristics for secrets not in the run set (LLM-generated tokens etc.).
-        masked = _mask_run_secrets(data)
-        masked = _TOKEN_RE.sub("[redacted]", masked)
-        return _HEX_SECRET_RE.sub("[redacted]", masked)
-    return data
 
 
 async def fetch_langfuse_observations(

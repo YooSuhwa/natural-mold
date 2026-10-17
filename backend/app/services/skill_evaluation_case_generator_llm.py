@@ -22,7 +22,7 @@ from app.services.skill_evaluation_file_adapter import (
 )
 from app.services.skill_evaluation_llm_payload import json_object_from_text, message_text
 from app.services.skill_evaluation_worker_types import SkillEvaluationExecutionError
-from app.storage.paths import resolve_data_path
+from app.storage.paths import resolve_company_data_path
 
 type JsonObject = dict[str, JsonValue]
 type ModelBuilder = Callable[[AsyncSession], Awaitable[SkillBuilderChatModel]]
@@ -123,7 +123,7 @@ def _skill_file_previews(skill: Skill) -> list[JsonObject]:
     )
     if lexical_root.is_symlink():
         return []
-    root = resolve_data_path(skill.storage_path)
+    root = resolve_company_data_path(skill.storage_path, skill.tenant_id)
     paths = _preview_paths(root)
     previews: list[JsonObject] = []
     for path in paths[:_MAX_FILE_PREVIEWS]:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,7 +28,7 @@ from app.services.skill_evaluation_auto_preparation import (
 from app.skills import service as skill_service
 from app.skills.creation import PackageSkillCreation
 from app.skills.packager import PackageError
-from app.storage.paths import resolve_data_path
+from app.storage.paths import resolve_data_path, skill_storage_dir
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
 
@@ -61,8 +59,7 @@ async def upload_package_skill(
         await db.rollback()
         raise invalid_skill_package("missing skill storage path")
     skill_path = resolve_data_path(skill.storage_path)
-    skills_root = (Path(settings.data_root) / "skills").resolve()
-    if not skill_path.is_relative_to(skills_root):
+    if skill_path != resolve_data_path(skill_storage_dir(skill.id, skill.tenant_id)):
         await skill_service.delete_skill(db, skill, context)
         await db.rollback()
         raise invalid_skill_package("invalid skill storage path")

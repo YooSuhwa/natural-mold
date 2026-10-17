@@ -190,7 +190,7 @@ async def test_confirm_session_improve_mode_updates_existing_skill(
 
         assert updated.id == skill.id
         assert updated.kind == "package"
-        assert updated.storage_path == f"skills/{skill.id}"
+        assert updated.storage_path == f"tenants/{skill.tenant_id}/skills/{skill.id}"
         assert updated.execution_profile == {"requires_network": False}
         assert b"Return concise bullet points" in skill_service.get_file_bytes(
             updated,

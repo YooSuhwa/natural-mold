@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from app.agent_runtime.runtime_config import _DATA_DIR
-from app.storage.paths import resolve_data_path
+from app.storage.paths import run_data_path_or_none
 
 logger = logging.getLogger(__name__)
 type SkillExecutionAuditKind = Literal[
@@ -221,7 +221,7 @@ def _materialize_skill(descriptor: SkillRuntimeDescriptor, runtime_root: Path) -
 
 
 def _build_descriptor_from_skill_dict(
-    raw: dict[str, Any], runtime_root: Path
+    raw: dict[str, Any], runtime_root: Path, tenant_id: uuid.UUID | None = None
 ) -> SkillRuntimeDescriptor | None:
     """Translate a single ``agent_skills`` entry (see
     ``app.skills.service.to_runtime_dict``) into a runtime descriptor.
@@ -239,7 +239,9 @@ def _build_descriptor_from_skill_dict(
     except (TypeError, ValueError):
         return None
     # ADR-018 — resolve column (relative) to absolute for materialize/copy.
-    original = resolve_data_path(storage_path) if storage_path else runtime_root
+    original = run_data_path_or_none(storage_path, tenant_id) if storage_path else runtime_root
+    if original is None:  # another company's path (I-08)
+        return None
     return SkillRuntimeDescriptor(
         id=skill_id,
         slug=str(slug),
@@ -287,7 +289,9 @@ def build_skill_runtime_context(
         runtime_root.mkdir(parents=True, exist_ok=True)
 
         for raw in cfg.agent_skills:
-            descriptor = _build_descriptor_from_skill_dict(raw, runtime_root)
+            descriptor = _build_descriptor_from_skill_dict(
+                raw, runtime_root, cfg.org_context.tenant_id
+            )
             if descriptor is None:
                 continue
             descriptor.runtime_storage_path = runtime_root / descriptor.slug

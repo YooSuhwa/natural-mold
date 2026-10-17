@@ -28,7 +28,7 @@ from app.config import settings
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillDraftFile, SkillDraftFileRole
 from app.skills.display_limits import DISPLAY_TEXT_SNIFF_BYTES, MAX_DISPLAY_TEXT_BYTES
-from app.storage.paths import resolve_data_path
+from app.storage.paths import resolve_company_data_path, resolve_data_path, upload_data_path
 from app.storage.skill_draft_paths import SKILL_DRAFTS_ROOT, skill_draft_storage_path
 
 if TYPE_CHECKING:
@@ -91,7 +91,7 @@ def seed_workspace_from_skill(skill: Skill, session_id: uuid.UUID) -> str:
         target.mkdir(parents=True, exist_ok=True)
         return storage_path
 
-    src = resolve_data_path(skill.storage_path)
+    src = resolve_company_data_path(skill.storage_path, skill.tenant_id)  # I-08 fail closed
     if not src.exists():
         logger.warning(
             "skill draft seed skipped — source missing: skill=%s path=%s",
@@ -123,7 +123,7 @@ def copy_attachments_to_inputs(
     inputs_dir.mkdir(parents=True, exist_ok=True)
     copied: list[str] = []
     for attachment in attachments:
-        src = resolve_data_path(attachment.storage_path)
+        src = upload_data_path(attachment.storage_path, attachment.tenant_id)  # I-08
         if not src.is_file():
             logger.warning(
                 "attachment copy skipped — blob missing: attachment=%s path=%s",

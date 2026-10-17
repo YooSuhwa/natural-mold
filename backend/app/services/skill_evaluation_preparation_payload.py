@@ -12,7 +12,7 @@ from app.services.skill_evaluation_file_adapter import (
     SkillEvaluationFileAdapterError,
     normalize_evaluation_file_payload,
 )
-from app.storage.paths import resolve_data_path
+from app.storage.paths import resolve_company_data_path
 
 type JsonObject = dict[str, JsonValue]
 
@@ -131,6 +131,6 @@ def payload_description(payload: JsonObject) -> str | None:
 def _embedded_evals_path(skill: Skill) -> Path | None:
     if not skill.storage_path:
         return None
-    root = resolve_data_path(skill.storage_path)
+    root = resolve_company_data_path(skill.storage_path, skill.tenant_id)
     base = root.parent if root.is_file() else root
     return base / "evals" / "evals.json"

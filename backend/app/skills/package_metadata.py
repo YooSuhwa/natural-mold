@@ -3,13 +3,13 @@ from __future__ import annotations
 from app.models.skill import Skill
 from app.skills.inspector import SkillMetadataError, list_files, parse_skill_md
 from app.skills.package_hash import compute_package_tree_hash
-from app.storage.paths import resolve_data_path
+from app.storage.paths import resolve_company_data_path
 
 
 def refresh_package_metadata(skill: Skill) -> None:
     if skill.kind != "package" or not skill.storage_path:
         return
-    root = resolve_data_path(skill.storage_path)
+    root = resolve_company_data_path(skill.storage_path, skill.tenant_id)
     files = list_files(root)
     skill.size_bytes = sum(file.size for file in files if not file.is_dir)
     skill.content_hash = compute_package_tree_hash(root)

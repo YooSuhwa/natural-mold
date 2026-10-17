@@ -33,7 +33,7 @@ from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_preparation import _without_stored_filesystem_interrupts
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
 from app.agent_runtime.runtime_snapshot_catalog import SnapshotCatalogBuilder
-from app.storage.paths import resolve_data_path
+from app.storage.paths import run_data_path_or_none
 
 _STORED_SKILL_RULES = (
     "\n\n## 스킬 사용 규칙\n"
@@ -99,7 +99,7 @@ def _freeze_skills(cfg: AgentConfig, builder: SnapshotCatalogBuilder) -> str | N
     prefix = f"/runtime/{cfg.thread_id}/{owner}skills"
     for skill in cfg.agent_skills:
         slug, storage = str(skill.get("slug") or ""), str(skill.get("storage_path") or "")
-        source = resolve_data_path(storage) if storage else None
+        source = run_data_path_or_none(storage, cfg.org_context.tenant_id) if storage else None
         if not slug or source is None:
             raise unsupported(f"skill_source_missing:{slug}")
         if source.is_file():

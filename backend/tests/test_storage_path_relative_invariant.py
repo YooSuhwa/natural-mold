@@ -67,7 +67,8 @@ async def test_text_skill_storage_path_is_relative(
     assert not Path(skill.storage_path).is_absolute(), (
         f"text skill stored absolute path: {skill.storage_path}"
     )
-    assert skill.storage_path.startswith("skills/")
+    # I-08: new skills live in the company folder ``tenants/<tenant_id>/skills/<id>``.
+    assert skill.storage_path.startswith(f"tenants/{skill.tenant_id}/skills/")
     assert skill.storage_path.endswith("/SKILL.md")
 
 
@@ -86,8 +87,9 @@ async def test_package_skill_storage_path_is_relative(
     assert not Path(skill.storage_path).is_absolute(), (
         f"package skill stored absolute path: {skill.storage_path}"
     )
-    assert skill.storage_path.startswith("skills/")
+    prefix = f"tenants/{skill.tenant_id}/skills/"
+    assert skill.storage_path.startswith(prefix)
     try:
-        uuid.UUID(skill.storage_path.removeprefix("skills/"))
+        uuid.UUID(skill.storage_path.removeprefix(prefix))
     except ValueError:  # pragma: no cover — defensive
         pytest.fail(f"unexpected storage_path format: {skill.storage_path}")

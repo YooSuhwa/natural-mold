@@ -260,11 +260,6 @@
     },
     {
       "rule": "routers_to_models",
-      "importer": "app.routers.shares",
-      "imported": "app.models.message_event"
-    },
-    {
-      "rule": "routers_to_models",
       "importer": "app.routers.skill_builder_audit",
       "imported": "app.models.skill"
     },

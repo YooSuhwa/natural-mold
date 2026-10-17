@@ -40,7 +40,7 @@ from app.error_codes import agent_not_found, public_share_links_disabled
 from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.conversation import Conversation
-from app.models.organization import Organization
+from app.models.organization import Organization, Tenant
 from app.models.share_link import ShareLink
 from app.services.agent_lifecycle_locks import read_agent_tree
 
@@ -88,6 +88,35 @@ async def public_links_allowed(db: AsyncSession, org_id: uuid.UUID) -> bool:
         .execution_options(autoflush=False)
     )
     return (settings or {}).get("allow_public_share_links") is not False
+
+
+async def public_share_open(db: AsyncSession, link: ShareLink) -> bool:
+    """I-08 (8.9 "공개 공유 링크"): the link's own company is active, its organization is
+    active and belongs to that company, and the organization allows public links."""
+    row = (
+        await db.execute(
+            select(Organization.settings)
+            .join(Tenant, Tenant.id == Organization.tenant_id)
+            .where(
+                Organization.id == link.org_id,
+                Organization.tenant_id == link.tenant_id,
+                Organization.status == "active",
+                Tenant.status == "active",
+            )
+            .execution_options(autoflush=False)
+        )
+    ).one_or_none()
+    return row is not None and (row[0] or {}).get("allow_public_share_links") is not False
+
+
+async def share_token_tenant(db: AsyncSession, token: str) -> uuid.UUID | None:
+    """Company of an active token, for the public rate-limit bucket (no other checks)."""
+    return await db.scalar(
+        select(ShareLink.tenant_id)
+        .where(ShareLink.share_token == token, ShareLink.revoked_at.is_(None))
+        .execution_options(autoflush=False)
+        .limit(1)
+    )
 
 
 async def create_or_get_active_share(
@@ -191,8 +220,9 @@ async def load_share_with_conversation_and_agent(
         )
         link = result.scalar_one_or_none()
         # Checked on every public read before any snapshot cache, so turning the
-        # setting off takes effect immediately without keying the cache on it.
-        if link is None or not await public_links_allowed(db, link.org_id):
+        # setting off or suspending the company takes effect immediately without
+        # keying the cache on it.
+        if link is None or not await public_share_open(db, link):
             return None
 
         conv_result = await db.execute(

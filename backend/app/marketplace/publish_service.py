@@ -42,7 +42,6 @@ from app.authz.catalog_version_scope import load_item_version
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.scoping import private_scope_predicate, private_scoped
-from app.config import settings
 from app.error_codes import (
     marketplace_acl_required,
     marketplace_invalid_package,
@@ -65,7 +64,11 @@ from app.models.marketplace import (
     MarketplaceVersion,
 )
 from app.models.skill import Skill
-from app.storage.paths import ensure_relative, resolve_data_path
+from app.storage.paths import (
+    resolve_company_data_path,
+    resolve_data_path,
+    tenant_relative,
+)
 
 if TYPE_CHECKING:
     from app.dependencies import CurrentUser
@@ -82,13 +85,12 @@ NON_PRIVATE_VISIBILITIES = {"public", "unlisted", "restricted"}
 # ---------------------------------------------------------------------------
 
 
-def _versions_storage_root() -> Path:
-    """Root for immutable version snapshots — distinct from per-user
-    ``data/skills/`` so deleting a user-owned skill never strands an
-    installed copy elsewhere (Spec §6.4). Mirrors the relative form
-    ``skills/_marketplace_versions/<vid>`` stored in the column."""
+def _version_snapshot_dir(tenant_id: uuid.UUID | None, version_id: uuid.UUID) -> str:
+    """Immutable version snapshot — distinct from per-user ``data/skills/<id>`` so
+    deleting a user-owned skill never strands an installed copy elsewhere (Spec §6.4).
+    A company-owned item's snapshot lives in its company folder (I-08)."""
 
-    return (Path(settings.data_root) / "skills" / "_marketplace_versions").resolve()
+    return tenant_relative(tenant_id, f"skills/_marketplace_versions/{version_id}")
 
 
 def _now() -> datetime:
@@ -121,7 +123,7 @@ async def _snapshot_skill(skill: Skill, *, dest: Path) -> tuple[Path, int, dict]
     if not skill.storage_path:
         raise marketplace_invalid_package(f"skill {skill.id} has no on-disk storage to publish")
 
-    src = resolve_data_path(skill.storage_path)
+    src = resolve_company_data_path(skill.storage_path, skill.tenant_id)
     exists, is_file = await asyncio.to_thread(_probe_path, src)
     if not exists:
         raise marketplace_invalid_package(f"skill storage missing on disk: {skill.storage_path}")
@@ -344,7 +346,7 @@ async def publish_skill(
     # versions storage. Use a temp directory so a secret_scan failure
     # cleans up cleanly without leaving partial data.
     version_id = uuid.uuid4()
-    snapshot_target = _versions_storage_root() / str(version_id)
+    snapshot_target = resolve_data_path(_version_snapshot_dir(item.tenant_id, version_id))
     tmp_target = snapshot_target.with_suffix(".publish.tmp")
     if await asyncio.to_thread(tmp_target.exists):
         await asyncio.to_thread(shutil.rmtree, tmp_target, ignore_errors=True)
@@ -399,7 +401,7 @@ async def publish_skill(
             resource_type="skill",
             payload_kind="skill_package",
             payload=payload,
-            storage_path=ensure_relative(f"skills/_marketplace_versions/{version_id}"),
+            storage_path=_version_snapshot_dir(item.tenant_id, version_id),
             content_hash=content_hash,
             size_bytes=total_bytes,
             credential_requirements=skill.credential_requirements,

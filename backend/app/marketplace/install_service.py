@@ -78,7 +78,7 @@ from app.models.marketplace import MarketplaceInstallation
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.skill import Skill
-from app.storage.paths import resolve_data_path
+from app.storage.paths import resolve_company_data_path
 
 if TYPE_CHECKING:
     from app.dependencies import CurrentUser
@@ -415,7 +415,8 @@ async def _remove_install_artifacts(
                 # is_file()/exists() go through ``to_thread`` to stay
                 # ASYNC240-clean.
                 await asyncio.to_thread(
-                    _rmtree_skill_storage, resolve_data_path(skill.storage_path)
+                    _rmtree_skill_storage,
+                    resolve_company_data_path(skill.storage_path, skill.tenant_id),
                 )
             await db.delete(skill)
     if installation.installed_mcp_server_id is not None:

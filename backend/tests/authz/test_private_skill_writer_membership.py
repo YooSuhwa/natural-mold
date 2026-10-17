@@ -45,7 +45,8 @@ async def test_skill_creation_revalidates_before_files_and_durable_row(
     db: AsyncSession, private_scopes: PrivateScopes, skill_case: SkillCase
 ) -> None:
     assert skill_case.first.org_id == private_scopes.first.org_id
-    root = Path(settings.data_root) / "skills"
+    # I-08: new skills are written to the company folder.
+    root = Path(settings.data_root) / "tenants" / str(private_scopes.first.tenant_id) / "skills"
     before_files = sorted(path.name for path in root.iterdir())
     before_rows = await db.scalar(select(func.count()).select_from(Skill))
     await _suspend_membership(db, private_scopes)

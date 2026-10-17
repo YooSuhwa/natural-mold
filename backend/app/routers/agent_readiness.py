@@ -26,7 +26,7 @@ from app.authz.policies import CANDIDATES, RES, authz_policy
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
-from app.rate_limit import limiter
+from app.rate_limit import caller_key, limiter
 from app.schemas.readiness import (
     AgentReadinessResponse,
     OwnerNotifyResponse,
@@ -40,11 +40,7 @@ SUMMARY_RATE = "60/minute"  # dashboard refreshes, per caller (each call checks 
 NOTIFY_RATE = "10/minute"  # a button press; the notice itself merges for 24 hours
 
 
-def caller_rate_key(request: Request) -> str:
-    actor: object = getattr(request.state, "current_user", None)
-    if isinstance(actor, CurrentUser):
-        return f"readiness-summary:{actor.id}"
-    return "readiness-summary:unauthenticated"
+caller_rate_key = caller_key("readiness-summary")  # per (company, user), I-08
 
 
 @router.post(
