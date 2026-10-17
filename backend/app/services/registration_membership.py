@@ -20,6 +20,7 @@ from app.schemas.org import OrganizationSettings
 from app.services import audit_service
 from app.services.orgs.versioning import bump_version
 from app.services.registration_policy import ensure_signup_scope_active
+from app.tenancy.limit_capacity import require_member_capacity
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +39,8 @@ async def enroll_default_organization(
         enrollment.user,
     )
     ensure_signup_scope_active(enrollment.scope)
+    if not enrollment.bootstrap:
+        await require_member_capacity(db, company.id)  # H-06 member_limit
     db.add(TenantMember(tenant_id=company.id, user_id=user.id))
     db.add(
         OrganizationMember(org_id=org.id, tenant_id=company.id, user_id=user.id, status="active")

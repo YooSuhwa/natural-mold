@@ -61,6 +61,7 @@ ErrorCode = Literal[
     "agent_not_ready",
     "tenant_suspended",
     "quota_exceeded",
+    "limit_exceeds_parent",
     "authz_unavailable",
     "policy_disabled",
     "tenant_publication_invalid",
@@ -161,6 +162,7 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         ),
         "tenant_suspended": ErrorSpec(403, "회사가 정지되었습니다"),
         "quota_exceeded": ErrorSpec(429, "사용 한도를 초과했습니다"),
+        "limit_exceeds_parent": ErrorSpec(422, "상위 한도보다 큰 한도는 정할 수 없습니다"),
         "authz_unavailable": ErrorSpec(
             503, "권한을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요"
         ),

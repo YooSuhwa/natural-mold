@@ -112,17 +112,32 @@ async def invoke_trigger_run(
             return TriggerOutcome(run)
     run.conversation_id = conversation.id
     await db.flush()
-    accepted = await trigger_service.accept_owned_execution(
-        db,
-        trigger_service.OwnedExecutionRequest(
-            conversation_id=conversation.id,
-            root_agent_id=agent.id,
-            context=context,
-            source="trigger",
-            input_preview=trigger.input_message,
-            envelope=trigger_service.ExecutionEnvelopeRef("trigger", run.id),
-        ),
-    )
+    try:
+        accepted = await trigger_service.accept_owned_execution(
+            db,
+            trigger_service.OwnedExecutionRequest(
+                conversation_id=conversation.id,
+                root_agent_id=agent.id,
+                context=context,
+                source="trigger",
+                input_preview=trigger.input_message,
+                envelope=trigger_service.ExecutionEnvelopeRef("trigger", run.id),
+            ),
+        )
+    except AppError as exc:
+        if exc.code != "quota_exceeded":
+            raise
+        # H-06: refused before the run row (no write to undo); skipped, never auto-paused.
+        await trigger_service.finish_blocked_trigger_run(
+            db,
+            trigger=trigger,
+            run=run,
+            reason="quota_exceeded",
+            error=exc,
+            conversation=conversation,
+        )
+        await db.refresh(run)
+        return TriggerOutcome(run)
     await db.commit()
 
     async def invoke() -> str:

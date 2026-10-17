@@ -39,7 +39,7 @@ def _schemas(app: FastAPI) -> dict[str, JsonValue]:
 def test_assembled_app_registers_exact_company_inventory_once() -> None:
     app = create_app()
     assert company_route_violations(app.routes) == []
-    assert len(COMPANY_ROUTES) == 43
+    assert len(COMPANY_ROUTES) == 50
     assert slug_schema_violations(_schemas(app)) == []
 
 
@@ -47,9 +47,9 @@ def test_inventory_rejects_unclassified_deferred_and_legacy_routes() -> None:
     app = create_app()
     extra = APIRouter()
 
-    @extra.get("/api/tenants/{tenant_id}/usage")
+    @extra.get("/api/tenants/{tenant_id}/domains")
     @authz_policy(SUPER)
-    async def deferred_usage() -> bool:
+    async def deferred_domains() -> bool:
         return True
 
     @extra.get("/api/admin/tenants/{tenant_id}/unreviewed")
@@ -64,7 +64,7 @@ def test_inventory_rejects_unclassified_deferred_and_legacy_routes() -> None:
     app.include_router(extra)
     found = company_route_violations(app.routes)
     assert found == [
-        "deferred:GET /api/tenants/{tenant_id}/usage",
+        "deferred:GET /api/tenants/{tenant_id}/domains",
         "legacy:GET /api/tenants/{tenant_id}/legacy-probe",
         "unclassified:GET /api/admin/tenants/{tenant_id}/unreviewed",
         "unclassified:GET /api/tenants/{tenant_id}/legacy-probe",
@@ -74,12 +74,11 @@ def test_inventory_rejects_unclassified_deferred_and_legacy_routes() -> None:
 def test_inventory_rejects_later_task_paths_app_wide() -> None:
     app = FastAPI()
     paths = (
-        "/api/tenants/{id}/limits",
-        "/api/me/usage-limits",
+        "/api/tenants/{id}/sso-connections/{connection_id}",
+        "/api/admin/tenants/{id}/exports",
         "/api/auth/sso/{connection_id}/start",
         "/auth/callback/{connection_id}",
         "/api/admin/authz/reconcile/{job_id}",
-        "/api/tenants/{id}/usage/{period}",
         "/api/tenants/{id}/domains/{domain_id}",
     )
     for path in (*paths, "/api/usage-limits-history", "/api/auth/login"):

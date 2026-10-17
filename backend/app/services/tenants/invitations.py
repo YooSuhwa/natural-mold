@@ -31,6 +31,7 @@ from app.tenancy.admin_context import (
     TenantAdminTarget,
     load_tenant_admin_context,
 )
+from app.tenancy.limit_capacity import require_invite_capacity
 
 
 def creation_view(row: TenantInvitation) -> TenantInvitationCreated:
@@ -55,6 +56,7 @@ async def create_invitation(
     if candidates:
         return await _reissue(mutation, locked, candidates[0]), False
     require_current_version(locked.tenant.updated_at, mutation.expected_version)
+    await require_invite_capacity(mutation.db, locked.tenant.id, email)  # H-06 member_limit
     row = _new_invitation(locked, email, role, now)
     mutation.db.add(row)
     await _record(mutation, locked, row, audit_actions.TENANT_INVITATION_CREATE)

@@ -33,7 +33,10 @@ class CompanyRoute:
 _T: Final = "/api/tenants/{tenant_id}"
 _A: Final = "/api/admin/tenants"
 _R: Final = "/api/orgs/{org_id}/retention"
-COMPANY_PREFIXES: Final = ("/api/tenants/", "/api/admin/tenants", _R)
+_L: Final = "/api/orgs/{org_id}/limits"
+_U: Final = "/api/usage-limits"
+_MU: Final = "/api/me/usage-limits"
+COMPANY_PREFIXES: Final = ("/api/tenants/", "/api/admin/tenants", _R, _L, _U, _MU)
 B11_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"GET {_T}": CompanyRoute("SELF", 200, False),
     f"PATCH {_T}": CompanyRoute("SELF", 200, True),
@@ -95,6 +98,16 @@ E08_ROUTES: Final[dict[str, CompanyRoute]] = {
 H03_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"GET {_T}/audit-events": CompanyRoute("SELF", 200, False),
 }
+# H-06 usage limits and company usage (8.7, 9.7, S08·S10·S26).
+H06_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_T}/usage": CompanyRoute("SELF", 200, False),
+    f"GET {_T}/limits": CompanyRoute("SELF", 200, False),
+    f"GET {_U}": CompanyRoute("SELF", 200, False),
+    f"PUT {_U}": CompanyRoute("GOVERNANCE", 200, True),
+    f"GET {_MU}": CompanyRoute("SELF", 200, False),
+    f"GET {_L}": CompanyRoute("SELF", 200, False),
+    f"PUT {_L}": CompanyRoute("GOVERNANCE", 200, True),
+}
 COMPANY_ROUTES: Final = {
     **B11_ROUTES,
     **B12_ROUTES,
@@ -102,9 +115,10 @@ COMPANY_ROUTES: Final = {
     **E07_ROUTES,
     **E08_ROUTES,
     **H03_ROUTES,
+    **H06_ROUTES,
 }
 # Later-task paths from the contract's route-level crosswalk (rows 7-8, 24-35, 38-57),
-# owned by C05/E07/E08/E09/H03/H06/H08/I07. Matched app-wide by path, with parameter
+# owned by C05/E07/E08/E09/H03/H08/I07. Matched app-wide by path, with parameter
 # names erased, at the path itself or below it (CRUD collection/item routes).
 DEFERRED_PATHS: Final = frozenset(
     {
@@ -113,12 +127,8 @@ DEFERRED_PATHS: Final = frozenset(
         "/api/admin/tenants/{}/schedule-deletion",
         "/api/admin/tenants/{}/cancel-deletion",
         "/api/admin/authz",
-        "/api/tenants/{}/usage",
-        "/api/tenants/{}/limits",
         "/api/tenants/{}/domains",
         "/api/tenants/{}/sso-connections",
-        "/api/usage-limits",
-        "/api/me/usage-limits",
         "/api/auth/sso",
         "/api/auth/ldap",
         "/auth/callback",

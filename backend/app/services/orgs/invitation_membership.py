@@ -19,6 +19,7 @@ from app.models.organization import (
 from app.models.organization_group import Group, GroupMember, OrgInvitation
 from app.models.user import User
 from app.services.orgs.versioning import utc_timestamp
+from app.tenancy.limit_capacity import require_member_capacity
 
 GROUP_IDS: Final = TypeAdapter(tuple[UUID, ...])
 
@@ -69,6 +70,7 @@ async def join_invited_membership(db: AsyncSession, target: InvitationMembership
     if any(group.source != "manual" for group in groups):
         raise authorization_error("policy_locked")
     if company is None:
+        await require_member_capacity(db, organization.tenant_id)  # H-06 member_limit
         db.add(TenantMember(tenant_id=organization.tenant_id, user_id=user.id))
     member_added = member is None or member.status != "active"
     if member is None:

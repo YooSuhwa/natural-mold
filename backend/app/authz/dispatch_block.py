@@ -9,6 +9,9 @@ error is not an authorization block (the entry keeps its existing handling).
 
 ``authz_unavailable`` (OpenFGA down) is transient: triggers record it as
 ``skipped`` so it never counts toward the auto pause (backoff = the next fire).
+``quota_exceeded`` (H-06, 8.7: a usage limit of the run's company/org/owner/agent) is
+transient too — recorded ``skipped`` with that reason; it clears with the monthly reset
+or a raised limit, so it must not pause the schedule.
 """
 
 from __future__ import annotations
@@ -28,8 +31,9 @@ BlockReason = Literal[
     "required_unavailable",
     "auth_required",
     "authz_unavailable",
+    "quota_exceeded",
 ]
-TRANSIENT: Final[frozenset[str]] = frozenset({"authz_unavailable"})
+TRANSIENT: Final[frozenset[str]] = frozenset({"authz_unavailable", "quota_exceeded"})
 _BY_CODE: Final[Mapping[str, BlockReason]] = {
     "permission_required": "permission_revoked",
     "not_found": "permission_revoked",
@@ -44,6 +48,7 @@ _BY_CODE: Final[Mapping[str, BlockReason]] = {
     "credential_binding_required": "auth_required",
     "auth_required": "auth_required",  # F-07 ConnectionBlockedError (connection lost mid-run)
     "authz_unavailable": "authz_unavailable",
+    "quota_exceeded": "quota_exceeded",
 }
 _OWNER_CODES: Final[Mapping[str, BlockReason]] = {
     "organization_unavailable": "org_archived",

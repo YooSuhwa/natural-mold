@@ -9879,6 +9879,27 @@
         ]
       }
     },
+    "/api/me/usage-limits": {
+      "get": {
+        "operationId": "get_my_usage_limit_api_me_usage_limits_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyUsageLimit"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get My Usage Limit",
+        "tags": [
+          "usage limits"
+        ]
+      }
+    },
     "/api/memories": {
       "get": {
         "operationId": "list_memories_api_memories_get",
@@ -12675,6 +12696,116 @@
         "summary": "Resend Invitation Link",
         "tags": [
           "organization invitations"
+        ]
+      }
+    },
+    "/api/orgs/{org_id}/limits": {
+      "get": {
+        "operationId": "get_org_limits_api_orgs__org_id__limits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageLimitView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Org Limits",
+        "tags": [
+          "organization administration"
+        ]
+      },
+      "put": {
+        "operationId": "put_org_limits_api_orgs__org_id__limits_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgMemberDefaultUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageLimitView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Org Limits",
+        "tags": [
+          "organization administration"
         ]
       }
     },
@@ -18772,6 +18903,49 @@
         ]
       }
     },
+    "/api/tenants/{tenant_id}/limits": {
+      "get": {
+        "operationId": "get_tenant_limits_api_tenants__tenant_id__limits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageLimitView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tenant Limits",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
     "/api/tenants/{tenant_id}/llm-settings": {
       "get": {
         "operationId": "get_company_llm_settings_api_tenants__tenant_id__llm_settings_get",
@@ -20168,6 +20342,87 @@
         ]
       }
     },
+    "/api/tenants/{tenant_id}/usage": {
+      "get": {
+        "operationId": "get_tenant_usage_api_tenants__tenant_id__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive start date.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive start date.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive end date (default: today).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive end date (default: today).",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantUsageSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tenant Usage",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
     "/api/tool-types": {
       "get": {
         "operationId": "list_tool_types_api_tool_types_get",
@@ -20939,6 +21194,180 @@
         "summary": "Get Upload Content",
         "tags": [
           "uploads"
+        ]
+      }
+    },
+    "/api/usage-limits": {
+      "get": {
+        "operationId": "get_usage_limit_api_usage_limits_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "enum": [
+                "tenant",
+                "org",
+                "user",
+                "agent"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageLimitView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Usage Limit",
+        "tags": [
+          "usage limits"
+        ]
+      },
+      "put": {
+        "operationId": "put_usage_limit_api_usage_limits_put",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "enum": [
+                "tenant",
+                "org",
+                "user",
+                "agent"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsageLimitUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageLimitView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Usage Limit",
+        "tags": [
+          "usage limits"
         ]
       }
     },
@@ -35224,6 +35653,79 @@
       "title": "ModelUpdate",
       "type": "object"
     },
+    "MyUsageLimit": {
+      "description": "What a member sees on ``/settings/usage``: their own limit and what is left.",
+      "properties": {
+        "blocked": {
+          "default": false,
+          "title": "Blocked",
+          "type": "boolean"
+        },
+        "blocked_scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "tenant",
+                "org",
+                "user",
+                "agent"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Blocked Scope"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Limit"
+        },
+        "org_id": {
+          "format": "uuid",
+          "title": "Org Id",
+          "type": "string"
+        },
+        "remaining": {
+          "anyOf": [
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Remaining"
+        },
+        "resets_at": {
+          "format": "date-time",
+          "title": "Resets At",
+          "type": "string"
+        },
+        "used": {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "title": "Used",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org_id",
+        "resets_at",
+        "used"
+      ],
+      "title": "MyUsageLimit",
+      "type": "object"
+    },
     "NotificationActor": {
       "properties": {
         "display_name": {
@@ -35537,6 +36039,32 @@
         "items"
       ],
       "title": "OrgAgentUsagePage",
+      "type": "object"
+    },
+    "OrgMemberDefaultUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "default_member_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,21}0*$)\\d{0,12}\\.\\d{0,8}0*$)",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Member Limit"
+        }
+      },
+      "required": [
+        "default_member_limit"
+      ],
+      "title": "OrgMemberDefaultUpdate",
       "type": "object"
     },
     "OrgMemberUsage": {
@@ -42418,6 +42946,57 @@
       "title": "TenantModelView",
       "type": "object"
     },
+    "TenantOrgUsage": {
+      "properties": {
+        "monthly_spend_limit": {
+          "anyOf": [
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Monthly Spend Limit"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "org_id": {
+          "format": "uuid",
+          "title": "Org Id",
+          "type": "string"
+        },
+        "request_count": {
+          "default": 0,
+          "title": "Request Count",
+          "type": "integer"
+        },
+        "total_cost_usd": {
+          "default": 0.0,
+          "title": "Total Cost Usd",
+          "type": "number"
+        },
+        "total_tokens_in": {
+          "default": 0,
+          "title": "Total Tokens In",
+          "type": "integer"
+        },
+        "total_tokens_out": {
+          "default": 0,
+          "title": "Total Tokens Out",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "org_id",
+        "name"
+      ],
+      "title": "TenantOrgUsage",
+      "type": "object"
+    },
     "TenantOrganizationAdminPage": {
       "additionalProperties": false,
       "properties": {
@@ -43079,6 +43658,60 @@
         "roles"
       ],
       "title": "TenantRoleView",
+      "type": "object"
+    },
+    "TenantUsageSummary": {
+      "properties": {
+        "from_date": {
+          "format": "date",
+          "title": "From Date",
+          "type": "string"
+        },
+        "organizations": {
+          "items": {
+            "$ref": "#/components/schemas/TenantOrgUsage"
+          },
+          "title": "Organizations",
+          "type": "array"
+        },
+        "request_count": {
+          "default": 0,
+          "title": "Request Count",
+          "type": "integer"
+        },
+        "tenant_id": {
+          "format": "uuid",
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "to_date": {
+          "format": "date",
+          "title": "To Date",
+          "type": "string"
+        },
+        "total_cost_usd": {
+          "default": 0.0,
+          "title": "Total Cost Usd",
+          "type": "number"
+        },
+        "total_tokens_in": {
+          "default": 0,
+          "title": "Total Tokens In",
+          "type": "integer"
+        },
+        "total_tokens_out": {
+          "default": 0,
+          "title": "Total Tokens Out",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "from_date",
+        "to_date",
+        "organizations"
+      ],
+      "title": "TenantUsageSummary",
       "type": "object"
     },
     "ThreadCheckpoint": {
@@ -44917,6 +45550,259 @@
         "created_at"
       ],
       "title": "UploadResponse",
+      "type": "object"
+    },
+    "UsageLimitUpdate": {
+      "additionalProperties": false,
+      "description": "A full replacement of the scope's limits; omitted fields keep their value.\n\n``member_limit``, ``concurrent_run_limit`` and ``request_rate_limit`` are company-only\nand ``default_member_limit`` organization-only (422 elsewhere).",
+      "properties": {
+        "concurrent_run_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Concurrent Run Limit"
+        },
+        "default_member_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,21}0*$)\\d{0,12}\\.\\d{0,8}0*$)",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Member Limit"
+        },
+        "member_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Member Limit"
+        },
+        "monthly_spend_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,21}0*$)\\d{0,12}\\.\\d{0,8}0*$)",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Monthly Spend Limit"
+        },
+        "request_rate_limit": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Request Rate Limit"
+        }
+      },
+      "title": "UsageLimitUpdate",
+      "type": "object"
+    },
+    "UsageLimitView": {
+      "description": "One scope's monthly spend limit and this month's use.\n\n``monthly_spend_limit`` is the stored value of the scope; ``effective_limit`` adds the\norganization default for a user without their own value. ``parent_limit`` is the\ntightest higher limit (the cap for a save), ``allocated`` the sum of the limits set\none tier below (company: organizations; organization: members).",
+      "properties": {
+        "active_runs": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Active Runs"
+        },
+        "allocated": {
+          "anyOf": [
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allocated"
+        },
+        "concurrent_run_limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Concurrent Run Limit"
+        },
+        "default_member_limit": {
+          "anyOf": [
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Member Limit"
+        },
+        "effective_limit": {
+          "anyOf": [
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Effective Limit"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "member_limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Member Limit"
+        },
+        "members": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Members"
+        },
+        "monthly_spend_limit": {
+          "anyOf": [
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Monthly Spend Limit"
+        },
+        "org_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Org Id"
+        },
+        "parent_limit": {
+          "anyOf": [
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Limit"
+        },
+        "remaining": {
+          "anyOf": [
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Remaining"
+        },
+        "request_rate_limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Request Rate Limit"
+        },
+        "resets_at": {
+          "format": "date-time",
+          "title": "Resets At",
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "tenant",
+            "org",
+            "user",
+            "agent"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "used": {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "title": "Used",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "id",
+        "used",
+        "resets_at"
+      ],
+      "title": "UsageLimitView",
       "type": "object"
     },
     "UserMemorySettingsOut": {

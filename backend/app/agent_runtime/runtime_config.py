@@ -139,6 +139,8 @@ class AgentConfig:
     # F-06 — the run's ``RuntimeAccessPlan`` (allowed links, ``excluded_capabilities``;
     # no secret values). Children prepare from ``access_plan.sub_agent_links``.
     access_plan: RuntimeAccessPlan | None = None
+    # H-06 (8.7): the root run's agent, whose spend tier a subagent's model calls use.
+    usage_root_agent_id: str | None = None
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,

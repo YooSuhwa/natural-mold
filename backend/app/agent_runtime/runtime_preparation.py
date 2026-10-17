@@ -13,6 +13,7 @@ from langchain_core.tools import BaseTool
 
 from app.agent_runtime.runtime.connection_guard import with_connection_guard
 from app.agent_runtime.runtime.shared_memo import load_shared_memo, memo_governed
+from app.agent_runtime.runtime.usage_guard import with_usage_guard
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.agent_runtime.runtime_policy_capabilities import STORED_RESERVED_TOOL_NAMES
@@ -253,6 +254,7 @@ async def prepare_runtime_components_impl(
         "refuse" if not include_agent_memory_file else ("raise" if is_trigger_mode else "interrupt")
     )
     middleware = with_connection_guard(middleware, cfg, langchain_tools, mode=mode)
+    middleware = await with_usage_guard(middleware, cfg)
     return RuntimeComponents(
         model_candidates=model_candidates,
         model=model,

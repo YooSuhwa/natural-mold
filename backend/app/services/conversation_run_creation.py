@@ -40,6 +40,7 @@ from app.services.conversation_runtime_policy import (
     require_parent_snapshot_match,
 )
 from app.tenancy.attribution import RunAttribution
+from app.tenancy.limits import admit_run
 
 
 def run_service_attr(name: str) -> Any:
@@ -223,6 +224,8 @@ async def create_run_from_locked_proof(
             except RuntimePolicySnapshotError as exc:
                 raise ConflictError(exc.code, exc.code) from None
 
+    # H-06 (8.7): company runs/rate and spend limits refuse a new run (a resume continues).
+    await admit_run(db, attribution, enforce=source != "resume")
     run = ConversationRun(
         conversation_id=conversation.id,
         agent_id=agent_id,

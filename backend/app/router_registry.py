@@ -40,6 +40,7 @@ def include_app_routers(app: FastAPI) -> None:
         org_group_members,
         org_groups,
         org_invitations,
+        org_limits,
         org_members,
         org_retention,
         org_search,
@@ -72,10 +73,12 @@ def include_app_routers(app: FastAPI) -> None:
         tenant_overview,
         tenant_policies,
         tenant_publication_requests,
+        tenant_usage,
         tools,
         triggers,
         uploads,
         usage,
+        usage_limits,
     )
 
     app.include_router(audit.router)
@@ -108,6 +111,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(org_retention.router)
     app.include_router(org_search.router)
     app.include_router(org_usage.router)
+    app.include_router(org_limits.router)
     app.include_router(org_audit.router)
     app.include_router(org_members.router)
     app.include_router(org_invitations.router)
@@ -118,6 +122,8 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(tenant_policies.router)
     app.include_router(tenant_catalog.router)
     app.include_router(tenant_audit.router)
+    app.include_router(tenant_usage.router)
+    app.include_router(usage_limits.router)
     app.include_router(tenant_models.router)
     app.include_router(tenant_credentials.router)
     app.include_router(tenant_publication_requests.router)

@@ -35,6 +35,7 @@ from app.services.tenants.pagination import (
 from app.services.tenants.versioning import bump_timestamp
 from app.tenancy.admin_context import TenantAdminContext
 from app.tenancy.context import ROLE_ADAPTER
+from app.tenancy.limit_capacity import require_member_capacity
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +138,7 @@ async def add_member(command: TenantMemberWrite, user_id: UUID) -> TenantMemberM
     )
     if user is None:
         raise authorization_error("not_found")
+    await require_member_capacity(command.db, command.tenant_id)  # H-06 member_limit
     member = TenantMember(tenant_id=command.tenant_id, user_id=user_id, status="active")
     command.db.add(member)
     await _commit_member_change(command, context, member, audit_actions.TENANT_MEMBER_ADD)

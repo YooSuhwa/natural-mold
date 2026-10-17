@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass, field
+
+from app.tenancy.fair_share import fair_index
 
 
 class SkillEvaluationQueueFull(RuntimeError):
@@ -37,6 +39,7 @@ class SkillEvaluationQueue:
     _queued_ids: set[uuid.UUID] = field(default_factory=set, init=False)
     _reserved_slots: int = field(default=0, init=False)
     _wake: asyncio.Event | None = field(default=None, init=False)
+    _running: Counter[uuid.UUID | None] = field(default_factory=Counter, init=False)
 
     def reserve_slot(self) -> None:
         if len(self._queue) + self._reserved_slots >= self.queue_max_size:
@@ -69,8 +72,18 @@ class SkillEvaluationQueue:
             self._wake.set()
 
     def pop_next(self) -> SkillEvaluationQueueItem | None:
-        if not self._queue:
+        """H-06 fair share: the oldest item of the company running the fewest right now."""
+        index = fair_index([queued.tenant_id for queued in self._queue], self._running)
+        if index < 0:
             return None
-        item = self._queue.popleft()
+        item = self._queue[index]
+        del self._queue[index]
         self._queued_ids.discard(item.run_id)
+        self._running[item.tenant_id] += 1
         return item
+
+    def finish(self, item: SkillEvaluationQueueItem) -> None:
+        """A popped item stopped running (frees its company's fair-share count)."""
+        self._running[item.tenant_id] -= 1
+        if self._running[item.tenant_id] <= 0:
+            del self._running[item.tenant_id]

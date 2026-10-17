@@ -226,6 +226,8 @@ class SkillEvaluationWorker(SkillEvaluationQueue):
                 wake.clear()
                 continue
             task = asyncio.create_task(self._execute_run(item))
+            # H-06 fair share: released when the task ends, also if cancelled before it ran.
+            task.add_done_callback(lambda _done, popped=item: self.finish(popped))
             self._active_tasks.add(task)
         if self._active_tasks:
             await asyncio.gather(*self._active_tasks, return_exceptions=True)

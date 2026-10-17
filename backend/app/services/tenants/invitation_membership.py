@@ -9,6 +9,7 @@ from app.authz.error_codes import authorization_error
 from app.models.organization import TenantMember, TenantRoleGrant
 from app.models.tenant_invitation import TenantInvitation
 from app.models.user import User
+from app.tenancy.limit_capacity import require_member_capacity
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +40,7 @@ async def join_tenant_invitation(
             raise authorization_error("invitation_membership_blocked")
         member_added = member is None or member.status != "active"
         if member is None:
+            await require_member_capacity(db, invitation.tenant_id)  # H-06 member_limit
             db.add(TenantMember(tenant_id=invitation.tenant_id, user_id=user.id))
         elif member.status == "suspended":
             member.status = "active"

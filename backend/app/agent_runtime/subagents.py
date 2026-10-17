@@ -170,6 +170,7 @@ async def build_subagents_config(
             credential_subject_user_id=str(child_identity.credential_subject_user_id),
             identity_mode=child_identity.identity_mode,
             agent_runtime_name=child_identity.runtime_name,
+            usage_root_agent_id=parent_cfg.usage_root_agent_id or parent_cfg.agent_id,
         )
         # ADR-021 H1 — fold the child's eager secrets (LLM key, tool/MCP creds,
         # base_url userinfo) into the PARENT run set so a subagent's injected

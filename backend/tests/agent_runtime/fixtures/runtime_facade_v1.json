@@ -520,6 +520,12 @@
           "name": "access_plan"
         },
         {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "usage_root_agent_id"
+        },
+        {
           "annotation": "OrgContext",
           "default": "required",
           "kind": "keyword_only",

@@ -103,7 +103,9 @@ async def _views(
         payload = {k: v for k, v in (row.payload or {}).items() if k != "target_name"}
         target, link = None, row.link
         if row.target_type is not None:
-            visible = f"{row.target_type}:{row.target_id}" in kept
+            # H-06 usage warnings name the recipient's own limit, not a shared resource.
+            own = row.target_type == "usage_limit"
+            visible = own or f"{row.target_type}:{row.target_id}" in kept
             target = NotificationTarget(type=row.target_type, accessible=visible)
             if visible:
                 target.id, target.name = row.target_id, (row.payload or {}).get("target_name")
