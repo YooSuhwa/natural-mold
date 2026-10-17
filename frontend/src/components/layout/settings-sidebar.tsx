@@ -7,26 +7,23 @@ import {
   ArrowLeftIcon,
   BarChart3Icon,
   BrainIcon,
-  Building2Icon,
   BuildingIcon,
   CalendarClockIcon,
   Code2Icon,
   FilesIcon,
   HistoryIcon,
-  InboxIcon,
   KeyRoundIcon,
   MonitorCogIcon,
   RefreshCwIcon,
   ShieldCheckIcon,
-  ShieldIcon,
   SlidersHorizontalIcon,
   StoreIcon,
   UsersRoundIcon,
   UserIcon,
-  UsersIcon,
 } from 'lucide-react'
 
 import { companyNavItems } from '@/components/layout/company-nav-items'
+import { organizationNavItems } from '@/components/layout/organization-nav-items'
 import { SidebarBrandHeader } from '@/components/layout/sidebar-brand-header'
 import { SidebarNavSection } from '@/components/layout/sidebar-nav-section'
 import type { SidebarNavSectionConfig } from '@/components/layout/sidebar-nav-section'
@@ -108,37 +105,7 @@ export function SettingsSidebar() {
         {
           label: tSettings('nav.organization'),
           items: [
-            {
-              href: '/settings/organization',
-              label: tSettings('nav.organizationSettings'),
-              icon: Building2Icon,
-              exact: true,
-            },
-            {
-              href: '/settings/organization/members',
-              label: tSettings('nav.organizationMembers'),
-              icon: UsersIcon,
-            },
-            {
-              href: '/settings/organization/groups',
-              label: tSettings('nav.organizationGroups'),
-              icon: UsersRoundIcon,
-            },
-            {
-              // Anyone may send requests; the inbox shows what the caller can share (S18).
-              href: '/settings/organization/requests',
-              label: tSettings('nav.organizationRequests'),
-              icon: InboxIcon,
-            },
-            ...(access.canReadGrants
-              ? [
-                  {
-                    href: '/settings/organization/roles',
-                    label: tSettings('nav.organizationRoles'),
-                    icon: ShieldIcon,
-                  },
-                ]
-              : []),
+            ...organizationNavItems(access, tSettings),
             ...companyNavItems(tenantOverview?.access, tSettings),
           ],
         },

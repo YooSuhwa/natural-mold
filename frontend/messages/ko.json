@@ -130,6 +130,43 @@
       "avatarLabel": "{name} 프로필 아이콘",
       "avatarFallback": "사용자",
       "profileComingSoon": "프로필 설정은 곧 지원됩니다"
+    },
+    "invite": {
+      "title": "초대를 받았어요",
+      "loggedOut": "가입하거나 로그인하면 초대한 조직에 참여합니다. 초대받은 이메일로 진행해 주세요.",
+      "register": "가입하고 참여하기",
+      "login": "이미 계정이 있나요? 로그인 후 수락",
+      "signedInAs": "{email} 계정으로 참여합니다.",
+      "join": "참여하기",
+      "joined": "참여했어요. 홈으로 이동합니다.",
+      "switchAccount": "다른 계정으로 로그인",
+      "home": "홈으로",
+      "failure": {
+        "mismatch": {
+          "title": "다른 계정으로 로그인돼 있어요",
+          "description": "{email} 계정은 이 초대의 대상이 아니에요. 로그아웃한 뒤 초대받은 이메일로 로그인하고 링크를 다시 열어 주세요."
+        },
+        "expired": {
+          "title": "초대 링크가 만료됐어요",
+          "description": "초대한 관리자에게 초대를 다시 보내 달라고 요청해 주세요."
+        },
+        "used": {
+          "title": "이미 사용한 초대 링크예요",
+          "description": "이미 참여했다면 홈에서 조직을 바로 쓸 수 있어요. 아니라면 관리자에게 새 초대를 요청해 주세요."
+        },
+        "invalid": {
+          "title": "사용할 수 없는 초대 링크예요",
+          "description": "초대가 취소됐거나 새 링크로 바뀌었어요. 관리자에게 초대를 다시 보내 달라고 요청해 주세요."
+        },
+        "blocked": {
+          "title": "이 조직에 참여할 수 없어요",
+          "description": "계정이 이 조직에서 정지되었거나 제외된 상태예요. 관리자에게 문의해 주세요."
+        },
+        "unavailable": {
+          "title": "지금은 참여할 수 없어요",
+          "description": "초대한 조직이나 회사를 지금 사용할 수 없어요. 관리자에게 문의해 주세요."
+        }
+      }
     }
   },
   "common": {
@@ -305,8 +342,7 @@
         "access_request_closed": "이미 처리된 요청이에요. 목록을 새로고침했어요.",
         "confirm_required": "위임된 계정 자원이 있는 에이전트예요. 공유 화면에서 확인한 뒤 공유해 주세요.",
         "generic": "요청을 처리하지 못했어요. 잠시 후 다시 시도하세요."
-      },
-      "loadFailed": "요청 목록을 불러오지 못했어요."
+      }
     },
     "common": {
       "noOrganization": "선택된 조직이 없습니다",
@@ -334,7 +370,9 @@
       "last_tenant_admin": "마지막 회사 관리자는 해제하거나 제거할 수 없습니다.",
       "catalog_policy_locked": "상위 단계에서 막힌 항목이라 켤 수 없습니다.",
       "validation_error": "입력값을 확인해 주세요.",
-      "invitation_membership_blocked": "이미 회사에 속해 있거나 초대할 수 없는 사용자입니다."
+      "invitation_membership_blocked": "이미 회사에 속해 있거나 초대할 수 없는 사용자입니다.",
+      "invitation_used": "이미 수락된 초대입니다.",
+      "limit_exceeds_parent": "상위 한도보다 큰 값은 저장할 수 없습니다."
     },
     "picker": {
       "placeholder": "이름 또는 이메일로 검색",
@@ -349,7 +387,7 @@
     },
     "settings": {
       "title": "조직 설정",
-      "description": "현재 조직의 이름과 보관 상태를 관리합니다.",
+      "description": "현재 조직의 이름, 가입·공유 정책, 보존 기간과 사용 한도를 관리합니다.",
       "readOnly": "조직 관리자만 변경할 수 있습니다.",
       "rename": {
         "title": "조직 이름",
@@ -365,7 +403,6 @@
       },
       "archive": {
         "description": "조직을 보관하면 구성원이 더 이상 이 조직을 사용할 수 없습니다.",
-        "defaultForbidden": "기본 조직은 보관할 수 없습니다.",
         "open": "조직 보관",
         "title": "조직을 보관할까요?",
         "confirmDescription": "확인을 위해 조직 이름을 정확히 입력해 주세요.",
@@ -377,6 +414,68 @@
         "description": "이 조직은 보관된 상태입니다.",
         "submit": "조직 복원",
         "done": "조직을 복원했습니다."
+      },
+      "policy": {
+        "title": "가입·공유 정책",
+        "description": "새 구성원의 기본 역할과 가입 방식, 공개 링크 허용 여부를 정합니다.",
+        "defaultRole": "새 구성원 기본 역할",
+        "defaultRoleHint": "초대할 때 바꿀 수 있어요.",
+        "role": {
+          "member": "구성원",
+          "builder": "빌더"
+        },
+        "registration": "가입 방식",
+        "registrationHint": "회사 정책이 더 엄격하면 회사 정책을 따릅니다.",
+        "registrationOption": {
+          "inherit": "회사 정책 따르기",
+          "invite_only": "초대한 사람만",
+          "default_org": "회사 가입자 누구나",
+          "closed": "가입 닫기"
+        },
+        "publicLinks": "대화 공개 링크 허용",
+        "publicLinksHint": "끄면 기존 공개 링크도 즉시 열리지 않아요.",
+        "submit": "정책 저장",
+        "saved": "정책을 저장했습니다.",
+        "readOnly": "조직 관리자만 변경할 수 있습니다."
+      },
+      "retention": {
+        "title": "보존 정책",
+        "description": "대화 기록, 에이전트 휴지통, 제외된 구성원 데이터를 보관하는 기간입니다.",
+        "conversation_days": {
+          "label": "대화 기록 보존(일)"
+        },
+        "agent_trash_days": {
+          "label": "에이전트 휴지통 기간(일)"
+        },
+        "removed_member_days": {
+          "label": "제외된 구성원 데이터 보존(일)"
+        },
+        "unlimited": "대화 기록 무기한 보존",
+        "range": "{min}~{max}일",
+        "outOfRange": "허용 범위를 벗어났습니다.",
+        "submit": "보존 정책 저장",
+        "saved": "보존 정책을 저장했습니다.",
+        "readOnly": "조직 관리자만 변경할 수 있습니다.",
+        "confirm": {
+          "title": "보존 기간을 줄일까요?",
+          "description": "저장하면 다음 정리 때 대화 {conversations}건, 에이전트 {agents}개, 제외된 구성원의 대화 {removed_member_conversations}건과 메모리 {removed_member_memories}건이 삭제돼요.",
+          "submit": "줄이고 저장"
+        }
+      },
+      "limits": {
+        "title": "사용 한도",
+        "description": "이번 달 조직 사용량과 회사가 정한 조직 한도(읽기 전용), 구성원 기본 월 한도입니다.",
+        "usage": "이번 달 사용 {used} / 한도 {limit}",
+        "noLimit": "없음",
+        "resets": "{date}에 초기화돼요.",
+        "memberDefault": "구성원 기본 월 한도(USD)",
+        "memberDefaultHint": "비우면 구성원 기본 한도를 두지 않아요.",
+        "memberDefaultCap": "조직 한도 {cap} 이하로 정할 수 있어요.",
+        "placeholder": "예: 50",
+        "overCap": "조직 한도보다 클 수 없어요.",
+        "invalid": "0 이상의 금액을 입력해 주세요.",
+        "submit": "기본 한도 저장",
+        "saved": "구성원 기본 한도를 저장했습니다."
       }
     },
     "members": {
@@ -404,7 +503,65 @@
       "actions": {
         "suspend": "정지",
         "reactivate": "재활성화",
-        "remove": "제거"
+        "remove": "제거",
+        "limit": "월 한도",
+        "grants": "기능 권한"
+      },
+      "role": {
+        "member": "구성원",
+        "builder": "빌더",
+        "admin": "관리자",
+        "auditor": "감사자"
+      },
+      "invite": {
+        "open": "구성원 초대",
+        "title": "구성원 초대",
+        "description": "초대 링크는 7일 동안 유효하며 한 번만 쓸 수 있어요.",
+        "emails": "이메일",
+        "emailsHint": "쉼표나 줄바꿈으로 여러 명을 입력할 수 있어요.",
+        "invalid": "이메일 형식이 올바르지 않아요: {emails}",
+        "role": "역할",
+        "group": "그룹 (선택)",
+        "noGroup": "그룹 없음",
+        "submit": "초대 보내기 ({count})",
+        "linkOnce": "초대 링크는 여기서만 복사할 수 있어요. 받는 사람에게 직접 전달해 주세요.",
+        "created": "초대 링크를 만들었어요.",
+        "existing": "이미 대기 중인 초대가 있어요. 새 링크가 필요하면 재발송하세요.",
+        "copy": "링크 복사",
+        "copyFor": "{email} 초대 링크 복사",
+        "copied": "초대 링크를 복사했습니다.",
+        "copyFailed": "초대 링크를 복사하지 못했습니다."
+      },
+      "invitations": {
+        "title": "초대 대기",
+        "description": "아직 수락되지 않은 초대입니다. 재발송하면 이전 링크는 더 이상 쓸 수 없어요.",
+        "empty": "대기 중인 초대가 없습니다.",
+        "expiresIn": "만료 {days}일 남음",
+        "status": {
+          "pending": "초대 대기",
+          "accepted": "수락됨",
+          "revoked": "취소됨",
+          "expired": "만료됨"
+        },
+        "resend": "재발송",
+        "resentTitle": "새 초대 링크",
+        "revoke": "초대 취소",
+        "revokeTitle": "초대를 취소할까요?",
+        "revokeDescription": "{email} 님에게 보낸 초대 링크를 더 이상 쓸 수 없게 됩니다.",
+        "revoked": "초대를 취소했습니다."
+      },
+      "limit": {
+        "title": "{name} 님의 월 한도",
+        "description": "이 조직 안에서의 월 사용 한도입니다. 비우면 조직 기본값을 따릅니다.",
+        "usage": "이번 달 사용 {used} / 적용 한도 {limit}",
+        "noLimit": "없음",
+        "label": "월 한도(USD)",
+        "hint": "비우면 조직 기본값을 따릅니다.",
+        "cap": "{cap} 이하로 정할 수 있어요.",
+        "placeholder": "조직 기본값",
+        "overCap": "상위 한도보다 클 수 없어요.",
+        "invalid": "0 이상의 금액을 입력해 주세요.",
+        "saved": "월 한도를 저장했습니다."
       }
     },
     "memberRemoval": {
@@ -582,6 +739,21 @@
         "user": "사용자",
         "group": "그룹",
         "organization": "조직 전체"
+      },
+      "defaults": {
+        "title": "역할별 기본 기능",
+        "description": "역할마다 기본으로 갖는 기능입니다. 기본값은 고정이며, 아래에서 사람·그룹에 기능을 추가로 줄 수 있어요.",
+        "feature": "기능",
+        "role": {
+          "admin": "관리자",
+          "builder": "빌더",
+          "member": "구성원",
+          "auditor": "감사자"
+        },
+        "viewActivity": "활동 기록·사용량 보기",
+        "granted": "기본 포함",
+        "notGranted": "기본 미포함",
+        "privacyNote": "관리자도 다른 사람의 대화와 지식 원문은 볼 수 없어요. 에이전트 중지·소유권 이전·공유 회수만 할 수 있어요."
       }
     },
     "company": {
@@ -1018,6 +1190,34 @@
         },
         "platformHidden": "플랫폼에서 숨김",
         "toggle": "{name} 사용"
+      }
+    },
+    "catalog": {
+      "title": "카탈로그 정책",
+      "description": "이 조직에서 쓸 수 있는 모델과 시스템 도구·스킬·MCP 서버를 정합니다. 끄면 이미 붙어 있는 에이전트에서도 실행 시 제외됩니다.",
+      "noAccess": "조직 관리자만 볼 수 있습니다.",
+      "listTitle": "카탈로그 항목",
+      "listDescription": "회사에서 끈 항목은 조직에서 켤 수 없어요.",
+      "kind": {
+        "model": "모델",
+        "tool": "시스템 도구",
+        "skill": "시스템 스킬",
+        "mcp_server": "시스템 MCP"
+      },
+      "source": {
+        "platform": "플랫폼",
+        "company": "회사"
+      },
+      "companyDisabled": "회사에서 꺼짐",
+      "empty": "이 종류의 항목이 없습니다.",
+      "enabled": "{name}을(를) 켰습니다.",
+      "disabled": "{name}을(를) 껐습니다.",
+      "disable": {
+        "title": "{name}을(를) 끌까요?",
+        "description": "끄면 이 조직의 에이전트에서 실행 시 이 항목이 빠집니다.",
+        "affected": "에이전트 {count}개에서 이 항목이 빠집니다.",
+        "required": "필수로 연결된 에이전트 {count}개는 실행할 수 없게 됩니다.",
+        "submit": "끄기"
       }
     }
   },
@@ -5259,7 +5459,8 @@
       "companyMembers": "회사 구성원",
       "companyPolicies": "회사 정책",
       "companyModels": "모델과 LLM 설정",
-      "platformTenants": "회사 목록"
+      "platformTenants": "회사 목록",
+      "organizationCatalog": "카탈로그 정책"
     },
     "profile": {
       "title": "프로필",

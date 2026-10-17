@@ -2,9 +2,13 @@ import { render, screen, userEvent, waitFor } from '../../test-utils'
 import { OrganizationSettingsContent } from '@/features/organizations/components/organization-settings-content'
 import { ApiError } from '@/lib/api/errors'
 import { makeOrganization } from '../../unit/hooks/organization-fixtures'
-import { makeOrgView, orgApiMock } from './org-admin-mocks'
+import { makeOrgView, orgApiMock, resetGovernanceMocks } from './org-admin-mocks'
 
 vi.mock('@/lib/api/organizations', async () => (await import('./org-admin-mocks')).orgApiMock)
+vi.mock(
+  '@/lib/api/org-governance',
+  async () => (await import('./org-admin-mocks')).governanceApiMock,
+)
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const { meOrganizationsApi, orgAdminApi, tenantOrganizationsApi } = orgApiMock
@@ -12,6 +16,7 @@ const { meOrganizationsApi, orgAdminApi, tenantOrganizationsApi } = orgApiMock
 describe('OrganizationSettingsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetGovernanceMocks()
     meOrganizationsApi.list.mockResolvedValue([makeOrganization()])
   })
 
@@ -69,6 +74,13 @@ describe('OrganizationSettingsContent', () => {
     render(<OrganizationSettingsContent />)
     expect(await screen.findByLabelText('이름')).toBeDisabled()
     expect(screen.queryByRole('button', { name: '이름 저장' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '조직 보관' })).not.toBeInTheDocument()
+  })
+
+  it('offers no archive control for the default organization (Policy A)', async () => {
+    orgAdminApi.get.mockResolvedValue(makeOrgView({ is_default: true }))
+    render(<OrganizationSettingsContent />)
+    expect(await screen.findByLabelText('이름')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '조직 보관' })).not.toBeInTheDocument()
   })
 })

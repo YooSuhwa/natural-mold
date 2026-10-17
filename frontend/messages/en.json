@@ -130,6 +130,43 @@
       "avatarLabel": "{name} profile icon",
       "avatarFallback": "User",
       "profileComingSoon": "Profile settings are coming soon."
+    },
+    "invite": {
+      "title": "You're invited",
+      "loggedOut": "Sign up or log in to join the organization that invited you. Use the email address the invitation was sent to.",
+      "register": "Sign up and join",
+      "login": "Already have an account? Log in to accept",
+      "signedInAs": "You'll join as {email}.",
+      "join": "Join",
+      "joined": "You've joined. Taking you home.",
+      "switchAccount": "Log in with another account",
+      "home": "Go home",
+      "failure": {
+        "mismatch": {
+          "title": "You're signed in with a different account",
+          "description": "This invitation isn't for {email}. Log out, log in with the invited email and open the link again."
+        },
+        "expired": {
+          "title": "This invitation link has expired",
+          "description": "Ask the admin who invited you to send the invitation again."
+        },
+        "used": {
+          "title": "This invitation link was already used",
+          "description": "If you already joined, the organization is ready on your home screen. Otherwise ask an admin for a new invitation."
+        },
+        "invalid": {
+          "title": "This invitation link can't be used",
+          "description": "The invitation was revoked or replaced by a newer link. Ask an admin to send it again."
+        },
+        "blocked": {
+          "title": "You can't join this organization",
+          "description": "Your account is suspended in or was removed from this organization. Contact an admin."
+        },
+        "unavailable": {
+          "title": "You can't join right now",
+          "description": "The inviting organization or company is not available right now. Contact an admin."
+        }
+      }
     }
   },
   "common": {
@@ -305,8 +342,7 @@
         "access_request_closed": "This request was already handled. The list was refreshed.",
         "confirm_required": "This agent lends delegated accounts. Confirm them in the share dialog and share from there.",
         "generic": "Couldn't process the request. Try again later."
-      },
-      "loadFailed": "Couldn't load the requests."
+      }
     },
     "common": {
       "noOrganization": "No organization selected",
@@ -334,7 +370,9 @@
       "last_tenant_admin": "The last company admin cannot be removed or demoted.",
       "catalog_policy_locked": "This item is blocked at a higher tier and cannot be turned on.",
       "validation_error": "Please check the input.",
-      "invitation_membership_blocked": "This user is already in the company or cannot be invited."
+      "invitation_membership_blocked": "This user is already in the company or cannot be invited.",
+      "invitation_used": "This invitation was already accepted.",
+      "limit_exceeds_parent": "The value cannot exceed the higher limit."
     },
     "picker": {
       "placeholder": "Search by name or email",
@@ -349,7 +387,7 @@
     },
     "settings": {
       "title": "Organization settings",
-      "description": "Manage the current organization's name and archive state.",
+      "description": "Manage this organization's name, join and sharing policy, retention periods and usage limits.",
       "readOnly": "Only organization administrators can change this.",
       "rename": {
         "title": "Organization name",
@@ -365,7 +403,6 @@
       },
       "archive": {
         "description": "Archiving stops members from using this organization.",
-        "defaultForbidden": "The default organization cannot be archived.",
         "open": "Archive organization",
         "title": "Archive this organization?",
         "confirmDescription": "Type the organization name exactly to confirm.",
@@ -377,6 +414,68 @@
         "description": "This organization is archived.",
         "submit": "Restore organization",
         "done": "Organization restored."
+      },
+      "policy": {
+        "title": "Join and sharing policy",
+        "description": "Set the default role for new members, how people join, and whether public links are allowed.",
+        "defaultRole": "Default role for new members",
+        "defaultRoleHint": "You can change it when inviting.",
+        "role": {
+          "member": "Member",
+          "builder": "Builder"
+        },
+        "registration": "How people join",
+        "registrationHint": "A stricter company policy takes precedence.",
+        "registrationOption": {
+          "inherit": "Follow company policy",
+          "invite_only": "Invited people only",
+          "default_org": "Anyone who joins the company",
+          "closed": "Closed"
+        },
+        "publicLinks": "Allow public conversation links",
+        "publicLinksHint": "Turning this off also stops existing public links immediately.",
+        "submit": "Save policy",
+        "saved": "Policy saved.",
+        "readOnly": "Only organization admins can change this."
+      },
+      "retention": {
+        "title": "Retention",
+        "description": "How long conversations, the agent trash and removed members' data are kept.",
+        "conversation_days": {
+          "label": "Conversation retention (days)"
+        },
+        "agent_trash_days": {
+          "label": "Agent trash period (days)"
+        },
+        "removed_member_days": {
+          "label": "Removed member data retention (days)"
+        },
+        "unlimited": "Keep conversations indefinitely",
+        "range": "{min}–{max} days",
+        "outOfRange": "Out of the allowed range.",
+        "submit": "Save retention",
+        "saved": "Retention saved.",
+        "readOnly": "Only organization admins can change this.",
+        "confirm": {
+          "title": "Shorten retention?",
+          "description": "After saving, the next cleanup deletes {conversations} conversations, {agents} agents, and {removed_member_conversations} conversations and {removed_member_memories} memories of removed members.",
+          "submit": "Shorten and save"
+        }
+      },
+      "limits": {
+        "title": "Usage limits",
+        "description": "This month's organization usage against the company-set limit (read-only), and the default monthly limit for members.",
+        "usage": "Used this month {used} / limit {limit}",
+        "noLimit": "none",
+        "resets": "Resets on {date}.",
+        "memberDefault": "Default monthly limit per member (USD)",
+        "memberDefaultHint": "Leave empty for no member default.",
+        "memberDefaultCap": "Can be at most the organization limit of {cap}.",
+        "placeholder": "e.g. 50",
+        "overCap": "Cannot exceed the organization limit.",
+        "invalid": "Enter an amount of 0 or more.",
+        "submit": "Save default limit",
+        "saved": "Member default limit saved."
       }
     },
     "members": {
@@ -404,7 +503,65 @@
       "actions": {
         "suspend": "Suspend",
         "reactivate": "Reactivate",
-        "remove": "Remove"
+        "remove": "Remove",
+        "limit": "Monthly limit",
+        "grants": "Capabilities"
+      },
+      "role": {
+        "member": "Member",
+        "builder": "Builder",
+        "admin": "Admin",
+        "auditor": "Auditor"
+      },
+      "invite": {
+        "open": "Invite members",
+        "title": "Invite members",
+        "description": "Invitation links are valid for 7 days and can be used once.",
+        "emails": "Emails",
+        "emailsHint": "Separate several addresses with commas or line breaks.",
+        "invalid": "Invalid email address: {emails}",
+        "role": "Role",
+        "group": "Group (optional)",
+        "noGroup": "No group",
+        "submit": "Send invitations ({count})",
+        "linkOnce": "Invitation links can only be copied here. Send them to each recipient yourself.",
+        "created": "Invitation link created.",
+        "existing": "An invitation is already pending. Resend it if a new link is needed.",
+        "copy": "Copy link",
+        "copyFor": "Copy invitation link for {email}",
+        "copied": "Invitation link copied.",
+        "copyFailed": "Could not copy the invitation link."
+      },
+      "invitations": {
+        "title": "Pending invitations",
+        "description": "Invitations that have not been accepted yet. Resending makes the previous link unusable.",
+        "empty": "No pending invitations.",
+        "expiresIn": "Expires in {days} days",
+        "status": {
+          "pending": "Pending",
+          "accepted": "Accepted",
+          "revoked": "Revoked",
+          "expired": "Expired"
+        },
+        "resend": "Resend",
+        "resentTitle": "New invitation link",
+        "revoke": "Revoke invitation",
+        "revokeTitle": "Revoke this invitation?",
+        "revokeDescription": "The invitation link sent to {email} will stop working.",
+        "revoked": "Invitation revoked."
+      },
+      "limit": {
+        "title": "Monthly limit for {name}",
+        "description": "The monthly spend limit within this organization. Leave empty to use the organization default.",
+        "usage": "Used this month {used} / applied limit {limit}",
+        "noLimit": "none",
+        "label": "Monthly limit (USD)",
+        "hint": "Leave empty to use the organization default.",
+        "cap": "Can be at most {cap}.",
+        "placeholder": "Organization default",
+        "overCap": "Cannot exceed the higher limit.",
+        "invalid": "Enter an amount of 0 or more.",
+        "saved": "Monthly limit saved."
       }
     },
     "memberRemoval": {
@@ -582,6 +739,21 @@
         "user": "User",
         "group": "Group",
         "organization": "Whole organization"
+      },
+      "defaults": {
+        "title": "Default capabilities by role",
+        "description": "What each role has by default. Defaults are fixed; you can grant extra capabilities to people and groups below.",
+        "feature": "Capability",
+        "role": {
+          "admin": "Admin",
+          "builder": "Builder",
+          "member": "Member",
+          "auditor": "Auditor"
+        },
+        "viewActivity": "View activity and usage",
+        "granted": "Included by default",
+        "notGranted": "Not included by default",
+        "privacyNote": "Admins cannot read other people's conversations or knowledge content. They can only stop agents, transfer ownership and revoke shares."
       }
     },
     "company": {
@@ -1018,6 +1190,34 @@
         },
         "platformHidden": "Hidden by the platform",
         "toggle": "Use {name}"
+      }
+    },
+    "catalog": {
+      "title": "Catalog policy",
+      "description": "Choose which models and system tools, skills and MCP servers this organization can use. Items turned off are also excluded at run time from agents that already use them.",
+      "noAccess": "Only organization admins can view this.",
+      "listTitle": "Catalog items",
+      "listDescription": "Items the company turned off cannot be turned on here.",
+      "kind": {
+        "model": "Models",
+        "tool": "System tools",
+        "skill": "System skills",
+        "mcp_server": "System MCP"
+      },
+      "source": {
+        "platform": "Platform",
+        "company": "Company"
+      },
+      "companyDisabled": "Turned off by company",
+      "empty": "No items of this kind.",
+      "enabled": "Turned on {name}.",
+      "disabled": "Turned off {name}.",
+      "disable": {
+        "title": "Turn off {name}?",
+        "description": "Agents in this organization will run without this item.",
+        "affected": "{count} agents will lose this item.",
+        "required": "{count} agents that require it will no longer run.",
+        "submit": "Turn off"
       }
     }
   },
@@ -5259,7 +5459,8 @@
       "companyMembers": "Company members",
       "companyPolicies": "Company policies",
       "companyModels": "Models and LLM settings",
-      "platformTenants": "Companies"
+      "platformTenants": "Companies",
+      "organizationCatalog": "Catalog policy"
     },
     "profile": {
       "title": "Profile",

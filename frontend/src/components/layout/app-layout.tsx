@@ -14,7 +14,7 @@ import { OnboardingDialog } from '@/components/auth/OnboardingDialog'
 import { AssistantSideChatProvider } from '@/components/agent/assistant-side-chat-provider'
 
 /** Routes that must render bare (no sidebar/header) — public visitor pages. */
-const BARE_ROUTE_PREFIXES = ['/shared/'] as const
+const BARE_ROUTE_PREFIXES = ['/shared/', '/invite/'] as const
 /** Auth pages render their own centered layout — no sidebar/header. */
 const BARE_ROUTES = new Set<string>(['/login', '/register'])
 

@@ -26,6 +26,16 @@ describe('orgAccess', () => {
   })
 })
 
+describe('orgAccess.canViewUsage', () => {
+  it('follows the org admin/auditor roles only (backend can_view_usage)', () => {
+    expect(orgAccess(makeOrganization({ roles: ['admin'] })).canViewUsage).toBe(true)
+    expect(orgAccess(makeOrganization({ roles: ['auditor'] })).canViewUsage).toBe(true)
+    expect(orgAccess(makeOrganization({ roles: ['builder'] })).canViewUsage).toBe(false)
+    const policyOnly = orgAccess(makeOrganization({ roles: [] }), ['can_manage_policy'])
+    expect(policyOnly.canViewUsage).toBe(false)
+  })
+})
+
 describe('groupGrantsByPrincipal', () => {
   it('merges one-row-per-grant pages per principal', () => {
     const rows = groupGrantsByPrincipal([

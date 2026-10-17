@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
+import { ApiErrorState } from '@/components/shared/api-error-state'
 import { SettingsSectionCard } from '@/components/shared/settings-section-card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -29,6 +31,9 @@ import { useCursorPager } from '../lib/cursor-pager'
 import { useOrgErrorMessage } from '../lib/error-message'
 import { DirectoryPager } from './directory-pager'
 import { MemberRemovalWizard } from './member-removal/member-removal-wizard'
+import { OrgInvitationsSection } from './org-invitations-section'
+import { OrgInviteDialog } from './org-invite-dialog'
+import { MemberLimitDialog } from './org-member-limit-dialog'
 import { OrgPageFrame } from './org-page-frame'
 import { PrincipalPicker } from './principal-picker'
 
@@ -54,6 +59,8 @@ function OrgMembersBody({ organization }: { organization: OrganizationSummary })
   const add = useAddOrgMember(organization.id)
   const setStatus = useSetOrgMemberStatus(organization.id)
   const [removing, setRemoving] = useState<MemberView | null>(null)
+  const [inviting, setInviting] = useState(false)
+  const [limiting, setLimiting] = useState<MemberView | null>(null)
 
   const version = page.data?.updated_at
   const onError = (err: unknown) => toast.error(errorMessage(err))
@@ -78,11 +85,20 @@ function OrgMembersBody({ organization }: { organization: OrganizationSummary })
         </SettingsSectionCard>
       ) : null}
 
-      <SettingsSectionCard title={t('list.title')}>
+      <SettingsSectionCard
+        title={t('list.title')}
+        actions={
+          access.canManageMembers ? (
+            <Button size="sm" onClick={() => setInviting(true)}>
+              {t('invite.open')}
+            </Button>
+          ) : null
+        }
+      >
         {page.isLoading ? (
           <Skeleton className="h-32 w-full" />
         ) : !page.data ? (
-          <p className="text-sm text-status-danger">{errorMessage(page.error)}</p>
+          <ApiErrorState error={page.error} onRetry={() => void page.refetch()} />
         ) : page.data.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('list.empty')}</p>
         ) : (
@@ -114,6 +130,15 @@ function OrgMembersBody({ organization }: { organization: OrganizationSummary })
                     <TableCell className="space-x-2">
                       {member.status !== 'removed' ? (
                         <>
+                          <Button size="sm" variant="outline" onClick={() => setLimiting(member)}>
+                            {t('actions.limit')}
+                          </Button>
+                          <Link
+                            href="/settings/organization/roles"
+                            className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+                          >
+                            {t('actions.grants')}
+                          </Link>
                           <Button
                             size="sm"
                             variant="outline"
@@ -159,6 +184,24 @@ function OrgMembersBody({ organization }: { organization: OrganizationSummary })
           onNext={() => pager.next(page.data?.next_cursor ?? null)}
         />
       </SettingsSectionCard>
+
+      {access.canManageMembers ? <OrgInvitationsSection orgId={organization.id} /> : null}
+
+      {inviting ? (
+        <OrgInviteDialog
+          orgId={organization.id}
+          defaultRole={info.data?.settings.default_member_role ?? 'member'}
+          onClose={() => setInviting(false)}
+        />
+      ) : null}
+      {limiting && version ? (
+        <MemberLimitDialog
+          orgId={organization.id}
+          member={limiting}
+          version={version}
+          onClose={() => setLimiting(null)}
+        />
+      ) : null}
 
       {version ? (
         <MemberRemovalWizard

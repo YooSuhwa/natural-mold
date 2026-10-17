@@ -149,4 +149,16 @@ describe('OrgRolesContent', () => {
     expect(await screen.findByText('조직 관리자만 볼 수 있습니다.')).toBeInTheDocument()
     expect(orgAdminApi.listRoles).not.toHaveBeenCalled()
   })
+
+  it('shows the fixed role defaults matrix', async () => {
+    render(<OrgRolesContent />)
+    const table = await screen.findByRole('table')
+    const row = within(table).getByRole('row', { name: /데이터베이스 연결/ })
+    const cells = within(row).getAllByRole('cell')
+    // feature, admin, builder, member, auditor
+    expect(cells[1]).toHaveTextContent('기본 포함')
+    expect(cells[2]).toHaveTextContent('기본 미포함')
+    const activity = within(table).getByRole('row', { name: /활동 기록·사용량 보기/ })
+    expect(within(activity).getAllByRole('cell')[4]).toHaveTextContent('기본 포함')
+  })
 })

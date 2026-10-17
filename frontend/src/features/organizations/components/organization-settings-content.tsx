@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
+import { ApiErrorState } from '@/components/shared/api-error-state'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { FormFieldShell } from '@/components/shared/form-field-shell'
 import { SettingsSectionCard } from '@/components/shared/settings-section-card'
@@ -19,7 +20,10 @@ import {
 import type { OrganizationSummary, OrganizationView } from '@/lib/types/organization'
 import { orgAccess } from '../lib/access'
 import { useOrgErrorMessage } from '../lib/error-message'
+import { OrgLimitsSection } from './org-limits-section'
 import { OrgPageFrame } from './org-page-frame'
+import { OrgPolicySection } from './org-policy-section'
+import { OrgRetentionSection } from './org-retention-section'
 
 export function OrganizationSettingsContent() {
   const t = useTranslations('orgAdmin.settings')
@@ -32,7 +36,6 @@ export function OrganizationSettingsContent() {
 
 function OrganizationSettingsBody({ organization }: { organization: OrganizationSummary }) {
   const t = useTranslations('orgAdmin.settings')
-  const errorMessage = useOrgErrorMessage()
   const info = useOrganizationInfo(organization.id)
   // Lives above the version-keyed form so a stale_version message survives the
   // refetch-driven remount that reseeds the form with the latest name.
@@ -40,7 +43,7 @@ function OrganizationSettingsBody({ organization }: { organization: Organization
 
   if (info.isLoading) return <Skeleton className="h-40 w-full" />
   if (!info.data) {
-    return <p className="text-sm text-status-danger">{errorMessage(info.error)}</p>
+    return <ApiErrorState error={info.error} onRetry={() => void info.refetch()} />
   }
   const view = info.data
   const access = orgAccess(organization, view.permissions)
@@ -54,7 +57,17 @@ function OrganizationSettingsBody({ organization }: { organization: Organization
         error={renameError}
         onError={setRenameError}
       />
-      {access.canManagePolicy ? (
+      <OrgPolicySection view={view} canEdit={access.canManagePolicy} />
+      <OrgRetentionSection orgId={view.id} canEdit={access.canManagePolicy} />
+      {access.canViewUsage ? (
+        <OrgLimitsSection
+          orgId={view.id}
+          version={view.updated_at}
+          canEdit={access.canManagePolicy}
+        />
+      ) : null}
+      {/* Policy A: a default organization is never archivable — no lifecycle control at all. */}
+      {access.canManagePolicy && !view.is_default ? (
         <SettingsSectionCard title={t('lifecycle.title')} description={t('lifecycle.description')}>
           {view.status === 'archived' ? (
             <RestoreAction view={view} />
@@ -156,10 +169,8 @@ function ArchiveAction({ view }: { view: OrganizationView }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-sm text-muted-foreground">
-        {view.is_default ? t('defaultForbidden') : t('description')}
-      </p>
-      <Button variant="destructive" disabled={view.is_default} onClick={() => setOpen(true)}>
+      <p className="text-sm text-muted-foreground">{t('description')}</p>
+      <Button variant="destructive" onClick={() => setOpen(true)}>
         {t('open')}
       </Button>
       <DialogShell open={open} onOpenChange={close} size="sm" height="auto">

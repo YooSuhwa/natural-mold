@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const REFRESH_COOKIE = 'moldy_rt'
 const PUBLIC_ROUTES = new Set<string>(['/login', '/register'])
-const PUBLIC_PREFIXES = ['/shared/'] as const
+// `/invite/` (S12): logged-out invitees see sign-up/login choices on the page itself.
+const PUBLIC_PREFIXES = ['/shared/', '/invite/'] as const
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_ROUTES.has(pathname)) return true

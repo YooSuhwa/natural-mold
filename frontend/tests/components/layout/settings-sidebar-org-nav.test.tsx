@@ -148,4 +148,17 @@ describe('SettingsSidebar organization section', () => {
     expect(screen.getByRole('link', { name: '회사 정책' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '회사 구성원' })).not.toBeInTheDocument()
   })
+
+  it('shows the catalog policy only with can_manage_policy', () => {
+    orgHooks.info.mockReturnValue({ data: { permissions: ['can_manage_policy'] } })
+    const { unmount } = renderSidebar()
+    expect(screen.getByRole('link', { name: '카탈로그 정책' })).toHaveAttribute(
+      'href',
+      '/settings/organization/catalog',
+    )
+    unmount()
+    orgHooks.info.mockReturnValue({ data: { permissions: ['can_manage_members'] } })
+    renderSidebar()
+    expect(screen.queryByRole('link', { name: '카탈로그 정책' })).not.toBeInTheDocument()
+  })
 })

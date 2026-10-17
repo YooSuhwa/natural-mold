@@ -10,6 +10,11 @@ export interface OrgAccess {
   canManagePolicy: boolean
   /** Role/capability grant lists are served only to member managers (`org_members_context`). */
   canReadGrants: boolean
+  /**
+   * Org usage/limits read (`can_view_usage`, plan 9.6): org admin or auditor roles. Company
+   * admins/auditors also pass on the server, but no client signal says so — fail closed.
+   */
+  canViewUsage: boolean
   hasCapability: (capability: OrgCapability) => boolean
 }
 
@@ -32,6 +37,7 @@ export function orgAccess(
     canManageMembers,
     canManagePolicy,
     canReadGrants: canManageMembers,
+    canViewUsage: isAdmin || roles.includes('auditor'),
     hasCapability: (capability) => capabilities.includes(capability),
   }
 }

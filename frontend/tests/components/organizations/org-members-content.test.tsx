@@ -9,7 +9,7 @@ import { organizationQueryKeys } from '@/lib/query-keys/organizations'
 import { OrgMembersContent } from '@/features/organizations/components/org-members-content'
 import type { DirectoryPage, MemberView } from '@/lib/types/organization'
 import { makeOrganization } from '../../unit/hooks/organization-fixtures'
-import { makeOrgView, orgApiMock } from './org-admin-mocks'
+import { makeOrgView, orgApiMock, resetGovernanceMocks } from './org-admin-mocks'
 
 vi.mock('@/lib/api/organizations', async () => (await import('./org-admin-mocks')).orgApiMock)
 vi.mock('@/lib/api/member-exit', () => ({
@@ -29,6 +29,10 @@ vi.mock('@/lib/api/member-exit', () => ({
     remove: vi.fn(),
   },
 }))
+vi.mock(
+  '@/lib/api/org-governance',
+  async () => (await import('./org-admin-mocks')).governanceApiMock,
+)
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const { meOrganizationsApi, orgAdminApi } = orgApiMock
@@ -62,6 +66,7 @@ const PAGE: DirectoryPage<MemberView> = {
 describe('OrgMembersContent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetGovernanceMocks()
     orgAdminApi.listMembers.mockResolvedValue(PAGE)
     orgAdminApi.get.mockResolvedValue(makeOrgView({ permissions: [] }))
   })
@@ -108,13 +113,11 @@ describe('OrgMembersContent', () => {
     expect(await screen.findByRole('button', { name: '정지' })).toBeInTheDocument()
   })
 
-  it('maps invalid_cursor to a localized message', async () => {
+  it('shows the shared error state when the list fails', async () => {
     meOrganizationsApi.list.mockResolvedValue([makeOrganization({ roles: ['builder'] })])
-    orgAdminApi.listMembers.mockRejectedValue(new ApiError(422, 'invalid_cursor', 'bad'))
+    orgAdminApi.listMembers.mockRejectedValue(new ApiError(503, 'authz_unavailable', 'down'))
     render(<OrgMembersContent />)
-    expect(
-      await screen.findByText('목록 위치 정보가 올바르지 않습니다. 처음부터 다시 불러와 주세요.'),
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveAttribute('data-error-kind', 'authz_unavailable')
   })
 
   it('resets the pager cursor when the active organization changes', async () => {

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
+import { ApiErrorState } from '@/components/shared/api-error-state'
 import { SettingsSectionCard } from '@/components/shared/settings-section-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -59,7 +60,7 @@ function RequestsBody() {
       {page.isLoading ? (
         <Skeleton className="h-24 w-full" />
       ) : !page.data ? (
-        <p className="text-sm text-status-danger">{t('loadFailed')}</p>
+        <ApiErrorState error={page.error} onRetry={() => void page.refetch()} />
       ) : page.data.items.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t(`empty.${box}`)}</p>
       ) : (
