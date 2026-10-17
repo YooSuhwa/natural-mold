@@ -6046,6 +6046,176 @@
         ]
       }
     },
+    "/api/credential-bindings": {
+      "get": {
+        "operationId": "list_credential_bindings_api_credential_bindings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "resource_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "tool",
+                    "mcp_server"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resource Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CredentialBindingOut"
+                  },
+                  "title": "Response List Credential Bindings Api Credential Bindings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Credential Bindings",
+        "tags": [
+          "credential-bindings"
+        ]
+      }
+    },
+    "/api/credential-bindings/{resource_type}/{resource_id}": {
+      "delete": {
+        "operationId": "delete_credential_binding_api_credential_bindings__resource_type___resource_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "tool",
+                "mcp_server"
+              ],
+              "title": "Resource Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Credential Binding",
+        "tags": [
+          "credential-bindings"
+        ]
+      },
+      "put": {
+        "operationId": "put_credential_binding_api_credential_bindings__resource_type___resource_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "tool",
+                "mcp_server"
+              ],
+              "title": "Resource Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialBindingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialBindingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Credential Binding",
+        "tags": [
+          "credential-bindings"
+        ]
+      }
+    },
     "/api/credential-types": {
       "get": {
         "operationId": "list_credential_types_api_credential_types_get",
@@ -8706,6 +8876,59 @@
         "summary": "Update Server",
         "tags": [
           "mcp"
+        ]
+      }
+    },
+    "/api/mcp-servers/{server_id}/credential-mode": {
+      "put": {
+        "operationId": "put_mcp_server_credential_mode_api_mcp_servers__server_id__credential_mode_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialModeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialModeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Mcp Server Credential Mode",
+        "tags": [
+          "credential-bindings"
         ]
       }
     },
@@ -18593,6 +18816,59 @@
         ]
       }
     },
+    "/api/tools/{tool_id}/credential-mode": {
+      "put": {
+        "operationId": "put_tool_credential_mode_api_tools__tool_id__credential_mode_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialModeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialModeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Tool Credential Mode",
+        "tags": [
+          "credential-bindings"
+        ]
+      }
+    },
     "/api/tools/{tool_id}/run": {
       "post": {
         "operationId": "run_tool_endpoint_api_tools__tool_id__run_post",
@@ -25891,6 +26167,79 @@
       "title": "CredentialAuditLogResponse",
       "type": "object"
     },
+    "CredentialBindingIn": {
+      "properties": {
+        "credential_id": {
+          "format": "uuid",
+          "title": "Credential Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "credential_id"
+      ],
+      "title": "CredentialBindingIn",
+      "type": "object"
+    },
+    "CredentialBindingOut": {
+      "properties": {
+        "created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created At"
+        },
+        "credential_id": {
+          "format": "uuid",
+          "title": "Credential Id",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "resource_id": {
+          "format": "uuid",
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "enum": [
+            "tool",
+            "mcp_server"
+          ],
+          "title": "Resource Type",
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Updated At"
+        }
+      },
+      "required": [
+        "id",
+        "resource_type",
+        "resource_id",
+        "credential_id"
+      ],
+      "title": "CredentialBindingOut",
+      "type": "object"
+    },
     "CredentialCreate": {
       "properties": {
         "data": {
@@ -26063,6 +26412,85 @@
         "kind"
       ],
       "title": "CredentialFieldSchema",
+      "type": "object"
+    },
+    "CredentialModeIn": {
+      "properties": {
+        "credential_definition_key": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Definition Key"
+        },
+        "credential_mode": {
+          "enum": [
+            "none",
+            "shared",
+            "per_user"
+          ],
+          "title": "Credential Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "credential_mode"
+      ],
+      "title": "CredentialModeIn",
+      "type": "object"
+    },
+    "CredentialModeOut": {
+      "properties": {
+        "binding_count": {
+          "default": 0,
+          "title": "Binding Count",
+          "type": "integer"
+        },
+        "credential_definition_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Definition Key"
+        },
+        "credential_mode": {
+          "enum": [
+            "none",
+            "shared",
+            "per_user"
+          ],
+          "title": "Credential Mode",
+          "type": "string"
+        },
+        "resource_id": {
+          "format": "uuid",
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "enum": [
+            "tool",
+            "mcp_server"
+          ],
+          "title": "Resource Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id",
+        "credential_mode"
+      ],
+      "title": "CredentialModeOut",
       "type": "object"
     },
     "CredentialRequirementIn": {

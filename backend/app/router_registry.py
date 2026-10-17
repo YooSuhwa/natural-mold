@@ -17,6 +17,7 @@ def include_app_routers(app: FastAPI) -> None:
         auth,
         builder,
         conversations,
+        credential_bindings,
         credentials,
         feedback,
         health,
@@ -117,6 +118,8 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(platform_tenant_lifecycle.router)
     app.include_router(shares.router)
     app.include_router(resource_shares.router)
+    app.include_router(credential_bindings.router)
+    app.include_router(credential_bindings.mode_router)
     app.include_router(templates.router)
     app.include_router(skill_builder.router)
     app.include_router(skill_builder_trigger.router)

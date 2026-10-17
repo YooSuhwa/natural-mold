@@ -6,20 +6,18 @@ from app.database import Base
 from app.migrations.org_authz_v1.contracts import M81_SCOPED, SHARED, TENANT_ONLY
 from tests.authz.scope_migration_fixture import execute, prepare_m80
 
-_B08_ADDED_COLUMNS = {
-    "conversations": {
-        "agent_archived_at_snapshot",
-        "agent_lifecycle_state",
-        "agent_purged_at",
-    }
-}
+_F04_MODES = {"credential_mode": False, "credential_definition_key": True}  # m87 (F-04)
 _B08_ADDED_COLUMN_NULLABILITY = {
     "conversations": {
         "agent_archived_at_snapshot": True,
         "agent_lifecycle_state": False,
         "agent_purged_at": True,
-    }
+    },
+    "tools": _F04_MODES,
+    "mcp_servers": _F04_MODES,
+    "credentials": {"allowed_hosts": True},
 }
+_B08_ADDED_COLUMNS = {name: set(columns) for name, columns in _B08_ADDED_COLUMN_NULLABILITY.items()}
 _B08_NULLABILITY_CHANGES = {
     "conversation_artifacts": {"agent_id": (False, True)},
 }

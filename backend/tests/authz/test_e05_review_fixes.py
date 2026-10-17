@@ -98,8 +98,9 @@ async def test_carriers_take_one_query_per_depth_level(db: AsyncSession, depth: 
         await agent_carriers(db, agents[0].id)
     finally:
         event.remove(engine.sync_engine, "before_cursor_execute", count)
-    # one subagent read per depth level (the cycle back to the root ends it) + 4 carrier reads
-    assert len(statements) == depth + 4
+    # one subagent read per depth level (the cycle back to the root ends it) + 4 carrier
+    # reads + 2 fixed-agent per_user reads (F-04; connections read only when any are lent)
+    assert len(statements) == depth + 6
 
 
 async def test_personal_check_runs_before_the_delegation_confirmation(
@@ -122,7 +123,7 @@ async def test_personal_check_runs_before_the_delegation_confirmation(
     response = await client.post(f"{base('agent', agent.id)}/grants", json=_share())
     error = response.json()["error"]
     assert (response.status_code, error["code"]) == (409, "personal_account_shared")
-    assert error["message"] == "개인 계정 자격 증명은 다른 사람과 공유할 수 없습니다"
+    assert error["message"].startswith("개인 계정 자격 증명은 다른 사람과 공유할 수 없습니다")
 
 
 async def test_a_tool_used_by_a_shared_agent_cannot_take_a_personal_credential(

@@ -1616,7 +1616,7 @@
       "authz_unavailable": "Try again in a moment.",
       "marketplace_acl_required": "A restricted item needs at least one recipient. Change the visibility first.",
       "transferBlocked": "Ownership can't be transferred yet.",
-      "personal_account_shared": "Resources that carry a personal account credential can't be shared.",
+      "personal_account_shared": "Resources that carry a personal account credential can't be shared. Switch a tool or MCP server to per-user connections to share it.",
       "grantInvalid": {
         "default": "This recipient can't get this access.",
         "archived": "Archived agents can't be shared or transferred.",

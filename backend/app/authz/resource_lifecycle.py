@@ -30,6 +30,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import tuple_rows as rows
+from app.authz.credential_binding_scope import drop_bindings_for
 from app.authz.grant_completion import MARKERS_TABLE
 from app.authz.grant_projection import written_tuples
 from app.authz.outbox import OutboxRun, Sessions, TupleOp, TupleWriter, apply_now, enqueue
@@ -162,6 +163,7 @@ async def on_resource_deleted(
     now: datetime | None = None,
 ) -> LifecycleChange:
     """Call before (or right after) ``db.delete(row)``, in the same transaction."""
+    await drop_bindings_for(db, row)  # every mode: per-user connections die with it (F-04)
     if not _active(mode):
         return LifecycleChange()
     stamp = _now(now)

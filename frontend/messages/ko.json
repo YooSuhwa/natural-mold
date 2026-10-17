@@ -1616,7 +1616,7 @@
       "authz_unavailable": "잠시 후 다시 시도하세요.",
       "marketplace_acl_required": "제한 공개 항목에는 대상이 한 명 이상 있어야 해요. 공개 범위를 먼저 바꾸세요.",
       "transferBlocked": "아직 소유권을 이전할 수 없어요.",
-      "personal_account_shared": "개인 계정 자격 증명이 연결된 자원은 공유할 수 없어요.",
+      "personal_account_shared": "개인 계정 자격 증명이 연결된 자원은 공유할 수 없어요. 도구·MCP 서버는 연결 방식을 사용자별 연결로 바꾸면 공유할 수 있어요.",
       "grantInvalid": {
         "default": "이 대상에게 이 권한을 줄 수 없어요.",
         "archived": "보관된 에이전트는 공유하거나 이전할 수 없어요.",

@@ -301,7 +301,7 @@ describe('ResourceShareDialog', () => {
     expect(alert).toHaveTextContent('개인 계정이 연결되어 있어 공유할 수 없어요')
     expect(alert).toHaveTextContent('도구 · google_workspace_oauth2')
     expect(toast.error).toHaveBeenCalledWith(
-      '개인 계정 자격 증명이 연결된 자원은 공유할 수 없어요.',
+      '개인 계정 자격 증명이 연결된 자원은 공유할 수 없어요. 도구·MCP 서버는 연결 방식을 사용자별 연결로 바꾸면 공유할 수 있어요.',
     )
   })
 

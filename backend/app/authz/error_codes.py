@@ -53,6 +53,10 @@ ErrorCode = Literal[
     "transfer_name_conflict",
     "transfer_blocked",
     "personal_account_shared",
+    "credential_mode_not_per_user",
+    "credential_type_mismatch",
+    "credential_mode_invalid",
+    "credential_reshare_blocked",
     "tenant_suspended",
     "quota_exceeded",
     "authz_unavailable",
@@ -129,7 +133,19 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
             409, "이전 소유자에게 묶인 항목을 먼저 정리해야 이전할 수 있습니다"
         ),
         "personal_account_shared": ErrorSpec(
-            409, "개인 계정 자격 증명은 다른 사람과 공유할 수 없습니다"
+            409,
+            "개인 계정 자격 증명은 다른 사람과 공유할 수 없습니다. "
+            "도구·MCP 서버는 연결 방식을 사용자별 연결로 바꾸면 공유할 수 있습니다",
+        ),
+        "credential_mode_not_per_user": ErrorSpec(
+            409, "사용자별 연결 방식인 도구·MCP 서버에만 내 계정을 연결할 수 있습니다"
+        ),
+        "credential_type_mismatch": ErrorSpec(
+            422, "이 도구·MCP 서버에 연결할 수 없는 자격 증명 유형입니다"
+        ),
+        "credential_mode_invalid": ErrorSpec(422, "연결 방식과 자격 증명 설정이 맞지 않습니다"),
+        "credential_reshare_blocked": ErrorSpec(
+            409, "다른 사람의 자격 증명은 공용 방식으로 되돌릴 수 없습니다"
         ),
         "transfer_name_conflict": ErrorSpec(
             409, "새 소유자에게 같은 이름의 자원이 있습니다. 이름을 바꾼 뒤 이전하세요"

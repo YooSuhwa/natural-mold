@@ -34,13 +34,15 @@ class _Status:
 
 
 from app.database import Base  # noqa: E402  — import after constants for clarity
+from app.models.credential_mode import CredentialModeColumns, credential_mode_check  # noqa: E402
 from app.models.resource_scope import NullableOrgScope, resource_scope_constraints  # noqa: E402
 
 
-class McpServer(NullableOrgScope, Base):
+class McpServer(CredentialModeColumns, NullableOrgScope, Base):
     __tablename__ = "mcp_servers"
     __table_args__ = (
         *resource_scope_constraints("mcp_servers", system=True),
+        credential_mode_check("mcp_servers"),
         {"extend_existing": True},
     )
 

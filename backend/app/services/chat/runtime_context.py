@@ -25,6 +25,7 @@ from app.authz.runtime_capability_scope import (
 )
 from app.authz.scoping import private_scope_predicate, private_scoped
 from app.credentials import service as credential_service
+from app.credentials.per_user_guard import require_resource_credential
 from app.error_codes import agent_not_found, mcp_server_not_found, tool_not_found
 from app.exceptions import ValidationError
 from app.mcp.auth import resolve_mcp_auth
@@ -244,6 +245,7 @@ async def build_tools_config(
         if not (private_tool or platform_tool):
             raise tool_not_found()
 
+        require_resource_credential(tool)  # per_user: never the owner's account (F-04)
         credentials: dict[str, Any] | None = None
         credential = getattr(tool, "credential", None)
         if credential is not None:
@@ -285,6 +287,7 @@ async def build_tools_config(
         platform_server = server.is_system and server.org_id is None and server.tenant_id is None
         if not (private_server or platform_server):
             raise mcp_server_not_found()
+        require_resource_credential(server)  # per_user: never the owner's account (F-04)
         if server.credential is not None and (
             server.credential.user_id,
             server.credential.org_id,

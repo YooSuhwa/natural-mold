@@ -64,3 +64,7 @@ TENANT_LLM_SETTINGS_UPDATE: Final = "tenant.llm_settings_update"
 # E-08 retention (14.1 "정책·한도"): policy changes and what the daily sweep deleted.
 POLICY_RETENTION_UPDATE: Final = "policy.retention_update"
 RETENTION_PURGE: Final = "retention.purge"
+# F-04 per-user connections (14.1 "자격 증명 연결"); the mode switch is not in 14.1.
+CREDENTIAL_BINDING_CREATE: Final = "credential_binding.create"
+CREDENTIAL_BINDING_DELETE: Final = "credential_binding.delete"
+CREDENTIAL_MODE_UPDATE: Final = "credential_mode.update"

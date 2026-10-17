@@ -21,6 +21,7 @@ from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.credential_mode import CredentialModeColumns, credential_mode_check
 from app.models.resource_scope import NullableOrgScope, resource_scope_constraints
 
 
@@ -42,7 +43,7 @@ class AgentToolLink(Base):
     tool: Mapped[Tool] = relationship(lazy="joined")
 
 
-class Tool(NullableOrgScope, Base):
+class Tool(CredentialModeColumns, NullableOrgScope, Base):
     __tablename__ = "tools"
     # ``is_system=True`` MUST imply ``user_id IS NULL`` (ADR-016 §4.4).
     # Enforced at the DB layer so a code bug cannot create a system tool that
@@ -53,6 +54,7 @@ class Tool(NullableOrgScope, Base):
             "(is_system = false) OR (user_id IS NULL)",
             name="ck_tools_system_user_null",
         ),
+        credential_mode_check("tools"),
         {"extend_existing": True},
     )
 

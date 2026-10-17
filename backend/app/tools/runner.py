@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.org_context import OrgContext
 from app.credentials import service as credential_service
 from app.credentials.mutation_scope import load_scoped_credential
+from app.credentials.per_user_guard import CREDENTIAL_BINDING_REQUIRED, MESSAGE, is_per_user
 from app.http_ssl import get_outbound_ssl_context
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.execution_scope import ToolRunOptions, ToolRunTarget, load_execution_tool
@@ -107,6 +108,8 @@ async def run_tool(
     if options.runtime_args:
         merged.update(options.runtime_args)
 
+    if is_per_user(tool):  # never the owner's account (F-04); F-05 resolves connections
+        return ToolRunResult(success=False, error=f"{CREDENTIAL_BINDING_REQUIRED}: {MESSAGE}")
     try:
         validated = _validate_parameters(definition.parameters, merged)
         credentials = await _load_credential_payload(db, tool.credential_id, target.context)

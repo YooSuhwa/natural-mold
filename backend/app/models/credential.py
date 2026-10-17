@@ -61,6 +61,8 @@ class Credential(NullableOrgScope, Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    # D18 host patterns the credential may be sent to (m87; enforced by F-11).
+    allowed_hosts: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
     last_tested_at: Mapped[datetime | None] = mapped_column(nullable=True)
