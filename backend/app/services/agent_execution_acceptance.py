@@ -216,7 +216,7 @@ async def accept_owned_execution(
         conversation_ids=(request.conversation_id,),
     )
     executable = await load_agent_tree_for_execution(
-        db, AgentExecutionTarget(request.root_agent_id, request.context)
+        db, AgentExecutionTarget(request.root_agent_id, request.context, run=True)
     )
     envelope = await _validated_envelope(db, request, proof)
     run = await create_run_from_locked_proof(

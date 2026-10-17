@@ -25,11 +25,8 @@ from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.organization import OrganizationMember, TenantMember
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
-from app.services.chat.runtime_context import (
-    build_tools_config,
-    get_agent_with_tools,
-    trigger_blocked_tools_for_agent_tree,
-)
+from app.services.chat.runtime_context import build_tools_config, get_agent_with_tools
+from app.services.chat.trigger_blocked_tools import trigger_blocked_tools_for_agent_tree
 
 if TYPE_CHECKING:
     from tests.authz.private_scope_fixture import PrivateScopes

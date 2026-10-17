@@ -15,6 +15,7 @@ from app.agent_runtime.identity import AgentRunIdentity
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import ResolvedRuntimePolicy
 from app.authz.org_context import OrgContext
+from app.authz.runtime_access_planner import RuntimeAccessPlan
 from app.models.agent import Agent
 
 
@@ -30,6 +31,7 @@ class TriggerConfigSource:
     runtime_policy: ResolvedRuntimePolicy
     api_key: str | None
     fallback_chain: list[dict[str, Any]] | None
+    access_plan: RuntimeAccessPlan | None = None  # F-06: children follow the parent plan
 
 
 def build_trigger_agent_config(source: TriggerConfigSource) -> AgentConfig:
@@ -65,4 +67,5 @@ def build_trigger_agent_config(source: TriggerConfigSource) -> AgentConfig:
         credential_subject_user_id=str(identity.credential_subject_user_id),
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
+        access_plan=source.access_plan,
     )

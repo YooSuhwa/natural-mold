@@ -192,7 +192,7 @@ async def list_conversations(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
 ):
-    agent = await chat_service.get_agent_with_tools(db, agent_id, context)
+    agent = await chat_service.get_run_agent_with_tools(db, agent_id, context)
     if not agent:
         raise agent_not_found()
     items = await chat_service.list_conversations(db, agent_id, context)
@@ -215,7 +215,7 @@ async def create_conversation(
     _csrf: None = Depends(verify_csrf),
     authz: AuthzService = Depends(get_authz),
 ):
-    agent = await chat_service.get_agent_with_tools(db, agent_id, context)
+    agent = await chat_service.get_run_agent_with_tools(db, agent_id, context)
     if not agent:
         raise agent_not_found()
     await require_agent_run(context, agent_id, authz=authz)  # legacy gate above: in scope
@@ -248,7 +248,7 @@ async def create_draft_conversation(
     _csrf: None = Depends(verify_csrf),
     authz: AuthzService = Depends(get_authz),
 ):
-    agent = await chat_service.get_agent_with_tools(db, agent_id, context)
+    agent = await chat_service.get_run_agent_with_tools(db, agent_id, context)
     if not agent:
         raise agent_not_found()
     await require_agent_run(context, agent_id, authz=authz)  # legacy gate above: in scope

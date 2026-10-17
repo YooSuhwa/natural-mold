@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agent_runtime import prepared_run_inputs
+from app.agent_runtime.identity import AgentRunSource
 from app.agent_runtime.prepared_child_launch import get_child_launch_ledger
 from app.agent_runtime.prepared_run_dispatch import PreparedRunHandle, handle_for
 from app.agent_runtime.prepared_run_input_policy import (
@@ -70,6 +71,7 @@ from app.services.prepared_run_adapter import (
     ResolveConfig,
     chat_config_resolver,
 )
+from app.services.prepared_run_decisions import predecided_run
 
 logger = logging.getLogger("app.services.conversation_run_worker")
 
@@ -222,13 +224,21 @@ async def _start_prepared(
     request = RuntimeOwnershipRequest(
         target.run_id, conversation.conversation_id, conversation.agent_id, conversation.context
     )
+    context = conversation.context
     try:
-        await materialize_prepared_execution(
-            request,
-            prepare_inputs=prepare,
-            schedule=schedule,
-            seams=prepared_run_inputs.materializer_seams(),
-        )
+        # F-06: decide the run before the materialization locks (sealed memo under them).
+        async with predecided_run(
+            context,
+            conversation.agent_id,
+            source=AgentRunSource.CHAT,
+            caller_user_id=context.user_id,
+        ):
+            await materialize_prepared_execution(
+                request,
+                prepare_inputs=prepare,
+                schedule=schedule,
+                seams=prepared_run_inputs.materializer_seams(),
+            )
     except PreparedRunUnsupportedError as error:
         if locked or not is_legacy_fallback(error.reason):
             raise

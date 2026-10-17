@@ -14,7 +14,7 @@ from app.authz.execution_transaction_tracker import claimed_locks
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_proof import execution_scope, live_proof
 from app.authz.private_actor import require_private_actor
-from app.authz.scoping import private_scope_predicate
+from app.authz.run_agent_loader import authorize_shared_tree, run_agent_predicate
 from app.error_codes import agent_not_found
 from app.models.agent import Agent
 from app.services.agent_lifecycle_locks import (
@@ -28,6 +28,9 @@ from app.services.agent_lifecycle_locks import (
 class AgentExecutionTarget:
     root_agent_id: UUID
     context: OrgContext
+    # A run path (chat, queue, subagents): someone else's agent tree of this organization
+    # loads under the caller's ``agent#can_run`` once ``agent`` is enforced (F-06).
+    run: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,13 +39,17 @@ class ExecutableAgentTree:
     agents: tuple[Agent, ...]
 
 
-def assert_agent_tree_executable(snapshot: AgentTreeSnapshot, context: OrgContext) -> None:
-    """Reject missing, stale-scope, or archived metadata before private hydration."""
+def assert_agent_tree_executable(
+    snapshot: AgentTreeSnapshot, context: OrgContext, *, shared: bool = False
+) -> None:
+    """Reject missing, stale-scope, or archived metadata before private hydration.
+
+    ``shared`` (``authorize_shared_tree`` admitted it): members only share the org."""
     if not snapshot.members or snapshot.root_agent_id not in snapshot.agent_ids:
         raise agent_not_found()
     for member in snapshot.members:
         if (
-            member.user_id != context.user_id
+            (member.user_id != context.user_id and not shared)
             or member.org_id != context.org_id
             or member.tenant_id != context.tenant_id
         ):
@@ -104,14 +111,15 @@ async def load_agent_tree_for_execution(
                 snapshot = await lock_agent_tree_preserving_unrelated_writes(
                     db, target.root_agent_id
                 )
-        assert_agent_tree_executable(snapshot, target.context)
+        shared = target.run and await authorize_shared_tree(snapshot, target.context)
+        assert_agent_tree_executable(snapshot, target.context, shared=shared)
         agents = tuple(
             sorted(
                 await db.scalars(
                     select(Agent)
                     .where(
                         Agent.id.in_(snapshot.agent_ids),
-                        private_scope_predicate(Agent, target.context),
+                        run_agent_predicate(target.context, shared=shared),
                     )
                     .execution_options(populate_existing=True, autoflush=False)
                 ),

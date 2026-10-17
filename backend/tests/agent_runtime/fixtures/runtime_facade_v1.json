@@ -514,6 +514,12 @@
           "name": "secret_values"
         },
         {
+          "annotation": "RuntimeAccessPlan | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "access_plan"
+        },
+        {
           "annotation": "OrgContext",
           "default": "required",
           "kind": "keyword_only",

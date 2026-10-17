@@ -56,7 +56,7 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
             if identity.agent_id is None:
                 raise metadata.QueueBindingInvalidError
             await load_agent_tree_for_execution(
-                db, AgentExecutionTarget(identity.agent_id, target.context)
+                db, AgentExecutionTarget(identity.agent_id, target.context, run=True)
             )
         except metadata.QueueBindingInvalidError:
             await _fail_claimed_input(input_id, error_code="queue_binding_invalid")

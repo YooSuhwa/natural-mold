@@ -40,7 +40,7 @@ async def _claim(request: RuntimeOwnershipRequest) -> OwnedRuntime:
     async with tenant_session(request.context, maker=async_session) as db:
         await load_agent_tree_for_execution(
             db,
-            AgentExecutionTarget(request.root_agent_id, request.context),
+            AgentExecutionTarget(request.root_agent_id, request.context, run=True),
         )
         run = await lock_executable_run(db, execution_target(request))
         if run is None or run.status != "queued":

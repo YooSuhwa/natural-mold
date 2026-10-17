@@ -20,6 +20,8 @@ from app.agent_runtime.identity import (
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import resolve_runtime_policy
 from app.authz.org_context import OrgContext
+from app.authz.runtime_access_planner import RuntimeAccessPlan, RuntimeAccessPlanner
+from app.credentials.run_subject import subject_for_agent
 from app.dependencies import CurrentUser
 from app.exceptions import AppError
 from app.models.agent import Agent
@@ -186,13 +188,23 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
         fake_build_tools_config,
     )
 
-    def fake_agent_skills(agent: Agent, context: OrgContext) -> list[dict[str, str]]:
+    def fake_agent_skills(
+        agent: Agent, context: OrgContext, plan: object = None
+    ) -> list[dict[str, str]]:
         assert context == parent_cfg.org_context
         return [{"slug": "child-skill"}] if agent is child else []
 
     monkeypatch.setattr(
         "app.agent_runtime.subagents.chat_service.build_agent_skills", fake_agent_skills
     )
+
+    # F-06 boundary: the child's legacy owner check ran inside the faked
+    # ``build_agent_skills`` before; these transient rows have no loaded relations.
+    async def fake_plan(planner: RuntimeAccessPlanner, agent: Agent, **_: object):
+        subject = subject_for_agent(agent, planner.context, planner.identity)
+        return RuntimeAccessPlan(agent, subject, (), (), (), ())
+
+    monkeypatch.setattr(RuntimeAccessPlanner, "plan", fake_plan)
     monkeypatch.setattr(
         "app.agent_runtime.subagents._prepare_runtime_components",
         fake_prepare_runtime_components,

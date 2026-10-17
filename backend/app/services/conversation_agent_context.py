@@ -29,6 +29,7 @@ from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import ConflictError
 from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER
 from app.services import chat_service
+from app.services.authorized_runtime import prepare_authorized_runtime
 from app.services.conversation_runtime_policy import snapshot_from_conversation
 from app.services.conversation_stream_protocol import stream_attr
 from app.services.runtime_links import runnable_agent
@@ -43,11 +44,7 @@ async def resolve_agent_context(
     checkpoint_id: str | None = None,
     include_subagents: bool = True,
 ) -> AgentConfig:
-    """conversation + agent 조회 -> AgentConfig 생성.
-
-    ``include_subagents=False`` (prepared-lease adapter) skips compiling the
-    legacy child ``RuntimeComponents``; the adapter prepares children itself.
-    """
+    """conversation + agent -> AgentConfig; ``include_subagents=False`` skips legacy children."""
 
     await require_private_conversation(db, conversation_id, context)
     conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
@@ -109,12 +106,13 @@ async def resolve_agent_context(
     )
     base_url = agent.model.base_url
 
-    tools_config = await chat_service.build_tools_config(
+    runtime = await prepare_authorized_runtime(
         agent,
+        path="chat",
         context=context,
         db=db,
-        conversation_id=str(conversation_id),
         identity=identity,
+        conversation_id=str(conversation_id),
     )
 
     fallback_chain = await stream_attr("resolve_fallback_chain")(db, agent.model_fallback_list)
@@ -134,12 +132,13 @@ async def resolve_agent_context(
         api_key=api_key,
         base_url=base_url,
         system_prompt=effective_prompt,
-        tools_config=tools_config,
+        tools_config=runtime.tools_config,
+        access_plan=runtime.plan,
         thread_id=str(conversation_id),
         runtime_policy=runtime_policy,
         model_params=agent.model_params,
         middleware_configs=agent.middleware_configs,
-        agent_skills=chat_service.build_agent_skills(agent, context) or None,
+        agent_skills=runtime.agent_skills or None,
         agent_id=str(agent.id),
         agent_name=agent.name,
         provider_api_keys=provider_api_keys,

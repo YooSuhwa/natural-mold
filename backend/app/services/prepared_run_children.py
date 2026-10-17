@@ -34,7 +34,11 @@ from app.agent_runtime.subagents import (
 )
 from app.error_codes import agent_not_found
 from app.models.agent import Agent
-from app.services import chat_service
+from app.services.authorized_runtime import (
+    authorized_skills,
+    bind_authorized_runtime,
+    plan_authorized_runtime,
+)
 
 
 @dataclass
@@ -59,11 +63,13 @@ async def resolve_prepared_children(
     context = cfg.org_context
     parent_identity = _parent_identity_from_config(cfg, is_trigger_mode=is_trigger_mode)
     out = PreparedChildren()
-    for link in agent.sub_agent_links:
+    parent_plan = cfg.access_plan  # F-06: the links the parent's run may bind
+    links = parent_plan.sub_agent_links if parent_plan is not None else agent.sub_agent_links
+    for link in links:
         child = link.sub_agent
         if child is None:
             continue
-        if (child.user_id, child.org_id, child.tenant_id) != (
+        if parent_plan is None and (child.user_id, child.org_id, child.tenant_id) != (
             context.user_id,
             context.org_id,
             context.tenant_id,
@@ -73,7 +79,8 @@ async def resolve_prepared_children(
         subject = f"child:{identity.runtime_name}:"
         if child.model is None:
             raise unsupported(f"{subject}child_model_missing")
-        if chat_service.build_agent_skills(child, context):
+        plan = await plan_authorized_runtime(child, context=context, identity=identity, root=False)
+        if authorized_skills(plan):
             raise unsupported(f"{subject}child_skills")
         configured = configured_middleware_types(
             child.middleware_configs, bindings.deepagent_builtin_types
@@ -85,9 +92,10 @@ async def resolve_prepared_children(
         api_key = await resolve_llm_api_key_for_agent(
             db, child, AgentCredentialAccess(context, identity)
         )
-        tool_configs = await chat_service.build_tools_config(
-            child, context=context, db=db, conversation_id=cfg.thread_id, identity=identity
+        child_runtime = await bind_authorized_runtime(
+            plan, path="subagent", db=db, identity=identity, conversation_id=cfg.thread_id
         )
+        tool_configs = child_runtime.tools_config
         child_cfg = AgentConfig(
             org_context=context,
             provider=child.model.provider,

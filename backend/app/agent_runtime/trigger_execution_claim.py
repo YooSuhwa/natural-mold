@@ -15,6 +15,7 @@ from app.authz.broken_links import broken_required, use_runtime_link_view
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import acquire_execution_proof, lock_row
+from app.authz.runtime_access_planner import RuntimeAccessPlan
 from app.authz.trigger_scope import require_trigger_actor
 from app.exceptions import AppError
 from app.models.agent import Agent
@@ -34,6 +35,8 @@ class TriggerClaim:
     tools_config: list[dict[str, Any]]
     run: AgentTriggerRun
     blocked_links: list[dict[str, object]] = field(default_factory=list)  # F-03 (10.6)
+    agent_skills: list[dict[str, Any]] | None = None  # the boundary's allowed skills (F-06)
+    access_plan: RuntimeAccessPlan | None = None
 
 
 async def claim_trigger_run(
@@ -73,11 +76,11 @@ async def claim_trigger_run(
         if agent is None:
             return None
         blocked_links = await broken_required(db, agent.id)  # run recorded as failed
-        blocked_tools = await chat_service.trigger_blocked_tools_for_agent_tree(
-            agent, context=context, db=db
+        runtime = await chat_service.prepare_authorized_runtime(
+            agent, path="trigger", context=context, db=db, identity=None
         )
-        tools_config = await chat_service.build_tools_config(
-            agent, context=context, db=db, conversation_id=None
+        blocked_tools = await chat_service.trigger_blocked_tools_for_agent_tree(
+            agent, context=context, db=db, plan=runtime.plan
         )
     except AppError as exc:
         logger.info("Trigger %s skipped (authorization: %s)", trigger_id, exc.code)
@@ -95,4 +98,15 @@ async def claim_trigger_run(
         trigger,
         source="run_now" if force else "scheduled",
     )
-    return TriggerClaim(trigger, context, agent, blocked_tools, tools_config, run, blocked_links)
+    tools = runtime.tools_config
+    return TriggerClaim(
+        trigger,
+        context,
+        agent,
+        blocked_tools,
+        tools,
+        run,
+        blocked_links,
+        agent_skills=runtime.agent_skills,
+        access_plan=runtime.plan,
+    )

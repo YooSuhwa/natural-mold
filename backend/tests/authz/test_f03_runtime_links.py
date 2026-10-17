@@ -73,7 +73,9 @@ async def test_required_broken_link_refuses_the_run(db: AsyncSession) -> None:
     with pytest.raises(AppError) as refused:
         await require_runnable_links(db, agent.id)
     assert (refused.value.code, refused.value.status) == ("agent_not_ready", 409)
-    assert refused.value.details["items"][0]["id"] == str(bad.id)  # type: ignore[index]
+    # F-06 L2: runner-visible details carry no resource id; the item names the agent.
+    assert "id" not in refused.value.details["items"][0]  # type: ignore[index]
+    assert refused.value.details["items"][0]["agent_id"] == str(agent.id)  # type: ignore[index]
 
 
 async def test_children_count_only_through_active_subagent_links(db: AsyncSession) -> None:

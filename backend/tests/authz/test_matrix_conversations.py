@@ -72,23 +72,15 @@ async def test_private_rows_answer_alike_in_every_mode(
     )
 
 
-# Known gap (plan 11.0 / F-06 RuntimeAccessPlanner): the agent tree is still loaded in the
-# caller's private scope before ``agent#can_run`` is asked, so a shared agent is the
-# existing 404 for every non-owner and OpenFGA is never reached for it.
-SHARED_AGENT_404 = {
-    (actor, mode): 404
-    for actor in ("granted", "visible", "stranger")
-    for mode in ("enforce", "down")
-}
+# F-06: someone else's agent loads under the caller's ``agent#can_run`` once ``agent`` is
+# enforced (``run_agent_loader``); the owner's own agent stays the private fast path, so the
+# owner never reaches OpenFGA on these routes (``down`` answers like legacy).
+OWNER_FAST_PATH = {("owner", "down"): 200}
 AGENT_PROBES = (
-    Probe("POST /api/agents/{agent_id}/conversations", {"title": "x"}, 201, SHARED_AGENT_404, RUN),
-    Probe("POST /api/agents/{agent_id}/conversations/draft", None, 201, SHARED_AGENT_404, RUN),
-    # Listing my conversations under an agent is owner-scoped only (no re-check, 9.3).
-    Probe(
-        "GET /api/agents/{agent_id}/conversations",
-        known=SHARED_AGENT_404 | {("owner", "down"): 200},
-        gate=RUN,
-    ),
+    Probe("POST /api/agents/{agent_id}/conversations", {"title": "x"}, 201, gate=RUN),
+    Probe("POST /api/agents/{agent_id}/conversations/draft", None, 201, gate=RUN),
+    # Listing my conversations under an agent: no re-check for the owner (9.3).
+    Probe("GET /api/agents/{agent_id}/conversations", known=OWNER_FAST_PATH, gate=RUN),
 )
 
 

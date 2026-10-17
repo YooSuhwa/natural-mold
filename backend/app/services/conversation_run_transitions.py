@@ -165,6 +165,7 @@ async def _transition_to_running(
                 AgentExecutionTarget(
                     target.conversation.agent_id,
                     target.conversation.context,
+                    run=True,
                 ),
             )
         except AppError:

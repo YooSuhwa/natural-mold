@@ -25,7 +25,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.credential_access import AgentCredentialAccess
+from app.authz.error_codes import authorization_error
 from app.authz.org_context import OrgContext
+from app.authz.run_decisions import require_decided
 from app.authz.runtime import runtime_authz
 from app.authz.scoping import private_scoped
 from app.authz.service_types import Verdict
@@ -91,7 +93,9 @@ async def resolve_llm_api_key_for_agent(
 
     cred = getattr(agent, "llm_credential", None)
     if cred is not None:
-        if _credential_owned_by_subject(cred, subject) or await _delegated(cred, agent, access):
+        if _credential_owned_by_subject(cred, subject) or await llm_credential_delegated(
+            cred, agent, access
+        ):
             key = await _decrypt_api_key(cred)
             if key is not None:
                 logger.info(
@@ -207,7 +211,9 @@ def _credential_owned_by_subject(cred: Credential, subject: OrgContext) -> bool:
     )
 
 
-async def _delegated(cred: Credential, agent: Agent, access: AgentCredentialAccess) -> bool:
+async def llm_credential_delegated(
+    cred: Credential, agent: Agent, access: AgentCredentialAccess
+) -> bool:
     """Tier 1 delegation (11.3): a credential the run does not own is usable when the
     11.1 decision subject (``agent:A`` for fixed runs, ``user:caller`` for caller-identity
     runs) has ``credential#can_use``. Legacy keeps the owner-only answer."""
@@ -220,13 +226,15 @@ async def _delegated(cred: Credential, agent: Agent, access: AgentCredentialAcce
         return False
     subject = subject_for_agent(agent, context, access.identity)
     try:
-        await runtime_authz().require(
+        await require_decided(  # F-06: memoized, so a lease decides it before its locks
+            runtime_authz(),
             subject.principal,
             "can_use",
             f"credential:{cred.id}",
             min_visible="can_use",
             resource_org_id=cred.org_id,
             legacy=Verdict.NOT_FOUND,
+            not_found=authorization_error("not_found"),
         )
     except AppError as denied:
         if denied.status in (403, 404):

@@ -27,6 +27,7 @@ from app.authz.organization_execution_proof import (
     live_proof,
 )
 from app.authz.private_actor import require_private_actor
+from app.authz.run_agent_loader import require_shared_run_agent, run_agent_scope_predicate
 from app.authz.scoping import private_scope_predicate
 from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import AppError
@@ -92,13 +93,14 @@ async def ensure_conversation_runtime_policy_from_locked_proof(
         raise agent_not_found()
     result = await db.execute(
         select(Agent, Agent.runtime_profile, Agent.runtime_policy).where(
-            Agent.id == conversation.agent_id, private_scope_predicate(Agent, target.context)
+            Agent.id == conversation.agent_id, run_agent_scope_predicate(target.context)
         )
     )
     row = result.one_or_none()
     if row is None:
         raise agent_not_found()
     agent, runtime_profile, agent_policy = row
+    await require_shared_run_agent(agent, target.context)  # F-06: memoized can_run
     existing = snapshot_from_conversation(conversation)
     if existing is not None:
         return conversation, agent, existing

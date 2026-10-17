@@ -88,8 +88,7 @@ async def test_share_revoke_breaks_the_subagent_link_and_refuses_the_parent_run(
         "overall": "blocked",
         "items": [
             {
-                "kind": "tool",
-                "id": str(tool.id),
+                "kind": "tool",  # no "id": runner-visible details (F-06 L2)
                 "agent_id": str(child.id),
                 "required": True,
                 "result": "delegation_broken",

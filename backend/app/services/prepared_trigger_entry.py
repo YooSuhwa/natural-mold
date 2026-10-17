@@ -72,6 +72,7 @@ from app.services.prepared_lease_cleanup import (
     remove_run_root,
 )
 from app.services.prepared_run_adapter import PreparedRunRequest, PreparedRunResolver
+from app.services.prepared_run_decisions import predecided_run
 from app.services.prepared_run_state import fail_prepared_run, mark_prepared_running
 from app.services.prepared_trigger_resolver import (
     PreparedTriggerFailedError,
@@ -180,8 +181,11 @@ async def _materialize(
 
 async def _prepare(target: PreparedTriggerTarget) -> tuple[PreparedRunResolver, PreparedRunLease]:
     activated: list[PreparedRunLease] = []
+    ownership = target.ownership
     try:
-        return await _prepare_in_session(target, activated)
+        # F-06: decide the fixed trigger run before the envelope/materialization locks.
+        async with predecided_run(ownership.context, ownership.root_agent_id, source=None):
+            return await _prepare_in_session(target, activated)
     except BaseException:
         # Cancelled at the session close after activation: never leak the lease (I24 H4).
         if activated:

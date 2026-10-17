@@ -142,7 +142,9 @@ class PreparedRunResolver:
         if run.agent_id is None:
             raise agent_not_found()
         _require_locked(db, run, (run.agent_id,))
-        await load_agent_tree_for_execution(db, AgentExecutionTarget(run.agent_id, request.context))
+        await load_agent_tree_for_execution(
+            db, AgentExecutionTarget(run.agent_id, request.context, run=True)
+        )
         cfg = await request.resolve_config(db, run)
         bindings = self._bindings()
         trigger = request.is_trigger_mode

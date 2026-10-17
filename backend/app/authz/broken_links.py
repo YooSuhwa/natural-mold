@@ -96,7 +96,9 @@ async def require_runnable_links(db: AsyncSession, agent_id: UUID) -> None:
     """``409 agent_not_ready`` when a required link in the one-hop tree is broken."""
     items = await broken_required(db, agent_id)
     if items:
-        raise authorization_error("agent_not_ready", {"overall": "blocked", "items": items})
+        # F-06 L2: the runner may not see the linked rows, so the response carries no ids.
+        shown = [{key: value for key, value in item.items() if key != "id"} for item in items]
+        raise authorization_error("agent_not_ready", {"overall": "blocked", "items": shown})
 
 
 def blocked_reason(items: list[dict[str, object]]) -> str:

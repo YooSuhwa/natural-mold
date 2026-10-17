@@ -52,7 +52,9 @@ async def create_conversation(
     context: OrgContext,
     source: str = "ui",
 ) -> Conversation:
-    executable = await load_agent_tree_for_execution(db, AgentExecutionTarget(agent_id, context))
+    executable = await load_agent_tree_for_execution(
+        db, AgentExecutionTarget(agent_id, context, run=True)
+    )
     agent = next(item for item in executable.agents if item.id == agent_id)
     conv = Conversation(
         agent_id=agent_id,
@@ -111,7 +113,7 @@ async def require_executable_conversation(
     await acquire_execution_proof(
         db, context, root_agent_id=row.agent_id, conversation_ids=(conversation_id,)
     )
-    await load_agent_tree_for_execution(db, AgentExecutionTarget(row.agent_id, context))
+    await load_agent_tree_for_execution(db, AgentExecutionTarget(row.agent_id, context, run=True))
     return row.agent_id
 
 

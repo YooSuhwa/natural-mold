@@ -95,7 +95,7 @@ async def build_subagents_config(
     assert_pre_marker("build_subagents_config")
     await load_agent_tree_for_execution(
         db,
-        AgentExecutionTarget(parent_agent.id, parent_cfg.org_context),
+        AgentExecutionTarget(parent_agent.id, parent_cfg.org_context, run=True),
     )
     parent_identity = _parent_identity_from_config(
         parent_cfg,
@@ -104,12 +104,13 @@ async def build_subagents_config(
     subagents: list[dict[str, Any]] = []
     display_names: dict[str, str] = {}
 
-    for link in parent_agent.sub_agent_links:
+    plan = parent_cfg.access_plan  # F-06: the links the parent's run may bind
+    for link in plan.sub_agent_links if plan is not None else parent_agent.sub_agent_links:
         child = link.sub_agent
         if child is None:
             continue
         context = parent_cfg.org_context
-        if (child.user_id, child.org_id, child.tenant_id) != (
+        if plan is None and (child.user_id, child.org_id, child.tenant_id) != (
             context.user_id,
             context.org_id,
             context.tenant_id,
@@ -124,12 +125,14 @@ async def build_subagents_config(
             child,
             AgentCredentialAccess(parent_cfg.org_context, child_identity),
         )
-        child_tools_config = await chat_service.build_tools_config(
+        child_runtime = await chat_service.prepare_authorized_runtime(
             child,
+            path="subagent",
             context=parent_cfg.org_context,
             db=db,
-            conversation_id=parent_cfg.thread_id,
             identity=child_identity,
+            conversation_id=parent_cfg.thread_id,
+            root=False,
         )
         child_cfg = AgentConfig(
             org_context=parent_cfg.org_context,
@@ -138,12 +141,13 @@ async def build_subagents_config(
             api_key=child_api_key,
             base_url=child.model.base_url,
             system_prompt=_subagent_system_prompt(child),
-            tools_config=child_tools_config,
+            tools_config=child_runtime.tools_config,
+            access_plan=child_runtime.plan,
             thread_id=parent_cfg.thread_id,
             runtime_policy=parent_cfg.runtime_policy,
             model_params=child.model_params,
             middleware_configs=child.middleware_configs,
-            agent_skills=chat_service.build_agent_skills(child, parent_cfg.org_context) or None,
+            agent_skills=child_runtime.agent_skills or None,
             agent_id=str(child.id),
             agent_name=child.name,
             provider_api_keys={child.model.provider: child_api_key} if child_api_key else None,

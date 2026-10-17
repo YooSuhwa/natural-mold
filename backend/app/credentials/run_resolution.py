@@ -32,6 +32,7 @@ from app.authz.credential_binding_scope import account_bindings, binding_of
 from app.authz.error_codes import authorization_error
 from app.authz.org_context import active_memberships
 from app.authz.principal import Principal
+from app.authz.run_decisions import require_decided
 from app.authz.runtime import runtime_authz
 from app.authz.service import AuthzService
 from app.authz.service_types import Verdict
@@ -72,9 +73,16 @@ class McpResolution:
 
 class RunCredentialResolver:
     def __init__(
-        self, db: AsyncSession | None, subject: RunSubject, authz: AuthzService | None = None
+        self,
+        db: AsyncSession | None,
+        subject: RunSubject,
+        authz: AuthzService | None = None,
+        *,
+        decided: frozenset[str] = frozenset(),
     ) -> None:
         self.db, self.subject = db, subject
+        # Objects ``RuntimeAccessPlanner`` already confirmed for this subject (F-06).
+        self.decided = decided
         self.authz = authz or runtime_authz()
         self.read_only = subject.read_only or db is None
         self.missing: list[dict[str, str]] = []
@@ -89,12 +97,15 @@ class RunCredentialResolver:
             raise not_found
         if row.user_id == self.subject.account_user_id or self.read_only:
             return
+        if f"{kind}:{row.id}" in self.decided:
+            return
         await self._require(self.subject.principal, f"{kind}:{row.id}", row.org_id, not_found)
 
     async def _require(
         self, principal: Principal, obj: str, org_id: uuid.UUID | None, not_found: AppError
     ) -> None:
-        await self.authz.require(
+        await require_decided(  # memoized: a lease decides before its locks (F-06)
+            self.authz,
             principal,
             "can_use",
             obj,

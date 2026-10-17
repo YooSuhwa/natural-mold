@@ -31,6 +31,7 @@ from app.exceptions import ConflictError, ValidationError
 from app.models.agent import Agent
 from app.models.model import Model
 from app.services import chat_service
+from app.services.authorized_runtime import prepare_authorized_runtime
 from app.services.conversation_runtime_policy import snapshot_from_conversation
 from app.services.runtime_links import runnable_agent
 
@@ -197,12 +198,8 @@ async def build_agent_config_for_loaded_agent(
     api_key = await resolve_llm_api_key_for_agent(
         db, agent, AgentCredentialAccess(context, identity)
     )
-    tools_config = await chat_service.build_tools_config(
-        agent,
-        context=context,
-        db=db,
-        conversation_id=thread_id,
-        identity=identity,
+    runtime = await prepare_authorized_runtime(
+        agent, path="api", context=context, db=db, identity=identity, conversation_id=thread_id
     )
     fallback_chain = await resolve_fallback_chain(db, agent.model_fallback_list)
     effective_prompt = _with_user_display_name_context(
@@ -217,12 +214,13 @@ async def build_agent_config_for_loaded_agent(
         api_key=api_key,
         base_url=agent.model.base_url,
         system_prompt=effective_prompt,
-        tools_config=tools_config,
+        tools_config=runtime.tools_config,
+        access_plan=runtime.plan,
         thread_id=thread_id,
         runtime_policy=runtime_policy,
         model_params=agent.model_params,
         middleware_configs=agent.middleware_configs,
-        agent_skills=chat_service.build_agent_skills(agent, context) or None,
+        agent_skills=runtime.agent_skills or None,
         agent_id=str(agent.id),
         agent_name=agent.name,
         provider_api_keys={agent.model.provider: api_key} if api_key else None,

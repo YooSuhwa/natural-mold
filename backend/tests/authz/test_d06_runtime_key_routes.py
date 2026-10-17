@@ -13,6 +13,7 @@ from app.agent_api import prepared_execution, runtime_service
 from app.authz import runtime
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
+from app.models.agent import Agent
 from app.models.agent_api import AgentApiRun, AgentApiThread
 from app.models.conversation import Conversation
 from tests.authz import prepared_agent_api_testkit as apikit
@@ -126,7 +127,11 @@ async def test_prepared_run_decides_once_before_the_locked_resolver(
     api = await apikit.seed_api_run(db, tmp_path, monkeypatch)
     apikit.forbid_legacy(monkeypatch)
     ctx, agent = api.execution.context, f"agent:{api.execution.root_agent_id}"
-    client = RecordingClient(allowed=frozenset({(f"user:{ctx.user_id}", "can_deploy", agent)}))
+    models = await db.scalars(select(Agent.model_id).where(Agent.user_id == ctx.user_id))
+    me = f"user:{ctx.user_id}"
+    # F-06: the run boundary also asks each model's catalog ``can_use`` (before the locks).
+    used = {(me, "can_use", f"llm_model:{model}") for model in models}
+    client = RecordingClient(allowed=frozenset({(me, "can_deploy", agent), *used}))
     monkeypatch.setattr(runtime, "_current", AuthzService(client, mode="enforce"))  # type: ignore[arg-type]
     at_lock: list[int] = []
     original = prepared_execution.owned.materialize_prepared_execution
@@ -137,6 +142,7 @@ async def test_prepared_run_decides_once_before_the_locked_resolver(
 
     monkeypatch.setattr(prepared_execution.owned, "materialize_prepared_execution", locking)
     assert "done" in await runtime_service.execute_owned_wait(api.execution)
-    assert at_lock == [1]  # decided before the gateway locks were requested
+    # Every decision (can_deploy, then F-06's plan) precedes the gateway locks.
+    assert at_lock == [len(client.queries)] and at_lock[0] > 1
     deploy = [q for q in client.queries if getattr(q, "relation", None) == "can_deploy"]
     assert len(deploy) == 1  # the locked authorize_deployment reused the pre-lock decision

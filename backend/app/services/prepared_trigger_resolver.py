@@ -44,6 +44,7 @@ from app.models.conversation_run import ConversationRun
 from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import chat_service
 from app.services.agent_execution_runtime import RuntimeOwnershipRequest
+from app.services.authorized_runtime import prepare_authorized_runtime
 from app.services.conversation_stream_service import resolve_fallback_chain
 from app.services.prepared_run_adapter import ResolveConfig
 from app.services.trigger_conversation_runtime import ensure_schedule_conversation_runtime_policy
@@ -148,11 +149,14 @@ def trigger_config_resolver(target: PreparedTriggerTarget) -> ResolveConfig:
             source=AgentRunSource.TRIGGER,
             caller_user_id=None,
         )
-        if await chat_service.trigger_blocked_tools_for_agent_tree(agent, context=context, db=db):
-            raise PreparedTriggerStaleError("trigger_blocked_tools")
-        tools_config = await chat_service.build_tools_config(
-            agent, context=context, db=db, conversation_id=None
+        runtime = await prepare_authorized_runtime(
+            agent, path="trigger", context=context, db=db, identity=None
         )
+        plan = runtime.plan
+        if await chat_service.trigger_blocked_tools_for_agent_tree(
+            agent, context=context, db=db, plan=plan
+        ):
+            raise PreparedTriggerStaleError("trigger_blocked_tools")
         runtime_policy = await ensure_schedule_conversation_runtime_policy(
             db, ConversationPolicyTarget(run.conversation_id, context, target.trigger_run_id)
         )
@@ -165,12 +169,13 @@ def trigger_config_resolver(target: PreparedTriggerTarget) -> ResolveConfig:
                 context=context,
                 identity=identity,
                 effective_prompt=chat_service.build_effective_prompt(agent),
-                agent_skills=chat_service.build_agent_skills(agent, context),
-                tools_config=tools_config,
+                agent_skills=runtime.agent_skills,
+                tools_config=runtime.tools_config,
                 thread_id=str(run.conversation_id),
                 runtime_policy=runtime_policy,
                 api_key=api_key,
                 fallback_chain=await resolve_fallback_chain(db, agent.model_fallback_list),
+                access_plan=plan,
             )
         )
 

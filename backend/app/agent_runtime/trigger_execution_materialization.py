@@ -20,6 +20,7 @@ from app.agent_runtime.runtime_policy import ResolvedRuntimePolicy, RuntimePolic
 from app.agent_runtime.trigger_execution_claim import TriggerClaim
 from app.authz.broken_links import blocked_reason
 from app.authz.org_context import OrgContext
+from app.authz.runtime_access_planner import RuntimeAccessPlan
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
@@ -50,6 +51,7 @@ class TriggerMaterialized:
     tools_config: list[dict[str, Any]]
     conversation: Conversation
     runtime_policy: ResolvedRuntimePolicy
+    access_plan: RuntimeAccessPlan | None = None
 
 
 async def materialize_trigger_run(
@@ -149,7 +151,11 @@ async def materialize_trigger_run(
     await db.flush()
 
     effective_prompt = chat_service.build_effective_prompt(agent)
-    agent_skills = chat_service.build_agent_skills(agent, context)
+    agent_skills = (
+        claim.agent_skills
+        if claim.agent_skills is not None
+        else chat_service.build_agent_skills(agent, context)
+    )
     if blocked_tools:
         reason = format_trigger_block_reason(blocked_tools)
         logger.warning("Trigger %s blocked: %s", trigger_id, reason)
@@ -197,4 +203,5 @@ async def materialize_trigger_run(
         tools_config,
         conversation,
         runtime_policy,
+        claim.access_plan,
     )

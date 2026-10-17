@@ -87,6 +87,7 @@ async def invoke_trigger_run(
             runtime_policy=runtime_policy,
             api_key=api_key,
             fallback_chain=fallback_chain,
+            access_plan=materialized.access_plan,
         )
     )
     await db.flush()

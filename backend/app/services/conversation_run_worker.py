@@ -187,6 +187,7 @@ async def start_conversation_run(
                 AgentExecutionTarget(
                     target.conversation.agent_id,
                     target.conversation.context,
+                    run=True,
                 ),
             )
         except AppError as error:

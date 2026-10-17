@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, NoReturn
+from typing import TYPE_CHECKING, Any, Literal, NoReturn
 
 from deepagents.middleware.filesystem import FilesystemPermission
 from langchain_core.language_models import BaseChatModel
@@ -13,6 +13,9 @@ from langchain_core.tools import BaseTool
 from app.agent_runtime.runtime_policy import LEGACY_RUNTIME_POLICY, ResolvedRuntimePolicy
 from app.authz.org_context import OrgContext
 from app.config import settings
+
+if TYPE_CHECKING:
+    from app.authz.runtime_access_planner import RuntimeAccessPlan
 
 _configured_data_root = Path(settings.data_root)
 _DATA_DIR = (
@@ -133,6 +136,9 @@ class AgentConfig:
     # ``default_factory=set`` keeps it per-instance mutable (never shared) and
     # DB-free unit tests get an empty set with unchanged behaviour.
     secret_values: set[str] = field(default_factory=set)
+    # F-06 — the run's ``RuntimeAccessPlan`` (allowed links, ``excluded_capabilities``;
+    # no secret values). Children prepare from ``access_plan.sub_agent_links``.
+    access_plan: RuntimeAccessPlan | None = None
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,

@@ -63,6 +63,7 @@ from app.agent_api.prepared_config import (
     ApiScope,
 )
 from app.agent_runtime import agent_stream_runner
+from app.agent_runtime.identity import AgentRunSource
 from app.agent_runtime.prepared_run_dispatch import PreparedRunHandle, handle_for
 from app.agent_runtime.prepared_run_input_policy import (
     PreparedRunUnsupportedError,
@@ -90,6 +91,7 @@ from app.services.prepared_lease_cleanup import (
     remove_run_root,
 )
 from app.services.prepared_run_adapter import MemoryReads, PreparedRunRequest, PreparedRunResolver
+from app.services.prepared_run_decisions import predecided_run
 from app.services.prepared_run_state import fail_prepared_run
 
 if TYPE_CHECKING:
@@ -197,9 +199,12 @@ async def materialize_api_run(request: ApiOwnedExecution, scope: ApiScope) -> Pr
                 opaque=True,
                 fresh=True,
             )
-            lease = await owned.materialize_prepared_execution(
-                ownership, prepare_inputs=prepare, schedule=_activated, seams=seams.materializer
-            )
+            async with predecided_run(  # F-06: the run's decisions, before the locks too
+                request.context, request.root_agent_id, source=AgentRunSource.CHANNEL
+            ):
+                lease = await owned.materialize_prepared_execution(
+                    ownership, prepare_inputs=prepare, schedule=_activated, seams=seams.materializer
+                )
     except BaseException as exc:
         if isinstance(exc, PreparedRunUnsupportedError) and is_legacy_fallback(exc.reason):
             logger.info(

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
 from app.authz.principal import Principal
+from app.authz.run_decisions import open_request_memo, require_decided
 from app.authz.runtime import get_authz, runtime_authz
 from app.authz.scoping import private_scope_predicate
 from app.authz.service import AuthzService, Verdict
@@ -34,11 +35,17 @@ async def bind_request_authz(authz: AuthzService = Depends(get_authz)) -> AuthzS
     deep in the run-preparation services; background work falls back to the process one.
     """
     _request_authz.set(authz)
+    open_request_memo()  # F-06: one decision per (principal, object) in this request
     return authz
 
 
 def _resolve(authz: AuthzService | None) -> AuthzService:
     return authz or _request_authz.get() or runtime_authz()
+
+
+def current_authz() -> AuthzService:
+    """The request's service when bound, else the process one (background runs)."""
+    return _resolve(None)
 
 
 async def require_agent_permission(
@@ -58,7 +65,8 @@ async def require_agent_permission(
     service = _resolve(authz)
     if service.mode == "legacy":
         return
-    await service.require(
+    await require_decided(
+        service,
         Principal.for_user(context),
         permission,
         f"agent:{agent_id}",

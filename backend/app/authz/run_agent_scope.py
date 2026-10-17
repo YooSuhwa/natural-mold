@@ -2,7 +2,8 @@
 
 The owner's own agent, or someone else's agent in the same organization only for its
 authenticated caller holding ``agent#can_run`` (legacy: owner only, the existing 404).
-Loading a shared agent tree for a run is still F-06 (``RuntimeAccessPlanner``).
+Shared agent trees load in ``run_agent_loader`` and their links are decided by
+``RuntimeAccessPlanner`` (F-06).
 """
 
 from typing import Literal
@@ -10,6 +11,7 @@ from typing import Literal
 from app.agent_runtime.identity import AgentRunIdentity
 from app.authz.org_context import OrgContext
 from app.authz.principal import Principal
+from app.authz.run_decisions import require_decided
 from app.authz.runtime import runtime_authz
 from app.authz.service import AuthzService
 from app.authz.service_types import Verdict
@@ -32,7 +34,8 @@ async def require_runnable_agent(
         return
     if identity is None or identity.caller_user_id != context.user_id:
         raise agent_not_found()
-    await (authz or runtime_authz()).require(
+    await require_decided(
+        authz or runtime_authz(),
         Principal.for_user(context),
         "can_run",
         f"agent:{agent.id}",
