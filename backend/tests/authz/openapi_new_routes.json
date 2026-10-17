@@ -1,5 +1,51 @@
 {
   "paths": {
+    "/.well-known/oauth-client/{deployment}": {
+      "get": {
+        "description": "Moldy's public OAuth Client ID Metadata Document (plan 11.4.1).\n\nServed only when ``mcp_oauth_client_metadata_base_url`` is configured.",
+        "operationId": "oauth_client_metadata_document__well_known_oauth_client__deployment__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment",
+            "required": true,
+            "schema": {
+              "title": "Deployment",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Oauth Client Metadata Document  Well Known Oauth Client  Deployment  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oauth Client Metadata Document",
+        "tags": [
+          "credentials",
+          "credentials"
+        ]
+      }
+    },
     "/api/admin/tenants": {
       "get": {
         "operationId": "list_companies_api_admin_tenants_get",
@@ -10039,6 +10085,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OAuth2AuthStartRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -10089,6 +10152,22 @@
             "schema": {
               "title": "State",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "iss",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Iss"
             }
           }
         ],
@@ -32946,6 +33025,25 @@
         }
       },
       "title": "ModelUpdate",
+      "type": "object"
+    },
+    "OAuth2AuthStartRequest": {
+      "description": "Optional body: ``scope`` widens this authorization only (F-15 step-up).",
+      "properties": {
+        "scope": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scope"
+        }
+      },
+      "title": "OAuth2AuthStartRequest",
       "type": "object"
     },
     "OAuth2AuthStartResponse": {

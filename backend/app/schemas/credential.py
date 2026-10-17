@@ -132,6 +132,12 @@ class CredentialAuditLogResponse(BaseModel):
 # ---- OAuth2 helpers --------------------------------------------------------
 
 
+class OAuth2AuthStartRequest(BaseModel):
+    """Optional body: ``scope`` widens this authorization only (F-15 step-up)."""
+
+    scope: str | None = Field(default=None, max_length=2000)
+
+
 class OAuth2AuthStartResponse(BaseModel):
     authorization_url: str
     state: str

@@ -70,6 +70,7 @@ OAUTH_IDENTITY_FIELDS = {
     "access_token_url",
     "token_url",
     "registration_url",
+    "authorization_server_url",
     "client_id",
 }
 

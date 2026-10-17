@@ -10,8 +10,7 @@ Endpoints:
 - ``POST   /api/credentials/{id}/test``             run test recipe on stored data
 - ``POST   /api/credentials/preview-test``          run test on raw form data
 - ``GET    /api/credentials/{id}/audit-logs``       recent audit log entries
-- ``POST   /api/oauth2-credential/auth/{id}``       start OAuth2 authorize flow
-- ``GET    /api/oauth2-credential/callback``        OAuth2 callback handler
+- OAuth2 routes live in ``credential_oauth`` and are mounted here.
 """
 
 from __future__ import annotations
@@ -19,18 +18,16 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.model_factory import sync_env_fallback_from_credentials
 from app.authz.org_context import OrgContext
 from app.authz.platform_scope import PlatformScope
-from app.authz.policies import CANDIDATES, CATALOG, PUBLIC, RES, SELF, SUPER, authz_policy
+from app.authz.policies import CANDIDATES, CATALOG, RES, SELF, SUPER, authz_policy
 from app.authz.resource_gate import CREDENTIAL, gate_list, gate_row
 from app.authz.resource_lifecycle import apply_lifecycle, on_resource_created, on_resource_deleted
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
-from app.credentials import oauth_service
 from app.credentials import service as credential_service
 from app.credentials.creation import CredentialCreation
 from app.credentials.mutation_scope import (
@@ -55,6 +52,7 @@ from app.error_codes import (
 )
 from app.exceptions import AppError
 from app.models.credential import Credential
+from app.routers import credential_oauth
 from app.schemas.credential import (
     CredentialAuditLogResponse,
     CredentialCreate,
@@ -62,7 +60,6 @@ from app.schemas.credential import (
     CredentialResponse,
     CredentialTestResponse,
     CredentialUpdate,
-    OAuth2AuthStartResponse,
     PreviewTestRequest,
 )
 from app.schemas.model import DiscoveredModelSchema
@@ -78,7 +75,6 @@ system_router = APIRouter(prefix="/api/system-credentials", tags=["credentials"]
 # Catalog mounts at /api/credential-types; CRUD lives under /api/credentials.
 catalog_router = APIRouter(prefix="/api/credential-types", tags=["credentials"])
 crud_router = APIRouter(prefix="/api/credentials", tags=["credentials"])
-oauth_router = APIRouter(prefix="/api/oauth2-credential", tags=["credentials"])
 
 
 # -- Helpers -----------------------------------------------------------------
@@ -542,73 +538,10 @@ async def list_audit_logs(
     ]
 
 
-# -- OAuth2 ------------------------------------------------------------------
-
-
-def _oauth_callback_html(credential_id: uuid.UUID, target_origin: str | None) -> HTMLResponse:
-    safe_target = target_origin or "*"
-    body = f"""<!doctype html>
-<html>
-  <head><meta charset="utf-8"><title>Moldy OAuth Complete</title></head>
-  <body>
-    <p>OAuth authorization completed. You can close this window.</p>
-    <script>
-      if (window.opener) {{
-        window.opener.postMessage(
-          {{ type: 'moldy.oauth.completed', credentialId: '{credential_id}' }},
-          {safe_target!r}
-        );
-      }}
-      window.close();
-    </script>
-  </body>
-</html>"""
-    return HTMLResponse(content=body)
-
-
-@oauth_router.post("/auth/{credential_id}", response_model=OAuth2AuthStartResponse)
-@authz_policy(SELF)
-async def oauth2_auth_start(
-    credential_id: uuid.UUID,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    context: OrgContext = Depends(get_org_context),
-    _csrf: None = Depends(verify_csrf),
-) -> OAuth2AuthStartResponse:
-    """Start the OAuth2 authorize flow (orchestration in ``oauth_service``)."""
-
-    result = await oauth_service.start_oauth(
-        db,
-        context=context,
-        credential_id=credential_id,
-        fallback_redirect_uri=str(request.url_for("oauth2_callback")),
-        return_to=request.headers.get("origin"),
-    )
-    await db.commit()
-    return OAuth2AuthStartResponse(
-        authorization_url=result.authorization_url,
-        state=result.state,
-    )
-
-
-@oauth_router.get("/callback", name="oauth2_callback")
-@authz_policy(PUBLIC)
-async def oauth2_callback(
-    request: Request,
-    code: str = Query(...),
-    state: str = Query(...),
-    db: AsyncSession = Depends(get_db),
-) -> HTMLResponse:
-    """Exchange ``code`` for tokens (orchestration in ``oauth_service``)."""
-
-    result = await oauth_service.handle_callback(db, code=code, state=state)
-    await db.commit()
-    return _oauth_callback_html(result.credential_id, result.return_to)
-
-
 # -- Composition -------------------------------------------------------------
 
 router.include_router(catalog_router)
 router.include_router(crud_router)
-router.include_router(oauth_router)
+router.include_router(credential_oauth.oauth_router)
+router.include_router(credential_oauth.well_known_router)
 router.include_router(system_router)

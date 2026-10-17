@@ -27,6 +27,7 @@ D04_MODULES = {
     "app.routers.tools",
     "app.routers.mcp",
     "app.routers.credentials",
+    "app.routers.credential_oauth",
     "app.routers.models",
     "app.routers.health",
     "app.routers.system_llm_settings",
@@ -45,7 +46,7 @@ def test_every_d04_route_declares_a_reviewed_non_legacy_policy() -> None:
         if isinstance(route, APIRoute) and route.endpoint.__module__ in D04_MODULES
     ]
     kinds = {policy_kind(route.endpoint) for route in routes}
-    assert len(routes) == 53
+    assert len(routes) == 54
     assert kinds == {"CATALOG", "CANDIDATES", "CAP", "RES", "SELF", "SUPER", "PUBLIC"}
 
 

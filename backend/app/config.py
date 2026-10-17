@@ -293,6 +293,12 @@ class Settings(AuthzSettings):
     # bound (plus the short lock transaction). Keep both small.
     prepared_mcp_discovery_server_timeout_seconds: float = 3.0
     prepared_mcp_discovery_total_timeout_seconds: float = 5.0
+    # F-15 (plan 11.4.1): public Moldy base URL that remote authorization
+    # servers can reach. When set, Moldy serves a Client ID Metadata Document at
+    # ``{base}/.well-known/oauth-client/{deployment}`` and prefers it over
+    # pre-registration / DCR. Empty (default) = closed network, CIMD off.
+    mcp_oauth_client_metadata_base_url: str = ""
+    mcp_oauth_client_deployment: str = "default"
 
     # CORS allowed origins. Comma-separated origins, e.g.
     # "https://moldy.dev,https://staging.moldy.dev". Default permits the
