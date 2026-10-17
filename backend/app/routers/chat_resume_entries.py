@@ -205,7 +205,7 @@ async def resume_message(
     user: CurrentUser,
     context: OrgContext,
 ) -> StreamingResponse:
-    agent_id = await chat_service.prepare_executable_conversation(db, conversation_id, context)
+    agent_id = await chat_service.prepare_resumed_conversation(db, conversation_id, context, data)
     conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
     if conv is None:
         raise conversation_not_found()

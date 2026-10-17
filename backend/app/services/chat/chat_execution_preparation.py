@@ -33,6 +33,7 @@ from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER, Agent
 from app.models.conversation import Conversation
 from app.schemas.conversation_scope import ConversationPolicyTarget, ConversationPromotion
 from app.services.conversation_runtime_policy import ensure_conversation_runtime_policy
+from app.services.readiness_gate import abandons_run, require_agent_ready, resume_answers
 
 
 def conversation_title_from_content(content: str) -> str:
@@ -123,15 +124,20 @@ async def prepare_executable_conversation(
     context: OrgContext,
     *,
     agent_checked: bool = False,
+    readiness: bool = True,
 ) -> uuid.UUID:
     """Initialize policy, then reacquire lifecycle authority for config hydration.
 
-    The single ``agent#can_run`` decision of a chat run, unless the caller made it
-    before creating the conversation (``agent_checked``).
+    The single ``agent#can_run`` decision and readiness check (G-02 ``409
+    agent_not_ready``) of a chat run, unless the caller made them before creating the
+    conversation (``agent_checked``). Both precede every run row. ``readiness=False``:
+    a resume that only ends the run (``prepare_resumed_conversation``).
     """
     agent_id = await require_executable_conversation(db, conversation_id, context)
     if not agent_checked:
         await require_agent_run(context, agent_id)
+        if readiness:
+            await require_agent_ready(db, context, agent_id)
     try:
         await ensure_conversation_runtime_policy(
             db, ConversationPolicyTarget(conversation_id, context)
@@ -140,6 +146,15 @@ async def prepare_executable_conversation(
         raise ConflictError(exc.code, exc.code) from None
     await db.commit()
     return await require_executable_conversation(db, conversation_id, context)
+
+
+async def prepare_resumed_conversation(
+    db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext, resume: object
+) -> uuid.UUID:
+    """A resume: the G-02 readiness gate is skipped when every answer ends or abandons
+    the run (``abandons_run``), so a blocked agent never traps the user in an interrupt."""
+    ready = not abandons_run(resume_answers(resume))
+    return await prepare_executable_conversation(db, conversation_id, context, readiness=ready)
 
 
 async def promote_draft_conversation(

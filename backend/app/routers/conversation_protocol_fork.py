@@ -194,7 +194,7 @@ async def _handle_input_respond_command(
     run_interrupt_id = resume_run_interrupt_id(resume, parent_run.interrupt_id)
 
     try:
-        await chat_service.prepare_executable_conversation(db, conversation.id, context)
+        await chat_service.prepare_resumed_conversation(db, conversation.id, context, resume)
     except ConflictError as exc:
         return command_error(
             command,

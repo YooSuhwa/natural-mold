@@ -21,7 +21,7 @@ from sqlalchemy import event, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import ORMExecuteState, Session, with_loader_criteria
 
-from app.authz.error_codes import authorization_error
+from app.authz.error_codes import agent_not_ready
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.mcp_tool import AgentMcpToolLink
@@ -98,7 +98,7 @@ async def require_runnable_links(db: AsyncSession, agent_id: UUID) -> None:
     if items:
         # F-06 L2: the runner may not see the linked rows, so the response carries no ids.
         shown = [{key: value for key, value in item.items() if key != "id"} for item in items]
-        raise authorization_error("agent_not_ready", {"overall": "blocked", "items": shown})
+        raise agent_not_ready(shown)
 
 
 def blocked_reason(items: list[dict[str, object]]) -> str:

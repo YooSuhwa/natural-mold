@@ -51,6 +51,7 @@ from app.services.chat.chat_execution_preparation import (
     conversation_title_from_content,
     create_conversation,
     prepare_executable_conversation,
+    prepare_resumed_conversation,
     promote_draft_conversation,
     require_executable_conversation,
 )
@@ -81,6 +82,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["clear_active_branch_override", "mark_conversation_read", "maybe_set_auto_title"]
 __all__ += ["set_active_branch", "touch_conversation", "update_conversation"]
 __all__ += ["create_conversation", "prepare_executable_conversation"]
+__all__ += ["prepare_resumed_conversation"]
 __all__ += ["require_executable_conversation", "ConversationCursorScope", "ConversationPageCursor"]
 __all__ += ["_conversation_sort_column", "_conversation_sort_value", "_decode_conversation_cursor"]
 __all__ += ["_encode_conversation_cursor", "_escape_like", "list_conversations_page"]

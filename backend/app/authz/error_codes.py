@@ -1,6 +1,6 @@
 """Shared status/message contracts for staged organization authorization errors."""
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, Literal
@@ -176,6 +176,19 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
 def authorization_error(code: ErrorCode, details: Mapping[str, object] | None = None) -> AppError:
     spec = ERRORS[code]
     return AppError(code=code, message=spec.message, status=spec.status, details=details)
+
+
+def agent_not_ready(
+    items: Iterable[Mapping[str, object]], *, identity_mode: str | None = None
+) -> AppError:
+    """``409 agent_not_ready`` (12.2 ``blocked``): the one body of every refusal (G-02's
+    12.3 readiness body, the F-03/F-06 run-prep checks). Items never carry ids a runner
+    may not see; callers pass them already shaped."""
+    details: dict[str, object] = {"overall": "blocked"}
+    if identity_mode is not None:
+        details["identity_mode"] = identity_mode
+    details["items"] = [dict(item) for item in items]
+    return authorization_error("agent_not_ready", details)
 
 
 def agent_archived() -> AppError:

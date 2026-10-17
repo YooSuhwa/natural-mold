@@ -32,7 +32,7 @@ from app.authz import denials
 from app.authz.attach_candidates import ATTACH_PERMISSIONS
 from app.authz.client import AuthzUnavailable
 from app.authz.conversation_agent_checks import current_authz
-from app.authz.error_codes import authorization_error
+from app.authz.error_codes import agent_not_ready
 from app.authz.org_context import OrgContext
 from app.authz.principal import Principal
 from app.authz.run_agent_scope import require_runnable_agent
@@ -150,8 +150,7 @@ class RuntimeAccessPlanner:
         blocked = [item for item in draft.pending if item.obj not in allowed]
         if any(item.required for item in blocked):
             # F-03's shape ({overall, items}); items carry no resource id (L2).
-            items = [_blocked_item(agent, item) for item in blocked]
-            raise authorization_error("agent_not_ready", {"overall": "blocked", "items": items})
+            raise agent_not_ready([_blocked_item(agent, item) for item in blocked])
         decided: set[str] = set()
         for item in draft.pending:
             if item.obj in allowed:

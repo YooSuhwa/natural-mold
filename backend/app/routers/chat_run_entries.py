@@ -28,6 +28,7 @@ from app.services.agent_execution_owner import OwnedExecutionRequest, accept_own
 from app.services.conversation_audit_service import record_conversation_audit
 from app.services.conversation_run_worker import start_conversation_run
 from app.services.conversation_stream_service import resolve_agent_context, sse_response
+from app.services.readiness_gate import require_agent_ready
 
 logger = logging.getLogger("app.routers.conversation_messages")
 
@@ -50,6 +51,7 @@ async def start_conversation_with_message(
 ) -> StreamingResponse:
     title = chat_service.conversation_title_from_content(data.content)
     await require_scoped_agent_permission(db, context, agent_id, "can_run")
+    await require_agent_ready(db, context, agent_id)  # G-02: before the conversation row
     conv = await chat_service.create_conversation(db, agent_id, title, context=context)
     # Config hydration performs its own lifecycle check and therefore starts from
     # a clean transaction. The final acceptance below rechecks after hydration.
