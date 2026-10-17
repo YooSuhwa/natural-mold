@@ -150,6 +150,11 @@ I07_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"POST {_A}/{{tenant_id}}/schedule-deletion": CompanyRoute("SUPER", 200, False),
     f"POST {_A}/{{tenant_id}}/cancel-deletion": CompanyRoute("SUPER", 200, False),
 }
+# U-01 operator company limits and deletion state reads (S03/S04).
+U01_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_A}/{{tenant_id}}/limits": CompanyRoute("SUPER", 200, False),
+    f"GET {_A}/{{tenant_id}}/deletion": CompanyRoute("SUPER", 200, False),
+}
 # File downloads stream the archive and have no JSON response model.
 FILE_ROUTES: Final = frozenset({f"GET {_A}/{{tenant_id}}/exports/{{export_id}}/download"})
 COMPANY_ROUTES: Final = {
@@ -163,6 +168,7 @@ COMPANY_ROUTES: Final = {
     **H08_ROUTES,
     **H04_ROUTES,
     **I07_ROUTES,
+    **U01_ROUTES,
 }
 # Later-task paths from the contract's route-level crosswalk (rows 7-8, 24-35, 38-57),
 # owned by C05/E07/E08/E09/H03. Matched app-wide by path, with parameter

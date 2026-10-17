@@ -779,6 +779,49 @@
         ]
       }
     },
+    "/api/admin/tenants/{tenant_id}/deletion": {
+      "get": {
+        "operationId": "get_company_deletion_api_admin_tenants__tenant_id__deletion_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantDeletionState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Company Deletion",
+        "tags": [
+          "platform company administration"
+        ]
+      }
+    },
     "/api/admin/tenants/{tenant_id}/export": {
       "post": {
         "operationId": "start_company_export_api_admin_tenants__tenant_id__export_post",
@@ -906,6 +949,49 @@
           }
         },
         "summary": "Download Company Export",
+        "tags": [
+          "platform company administration"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/limits": {
+      "get": {
+        "operationId": "get_company_limits_api_admin_tenants__tenant_id__limits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageLimitView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Company Limits",
         "tags": [
           "platform company administration"
         ]

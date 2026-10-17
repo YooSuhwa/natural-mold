@@ -4951,6 +4951,167 @@
     }
   },
   "appSettings": {
+    "platformTenants": {
+      "gate": {
+        "loading": "Checking access…",
+        "deniedTitle": "This page could not be found",
+        "deniedDescription": "Platform operation screens are only for the SaaS operator.",
+        "back": "Back to settings"
+      },
+      "status": {
+        "active": "Active",
+        "suspended": "Suspended",
+        "deletion_scheduled": "Deletion scheduled",
+        "deletionScheduledDue": "Deletion scheduled (D-{days})"
+      },
+      "errors": {
+        "stale_version": "Another operator changed this first. Reload the latest data and try again.",
+        "duplicate_tenant_slug": "This slug is already in use. Enter another slug.",
+        "tenant_namespace_collision": "A company can't be created with this slug. Enter another slug.",
+        "tenant_deletion_slug_mismatch": "The slug you entered doesn't match the company slug.",
+        "tenant_export_in_progress": "An export is already running. Try again when it finishes.",
+        "tenant_status_conflict": "This action isn't possible in the current state. Refresh and try again.",
+        "generic": "The request couldn't be completed. Try again shortly."
+      },
+      "list": {
+        "title": "Companies",
+        "description": "Create the customer companies on this instance and manage their status and limits. Company conversations and resources are not visible here.",
+        "create": "Create company",
+        "sectionTitle": "Companies",
+        "filterLabel": "Filter by status",
+        "all": "All",
+        "searchLabel": "Search companies",
+        "searchPlaceholder": "Search by company name or slug",
+        "empty": "No companies match.",
+        "company": "Company",
+        "organizations": "Organizations",
+        "members": "Members / limit",
+        "spendLimit": "Monthly spend limit",
+        "status": "Status",
+        "actions": "Menu",
+        "noLimit": "No limit",
+        "ofLimit": "{used} / {limit}"
+      },
+      "actions": {
+        "menu": "{name} menu",
+        "detail": "Details",
+        "suspend": "Suspend",
+        "resume": "Resume",
+        "export": "Export data",
+        "cancelDeletion": "Cancel deletion",
+        "scheduleDeletion": "Schedule deletion",
+        "resumeDone": "{name} was resumed.",
+        "cancelDeletionDone": "Deletion of {name} was cancelled. The company stays suspended.",
+        "exportStarted": "Started exporting {name} data."
+      },
+      "risky": {
+        "impact": {
+          "members": "{count} members are affected.",
+          "runs": "{count} active runs stop at their next step.",
+          "runsUnknown": "The number of active runs couldn't be loaded."
+        },
+        "slugLabel": "Type the company slug {slug} to confirm",
+        "suspend": {
+          "title": "Suspend {name}?",
+          "effect": "No user of the company can sign in to it. You can undo this with Resume.",
+          "confirm": "Suspend",
+          "done": "{name} was suspended."
+        },
+        "scheduleDeletion": {
+          "title": "Schedule deletion of {name}?",
+          "effect": "Every company user loses access now, and after a 30-day grace period all company data is permanently deleted. After the purge nothing can be restored; only the tenant.deleted audit record remains. During the grace period you can undo this with Cancel deletion.",
+          "confirm": "Schedule deletion",
+          "done": "Deletion of {name} was scheduled."
+        }
+      },
+      "create": {
+        "title": "Create company",
+        "description": "An invitation for the first company admin is created.",
+        "defaultOrganization": "Default organization",
+        "done": "Created {name}.",
+        "name": "Company name",
+        "slug": "Slug",
+        "slugHint": "3-40 lowercase letters, digits and hyphens",
+        "slugInvalid": "Use 3-40 lowercase letters, digits and hyphens, not starting or ending with a hyphen.",
+        "adminEmail": "First company admin email",
+        "emailInvalid": "Enter a valid email address.",
+        "organization": "First organization name",
+        "systemModels": "Use system models",
+        "systemModelsHint": "Allow platform models and system LLM keys for this company.",
+        "cancel": "Cancel",
+        "submit": "Create and invite",
+        "created": "Created {name} and its first organization.",
+        "invitationFor": "A company admin invitation was created for {email}.",
+        "invitationExpires": "Invitation expires: {date} (single use)",
+        "noMail": "No email is sent. Copy the invitation code and share it yourself. It can't be shown again after you close this dialog.",
+        "tokenCopied": "Invitation code copied.",
+        "tokenCopyFailed": "The invitation code couldn't be copied.",
+        "copyToken": "Copy invitation code",
+        "tokenUnavailable": "No invitation code was returned. A new company admin invitation is needed.",
+        "close": "Close"
+      },
+      "limitField": {
+        "members": "Member limit",
+        "spend": "Monthly spend limit (USD)",
+        "runs": "Concurrent run limit",
+        "hint": "Empty means no limit; 0 blocks use",
+        "invalid": "Enter a number of 0 or more. Member and run limits must be whole numbers."
+      },
+      "detail": {
+        "back": "Companies",
+        "description": "Slug {slug} · Company conversations and resources are not visible here.",
+        "noLimit": "No limit",
+        "overview": "Overview",
+        "overviewHint": "Status and this month's usage.",
+        "status": "Status",
+        "createdAt": "Created",
+        "organizations": "Organizations",
+        "members": "Members / limit",
+        "ofLimit": "{used} / {limit}",
+        "spend": "This month's spend / limit",
+        "usageUnavailable": "Unavailable",
+        "usageLoading": "Loading…",
+        "resetsAt": "Resets {date}",
+        "activeRuns": "Active runs / concurrent limit"
+      },
+      "limits": {
+        "title": "Limits",
+        "description": "Change the company name and usage limits.",
+        "name": "Company name",
+        "systemModels": "Use system models",
+        "systemModelsHint": "Allow platform models and system LLM keys for this company.",
+        "save": "Save",
+        "saved": "Limits saved."
+      },
+      "data": {
+        "title": "Data",
+        "description": "Company data exports and the deletion schedule.",
+        "exports": "Exports",
+        "startExport": "Start export",
+        "exportsLoading": "Loading exports…",
+        "noExports": "No exports yet.",
+        "deletion": "Deletion schedule",
+        "scheduledUntil": "Permanently deleted on {date} (D-{days}).",
+        "scheduled": "Deletion is scheduled.",
+        "scheduledHint": "Cancelling the schedule returns the company to suspended.",
+        "cancelDeletion": "Cancel deletion",
+        "deletionHint": "Scheduling deletion blocks every company user, and the company data is permanently deleted after 30 days.",
+        "scheduleDeletion": "Schedule deletion",
+        "createdAt": "Requested",
+        "status": "Status",
+        "expiresAt": "Download expires",
+        "download": "Download",
+        "jobRunning": "Running {progress}%",
+        "jobFailed": "Failed ({code})",
+        "job": {
+          "queued": "Queued",
+          "running": "Running",
+          "succeeded": "Completed",
+          "failed": "Failed"
+        },
+        "downloadFailed": "The export file couldn't be downloaded."
+      }
+    },
     "authzOps": {
       "title": "Authorization sync",
       "description": "Check that authorization rows in Postgres are reflected in OpenFGA.",
@@ -5097,7 +5258,8 @@
       "companySso": "SSO & domains",
       "companyMembers": "Company members",
       "companyPolicies": "Company policies",
-      "companyModels": "Models and LLM settings"
+      "companyModels": "Models and LLM settings",
+      "platformTenants": "Companies"
     },
     "profile": {
       "title": "Profile",
@@ -5395,6 +5557,7 @@
     "agentApi": "Agent API",
     "marketplaceAdmin": "Marketplace Admin",
     "authzSync": "Authorization Sync",
+    "platformTenants": "Companies",
     "adminAudit": "All Activity",
     "systemCredentials": "System Credentials",
     "systemLlm": "System LLM Settings",

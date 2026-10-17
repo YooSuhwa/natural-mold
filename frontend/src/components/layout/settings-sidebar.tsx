@@ -8,6 +8,7 @@ import {
   BarChart3Icon,
   BrainIcon,
   Building2Icon,
+  BuildingIcon,
   CalendarClockIcon,
   Code2Icon,
   FilesIcon,
@@ -49,6 +50,7 @@ import {
   useOrganizationInfo,
   useTenantOverview,
 } from '@/lib/hooks/use-organizations'
+import { usePlatformOperatorAccess } from '@/lib/hooks/use-platform-tenants'
 import { useTriggerSummary } from '@/lib/hooks/use-triggers'
 
 export function SettingsSidebar() {
@@ -62,6 +64,8 @@ export function SettingsSidebar() {
   const { data: organizationInfo } = useOrganizationInfo(activeOrganization?.id)
   const { data: tenantOverview } = useTenantOverview(activeOrganization?.tenant_id)
   const access = orgAccess(activeOrganization, organizationInfo?.permissions)
+  // S03 is listed only for the SaaS platform operator (plan 13.16), fail closed.
+  const platformOperator = usePlatformOperatorAccess().allowed
 
   const baseSections: SidebarNavSectionConfig[] = [
     {
@@ -146,6 +150,15 @@ export function SettingsSidebar() {
         {
           label: tSettings('nav.admin'),
           items: [
+            ...(platformOperator
+              ? [
+                  {
+                    href: '/settings/admin/tenants',
+                    label: tSettings('nav.platformTenants'),
+                    icon: BuildingIcon,
+                  },
+                ]
+              : []),
             {
               href: '/settings/marketplace-admin',
               label: tSettings('nav.marketplaceAdmin'),

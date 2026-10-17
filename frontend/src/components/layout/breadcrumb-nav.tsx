@@ -23,6 +23,7 @@ const ROUTE_LABELS: Record<string, string> = {
   'marketplace-admin': 'nav.marketplaceAdmin',
   'admin-audit': 'nav.adminAudit',
   authz: 'nav.authzSync',
+  tenants: 'nav.platformTenants',
   'system-credentials': 'nav.systemCredentials',
   'system-llm': 'nav.systemLlm',
   skills: 'nav.skills',

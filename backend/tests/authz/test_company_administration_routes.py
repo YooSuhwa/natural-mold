@@ -40,7 +40,7 @@ def _schemas(app: FastAPI) -> dict[str, JsonValue]:
 def test_assembled_app_registers_exact_company_inventory_once() -> None:
     app = create_app()
     assert company_route_violations(app.routes) == []
-    assert len(COMPANY_ROUTES) == 77  # +7 H-06, +17 H-08, +5 H-04, +5 I-07
+    assert len(COMPANY_ROUTES) == 79  # +7 H-06, +17 H-08, +5 H-04, +5 I-07, +2 U-01
     assert slug_schema_violations(_schemas(app)) == []
 
 
