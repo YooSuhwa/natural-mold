@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.authz.error_codes import authorization_error
 from app.models.organization import Organization
+from app.services.tenants.versioning import parse_version
 
 
 def utc_timestamp(value: datetime) -> datetime:
@@ -15,13 +16,7 @@ def etag(value: datetime) -> str:
 
 
 def require_current_version(organization: Organization, supplied: str | None) -> None:
-    if supplied is None:
-        raise authorization_error("stale_version")
-    try:
-        expected = datetime.fromisoformat(supplied.strip('"'))
-    except ValueError as error:
-        raise authorization_error("stale_version") from error
-    if utc_timestamp(expected) != utc_timestamp(organization.updated_at):
+    if parse_version(supplied) != utc_timestamp(organization.updated_at):
         raise authorization_error("stale_version")
 
 

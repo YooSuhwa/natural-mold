@@ -149,3 +149,30 @@ async def test_create_selected_admin_then_rename_with_current_etag(
         )
     )
     assert set(actions) == {"org.create", "org.member_add", "org.role_grant", "org.update"}
+
+
+async def test_rename_accepts_the_json_body_version(
+    db: AsyncSession, task7_client: AsyncClient
+) -> None:
+    case = await seed_task7_case(task7_client, db)
+    created = await task7_client.post(
+        f"/api/tenants/{case.tenant_id}/organizations",
+        json={"name": "Body version org", "administrator": {"user_id": str(case.target_id)}},
+        headers=case.auth.headers(),
+    )
+    assert created.status_code == 201, created.text
+    organization = created.json()["organization"]
+    renamed = await task7_client.patch(
+        f"/api/tenants/{case.tenant_id}/organizations/{organization['id']}",
+        json={"name": "Renamed from body"},
+        headers={**case.auth.headers(), "If-Match": f'"{organization["updated_at"]}"'},
+    )
+    assert renamed.status_code == 200, renamed.text
+    z_form = renamed.headers["etag"].replace("+00:00", "Z")
+    assert z_form.endswith('Z"')
+    again = await task7_client.patch(
+        f"/api/tenants/{case.tenant_id}/organizations/{organization['id']}",
+        json={"name": "Renamed from Z form"},
+        headers={**case.auth.headers(), "If-Match": z_form},
+    )
+    assert again.status_code == 200, again.text

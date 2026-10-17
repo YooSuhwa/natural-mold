@@ -74,3 +74,17 @@ async def test_invalid_value_is_422(client: AsyncClient, db: AsyncSession) -> No
         POLICIES, json={"marketplace_tenant_publish": "anyone"}, headers={"If-Match": etag}
     )
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize("form", ["body", "weak"])
+async def test_admin_echoes_the_json_version_as_if_match(
+    client: AsyncClient, db: AsyncSession, form: str
+) -> None:
+    await make_admin(db)
+    body_version = (await client.get(POLICIES)).json()["updated_at"]
+    assert body_version.endswith("Z")
+    header = f'"{body_version}"' if form == "body" else f'W/"{body_version}"'
+    response = await client.put(
+        POLICIES, json={"marketplace_tenant_publish": "disabled"}, headers={"If-Match": header}
+    )
+    assert response.status_code == 200, response.text

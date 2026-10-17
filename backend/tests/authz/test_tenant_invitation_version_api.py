@@ -123,3 +123,20 @@ async def test_valid_stale_identical_retry_is_idempotent_but_new_content_is_reje
         )
         == 1
     )
+
+
+async def test_json_z_form_of_the_current_version_is_accepted(
+    db: AsyncSession,
+    tenant_invitation_client: AsyncClient,
+    org_fixture: OrgFixture,
+) -> None:
+    client = tenant_invitation_client
+    org_fixture.session.apply(client)
+    current = (await _grant_admin(db, org_fixture)).replace("+00:00", "Z")
+    assert current.endswith('Z"')
+    created = await client.post(
+        f"/api/tenants/{org_fixture.tenant}/invitations",
+        json={"email": "z-form@example.com", "roles": []},
+        headers={**org_fixture.session.headers(), "If-Match": current},
+    )
+    assert created.status_code == 201, created.text

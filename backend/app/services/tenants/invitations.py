@@ -22,7 +22,7 @@ from app.services.tenants.invitation_queries import (
 from app.services.tenants.overview import TenantOverviewMutation
 from app.services.tenants.versioning import (
     bump_timestamp,
-    etag,
+    parse_version,
     require_current_version,
     utc_timestamp,
 )
@@ -65,13 +65,7 @@ async def create_invitation(
 
 
 def _require_version_syntax(supplied: str | None) -> None:
-    if supplied is None or len(supplied) < 2 or supplied[0] != '"' or supplied[-1] != '"':
-        raise authorization_error("stale_version")
-    try:
-        parsed = datetime.fromisoformat(supplied[1:-1])
-    except ValueError:
-        raise authorization_error("stale_version") from None
-    if supplied != etag(parsed):
+    if parse_version(supplied) is None:
         raise authorization_error("stale_version")
 
 

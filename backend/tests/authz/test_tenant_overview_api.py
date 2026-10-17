@@ -243,3 +243,22 @@ async def test_csrf_failure_precedes_foreign_company_lookup(
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "csrf_mismatch"
+
+
+async def test_patch_accepts_the_json_body_version_as_if_match(
+    db: AsyncSession, org_fixture: OrgFixture
+) -> None:
+    db.add(TenantRoleGrant(tenant_id=org_fixture.tenant, user_id=org_fixture.user.id, role="admin"))
+    tenant = await db.get(Tenant, org_fixture.tenant)
+    assert tenant is not None
+    tenant.slug = "company-a"
+    await db.commit()
+    app = _overview_app(db, org_fixture.user)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        body_version = (await client.get(f"/api/tenants/{org_fixture.tenant}")).json()["updated_at"]
+        token, headers = _csrf_headers(org_fixture.user, if_match=f'"{body_version}"')
+        client.cookies.set(settings.cookie_name_csrf, token)
+        response = await client.patch(
+            f"/api/tenants/{org_fixture.tenant}", json={"name": "Body Version"}, headers=headers
+        )
+    assert response.status_code == 200, response.text
