@@ -10,6 +10,7 @@ def include_app_routers(app: FastAPI) -> None:
         agent_api,
         agent_blueprints,
         agent_memo,
+        agent_readiness,
         agent_runtime_api,
         agents,
         artifacts,
@@ -77,6 +78,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(agent_blueprints.router)
     app.include_router(agent_api.router)
     app.include_router(agent_runtime_api.router)
+    app.include_router(agent_readiness.router)
     app.include_router(agents.router)
     app.include_router(agents.middleware_router)
     app.include_router(artifacts.router)

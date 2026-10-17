@@ -146,19 +146,7 @@ class RuntimeAccessPlanner:
             check(agent, self.context)
             tools, mcp, skills, subs = (tuple(_links(agent, n, root)) for _, n, _ in _LINKS)
             return RuntimeAccessPlan(agent, subject, tools, mcp, skills, subs)
-        if root:
-            await require_runnable_agent(agent, self.context, self.identity, self.authz)
-        draft = _Draft()
-        run_source = subject.principal.run_source
-        account = Principal("user", subject.account_user_id, self.context.org_id, run_source)
-        for kind, name, attr in _LINKS:
-            for link in _links(agent, name, root):
-                self._classify(draft, kind, link, getattr(link, attr), subject, account)
-        if agent.model is not None and self.authz.enforces("llm_model"):
-            draft.pending.append(
-                _Pending("llm_model", None, f"llm_model:{agent.model.id}", account, True)
-            )
-        allowed = await self._decide(draft.pending)
+        draft, allowed = await self._assess(agent, subject, root)
         blocked = [item for item in draft.pending if item.obj not in allowed]
         if any(item.required for item in blocked):
             # F-03's shape ({overall, items}); items carry no resource id (L2).
@@ -179,6 +167,24 @@ class RuntimeAccessPlanner:
         return RuntimeAccessPlan(
             agent, subject, tools, mcp, skills, subs, tuple(draft.excluded), frozenset(decided)
         )
+
+    async def _assess(
+        self, agent: Agent, subject: RunSubject, root: bool
+    ) -> tuple[_Draft, set[str]]:
+        """Every link classified and the pending ones decided (no raise for denials)."""
+        if root:
+            await require_runnable_agent(agent, self.context, self.identity, self.authz)
+        draft = _Draft()
+        run_source = subject.principal.run_source
+        account = Principal("user", subject.account_user_id, self.context.org_id, run_source)
+        for kind, name, attr in _LINKS:
+            for link in _links(agent, name, root):
+                self._classify(draft, kind, link, getattr(link, attr), subject, account)
+        if agent.model is not None and self.authz.enforces("llm_model"):
+            draft.pending.append(
+                _Pending("llm_model", None, f"llm_model:{agent.model.id}", account, True)
+            )
+        return draft, await self._decide(draft.pending)
 
     def _classify(
         self,

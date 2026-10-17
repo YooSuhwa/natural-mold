@@ -879,6 +879,54 @@
         ]
       }
     },
+    "/api/agents/readiness-summary": {
+      "post": {
+        "operationId": "readiness_summary_api_agents_readiness_summary_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadinessSummaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/ReadinessSummary"
+                  },
+                  "propertyNames": {
+                    "format": "uuid"
+                  },
+                  "title": "Response Readiness Summary Api Agents Readiness Summary Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Readiness Summary",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/api/agents/summary": {
       "get": {
         "operationId": "list_agent_summaries_api_agents_summary_get",
@@ -2010,6 +2058,60 @@
           }
         },
         "summary": "Purge Archived Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/{agent_id}/readiness": {
+      "get": {
+        "operationId": "get_agent_readiness_api_agents__agent_id__readiness_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "const": "CHAT",
+              "default": "CHAT",
+              "title": "Source",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Readiness",
         "tags": [
           "agents"
         ]
@@ -22450,6 +22552,38 @@
       "title": "AgentPurgeRequest",
       "type": "object"
     },
+    "AgentReadinessResponse": {
+      "properties": {
+        "identity_mode": {
+          "title": "Identity Mode",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/ReadinessItemResponse"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "overall": {
+          "enum": [
+            "ready",
+            "needs_connection",
+            "limited",
+            "blocked"
+          ],
+          "title": "Overall",
+          "type": "string"
+        }
+      },
+      "required": [
+        "overall",
+        "identity_mode",
+        "items"
+      ],
+      "title": "AgentReadinessResponse",
+      "type": "object"
+    },
     "AgentResponse": {
       "properties": {
         "created_at": {
@@ -35107,6 +35241,223 @@
         "name"
       ],
       "title": "PublishSkillIn",
+      "type": "object"
+    },
+    "ReadinessAction": {
+      "properties": {
+        "type": {
+          "enum": [
+            "request_access",
+            "notify_owner",
+            "connect",
+            "oauth_start"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "via": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Via"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "ReadinessAction",
+      "type": "object"
+    },
+    "ReadinessCredential": {
+      "properties": {
+        "credential_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Id"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "status"
+      ],
+      "title": "ReadinessCredential",
+      "type": "object"
+    },
+    "ReadinessItemResponse": {
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ReadinessAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Count"
+        },
+        "credential": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ReadinessCredential"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "kind": {
+          "enum": [
+            "llm_model",
+            "tool",
+            "mcp_server",
+            "skill",
+            "sub_agent"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "result": {
+          "enum": [
+            "ready",
+            "no_permission",
+            "connect_by_me",
+            "owner_must_connect",
+            "unavailable"
+          ],
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "required",
+        "result"
+      ],
+      "title": "ReadinessItemResponse",
+      "type": "object"
+    },
+    "ReadinessSummary": {
+      "properties": {
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "propertyNames": {
+            "enum": [
+              "ready",
+              "no_permission",
+              "connect_by_me",
+              "owner_must_connect",
+              "unavailable"
+            ]
+          },
+          "title": "Counts",
+          "type": "object"
+        },
+        "overall": {
+          "enum": [
+            "ready",
+            "needs_connection",
+            "limited",
+            "blocked"
+          ],
+          "title": "Overall",
+          "type": "string"
+        }
+      },
+      "required": [
+        "overall",
+        "counts"
+      ],
+      "title": "ReadinessSummary",
+      "type": "object"
+    },
+    "ReadinessSummaryRequest": {
+      "properties": {
+        "agent_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Agent Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "agent_ids"
+      ],
+      "title": "ReadinessSummaryRequest",
       "type": "object"
     },
     "RefreshResponse": {
