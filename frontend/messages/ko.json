@@ -330,7 +330,11 @@
       "conflict": "현재 상태와 충돌해 처리하지 못했습니다.",
       "not_found": "대상을 찾을 수 없습니다.",
       "forbidden": "권한이 없습니다.",
-      "generic": "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요."
+      "generic": "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      "last_tenant_admin": "마지막 회사 관리자는 해제하거나 제거할 수 없습니다.",
+      "catalog_policy_locked": "상위 단계에서 막힌 항목이라 켤 수 없습니다.",
+      "validation_error": "입력값을 확인해 주세요.",
+      "invitation_membership_blocked": "이미 회사에 속해 있거나 초대할 수 없는 사용자입니다."
     },
     "picker": {
       "placeholder": "이름 또는 이메일로 검색",
@@ -727,6 +731,293 @@
         "requiredNotice": "켜면 비밀번호로 로그인하던 구성원 {count}명이 다음 로그인부터 IdP로 들어옵니다.",
         "save": "저장",
         "saved": "SSO 정책을 저장했습니다."
+      }
+    },
+    "companySettings": {
+      "adminOnly": "회사 관리자만 볼 수 있습니다",
+      "adminOnlyDescription": "이 화면은 회사 관리자 권한이 필요합니다. 필요하면 회사 관리자에게 요청해 주세요.",
+      "profile": {
+        "title": "회사 개요",
+        "description": "회사 안의 조직과 구성원, 공용 설정을 관리합니다. 조직의 대화와 자원 내용은 볼 수 없습니다.",
+        "access": {
+          "admin": "회사 관리자",
+          "auditor": "회사 감사자 (읽기 전용)",
+          "member": "회사 구성원"
+        },
+        "status": {
+          "active": "활성",
+          "suspended": "정지",
+          "deletion_scheduled": "삭제 예정"
+        },
+        "organizations": "조직",
+        "members": "구성원",
+        "admins": "회사 관리자",
+        "slug": "회사 주소 식별자: {slug}",
+        "name": "회사 이름",
+        "save": "이름 저장",
+        "saved": "회사 이름을 바꿨습니다."
+      },
+      "policies": {
+        "title": "회사 정책",
+        "description": "회사 공개 게시와 감사 기록 보존 기간을 정합니다.",
+        "sectionTitle": "정책",
+        "sectionDescription": "회사 관리자만 바꿀 수 있습니다.",
+        "readOnly": "회사 구성원은 정책을 볼 수만 있습니다. 변경은 회사 관리자가 합니다.",
+        "publish": {
+          "label": "회사 공개 게시",
+          "description": "마켓플레이스 항목을 회사 전체에 공개하는 방식을 정합니다.",
+          "disabled": "불가",
+          "open": "자유",
+          "approval": "승인"
+        },
+        "retention": {
+          "label": "감사 기록 보존 기간 (일)",
+          "description": "{min}~{max}일 사이로 정합니다. 기본값은 365일입니다.",
+          "invalid": "{min}~{max}일 사이의 정수를 입력해 주세요."
+        },
+        "save": "정책 저장",
+        "saved": "회사 정책을 저장했습니다.",
+        "confirmTitle": "보존 기간을 줄일까요?",
+        "confirmDescription": "줄인 기간보다 오래된 감사 기록 {count}건이 다음 정리 때 삭제됩니다.",
+        "confirm": "줄이고 저장"
+      },
+      "publications": {
+        "title": "공개 승인",
+        "description": "회사 공개를 요청한 항목입니다. 원본 내용은 열 수 없습니다.",
+        "empty": "승인 대기 중인 항목이 없습니다.",
+        "origin": "게시 조직 {organization} · 게시자 {publisher}",
+        "unknownPublisher": "알 수 없음",
+        "credentialTypes": "필요한 자격증명 유형: {types}",
+        "noCredentials": "없음",
+        "approve": "승인",
+        "reject": "거절",
+        "approveItem": "{name} 승인",
+        "rejectItem": "{name} 거절",
+        "approved": "회사 공개를 승인했습니다.",
+        "rejected": "회사 공개를 거절했습니다.",
+        "rejectTitle": "공개 요청 거절",
+        "rejectDescription": "{name} 요청을 거절하는 사유를 남겨 주세요. 요청자에게 전달됩니다.",
+        "note": "거절 사유",
+        "submitReject": "거절하기"
+      },
+      "members": {
+        "title": "회사 구성원",
+        "description": "회사에 속한 사람과 회사 관리자·감사자를 관리합니다. 조직 소속은 각 조직에서 정합니다.",
+        "listTitle": "구성원",
+        "listDescription": "회사 관리자는 조직 구성원이 아니어도 모든 조직을 관리할 수 있지만, 조직 자원을 쓰려면 조직 구성원이어야 합니다.",
+        "empty": "회사 구성원이 없습니다.",
+        "name": "이름",
+        "roles": "회사 역할",
+        "status": "상태",
+        "actions": "작업",
+        "role": {
+          "admin": "회사 관리자",
+          "auditor": "회사 감사자",
+          "member": "구성원"
+        },
+        "memberStatus": {
+          "active": "활성",
+          "suspended": "정지",
+          "removed": "제거됨"
+        },
+        "grant": {
+          "admin": "{name} 님을 회사 관리자로 지정",
+          "auditor": "{name} 님을 회사 감사자로 지정"
+        },
+        "revoke": {
+          "admin": "{name} 님의 회사 관리자 해제",
+          "auditor": "{name} 님의 회사 감사자 해제"
+        },
+        "grantShort": {
+          "admin": "관리자 지정",
+          "auditor": "감사자 지정"
+        },
+        "revokeShort": {
+          "admin": "관리자 해제",
+          "auditor": "감사자 해제"
+        },
+        "suspend": "{name} 님 정지",
+        "reactivate": "{name} 님 정지 해제",
+        "suspendShort": "정지",
+        "reactivateShort": "정지 해제",
+        "remove": "{name} 님을 회사에서 제거",
+        "removeShort": "제거",
+        "removeTitle": "회사에서 제거할까요?",
+        "removeDescription": "{name} 님을 회사와 모든 조직에서 제거합니다.",
+        "updated": "구성원을 변경했습니다."
+      },
+      "invitations": {
+        "title": "회사 초대",
+        "description": "초대 링크를 만들어 직접 전달합니다. 메일은 보내지 않으며 링크는 7일 동안 한 번 쓸 수 있습니다.",
+        "empty": "초대가 없습니다.",
+        "invite": "회사에 초대",
+        "expires": "만료: {date}",
+        "role": {
+          "none": "구성원",
+          "admin": "회사 관리자",
+          "auditor": "회사 감사자"
+        },
+        "status": {
+          "pending": "대기",
+          "accepted": "수락됨",
+          "revoked": "회수됨",
+          "expired": "만료됨"
+        },
+        "resend": "다시 만들기",
+        "resendFor": "{email} 초대 다시 만들기",
+        "revoke": "회수",
+        "revokeFor": "{email} 초대 회수",
+        "revoked": "초대를 회수했습니다.",
+        "inviteTitle": "회사에 초대",
+        "inviteDescription": "초대받은 사람은 링크로 가입하거나 로그인해 회사에 들어옵니다.",
+        "email": "이메일",
+        "roleLabel": "회사 역할",
+        "submit": "초대 만들기",
+        "createdTitle": "초대를 만들었습니다",
+        "createdDescription": "{email} 님에게 전달할 초대 코드입니다.",
+        "tokenOnce": "초대 코드는 지금 한 번만 복사할 수 있습니다. 안전한 경로로만 전달해 주세요.",
+        "copyToken": "초대 코드 복사",
+        "tokenCopied": "초대 코드를 복사했습니다.",
+        "tokenCopyFailed": "초대 코드를 복사하지 못했습니다.",
+        "tokenUnavailable": "초대 코드가 응답에 포함되지 않았습니다."
+      },
+      "orgSelect": {
+        "all": "모든 조직",
+        "none": "없음",
+        "unknown": "알 수 없는 조직",
+        "loading": "조직 목록을 불러오는 중입니다.",
+        "empty": "선택할 수 있는 조직이 없습니다."
+      },
+      "catalogPage": {
+        "title": "모델과 LLM 설정",
+        "description": "회사가 쓰는 모델과 키를 정합니다. 조직마다 쓸 수 있는 모델은 조직 카탈로그 정책에서 좁힐 수 있습니다.",
+        "tabsLabel": "회사 설정 영역",
+        "tabs": {
+          "models": "모델",
+          "credentials": "공용 자격증명",
+          "llm": "서비스 LLM",
+          "catalog": "회사 카탈로그"
+        }
+      },
+      "models": {
+        "title": "모델",
+        "description": "플랫폼 모델은 허용 조직만 정하고, 회사 모델은 직접 등록·수정합니다.",
+        "platformDisabled": "이 회사는 플랫폼 키를 쓸 수 없습니다. 플랫폼 모델은 회사 키를 연결해야 켤 수 있습니다.",
+        "add": "모델 추가",
+        "empty": "모델이 없습니다.",
+        "name": "모델",
+        "source": "제공",
+        "keyColumn": "키",
+        "orgs": "허용 조직",
+        "actions": "작업",
+        "sourceLabel": {
+          "platform": "플랫폼",
+          "company": "회사"
+        },
+        "companyDisabled": "회사에서 꺼짐",
+        "key": {
+          "platform": "플랫폼 키",
+          "none": "키 없음",
+          "companyRequired": "회사 키 필요"
+        },
+        "edit": "수정",
+        "delete": "삭제",
+        "editFor": "{name} 수정",
+        "deleteFor": "{name} 삭제",
+        "deleteTitle": "회사 모델을 삭제할까요?",
+        "deleteDescription": "{name} 모델을 삭제하면 이 모델을 쓰던 조직에서 더 이상 쓸 수 없습니다.",
+        "deleted": "모델을 삭제했습니다.",
+        "dialog": {
+          "createTitle": "회사 모델 추가",
+          "editTitle": "{name} 수정",
+          "companyDescription": "회사 모델은 지정한 조직에서만 쓸 수 있습니다.",
+          "platformDescription": "플랫폼 모델은 회사에서 허용 조직만 정할 수 있습니다.",
+          "provider": "제공자",
+          "modelName": "모델 ID",
+          "displayName": "표시 이름",
+          "baseUrl": "Base URL (선택)",
+          "baseUrlHint": "사내 vLLM처럼 OpenAI 호환 엔드포인트일 때 입력합니다.",
+          "credential": "기본 자격증명",
+          "noCredential": "지정 안 함",
+          "orgs": "허용 조직",
+          "save": "저장",
+          "saved": "모델을 저장했습니다."
+        }
+      },
+      "credentials": {
+        "title": "공용 자격증명",
+        "description": "회사 공용 자격증명입니다. 값은 표시하지 않고 쓸 수 있는 조직만 지정합니다.",
+        "add": "자격증명 만들기",
+        "empty": "공용 자격증명이 없습니다.",
+        "name": "이름",
+        "fields": "필드",
+        "orgs": "쓸 수 있는 조직",
+        "actions": "작업",
+        "disabled": "꺼짐",
+        "edit": "수정",
+        "delete": "삭제",
+        "editFor": "{name} 수정",
+        "deleteFor": "{name} 삭제",
+        "deleteTitle": "공용 자격증명을 삭제할까요?",
+        "deleteDescription": "{name}을 삭제하면 이 자격증명을 쓰던 모델과 에이전트가 동작하지 않을 수 있습니다.",
+        "deleted": "공용 자격증명을 삭제했습니다.",
+        "dialog": {
+          "createTitle": "공용 자격증명 만들기",
+          "editTitle": "{name} 수정",
+          "description": "저장한 값은 다시 표시되지 않습니다. 개인 계정 유형은 공용으로 만들 수 없습니다.",
+          "type": "유형",
+          "typePlaceholder": "유형 선택",
+          "name": "이름",
+          "active": "사용",
+          "replace": "값 교체",
+          "orgs": "쓸 수 있는 조직",
+          "save": "저장",
+          "saved": "공용 자격증명을 저장했습니다."
+        }
+      },
+      "llm": {
+        "title": "서비스 LLM",
+        "description": "빌더·어시스턴트·이미지 등 서비스 기능이 쓰는 모델입니다. 플랫폼 기본값을 따르거나 회사 값으로 덮어씁니다.",
+        "platformDisabled": "이 회사는 플랫폼 기본값을 쓸 수 없습니다. 역할마다 회사 값을 지정해 주세요.",
+        "role": {
+          "text_primary": "기본 텍스트 모델",
+          "text_fallback": "대체 텍스트 모델",
+          "image": "이미지 모델"
+        },
+        "inherits": "플랫폼 기본값을 따릅니다.",
+        "override": "회사 값: {credential} / {model}",
+        "configured": "사용 가능",
+        "notConfigured": "설정 필요",
+        "edit": "회사 값 지정",
+        "editFor": "{role} 회사 값 지정",
+        "inherit": "기본값 따르기",
+        "inheritFor": "{role} 플랫폼 기본값 따르기",
+        "dialogDescription": "회사 공용 자격증명과 모델 ID를 지정합니다.",
+        "credential": "자격증명",
+        "pickCredential": "자격증명 선택",
+        "model": "모델 ID",
+        "save": "저장",
+        "saved": "서비스 LLM 설정을 저장했습니다."
+      },
+      "catalog": {
+        "title": "회사 카탈로그",
+        "description": "회사에서 쓸 모델·도구·스킬·MCP 서버를 켜고 끕니다. 조직은 여기서 켠 항목 안에서만 다시 좁힐 수 있습니다.",
+        "platformDisabled": "이 회사는 플랫폼 모델을 쓸 수 없습니다. 플랫폼에서 숨긴 항목은 켤 수 없습니다.",
+        "empty": "카탈로그 항목이 없습니다.",
+        "save": "카탈로그 저장",
+        "saved": "회사 카탈로그를 저장했습니다.",
+        "kind": {
+          "model": "모델",
+          "tool": "도구",
+          "skill": "스킬",
+          "mcp_server": "MCP 서버"
+        },
+        "source": {
+          "platform": "플랫폼",
+          "company": "회사"
+        },
+        "platformHidden": "플랫폼에서 숨김",
+        "toggle": "{name} 사용"
       }
     }
   },
@@ -4803,7 +5094,10 @@
       "organizationRoles": "역할 및 권한",
       "organizationRequests": "접근 요청",
       "companyOrganizations": "회사 조직 목록",
-      "companySso": "SSO와 도메인"
+      "companySso": "SSO와 도메인",
+      "companyMembers": "회사 구성원",
+      "companyPolicies": "회사 정책",
+      "companyModels": "모델과 LLM 설정"
     },
     "profile": {
       "title": "프로필",

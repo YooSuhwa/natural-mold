@@ -330,7 +330,11 @@
       "conflict": "This conflicts with the current state.",
       "not_found": "The target could not be found.",
       "forbidden": "Access denied.",
-      "generic": "The request could not be completed. Please try again later."
+      "generic": "The request could not be completed. Please try again later.",
+      "last_tenant_admin": "The last company admin cannot be removed or demoted.",
+      "catalog_policy_locked": "This item is blocked at a higher tier and cannot be turned on.",
+      "validation_error": "Please check the input.",
+      "invitation_membership_blocked": "This user is already in the company or cannot be invited."
     },
     "picker": {
       "placeholder": "Search by name or email",
@@ -727,6 +731,293 @@
         "requiredNotice": "{count} members who signed in with a password will use the IdP from their next sign-in.",
         "save": "Save",
         "saved": "SSO policy saved."
+      }
+    },
+    "companySettings": {
+      "adminOnly": "Company admins only",
+      "adminOnlyDescription": "This page needs company administrator permission. Ask a company admin if you need access.",
+      "profile": {
+        "title": "Company overview",
+        "description": "Manage the organizations, members and shared settings of the company. Organization conversations and resource contents are not visible here.",
+        "access": {
+          "admin": "Company admin",
+          "auditor": "Company auditor (read-only)",
+          "member": "Company member"
+        },
+        "status": {
+          "active": "Active",
+          "suspended": "Suspended",
+          "deletion_scheduled": "Deletion scheduled"
+        },
+        "organizations": "Organizations",
+        "members": "Members",
+        "admins": "Company admins",
+        "slug": "Company identifier: {slug}",
+        "name": "Company name",
+        "save": "Save name",
+        "saved": "Company name updated."
+      },
+      "policies": {
+        "title": "Company policies",
+        "description": "Set company-wide publication and audit log retention.",
+        "sectionTitle": "Policies",
+        "sectionDescription": "Only company admins can change these.",
+        "readOnly": "Company members can view the policies. Company admins change them.",
+        "publish": {
+          "label": "Company-wide publication",
+          "description": "How marketplace items are published to the whole company.",
+          "disabled": "Not allowed",
+          "open": "Open",
+          "approval": "Approval"
+        },
+        "retention": {
+          "label": "Audit log retention (days)",
+          "description": "Between {min} and {max} days. The default is 365 days.",
+          "invalid": "Enter a whole number between {min} and {max}."
+        },
+        "save": "Save policies",
+        "saved": "Company policies saved.",
+        "confirmTitle": "Shorten the retention period?",
+        "confirmDescription": "{count} audit records older than the new period will be deleted at the next cleanup.",
+        "confirm": "Shorten and save"
+      },
+      "publications": {
+        "title": "Publication approvals",
+        "description": "Items waiting for company-wide publication. Their contents cannot be opened.",
+        "empty": "No items are waiting for approval.",
+        "origin": "Organization {organization} · Publisher {publisher}",
+        "unknownPublisher": "Unknown",
+        "credentialTypes": "Required credential types: {types}",
+        "noCredentials": "None",
+        "approve": "Approve",
+        "reject": "Reject",
+        "approveItem": "Approve {name}",
+        "rejectItem": "Reject {name}",
+        "approved": "Company-wide publication approved.",
+        "rejected": "Company-wide publication rejected.",
+        "rejectTitle": "Reject publication request",
+        "rejectDescription": "Give a reason for rejecting {name}. The requester will see it.",
+        "note": "Reason",
+        "submitReject": "Reject"
+      },
+      "members": {
+        "title": "Company members",
+        "description": "Manage the people in the company and company admins and auditors. Organization membership is set in each organization.",
+        "listTitle": "Members",
+        "listDescription": "Company admins can manage every organization without joining it, but must be organization members to use its resources.",
+        "empty": "No company members.",
+        "name": "Name",
+        "roles": "Company role",
+        "status": "Status",
+        "actions": "Actions",
+        "role": {
+          "admin": "Company admin",
+          "auditor": "Company auditor",
+          "member": "Member"
+        },
+        "memberStatus": {
+          "active": "Active",
+          "suspended": "Suspended",
+          "removed": "Removed"
+        },
+        "grant": {
+          "admin": "Make {name} a company admin",
+          "auditor": "Make {name} a company auditor"
+        },
+        "revoke": {
+          "admin": "Remove company admin from {name}",
+          "auditor": "Remove company auditor from {name}"
+        },
+        "grantShort": {
+          "admin": "Make admin",
+          "auditor": "Make auditor"
+        },
+        "revokeShort": {
+          "admin": "Remove admin",
+          "auditor": "Remove auditor"
+        },
+        "suspend": "Suspend {name}",
+        "reactivate": "Reactivate {name}",
+        "suspendShort": "Suspend",
+        "reactivateShort": "Reactivate",
+        "remove": "Remove {name} from the company",
+        "removeShort": "Remove",
+        "removeTitle": "Remove from the company?",
+        "removeDescription": "{name} will be removed from the company and every organization.",
+        "updated": "Member updated."
+      },
+      "invitations": {
+        "title": "Company invitations",
+        "description": "Create an invitation link and hand it over yourself. No email is sent; a link works once for 7 days.",
+        "empty": "No invitations.",
+        "invite": "Invite to company",
+        "expires": "Expires: {date}",
+        "role": {
+          "none": "Member",
+          "admin": "Company admin",
+          "auditor": "Company auditor"
+        },
+        "status": {
+          "pending": "Pending",
+          "accepted": "Accepted",
+          "revoked": "Revoked",
+          "expired": "Expired"
+        },
+        "resend": "Recreate",
+        "resendFor": "Recreate the invitation for {email}",
+        "revoke": "Revoke",
+        "revokeFor": "Revoke the invitation for {email}",
+        "revoked": "Invitation revoked.",
+        "inviteTitle": "Invite to company",
+        "inviteDescription": "The invitee signs up or signs in with the link to join the company.",
+        "email": "Email",
+        "roleLabel": "Company role",
+        "submit": "Create invitation",
+        "createdTitle": "Invitation created",
+        "createdDescription": "Invitation code for {email}.",
+        "tokenOnce": "You can copy the invitation code only now. Share it only over a safe channel.",
+        "copyToken": "Copy invitation code",
+        "tokenCopied": "Invitation code copied.",
+        "tokenCopyFailed": "Could not copy the invitation code.",
+        "tokenUnavailable": "The response did not include an invitation code."
+      },
+      "orgSelect": {
+        "all": "All organizations",
+        "none": "None",
+        "unknown": "Unknown organization",
+        "loading": "Loading organizations.",
+        "empty": "No organizations to choose from."
+      },
+      "catalogPage": {
+        "title": "Models and LLM settings",
+        "description": "Choose the models and keys the company uses. Each organization can narrow its models in its catalog policy.",
+        "tabsLabel": "Company settings sections",
+        "tabs": {
+          "models": "Models",
+          "credentials": "Shared credentials",
+          "llm": "Service LLM",
+          "catalog": "Company catalog"
+        }
+      },
+      "models": {
+        "title": "Models",
+        "description": "Platform models only take allowed organizations; company models are registered and edited here.",
+        "platformDisabled": "This company cannot use platform keys. Platform models need a company key to be turned on.",
+        "add": "Add model",
+        "empty": "No models.",
+        "name": "Model",
+        "source": "Source",
+        "keyColumn": "Key",
+        "orgs": "Allowed organizations",
+        "actions": "Actions",
+        "sourceLabel": {
+          "platform": "Platform",
+          "company": "Company"
+        },
+        "companyDisabled": "Off for the company",
+        "key": {
+          "platform": "Platform key",
+          "none": "No key",
+          "companyRequired": "Company key required"
+        },
+        "edit": "Edit",
+        "delete": "Delete",
+        "editFor": "Edit {name}",
+        "deleteFor": "Delete {name}",
+        "deleteTitle": "Delete this company model?",
+        "deleteDescription": "After deleting {name}, organizations that used it can no longer use it.",
+        "deleted": "Model deleted.",
+        "dialog": {
+          "createTitle": "Add company model",
+          "editTitle": "Edit {name}",
+          "companyDescription": "Company models are usable only in the organizations you choose.",
+          "platformDescription": "For platform models the company only chooses the allowed organizations.",
+          "provider": "Provider",
+          "modelName": "Model ID",
+          "displayName": "Display name",
+          "baseUrl": "Base URL (optional)",
+          "baseUrlHint": "For OpenAI-compatible endpoints such as an in-house vLLM.",
+          "credential": "Default credential",
+          "noCredential": "None",
+          "orgs": "Allowed organizations",
+          "save": "Save",
+          "saved": "Model saved."
+        }
+      },
+      "credentials": {
+        "title": "Shared credentials",
+        "description": "Company shared credentials. Values are never shown; you only choose which organizations may use them.",
+        "add": "Create credential",
+        "empty": "No shared credentials.",
+        "name": "Name",
+        "fields": "Fields",
+        "orgs": "Usable by",
+        "actions": "Actions",
+        "disabled": "Off",
+        "edit": "Edit",
+        "delete": "Delete",
+        "editFor": "Edit {name}",
+        "deleteFor": "Delete {name}",
+        "deleteTitle": "Delete this shared credential?",
+        "deleteDescription": "Models and agents that use {name} may stop working.",
+        "deleted": "Shared credential deleted.",
+        "dialog": {
+          "createTitle": "Create shared credential",
+          "editTitle": "Edit {name}",
+          "description": "Saved values are never shown again. Personal account types cannot be shared.",
+          "type": "Type",
+          "typePlaceholder": "Choose a type",
+          "name": "Name",
+          "active": "Enabled",
+          "replace": "Replace values",
+          "orgs": "Usable by",
+          "save": "Save",
+          "saved": "Shared credential saved."
+        }
+      },
+      "llm": {
+        "title": "Service LLM",
+        "description": "Models used by service features such as the builder, assistant and images. Follow the platform default or override it for the company.",
+        "platformDisabled": "This company cannot use the platform defaults. Set a company value for each role.",
+        "role": {
+          "text_primary": "Primary text model",
+          "text_fallback": "Fallback text model",
+          "image": "Image model"
+        },
+        "inherits": "Follows the platform default.",
+        "override": "Company value: {credential} / {model}",
+        "configured": "Ready",
+        "notConfigured": "Needs setup",
+        "edit": "Set company value",
+        "editFor": "Set the company value for {role}",
+        "inherit": "Use default",
+        "inheritFor": "Use the platform default for {role}",
+        "dialogDescription": "Choose a company shared credential and a model ID.",
+        "credential": "Credential",
+        "pickCredential": "Choose a credential",
+        "model": "Model ID",
+        "save": "Save",
+        "saved": "Service LLM settings saved."
+      },
+      "catalog": {
+        "title": "Company catalog",
+        "description": "Turn models, tools, skills and MCP servers on or off for the company. Organizations can only narrow within what is on here.",
+        "platformDisabled": "This company cannot use platform models. Items the platform hid cannot be turned on.",
+        "empty": "No catalog items.",
+        "save": "Save catalog",
+        "saved": "Company catalog saved.",
+        "kind": {
+          "model": "Models",
+          "tool": "Tools",
+          "skill": "Skills",
+          "mcp_server": "MCP servers"
+        },
+        "source": {
+          "platform": "Platform",
+          "company": "Company"
+        },
+        "platformHidden": "Hidden by the platform",
+        "toggle": "Use {name}"
       }
     }
   },
@@ -4803,7 +5094,10 @@
       "organizationRoles": "Roles & capabilities",
       "organizationRequests": "Access requests",
       "companyOrganizations": "Company organizations",
-      "companySso": "SSO & domains"
+      "companySso": "SSO & domains",
+      "companyMembers": "Company members",
+      "companyPolicies": "Company policies",
+      "companyModels": "Models and LLM settings"
     },
     "profile": {
       "title": "Profile",

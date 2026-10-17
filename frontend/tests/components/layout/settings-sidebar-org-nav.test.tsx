@@ -121,4 +121,31 @@ describe('SettingsSidebar organization section', () => {
     renderSidebar()
     expect(screen.getByRole('link', { name: '회사 조직 목록' })).toBeInTheDocument()
   })
+
+  it('shows the company settings screens to company admins (S05–S07)', () => {
+    orgHooks.overview.mockReturnValue({ data: { access: 'admin' } })
+    renderSidebar()
+    for (const name of [
+      '회사 조직 목록',
+      '회사 구성원',
+      '회사 정책',
+      '모델과 LLM 설정',
+      'SSO와 도메인',
+    ]) {
+      expect(screen.getByRole('link', { name })).toBeInTheDocument()
+    }
+  })
+
+  it('fails closed while the company authority is unknown', () => {
+    renderSidebar()
+    expect(screen.queryByRole('link', { name: '회사 정책' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '회사 조직 목록' })).not.toBeInTheDocument()
+  })
+
+  it('shows plain members the company policies only', () => {
+    orgHooks.overview.mockReturnValue({ data: { access: 'member' } })
+    renderSidebar()
+    expect(screen.getByRole('link', { name: '회사 정책' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '회사 구성원' })).not.toBeInTheDocument()
+  })
 })

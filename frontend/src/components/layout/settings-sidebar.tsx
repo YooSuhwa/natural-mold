@@ -8,7 +8,6 @@ import {
   BarChart3Icon,
   BrainIcon,
   Building2Icon,
-  BuildingIcon,
   CalendarClockIcon,
   Code2Icon,
   FilesIcon,
@@ -26,6 +25,7 @@ import {
   UsersIcon,
 } from 'lucide-react'
 
+import { companyNavItems } from '@/components/layout/company-nav-items'
 import { SidebarBrandHeader } from '@/components/layout/sidebar-brand-header'
 import { SidebarNavSection } from '@/components/layout/sidebar-nav-section'
 import type { SidebarNavSectionConfig } from '@/components/layout/sidebar-nav-section'
@@ -62,8 +62,6 @@ export function SettingsSidebar() {
   const { data: organizationInfo } = useOrganizationInfo(activeOrganization?.id)
   const { data: tenantOverview } = useTenantOverview(activeOrganization?.tenant_id)
   const access = orgAccess(activeOrganization, organizationInfo?.permissions)
-  // Plain company members get 403 from the directory; hide it once that is known.
-  const showCompanyDirectory = tenantOverview?.access !== 'member'
 
   const baseSections: SidebarNavSectionConfig[] = [
     {
@@ -137,24 +135,7 @@ export function SettingsSidebar() {
                   },
                 ]
               : []),
-            ...(showCompanyDirectory
-              ? [
-                  {
-                    href: '/settings/company',
-                    label: tSettings('nav.companyOrganizations'),
-                    icon: BuildingIcon,
-                  },
-                ]
-              : []),
-            ...(tenantOverview?.access === 'admin'
-              ? [
-                  {
-                    href: '/settings/company/sso',
-                    label: tSettings('nav.companySso'),
-                    icon: ShieldIcon,
-                  },
-                ]
-              : []),
+            ...companyNavItems(tenantOverview?.access, tSettings),
           ],
         },
       ]
