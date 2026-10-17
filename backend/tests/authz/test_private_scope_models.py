@@ -16,6 +16,7 @@ _B08_ADDED_COLUMN_NULLABILITY = {
     "tools": _F04_MODES,
     "mcp_servers": _F04_MODES,
     "credentials": {"allowed_hosts": True},
+    "agents": {"llm_credential_delegated_by": True},  # F-01 (m86)
 }
 _B08_ADDED_COLUMNS = {name: set(columns) for name, columns in _B08_ADDED_COLUMN_NULLABILITY.items()}
 _B08_NULLABILITY_CHANGES = {
@@ -26,6 +27,7 @@ _B08_REMOVED_FOREIGN_KEYS = {
 }
 _B08_ADDED_FOREIGN_KEYS = {
     "conversation_artifacts": {(("agent_id",), ("agents.id",), "SET NULL")},
+    "agents": {(("llm_credential_delegated_by",), ("users.id",), "SET NULL")},  # F-01
 }
 
 

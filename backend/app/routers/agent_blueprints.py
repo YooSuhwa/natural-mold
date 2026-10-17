@@ -7,10 +7,12 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.agent_delegations import commit_and_apply, sync_agent_delegations
 from app.authz.blueprint_read_scope import read_blueprint_presentations
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_prefix import mark_org_writer
 from app.authz.policies import PRIVATE, authz_policy
-from app.authz.resource_lifecycle import apply_lifecycle, on_resource_created
+from app.authz.resource_lifecycle import on_resource_created
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
@@ -62,6 +64,7 @@ async def create_agent_from_blueprint(
     authz: AuthzService = Depends(get_authz),
 ) -> AgentResponse:
     await authz.require_cap(context, "cap_create_agent", legacy=True)
+    mark_org_writer(db)  # F-02: prefix takes the org row FOR UPDATE (delegation writes)
     agent = await agent_blueprint_service.create_agent_from_blueprint(
         db,
         blueprint_id=blueprint_id,
@@ -78,7 +81,10 @@ async def create_agent_from_blueprint(
         request=request,
         metadata={"blueprint_id": str(blueprint_id)},
     )
+    if agent.llm_credential_id is not None:  # F-02: the blueprint's bound model credential
+        agent.llm_credential_delegated_by = context.user_id
+        added = {("credential", agent.llm_credential_id)}
+        await sync_agent_delegations(db, context, agent.id, added=added)
     created = await on_resource_created(db, agent, mode=authz.mode)
-    await db.commit()
-    await apply_lifecycle(created, authz)  # read-your-writes before responding (8.6)
+    await commit_and_apply(db, authz, created)  # read-your-writes before responding (8.6)
     return await _scoped_agent_response(db, agent.id, context)

@@ -17,6 +17,7 @@ from app.authz.error_codes import (
 )
 from app.authz.org_administrators import active_administrators
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_prefix import mark_org_writer
 from app.config import settings
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found
@@ -159,6 +160,8 @@ async def authorize_agent_lifecycle(
     db: AsyncSession, actor: CurrentUser, request: AgentLifecycleAuthorization
 ) -> AgentLifecycleAuthority:
     """Authorize one lifecycle action against fresh persisted authority."""
+    if request.action == "archive":  # F-02: archive revokes subagent delegations
+        mark_org_writer(db)
     if request.context is not None:
         if request.context.user_id != actor.id:
             raise agent_not_found()

@@ -10,13 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.agent_runtime.runtime_policy import resolve_runtime_policy
+from app.authz.agent_delegations import commit_and_apply
 from app.authz.agent_lifecycle_scope import (
     AgentLifecycleAuthorization,
     authorize_agent_lifecycle,
 )
 from app.authz.org_context import OrgContext
 from app.authz.policies import CANDIDATES, CAP, CATALOG, GOVERNANCE, RES, authz_policy
-from app.authz.resource_lifecycle import apply_lifecycle, on_resource_created
+from app.authz.resource_lifecycle import on_resource_created
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
@@ -250,8 +251,7 @@ async def create_agent(
         },
     )
     created = await on_resource_created(db, agent, mode=authz.mode)
-    await db.commit()
-    await apply_lifecycle(created, authz)  # read-your-writes before responding (8.6)
+    await commit_and_apply(db, authz, created)  # with F-02 delegations (8.6 item 2)
     return await _present(db, authz, context, agent.id)
 
 
@@ -296,7 +296,7 @@ async def update_agent(
             "system_prompt_changed": "system_prompt" in data.model_fields_set,
         },
     )
-    await db.commit()
+    await commit_and_apply(db, authz)  # F-02 delegation tuples right after commit
     return await _present(db, authz, context, updated.id)
 
 
@@ -348,7 +348,7 @@ async def delete_agent(
             raise
         raise agent_not_found() from error
     result = await archive_agent(db, user, agent_id)
-    await db.commit()
+    await commit_and_apply(db)  # F-02: the archived subagent links' delegation revokes
     registry = get_run_task_registry()
     for intent in result.cancel_intents:
         notify_local_owner(intent, registry)

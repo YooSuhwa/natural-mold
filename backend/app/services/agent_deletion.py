@@ -9,7 +9,9 @@ from uuid import UUID
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.agent_delegations import sync_agent_delegations
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_prefix import mark_org_writer
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.scoping import private_scoped
 from app.error_codes import agent_not_found
@@ -39,6 +41,20 @@ class AgentArchiveRequest:
     agent_id: UUID
     actor_user_id: UUID
     archived_at: datetime
+
+
+async def _revoke_subagent_delegations(
+    db: AsyncSession, request: AgentArchiveRequest, parents: set[UUID]
+) -> None:
+    """F-02 (10.6): the removed subagent links' delegation grants go with them (the
+    archived agent's own and its parents'); only subagent links are reconciled, so no
+    private Agent column is read on this governance path. Tuples apply after commit."""
+    scope = (
+        await db.execute(select(Agent.org_id, Agent.tenant_id).where(Agent.id == request.agent_id))
+    ).one()
+    ctx = OrgContext(org_id=scope.org_id, tenant_id=scope.tenant_id, user_id=request.actor_user_id)
+    for agent_id in sorted({request.agent_id, *parents}, key=lambda item: item.bytes):
+        await sync_agent_delegations(db, ctx, agent_id, kinds=frozenset({"agent"}))
 
 
 async def stage_agent_archive(
@@ -129,6 +145,13 @@ async def stage_agent_archive(
         )
         .values(status="disabled", updated_at=archived_at)
     )
+    parents = set(
+        await db.scalars(
+            select(AgentSubAgentLink.parent_agent_id).where(
+                AgentSubAgentLink.sub_agent_id == request.agent_id
+            )
+        )
+    )
     await db.execute(
         delete(AgentSubAgentLink).where(
             or_(
@@ -137,6 +160,7 @@ async def stage_agent_archive(
             )
         )
     )
+    await _revoke_subagent_delegations(db, request, parents)
     intents = await stage_participant_cancel_intents(
         db,
         ParticipantCancelRequest(
@@ -149,7 +173,11 @@ async def stage_agent_archive(
 
 
 async def delete_agent(db: AsyncSession, agent: Agent, context: OrgContext) -> None:
-    """Compatibility facade: the former physical delete now archives in place."""
+    """Compatibility facade: the former physical delete now archives in place.
+
+    F-02: no app route calls it; it does not commit, so its queued delegation revokes
+    stay on the session for the caller's ``commit_and_apply`` (or the outbox worker)."""
+    mark_org_writer(db)  # archive may revoke: any prefix takes the org row FOR UPDATE
     await lock_agent_tree(db, agent.id)
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)

@@ -28,10 +28,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.agent_link_delegation import AgentLinkDelegation
 from app.models.resource_scope import NullableOrgScope, resource_scope_constraints
 
 
-class AgentSkillLink(Base):
+class AgentSkillLink(AgentLinkDelegation, Base):
     """Association: agent <-> skill.
 
     ``config`` (m42) carries agent-scoped overrides. Phase 1 uses it for

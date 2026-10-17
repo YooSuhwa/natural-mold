@@ -10,9 +10,11 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.agent_delegations import commit_and_apply
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_prefix import mark_org_writer
 from app.authz.policies import CAP, PRIVATE, authz_policy
-from app.authz.resource_lifecycle import apply_lifecycle, on_resource_created
+from app.authz.resource_lifecycle import on_resource_created
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
@@ -138,6 +140,7 @@ async def confirm_build(
         raise no_draft_config()
 
     # 원자적 PREVIEW → CONFIRMING 전환
+    mark_org_writer(db)  # F-02: confirm writes delegations; prefix takes the org row FOR UPDATE
     claimed = await builder_service.claim_for_confirming(db, session_id, context)
     if not claimed:
         raise session_confirming()
@@ -162,8 +165,7 @@ async def confirm_build(
         raise agent_creation_failed("에이전트를 생성할 수 없습니다")
     if authz.mode != "legacy":  # confirm_build committed; tuples follow in their own tx
         created = await on_resource_created(db, agent, mode=authz.mode)
-        await db.commit()
-        await apply_lifecycle(created, authz)
+        await commit_and_apply(db, authz, created)  # with confirm_build's delegations
     return await _scoped_agent_response(db, agent.id, context)
 
 

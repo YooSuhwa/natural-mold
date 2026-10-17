@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.attach_candidates import shared_attachable
 from app.authz.company_catalog import model_scope
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate, resource_candidates
@@ -20,9 +22,31 @@ from app.models.tool import AgentToolLink, Tool
 from app.schemas.agent import AgentCreate, AgentUpdate
 
 
-def _build_tool_links(tool_ids: list[uuid.UUID]) -> list[AgentToolLink]:
-    """Create AgentToolLink objects for the given tool ids."""
-    return [AgentToolLink(tool_id=tid) for tid in tool_ids]
+def _build_tool_links(
+    tool_ids: list[uuid.UUID], delegated_by: uuid.UUID | None = None
+) -> list[AgentToolLink]:
+    """Create AgentToolLink objects for the given tool ids (``delegated_by``: F-02)."""
+    return [AgentToolLink(tool_id=tid, delegated_by=delegated_by) for tid in tool_ids]
+
+
+def relink[L](
+    current: list[L],
+    ids: list[uuid.UUID],
+    key: Callable[[L], uuid.UUID],
+    make: Callable[[uuid.UUID], L],
+) -> list[L]:
+    """The link list for ``ids``: kept links are reused, so their delegator, ``required``
+    and ``link_status`` survive an update (10.6, F-02); only new ids get new rows."""
+    kept = {key(link): link for link in current}
+    return [kept.pop(i) if i in kept else make(i) for i in ids]
+
+
+async def _widen(
+    db: AsyncSession, ctx: OrgContext, kind: str, ids: list[uuid.UUID], valid: set[uuid.UUID]
+) -> set[uuid.UUID]:
+    """F-02 (9.1, 10.6): enforced types also accept shared rows the actor may attach."""
+    missing = [i for i in ids if i not in valid]
+    return valid | await shared_attachable(db, ctx, kind, missing) if missing else valid
 
 
 async def _validate_sub_agent_ids_owned(
@@ -39,7 +63,7 @@ async def _validate_sub_agent_ids_owned(
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
         )
     )
-    valid = {row[0] for row in result.all()}
+    valid = await _widen(db, context, "agent", sub_agent_ids, {row[0] for row in result.all()})
     invalid = [str(i) for i in sub_agent_ids if i not in valid]
     if invalid:
         raise HTTPException(
@@ -62,7 +86,7 @@ async def _validate_mcp_tool_ids_owned(
         .join(McpServer, McpTool.server_id == McpServer.id)
         .where(McpTool.id.in_(mcp_tool_ids), private_scope_predicate(McpServer, context))
     )
-    valid = {row[0] for row in result.all()}
+    valid = await _widen(db, context, "mcp_tool", mcp_tool_ids, {row[0] for row in result.all()})
     invalid = [str(i) for i in mcp_tool_ids if i not in valid]
     if invalid:
         raise HTTPException(
@@ -80,7 +104,7 @@ async def _validate_tool_ids_owned(
     result = await db.execute(
         resource_candidates(select(Tool.id).where(Tool.id.in_(tool_ids)), Tool, context)
     )
-    valid = {row[0] for row in result.all()}
+    valid = await _widen(db, context, "tool", tool_ids, {row[0] for row in result.all()})
     invalid = [str(i) for i in tool_ids if i not in valid]
     if invalid:
         raise HTTPException(
@@ -125,7 +149,7 @@ async def _validate_skill_ids_owned(
             private_scope_predicate(Skill, context),
         )
     )
-    valid = {row[0] for row in result.all()}
+    valid = await _widen(db, context, "skill", skill_ids, {row[0] for row in result.all()})
     invalid = [str(i) for i in skill_ids if i not in valid]
     if invalid:
         raise HTTPException(

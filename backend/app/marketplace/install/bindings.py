@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.agent_delegations import sync_agent_delegations
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scoped
 from app.error_codes import marketplace_credential_required
@@ -188,8 +189,12 @@ async def _materialize_mcp_tool_snapshot(
     server: McpServer,
     payload: dict[str, Any],
     preserve_enabled: bool = False,
+    context: OrgContext | None = None,
 ) -> None:
     """Materialize publisher-provided ``tool_snapshot`` rows as ``McpTool``.
+
+    F-02: with ``context``, agents that lose their last linked tool of this server lose
+    its delegation grant too (revoke only; the remaining links were not made by the actor).
 
     ``install_defaults.enabled_tool_names`` (written by the publish flow in
     ``mcp_server.build_mcp_server_payload``) selects which snapshot tools
@@ -262,10 +267,18 @@ async def _materialize_mcp_tool_snapshot(
         # stale row instead of leaving a permanently-disabled dangling tool,
         # and drop any agent links that pointed at it (Postgres cascades on
         # the FK; the explicit delete keeps SQLite tests correct too).
+        unlinked: set[uuid.UUID] = set()
         for tool in existing_tools:
             if tool.name not in valid_names:
+                linked = select(AgentMcpToolLink.agent_id).where(
+                    AgentMcpToolLink.mcp_tool_id == tool.id
+                )
+                unlinked |= set(await db.scalars(linked))
                 await db.execute(
                     delete(AgentMcpToolLink).where(AgentMcpToolLink.mcp_tool_id == tool.id)
                 )
                 await db.delete(tool)
+        for agent_id in sorted(unlinked, key=lambda item: item.bytes):
+            if context is not None:
+                await sync_agent_delegations(db, context, agent_id)  # revoke only
         server.last_tool_count = len(valid_names)

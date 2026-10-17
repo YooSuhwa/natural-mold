@@ -19,6 +19,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.agent_delegations import pending_change
 from app.authz.org_context import OrgContext
 from app.authz.resource_gate import gate_cap
 from app.authz.resource_lifecycle import (
@@ -92,7 +93,8 @@ async def installation_created(
             select(McpTool).where(McpTool.server_id == installation.installed_mcp_server_id)
         )
         rows += list(tools)
-    return merge(*[await on_resource_created(db, row, mode=authz.mode) for row in rows])
+    created = [await on_resource_created(db, row, mode=authz.mode) for row in rows]
+    return pending_change(db, *created)  # plus F-02 revocations of a snapshot refresh
 
 
 async def installation_resources_deleting(

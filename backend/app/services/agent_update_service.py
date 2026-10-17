@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.identity import validate_identity_mode
 from app.agent_runtime.runtime_policy import runtime_policy_to_json
+from app.authz.agent_delegations import added_keys, lock_delegations, sync_agent_delegations
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.attach_rules import (
     attach_baseline,
@@ -18,13 +19,15 @@ from app.authz.attach_rules import (
     require_shared_attach,
 )
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_prefix import mark_org_writer
 from app.error_codes import agent_not_found
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.mcp_tool import AgentMcpToolLink
 from app.models.skill import AgentSkillLink
+from app.models.tool import AgentToolLink
 from app.schemas.agent import AgentUpdate
-from app.services.agent_binding_service import _build_tool_links, _validate_agent_binding_ids
+from app.services.agent_binding_service import _validate_agent_binding_ids, relink
 from app.services.agent_query_service import get_agent
 
 
@@ -45,6 +48,11 @@ async def toggle_favorite(db: AsyncSession, agent: Agent, context: OrgContext) -
 async def update_agent(
     db: AsyncSession, agent: Agent, data: AgentUpdate, *, context: OrgContext
 ) -> Agent:
+    if any(
+        v is not None
+        for v in (data.tool_ids, data.mcp_tool_ids, data.skill_ids, data.sub_agent_ids)
+    ):
+        mark_org_writer(db)  # F-02: the prefix takes the org row FOR UPDATE (no upgrade)
     await load_agent_tree_for_execution(db, AgentExecutionTarget(agent.id, context))
     scoped = await get_agent(db, agent.id, context)
     if scoped is None:
@@ -62,6 +70,16 @@ async def update_agent(
     )
     relinks = (data.tool_ids, data.mcp_tool_ids, data.skill_ids, data.sub_agent_ids)
     before = await attach_baseline(db, agent.id) if any(v is not None for v in relinks) else None
+    if before is not None:  # E-02 order: org row before the agent/link/grant writes
+        await lock_delegations(db, context)
+    added = await added_keys(
+        db,
+        tool_ids=_added(data.tool_ids, {link.tool_id for link in agent.tool_links}),
+        mcp_tool_ids=_added(data.mcp_tool_ids, {link.mcp_tool_id for link in agent.mcp_tool_links}),
+        skill_ids=_added(data.skill_ids, {link.skill_id for link in agent.skill_links}),
+        agent_ids=_added(data.sub_agent_ids, {link.sub_agent_id for link in agent.sub_agent_links}),
+    )
+    actor = context.user_id  # F-02: delegator of the link rows created below
     if data.identity_mode is not None and data.identity_mode != agent.identity_mode:
         next_mode = validate_identity_mode(data.identity_mode)
         if next_mode == "per_user" and await _count_active_triggers(db, agent.id) > 0:
@@ -95,27 +113,36 @@ async def update_agent(
             [str(fid) for fid in data.model_fallback_ids] if data.model_fallback_ids else None
         )
     if data.tool_ids is not None:
-        # Clear existing links first to avoid PK conflict, then add new ones
-        agent.tool_links.clear()
-        await db.flush()
-        agent.tool_links = _build_tool_links(data.tool_ids)
+        agent.tool_links = relink(
+            agent.tool_links,
+            data.tool_ids,
+            lambda link: link.tool_id,
+            lambda tid: AgentToolLink(tool_id=tid, delegated_by=actor),
+        )
     if data.mcp_tool_ids is not None:
-        agent.mcp_tool_links.clear()
-        await db.flush()
-        agent.mcp_tool_links = [AgentMcpToolLink(mcp_tool_id=mid) for mid in data.mcp_tool_ids]
+        agent.mcp_tool_links = relink(
+            agent.mcp_tool_links,
+            data.mcp_tool_ids,
+            lambda link: link.mcp_tool_id,
+            lambda mid: AgentMcpToolLink(mcp_tool_id=mid, delegated_by=actor),
+        )
     if data.skill_ids is not None:
-        agent.skill_links.clear()
-        await db.flush()
-        agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in data.skill_ids]
+        agent.skill_links = relink(
+            agent.skill_links,
+            data.skill_ids,
+            lambda link: link.skill_id,
+            lambda sid: AgentSkillLink(skill_id=sid, delegated_by=actor),
+        )
     if data.sub_agent_ids is not None:
         # 자기참조 방어: DB CHECK 제약과 이중 가드
-        # 소유권/실재 검증 (cross-tenant leak + 500 IntegrityError 방지)
-        agent.sub_agent_links.clear()
-        await db.flush()
-        agent.sub_agent_links = [
-            AgentSubAgentLink(sub_agent_id=sid, position=idx)
-            for idx, sid in enumerate(data.sub_agent_ids)
-        ]
+        agent.sub_agent_links = relink(
+            agent.sub_agent_links,
+            data.sub_agent_ids,
+            lambda link: link.sub_agent_id,
+            lambda sid: AgentSubAgentLink(sub_agent_id=sid, delegated_by=actor),
+        )
+        for idx, link in enumerate(agent.sub_agent_links):
+            link.position = idx
     await db.flush()
     if before is not None:
         lent = await require_shared_attach(
@@ -123,6 +150,7 @@ async def update_agent(
         )
         if lent and data.confirm_delegation:  # D17 audit: what the actor confirmed
             await audit_delegation_confirm(db, context, agent, lent)
+        await sync_agent_delegations(db, context, agent.id, added=added)  # F-02 (10.6)
     await db.refresh(
         agent,
         ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],

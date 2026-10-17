@@ -48,13 +48,18 @@ async def delegation_carriers(db: AsyncSession, agent_id: UUID) -> list[Carrier]
         )
         .order_by(ResourceGrant.resource_type, ResourceGrant.resource_id)
     )
+    grants = rows.tuples().all()
+    held: dict[str, dict[UUID, UUID | None]] = {}
+    for kind, model in _CARRYING.items():  # one IN query per carrying type (E-06 note 6)
+        ids = {rid for k, rid in grants if k == kind}
+        if ids:
+            found_ids = await db.execute(
+                select(model.id, model.credential_id).where(model.id.in_(ids))
+            )
+            held[kind] = dict(found_ids.tuples().all())
     found: list[Carrier] = []
-    for kind, rid in rows.tuples().all():
-        if kind == "credential":
-            found.append((kind, rid, rid))
-            continue
-        model = _CARRYING[kind]
-        cid = await db.scalar(select(model.credential_id).where(model.id == rid))
+    for kind, rid in grants:
+        cid = rid if kind == "credential" else held.get(kind, {}).get(rid)
         if cid is not None:  # a tool/server without its owner's account lends nothing
             found.append((kind, rid, cid))
     return found
@@ -107,4 +112,10 @@ async def describe(db: AsyncSession, found: Iterable[Carrier]) -> list[dict[str,
 async def delegated_accounts(db: AsyncSession, agent_id: UUID) -> list[dict[str, object]]:
     """Everything sharing ``agent_id`` lends: current links plus delegation grants."""
     links = await agent_carriers(db, agent_id)
-    return await describe(db, [*links, *await delegation_carriers(db, agent_id)])
+    lent = {cid for kind, _, cid in links if kind == "agent"}  # the model credential link
+    grants = [
+        c
+        for c in await delegation_carriers(db, agent_id)
+        if c[0] != "credential" or c[2] not in lent
+    ]  # F-02 also grants the model credential itself: list it once, as the agent's
+    return await describe(db, [*links, *grants])

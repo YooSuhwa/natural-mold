@@ -7,7 +7,7 @@ import uuid
 from langchain_core.tools import StructuredTool
 from sqlalchemy import func, select
 
-from app.agent_runtime.assistant.tools.write_tools.attach_guard import commit_links
+from app.agent_runtime.assistant.tools.write_tools.attach_guard import commit_links, commit_relinked
 from app.agent_runtime.assistant.tools.write_tools.composition_lifecycle import (
     get_executable_agent,
     require_executable_agent,
@@ -193,7 +193,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                     msg += f" (유효하지 않은 ID: {', '.join(invalid)})"
                 return msg
 
-            await session.commit()
+            await commit_relinked(session, ctx.org_context, agent.id)
             result_msg = f"서브에이전트 제거 완료: {', '.join(removed)}"
             if invalid:
                 result_msg += f" | 유효하지 않은 ID 건너뜀: {', '.join(invalid)}"
@@ -237,7 +237,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
 
             for s in found_skills:
                 agent.skill_links.append(AgentSkillLink(skill_id=s.id))
-            await session.commit()
+            await commit_relinked(session, ctx.org_context, agent.id)
 
             added = [s.name for s in found_skills]
             found_lower = {s.name.lower() for s in found_skills}
@@ -271,7 +271,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             if not removed:
                 return f"해당 스킬이 에이전트에 없습니다: {', '.join(skill_names)}"
 
-            await session.commit()
+            await commit_relinked(session, ctx.org_context, agent.id)
             return f"스킬 제거 완료: {', '.join(removed)}"
 
     return [

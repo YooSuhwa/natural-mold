@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
+from app.authz.agent_delegations import added_keys, lock_delegations, sync_agent_delegations
 from app.authz.attach_rules import require_attachable
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import require_execution_prefix
@@ -101,16 +102,29 @@ async def confirm_build(
                 {"type": mw_name, "params": {}} for mw_name in config.get("middlewares", [])
             ],
         )
-        agent.tool_links = [AgentToolLink(tool_id=t.id) for t in tools_to_link]
-        agent.mcp_tool_links = [AgentMcpToolLink(mcp_tool_id=mt.id) for mt in mcp_tools_to_link]
-        agent.skill_links = [AgentSkillLink(skill_id=s.id) for s in skills_to_link]
+        actor = context.user_id  # F-02: delegator of the links (10.6)
+        agent.tool_links = [AgentToolLink(tool_id=t.id, delegated_by=actor) for t in tools_to_link]
+        agent.mcp_tool_links = [
+            AgentMcpToolLink(mcp_tool_id=mt.id, delegated_by=actor) for mt in mcp_tools_to_link
+        ]
+        agent.skill_links = [
+            AgentSkillLink(skill_id=s.id, delegated_by=actor) for s in skills_to_link
+        ]
+        await lock_delegations(db, context)  # E-02 order: org row before the agent/link writes
         db.add(agent)
         await db.flush()  # agent.id 할당을 위해 flush 필요
 
+        added = await added_keys(
+            db,
+            tool_ids=[t.id for t in tools_to_link],
+            mcp_tool_ids=[mt.id for mt in mcp_tools_to_link],
+            skill_ids=[s.id for s in skills_to_link],
+        )
+        await sync_agent_delegations(db, context, agent.id, added=added)  # F-02: 위임 기록
         session.status = BuilderStatus.COMPLETED
         session.agent_id = agent.id
 
-        await db.commit()
+        await db.commit()  # the router applies the queued delegation tuples (commit_and_apply)
         await db.refresh(agent, ["model", "tool_links"])
 
         # 이미지 처리: phase7_save가 draft_config["image_url"]을 항상 명시적으로 set.

@@ -5,7 +5,10 @@ from __future__ import annotations
 from langchain_core.tools import StructuredTool
 from sqlalchemy import func, select
 
-from app.agent_runtime.assistant.tools.write_tools.attach_guard import commit_links
+from app.agent_runtime.assistant.tools.write_tools.attach_guard import (
+    commit_links,
+    commit_relinked,
+)
 from app.agent_runtime.assistant.tools.write_tools.context import (
     WriteToolContext,
     get_agent_with_session,
@@ -80,7 +83,7 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             if not removed:
                 return f"해당 도구가 에이전트에 없습니다: {', '.join(tool_names)}"
 
-            await session.commit()
+            await commit_relinked(session, ctx.org_context, agent.id)
             return f"도구 제거 완료: {', '.join(removed)}"
 
     # ------ 2-1. add_mcp_tool_to_agent ------
@@ -145,7 +148,7 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             if not removed:
                 return f"해당 MCP 도구가 에이전트에 없습니다: {', '.join(mcp_tool_names)}"
 
-            await session.commit()
+            await commit_relinked(session, ctx.org_context, agent.id)
             return f"MCP 도구 제거 완료: {', '.join(removed)}"
 
     return [

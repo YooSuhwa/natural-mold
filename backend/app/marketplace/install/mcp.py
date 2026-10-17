@@ -91,6 +91,7 @@ async def _install_mcp_item(
             server=server,
             payload=binding_version.payload or {},
             preserve_enabled=True,
+            context=context,
         )
         install_status = "needs_setup" if missing else "active"
         existing.install_status = install_status
@@ -258,7 +259,7 @@ async def _overwrite_mcp_installation(
         name=str(name),
         credential_id=server.credential_id,
     )
-    await _materialize_mcp_tool_snapshot(db, server=server, payload=payload)
+    await _materialize_mcp_tool_snapshot(db, server=server, payload=payload, context=context)
     installation.version_id = latest.id
     installation.install_status = install_status
     installation.is_dirty = False

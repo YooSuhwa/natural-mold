@@ -20,6 +20,8 @@ from app.agent_runtime.builder_v3.nodes._helpers import (
 )
 from app.agent_runtime.builder_v3.session_scope import require_execution_session, state_tenant
 from app.agent_runtime.builder_v3.state import BuilderState
+from app.authz.agent_delegations import commit_and_apply
+from app.authz.organization_execution_prefix import mark_org_writer
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.database import async_session as async_session_factory
 from app.database import tenant_session
@@ -48,7 +50,7 @@ async def _confirm_and_create_agent(state: BuilderState) -> tuple[str | None, st
     try:
         async with tenant_session(state_tenant(state), maker=async_session_factory) as db:
             session = await require_execution_session(db, state)
-
+            mark_org_writer(db)  # F-02: confirm writes delegations (prefix FOR UPDATE)
             context = await resolve_private_actor(
                 db, PrivateResourceActor(session.user_id, session.org_id, session.tenant_id)
             )
@@ -69,6 +71,7 @@ async def _confirm_and_create_agent(state: BuilderState) -> tuple[str | None, st
             agent = await confirm_build(db, session, context)
             if not agent:
                 return None, "에이전트 생성 실패"
+            await commit_and_apply(db)  # confirm_build committed: apply its F-02 delegations
             return str(agent.id), None
     except Exception as exc:  # pragma: no cover
         logger.exception("Phase 8 confirm failed")

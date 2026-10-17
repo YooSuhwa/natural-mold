@@ -7,6 +7,10 @@ the refusal as the tool's message. The Assistant never confirms on the user's be
 (``confirm=False``): attaching an account to a shared agent is confirmed in the agent
 settings, where the list is shown. The baseline is read before the pending links are
 flushed, so callers must not flush between appending and calling this.
+
+F-02: both helpers reconcile the agent's delegation grants with its links before the
+commit (``sync_agent_delegations``) and write the queued tuples right after it;
+``commit_relinked`` is the plain commit of a tool that removed links or added skills.
 """
 
 from collections.abc import Iterable
@@ -14,6 +18,13 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.agent_delegations import (
+    Key,
+    claim_new_links,
+    commit_and_apply,
+    lock_delegations,
+    sync_agent_delegations,
+)
 from app.authz.attach_rules import attach_baseline, require_attachable, require_shared_attach
 from app.authz.org_context import OrgContext
 from app.exceptions import AppError
@@ -44,6 +55,8 @@ async def commit_links(
 ) -> str | None:
     """Commit appended links, or roll back and return the D17 refusal message."""
     try:
+        await lock_delegations(session, ctx)  # E-02 order: org row before the link writes
+        added = await claim_new_links(session, ctx.user_id)
         with session.no_autoflush:
             before = await attach_baseline(session, agent_id)
         await require_attachable(session, ctx, tool_ids=tool_ids, mcp_tool_ids=mcp_tool_ids)
@@ -55,5 +68,16 @@ async def commit_links(
             raise  # e.g. authz_unavailable: fail closed as every other tool call
         await session.rollback()
         return message.format(names=_names(error))
-    await session.commit()
+    await commit_relinked(session, ctx, agent_id, added=added)
     return None
+
+
+async def commit_relinked(
+    session: AsyncSession, ctx: OrgContext, agent_id: UUID, *, added: Iterable[Key] = ()
+) -> None:
+    """Grant the new links' objects (``added`` or the pending link rows), revoke unlinked
+    delegations, commit and apply the tuples (F-02)."""
+    await lock_delegations(session, ctx)
+    added = {*added, *await claim_new_links(session, ctx.user_id)}
+    await sync_agent_delegations(session, ctx, agent_id, added=added)
+    await commit_and_apply(session)

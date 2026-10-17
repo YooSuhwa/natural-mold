@@ -28,6 +28,18 @@ def unavailable() -> AppError:
     )
 
 
+ORG_WRITE_INTENT = "moldy_org_write_intent"
+
+
+def mark_org_writer(db: AsyncSession) -> None:
+    """Writer mode for this session (F-02): the prefix takes the Organization row
+    ``FOR UPDATE`` instead of ``FOR SHARE``. A link/grant write later locks or bumps that
+    row (delegation lock, revocation epoch); taking it exclusively up front avoids a
+    share→exclusive upgrade, which deadlocks two concurrent saves of one organization.
+    Readers never set it."""
+    db.sync_session.info[ORG_WRITE_INTENT] = True
+
+
 async def lock_execution_prefix(
     db: AsyncSession, cursor: ExecutionLockCursor, context: OrgContext
 ) -> Organization:
@@ -51,7 +63,7 @@ async def lock_execution_prefix(
         context.org_id,
         select(Organization)
         .where(Organization.id == context.org_id, Organization.tenant_id == tenant.id)
-        .with_for_update(read=True),
+        .with_for_update(read=not db.sync_session.info.get(ORG_WRITE_INTENT, False)),
     )
     if organization is None:
         raise forbidden()

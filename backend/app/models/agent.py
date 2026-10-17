@@ -65,6 +65,11 @@ class Agent(RequiredOrgScope, Base):
     llm_credential_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True
     )
+    # F-01 (m86, 10.6): who attached ``llm_credential_id`` (the delegator re-checked).
+    llm_credential_delegated_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", name="fk_agents_llm_credential_delegated_by", ondelete="SET NULL"),
+        nullable=True,
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     runtime_profile: Mapped[str] = mapped_column(
         String(20),
