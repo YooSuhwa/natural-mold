@@ -27,7 +27,7 @@ class AuthzSettings(BaseSettings):
     credential_http_allowed_hosts: str = ""  # 11.9: http allowed for credentialed calls
     outbound_private_allowed_hosts: str = ""  # 11.9: exempt from the SSRF private-IP block
     credential_empty_hosts_policy: Literal["warn", "enforce"] = "warn"  # D18/Q14 rollout
-    internal_plaintext_hosts: str = ""
+    internal_plaintext_hosts: str = ""  # 15.2.1: hosts exempt from the production TLS check
     openfga_store_name: str = "moldy"
     openfga_store_id: str = ""
     openfga_model_id: str = ""

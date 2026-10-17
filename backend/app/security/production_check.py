@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from app.auth.jwt import MIN_JWT_SECRET_LEN
 from app.config import Settings
+from app.security.internal_tls_check import collect_internal_tls_issues
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,9 @@ def collect_production_warnings(settings: Settings) -> list[str]:
             "and any rotation job is a no-op. Generate one with "
             "`python -c 'import secrets; print(secrets.token_hex(32))'`."
         )
+
+    # I-09 (plan 15.2.1): internal hops (Postgres, OpenFGA, OpenBao) need verified TLS.
+    issues.extend(collect_internal_tls_issues(settings))
 
     return issues
 

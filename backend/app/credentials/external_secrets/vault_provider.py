@@ -31,13 +31,13 @@ class VaultSecretsProvider(SecretsProvider):
         self._token: str = ""
         self._mount: str = "secret"
         self._client: Any = None
+        self._ca_cert: str = ""
 
     def init(self, settings: Any) -> None:
         self._url = (getattr(settings, "vault_url", "") or "").rstrip("/")
         self._token = getattr(settings, "vault_token", "") or ""
-        self._mount = (
-            getattr(settings, "vault_kv_mount", "secret") or "secret"
-        )
+        self._ca_cert = getattr(settings, "vault_ca_cert", "") or ""
+        self._mount = getattr(settings, "vault_kv_mount", "secret") or "secret"
         self.state = ProviderState.INITIAL
 
     async def connect(self) -> None:
@@ -49,11 +49,11 @@ class VaultSecretsProvider(SecretsProvider):
             import hvac  # local import — optional dep
         except ImportError as exc:  # pragma: no cover — packaged at install
             self.state = ProviderState.ERROR
-            raise RuntimeError(
-                "hvac is required for the Vault secrets provider"
-            ) from exc
+            raise RuntimeError("hvac is required for the Vault secrets provider") from exc
 
-        self._client = hvac.Client(url=self._url, token=self._token)
+        # I-09 (15.2.1): a private CA bundle path, otherwise the default trust store.
+        verify: str | bool = self._ca_cert or True
+        self._client = hvac.Client(url=self._url, token=self._token, verify=verify)
         if not self._client.is_authenticated():
             self.state = ProviderState.ERROR
             raise RuntimeError("vault token failed authentication")
@@ -109,9 +109,7 @@ class VaultSecretsProvider(SecretsProvider):
             await self.connect()
         client: Any = self._client
         try:
-            response = client.secrets.kv.v2.list_secrets(
-                path="", mount_point=self._mount
-            )
+            response = client.secrets.kv.v2.list_secrets(path="", mount_point=self._mount)
         except Exception as exc:  # noqa: BLE001
             logger.warning("vault list failed: %s", exc)
             return []

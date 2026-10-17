@@ -19,6 +19,9 @@ ADR-016 §8.4 / HANDOFF #2.
 | `CORS_ALLOWED_ORIGINS` | 실제 프론트 origin 콤마 구분 | 예: `https://moldy.example.com,https://staging.moldy.example.com` |
 | `ENCRYPTION_KEYS` | 64자 hex 키 (콤마 구분) | `python -c "import secrets; print(secrets.token_hex(32))"` |
 
+내부 구간(Postgres, OpenFGA, OpenBao) TLS 설정은 [7. 내부 구간 TLS와 인증서](#7-내부-구간-tls와-인증서)를
+따릅니다. `APP_ENV=production`에서는 이 설정도 부팅 검증 대상입니다.
+
 선택:
 - `COOKIE_DOMAIN` — 서브도메인 공유 시 (`.moldy.example.com`)
 - `COOKIE_SAMESITE` — cross-site fetch 필요 시 `none` (단 `COOKIE_SECURE=true` 강제)
@@ -81,6 +84,107 @@ uv run alembic upgrade head
 
 ## 6. 관련 문서
 
+- `docs/exec-plans/org-authz-plan.html` 15.1·15.2.1 — Compose 구성과 전송 구간 보호 기준
 - `docs/design-docs/adr-016-multiuser-auth.md` — 인증/세션 전체 설계
 - `backend/.env.example` — 전체 변수 목록 + 인라인 주석
 - `backend/app/security/production_check.py` — 검증 로직 (단일 소스)
+- `backend/app/security/internal_tls_check.py` — 내부 구간 TLS 검증 (7절)
+- `docker-compose.tls.yml` — 내부 구간 TLS Compose 오버레이 (7절)
+
+---
+
+## 7. 내부 구간 TLS와 인증서
+
+`APP_ENV=production`으로 부팅하면 내부 연결도 검증합니다. 아래 중 하나라도 걸리면
+부팅을 거부합니다.
+
+| 설정 | 요구 사항 |
+|------|-----------|
+| `DATABASE_URL`, `MIGRATION_DATABASE_URL` (asyncpg) | `?ssl=verify-full` |
+| `DATABASE_URL_SYNC` (psycopg, 체크포인터·스케줄러) | `?sslmode=verify-full&sslrootcert=<CA 경로>` |
+| `OPENFGA_API_URL` | `https://...` |
+| `VAULT_URL` (설정한 경우) | `https://...` |
+| `OPENFGA_CA_CERT`, `VAULT_CA_CERT` (설정한 경우) | 파일이 실제로 있어야 함 |
+
+`require`, `verify-ca`, `prefer`, `disable`처럼 서버 인증서와 호스트 이름을 함께 확인하지
+않는 모드도 거부합니다. 오류 메시지에는 설정 이름과 `호스트:포트`만 나오고 계정·비밀번호는
+나오지 않습니다.
+
+예외는 `INTERNAL_PLAINTEXT_HOSTS`(콤마 구분, 기본값 빈 값)에 적은 호스트뿐입니다. 한 대의
+호스트에서 기본 `docker-compose.yml`만으로 돌리는 설치는 다음처럼 서비스 이름을 적고,
+쿠버네티스처럼 노드 사이를 오가는 배포는 비워 둡니다.
+
+```bash
+INTERNAL_PLAINTEXT_HOSTS=openfga,postgres,openfga-postgres
+```
+
+### 7.1 인증서 준비
+
+회사 CA에서 서버 인증서를 발급받는 것이 원칙입니다. 준비할 파일은 세 개입니다.
+
+| 파일 | 내용 |
+|------|------|
+| `ca.crt` | 서버 인증서를 발급한 CA 인증서 (PEM). Moldy와 OpenFGA가 신뢰 저장소로 사용 |
+| `server.crt` | 서버 인증서 (PEM). SAN에 `postgres`, `openfga-postgres`, `openfga` 포함. 외부 DB를 쓰면 그 호스트 이름도 포함 |
+| `server.key` | 서버 개인 키 (PEM, 암호 없음). 권한 `0640`, 그룹은 `MOLDY_TLS_KEY_GID`로 지정 |
+
+평가 환경이나 회사 CA가 없을 때는 스크립트로 사설 CA와 인증서를 만듭니다.
+
+```bash
+bash scripts/internal-tls-certs.sh                 # certs/internal 에 생성
+MOLDY_TLS_EXTRA_SANS=DNS:db.corp.example bash scripts/internal-tls-certs.sh   # SAN 추가
+```
+
+스크립트는 컨테이너에 마운트되는 `certs/internal`(인증서·서버 키, 디렉터리 `0750`)과
+마운트되지 않는 `certs/internal-ca`(CA 개인 키 `ca.key`, `0600`)를 나눠 만듭니다. 두 번째
+인자로 CA 키 위치를 바꿀 수 있습니다. `ca.key`는 인증서를 다시 발급할 때만 필요하므로
+설치 호스트 밖으로 옮겨 보관하고, 인증서 디렉터리에는 절대 넣지 않습니다. `certs/`는 git과
+Docker 빌드 컨텍스트에서 제외되어 있습니다.
+
+### 7.2 Compose 오버레이로 기동
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+```
+
+`docker-compose.tls.yml`이 바꾸는 내용:
+
+- `postgres`, `openfga-postgres`: `ssl=on`, 평문 TCP 접속은 `pg_hba`에서 거부
+- `openfga`: `OPENFGA_HTTP_TLS_ENABLED=true`, 전용 Postgres 접속은 `sslmode=verify-full`
+- `backend`: 위 표대로 세 DB URL과 `OPENFGA_API_URL=https://openfga:8080`,
+  `OPENFGA_CA_CERT=/certs/ca.crt`, `PGSSLROOTCERT=/certs/ca.crt`, `INTERNAL_PLAINTEXT_HOSTS` 빈 값
+
+인증서 디렉터리는 `MOLDY_TLS_CERT_DIR`(기본 `./certs/internal`)이며 모든 서비스에
+`/certs`로 읽기 전용 마운트됩니다. OpenFGA 이미지는 root가 아닌 사용자로 돌기 때문에
+`server.key`(`0640`)를 파일 그룹으로 읽습니다. 루트 `.env`에 `server.key`의 그룹 ID를
+`MOLDY_TLS_KEY_GID`로 적으면 오버레이가 OpenFGA 컨테이너에 그 그룹을 추가합니다(값이 없으면
+Compose가 기동을 거부합니다). 스크립트는 마지막 줄에 넣을 값을 출력합니다. 회사 인증서도
+같은 권한(`server.key` `0640`, 디렉터리 `0750`)으로 둡니다.
+
+### 7.3 외부 Postgres·OpenBao를 쓸 때
+
+- 유닉스 소켓 접속(`?host=/run/postgresql`처럼 네트워크 호스트 없이 절대 경로만 지정)은
+  호스트 밖으로 나가지 않으므로 TLS 없이 허용합니다. 반대로 URL에 `host`·`hostaddr` 쿼리가
+  있으면 실제 접속 대상이 바뀔 수 있어 `INTERNAL_PLAINTEXT_HOSTS` 예외를 적용하지 않습니다.
+- `postgres://` 등 sqlite가 아닌 모든 DB URL이 검증 대상입니다.
+- asyncpg는 SQLAlchemy URL의 `sslrootcert`를 받지 않습니다. `DATABASE_URL`에는
+  `ssl=verify-full`만 넣고 CA 경로는 환경 변수 `PGSSLROOTCERT`로 지정합니다.
+- `DATABASE_URL_SYNC`는 libpq 형식이라 URL에 `sslrootcert=`를 직접 넣습니다.
+- OpenBao·Vault는 `VAULT_URL=https://...`, 사설 CA면 `VAULT_CA_CERT=<경로>`를 지정합니다.
+- 바꾼 뒤 [2. 운영 검증](#2-운영-검증) 명령으로 부팅 전에 확인합니다.
+
+### 7.4 TLS 통합 레인
+
+TLS 구성이 실제로 접속되는지는 Docker가 있는 환경에서 아래 명령으로 확인합니다. 임시
+Compose 프로젝트를 새 인증서로 띄워 asyncpg·psycopg·OpenFGA 접속과 평문 접속 거부를
+확인하고, 끝나면 프로젝트와 볼륨을 지웁니다.
+
+```bash
+bash scripts/run-internal-tls-lane.sh
+```
+
+### 7.5 기존 운영 설치 업그레이드
+
+이 검증이 들어간 버전으로 올리면, 내부 URL이 평문인 기존 운영 설치는 부팅이 거부됩니다.
+배포 전에 7.2처럼 TLS를 켜거나, 같은 호스트 Compose 설치라면 `INTERNAL_PLAINTEXT_HOSTS`를
+설정합니다.

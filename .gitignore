@@ -102,3 +102,6 @@ redesign/
 backend/app/data/model_catalog/catalog.json
 backend/app/data/model_catalog/fetch_metadata.json
 backend/app/data/model_catalog/sources/
+
+# I-09 internal TLS certificates (scripts/internal-tls-certs.sh)
+certs/
