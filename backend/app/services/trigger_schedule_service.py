@@ -188,10 +188,12 @@ async def finish_trigger_run(
     thread_id: str | None = None,
     checkpoint_id: str | None = None,
     trace_id: str | None = None,
+    reason_code: str | None = None,
 ) -> None:
     finished_at = _now()
     run.status = status
     run.error_message = error_message
+    run.reason_code = reason_code
     run.output_preview = output_preview[:1000] if output_preview else None
     run.finished_at = finished_at
     run.duration_ms = max(0, int((finished_at - run.started_at).total_seconds() * 1000))

@@ -84,13 +84,13 @@ async def require_agent_run(
     await require_agent_permission(context, agent_id, "can_run", authz=authz)
 
 
-async def agent_run_permitted(context: OrgContext, agent_id: UUID) -> bool:
-    """Queue dispatch re-check: a denied (or undecidable) input stays pending."""
+async def queue_dispatch_denial(context: OrgContext, agent_id: UUID) -> AppError | None:
+    """Queue dispatch re-check (11.6): the denial, or ``None`` when the caller may run."""
     try:
         await require_agent_run(context, agent_id)
-    except AppError:  # only the decision above raises here: 404/403/503 fail closed
-        return False
-    return True
+    except AppError as exc:  # only the decision above raises here: 404/403/503 fail closed
+        return exc
+    return None
 
 
 async def require_scoped_agent_permission(

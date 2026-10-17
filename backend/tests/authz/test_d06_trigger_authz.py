@@ -108,9 +108,11 @@ async def test_fire_time_requires_owner_can_run(client: AsyncClient, monkeypatch
         with pytest.raises(AppError) as denied:
             await require_trigger_actor(db, trigger)
         assert denied.value.code == "AGENT_NOT_FOUND"
-        assert await claim_trigger_run(db, trigger_id, trigger_uuid, force=True) is None
+        blocked = await claim_trigger_run(db, trigger_id, trigger_uuid, force=True)
+        assert isinstance(blocked, AgentTriggerRun)  # F-08: BLOCKED, not a silent skip
+        assert (blocked.status, blocked.reason_code) == ("failed", "permission_revoked")
         runs = await db.scalar(select(func.count()).select_from(AgentTriggerRun))
-        assert runs == 0  # no durable run is claimed for a revoked owner
+        assert runs == 1  # only the blocked record; nothing was executed
     allowed = _service("enforce", {(USER, "can_run", f"agent:{agent_id}")})
     monkeypatch.setattr(runtime, "_current", allowed)
     async with TestSession() as db:

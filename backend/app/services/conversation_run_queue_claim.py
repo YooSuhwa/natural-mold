@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz.conversation_agent_checks import agent_run_permitted
+from app.authz.conversation_agent_checks import queue_dispatch_denial
 from app.authz.conversation_input_scope import owned_input_predicate
 from app.authz.conversation_run_scope import owned_run_predicate
 from app.authz.execution_lock_cursor import LockClass
@@ -16,6 +16,7 @@ from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_service
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
+from app.services.conversation_run_queue_blocked import pause_blocked_queue
 from app.services.conversation_run_queue_mutations import (
     lock_owned_conversation,
     queue_input_not_found,
@@ -37,7 +38,9 @@ async def claim_next_input(
 ) -> ClaimedConversationInput | None:
     """Bind the next eligible input to a run under the conversation row lock."""
     agent_id = await require_queue_executable(db, conversation_id, context)
-    if not await agent_run_permitted(context, agent_id):
+    denial = await queue_dispatch_denial(context, agent_id)
+    if denial is not None:  # the input stays pending; a definite denial pauses (F-08)
+        await pause_blocked_queue(db, conversation_id, agent_id, context, denial)
         return None
     conversation = await lock_owned_conversation(
         db,

@@ -48,6 +48,8 @@ DELEGATION_CREATE: Final = "delegation.create"
 DELEGATION_REVOKE: Final = "delegation.revoke"
 DELEGATION_BROKEN: Final = "delegation.broken"  # F-03 validator (10.6)
 DELEGATION_REATTACH: Final = "delegation.reattach"  # F-03: editor re-attaches (10.6)
+# F-08 (14.1 "실행"): a non-interactive run refused at dispatch (reason_code = 11.6 reason).
+RUN_BLOCKED: Final = "run.blocked"
 GRANT_UPDATE: Final = "grant.update"
 GRANT_EXPIRE: Final = "grant.expire"
 # E-09 company publication (14.1 "정책·한도"); ``_cancel`` is the publisher's withdrawal.

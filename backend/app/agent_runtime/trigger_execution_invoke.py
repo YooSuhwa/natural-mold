@@ -178,22 +178,41 @@ async def invoke_trigger_run(
                 error_message=str(exc),
                 thread_id=str(conversation.id),
             )
+        elif (
+            reason := trigger_service.dispatch_reason(exc)
+        ) is not None:  # F-08: denied before the lease
+            await trigger_service.finish_blocked_trigger_run(
+                db, trigger=trigger, run=run, reason=reason, error=exc, conversation=conversation
+            )
         else:
             logger.info("Trigger %s stopped before invoke: %s", trigger_id, exc.code)
         await db.refresh(run)
         return TriggerOutcome(run)
     except Exception as exc:
         logger.exception("Trigger %s: agent execution failed", trigger_id)
-        await trigger_service.finish_trigger_run(
-            db,
-            trigger=trigger,
-            run=run,
-            conversation=conversation,
-            status="failed",
-            # A mid-run lease denial records its shared code, like the run (M2).
-            error_message=denial_error_code(exc) or str(exc),
-            thread_id=str(conversation.id),
-        )
+        # A mid-run lease denial records its shared code, like the run (M2).
+        message = denial_error_code(exc) or str(exc)
+        reason = trigger_service.dispatch_failure_reason(exc)
+        if reason is not None:  # F-08: a prepared pre-activation or lease denial
+            await trigger_service.finish_blocked_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                reason=reason,
+                message=message,
+                conversation=conversation,
+                thread_id=str(conversation.id),
+            )
+        else:
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=conversation,
+                status="failed",
+                error_message=message,
+                thread_id=str(conversation.id),
+            )
         await db.refresh(run)
         return TriggerOutcome(run)
     return TriggerInvoked(output)

@@ -104,8 +104,8 @@ async def materialize_trigger_run(
     if claim.blocked_links:  # F-03 (10.6): a required link is broken
         reason = blocked_reason(claim.blocked_links)
         logger.warning("Trigger %s blocked: %s", trigger_id, reason)
-        await trigger_service.finish_trigger_run(
-            db, trigger=trigger, run=run, conversation=None, status="failed", error_message=reason
+        await trigger_service.finish_blocked_trigger_run(  # F-08: reason_code + run.blocked audit
+            db, trigger=trigger, run=run, reason="delegation_broken", message=reason
         )
         await db.refresh(run)
         return TriggerOutcome(run)

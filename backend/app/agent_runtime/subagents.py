@@ -97,6 +97,14 @@ async def build_subagents_config(
         db,
         AgentExecutionTarget(parent_agent.id, parent_cfg.org_context, run=True),
     )
+    # The tree lock re-reads the Agent rows with populate_existing, which resets the
+    # children's lazy relationships (model, links, skills): re-hydrate the tree with the
+    # runtime eager loads before the loop reads them (F-08; MissingGreenlet otherwise).
+    if (
+        await chat_service.get_run_agent_with_tools(db, parent_agent.id, parent_cfg.org_context)
+        is None
+    ):
+        raise agent_not_found()
     parent_identity = _parent_identity_from_config(
         parent_cfg,
         is_trigger_mode=is_trigger_mode,

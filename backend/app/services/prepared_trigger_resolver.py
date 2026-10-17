@@ -95,7 +95,8 @@ async def lock_trigger_envelope(
     ownership = target.ownership
     context, agent_id = ownership.context, ownership.root_agent_id
     proof = await acquire_execution_proof(db, context, root_agent_id=agent_id)
-    await load_agent_tree_for_execution(db, AgentExecutionTarget(agent_id, context))
+    # F-08 (11.1): like the claim, a child of another member is the planner's decision.
+    await load_agent_tree_for_execution(db, AgentExecutionTarget(agent_id, context, run=True))
     trigger = await lock_row(
         db,
         proof.cursor,

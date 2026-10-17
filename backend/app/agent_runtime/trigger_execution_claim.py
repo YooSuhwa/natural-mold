@@ -1,4 +1,7 @@
-"""Trigger execution block 1: row lock, authorization revalidation and claim."""
+"""Trigger execution block 1: row lock, authorization revalidation and claim.
+
+A refused claim outside legacy returns the recorded BLOCKED run (F-08, 11.6).
+"""
 
 from __future__ import annotations
 
@@ -41,7 +44,7 @@ class TriggerClaim:
 
 async def claim_trigger_run(
     db: AsyncSession, trigger_id: str, trigger_uuid: uuid.UUID, *, force: bool
-) -> TriggerClaim | None:
+) -> TriggerClaim | AgentTriggerRun | None:
     # SEC-3 duplicate guard: lock the trigger row so concurrent entries
     # (scheduled fire vs user run-now, which bypasses APScheduler's
     # max_instances) serialise, then claim by checking for an in-flight
@@ -59,7 +62,9 @@ async def claim_trigger_run(
         # The unlocked lookup above is only an ID hint: enter the canonical
         # gateway (parent/member/User prefix + Agent tree) before the trigger lock.
         proof = await acquire_execution_proof(db, context, root_agent_id=trigger.agent_id)
-        await load_agent_tree_for_execution(db, AgentExecutionTarget(trigger.agent_id, context))
+        # F-08 (11.1): a run path, so a child of another member reaches the planner
+        target = AgentExecutionTarget(trigger.agent_id, context, run=True)
+        await load_agent_tree_for_execution(db, target)
         trigger = await lock_row(
             db,
             proof.cursor,
@@ -84,7 +89,7 @@ async def claim_trigger_run(
         )
     except AppError as exc:
         logger.info("Trigger %s skipped (authorization: %s)", trigger_id, exc.code)
-        return None
+        return await trigger_service.record_blocked_claim(db, trigger_uuid, exc, force=force)
 
     in_flight = await trigger_service.find_in_flight_run(db, trigger_uuid)
     if in_flight is not None:

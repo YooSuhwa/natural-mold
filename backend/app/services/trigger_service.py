@@ -58,6 +58,12 @@ from app.services.trigger_conversation_runtime import (
     ensure_schedule_conversation_runtime_policy,
     resolve_schedule_conversation,
 )
+from app.services.trigger_dispatch_block import (  # F-08: BLOCKED runs (11.6)
+    dispatch_failure_reason,
+    dispatch_reason,
+    finish_blocked_trigger_run,
+    record_blocked_claim,
+)
 from app.services.trigger_schedule_service import (
     DEFAULT_CONVERSATION_POLICY,
     DEFAULT_TIMEZONE,
@@ -221,4 +227,6 @@ __all__ += ["VALID_TRIGGER_TYPES", "TriggerRunInFlightError", "_default_name"]
 __all__ += ["_normalize_optional_datetime", "_now", "_parse_datetime"]
 __all__ += ["_validate_conversation_policy", "_validate_positive_optional", "find_in_flight_run"]
 __all__ += ["finish_trigger_run", "list_trigger_runs", "normalize_schedule_config"]
+__all__ += ["dispatch_failure_reason", "dispatch_reason", "finish_blocked_trigger_run"]
+__all__ += ["record_blocked_claim"]
 __all__ += ["refresh_next_run_at", "start_trigger_run", "sync_scheduler_for_trigger"]

@@ -54,6 +54,7 @@ from app.agent_runtime.prepared_run_input_policy import (
 from app.agent_runtime.prepared_run_transaction import materialize_and_activate
 from app.agent_runtime.runtime_config import PreparedRunLease
 from app.authz.conversation_run_scope import lock_executable_run
+from app.authz.dispatch_block import block_reason
 from app.database import tenant_session, tenant_sessions
 from app.exceptions import AppError
 from app.services import agent_execution_runtime as runtime
@@ -182,15 +183,19 @@ async def _materialize(
 async def _prepare(target: PreparedTriggerTarget) -> tuple[PreparedRunResolver, PreparedRunLease]:
     activated: list[PreparedRunLease] = []
     ownership = target.ownership
+    entered = False
     try:
         # F-06: decide the fixed trigger run before the envelope/materialization locks.
         async with predecided_run(ownership.context, ownership.root_agent_id, source=None):
+            entered = True
             return await _prepare_in_session(target, activated)
-    except BaseException:
+    except BaseException as exc:
         # Cancelled at the session close after activation: never leak the lease (I24 H4).
         if activated:
             await abandon_activated_lease(execution_target(target.ownership), activated[0].digest)
             await _remove_run_root(target.ownership.run_id)
+        elif not entered and isinstance(exc, AppError) and block_reason(exc) is not None:
+            await _settle_unactivated(target, exc)  # F-08: denied before the locks -> failed
         raise
 
 

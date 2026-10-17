@@ -76,6 +76,7 @@ class TriggerRunResponse(BaseModel):
     source: str
     input_message: str
     error_message: str | None
+    reason_code: str | None = None
     output_preview: str | None
     duration_ms: int | None
     thread_id: str | None

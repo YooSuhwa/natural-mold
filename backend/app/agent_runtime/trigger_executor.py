@@ -148,8 +148,8 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
     # A missing trigger keeps an unbound session; the claim logs and skips it.
     async with tenant_session(tenant, maker=async_session) as db:
         claim = await claim_trigger_run(db, trigger_id, trigger_uuid, force=force)
-        if claim is None:
-            return None
+        if claim is None or isinstance(claim, AgentTriggerRun):
+            return claim  # skipped, or BLOCKED at dispatch (F-08)
         materialized = await materialize_trigger_run(db, trigger_id, claim, force=force)
         if isinstance(materialized, TriggerOutcome):
             return materialized.run
