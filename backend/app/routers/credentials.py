@@ -43,7 +43,7 @@ from app.dependencies import (
     get_current_user,
     get_db,
     get_org_context,
-    require_super_user,
+    require_platform_operator,
     verify_csrf,
 )
 from app.error_codes import (
@@ -297,7 +297,7 @@ async def _load_system(db: AsyncSession, credential_id: uuid.UUID) -> Credential
 @authz_policy(SUPER)
 async def list_system_credentials(
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
 ) -> list[CredentialResponse]:
     """List all operator-managed system credentials. Super_user only."""
 
@@ -310,7 +310,7 @@ async def list_system_credentials(
 async def create_system_credential(
     payload: CredentialCreate,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ) -> CredentialResponse:
     if registry.get(payload.definition_key) is None:
@@ -339,7 +339,7 @@ async def create_system_credential(
 async def get_system_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
 ) -> CredentialResponse:
     return _to_response(await _load_system(db, credential_id))
 
@@ -350,7 +350,7 @@ async def update_system_credential(
     credential_id: uuid.UUID,
     payload: CredentialUpdate,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ) -> CredentialResponse:
     cred = await _load_system(db, credential_id)
@@ -380,7 +380,7 @@ async def update_system_credential(
 async def delete_system_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ) -> None:
     cred = await _load_system(db, credential_id)

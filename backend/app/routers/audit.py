@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_oversight import load_org_oversight
 from app.authz.policies import SELF, authz_policy
-from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context
+from app.dependencies import CurrentUser, get_company_db, get_current_user, get_org_context
 from app.exceptions import ForbiddenError
 from app.models.audit_event import AuditEvent
 from app.schemas.audit import AuditEventPageResponse, AuditEventResponse, AuditScope
@@ -73,7 +73,7 @@ async def list_audit_events(
     run_id: str | None = Query(default=None),
     created_from: datetime | None = Query(default=None),
     created_to: datetime | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> AuditEventPageResponse:
     scope_filter = await org_scope_filter(request, db, user) if scope == "org" else None

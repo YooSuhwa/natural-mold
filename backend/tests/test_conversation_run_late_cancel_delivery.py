@@ -76,7 +76,9 @@ async def test_owner_decision_precedes_protocol_terminal_delivery(
     executor_exhausted = anyio.Event()
     finalizer_released = anyio.Event()
 
-    async def hold_finalizer(_run_id: uuid.UUID, _registry: worker.RunTaskRegistry) -> None:
+    async def hold_finalizer(
+        _run_id: uuid.UUID, _registry: worker.RunTaskRegistry, _tenant: object
+    ) -> None:
         heartbeat_started.set()
         try:
             await anyio.sleep_forever()

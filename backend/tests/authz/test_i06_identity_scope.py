@@ -32,10 +32,16 @@ USER = uuid.UUID("00000000-0000-0000-0000-0000000000c3")
 APP = Path(__file__).resolve().parents[2] / "app"
 # Every place that may open the identity scope (account gateway only).
 IDENTITY_SITES = {
-    ("dependencies.py", "identity_scope"): 2,  # token user, org-context resolution
+    # token user, org-context resolution, get_company_db's active company
+    ("dependencies.py", "identity_scope"): 3,
     ("dependencies.py", "bind_identity"): 1,  # get_identity_db
     ("routers/auth.py", "get_identity_db"): 1,
     ("routers/auth_sso.py", "get_identity_db"): 1,
+    ("routers/me_orgs.py", "get_identity_db"): 2,  # own memberships in every company
+    ("routers/invitation_accept.py", "get_identity_db"): 1,  # joins a company directory
+    ("tenancy/context.py", "identity_scope"): 1,  # path company: own membership, then bind
+    ("authz/org_control.py", "identity_scope"): 1,  # path organization picks the company
+    ("authz/org_oversight.py", "identity_scope"): 1,
 }
 Calls = list[tuple[str, str, int]]
 

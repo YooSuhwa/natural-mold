@@ -109,14 +109,21 @@ async def public_share_open(db: AsyncSession, link: ShareLink) -> bool:
     return row is not None and (row[0] or {}).get("allow_public_share_links") is not False
 
 
-async def share_token_tenant(db: AsyncSession, token: str) -> uuid.UUID | None:
-    """Company of an active token, for the public rate-limit bucket (no other checks)."""
-    return await db.scalar(
-        select(ShareLink.tenant_id)
-        .where(ShareLink.share_token == token, ShareLink.revoked_at.is_(None))
-        .execution_options(autoflush=False)
-        .limit(1)
-    )
+async def share_token_owner(db: AsyncSession, token: str) -> tuple[uuid.UUID, uuid.UUID] | None:
+    """(company, conversation owner) of an active token: rate bucket and session scope only.
+
+    The owner is the identity the public message reads resolve (``resolve_conversation_actor``).
+    """
+    row = (
+        await db.execute(
+            select(ShareLink.tenant_id, Conversation.user_id)
+            .join(Conversation, Conversation.id == ShareLink.conversation_id)
+            .where(ShareLink.share_token == token, ShareLink.revoked_at.is_(None))
+            .execution_options(autoflush=False)
+            .limit(1)
+        )
+    ).one_or_none()
+    return None if row is None else (row.tenant_id, row.user_id)
 
 
 async def create_or_get_active_share(

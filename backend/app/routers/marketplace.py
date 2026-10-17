@@ -50,6 +50,7 @@ from app.dependencies import (
     get_current_user,
     get_db,
     get_org_context,
+    require_platform_operator,
     require_super_user,
     verify_csrf,
 )
@@ -1168,7 +1169,7 @@ async def admin_set_item_listed(
 @authz_policy(SUPER)
 async def admin_k_skill_sync_status(
     db: AsyncSession = Depends(get_db),
-    _user: CurrentUser = Depends(require_super_user),
+    _user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
     authz: AuthzService = Depends(get_authz),
 ) -> dict:

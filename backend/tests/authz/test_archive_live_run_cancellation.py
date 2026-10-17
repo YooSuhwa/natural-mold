@@ -11,6 +11,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import scheduler
+from app.database import SessionTenant
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_transitions
 from app.services.agent_execution_runtime import run_owned_execution
@@ -22,6 +23,7 @@ from app.services.conversation_run_worker import (
 from app.services.orgs.versioning import etag
 from tests.authz.agent_execution_runtime_fixture import runtime_request, seed_runtime_run
 from tests.authz.test_tenant_org_lifecycle_wiring import _org, _post, _prepare
+from tests.authz.unit_scope_fixture import TEST_TENANT_ID
 from tests.conftest import TestSession
 
 pytest_plugins = [
@@ -117,7 +119,9 @@ async def test_heartbeat_cancels_local_task_when_row_became_inactive() -> None:
     provider = Provider()
     task = _own(registry, run.id, provider)
     beat = asyncio.ensure_future(
-        conversation_run_transitions._heartbeat_until_terminal(run.id, registry)
+        conversation_run_transitions._heartbeat_until_terminal(
+            run.id, registry, SessionTenant(TEST_TENANT_ID)
+        )
     )
     await _fail_row(run.id)
 

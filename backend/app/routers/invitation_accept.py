@@ -2,10 +2,11 @@
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.cookies import set_active_org_cookie
 from app.authz.policies import SELF, authz_policy
-from app.dependencies import CurrentUser, get_current_user, verify_csrf
+from app.dependencies import CurrentUser, get_current_user, get_identity_db, verify_csrf
 from app.routers.orgs import mutation_request
 from app.schemas.invitation_accept import InvitationAccept, InvitationAccepted
 from app.services.orgs.info import OrgMutationRequest
@@ -21,6 +22,7 @@ router = APIRouter(prefix="/api/invitations", tags=["invitation acceptance"])
 async def authenticated_acceptance(
     payload: InvitationAccept,
     user: CurrentUser = Depends(get_current_user),
+    _identity: AsyncSession = Depends(get_identity_db),  # I-06: joins a company's directory
     mutation: OrgMutationRequest = Depends(mutation_request),
 ) -> InvitationAccepted:
     token = payload.token.get_secret_value()

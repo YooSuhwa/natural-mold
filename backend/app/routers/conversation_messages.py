@@ -144,10 +144,13 @@ async def list_messages(
     )
 
     from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.conversation_checkpointer import conversation_checkpointer
 
     tree = None
     try:
-        checkpointer = get_checkpointer()
+        checkpointer = await conversation_checkpointer(
+            str(conversation_id), context, db=db, saver=get_checkpointer
+        )
         tree = await thread_branch_service.build_message_tree(
             checkpointer,
             str(conversation_id),

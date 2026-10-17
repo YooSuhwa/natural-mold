@@ -110,7 +110,7 @@ async def _run_conversation(
             return
         await run_audit(action="conversation.run_start", run=run, status="running")
         heartbeat_task = asyncio.create_task(
-            worker_attr("_heartbeat_until_terminal")(run_id, registry),
+            worker_attr("_heartbeat_until_terminal")(run_id, registry, cfg.org_context),
             name=f"conversation-run-heartbeat-{run_id}",
         )
         run_metrics = start.run_metrics or await worker_attr("_prepare_run_metrics")(

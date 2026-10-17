@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.agent_usage_access import agent_usage_gate
 from app.authz.policies import RES, SELF, authz_policy
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_company_db, get_current_user, get_db
 from app.services import usage_aggregate, usage_service
 
 router = APIRouter(prefix="/api", tags=["usage"])
@@ -30,7 +30,7 @@ async def get_agent_usage(
 @authz_policy(SELF)
 async def get_usage_summary(
     period: str | None = None,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
 ):
     return await usage_service.get_usage_summary(db, user.id, period)
@@ -54,7 +54,7 @@ async def get_daily_spend(
             "(date, target_id) pair so the dashboard can render multi-series."
         ),
     ),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     """Daily spend aggregates for the current user.

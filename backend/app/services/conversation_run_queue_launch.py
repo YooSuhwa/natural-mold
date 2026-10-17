@@ -39,7 +39,10 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
     registry = facade_attr("get_run_task_registry")()
     cfg: AgentConfig | None = None
     error_code: str | None = None
-    async with facade_attr("_session_factory")()() as db:
+    scope = await facade_attr("_input_company")(input_id)
+    if scope is None:
+        return None
+    async with facade_attr("_company_session")(scope) as db:  # I-06: the input's company
         identity = await metadata.load_queue_input_identity(db, input_id)
         if identity is None or identity.run_id is None or identity.status != "claimed":
             return None
@@ -147,7 +150,10 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
 
 
 async def _fail_claimed_input(input_id: uuid.UUID, *, error_code: str) -> None:
-    async with facade_attr("_session_factory")()() as db:
+    scope = await facade_attr("_input_company")(input_id)
+    if scope is None:
+        return
+    async with facade_attr("_company_session")(scope) as db:  # I-06: the input's company
         identity = await metadata.load_queue_input_identity(db, input_id)
         if identity is None or identity.run_id is None:
             return

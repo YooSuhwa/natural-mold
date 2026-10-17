@@ -7,7 +7,7 @@ from app.auth.cookies import ACTIVE_ORG_COOKIE, set_active_org_cookie
 from app.authz.policies import SELF, authz_policy
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.dependencies import CurrentUser, get_current_user, get_identity_db, verify_csrf
 from app.schemas.organization import (
     ActiveOrganizationRequest,
     ActiveOrganizationResponse,
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/me", tags=["organizations"])
 @authz_policy(SELF)
 async def list_organizations(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_identity_db),  # I-06: own memberships, every company
     user: CurrentUser = Depends(get_current_user),
     authz: AuthzService = Depends(get_authz),
 ) -> list[OrganizationSummary]:
@@ -40,7 +40,7 @@ async def list_organizations(
 async def set_active_organization(
     payload: ActiveOrganizationRequest,
     response: Response,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_identity_db),  # I-06: own memberships, every company
     user: CurrentUser = Depends(get_current_user),
 ) -> ActiveOrganizationResponse:
     context = await org_service.select_active_organization(db, user, payload.org_id)

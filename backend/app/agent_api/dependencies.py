@@ -12,9 +12,11 @@ from app.agent_api.security import parse_api_key, verify_secret
 from app.agent_api.service import utc_now_naive
 from app.authz.api_key_actor import resolve_api_key_actor
 from app.authz.org_context import OrgContext
+from app.database import platform_scope
 from app.dependencies import get_db
 from app.exceptions import AppError, ForbiddenError
 from app.models.agent_api import AgentApiKey, AgentApiKeyDeployment, AgentDeployment
+from app.tenancy.session_binding import bind_company_once
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,19 @@ def _key_options():
     )
 
 
+async def _bind_key_company(db: AsyncSession, key_id: str) -> None:
+    """I-06: the key id (public half) picks the company; the secret is verified inside it.
+
+    Company only: an unverified key never lends its owner's identity to the session.
+    """
+    async with platform_scope(db, "agent_api.key_lookup"):
+        tenant_id = await db.scalar(
+            select(AgentApiKey.tenant_id).where(AgentApiKey.key_id == key_id)
+        )
+    if tenant_id is not None:
+        await bind_company_once(db, tenant_id, None)
+
+
 async def get_api_key_principal(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -73,6 +88,7 @@ async def get_api_key_principal(
         )
     key_id, secret = parsed
     with db.no_autoflush:
+        await _bind_key_company(db, key_id)
         result = await db.execute(
             select(AgentApiKey)
             .where(AgentApiKey.key_id == key_id)

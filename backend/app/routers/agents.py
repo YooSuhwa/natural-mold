@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import dependencies
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.agent_runtime.runtime_policy import resolve_runtime_policy
 from app.authz.agent_delegations import commit_and_apply
@@ -216,7 +217,7 @@ async def list_agent_summaries(
 @router.get("/archived", response_model=list[AgentLifecycleMetadataResponse])
 @authz_policy(GOVERNANCE)
 async def list_archived_agent_metadata(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(dependencies.get_company_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[AgentLifecycleMetadataResponse]:
     return await list_archived_agents(db, user)
@@ -365,9 +366,9 @@ async def delete_agent(
 @authz_policy(GOVERNANCE)
 async def restore_archived_agent(
     agent_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    db: AsyncSession = Depends(dependencies.get_company_db),
+    user: CurrentUser = Depends(get_current_user),
 ) -> AgentRestoreResponse:
     response = await restore_agent(db, user, agent_id)
     await db.commit()
@@ -380,9 +381,9 @@ async def purge_archived_agent(
     agent_id: uuid.UUID,
     data: AgentPurgeRequest,
     response: Response,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    db: AsyncSession = Depends(dependencies.get_company_db),
+    user: CurrentUser = Depends(get_current_user),
 ) -> AgentPurgeReceiptResponse:
     receipt = await purge_agent(
         AgentPurgeCommand(

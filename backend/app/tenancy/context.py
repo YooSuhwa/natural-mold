@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrganizationActor, OrgContext, active_memberships
 from app.authz.tenant_scoping import active_tenant_membership, tenant_role_query
+from app.database import identity_scope
 from app.exceptions import AppError
 from app.models.organization import Organization, Tenant
+from app.tenancy.session_binding import bind_company_once
 
 TenantRole = Literal["admin", "auditor"]
 ROLE_ADAPTER = TypeAdapter(tuple[TenantRole, ...])
@@ -33,12 +35,18 @@ def ensure_tenant_active(tenant: Tenant) -> None:
 async def resolve_tenant_context(
     db: AsyncSession, actor: OrganizationActor, tenant_id: UUID
 ) -> TenantContext:
-    """A foreign/missing company is identical; super_user grants no company access."""
-    tenant = await db.scalar(active_tenant_membership(tenant_id, actor.id))
-    if tenant is None:
-        raise AppError(code="not_found", message="회사를 찾을 수 없습니다", status=404)
-    ensure_tenant_active(tenant)
-    roles = await tenant_roles(db, tenant_id, actor.id)
+    """A foreign/missing company is identical; super_user grants no company access.
+
+    I-06: on a still unbound request session the membership is read in the
+    identity scope and the session is then bound to this company.
+    """
+    async with identity_scope(db, actor.id):
+        tenant = await db.scalar(active_tenant_membership(tenant_id, actor.id))
+        if tenant is None:
+            raise AppError(code="not_found", message="회사를 찾을 수 없습니다", status=404)
+        ensure_tenant_active(tenant)
+        roles = await tenant_roles(db, tenant_id, actor.id)
+    await bind_company_once(db, tenant.id, actor.id)
     return TenantContext(tenant_id=tenant.id, user_id=actor.id, roles=roles)
 
 

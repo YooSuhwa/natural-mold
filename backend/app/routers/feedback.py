@@ -23,7 +23,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.conversation_scope import load_private_conversation
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
-from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
+from app.dependencies import (
+    CurrentUser,
+    get_company_db,
+    get_current_user,
+    get_db,
+    get_org_context,
+    verify_csrf,
+)
 from app.error_codes import conversation_not_found, message_not_found
 from app.models.message_feedback import MessageFeedback
 from app.schemas.feedback import MessageFeedbackCreate, MessageFeedbackResponse
@@ -93,9 +100,9 @@ async def upsert_feedback(
 @authz_policy(PRIVATE("message_feedbacks"))
 async def clear_feedback(
     message_id: str,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    db: AsyncSession = Depends(get_company_db),
+    user: CurrentUser = Depends(get_current_user),
 ) -> None:
     """Remove the current user's rating for ``message_id`` (toggle off)."""
 
@@ -115,7 +122,7 @@ async def clear_feedback(
 @authz_policy(PRIVATE("message_feedbacks"))
 async def list_feedback_for_conversation(
     conversation_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[MessageFeedback]:
     """Return all of the current user's ratings inside a conversation.

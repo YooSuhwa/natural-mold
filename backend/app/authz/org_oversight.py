@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.error_codes import authorization_error
 from app.authz.org_context import OrganizationActor
 from app.authz.org_permissions import organization_permissions
+from app.database import identity_scope
 from app.exceptions import AppError
 from app.models.organization import Organization, OrganizationMember
 from app.tenancy.context import resolve_tenant_context
@@ -33,11 +34,12 @@ async def load_org_oversight(
     db: AsyncSession, actor: OrganizationActor, org_id: UUID, permission: OrgOversightPermission
 ) -> Organization:
     with db.no_autoflush:
-        organization = await db.scalar(
-            select(Organization)
-            .where(Organization.id == org_id)
-            .execution_options(populate_existing=True)
-        )
+        async with identity_scope(db, actor.id):  # I-06: the organization picks the company
+            organization = await db.scalar(
+                select(Organization)
+                .where(Organization.id == org_id)
+                .execution_options(populate_existing=True)
+            )
         if organization is None:
             raise authorization_error("not_found")
         try:

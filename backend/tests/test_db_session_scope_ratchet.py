@@ -27,7 +27,10 @@ SCOPED = frozenset(
         "company_session",
     }
 )
-PLATFORM = frozenset({"platform_session", "platform_sessions"})
+# I-06: ``platform_scope`` (one pre-company lookup) and ``bind_platform`` (verified
+# operator request sessions) carry pinned reasons like the platform factories.
+SESSION_BINDERS = frozenset({"platform_scope", "bind_platform"})
+PLATFORM = frozenset({"platform_session", "platform_sessions"}) | SESSION_BINDERS
 
 # reason -> plan anchor. 8.9 rows are platform by design; "interim" rows are
 # platform today because the per-row tenant split belongs to the named task.
@@ -38,8 +41,8 @@ PLATFORM_REASONS: dict[str, str] = {
     "scheduler.retention_gc": "8.9 scheduler: retention cleanup is platform",
     "scheduler.run_sweep": "8.9 scheduler: stale-run sweep is platform",
     "scheduler.credential_rotation": "8.9 encryption keys: instance key rotation",
-    "scheduler.health_check": "interim 8.9 health checks: per-row company split (I-06)",
-    "scheduler.mcp_health": "interim 8.9 health checks: per-row company split (I-06)",
+    "scheduler.health_check": "8.9 health checks: health_check_history is platform-write (I-06)",
+    "scheduler.mcp_health": "8.9 MCP poll: lists companies, polls catalog rows (I-06)",
     "marketplace.k_skill_sync": "8.9 marketplace system items, K-skill sync",
     # TODO(8.9 company overrides): once system_llm_settings gains tenant rows,
     # this read must filter ``tenant_id IS NULL`` (or move to a tenant session).
@@ -57,14 +60,18 @@ PLATFORM_REASONS: dict[str, str] = {
     "authz.revocation_overlay": "8.6 step 4 instance-wide pending-marker hint + overlay",
     "authz.delegation_validate": "8.6 delegation sweep: list companies, then per-company sessions",
     "authz.delegation_retry": "8.6 delegation check: leader polls finalized markers",
-    "conversation_run.lifecycle": "interim run-id keyed lifecycle writes (I-06 threading)",
-    "conversation_run.queue": "interim queue claim/recovery; dispatch resolves company",
+    "conversation_run.lifecycle": "8.9 shutdown: this worker's live runs of every company (I-06)",
+    "conversation_run.queue": "8.9 restart recovery sweep + one row's company lookup (I-06)",
     "tenant_lifecycle.purge": "S04 I-07 leader purge: lists due companies, deletes one company",
     "tenant_lifecycle.export": "S04 I-07 operator export: one company and its members' accounts",
     "tenant_lifecycle.export_gc": "S04 I-07 leader export GC: stale jobs, expired archives",
     "tenant_lifecycle.cli": "S04 I-07 operator CLI: export/schedule/cancel/purge one company",
     "startup.rls_role_check": "8.8 roles: boot reads pg_roles/pg_class for the app role (I-06)",
     "checkpoint.tenant_audit": "8.8 checkpointer: cross-check thread metadata vs conversations",
+    "agent_api.key_lookup": "I-06 key id picks the company; the secret is verified in it",
+    "share.public_token": "I-06 public token picks the link's company before the public read",
+    "operator.system_catalog": "8.9 super_user screens for platform catalog rows (I-06)",
+    "platform.tenant_admin": "S04 SaaS operator company directory/lifecycle screens (I-06)",
 }
 
 # Unbound company sessions fail closed under RLS. The request session is bound
@@ -169,7 +176,8 @@ def test_platform_sessions_name_a_documented_reason() -> None:
     for rel, tree, _source in _sources():
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and _callee(node) in PLATFORM:
-                reason = node.args[0] if node.args else None
+                index = 1 if _callee(node) in SESSION_BINDERS else 0  # (session, reason)
+                reason = node.args[index] if len(node.args) > index else None
                 if not (isinstance(reason, ast.Constant) and reason.value in PLATFORM_REASONS):
                     found.append(f"{rel}:{node.lineno}: {ast.unparse(node)}")
     assert found == []

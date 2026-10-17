@@ -11,6 +11,7 @@ from app.authz.error_codes import authorization_error
 from app.authz.org_context import OrganizationActor
 from app.authz.org_permissions import organization_permissions
 from app.authz.tenant_org_write_locks import lock_tenant_org_write
+from app.database import identity_scope
 from app.exceptions import AppError
 from app.models.organization import Organization, OrganizationMember
 from app.tenancy.context import resolve_tenant_context
@@ -44,7 +45,8 @@ async def load_org_control(
         query = select(Organization).where(Organization.id == target.org_id)
         if target.permission is not None and target.lock_organization:
             query = query.with_for_update()
-        organization = await db.scalar(query.execution_options(populate_existing=True))
+        async with identity_scope(db, actor.id):  # I-06: the organization picks the company
+            organization = await db.scalar(query.execution_options(populate_existing=True))
         if organization is None:
             raise authorization_error("not_found")
         try:

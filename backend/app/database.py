@@ -47,12 +47,9 @@ class Base(DeclarativeBase):
 # inside one request never drop it. Settings are issued only on PostgreSQL with
 # ``DB_RLS_ENABLED`` on, so the default install has zero runtime change.
 #
-# Deferred to I-06 (m92), recorded here so the gaps are not lost:
-# * The request session is unscoped until ``get_org_context`` binds it, so the
-#   token/user and membership lookups that run first must be RLS-exempt
-#   (identity tables) or use an explicit platform/identity scope.
-# * The LangGraph checkpointer uses its own psycopg pool outside Moldy RLS; the
-#   ``conversation_checkpointer(thread_id, ctx)`` gate belongs to I-06.
+# I-06: pre-company lookups use ``identity_scope``/``platform_scope``; the
+# LangGraph checkpointer (own psycopg pool, outside RLS) is gated by
+# ``agent_runtime.conversation_checkpointer``.
 # ---------------------------------------------------------------------------
 
 logger = logging.getLogger(__name__)
@@ -273,11 +270,23 @@ async def identity_scope(session: AsyncSession, user_id: UUID | None = None) -> 
     user row). The identity scope is cleared again on exit, so the session stays
     unbound until ``bind_tenant``.
     """
+    async with _lookup_scope(session, _identity_values(user_id)):
+        yield
+
+
+@asynccontextmanager
+async def platform_scope(session: AsyncSession, reason: str) -> AsyncIterator[None]:
+    """``identity_scope`` contract for one pre-company lookup; reason pinned by B-13 (I-06)."""
+    async with _lookup_scope(session, {"app.scope": "platform"}):
+        yield
+
+
+@asynccontextmanager
+async def _lookup_scope(session: AsyncSession, values: dict[str, str]) -> AsyncIterator[None]:
     info = getattr(session, "info", None)
     if not isinstance(info, dict) or info.get(SCOPE_INFO_KEY) is not None:
         yield
         return
-    values = _identity_values(user_id)
     info[SCOPE_INFO_KEY] = values
     await _apply_now(session, values)
     try:
@@ -291,6 +300,19 @@ async def identity_scope(session: AsyncSession, user_id: UUID | None = None) -> 
     if info.get(SCOPE_INFO_KEY) is values:
         del info[SCOPE_INFO_KEY]
         await _apply_now(session, {})
+
+
+async def bind_platform(session: AsyncSession, reason: str) -> None:
+    """Bind a verified operator's request session to platform scope (I-06, pinned reasons)."""
+    values = {"app.scope": "platform"}
+    current = session.info.get(SCOPE_INFO_KEY)
+    if current is not None and current != values:
+        raise SessionScopeError("database session is already bound to another scope")
+    if session.in_nested_transaction():
+        raise SessionScopeError("bind the database session at its root")
+    session.info[SCOPE_INFO_KEY] = values
+    session.info[REASON_INFO_KEY] = reason
+    await _apply_now(session, values)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

@@ -104,6 +104,7 @@ async def test_owner_finalizer_honors_remote_cancel_after_executor_exhaustion(
     async def hold_owner_after_executor_exhaustion(
         _run_id: object,
         _registry: object,
+        _tenant: object,
     ) -> None:
         heartbeat_started.set()
         try:

@@ -6,6 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import dependencies
 from app.authz.memory_agent_access import agent_edit_context
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, RES, authz_policy
@@ -34,7 +35,7 @@ router = APIRouter(tags=["memory"])
 @router.get("/api/me/memory-settings", response_model=UserMemorySettingsOut)
 @authz_policy(PRIVATE("user_memory_settings"))
 async def get_user_memory_settings(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(dependencies.get_company_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> UserMemorySettingsOut:
     settings = await memory_service.get_user_settings(db, user.id)
@@ -45,18 +46,15 @@ async def get_user_memory_settings(
 @authz_policy(PRIVATE("user_memory_settings"))
 async def update_user_memory_settings(
     payload: UserMemorySettingsUpdate,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    db: AsyncSession = Depends(dependencies.get_company_db),
+    user: CurrentUser = Depends(get_current_user),
 ) -> UserMemorySettingsOut:
     settings = await memory_service.update_user_settings(db, user.id, payload)
     return UserMemorySettingsOut.model_validate(settings)
 
 
-@router.get(
-    "/api/agents/{agent_id}/memory-settings",
-    response_model=AgentMemorySettingsOut,
-)
+@router.get("/api/agents/{agent_id}/memory-settings", response_model=AgentMemorySettingsOut)
 @authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
 async def get_agent_memory_settings(
     agent_id: uuid.UUID,

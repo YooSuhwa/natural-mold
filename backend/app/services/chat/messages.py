@@ -79,9 +79,12 @@ async def list_messages_from_checkpointer(
     # 하위호환 유지를 위해 직접 build.
     if tree is None:
         from app.agent_runtime.checkpointer import get_checkpointer
+        from app.agent_runtime.conversation_checkpointer import conversation_checkpointer
         from app.services.thread_branch_service import build_message_tree
 
-        checkpointer = get_checkpointer()
+        checkpointer = await conversation_checkpointer(
+            str(conversation.id), context, db=db, saver=get_checkpointer
+        )
         tree = await build_message_tree(
             checkpointer,
             str(conversation.id),

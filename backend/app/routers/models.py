@@ -29,10 +29,11 @@ from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
 from app.dependencies import (
     CurrentUser,
+    get_company_db,
     get_current_user,
     get_db,
     get_org_context,
-    require_super_user,
+    require_platform_operator,
     verify_csrf,
 )
 from app.error_codes import (
@@ -69,7 +70,7 @@ async def list_models(
             "Drives the operator-facing ``/models`` admin page."
         ),
     ),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext | None = Depends(org_context_when_consulted),
     authz: AuthzService = Depends(get_authz),
@@ -86,7 +87,7 @@ async def list_models(
 @authz_policy(RES("llm_model", "can_use", param="model_id", min_visible="can_use"))
 async def get_model(
     model_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext | None = Depends(org_context_when_consulted),
     authz: AuthzService = Depends(get_authz),
@@ -101,7 +102,7 @@ async def create_model(
     payload: ModelCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ):
     """Register a new model row.
@@ -133,7 +134,7 @@ async def update_model(
     payload: ModelUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ):
     model = await model_service.get_model(db, model_id)
@@ -161,7 +162,7 @@ async def delete_model(
     model_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ):
     model = await model_service.get_model(db, model_id)

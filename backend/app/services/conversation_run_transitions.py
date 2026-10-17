@@ -208,12 +208,15 @@ def _heartbeat_interval_seconds() -> float:
     return max(1.0, min(30.0, settings.chat_run_stale_after_seconds / 3))
 
 
-async def _heartbeat_until_terminal(run_id: uuid.UUID, registry: RunTaskRegistry) -> None:
+async def _heartbeat_until_terminal(
+    run_id: uuid.UUID, registry: RunTaskRegistry, tenant: TenantScoped
+) -> None:
+    """I-06: the run's own company session (the run belongs to its conversation's company)."""
     interval = worker_attr("_heartbeat_interval_seconds")()
     next_heartbeat = time.monotonic()
     while True:
         await asyncio.sleep(_CANCEL_POLL_SECONDS)
-        async with _session_factory()() as session:
+        async with _tenant_session(tenant) as session:
             run = await session.get(ConversationRun, run_id)
             if run is None or not run.is_active:
                 # Terminalized elsewhere (archive cascade, stale sweep of another
@@ -238,6 +241,7 @@ async def _heartbeat_until_terminal(run_id: uuid.UUID, registry: RunTaskRegistry
 
 
 async def _persist_shutdown_intent(run_ids: list[uuid.UUID]) -> None:
+    """Platform by design: one shutdown write for this worker's runs of every company."""
     if not run_ids:
         return
     async with _session_factory()() as session:

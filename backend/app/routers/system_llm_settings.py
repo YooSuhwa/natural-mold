@@ -21,7 +21,7 @@ from app.credentials.boundary import open_values
 from app.dependencies import (
     CurrentUser,
     get_db,
-    require_super_user,
+    require_platform_operator,
     verify_csrf,
 )
 from app.models.system_llm_setting import SYSTEM_LLM_ROLES, SystemLlmSetting
@@ -87,7 +87,7 @@ async def _build_out(db: AsyncSession, setting: SystemLlmSetting) -> SystemLlmSe
 @authz_policy(SUPER)
 async def list_system_llm_settings(
     db: AsyncSession = Depends(get_db),
-    _user: CurrentUser = Depends(require_super_user),
+    _user: CurrentUser = Depends(require_platform_operator),
 ) -> list[SystemLlmSettingOut]:
     """All role slots (text_primary / text_fallback / image). Super_user only."""
     # Platform defaults only; company overrides live under /api/tenants/{id}/llm-settings.
@@ -112,7 +112,7 @@ async def update_system_llm_setting(
     payload: SystemLlmSettingUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ) -> SystemLlmSettingOut:
     """Select (or clear) the credential/model for a role. Super_user only."""

@@ -687,10 +687,12 @@ async def poll_mcp_servers_health() -> dict[str, int]:
     본문은 ``app.services.mcp_service``로 이관 (BE-S9).
     """
 
-    from app.services import mcp_service
+    from app.database import SessionTenant, tenant_sessions
+    from app.services.mcp_health_poll import poll_mcp_health_by_company
 
-    return await mcp_service.poll_mcp_servers_health(
-        session_factory=platform_sessions("scheduler.mcp_health", maker=async_session)
+    return await poll_mcp_health_by_company(  # I-06: each company in its own session
+        platform=platform_sessions("scheduler.mcp_health", maker=async_session),
+        company_sessions=lambda tenant: tenant_sessions(SessionTenant(tenant), maker=async_session),
     )
 
 

@@ -15,7 +15,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.cookies import ACTIVE_ORG_COOKIE
@@ -24,6 +24,7 @@ from app.authz.org_context import OrgContext, resolve_org_context
 from app.config import settings
 from app.database import (
     bind_identity,
+    bind_platform,
     bind_tenant,
     close_session_shielded,
     identity_scope,
@@ -34,6 +35,7 @@ from app.models.conversation import Conversation
 from app.services import user_service
 from app.tenancy.context import TenantContext, tenant_context_from_org
 from app.tenancy.deployment import require_platform_tenant_management
+from app.tenancy.session_binding import bind_company_once, is_unbound
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +191,37 @@ async def get_org_context(
     return context
 
 
+async def get_company_db(
+    request: Request,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AsyncSession:
+    """I-06: a route without an org context runs in the caller's active company.
+
+    Same resolution as ``get_org_context`` but never fails: a caller without an
+    active organization keeps an unbound session (0 rows under RLS).
+    """
+    if is_unbound(db):
+        try:
+            async with identity_scope(db, user.id):
+                context = await resolve_org_context(
+                    db, user, cookie=request.cookies.get(ACTIVE_ORG_COOKIE)
+                )
+        except (AppError, HTTPException):
+            return db
+        await bind_company_once(db, context.tenant_id, user.id)
+    return db
+
+
+async def require_platform_operator(
+    user: CurrentUser = Depends(require_super_user),
+    db: AsyncSession = Depends(get_db),
+) -> CurrentUser:
+    """Operator screens for platform catalog rows (``tenant_id IS NULL``) run in platform scope."""
+    await bind_platform(db, "operator.system_catalog")
+    return user
+
+
 async def get_tenant_context(
     request: Request,
     context: OrgContext = Depends(get_org_context),
@@ -201,8 +234,11 @@ async def get_tenant_context(
 
 async def require_saas_platform_operator(
     user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> CurrentUser:
+    """SaaS operator company screens read and change every company (platform scope, I-06)."""
     require_platform_tenant_management(user, settings.deployment_mode)
+    await bind_platform(db, "platform.tenant_admin")
     return user
 
 
