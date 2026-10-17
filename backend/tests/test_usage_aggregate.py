@@ -1,6 +1,7 @@
 """Tests for ``GET /api/usage/daily`` + ``usage_aggregate.get_daily_spend``.
 
-We seed the daily aggregate tables directly (no need to run the queue) and
+We seed ``daily_spend_user`` and the user's own ``token_usages`` (agent/model axes,
+F-14) directly (no need to run the queue) and
 verify that the router projects the rows correctly across the three axes
 plus the ``group_by`` modes.
 """
@@ -9,20 +10,21 @@ from __future__ import annotations
 
 import uuid
 from datetime import date as date_type
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 import pytest
 from httpx import AsyncClient
 
 from app.models.agent import Agent
-from app.models.daily_spend_agent import DailySpendAgent
-from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
 from app.models.model import Model
+from app.models.token_usage import TokenUsage
 from app.models.user import User
 from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession
+
+OTHER_CALLER = uuid.uuid4()
 
 
 async def _seed_basic() -> dict[str, uuid.UUID]:
@@ -78,49 +80,27 @@ async def _seed_basic() -> dict[str, uuid.UUID]:
                 )
             )
 
-        # Per-agent: split between agent_a / agent_b on today.
-        db.add(
-            DailySpendAgent(
-                date=today,
-                agent_id=agent_a.id,
-                total_tokens_in=300,
-                total_tokens_out=150,
-                total_cost_usd=Decimal("0.0030"),
-                request_count=1,
+        # Per-agent / per-model axes come from the user's own billed usage (F-14);
+        # another caller's usage on the same agent must not show up.
+        noon = datetime.combine(today, time(12))
+        for agent, caller, tokens_in, tokens_out, cost in [
+            (agent_a, user.id, 300, 150, "0.0030"),
+            (agent_b, user.id, 100, 50, "0.0010"),
+            (agent_a, OTHER_CALLER, 5000, 5000, "5.0"),
+        ]:
+            db.add(
+                TokenUsage(
+                    conversation_id=uuid.uuid4(),
+                    agent_id=agent.id,
+                    caller_user_id=caller,
+                    model_name="m",
+                    prompt_tokens=tokens_in,
+                    completion_tokens=tokens_out,
+                    total_tokens=tokens_in + tokens_out,
+                    estimated_cost=Decimal(cost),
+                    created_at=noon,
+                )
             )
-        )
-        db.add(
-            DailySpendAgent(
-                date=today,
-                agent_id=agent_b.id,
-                total_tokens_in=100,
-                total_tokens_out=50,
-                total_cost_usd=Decimal("0.0010"),
-                request_count=1,
-            )
-        )
-
-        # Per-model: matching rows on today.
-        db.add(
-            DailySpendModel(
-                date=today,
-                model_id=model_a.id,
-                total_tokens_in=300,
-                total_tokens_out=150,
-                total_cost_usd=Decimal("0.0030"),
-                request_count=1,
-            )
-        )
-        db.add(
-            DailySpendModel(
-                date=today,
-                model_id=model_b.id,
-                total_tokens_in=100,
-                total_tokens_out=50,
-                total_cost_usd=Decimal("0.0010"),
-                request_count=1,
-            )
-        )
 
         await db.commit()
         return {
@@ -174,6 +154,7 @@ async def test_model_axis_scoped_through_agent(client: AsyncClient) -> None:
     # Both models should appear with their display names.
     labels = {row["target_label"] for row in today_rows}
     assert "GPT-4o" in labels and "Claude Sonnet" in labels
+    assert sum(row["total_tokens_in"] for row in today_rows) == 400  # own usage only
 
 
 @pytest.mark.asyncio

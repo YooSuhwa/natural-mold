@@ -58,6 +58,7 @@ async def _seed_agent_with_usage() -> uuid.UUID:
         usage = TokenUsage(
             conversation_id=conv.id,
             agent_id=agent.id,
+            caller_user_id=user.id,
             model_name="gpt-4o",
             prompt_tokens=100,
             completion_tokens=50,

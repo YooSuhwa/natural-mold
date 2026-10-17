@@ -23,8 +23,8 @@ from app.models.agent import (
     Agent,
 )
 from app.models.conversation import Conversation
-from app.models.daily_spend_agent import DailySpendAgent
 from app.models.model import Model
+from app.models.token_usage import TokenUsage
 from app.services.usage_aggregate import get_daily_spend
 from tests.authz.unit_scope_fixture import (
     TEST_ORG_ID,
@@ -35,6 +35,20 @@ from tests.authz.unit_scope_fixture import (
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
+
+
+def _own_usage(agent: Agent, day: date, tokens_in: int, tokens_out: int) -> TokenUsage:
+    """The user's own billed usage (agent breakdowns read ``token_usages``, F-14)."""
+    return TokenUsage(
+        conversation_id=uuid.uuid4(),
+        agent_id=agent.id,
+        caller_user_id=TEST_USER_ID,
+        model_name="m",
+        prompt_tokens=tokens_in,
+        completion_tokens=tokens_out,
+        total_tokens=tokens_in + tokens_out,
+        created_at=datetime.combine(day, datetime.min.time()).replace(hour=12),
+    )
 
 
 async def _seed_agents(db: AsyncSession) -> tuple[Agent, Agent]:
@@ -168,16 +182,7 @@ async def test_usage_summary_by_agent_excludes_hidden(
 ) -> None:
     standard, hidden = await _seed_agents(db)
     today = datetime.now(UTC).date()
-    db.add_all(
-        [
-            DailySpendAgent(
-                date=today, agent_id=standard.id, total_tokens_in=10, total_tokens_out=5
-            ),
-            DailySpendAgent(
-                date=today, agent_id=hidden.id, total_tokens_in=100, total_tokens_out=50
-            ),
-        ]
-    )
+    db.add_all([_own_usage(standard, today, 10, 5), _own_usage(hidden, today, 100, 50)])
     await db.commit()
 
     summary = await client.get("/api/usage/summary")
@@ -190,12 +195,7 @@ async def test_usage_summary_by_agent_excludes_hidden(
 async def test_daily_spend_agent_axis_excludes_hidden(db: AsyncSession) -> None:
     standard, hidden = await _seed_agents(db)
     day = date(2026, 7, 1)
-    db.add_all(
-        [
-            DailySpendAgent(date=day, agent_id=standard.id, total_tokens_in=10, total_tokens_out=5),
-            DailySpendAgent(date=day, agent_id=hidden.id, total_tokens_in=100, total_tokens_out=50),
-        ]
-    )
+    db.add_all([_own_usage(standard, day, 10, 5), _own_usage(hidden, day, 100, 50)])
     await db.commit()
 
     rows = await get_daily_spend(

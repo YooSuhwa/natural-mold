@@ -16,7 +16,7 @@ from app.authz.scoping import private_parent_scoped, private_scope_predicate
 from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
-from app.models.conversation_run import ConversationRun
+from app.models.conversation_run import ConversationRun, run_attribution_attrs
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.user import User
 
@@ -27,6 +27,7 @@ RUN_IDENTITY_OPTIONS: Final = (
         ConversationRun.agent_id,
         ConversationRun.user_id,
         ConversationRun.status,
+        *run_attribution_attrs(),
         raiseload=True,
     ),
     noload(ConversationRun.metrics),
@@ -40,6 +41,7 @@ RUN_TERMINAL_OPTIONS: Final = (
         ConversationRun.status,
         ConversationRun.completed_at,
         ConversationRun.cancel_requested_at,
+        *run_attribution_attrs(),
         raiseload=True,
     ),
     noload(ConversationRun.metrics),

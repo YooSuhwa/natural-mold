@@ -117,9 +117,11 @@ async def record_event(
     user_agent_value: str | None = None,
     metadata: dict[str, Any] | None = None,
     tenant_id: uuid.UUID | None = None,
+    org_id: uuid.UUID | None = None,
 ) -> AuditEvent:
     row = AuditEvent(
         tenant_id=tenant_id or session_tenant(db),
+        org_id=org_id,
         actor_type=actor_type,
         actor_user_id=actor_user_id,
         actor_api_key_id=actor_api_key_id,

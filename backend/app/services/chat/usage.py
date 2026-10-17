@@ -8,6 +8,7 @@ the moved body stays byte-identical.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 
 from sqlalchemy import select as _select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -56,8 +57,10 @@ async def save_token_usage(
     estimated_cost: float | None = None,
     run_id: uuid.UUID | None = None,
     commit: bool = True,
+    attribution: Mapping[str, object] | None = None,
 ) -> TokenUsage:
-    values = {
+    values: dict[str, object] = {
+        **(attribution or {}),
         "conversation_id": conversation_id,
         "agent_id": agent_id,
         "model_name": model_name,

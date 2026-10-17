@@ -39,6 +39,7 @@ from app.services.conversation_runtime_policy import (
     ensure_conversation_runtime_policy_from_locked_proof,
     require_parent_snapshot_match,
 )
+from app.tenancy.attribution import RunAttribution
 
 
 def run_service_attr(name: str) -> Any:
@@ -156,6 +157,7 @@ async def create_run_from_locked_proof(
     interrupt_id: str | None = None,
     metadata: dict[str, Any] | None = None,
     allow_legacy_resume: bool = False,
+    attribution: RunAttribution | None = None,
 ) -> ConversationRun:
     proof.require_live(db)
     proof.require_scope(execution_scope(context))
@@ -232,6 +234,12 @@ async def create_run_from_locked_proof(
         interrupt_id=interrupt_id if source == "resume" else None,
         input_preview=(input_preview[:500] if input_preview else None),
         metadata_json=metadata,
+        # F-14 (11.10): scope always; the rest when the acceptance attributed the run.
+        **(
+            attribution.run_columns()
+            if attribution is not None
+            else {"org_id": context.org_id, "tenant_id": context.tenant_id}
+        ),
     )
     copy_snapshot_to_run(run, runtime_policy)
     db.add(run)

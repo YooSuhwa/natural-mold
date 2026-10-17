@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.resource_scope import NullableOrgScope, resource_scope_constraints
 
 if TYPE_CHECKING:
     from app.models.conversation_run_metrics import ConversationRunMetrics
@@ -41,9 +42,11 @@ def utc_now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-class ConversationRun(Base):
+class ConversationRun(NullableOrgScope, Base):
     __tablename__ = "conversation_runs"
     __table_args__ = (
+        *resource_scope_constraints("conversation_runs", system=False),
+        Index("ix_conversation_runs_org_created", "org_id", "created_at"),
         Index(
             "ix_conversation_runs_conversation_created",
             "conversation_id",
@@ -115,6 +118,18 @@ class ConversationRun(Base):
         nullable=False,
     )
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # F-14 (11.10): user_id is the requester/billed user; these record the rest.
+    run_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    invoker_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    resource_owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    on_behalf_of_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    credential_subject_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     runtime_policy_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     runtime_policy_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     runtime_policy_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -128,3 +143,20 @@ class ConversationRun(Base):
         lazy="selectin",
         uselist=False,
     )
+
+
+# F-14: columns audit writers read back from ``load_only`` run rows (``tenancy.attribution``).
+RUN_ATTRIBUTION_COLUMNS = (
+    "org_id",
+    "tenant_id",
+    "run_source",
+    "invoker_type",
+    "resource_owner_user_id",
+    "on_behalf_of_user_id",
+    "credential_subject_user_id",
+)
+
+
+def run_attribution_attrs() -> tuple[Any, ...]:
+    """The attribution attributes, for ``load_only(...)`` lists."""
+    return tuple(getattr(ConversationRun, name) for name in RUN_ATTRIBUTION_COLUMNS)

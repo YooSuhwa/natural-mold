@@ -11,6 +11,7 @@ from app.agent_runtime.run_metrics import RunMetricsSnapshot
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_metrics import ConversationRunMetrics
 from app.services.chat.usage import save_token_usage
+from app.tenancy.attribution import usage_columns
 
 
 class RunMetricsPersistenceError(RuntimeError):
@@ -85,5 +86,6 @@ async def persist_run_metrics_and_usage(
             ),
             run_id=run.id,
             commit=False,
+            attribution=usage_columns(run),  # F-14: the run's org and attribution
         )
     return metrics

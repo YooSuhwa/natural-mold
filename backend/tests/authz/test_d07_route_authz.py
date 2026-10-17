@@ -86,7 +86,9 @@ async def test_enforce_agent_usage_without_a_session_is_401(
     assert response.status_code == 401
 
 
-async def test_enforce_agent_usage_needs_can_view_config(client: AsyncClient, test_app: FastAPI):
+async def test_enforce_agent_usage_full_view_needs_can_view_config(
+    client: AsyncClient, test_app: FastAPI
+):
     agent_id = await seed_agent(owner=OTHER_USER_ID, grant_to_me=True)
     agent = uuid.UUID(agent_id)
     url = f"/api/agents/{agent_id}/usage"
@@ -98,7 +100,8 @@ async def test_enforce_agent_usage_needs_can_view_config(client: AsyncClient, te
         hidden = await client.get(url, headers=BEARER)
     with authz_override(test_app, AuthzService(DownAuthz(), mode="enforce")):
         down = await client.get(url, headers=BEARER)
-    assert runner.status_code == 403 and runner.json()["error"]["code"] == "permission_required"
+    # F-14: a runner sees only their own usage ("내 사용분은 누구나", 9.6).
+    assert runner.status_code == 200 and runner.json()["total_tokens"] == 0
     assert hidden.status_code == 404 and hidden.json()["error"]["code"] == "AGENT_NOT_FOUND"
     assert down.status_code == 503
 

@@ -52,7 +52,10 @@ class SpendHook(CustomHook):
 
             entry = SpendEntry(
                 date=datetime.now(UTC).date(),
-                user_id=ctx.user_id,
+                # F-14 (Q8): the requester pays, inside the run's organization.
+                user_id=ctx.billing_user_id or ctx.user_id,
+                org_id=ctx.org_id,
+                tenant_id=ctx.tenant_id,
                 agent_id=ctx.agent_id,
                 model_id=ctx.model_id,
                 tokens_in=int(result.tokens_in or 0),

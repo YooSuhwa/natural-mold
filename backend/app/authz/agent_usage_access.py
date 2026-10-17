@@ -5,7 +5,8 @@ It now requires an authenticated user and an organization (``get_org_context``: 
 the existing context errors), and the legacy verdict is the owner-scoped agent row
 (foreign or missing → ``AGENT_NOT_FOUND``). ``shadow`` answers that and samples; an
 enforced ``agent`` type lets OpenFGA decide (grantees with ``can_view_config`` pass,
-runners get 403 ``permission_required``, OpenFGA down is 503).
+runners see only their own usage — plan 9.6 "내 사용분은 누구나", F-14 — OpenFGA down is
+503). The gate returns the caller to filter on (``None`` = the whole agent).
 """
 
 from uuid import UUID
@@ -21,6 +22,7 @@ from app.authz.scoping import private_scope_predicate
 from app.authz.service import AuthzService
 from app.dependencies import get_db, get_org_context
 from app.error_codes import agent_not_found
+from app.exceptions import AppError
 from app.models.agent import Agent
 
 
@@ -29,18 +31,25 @@ async def agent_usage_gate(
     db: AsyncSession = Depends(get_db),
     context: OrgContext = Depends(get_org_context),
     authz: AuthzService = Depends(get_authz),
-) -> None:
+) -> UUID | None:
     legacy = await db.scalar(
         select(Agent)
         .where(Agent.id == agent_id, private_scope_predicate(Agent, context))
         .execution_options(autoflush=False)
     )
-    await require_agent(
-        db,
-        authz,
-        context,
-        agent_id,
-        "can_view_config",
-        legacy=legacy,
-        not_found=agent_not_found(),
-    )
+    try:
+        await require_agent(
+            db,
+            authz,
+            context,
+            agent_id,
+            "can_view_config",
+            legacy=legacy,
+            not_found=agent_not_found(),
+        )
+    except AppError as error:
+        # Raised only after ``can_run`` (min_visible) was confirmed: a runner.
+        if error.code != "permission_required":
+            raise
+        return context.user_id
+    return None

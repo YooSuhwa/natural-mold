@@ -82,9 +82,13 @@ async def _seed_usage(
     db.add(conv)
     await db.flush()
 
+    owner = (
+        await db.execute(select(AgentModel.user_id).where(AgentModel.id == agent_id))
+    ).scalar_one()
     usage = TokenUsage(
         conversation_id=conv.id,
         agent_id=agent_id,
+        caller_user_id=owner,  # the owner ran it (summary breakdowns read own usage, F-14)
         model_name="gpt-4o",
         prompt_tokens=prompt,
         completion_tokens=completion,

@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, ForeignKey, ForeignKeyConstraint, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -21,6 +21,14 @@ class AuditEvent(Base):
         Index("ix_audit_events_request_id", "request_id"),
         Index("ix_audit_events_trace_id", "trace_id"),
         Index("ix_audit_events_run_id", "run_id"),
+        # F-14 (m89 row, 14.1): organization audit.
+        Index("ix_audit_events_org_created", "org_id", "created_at"),
+        ForeignKeyConstraint(
+            ["org_id", "tenant_id"],
+            ["organizations.id", "organizations.tenant_id"],
+            name="fk_audit_events_org_tenant",
+            ondelete="RESTRICT",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -30,6 +38,7 @@ class AuditEvent(Base):
         ForeignKey("tenants.id", name="fk_audit_events_tenant", ondelete="RESTRICT"),
         nullable=True,
     )
+    org_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

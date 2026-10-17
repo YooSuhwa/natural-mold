@@ -12,7 +12,7 @@ from app.authz.conversation_maintenance import (
     lock_maintenance_conversation,
 )
 from app.authz.platform_scope import PlatformScope
-from app.models.conversation_run import ConversationRun
+from app.models.conversation_run import ConversationRun, run_attribution_attrs
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_service
 from app.services.conversation_audit_service import record_conversation_run_audit
@@ -67,6 +67,7 @@ async def finalize_workerless_cancel_before_start(
                         ConversationRun.completed_at,
                         ConversationRun.cancel_requested_at,
                         ConversationRun.cancellation_acknowledged_at,
+                        *run_attribution_attrs(),
                         raiseload=True,
                     ),
                     noload(ConversationRun.metrics),

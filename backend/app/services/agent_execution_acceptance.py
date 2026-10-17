@@ -22,6 +22,7 @@ from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import acquire_execution_proof, lock_row
 from app.authz.organization_execution_proof import ExecutionTransactionProof
+from app.models.agent import Agent
 from app.models.agent_api import AgentApiRun
 from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.agent_trigger_run import AgentTriggerRun
@@ -34,6 +35,11 @@ from app.services.conversation_run_envelope_projection import (
     trigger_status_for_run,
 )
 from app.services.conversation_run_service import RunSource
+from app.tenancy.attribution import (
+    RunAttribution,
+    attribute_child,
+    attribute_run,
+)
 
 type OwnedExecutionSource = Literal["chat", "api", "trigger"]
 type EnvelopeKind = Literal["api", "trigger"]
@@ -199,6 +205,14 @@ def _bind_envelope(
     )
 
 
+def _participant_attribution(
+    root: RunAttribution, agents: Mapping[uuid.UUID, Agent], item: AcceptedParticipant
+) -> RunAttribution:
+    if item.role == "root":
+        return root
+    return attribute_child(root, agents[item.agent_id_snapshot])
+
+
 async def accept_owned_execution(
     db: AsyncSession,
     request: OwnedExecutionRequest,
@@ -219,6 +233,8 @@ async def accept_owned_execution(
         db, AgentExecutionTarget(request.root_agent_id, request.context, run=True)
     )
     envelope = await _validated_envelope(db, request, proof)
+    agents = {agent.id: agent for agent in executable.agents}
+    attribution = attribute_run(request.source, request.context, agents[request.root_agent_id])
     run = await create_run_from_locked_proof(
         db,
         proof,
@@ -231,6 +247,7 @@ async def accept_owned_execution(
         interrupt_id=request.interrupt_id,
         metadata=request.run_metadata,
         allow_legacy_resume=request.allow_legacy_resume,
+        attribution=attribution,
     )
     paths = _participant_paths(executable.snapshot)
     participants = tuple(
@@ -249,6 +266,7 @@ async def accept_owned_execution(
                 agent_id_snapshot=item.agent_id_snapshot,
                 role=item.role,
                 path=list(item.path),
+                **_participant_attribution(attribution, agents, item).participant_columns(),
             )
             for item in participants
         ]

@@ -15,14 +15,15 @@ from app.services import usage_aggregate, usage_service
 router = APIRouter(prefix="/api", tags=["usage"])
 
 
-@router.get("/agents/{agent_id}/usage", dependencies=[Depends(agent_usage_gate)])
+@router.get("/agents/{agent_id}/usage")
 @authz_policy(RES("agent", "can_view_config", param="agent_id", min_visible="can_run"))
 async def get_agent_usage(
     agent_id: uuid.UUID,
     period: str | None = None,
     db: AsyncSession = Depends(get_db),
+    own_usage_of: uuid.UUID | None = Depends(agent_usage_gate),
 ):
-    return await usage_service.get_agent_usage(db, agent_id, period)
+    return await usage_service.get_agent_usage(db, agent_id, period, caller_user_id=own_usage_of)
 
 
 @router.get("/usage/summary")

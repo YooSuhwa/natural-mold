@@ -56,6 +56,8 @@ def _hook_ctx_for_agent(cfg: AgentConfig) -> HookContext | None:
         credential_id=_opt(cfg.llm_credential_id),
         metadata=metadata,
         tenant_id=cfg.org_context.tenant_id,
+        org_id=cfg.org_context.org_id,
+        billing_user_id=cfg.org_context.user_id,
     )
 
 
