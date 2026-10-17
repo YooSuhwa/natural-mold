@@ -72,6 +72,7 @@ async def finish_blocked_trigger_run(
             run_id=run.id,
             source_id=trigger.id,
         )
+        await notify_owner_blocked(db, trigger=trigger, reason=reason)
     await schedule.finish_trigger_run(
         db,
         trigger=trigger,
@@ -82,13 +83,6 @@ async def finish_blocked_trigger_run(
         thread_id=thread_id,
         reason_code=reason if typed else None,
     )
-    if announce:
-        await notify_owner_blocked(
-            kind="trigger.blocked",
-            owner_user_id=trigger.user_id,
-            reason=reason,
-            source_id=trigger.id,
-        )
 
 
 def _legacy() -> bool:

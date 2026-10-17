@@ -9,12 +9,13 @@ every connection problem of one model step into ONE 11.5 interrupt payload:
 Items of the same connection are merged (``tool_names`` unioned). The resume answer is
 the existing ``Decision`` (``{"type": "respond", "message": "retry"|"skip"|"cancel"}``),
 bare or inside the HITL ``{"decisions": [...]}`` envelope. ``fixable_by=owner`` items are
-never asked of the runner: the owner is notified instead (log record until H-02 ships
-notifications). Nothing here carries a secret value.
+never asked of the runner: the owner is notified instead (14.2
+``connection.owner_needed``). Nothing here carries a secret value.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections import OrderedDict
@@ -23,6 +24,8 @@ from typing import Any, Literal
 
 from langchain_core.messages import ToolMessage
 from langchain_core.messages.tool import ToolCall
+
+from app.authz.notification_events import owner_needed
 
 logger = logging.getLogger(__name__)
 
@@ -152,23 +155,23 @@ def auth_interrupt_of(message: ToolMessage) -> dict[str, Any] | None:
 
 _NOTIFIED: OrderedDict[tuple[str, str], None] = OrderedDict()
 _NOTIFIED_LIMIT = 4096
+OWNER_NOTIFY_TIMEOUT = 2.0  # seconds
 
 
-def notify_owner(items: Iterable[Mapping[str, Any]], *, run: str) -> None:
+async def notify_owner(
+    items: Iterable[Mapping[str, Any]], *, run: str, tenants: Mapping[str, str] | None = None
+) -> None:
     """Owner notification for ``fixable_by=owner`` connections (11.5), once per
-    (run, credential) — a resumed node re-runs its hooks.
-
-    H-02 (notifications) is not built yet; the request is a structured log record
-    carrying only names and ids.
+    (run, credential) — a resumed node re-runs its hooks — delivered as the 14.2
+    ``connection.owner_needed`` notification (H-02; merged per credential for 24 hours).
     """
 
+    fresh: dict[tuple[str, str], Mapping[str, Any]] = {}
     for item in items:
         key = (run, str(item.get("credential_id") or item.get("resource_name")))
-        if key in _NOTIFIED:
+        if key in _NOTIFIED or key in fresh:
             continue
-        _NOTIFIED[key] = None
-        while len(_NOTIFIED) > _NOTIFIED_LIMIT:
-            _NOTIFIED.popitem(last=False)
+        fresh[key] = item
         logger.info(
             "connection_guard owner_notification resource_type=%s resource_name=%s "
             "credential_id=%s tools=%s",
@@ -177,6 +180,21 @@ def notify_owner(items: Iterable[Mapping[str, Any]], *, run: str) -> None:
             item.get("credential_id"),
             ",".join(str(name) for name in item.get("tool_names") or ()),
         )
+    if not fresh:
+        return
+    try:  # the model step waits at most OWNER_NOTIFY_TIMEOUT for the write
+        sent = await asyncio.wait_for(
+            owner_needed(fresh.values(), tenants or {}), OWNER_NOTIFY_TIMEOUT
+        )
+    except TimeoutError:
+        logger.warning("connection_guard owner_notification timed out")
+        return
+    if not sent:
+        return  # not marked: a later hook of this run tries again
+    for key in fresh:
+        _NOTIFIED[key] = None
+    while len(_NOTIFIED) > _NOTIFIED_LIMIT:
+        _NOTIFIED.popitem(last=False)
 
 
 __all__ = [

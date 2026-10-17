@@ -38,6 +38,7 @@ from app.authz.audit_actions import DELEGATION_BROKEN
 from app.authz.delegation_decisions import Reason, decide
 from app.authz.delegation_links import DelegatedLink, DelegationScope, delegated_links
 from app.authz.grants import GrantService, GrantTarget
+from app.authz.notification_events import delegation_broken
 from app.authz.org_context import OrgContext
 from app.authz.resource_lifecycle import LifecycleChange
 from app.authz.service_core import AuthzDecisions
@@ -76,6 +77,7 @@ class DelegationReport:
     unenforced: list[BrokenLink] = field(default_factory=list)  # would break; not acted on
     failed: list[DelegatedLink] = field(default_factory=list)  # skipped, logged
     revoked_grant_ids: list[UUID] = field(default_factory=list)
+    manager_cache: dict[UUID, set[UUID]] = field(default_factory=dict, repr=False)  # H-02
     change: LifecycleChange = field(default_factory=LifecycleChange)
 
 
@@ -120,7 +122,7 @@ async def validate_delegations(
     for item in list(report.broken):
         try:
             async with db.begin_nested():  # one bad link must not stop the organization
-                outbox += await _break(db, item, trigger, org.tenant_id, held, grants, report)
+                outbox += await _break(db, item, trigger, org, held, grants, report)
         except Exception:  # noqa: BLE001 - logged; retried by the next run
             logger.exception("delegation_break_failed", extra={"agent_id": str(item.link.agent_id)})
             report.broken.remove(item)
@@ -139,13 +141,13 @@ async def _break(
     db: AsyncSession,
     item: BrokenLink,
     trigger: str,
-    tenant_id: UUID,
+    org: Organization,
     held: dict[tuple[UUID, str, UUID], ResourceGrant],
     grants: GrantService,
     report: DelegationReport,
 ) -> list[UUID]:
     """Mark one link broken, audit it, and revoke its grant unless still used."""
-    link = item.link
+    link, tenant_id = item.link, org.tenant_id
     columns = _COLUMNS.get(link.table)
     if columns is not None:
         model, agent_col, link_col = columns
@@ -177,6 +179,15 @@ async def _break(
             "reason": item.reason,
             "trigger": trigger,
         },
+    )
+    await delegation_broken(
+        db,
+        org_id=org.id,
+        tenant_id=tenant_id,
+        agent_id=link.agent_id,
+        reason=item.reason,
+        resource_type=link.obj[0],
+        cache=report.manager_cache,
     )
     grant = held.get((link.agent_id, *link.obj))
     if grant is None or await _still_linked(db, link):

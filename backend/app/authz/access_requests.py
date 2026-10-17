@@ -125,7 +125,7 @@ async def create_request(
             raise
         return CreateResult(found)
     await audit_request(db, ctx, audit_actions.ACCESS_REQUEST_CREATE, request)
-    await notify_created(db, request)
+    await notify_created(db, request, mode=authz.mode)
     return CreateResult(request, created=True)
 
 

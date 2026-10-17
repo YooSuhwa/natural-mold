@@ -153,7 +153,7 @@ UUID_COLUMNS: Final = {
     "message_events": ("id", "conversation_id"),
     "message_feedbacks": ("id", "user_id", "conversation_id"),
     "models": ("id", "default_credential_id", "tenant_id"),
-    "notifications": ("org_id", "tenant_id", "user_id", "id"),
+    "notifications": ("org_id", "tenant_id", "user_id", "id", "target_id", "actor_id"),
     "org_capability_grants": ("principal_id", "granted_by", "id", "org_id", "tenant_id"),
     "org_invitations": ("accepted_by", "invited_by", "id", "org_id", "tenant_id"),
     "organization_members": ("org_id", "user_id", "invited_by", "tenant_id"),

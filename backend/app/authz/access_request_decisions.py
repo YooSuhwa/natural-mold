@@ -77,7 +77,9 @@ async def approve_request(
             expires_at=body.expires_at,
             confirm_delegation=body.confirm_delegation,
         )
-        change = (await share(db, authz, ctx, kind, request.resource_id, grant)).change
+        change = (
+            await share(db, authz, ctx, kind, request.resource_id, grant, notify=False)
+        ).change
     _close(request, ctx, "approved", body.note)
     request.granted_relation = level
     await db.flush()

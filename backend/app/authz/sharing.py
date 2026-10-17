@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import denials
 from app.authz.grants import GrantRequest, GrantService, GrantTarget
+from app.authz.notification_events import grant_received
 from app.authz.org_context import OrgContext
 from app.authz.personal_accounts import require_no_personal_accounts
 from app.authz.principal import Principal
@@ -125,7 +126,9 @@ async def share(
     body: GrantCreate,
     *,
     service: GrantService | None = None,
+    notify: bool = True,
 ) -> ShareResult:
+    """``notify=False``: the caller sends its own notification (access request approval)."""
     row = await authorize_target(db, authz, ctx, kind, resource_id, "can_share")
     require_credential_owner(kind, row, ctx)
     check_level(kind, row, body)
@@ -154,6 +157,8 @@ async def share(
     change = await grants.grant(db, ctx, GrantTarget(kind.name, row.id), request)
     outbox += change.outbox_ids
     await recheck_owner(db, kind, row.id, owner)
+    if notify and not same and body.principal.type == "user":  # new level, user targets
+        await grant_received(db, ctx, kind.name, row, body.principal.id, body.level)
     return ShareResult(change.grant, created=not same, change=LifecycleChange(tuple(outbox)))
 
 

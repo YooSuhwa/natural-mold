@@ -5052,5 +5052,47 @@
       "saveFailedToast": "Failed to save fallback models.",
       "badge": "Fallback +{count}"
     }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "bell": "Notifications",
+    "bellUnread": "Notifications, {count} unread",
+    "markAllRead": "Mark all as read",
+    "empty": "No new notifications",
+    "loading": "Loading notifications…",
+    "loadFailed": "Couldn't load notifications",
+    "hidden": "An item you can't access",
+    "unnamed": "Untitled",
+    "someone": "Someone",
+    "unreadMark": "Unread",
+    "levels": {
+      "consumer": "run",
+      "viewer": "view",
+      "editor": "edit",
+      "manager": "manage",
+      "other": "access"
+    },
+    "reasons": {
+      "permission_revoked": "permission revoked",
+      "owner_left": "owner left the organization",
+      "auth_required": "sign-in needed",
+      "delegation_broken": "delegation broken",
+      "required_unavailable": "required item unavailable",
+      "delegator_lost_access": "the person who connected it lost access",
+      "resource_unavailable": "resource unavailable",
+      "other": "check the reason"
+    },
+    "kinds": {
+      "accessRequestCreated": "{actor} requested {level} access to {target}",
+      "accessRequestApproved": "Your request for {level} access to {target} was approved",
+      "accessRequestDenied": "Your request for access to {target} was declined",
+      "grantReceived": "{actor} shared {target} with you ({level})",
+      "triggerBlocked": "The {trigger} schedule stopped ({reason})",
+      "ownerNeeded": "Someone asked you to reconnect {target}",
+      "delegationBroken": "A connection of {target} broke ({reason})",
+      "ownershipNew": "You are now the owner of {target}",
+      "ownershipPrevious": "Ownership of {target} was transferred",
+      "generic": "You have a new notification"
+    }
   }
 }

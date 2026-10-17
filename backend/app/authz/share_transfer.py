@@ -13,9 +13,10 @@
   resources with dependents bound to the previous owner (agent triggers, Agent API
   deployments/keys, the resource's own credential owned by the previous owner) —
   ``409 transfer_blocked`` lists them. Denied transfers write nothing, audit included.
-* Not yet: the ``ownership.transferred`` notification (notifications land in P7); an
-  agent's links to the previous owner's private skills/tools/MCP servers and its
-  conversations stay as they are (see ``share_transfer_blocks``).
+* ``ownership.transferred`` goes to the new owner, and to the previous owner when a
+  governor moved the resource (not to a leaving member). Not yet: an agent's links to
+  the previous owner's private skills/tools/MCP servers and its conversations stay as
+  they are (see ``share_transfer_blocks``).
 """
 
 from dataclasses import dataclass
@@ -29,6 +30,7 @@ from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
 from app.authz.grant_validation import GrantRequest, check_principal, invalid
 from app.authz.grants import GrantService, GrantTarget
+from app.authz.notification_events import ownership_transferred
 from app.authz.org_context import OrgContext
 from app.authz.resource_lifecycle import LifecycleChange, on_owner_changed
 from app.authz.service import AuthzService
@@ -154,5 +156,14 @@ async def transfer_row(
             "governance": governing,
             "manager_grant_id": str(result.manager_grant_id) if result.manager_grant_id else None,
         },
+    )
+    notify_previous = governing and exiting is None and previous != ctx.user_id
+    await ownership_transferred(
+        db,
+        ctx,
+        kind.name,
+        row,
+        new_owner=body.new_owner_id,
+        previous=previous if notify_previous else None,
     )
     return TransferResult(result, LifecycleChange(tuple(outbox)))

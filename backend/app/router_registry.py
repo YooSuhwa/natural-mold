@@ -33,6 +33,7 @@ def include_app_routers(app: FastAPI) -> None:
         me_orgs,
         memory,
         models,
+        notifications,
         org_assignments,
         org_audit,
         org_catalog,
@@ -130,6 +131,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(shares.router)
     app.include_router(resource_shares.router)
     app.include_router(access_requests.router)
+    app.include_router(notifications.router)
     app.include_router(credential_bindings.router)
     app.include_router(credential_bindings.mode_router)
     app.include_router(templates.router)

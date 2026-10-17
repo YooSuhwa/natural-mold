@@ -20,6 +20,8 @@ export const ROOT_MESSAGE_NAMESPACES = [
   'conversationExport',
   'metadata',
   'nav',
+  // The S25 bell sits in the sidebar utility footer on every screen (plan 13.8).
+  'notifications',
   // `share` lives at the root because the ShareDialog is only reachable from the
   // global chat navigator (in the root layout shell), which is outside the chat
   // page's own message scope — see chat-navigator / use-conversation-row-actions.

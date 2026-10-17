@@ -176,7 +176,7 @@
   },
   {
     "filePath": "src/components/layout/sidebar-utility-footer.tsx",
-    "line": 67,
+    "line": 68,
     "column": 21,
     "ruleId": "jsx-a11y/control-has-associated-label",
     "message": "A control must be associated with a text label."

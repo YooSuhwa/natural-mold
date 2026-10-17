@@ -3,23 +3,23 @@
 ``record_run_blocked`` writes ``run.blocked`` (system actor, the agent as target,
 ``reason_code`` = the 11.6 reason, ``owner_user_id`` = the run's account, i.e. the
 trigger or queue owner, ``target_owner_user_id`` = the agent's owner) in the caller's
-session, so it commits with the blocked run row. ``notify_owner_blocked`` is the call
-site of the 14.2 ``trigger.blocked`` notification; the notification table and sender
-are P7, so it only logs for now.
+session, so it commits with the blocked run row. ``notify_owner_blocked`` writes the
+14.2 ``trigger.blocked`` notification (H-02) in the same session, before the run is
+finished (``finish_trigger_run`` commits).
 """
 
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.audit_actions import RUN_BLOCKED
+from app.authz.notification_events import trigger_blocked
+from app.models.agent_trigger import AgentTrigger
 from app.services import audit_service
 
-logger = logging.getLogger(__name__)
 InvokerType = Literal["schedule", "queue", "api", "subagent"]
 
 
@@ -54,21 +54,9 @@ async def record_run_blocked(
     )
 
 
-async def notify_owner_blocked(
-    *,
-    kind: Literal["trigger.blocked"],
-    owner_user_id: uuid.UUID | None,
-    reason: str,
-    source_id: uuid.UUID | None,
-) -> None:
-    """P7 (14.2) hook: deliver ``kind`` to the owner. No notification store exists yet."""
-    logger.info(
-        "notification %s pending for owner %s (reason %s, source %s)",
-        kind,
-        owner_user_id,
-        reason,
-        source_id,
-    )
+async def notify_owner_blocked(db: AsyncSession, *, trigger: AgentTrigger, reason: str) -> None:
+    """14.2 ``trigger.blocked`` to the trigger owner (the caller dedupes per streak)."""
+    await trigger_blocked(db, trigger, reason)
 
 
 __all__ = ["InvokerType", "notify_owner_blocked", "record_run_blocked"]

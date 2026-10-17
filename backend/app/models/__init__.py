@@ -60,6 +60,7 @@ from app.models.message_attachment import MessageAttachment
 from app.models.message_event import MessageEvent, MessageEventChunk
 from app.models.message_feedback import MessageFeedback
 from app.models.model import Model
+from app.models.notification import Notification
 from app.models.organization import (
     Organization,
     OrganizationMember,
@@ -161,6 +162,7 @@ __all__ = [
     "MessageEventChunk",
     "MessageFeedback",
     "Model",
+    "Notification",
     "RefreshToken",
     "ResourceCredentialBinding",
     "ResourceGrant",

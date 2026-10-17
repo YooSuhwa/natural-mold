@@ -9,6 +9,8 @@ re-execution of finished siblings.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 from langchain_core.messages import AIMessage
 
@@ -260,12 +262,17 @@ async def test_subagent_graphs_only_refuse_and_never_raise_or_interrupt() -> Non
     assert post["messages"][-1].content == "done"
 
 
-def test_owner_notifications_are_sent_once_per_run_and_credential(caplog) -> None:
-    from app.agent_runtime.runtime.connection_guard_items import notify_owner
+async def test_owner_notifications_are_sent_once_per_run_and_credential(
+    caplog, monkeypatch
+) -> None:
+    from app.agent_runtime.runtime import connection_guard_items as items
 
+    sent = AsyncMock()
+    monkeypatch.setattr(items, "owner_needed", sent)  # H-02 delivery: test_h02_runtime_events
     item = {"resource_name": "Slack", "credential_id": "c-owner", "tool_names": ["a"]}
     with caplog.at_level("INFO"):
-        notify_owner([item, item], run="run-1")
-        notify_owner([item], run="run-1")
-        notify_owner([item], run="run-2")
+        await items.notify_owner([item, item], run="run-1")
+        await items.notify_owner([item], run="run-1")
+        await items.notify_owner([item], run="run-2")
     assert caplog.text.count("owner_notification") == 2
+    assert sent.await_count == 2

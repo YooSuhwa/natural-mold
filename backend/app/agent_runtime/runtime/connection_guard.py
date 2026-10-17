@@ -90,6 +90,11 @@ class ConnectionGuardMiddleware(AgentMiddleware):
     def name(self) -> str:
         return self._name
 
+    @property
+    def _tenants(self) -> dict[str, str]:
+        """Company of each guarded credential (owner notifications use tenant sessions)."""
+        return {t.credential_id: t.tenant_id for t in self.policy.guarded.values() if t.tenant_id}
+
     def take_slot(self, name: str) -> None:
         """Run in another middleware's stack slot (``connection_guard_order``)."""
         self._name = name
@@ -112,7 +117,7 @@ class ConnectionGuardMiddleware(AgentMiddleware):
             done |= {message.tool_call_id for message in messages}
             owner = [p for p in problems if p[2]["fixable_by"] == "owner"]
             owner = [p for p in owner if p[0]["id"] not in done]
-            notify_owner((item for _, _, item in owner), run=_run_key())
+            await notify_owner([i for _, _, i in owner], run=_run_key(), tenants=self._tenants)
             messages += [refusal(call, "owner_reconnect_required") for call, _, _ in owner]
             mine = [p for p in problems if p[2]["fixable_by"] != "owner"]
             payload = bundle((reason, item) for _, reason, item in mine)
@@ -195,7 +200,7 @@ class ConnectionGuardMiddleware(AgentMiddleware):
         mine = [(m, p) for m, p in asked if any(i["fixable_by"] != "owner" for i in p["items"])]
         mine_ids = {id(m) for m, _ in mine}
         owner = [i for _, p in asked for i in p["items"] if i["fixable_by"] == "owner"]
-        notify_owner(owner, run=_run_key())
+        await notify_owner(owner, run=_run_key(), tenants=self._tenants)
         owner_only = [m for m, _ in asked if id(m) not in mine_ids]
         replaced = [resolved(m, "owner_reconnect_required") for m in owner_only]
         payload = bundle(
