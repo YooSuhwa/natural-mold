@@ -83,7 +83,7 @@ async def test_connect_by_me_for_my_missing_or_expired_per_user_connection(
     item = next(i for i in (await assess(db, agent, authz)).items if i.kind == "tool")
     assert (item.result, item.credential, item.action) == (
         "connect_by_me",
-        {"mode": "per_user", "status": "missing"},
+        {"mode": "per_user", "status": "missing", "definition_key": "http_bearer"},  # G-04
         {"type": "connect"},
     )
     mine = await secret(db, CALLER, "v")
@@ -97,6 +97,7 @@ async def test_connect_by_me_for_my_missing_or_expired_per_user_connection(
         "mode": "per_user",
         "status": "expired",
         "credential_id": str(mine.id),
+        "definition_key": "http_bearer",
     }
 
 

@@ -9,6 +9,16 @@ vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }))
 
+const route = vi.hoisted(() => ({ params: {} as Record<string, string> }))
+vi.mock('next/navigation', () => ({ useParams: () => route.params }))
+vi.mock('@/components/readiness/auth-card-connect', () => ({
+  AuthCardConnect: ({ onConnected }: { onConnected: () => void }) => (
+    <button type="button" onClick={onConnected}>
+      connected-in-panel
+    </button>
+  ),
+}))
+
 type Render = (props: { args: Record<string, unknown>; status: { type: string } }) => ReactNode
 const renderCard = AuthRequiredCard as unknown as Render
 
@@ -81,5 +91,34 @@ describe('AuthRequiredCard', () => {
       message: 'skip',
       attempt: 2,
     })
+  })
+})
+
+describe('AuthRequiredCard connect (G-04, S22)', () => {
+  it('opens the agent check from the chat route and answers retry once connected', async () => {
+    route.params = { agentId: 'agent-1' }
+    const registerDecision = vi.fn().mockResolvedValue(undefined)
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <Card />
+      </HiTLContext.Provider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'connected-in-panel' }))
+    await waitFor(() =>
+      expect(registerDecision).toHaveBeenCalledWith(
+        0,
+        { type: 'respond', message: 'retry' },
+        'retry',
+        'int-1',
+      ),
+    )
+    route.params = {}
+  })
+
+  it('has no connect button outside an agent route and says a re-ask is still not connected', () => {
+    route.params = {}
+    render(<Card attempt={2} />)
+    expect(screen.queryByRole('button', { name: 'connected-in-panel' })).not.toBeInTheDocument()
+    expect(screen.getByText('stillNotConnected')).toBeInTheDocument()
   })
 })

@@ -64,7 +64,7 @@ export function NotificationsBell() {
         {unread > 0 ? (
           <span
             aria-hidden
-            className="absolute -top-1 -right-1 min-w-4 rounded-full bg-destructive px-1 text-[10px] leading-4 font-semibold text-white"
+            className="absolute -top-1 -right-1 min-w-4 rounded-full bg-destructive px-1 moldy-ui-micro leading-4 font-semibold text-white"
           >
             {badgeLabel(unread)}
           </span>

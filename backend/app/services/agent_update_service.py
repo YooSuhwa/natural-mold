@@ -151,6 +151,10 @@ async def update_agent(
         )
         for idx, link in enumerate(agent.sub_agent_links):
             link.position = idx
+    if data.required_link_ids is not None:  # S29: after the relinks, over every link
+        required = set(data.required_link_ids)
+        for link, target in linked_targets(agent):
+            link.required = target in required
     await db.flush()
     await heal.audit(db, agent.id)
     if before is not None:
@@ -165,6 +169,16 @@ async def update_agent(
         ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
     )
     return agent
+
+
+def linked_targets(agent: Agent) -> list[tuple[Any, uuid.UUID]]:
+    """Every link of the agent with the id of what it links (S29 ``required``)."""
+    return [
+        *((link, link.tool_id) for link in agent.tool_links),
+        *((link, link.mcp_tool_id) for link in agent.mcp_tool_links),
+        *((link, link.skill_id) for link in agent.skill_links),
+        *((link, link.sub_agent_id) for link in agent.sub_agent_links),
+    ]
 
 
 def _linked(links: list[Any], attr: str, heal: Reattach) -> set[uuid.UUID]:

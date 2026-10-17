@@ -22,6 +22,11 @@ vi.mock('@/lib/hooks/use-agents', () => ({
   useToggleFavorite: () => ({ mutate: vi.fn() }),
 }))
 
+const readiness = vi.hoisted(() => ({ data: null as unknown }))
+vi.mock('@/lib/hooks/use-readiness', () => ({
+  useReadinessSummary: () => ({ data: readiness.data }),
+}))
+
 const activeAgent: Agent = {
   id: 'agent-1',
   name: 'Test Agent',
@@ -148,5 +153,12 @@ describe('AgentCard', () => {
       )
       expect(screen.queryByText('공유받음')).not.toBeInTheDocument()
     })
+  })
+
+  it('shows the S21 readiness badge from the batched summary', () => {
+    readiness.data = { overall: 'needs_connection', counts: { connect_by_me: 2 } }
+    render(<AgentCard agent={activeAgent} />)
+    expect(screen.getByText('연결 필요 2')).toBeInTheDocument()
+    readiness.data = null
   })
 })

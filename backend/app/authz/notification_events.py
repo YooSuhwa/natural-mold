@@ -8,6 +8,7 @@
   streak of the same reason) — all in the caller's session;
 * ``connection.owner_needed`` (F-07 ``fixable_by=owner``): the credential owner, written
   in its own session (the runtime middleware holds none); 24-hour merge per credential.
+  The readiness panel's "소유자에게 알림" (G-04) writes the same notice the same way.
 """
 
 import logging
@@ -153,14 +154,34 @@ async def owner_needed(items: Iterable[Mapping[str, Any]], tenants: Mapping[str,
     return True
 
 
-async def _owner_needed_one(db: AsyncSession, credential_id: UUID) -> None:
+async def owner_needed_count(owners: Iterable[tuple[UUID, UUID]]) -> int:
+    """G-04 readiness panel button: ``connection.owner_needed`` for ``(credential, company)``
+    pairs, each read and written in a session of the owner's company (as the runtime path).
+    Returns the notices written (merged ones included); 0 when a write failed."""
+    by_tenant: dict[UUID, set[UUID]] = {}
+    for credential_id, tenant_id in owners:
+        by_tenant.setdefault(tenant_id, set()).add(credential_id)
+    written = 0
+    try:
+        for tenant_id, ids in by_tenant.items():
+            async with tenant_session(SessionTenant(tenant_id), maker=async_session) as db:
+                for credential_id in sorted(ids, key=str):
+                    written += await _owner_needed_one(db, credential_id)
+                await db.commit()
+    except Exception:  # noqa: BLE001 - reported to the caller as nothing notified
+        logger.exception("owner_notification_failed")
+        return 0
+    return written
+
+
+async def _owner_needed_one(db: AsyncSession, credential_id: UUID) -> int:
     credential = await db.get(Credential, credential_id)
     if credential is None or credential.user_id is None or credential.tenant_id is None:
-        return
+        return 0
     org_id = await _personal_org(db, credential)
     if org_id is None:
-        return
-    await notify(
+        return 0
+    rows = await notify(
         db,
         kind="connection.owner_needed",
         recipients=[credential.user_id],
@@ -169,12 +190,14 @@ async def _owner_needed_one(db: AsyncSession, credential_id: UUID) -> None:
         target=Target("credential", credential.id, credential.name),
         link=resource_link("credential", credential.id),
     )
+    return len(rows)
 
 
 __all__ = [
     "delegation_broken",
     "grant_received",
     "owner_needed",
+    "owner_needed_count",
     "ownership_transferred",
     "trigger_blocked",
 ]

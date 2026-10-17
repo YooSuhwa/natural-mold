@@ -175,7 +175,13 @@
       "unknown": "Unknown",
       "healthy": "Healthy",
       "degraded": "Degraded",
-      "unhealthy": "Unhealthy"
+      "unhealthy": "Unhealthy",
+      "needs_connection": "Needs connection",
+      "limited": "Limited",
+      "blocked": "Blocked",
+      "no_permission": "No permission",
+      "archived": "Archived",
+      "suspended": "Suspended"
     },
     "comingSoon": {
       "default": "This feature is coming soon.",
@@ -1423,6 +1429,11 @@
         "sat": "Sat",
         "sun": "Sun"
       }
+    },
+    "linkRequired": {
+      "label": "Required",
+      "toggle": "{name} required",
+      "help": "If a required item can't be used, the chat won't start and shows how to connect it instead. Optional items are left out of the run."
     }
   },
   "scheduleCenter": {
@@ -1898,7 +1909,8 @@
       "skip": "Skip",
       "cancel": "Cancel run",
       "sent": "Response sent.",
-      "resumeFailed": "Could not send your response. Try again."
+      "resumeFailed": "Could not send your response. Try again.",
+      "stillNotConnected": "Still not connected. Connect it, then try again."
     },
     "userInput": {
       "placeholder": "Placeholder",
@@ -5093,6 +5105,95 @@
       "ownershipNew": "You are now the owner of {target}",
       "ownershipPrevious": "Ownership of {target} was transferred",
       "generic": "You have a new notification"
+    }
+  },
+  "readiness": {
+    "badge": {
+      "needsConnection": "Needs connection {count}",
+      "limited": "{count} excluded",
+      "blocked": "Unavailable · {reason}",
+      "reason": {
+        "no_permission": "permission needed",
+        "owner_must_connect": "owner must connect",
+        "unavailable": "needs a check"
+      }
+    },
+    "panel": {
+      "title": "Before you start {name}",
+      "titleUnnamed": "Connection check before you start",
+      "summary": {
+        "ready": "Everything is ready to use",
+        "needs_connection": "Connect {count} required item(s) to start right away",
+        "limited": "Some optional items will be left out of this run",
+        "blocked": "A required item can't be used, so the chat can't start"
+      },
+      "required": "Required",
+      "optional": "Optional",
+      "kind": {
+        "llm_model": "Model",
+        "tool": "Tool",
+        "mcp_server": "MCP server",
+        "skill": "Skill",
+        "sub_agent": "Sub-agent"
+      },
+      "counted": "{count} {kind}",
+      "result": {
+        "ready": "Ready",
+        "connect_by_me": "Your account needs to be connected",
+        "connect_by_me_expired": "Your connection has expired",
+        "owner_must_connect": "The owner's account needs to be connected",
+        "no_permission": "Left out of this run: no permission",
+        "no_permission_required": "Can't run: no permission",
+        "unavailable": "Waiting for an administrator check"
+      },
+      "chip": {
+        "ready": "Ready",
+        "connect_by_me": "Needs connection",
+        "owner_must_connect": "Owner must connect",
+        "no_permission": "No permission",
+        "unavailable": "Unavailable"
+      },
+      "connect": "Connect",
+      "openCredentials": "Open credentials",
+      "notifyOwner": "Notify owner",
+      "notified": "Notified",
+      "notifySent": "The owner has been notified",
+      "notifyFailed": "Couldn't send the notification. Try again shortly.",
+      "requestAccess": "Request access",
+      "close": "Close",
+      "loading": "Checking connections",
+      "loadFailed": "Couldn't load the check result",
+      "retry": "Try again",
+      "notReadyToast": "The chat couldn't start because required connections are missing",
+      "collapsed": {
+        "needs_connection": "{count} required item(s) need a connection",
+        "limited": "Some items will be left out of this run",
+        "blocked": "This agent can't be used right now"
+      },
+      "open": "View check",
+      "confirm": "OK",
+      "notifyNone": "Couldn't notify the owner: the owner's account couldn't be found."
+    },
+    "binding": {
+      "title": "Connect {name}",
+      "description": "Used with your account in {agent}",
+      "descriptionGeneric": "Use this service with your account",
+      "mine": "My credentials",
+      "empty": "You have no credential that can be connected",
+      "use": "Connect this account",
+      "useNamed": "Connect {name}",
+      "create": "Connect new",
+      "createHelp": "Create a new credential and connect it right away",
+      "connected": "Connected",
+      "failed": "Couldn't connect",
+      "typeMismatch": "This credential type can't be connected to this service",
+      "notPerUser": "This service isn't connected per user",
+      "close": "Close"
+    },
+    "authCard": {
+      "connect": "Connect",
+      "reconnectNote": "Reconnect this on the credentials screen, then try again.",
+      "openCredentials": "Open credentials"
     }
   }
 }

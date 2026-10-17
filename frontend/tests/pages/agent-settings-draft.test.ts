@@ -131,6 +131,7 @@ describe('agent settings draft helpers', () => {
         mcp_tools: [{ id: 'mcp-tool-1', name: 'Repo Search', server_id: 'server-1' }],
         skills: [{ id: 'skill-1', name: 'Research Skill' }],
         sub_agents: [{ id: 'sub-agent-1', name: 'Helper Agent', description: null }],
+        required_link_ids: ['mcp-tool-1'],
         middleware_configs: [{ type: 'human_in_the_loop', params: { ignored: true } }],
         model_params: { temperature: 0.4, top_p: 0.9, max_tokens: 2048 },
         opener_questions: ['Start here'],
@@ -154,6 +155,7 @@ describe('agent settings draft helpers', () => {
       mcp_tool_ids: ['mcp-tool-1'],
       skill_ids: ['skill-1'],
       sub_agent_ids: ['sub-agent-1'],
+      required_link_ids: ['mcp-tool-1'],
       middleware_configs: [{ type: 'human_in_the_loop', params: {} }],
       model_params: { temperature: 0.4, top_p: 0.9, max_tokens: 2048 },
       opener_questions: ['Start here'],
@@ -165,6 +167,17 @@ describe('agent settings draft helpers', () => {
         summarization: { mode: 'preset', preset: 'balanced_context_v1' },
       },
     })
+  })
+
+  it('treats a changed required mark as dirty and keeps it across a refetch merge (S29)', () => {
+    const agent = makeAgent({ tools: [{ id: 'tool-1', name: 'Web Search' }] })
+    const baseline = buildAgentSettingsDraftFromAgent(agent)
+    const draft = { ...baseline, requiredLinkIds: new Set(['tool-1']) }
+    expect(isAgentSettingsDraftDirty(draft, baseline)).toBe(true)
+    const next = buildAgentSettingsDraftFromAgent({ ...agent, name: 'Renamed' })
+    const merged = mergeUntouchedAgentSettingsDraft(draft, baseline, next)
+    expect(Array.from(merged.requiredLinkIds)).toEqual(['tool-1'])
+    expect(buildAgentUpdateRequest(merged).required_link_ids).toEqual(['tool-1'])
   })
 
   it('serializes empty optional fields the same way as the previous page implementation', () => {

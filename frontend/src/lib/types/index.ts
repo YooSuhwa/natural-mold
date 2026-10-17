@@ -115,6 +115,8 @@ export interface Agent {
   runtime_policy_effective: RuntimePolicyV1
   /** Provenance of the stored/effective agent policy; never include it in writes. */
   runtime_policy_source: 'legacy_compat' | 'stored'
+  /** S29: linked tool / MCP tool / skill / subagent ids whose link is required. */
+  required_link_ids?: string[]
 }
 
 export interface AgentSummary {
@@ -164,6 +166,8 @@ export interface AgentUpdateRequest {
   mcp_tool_ids?: string[]
   skill_ids?: string[]
   sub_agent_ids?: string[]
+  /** S29: replaces the required marks of every link; omitted leaves them unchanged. */
+  required_link_ids?: string[]
   is_favorite?: boolean
   model_params?: ModelParams
   middleware_configs?: MiddlewareConfigEntry[]

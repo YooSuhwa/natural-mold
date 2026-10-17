@@ -22,6 +22,7 @@ class ReadinessCredential(BaseModel):
     mode: str
     status: str  # active | auth_needed | expired | missing | unusable
     credential_id: uuid.UUID | None = None  # only the caller's own credential
+    definition_key: str | None = None  # connect_by_me only: the type the caller connects
 
 
 class ReadinessAction(BaseModel):
@@ -42,9 +43,14 @@ class ReadinessItemResponse(BaseModel):
 
 
 class AgentReadinessResponse(BaseModel):
+    agent_id: uuid.UUID | None = None  # only for a caller who may view the agent's settings
     overall: ReadinessOverall
     identity_mode: str
     items: list[ReadinessItemResponse]
+
+
+class OwnerNotifyResponse(BaseModel):
+    notified: int  # notices written (merged per credential for 24 hours); 0 = none
 
 
 class ReadinessSummaryRequest(BaseModel):
@@ -58,6 +64,7 @@ class ReadinessSummary(BaseModel):
 
 __all__ = [
     "AgentReadinessResponse",
+    "OwnerNotifyResponse",
     "ReadinessAction",
     "ReadinessCredential",
     "ReadinessItemResponse",

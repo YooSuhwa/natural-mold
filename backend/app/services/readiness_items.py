@@ -46,6 +46,9 @@ class ReadinessItem:
     name: str | None = None
     credential: dict[str, Any] | None = None
     action: dict[str, str] | None = field(default=None)
+    # The owner's credential behind an ``owner_must_connect`` item (G-04 "소유자에게 알림");
+    # never presented.
+    owner_credential: tuple[UUID, UUID] | None = None  # (credential id, its company)
 
 
 def action_for(result: str, definition_key: str | None) -> dict[str, str] | None:
@@ -78,10 +81,15 @@ class LinkAssessor:
         return ReadinessItem(kind, self.agent.id, required, result, rid, name)
 
     def finish(self, item: ReadinessItem, credential: dict[str, Any] | None) -> ReadinessItem:
-        item.credential = credential if item.result != "ready" else None
-        key = (credential or {}).get("definition_key")
+        info = dict(credential or {})
+        owner_credential = info.pop("owner_credential", None)
+        if item.result == "owner_must_connect":
+            item.owner_credential = owner_credential
+        item.credential = info if credential is not None and item.result != "ready" else None
+        key = info.get("definition_key")
         item.action = action_for(item.result, key)
-        if item.credential is not None:
+        # The credential type is shown only to the one who connects it (S23 dialog filter).
+        if item.credential is not None and (item.result != "connect_by_me" or key is None):
             item.credential = {k: v for k, v in item.credential.items() if k != "definition_key"}
         return item
 
@@ -112,6 +120,8 @@ class LinkAssessor:
         }
         if credential is not None and credential.user_id == self.caller:
             info["credential_id"] = str(credential.id)
+        elif credential is not None and credential.tenant_id is not None:
+            info["owner_credential"] = (credential.id, credential.tenant_id)
         if status == "active":
             return "ready", info
         if row.credential_mode != "per_user" and operator_managed(row, credential):
@@ -134,6 +144,8 @@ class LinkAssessor:
             mine = credential.user_id == self.caller
             item.result = "connect_by_me" if mine else "owner_must_connect"
             info = {"mode": "shared", "status": credential.status}
+            if not mine and credential.tenant_id is not None:
+                info["owner_credential"] = (credential.id, credential.tenant_id)
         return self.finish(item, info)
 
     async def tool(self, link: Any) -> ReadinessItem:

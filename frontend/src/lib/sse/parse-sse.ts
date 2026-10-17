@@ -2,6 +2,7 @@ import { fetchEventSource, type EventSourceMessage } from '@microsoft/fetch-even
 import { API_BASE, fireSessionExpired } from '@/lib/api/client'
 import { ApiError, parseApiErrorBody } from '@/lib/api/errors'
 import { csrfStore } from '@/lib/auth/csrf'
+import { announceIfAgentNotReady, originOfPath } from '@/lib/chat/agent-not-ready-signal'
 import { withOrgScopeSignal } from '@/lib/org-scope/org-scope-signal'
 
 /** Error thrown when a stream POST/GET returns a non-2xx with a parseable
@@ -218,6 +219,7 @@ export async function* streamSSEPost<TEvent extends string>(
         throw new Error(`Stream failed: 401`)
       }
       if (!response.ok) {
+        await announceIfAgentNotReady(response, originOfPath(path))
         const { code, message } = await readStreamErrorBody(response)
         throw new StreamApiError(response.status, code, message)
       }

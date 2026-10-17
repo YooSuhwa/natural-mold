@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
+import { LinkRequiredToggle } from '@/components/agent/link-required-context'
 import type { Agent } from '@/lib/types'
 
 interface SubAgentsDialogProps {
@@ -158,6 +159,7 @@ function SelectedCard({ agent, onRemove }: { agent: Agent; onRemove: () => void 
           <span className="line-clamp-1 text-xs text-muted-foreground">{agent.description}</span>
         )}
       </div>
+      <LinkRequiredToggle id={agent.id} name={agent.name} />
       <Button
         size="icon-sm"
         variant="ghost"

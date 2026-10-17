@@ -81,10 +81,9 @@ export function RequestAccessDialog({
               {t('request.level')}
             </legend>
             {levels.map((value) => (
-              <label
+              <div
                 key={value}
-                htmlFor={`${id}-${value}`}
-                className="flex min-h-10 cursor-pointer items-start gap-2 rounded-md border border-border px-3 py-2 has-checked:border-primary-strong"
+                className="flex min-h-10 items-start gap-2 rounded-md border border-border px-3 py-2 has-checked:border-primary-strong"
               >
                 <input
                   id={`${id}-${value}`}
@@ -93,15 +92,22 @@ export function RequestAccessDialog({
                   value={value}
                   checked={level === value}
                   onChange={() => setLevel(value)}
+                  aria-label={t(`level.${value}`)}
+                  aria-describedby={`${id}-${value}-help`}
                   className="mt-1"
                 />
-                <span>
-                  <span className="block text-sm text-foreground">{t(`level.${value}`)}</span>
-                  <span className="block text-xs text-muted-foreground">
+                <div className="min-w-0">
+                  <label
+                    htmlFor={`${id}-${value}`}
+                    className="block cursor-pointer text-sm text-foreground"
+                  >
+                    {t(`level.${value}`)}
+                  </label>
+                  <span id={`${id}-${value}-help`} className="block text-xs text-muted-foreground">
                     {t(`levelHelp.${value}`)}
                   </span>
-                </span>
-              </label>
+                </div>
+              </div>
             ))}
           </fieldset>
           <div className="space-y-1">

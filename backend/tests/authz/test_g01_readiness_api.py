@@ -93,7 +93,11 @@ async def test_a_runner_sees_counts_for_what_it_cannot_see(
     assert {"kind": "llm_model", "count": 1, "required": True, "result": "ready"} in body["items"]
     connect = next(item for item in body["items"] if item["result"] == "connect_by_me")
     assert connect["id"] == str(mine.id) and connect["name"] == mine.name
-    assert connect["credential"] == {"mode": "per_user", "status": "missing"}
+    assert connect["credential"] == {
+        "mode": "per_user",
+        "status": "missing",
+        "definition_key": "http_bearer",  # G-04: the type the caller connects
+    }
 
 
 async def test_a_config_viewer_sees_ids_and_names(

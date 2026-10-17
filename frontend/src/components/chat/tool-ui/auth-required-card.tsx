@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import { useParams } from 'next/navigation'
 import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { KeyRoundIcon, Loader2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { AuthCardConnect } from '@/components/readiness/auth-card-connect'
 import { cn } from '@/lib/utils'
 import { toRespond } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
@@ -28,16 +30,21 @@ const REASON_KEYS: Record<string, string> = {
 }
 
 /**
- * Minimal `auth_required` card (plan 11.5, F-07): lists the connections a paused run
- * needs and answers with `retry` / `skip` / `cancel`. Connect buttons and the per-user
- * connection dialog are G-04; owner-fixable items only say the owner was notified.
+ * `auth_required` card (plan 11.5, S22): lists the connections a paused run needs and
+ * answers with `retry` / `skip` / `cancel`. When the agent's S21 check can bind one of my
+ * connections, "연결하기" opens it and answers `retry` after the S23 dialog connected;
+ * otherwise a note points to the credentials screen (G-04); owner-fixable items
+ * only say the owner was notified. A re-ask (`attempt` > 1) says it is still not connected.
  */
 export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequiredArgs, unknown>) {
   const t = useTranslations('chat.authRequired')
   const hitl = useHiTL()
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [failed, setFailed] = useState(false)
+  const agentId = useParams<{ agentId?: string }>()?.agentId
+  const askedAttempt = typeof args?.attempt === 'number' ? args.attempt : 1
   const items = authRequiredItems(args)
+  const mine = items.filter((item) => item.fixableBy === 'me').map((item) => item.resourceName)
   const reasonKey =
     REASON_KEYS[typeof args?.reason === 'string' ? args.reason : ''] ?? 'reasonAuthNeeded'
 
@@ -73,6 +80,9 @@ export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequired
       </div>
       <div className="space-y-3 p-4 text-sm">
         <p className="text-muted-foreground">{t(reasonKey)}</p>
+        {askedAttempt > 1 && state !== 'sent' && (
+          <p className="text-xs text-muted-foreground">{t('stillNotConnected')}</p>
+        )}
         <ul className="space-y-1.5">
           {items.map((item) => (
             <li key={`${item.resourceName}:${item.toolNames.join(',')}`}>
@@ -95,6 +105,14 @@ export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequired
           <p className="text-xs text-muted-foreground">{t('sent')}</p>
         ) : (
           <div className="flex flex-wrap justify-end gap-2">
+            {agentId && mine.length > 0 && (
+              <AuthCardConnect
+                agentId={agentId}
+                resourceNames={mine}
+                disabled={state === 'sending'}
+                onConnected={() => void answer('retry')}
+              />
+            )}
             {AUTH_REQUIRED_RESPONSES.map((response) => (
               <button
                 key={response}

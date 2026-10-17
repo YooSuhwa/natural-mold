@@ -6,7 +6,9 @@ import { useTranslations } from 'next-intl'
 import { WrenchIcon, StarIcon, Settings2Icon, CpuIcon, Share2Icon, UsersIcon } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToggleFavorite } from '@/lib/hooks/use-agents'
+import { useReadinessSummary } from '@/lib/hooks/use-readiness'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
+import { ReadinessBadge } from '@/components/readiness/readiness-badge'
 import { canShareResource } from '@/components/sharing/share-permissions'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -30,6 +32,7 @@ export function AgentCard({ agent, onPublish, onShare }: AgentCardProps) {
   const router = useRouter()
   const { mutate: toggleFavorite } = useToggleFavorite()
   const t = useTranslations('agent.card')
+  const { data: readiness } = useReadinessSummary(agent.id) // S21 badge, batched (S20)
 
   const dot =
     agent.status === 'active'
@@ -119,6 +122,7 @@ export function AgentCard({ agent, onPublish, onShare }: AgentCardProps) {
                 +{fallbackCount} fallback
               </span>
             )}
+            <ReadinessBadge summary={readiness ?? null} />
             {sharedWithMe ? (
               <Badge variant="outline" className="gap-1">
                 <UsersIcon className="size-3" aria-hidden="true" />

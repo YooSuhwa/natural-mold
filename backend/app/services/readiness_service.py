@@ -184,11 +184,14 @@ def present(readiness: Readiness) -> dict[str, Any]:
             {"kind": kind, "count": count, "required": required, "result": result}
             | ({"action": action} if action else {})
         )
-    return {
+    body: dict[str, Any] = {
         "overall": readiness.overall,
         "identity_mode": readiness.agent.identity_mode,
         "items": items,
     }
+    if readiness.can_view_config:  # G-04: the chat gate matches a 409 to its agent
+        body["agent_id"] = str(readiness.agent.id)
+    return body
 
 
 def summary(readiness: Readiness) -> dict[str, Any]:

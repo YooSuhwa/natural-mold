@@ -44,7 +44,9 @@ async def require_agent_ready(
     readiness = await readiness_service.assess_agent(db, service, context, agent_id)
     if readiness.overall == "blocked":
         body = readiness_service.present(readiness)
-        raise agent_not_ready(body["items"], identity_mode=body["identity_mode"])
+        raise agent_not_ready(
+            body["items"], identity_mode=body["identity_mode"], agent_id=body.get("agent_id")
+        )
 
 
 def resume_answers(resume: object) -> list[object]:

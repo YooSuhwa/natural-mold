@@ -179,7 +179,10 @@ def authorization_error(code: ErrorCode, details: Mapping[str, object] | None = 
 
 
 def agent_not_ready(
-    items: Iterable[Mapping[str, object]], *, identity_mode: str | None = None
+    items: Iterable[Mapping[str, object]],
+    *,
+    identity_mode: str | None = None,
+    agent_id: str | None = None,
 ) -> AppError:
     """``409 agent_not_ready`` (12.2 ``blocked``): the one body of every refusal (G-02's
     12.3 readiness body, the F-03/F-06 run-prep checks). Items never carry ids a runner
@@ -187,6 +190,8 @@ def agent_not_ready(
     details: dict[str, object] = {"overall": "blocked"}
     if identity_mode is not None:
         details["identity_mode"] = identity_mode
+    if agent_id is not None:  # G-04: only when the caller may view the agent's settings
+        details["agent_id"] = agent_id
     details["items"] = [dict(item) for item in items]
     return authorization_error("agent_not_ready", details)
 

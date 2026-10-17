@@ -175,7 +175,13 @@
       "unknown": "알 수 없음",
       "healthy": "정상",
       "degraded": "주의",
-      "unhealthy": "비정상"
+      "unhealthy": "비정상",
+      "needs_connection": "연결 필요",
+      "limited": "일부 제외",
+      "blocked": "사용 불가",
+      "no_permission": "권한 없음",
+      "archived": "보관됨",
+      "suspended": "정지됨"
     },
     "comingSoon": {
       "default": "이 기능은 준비 중입니다",
@@ -1423,6 +1429,11 @@
         "sat": "토",
         "sun": "일"
       }
+    },
+    "linkRequired": {
+      "label": "필수",
+      "toggle": "{name} 필수",
+      "help": "필수 항목을 쓸 수 없으면 대화를 시작하지 않고 연결 안내를 보여 줘요. 선택 항목은 빼고 실행합니다."
     }
   },
   "scheduleCenter": {
@@ -1898,7 +1909,8 @@
       "skip": "건너뛰기",
       "cancel": "실행 취소",
       "sent": "응답을 보냈습니다.",
-      "resumeFailed": "응답을 전송하지 못했습니다. 다시 시도하세요."
+      "resumeFailed": "응답을 전송하지 못했습니다. 다시 시도하세요.",
+      "stillNotConnected": "아직 연결되지 않았어요. 연결한 뒤 다시 시도하세요."
     },
     "userInput": {
       "placeholder": "답변을 입력하세요…",
@@ -5093,6 +5105,95 @@
       "ownershipNew": "{target}의 소유자가 되었어요",
       "ownershipPrevious": "{target}의 소유권이 이전됐어요",
       "generic": "새 알림이 있어요"
+    }
+  },
+  "readiness": {
+    "badge": {
+      "needsConnection": "연결 필요 {count}",
+      "limited": "{count}개 제외",
+      "blocked": "사용 불가 · {reason}",
+      "reason": {
+        "no_permission": "권한 필요",
+        "owner_must_connect": "소유자 연결 필요",
+        "unavailable": "점검 필요"
+      }
+    },
+    "panel": {
+      "title": "{name} 시작 전 점검",
+      "titleUnnamed": "시작 전 연결 점검",
+      "summary": {
+        "ready": "모든 항목을 바로 쓸 수 있어요",
+        "needs_connection": "필수 항목 {count}개를 연결하면 바로 쓸 수 있어요",
+        "limited": "일부 선택 항목은 이번 실행에서 빠져요",
+        "blocked": "필수 항목을 쓸 수 없어 대화를 시작할 수 없어요"
+      },
+      "required": "필수",
+      "optional": "선택",
+      "kind": {
+        "llm_model": "모델",
+        "tool": "도구",
+        "mcp_server": "MCP 서버",
+        "skill": "스킬",
+        "sub_agent": "하위 에이전트"
+      },
+      "counted": "{kind} {count}개",
+      "result": {
+        "ready": "사용 가능",
+        "connect_by_me": "내 계정 연결이 필요해요",
+        "connect_by_me_expired": "내 연결이 만료됐어요",
+        "owner_must_connect": "소유자 계정 연결이 필요해요",
+        "no_permission": "권한이 없어 이번 실행에서 제외돼요",
+        "no_permission_required": "권한이 없어 실행할 수 없어요",
+        "unavailable": "관리자 점검을 기다리고 있어요"
+      },
+      "chip": {
+        "ready": "사용 가능",
+        "connect_by_me": "연결 필요",
+        "owner_must_connect": "소유자 연결 필요",
+        "no_permission": "권한 없음",
+        "unavailable": "사용 불가"
+      },
+      "connect": "연결하기",
+      "openCredentials": "자격증명 열기",
+      "notifyOwner": "소유자에게 알림",
+      "notified": "알렸어요",
+      "notifySent": "소유자에게 알렸어요",
+      "notifyFailed": "알림을 보내지 못했어요. 잠시 후 다시 시도하세요.",
+      "requestAccess": "권한 요청",
+      "close": "닫기",
+      "loading": "연결 상태를 확인하고 있어요",
+      "loadFailed": "점검 결과를 불러오지 못했어요",
+      "retry": "다시 시도",
+      "notReadyToast": "필수 연결이 끝나지 않아 대화를 시작하지 못했어요",
+      "collapsed": {
+        "needs_connection": "필수 항목 {count}개 연결이 필요해요",
+        "limited": "일부 항목이 이번 실행에서 빠져요",
+        "blocked": "지금은 이 에이전트를 쓸 수 없어요"
+      },
+      "open": "점검 보기",
+      "confirm": "확인",
+      "notifyNone": "소유자에게 알리지 못했어요. 소유자 계정을 확인할 수 없어요."
+    },
+    "binding": {
+      "title": "{name} 연결",
+      "description": "{agent}에서 내 계정으로 사용합니다",
+      "descriptionGeneric": "이 서비스를 내 계정으로 사용합니다",
+      "mine": "내 자격증명",
+      "empty": "연결할 수 있는 내 자격증명이 없어요",
+      "use": "이 계정 연결",
+      "useNamed": "{name} 연결",
+      "create": "새로 연결",
+      "createHelp": "새 자격증명을 만들고 바로 연결해요",
+      "connected": "연결했어요",
+      "failed": "연결하지 못했어요",
+      "typeMismatch": "이 자격증명 유형은 이 서비스에 연결할 수 없어요",
+      "notPerUser": "이 서비스는 사용자마다 연결하는 방식이 아니에요",
+      "close": "닫기"
+    },
+    "authCard": {
+      "connect": "연결하기",
+      "reconnectNote": "이 연결은 자격증명 화면에서 다시 연결한 뒤 다시 시도하세요.",
+      "openCredentials": "자격증명 열기"
     }
   }
 }

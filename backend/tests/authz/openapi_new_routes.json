@@ -2384,6 +2384,49 @@
         ]
       }
     },
+    "/api/agents/{agent_id}/readiness/notify-owner": {
+      "post": {
+        "operationId": "notify_readiness_owner_api_agents__agent_id__readiness_notify_owner_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerNotifyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Notify Readiness Owner",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/api/agents/{agent_id}/restore": {
       "post": {
         "operationId": "restore_archived_agent_api_agents__agent_id__restore_post",
@@ -22288,6 +22331,14 @@
           ],
           "title": "Opener Questions"
         },
+        "required_link_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Required Link Ids",
+          "type": "array"
+        },
         "runtime_name": {
           "title": "Runtime Name",
           "type": "string"
@@ -24036,6 +24087,18 @@
     },
     "AgentReadinessResponse": {
       "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
         "identity_mode": {
           "title": "Identity Mode",
           "type": "string"
@@ -24184,6 +24247,14 @@
             }
           ],
           "title": "Opener Questions"
+        },
+        "required_link_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Required Link Ids",
+          "type": "array"
         },
         "runtime_name": {
           "title": "Runtime Name",
@@ -25054,6 +25125,21 @@
             }
           ],
           "title": "Reattach Ids"
+        },
+        "required_link_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Required Link Ids"
         },
         "runtime_policy": {
           "anyOf": [
@@ -36017,6 +36103,19 @@
       "title": "OwnedResource",
       "type": "object"
     },
+    "OwnerNotifyResponse": {
+      "properties": {
+        "notified": {
+          "title": "Notified",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "notified"
+      ],
+      "title": "OwnerNotifyResponse",
+      "type": "object"
+    },
     "OwnershipTransfer": {
       "additionalProperties": false,
       "properties": {
@@ -37189,6 +37288,17 @@
             }
           ],
           "title": "Credential Id"
+        },
+        "definition_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Definition Key"
         },
         "mode": {
           "title": "Mode",

@@ -52,6 +52,7 @@ from app.services.agent_image_paths import build_agent_image_url, resolve_agent_
 from app.services.agent_lifecycle import archive_agent, list_archived_agents, restore_agent
 from app.services.agent_purge_service import purge_agent
 from app.services.agent_purge_types import AgentPurgeCommand
+from app.services.agent_update_service import linked_targets
 from app.services.conversation_run_worker import get_run_task_registry
 from app.services.image_preview import get_or_create_image_preview_async
 from app.tools.registry import registry as tool_registry
@@ -139,6 +140,7 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
             )
             for link in agent.sub_agent_links
         ],
+        required_link_ids=[target for link, target in linked_targets(agent) if link.required],
         middleware_configs=agent.middleware_configs or [],
         runtime_policy=(
             resolved_runtime_policy.effective if agent.runtime_policy is not None else None

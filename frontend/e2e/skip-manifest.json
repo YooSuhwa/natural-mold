@@ -111,6 +111,26 @@
       "owner": "org-authz",
       "expires": "2027-03-31",
       "expected_count": 1
+    },
+    {
+      "id": "org-authz-readiness-connect-start",
+      "path_glob": "e2e/readiness-connect-start.spec.ts",
+      "condition": "process.env.E2E_ORG_AUTHZ !== '1'",
+      "reason": "Org-authz role fixtures (plan 16.5) pending",
+      "category": "infrastructure",
+      "owner": "org-authz",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "org-authz-readiness-auth-card",
+      "path_glob": "e2e/readiness-auth-card-connect.spec.ts",
+      "condition": "process.env.E2E_ORG_AUTHZ !== '1'",
+      "reason": "Org-authz role fixtures (plan 16.5) pending",
+      "category": "infrastructure",
+      "owner": "org-authz",
+      "expires": "2027-03-31",
+      "expected_count": 1
     }
   ]
 }

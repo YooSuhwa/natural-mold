@@ -16,6 +16,8 @@ export type AgentSettingsDraft = {
   selectedMcpToolIds: Set<string>
   selectedSkillIds: Set<string>
   selectedSubAgentIds: Set<string>
+  /** S29: linked ids whose link is required (12.2). */
+  requiredLinkIds: Set<string>
   temperature: number
   topP: number
   maxTokens: number
@@ -69,6 +71,7 @@ export function createEmptyAgentSettingsDraft(): AgentSettingsDraft {
     selectedMcpToolIds: new Set(),
     selectedSkillIds: new Set(),
     selectedSubAgentIds: new Set(),
+    requiredLinkIds: new Set(),
     temperature: DEFAULT_TEMPERATURE,
     topP: DEFAULT_TOP_P,
     maxTokens: DEFAULT_MAX_TOKENS,
@@ -90,6 +93,7 @@ export function buildAgentSettingsDraftFromAgent(agent: Agent): AgentSettingsDra
     selectedMcpToolIds: new Set(agent.mcp_tools?.map((tool) => tool.id) ?? []),
     selectedSkillIds: new Set(agent.skills?.map((skill) => skill.id) ?? []),
     selectedSubAgentIds: new Set(agent.sub_agents?.map((subAgent) => subAgent.id) ?? []),
+    requiredLinkIds: new Set(agent.required_link_ids ?? []),
     temperature: agent.model_params?.temperature ?? DEFAULT_TEMPERATURE,
     topP: agent.model_params?.top_p ?? DEFAULT_TOP_P,
     maxTokens: agent.model_params?.max_tokens ?? DEFAULT_MAX_TOKENS,
@@ -119,6 +123,7 @@ export function isAgentSettingsDraftDirty(
     !setsEqual(draft.selectedMcpToolIds, baseline.selectedMcpToolIds) ||
     !setsEqual(draft.selectedSkillIds, baseline.selectedSkillIds) ||
     !setsEqual(draft.selectedSubAgentIds, baseline.selectedSubAgentIds) ||
+    !setsEqual(draft.requiredLinkIds, baseline.requiredLinkIds) ||
     !setsEqual(draft.selectedMiddlewareTypes, baseline.selectedMiddlewareTypes) ||
     !arraysEqual(draft.openerQuestions, baseline.openerQuestions) ||
     !arraysEqual(draft.fallbackIds, baseline.fallbackIds) ||
@@ -161,6 +166,9 @@ export function mergeUntouchedAgentSettingsDraft(
     selectedSubAgentIds: setsEqual(draft.selectedSubAgentIds, previousBaseline.selectedSubAgentIds)
       ? nextBaseline.selectedSubAgentIds
       : draft.selectedSubAgentIds,
+    requiredLinkIds: setsEqual(draft.requiredLinkIds, previousBaseline.requiredLinkIds)
+      ? nextBaseline.requiredLinkIds
+      : draft.requiredLinkIds,
     temperature:
       draft.temperature === previousBaseline.temperature
         ? nextBaseline.temperature
@@ -194,6 +202,7 @@ export function buildAgentUpdateRequest(draft: AgentSettingsDraft): AgentUpdateR
     mcp_tool_ids: Array.from(draft.selectedMcpToolIds),
     skill_ids: Array.from(draft.selectedSkillIds),
     sub_agent_ids: Array.from(draft.selectedSubAgentIds),
+    required_link_ids: Array.from(draft.requiredLinkIds),
     middleware_configs: Array.from(draft.selectedMiddlewareTypes).map((type) => ({
       type,
       params: {},

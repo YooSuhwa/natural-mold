@@ -305,6 +305,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                 onToggleSkill={draftActions.toggleSkill}
                 selectedMiddlewareTypes={draft.selectedMiddlewareTypes}
                 onToggleMiddleware={draftActions.toggleMiddleware}
+                requiredLinkIds={draft.requiredLinkIds}
+                onToggleRequired={draftActions.toggleRequired}
               />
             </TabsContent>
             <TabsContent

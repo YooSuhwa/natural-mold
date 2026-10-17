@@ -7,6 +7,10 @@ import type { AppendMessage } from '@assistant-ui/react'
 import { API_BASE, fireSessionExpired } from '@/lib/api/client'
 import { csrfStore } from '@/lib/auth/csrf'
 import {
+  announceIfAgentNotReady,
+  type AgentNotReadyOrigin,
+} from '@/lib/chat/agent-not-ready-signal'
+import {
   currentOrgScope,
   isOrgScopeCurrent,
   signalForOrgScope,
@@ -71,7 +75,11 @@ function langGraphThreadPath(conversationId: string, threadId: string, suffix: s
   return `/api/conversations/${conversation}/langgraph/threads/${thread}${suffix}`
 }
 
-function withMoldyAuth(baseFetch: typeof fetch, orgScope: OrgScopeToken): typeof fetch {
+function withMoldyAuth(
+  baseFetch: typeof fetch,
+  orgScope: OrgScopeToken,
+  origin: AgentNotReadyOrigin,
+): typeof fetch {
   return async (input, init) => {
     const method = (init?.method ?? 'GET').toUpperCase()
     const headers = new Headers(init?.headers)
@@ -92,6 +100,7 @@ function withMoldyAuth(baseFetch: typeof fetch, orgScope: OrgScopeToken): typeof
       ),
     })
     if (response.status === 401) fireSessionExpired()
+    await announceIfAgentNotReady(response, origin) // G-04: the SDK only throws a plain Error
     return response
   }
 }
@@ -396,7 +405,7 @@ export function createMoldyAgentTransport(
   options: MoldyAgentTransportOptions = {},
 ): MoldyAgentServerAdapter {
   const orgScope = currentOrgScope()
-  const authedFetch = withMoldyAuth(options.fetch ?? fetch, orgScope)
+  const authedFetch = withMoldyAuth(options.fetch ?? fetch, orgScope, { agentId, conversationId })
   registerLangGraphClientDefaults(options.apiBase ?? API_BASE, authedFetch)
   return new MoldyHttpAgentServerAdapter(
     agentId,

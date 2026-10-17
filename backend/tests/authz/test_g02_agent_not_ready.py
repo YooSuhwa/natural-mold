@@ -81,6 +81,7 @@ def _assert_runner_body(response: Any, agent: Any, denied: Any) -> None:
     assert str(denied.id) not in response.text and "secret" not in response.text
     details = error["details"]
     assert details["overall"] == "blocked" and details["identity_mode"] == "per_user"
+    assert "agent_id" not in details  # G-04: a runner never sees the agent id here
     assert {
         "kind": "tool",
         "count": 1,
@@ -151,8 +152,10 @@ async def test_my_agent_with_a_disabled_required_tool_is_blocked_with_ids(
     assert response.status_code == 409, response.text
     item = {"kind": "tool", "id": str(tool.id), "agent_id": str(agent.id), "name": "web",
             "required": True, "result": "unavailable", "action": None}  # fmt: skip
-    items = response.json()["error"]["details"]["items"]
+    details = response.json()["error"]["details"]
+    items = details["items"]
     assert item in items and [i["result"] for i in items].count("ready") == 1
+    assert details["agent_id"] == str(agent.id)  # G-04: the chat gate matches its agent
     assert await _count(Conversation, agent.id) == 0
 
 

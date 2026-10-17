@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { agentsApi } from '@/lib/api/agents'
 import { agentQueryKeys } from '@/lib/query-keys/agents'
+import { readinessQueryKeys } from '@/lib/query-keys/readiness'
 import type { AgentCreateRequest, AgentUpdateRequest } from '@/lib/types'
 import { updateAgentConfirmingDelegation } from '@/lib/sharing/delegation-confirm-request'
 
@@ -56,6 +57,7 @@ export function useUpdateAgent(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: agentQueryKeys.all })
       qc.invalidateQueries({ queryKey: agentQueryKeys.detail(id) })
+      qc.invalidateQueries({ queryKey: readinessQueryKeys.all }) // S29: required links changed
       invalidateSkillLinkCounts(qc)
     },
   })

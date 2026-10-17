@@ -17,6 +17,13 @@ export type StatusChipVariant =
   | 'healthy'
   | 'degraded'
   | 'unhealthy'
+  // org-authz (plan 13.12.4): readiness overall/results and resource states.
+  | 'needs_connection'
+  | 'limited'
+  | 'blocked'
+  | 'no_permission'
+  | 'archived'
+  | 'suspended'
 
 interface StatusChipProps {
   variant: StatusChipVariant | string
@@ -69,6 +76,30 @@ const STYLES: Record<StatusChipVariant, { icon: Icon; classes: string }> = {
   },
   unhealthy: {
     icon: XCircle,
+    classes: 'moldy-status-surface moldy-status-danger',
+  },
+  needs_connection: {
+    icon: AlertTriangle,
+    classes: 'moldy-status-surface moldy-status-warn',
+  },
+  limited: {
+    icon: AlertTriangle,
+    classes: 'moldy-status-surface moldy-status-info',
+  },
+  blocked: {
+    icon: XCircle,
+    classes: 'moldy-status-surface moldy-status-danger',
+  },
+  no_permission: {
+    icon: Slash,
+    classes: 'moldy-status-surface moldy-status-danger',
+  },
+  archived: {
+    icon: Slash,
+    classes: 'bg-muted text-muted-foreground ring-border',
+  },
+  suspended: {
+    icon: Slash,
     classes: 'moldy-status-surface moldy-status-danger',
   },
 }
