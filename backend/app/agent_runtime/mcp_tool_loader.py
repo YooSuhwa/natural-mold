@@ -15,7 +15,10 @@ from app.agent_runtime.mcp_app_runtime import (
     mcp_app_context,
     record_mcp_app_binding,
 )
+from app.agent_runtime.mcp_auth_context import McpAuthContext
+from app.agent_runtime.mcp_auth_errors import McpAuthError, classify_mcp_error
 from app.agent_runtime.mcp_destination import split_blocked, transport_options
+from app.agent_runtime.mcp_tool_cache import identity_cache_key
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.mcp.apps import normalize_tool_ui_meta, tool_allows_visibility
 from app.tools.risk import attach_tool_risk, mcp_tool_risk
@@ -83,6 +86,29 @@ def _create_mcp_error_stub(name: str) -> BaseTool:
     return attach_tool_risk(tool, mcp_tool_risk(name))
 
 
+def _create_mcp_auth_stub(name: str, error: McpAuthError, config: dict[str, Any]) -> BaseTool:
+    """Discovery hit 401/403: calls answer with the typed auth error (F-12)."""
+    from app.agent_runtime.mcp_cache import MCPToolWithRetry
+
+    async def _call(**kwargs: Any) -> str:
+        raise error
+
+    stub = StructuredTool.from_function(
+        coroutine=_call, name=name, description=f"MCP tool (authorization required): {name}"
+    )
+    wrapped = MCPToolWithRetry(stub, max_retries=1, auth_context=McpAuthContext.from_config(config))
+    return attach_tool_risk(wrapped, mcp_tool_risk(name))
+
+
+def server_interceptors(plan: _McpPlan, key: str) -> list[Any]:
+    """Only this server's ``auth_config`` is injected (the cache key covers it)."""
+    auth = plan.server_tool_auth.get(key)
+    interceptors: list[Any] = [ResultMetaInterceptor()]
+    if auth:
+        interceptors.insert(0, _AuthInjectorInterceptor(dict(auth)))
+    return interceptors
+
+
 @dataclass(slots=True)
 class _McpPlan:
     servers: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -91,7 +117,6 @@ class _McpPlan:
     server_tool_auth: dict[str, dict[str, dict]] = field(default_factory=dict)
     tool_configs: dict[tuple[str, str], dict] = field(default_factory=dict)
     auth_param_keys: set[str] = field(default_factory=set)
-    interceptors: list[Any] = field(default_factory=list)
 
 
 def _plan_mcp_servers(mcp_configs: list[dict]) -> _McpPlan:
@@ -135,11 +160,6 @@ def _plan_mcp_servers(mcp_configs: list[dict]) -> _McpPlan:
     # auth 파라미터 키 수집 (스키마에서 숨길 대상)
     for auth in plan.tool_auth.values():
         plan.auth_param_keys.update(auth.keys())
-
-    # interceptor: MCP tools/call 직전에 auth 값을 arguments에 주입
-    plan.interceptors = [ResultMetaInterceptor()]
-    if plan.tool_auth:
-        plan.interceptors.insert(0, _AuthInjectorInterceptor(plan.tool_auth))
     return plan
 
 
@@ -169,7 +189,8 @@ def _wrap_selected_tool(
     tool_ui_meta = normalize_tool_ui_meta(raw_meta)
     if tool_ui_meta is not None and not tool_allows_visibility(tool_ui_meta, "model"):
         return None
-    app_context = mcp_app_context(plan.tool_configs.get((key, t.name)), tool_ui_meta)
+    tool_config = plan.tool_configs.get((key, t.name))
+    app_context = mcp_app_context(tool_config, tool_ui_meta)
     wrapped = MCPToolWithRetry(
         t,
         max_retries=max_retries,
@@ -177,6 +198,7 @@ def _wrap_selected_tool(
         timeout_seconds=timeout,
         mcp_app_context=app_context,
         binding_recorder=(record_mcp_app_binding if app_context is not None else None),
+        auth_context=McpAuthContext.from_config(tool_config or {}),
     )
     return attach_tool_risk(
         wrapped,
@@ -220,6 +242,10 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
     from app.config import settings as _settings
 
     for key, config in plan.servers.items():
+        server_configs = [tc for (k, _), tc in plan.tool_configs.items() if k == key]
+        identity_key, cache_tags = identity_cache_key(
+            key, server_configs, plan.server_tool_auth.get(key, {})
+        )
         try:
 
             async def _load_server_tools(
@@ -229,7 +255,7 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
             ) -> list[BaseTool]:
                 client = MultiServerMCPClient(
                     {cache_key: server_config},  # type: ignore[arg-type]  # dict는 Connection TypedDict 호환
-                    tool_interceptors=plan.interceptors,  # type: ignore[arg-type]
+                    tool_interceptors=server_interceptors(plan, cache_key),  # type: ignore[arg-type]
                 )
                 return await asyncio.wait_for(
                     client.get_tools(),
@@ -237,9 +263,10 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
                 )
 
             server_tools = await get_cached_mcp_tools(
-                key,
+                identity_key,
                 _load_server_tools,
                 ttl_seconds=max(1.0, float(_settings.mcp_connection_timeout) * 30),
+                tags=cache_tags,
             )
             needed = plan.tool_filter[key]
             for t in server_tools:
@@ -249,9 +276,20 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
                     )
                     if wrapped is not None:
                         collected.append((wrapped, key))
-        except Exception:
-            logger.warning("MCP tool loading failed for %s", key, exc_info=True)
+        except Exception as exc:
+            auth_error = classify_mcp_error(exc)
+            if auth_error is None:
+                logger.warning("MCP tool loading failed for %s", key, exc_info=True)
+            else:
+                logger.warning("MCP tool loading for %s refused: %s", key, auth_error.kind)
             for tool_name in plan.tool_filter[key]:
-                collected.append((_create_mcp_error_stub(tool_name), key))
+                stub = (
+                    _create_mcp_error_stub(tool_name)
+                    if auth_error is None
+                    else _create_mcp_auth_stub(
+                        tool_name, auth_error, plan.tool_configs[(key, tool_name)]
+                    )
+                )
+                collected.append((stub, key))
 
     return _disambiguate(collected)

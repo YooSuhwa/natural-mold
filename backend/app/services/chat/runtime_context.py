@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, selectinload
 
 from app.agent_runtime.identity import AgentRunIdentity
+from app.agent_runtime.mcp_auth_context import mcp_auth_fields
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
 from app.authz.run_agent_loader import attach_shared_conversation_agent
@@ -249,6 +250,8 @@ async def build_tools_config(
                 "org_id": str(context.org_id),
                 "mcp_transport_headers": resolution.headers,
                 "credentials": resolution.credentials,
+                # F-12: cache identity + typed auth errors (who can re-authorize).
+                **mcp_auth_fields(server, resolution.resolved, runtime_actor_user_id, identity),
                 "credential_destination": destination_config(
                     resolution.resolved, identity, agent.user_id
                 ),
