@@ -535,7 +535,21 @@ export interface StandardInterruptPayload {
   native?: 'auth_required'
 }
 
-export type InterruptPayload = StandardInterruptPayload
+/**
+ * F-07 ConnectionGuard interrupt as the non-protocol wires carry it (legacy SSE
+ * `interrupt`, AG-UI `moldy.interrupt`, reconnect synthesis): the raw 11.5 value with its
+ * kind in `type`. Normalized into a `native: 'auth_required'` standard payload (G-05).
+ */
+export interface AuthRequiredInterruptPayload {
+  interrupt_id: string
+  type: 'auth_required'
+  reason?: string
+  items?: unknown[]
+  attempt?: number
+  allowed_decisions?: DecisionType[]
+}
+
+export type InterruptPayload = StandardInterruptPayload | AuthRequiredInterruptPayload
 
 /** Resume 송신용 단일 결정. LangChain `HITLResponse.decisions[i]`와 1:1. */
 export interface Decision {

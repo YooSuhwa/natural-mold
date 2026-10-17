@@ -1,9 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { useQueryClient } from '@tanstack/react-query'
 
 import { useStartOAuth2 } from '@/lib/hooks/use-credential-test'
 import {
@@ -12,9 +11,8 @@ import {
   useDiscoverMcpTools,
   useMcpRegistry,
 } from '@/lib/hooks/use-mcp-servers'
-import { API_BASE } from '@/lib/api/client'
 import { navigateOpenedWindow, openNamedPopupWindow } from '@/lib/browser/window-open'
-import { credentialQueryKeys } from '@/lib/query-keys/credentials'
+import { useOAuthCompletion } from '@/lib/hooks/use-oauth-completion'
 import type { McpProbeTool, McpRegistryEntry, McpTransport } from '@/lib/types/mcp'
 
 import {
@@ -28,7 +26,6 @@ import {
   createInitialMcpWizardState,
   createMcpWizardStateFromRegistryEntry,
   isMcpWizardBasicsValid,
-  isOAuthCompletedMessage,
   type McpProbeState,
   type McpWizardFormPatch,
   type McpWizardFormState,
@@ -74,7 +71,6 @@ export function useMcpWizardController({
   onClose,
 }: UseMcpWizardControllerOptions): McpWizardController {
   const t = useTranslations('mcp.wizard')
-  const queryClient = useQueryClient()
   const { data: registry } = useMcpRegistry()
   const create = useCreateMcpServer()
   const createFromRegistry = useCreateFromRegistry()
@@ -125,40 +121,15 @@ export function useMcpWizardController({
     resetProbePreview()
   }
 
-  useEffect(() => {
-    function handleOAuthMessage(event: MessageEvent) {
-      if (!isOAuthCompletedMessage(event.data)) return
-
-      const allowedOrigins = new Set([window.location.origin])
-      if (URL.canParse(API_BASE)) {
-        allowedOrigins.add(new URL(API_BASE).origin)
-      }
-      if (!allowedOrigins.has(event.origin)) return
-
-      const completedCredentialId = event.data.credentialId ?? null
-      if (
-        completedCredentialId &&
-        form.credentialId &&
-        completedCredentialId !== form.credentialId
-      ) {
-        return
-      }
-
+  useOAuthCompletion({
+    credentialId: form.credentialId,
+    onCompleted: (completedCredentialId) => {
       setOauthPendingCredentialId(null)
-      setOauthConnectedCredentialId(completedCredentialId ?? form.credentialId)
+      setOauthConnectedCredentialId(completedCredentialId)
       resetProbePreview()
-      void queryClient.invalidateQueries({ queryKey: credentialQueryKeys.all })
-      if (completedCredentialId) {
-        void queryClient.invalidateQueries({
-          queryKey: credentialQueryKeys.detail(completedCredentialId),
-        })
-      }
       toast.success(t('auth.oauthConnected'))
-    }
-
-    window.addEventListener('message', handleOAuthMessage)
-    return () => window.removeEventListener('message', handleOAuthMessage)
-  }, [form.credentialId, queryClient, resetProbePreview, t])
+    },
+  })
 
   async function handleOAuthConnect(): Promise<void> {
     if (!form.credentialId) {

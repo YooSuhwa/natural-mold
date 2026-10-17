@@ -84,6 +84,8 @@ export const SETTINGS_TEST_TOOLKIT = defineToolkit(COMMON_TOOLKIT)
 /** Builder v3 policy: builder controls and approvals plus the shared ask_user flow. */
 export const BUILDER_TOOLKIT = defineToolkit({
   ask_user: backendRenderer(UserInputUI),
+  // G-05: the shared legacy runtime normalizes auth interrupts here too; never a silent stall.
+  moldy_auth_required: backendRenderer(AuthRequiredCard),
   phase_timeline: backendRenderer(PhaseTimelineToolUI),
   recommendation_approval: backendRenderer(RecommendationApprovalToolUI),
   prompt_approval: backendRenderer(PromptApprovalToolUI),

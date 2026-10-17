@@ -122,6 +122,23 @@ describe('agUiEventToMoldyEvents', () => {
     ])
   })
 
+  it('keeps the auth_required kind and attempt of moldy.interrupt (G-05)', () => {
+    const payload = {
+      interrupt_id: 'auth-1',
+      type: 'auth_required',
+      reason: 'expired',
+      items: [{ resource_name: 'Slack', credential_id: 'c1', fixable_by: 'me' }],
+      attempt: 2,
+      allowed_decisions: ['respond'],
+    }
+    expect(
+      agUiEventToMoldyEvents(
+        { type: 'CUSTOM', name: 'moldy.interrupt', value: { payload } },
+        'run-1-8:ag:0',
+      ),
+    ).toEqual([{ id: 'run-1-8:ag:0', event: 'interrupt', data: payload }])
+  })
+
   it('RUN_ERROR의 code를 보존해 actionable error 분기가 동작하게 한다', () => {
     expect(
       agUiEventToMoldyEvents(

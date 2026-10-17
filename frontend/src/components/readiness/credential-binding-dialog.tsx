@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useMemo, useState } from 'react'
+import { useId, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { KeyRoundIcon, PlusIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -10,8 +10,14 @@ import { DialogShell } from '@/components/shared/dialog-shell'
 import { StatusChip } from '@/components/shared/status-chip'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '@/lib/api/client'
-import { useCredentials } from '@/lib/hooks/use-credentials'
+import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
+import {
+  openOAuthPopup,
+  useOAuthAuthorize,
+  useOAuthCompletion,
+} from '@/lib/hooks/use-oauth-completion'
 import { useBindCredential } from '@/lib/hooks/use-readiness'
+import type { Credential } from '@/lib/types/credential'
 import type { BindableResourceType } from '@/lib/types/readiness'
 
 export interface CredentialBindingTarget {
@@ -37,7 +43,12 @@ function errorKey(error: unknown): 'typeMismatch' | 'notPerUser' | 'failed' {
   return 'failed'
 }
 
-/** S23 (plan 13.7): pick or create my credential of the required type and connect it. */
+/**
+ * S23 (plan 13.7): pick or create my credential of the required type and connect it. An
+ * OAuth credential that still needs authorizing (new, `auth_needed`, `expired`) opens the
+ * OAuth popup; the dialog reports "connected" once it is bound and the shared receiver
+ * heard the completion (G-05).
+ */
 export function CredentialBindingDialog({
   open,
   onOpenChange,
@@ -48,7 +59,10 @@ export function CredentialBindingDialog({
   const t = useTranslations('readiness.binding')
   const { data: credentials } = useCredentials()
   const bind = useBindCredential()
+  const { data: definitions } = useCredentialTypes()
+  const { authorize } = useOAuthAuthorize()
   const [creating, setCreating] = useState(false)
+  const [awaitingOAuthId, setAwaitingOAuthId] = useState<string | null>(null)
   const mineId = useId()
   const { definitionKey } = target
 
@@ -61,16 +75,64 @@ export function CredentialBindingDialog({
     [credentials, definitionKey],
   )
 
-  const connect = (credentialId: string) => {
+  // One connect attempt: bound + (when OAuth) authorized → connected, in either order.
+  const flowRef = useRef<{ bound: boolean; authorized: boolean } | null>(null)
+
+  const finish = () => {
+    flowRef.current = null
+    setAwaitingOAuthId(null)
+    toast.success(t('connected'))
+    onOpenChange(false)
+    onConnected?.()
+  }
+
+  useOAuthCompletion({
+    credentialId: awaitingOAuthId,
+    enabled: awaitingOAuthId !== null,
+    onCompleted: () => {
+      const flow = flowRef.current
+      if (!flow) return
+      flow.authorized = true
+      if (flow.bound) finish()
+    },
+  })
+
+  const needsAuthorization = (credential: Credential) =>
+    credential.status !== 'active' &&
+    (definitions ?? []).some((d) => d.key === credential.definition_key && d.has_oauth)
+
+  /**
+   * `oauth.popup` was opened in the click. The completion listener is on before the
+   * binding is requested; a failed binding closes the popup and ends the attempt.
+   */
+  const connect = async (
+    credentialId: string,
+    oauth?: { popup: Window | null; started: boolean },
+  ) => {
+    const flow = { bound: false, authorized: !oauth }
+    flowRef.current = flow
+    if (oauth) setAwaitingOAuthId(credentialId)
+    if (oauth && !oauth.started && (await authorize(credentialId, oauth.popup)) !== 'started') {
+      flowRef.current = null
+      setAwaitingOAuthId(null)
+      toast.error(t('failed'))
+      return
+    }
     bind.mutate(
       { resourceType: target.resourceType, resourceId: target.resourceId, credentialId },
       {
         onSuccess: () => {
-          toast.success(t('connected'))
-          onOpenChange(false)
-          onConnected?.()
+          flow.bound = true
+          if (flow.authorized && flowRef.current === flow) finish()
         },
-        onError: (error) => toast.error(t(errorKey(error))),
+        onError: (error) => {
+          oauth?.popup?.close()
+          if (flowRef.current === flow) {
+            flowRef.current = null
+            setAwaitingOAuthId(null)
+          }
+          toast.error(t(errorKey(error)))
+        },
       },
     )
   }
@@ -84,6 +146,11 @@ export function CredentialBindingDialog({
           description={agentName ? t('description', { agent: agentName }) : t('descriptionGeneric')}
         />
         <DialogShell.Body className="space-y-4">
+          {awaitingOAuthId && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t('oauthWaiting')}
+            </p>
+          )}
           <section aria-labelledby={mineId} className="space-y-2">
             <h3 id={mineId} className="text-xs font-medium text-muted-foreground">
               {t('mine')}
@@ -104,7 +171,14 @@ export function CredentialBindingDialog({
                     <Button
                       size="sm"
                       disabled={bind.isPending}
-                      onClick={() => connect(credential.id)}
+                      onClick={() =>
+                        void connect(
+                          credential.id,
+                          needsAuthorization(credential)
+                            ? { popup: openOAuthPopup(), started: false }
+                            : undefined,
+                        )
+                      }
                       aria-label={t('useNamed', { name: credential.name })}
                     >
                       {t('use')}
@@ -139,9 +213,13 @@ export function CredentialBindingDialog({
           onOpenChange={setCreating}
           presetDefinitionKey={definitionKey ?? undefined}
           initialName={target.resourceName}
-          onCreated={(credentialId) => {
+          authorizeOAuth
+          onCreated={(credentialId, options) => {
             setCreating(false)
-            connect(credentialId)
+            void connect(
+              credentialId,
+              options?.oauthStarted ? { popup: options.popup, started: true } : undefined,
+            )
           }}
         />
       ) : null}

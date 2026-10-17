@@ -220,6 +220,10 @@ def _interrupt_to_standard_chunk(
                 }
             ],
         }
+    if intr_value.get("type") == "auth_required":
+        # F-07 ConnectionGuard: kept discriminated (``type``) with its ``attempt`` so the
+        # legacy SSE card, reconnect synthesis and the checkpoint fallback see it (G-05).
+        return {"interrupt_id": intr_id, **intr_value}
     return None
 
 
@@ -580,7 +584,8 @@ async def stream_agent_response(
                 for task in state.tasks:
                     if task.interrupts:
                         for intr in task.interrupts:
-                            intr_id = str(getattr(intr, "ns", ""))
+                            # LangGraph 1.x ``Interrupt`` has ``id`` (slots value, id), no ``ns``.
+                            intr_id = str(getattr(intr, "id", None) or getattr(intr, "ns", ""))
                             intr_value = intr.value if isinstance(intr.value, dict) else None
                             chunk = _interrupt_to_standard_chunk(intr_id, intr_value)
                             if chunk is not None:

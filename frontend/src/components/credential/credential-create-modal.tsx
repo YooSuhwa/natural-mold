@@ -18,6 +18,7 @@ import { PersonalAccountBadge } from './personal-account-badge'
 import { CredentialTestButton } from './credential-test-button'
 import { useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { useCreateCredential, useCreateSystemCredential } from '@/lib/hooks/use-credentials'
+import { openOAuthPopup, useOAuthAuthorize } from '@/lib/hooks/use-oauth-completion'
 import type { CredentialDefinition, FieldDef } from '@/lib/types/credential'
 
 interface CredentialCreateModalProps {
@@ -27,7 +28,13 @@ interface CredentialCreateModalProps {
   presetDefinitionKey?: string
   initialName?: string
   initialData?: Record<string, unknown>
-  onCreated?: (credentialId: string) => void
+  /** `oauthStarted`: the OAuth popup (`popup`) for the new credential is at the provider. */
+  onCreated?: (
+    credentialId: string,
+    options?: { oauthStarted: boolean; popup: Window | null },
+  ) => void
+  /** Start the OAuth authorization of a new OAuth-type credential right away (G-05). */
+  authorizeOAuth?: boolean
   /**
    * ``'system'`` posts to ``/api/system-credentials`` so the resulting row
    * is operator-managed (Fix Agent / builder). Defaults to ``'user'``.
@@ -42,6 +49,7 @@ export function CredentialCreateModal({
   initialName,
   initialData,
   onCreated,
+  authorizeOAuth = false,
   mode = 'user',
 }: CredentialCreateModalProps) {
   const t = useTranslations('credentials.create')
@@ -51,6 +59,7 @@ export function CredentialCreateModal({
   const createUser = useCreateCredential()
   const createSystem = useCreateSystemCredential()
   const create = mode === 'system' ? createSystem : createUser
+  const { authorize } = useOAuthAuthorize()
 
   const [definitionKey, setDefinitionKey] = useState<string | null>(presetDefinitionKey ?? null)
   const [name, setName] = useState(initialName ?? '')
@@ -96,6 +105,8 @@ export function CredentialCreateModal({
 
   async function handleSubmit() {
     if (!definition || !canSubmit) return
+    // The popup opens inside the click, before any await (popup blockers).
+    const popup = authorizeOAuth && definition.has_oauth ? openOAuthPopup() : null
     try {
       const cred = await create.mutateAsync({
         definition_key: definition.key,
@@ -104,9 +115,20 @@ export function CredentialCreateModal({
         is_shared: false,
       })
       toast.success(t('toast.saved'))
-      onCreated?.(cred.id)
+      let oauthStarted = false
+      if (authorizeOAuth && definition.has_oauth) {
+        const result = await authorize(cred.id, popup)
+        oauthStarted = result === 'started'
+        if (!oauthStarted) {
+          toast.error(
+            t(result === 'blocked' ? 'toast.oauthPopupBlocked' : 'toast.oauthStartFailed'),
+          )
+        }
+      }
+      onCreated?.(cred.id, { oauthStarted, popup: oauthStarted ? popup : null })
       handleClose(false)
     } catch (e) {
+      popup?.close()
       const msg = e instanceof Error ? e.message : t('toast.saveFailed')
       toast.error(msg)
     }

@@ -6,11 +6,12 @@ import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { KeyRoundIcon, Loader2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AuthCardConnect } from '@/components/readiness/auth-card-connect'
+import { AuthCardOAuthConnect } from './auth-card-oauth-connect'
 import { cn } from '@/lib/utils'
-import { toRespond } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
 import {
   AUTH_REQUIRED_RESPONSES,
+  authRequiredDecision,
   authRequiredItems,
   type AuthRequiredResponse,
 } from '@/lib/chat/auth-required-interrupt'
@@ -31,9 +32,11 @@ const REASON_KEYS: Record<string, string> = {
 
 /**
  * `auth_required` card (plan 11.5, S22): lists the connections a paused run needs and
- * answers with `retry` / `skip` / `cancel`. When the agent's S21 check can bind one of my
- * connections, "연결하기" opens it and answers `retry` after the S23 dialog connected;
- * otherwise a note points to the credentials screen (G-04); owner-fixable items
+ * answers with `retry` / `skip` / `cancel`. My OAuth connections get "연결하기" (popup +
+ * shared OAuth receiver, G-05), answering `retry` once authorized; when the agent's S21
+ * check can bind one of my other connections, "연결하기" opens it and answers `retry`
+ * after the S23 dialog connected; otherwise a note points to the credentials screen
+ * (G-04); owner-fixable items
  * only say the owner was notified. A re-ask (`attempt` > 1) says it is still not connected.
  */
 export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequiredArgs, unknown>) {
@@ -41,10 +44,17 @@ export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequired
   const hitl = useHiTL()
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [failed, setFailed] = useState(false)
-  const agentId = useParams<{ agentId?: string }>()?.agentId
+  const routeAgentId = useParams<{ agentId?: string }>()?.agentId
+  // The thread's own agent (side chat may sit on another agent's route), else the route's.
+  const agentId = hitl?.agentId || routeAgentId
   const askedAttempt = typeof args?.attempt === 'number' ? args.attempt : 1
   const items = authRequiredItems(args)
-  const mine = items.filter((item) => item.fixableBy === 'me').map((item) => item.resourceName)
+  const oauthItems = items.filter(
+    (item) => item.fixableBy === 'me' && item.connectKind === 'oauth' && item.credentialId,
+  )
+  const mine = items
+    .filter((item) => item.fixableBy === 'me' && !oauthItems.includes(item))
+    .map((item) => item.resourceName)
   const reasonKey =
     REASON_KEYS[typeof args?.reason === 'string' ? args.reason : ''] ?? 'reasonAuthNeeded'
 
@@ -54,7 +64,7 @@ export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequired
     try {
       // G-06: the attempt lets the server refuse an answer to an older re-ask.
       const attempt = typeof args?.attempt === 'number' ? args.attempt : undefined
-      const decision = { ...toRespond(response), ...(attempt !== undefined && { attempt }) }
+      const decision = authRequiredDecision(response, attempt)
       if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
         await hitl.registerDecision(
           args.hitl_action_index,
@@ -105,6 +115,15 @@ export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequired
           <p className="text-xs text-muted-foreground">{t('sent')}</p>
         ) : (
           <div className="flex flex-wrap justify-end gap-2">
+            {oauthItems.map((item) => (
+              <AuthCardOAuthConnect
+                key={item.credentialId}
+                credentialId={item.credentialId ?? ''}
+                resourceName={item.resourceName}
+                disabled={state === 'sending'}
+                onConnected={() => void answer('retry')}
+              />
+            ))}
             {agentId && mine.length > 0 && (
               <AuthCardConnect
                 agentId={agentId}

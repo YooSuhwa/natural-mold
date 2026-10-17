@@ -288,6 +288,7 @@ class TestResumeRouterPayload:
 
 def _make_intr(ns: str, value: Any) -> MagicMock:
     intr = MagicMock()
+    intr.id = None  # pre-1.x shape: only ``ns`` (fallback path)
     intr.ns = ns
     intr.value = value
     return intr

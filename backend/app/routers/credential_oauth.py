@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -16,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
 from app.authz.policies import PUBLIC, SELF, authz_policy
+from app.config import settings
 from app.credentials import oauth_service
 from app.credentials.mcp_oauth_spec import client_metadata_document
 from app.dependencies import get_db, get_org_context, verify_csrf
@@ -25,8 +27,15 @@ oauth_router = APIRouter(prefix="/api/oauth2-credential", tags=["credentials"])
 well_known_router = APIRouter(prefix="/.well-known", tags=["credentials"])
 
 
+def _script_json(value: Any) -> str:
+    return json.dumps(value).replace("<", "\\u003c")  # never closes the <script>
+
+
 def _oauth_callback_html(credential_id: uuid.UUID, target_origin: str | None) -> HTMLResponse:
-    safe_target = target_origin or "*"
+    # Never ``"*"`` (G-05 review): the start request's origin, else the app origins only;
+    # ``postMessage`` drops a message whose target origin does not match the opener.
+    targets = [target_origin] if target_origin else settings.cors_origins_list
+    message = {"type": "moldy.oauth.completed", "credentialId": str(credential_id)}
     body = f"""<!doctype html>
 <html>
   <head><meta charset="utf-8"><title>Moldy OAuth Complete</title></head>
@@ -34,10 +43,9 @@ def _oauth_callback_html(credential_id: uuid.UUID, target_origin: str | None) ->
     <p>OAuth authorization completed. You can close this window.</p>
     <script>
       if (window.opener) {{
-        window.opener.postMessage(
-          {{ type: 'moldy.oauth.completed', credentialId: '{credential_id}' }},
-          {safe_target!r}
-        );
+        for (const origin of {_script_json(targets)}) {{
+          window.opener.postMessage({_script_json(message)}, origin);
+        }}
       }}
       window.close();
     </script>

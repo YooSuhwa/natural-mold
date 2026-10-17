@@ -48,6 +48,8 @@ import {
   standardInterruptToToolCalls,
   type HiTLDecisionCoordinator,
 } from './standard-interrupt'
+import { toStandardInterruptPayload } from './auth-required-interrupt'
+import { hasHydratedSingleActionInterrupt } from './legacy-pending-interrupt'
 import { artifactKeys } from '@/lib/api/artifacts'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
 import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
@@ -799,7 +801,8 @@ export function useChatRuntime({
             }
             case 'interrupt': {
               setIsRunning(false)
-              const data = event.data as StandardInterruptPayload
+              // G-05: an `auth_required` wire payload becomes a native standard one.
+              const data = toStandardInterruptPayload(event.data)
               if (data.interrupt_id) lastInterruptIdRef.current = data.interrupt_id
               // 빈 fallback chunk — backend가 ``aget_state`` 실패로 정확한 액션을
               // 제시하지 못해 표준 미들웨어 contract만 채워 emit한다(streaming.py).
@@ -1283,7 +1286,11 @@ export function useChatRuntime({
     ) => {
       const coordinator = pendingHiTLCoordinatorRef.current
       if (!coordinator) {
-        if (interruptId !== undefined) {
+        const restored =
+          actionIndex === 0 &&
+          typeof interruptId === 'string' &&
+          hasHydratedSingleActionInterrupt(messages, interruptId)
+        if (interruptId !== undefined && !restored) {
           throw new DOMException('HiTL interrupt is no longer active', 'InvalidStateError')
         }
         await onResumeDecisions([decision], displayText)
@@ -1294,7 +1301,7 @@ export function useChatRuntime({
       }
       await coordinator.registerDecision(actionIndex, decision, displayText)
     },
-    [onResumeDecisions],
+    [messages, onResumeDecisions],
   )
 
   const onCancel = useCallback(async () => {

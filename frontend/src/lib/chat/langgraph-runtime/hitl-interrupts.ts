@@ -9,6 +9,7 @@ import type {
 } from '@/lib/types'
 import { standardInterruptToToolCalls } from '@/lib/chat/standard-interrupt'
 import {
+  authRequiredAttempt,
   interruptIdentity,
   nativeAuthRequiredPayload,
   resolvedIdentity,
@@ -170,6 +171,8 @@ function upsertPayload(
   if (!byId.has(payload.interrupt_id)) order.push(payload.interrupt_id)
   const existing = byId.get(payload.interrupt_id)
   if (existing?.namespace && !payload.namespace) return
+  // G-05: reload state and a replayed stream may disagree on an auth re-ask; the newer wins.
+  if (existing && (authRequiredAttempt(existing) ?? 0) > (authRequiredAttempt(payload) ?? 0)) return
   byId.set(payload.interrupt_id, payload)
 }
 

@@ -2085,7 +2085,11 @@
       "cancel": "Cancel run",
       "sent": "Response sent.",
       "resumeFailed": "Could not send your response. Try again.",
-      "stillNotConnected": "Still not connected. Connect it, then try again."
+      "stillNotConnected": "Still not connected. Connect it, then try again.",
+      "connectOAuth": "Connect {name}",
+      "oauthWaiting": "Finish in the popup and we'll try again",
+      "oauthPopupBlocked": "The popup was blocked. Allow popups and try again.",
+      "oauthStartFailed": "Couldn't start the connection"
     },
     "userInput": {
       "placeholder": "Placeholder",
@@ -5215,7 +5219,9 @@
     "create": {
       "toast": {
         "saved": "Saved successfully.",
-        "saveFailed": "Operation failed."
+        "saveFailed": "Operation failed.",
+        "oauthPopupBlocked": "The popup was blocked, so the account wasn't connected. Reconnect it from Credentials.",
+        "oauthStartFailed": "Couldn't start the account connection"
       },
       "title": "Create",
       "titleWithType": "New {type} credential",
@@ -5473,7 +5479,8 @@
       "failed": "Couldn't connect",
       "typeMismatch": "This credential type can't be connected to this service",
       "notPerUser": "This service isn't connected per user",
-      "close": "Close"
+      "close": "Close",
+      "oauthWaiting": "Finish connecting your account in the popup. It connects automatically when done."
     },
     "authCard": {
       "connect": "Connect",

@@ -2085,7 +2085,11 @@
       "cancel": "실행 취소",
       "sent": "응답을 보냈습니다.",
       "resumeFailed": "응답을 전송하지 못했습니다. 다시 시도하세요.",
-      "stillNotConnected": "아직 연결되지 않았어요. 연결한 뒤 다시 시도하세요."
+      "stillNotConnected": "아직 연결되지 않았어요. 연결한 뒤 다시 시도하세요.",
+      "connectOAuth": "{name} 연결하기",
+      "oauthWaiting": "팝업에서 연결을 마치면 다시 시도해요",
+      "oauthPopupBlocked": "팝업이 차단됐어요. 팝업을 허용한 뒤 다시 눌러 주세요.",
+      "oauthStartFailed": "연결을 시작하지 못했어요"
     },
     "userInput": {
       "placeholder": "답변을 입력하세요…",
@@ -5215,7 +5219,9 @@
     "create": {
       "toast": {
         "saved": "자격증명이 저장되었습니다",
-        "saveFailed": "저장에 실패했습니다"
+        "saveFailed": "저장에 실패했습니다",
+        "oauthPopupBlocked": "팝업이 차단돼 계정 연결을 시작하지 못했어요. 자격증명 화면에서 다시 연결하세요.",
+        "oauthStartFailed": "계정 연결을 시작하지 못했어요"
       },
       "title": "새 자격증명",
       "titleWithType": "새 {type} 자격증명",
@@ -5473,7 +5479,8 @@
       "failed": "연결하지 못했어요",
       "typeMismatch": "이 자격증명 유형은 이 서비스에 연결할 수 없어요",
       "notPerUser": "이 서비스는 사용자마다 연결하는 방식이 아니에요",
-      "close": "닫기"
+      "close": "닫기",
+      "oauthWaiting": "팝업에서 계정 연결을 마쳐 주세요. 끝나면 자동으로 연결돼요."
     },
     "authCard": {
       "connect": "연결하기",
