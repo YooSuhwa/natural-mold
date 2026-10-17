@@ -45,6 +45,8 @@ PLATFORM_REASONS: dict[str, str] = {
     "authz.expiry_cleanup": "8.6 item 7 leader expiry of every company's grants + pruning",
     "authz.backlog_alert": "14.3 instance-wide outbox lag and stuck-marker alert",
     "authz.revocation_overlay": "8.6 step 4 instance-wide pending-marker hint + overlay",
+    "authz.delegation_validate": "8.6 delegation sweep: list companies, then per-company sessions",
+    "authz.delegation_retry": "8.6 delegation check: leader polls finalized markers",
     "conversation_run.lifecycle": "interim run-id keyed lifecycle writes (I-06 threading)",
     "conversation_run.queue": "interim queue claim/recovery; dispatch resolves company",
 }
