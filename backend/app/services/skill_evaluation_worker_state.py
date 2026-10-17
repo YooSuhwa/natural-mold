@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, Final, cast
 
 from sqlalchemy import select, update
@@ -11,32 +10,22 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only, undefer
 
-from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.skill_builder.eval_cancellation import (
     EvalCancellationCheckpoint,
     EvalRunCancelled,
 )
-from app.authz.org_context import OrgContext
-from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
-from app.authz.scoping import PrivateParent, private_parent_scoped, private_scoped
+from app.authz.scoping import PrivateParent, private_parent_scoped
 from app.authz.skill_binding_scope import private_skill_child_predicate
-from app.config import settings
-from app.exceptions import AppError
-from app.marketplace.skill_runtime import (
-    SkillToolContext,
-    build_skill_runtime_context,
-    resolve_runtime_credentials,
-)
 from app.models.skill import Skill
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.schemas.skill_builder import JsonValue
 from app.services import audit_service
+from app.services.skill_evaluation_access import SkillEvaluationAccessPlanner
 from app.services.skill_evaluation_worker_types import (
     SkillEvaluationContext,
     SkillEvaluationExecutionError,
     SkillEvaluationResult,
 )
-from app.skills import service as skill_service
 
 RUN_LIFECYCLE_OPTIONS: Final = load_only(
     SkillEvaluationRun.id,
@@ -51,12 +40,6 @@ RUN_LIFECYCLE_OPTIONS: Final = load_only(
     SkillEvaluationRun.cancellation_requested_at,
     raiseload=True,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class AuthorizedEvaluationSkill:
-    skill: Skill
-    organization: OrgContext
 
 
 async def load_run(db: AsyncSession, run_id: uuid.UUID) -> SkillEvaluationRun | None:
@@ -92,7 +75,8 @@ async def build_context(
     db: AsyncSession,
     run: SkillEvaluationRun,
 ) -> SkillEvaluationContext:
-    target = await _load_authorized_skill(db, run)
+    planner = SkillEvaluationAccessPlanner()  # F-13: re-decided when the run executes
+    target = await planner.authorize(db, run)
     result = await db.execute(
         private_parent_scoped(
             select(SkillEvaluationSet),
@@ -132,7 +116,7 @@ async def build_context(
     )
     if authorized_run is None:
         raise SkillEvaluationExecutionError("evaluation set is unavailable for this run")
-    runtime_context = await _build_runtime_context(db, run, target)
+    runtime_context = await planner.runtime_context(db, run, target)
     return SkillEvaluationContext(
         run_id=run.id,
         skill_id=run.skill_id,
@@ -152,74 +136,6 @@ def _baseline_comparison(run_config: dict | None) -> bool:
         if isinstance(value, bool):
             return value
     return True
-
-
-async def _load_authorized_skill(
-    db: AsyncSession,
-    run: SkillEvaluationRun,
-) -> AuthorizedEvaluationSkill:
-    scope = (
-        await db.execute(
-            select(Skill.user_id, Skill.org_id, Skill.tenant_id)
-            .where(Skill.id == run.skill_id)
-            .execution_options(autoflush=False)
-        )
-    ).one_or_none()
-    if scope is None or scope[0] != run.user_id or scope[1] is None or scope[2] is None:
-        raise SkillEvaluationExecutionError(f"skill not found for evaluation: {run.skill_id}")
-
-    try:
-        organization = await resolve_private_actor(
-            db, PrivateResourceActor(scope[0], scope[1], scope[2])
-        )
-    except AppError as exc:
-        raise SkillEvaluationExecutionError(exc.code) from None
-    skill = await db.scalar(
-        private_scoped(
-            select(Skill).where(Skill.id == run.skill_id), Skill, organization
-        ).execution_options(populate_existing=True)
-    )
-    if skill is None:
-        raise SkillEvaluationExecutionError(f"skill not found for evaluation: {run.skill_id}")
-    return AuthorizedEvaluationSkill(skill, organization)
-
-
-async def _build_runtime_context(
-    db: AsyncSession,
-    run: SkillEvaluationRun,
-    target: AuthorizedEvaluationSkill,
-) -> SkillToolContext:
-    skill, organization = target.skill, target.organization
-    descriptor = skill_service.to_runtime_dict(skill)
-    if skill.execution_profile:
-        descriptor["execution_profile"] = skill.execution_profile
-
-    cfg = AgentConfig(
-        org_context=organization,
-        provider="evaluation",
-        model_name="evaluation",
-        api_key=None,
-        base_url=None,
-        system_prompt="",
-        tools_config=[],
-        thread_id=str(run.id),
-        agent_skills=[descriptor],
-        user_id=str(run.user_id),
-        credential_subject_user_id=str(run.user_id),
-    )
-    data_dir = Path(settings.data_root)
-    context = build_skill_runtime_context(
-        cfg,
-        data_dir=data_dir,
-        output_root=data_dir / "skill-evaluation-runs",
-    )
-    context.run_id = str(run.id)
-    context.audit_kind = "skill_evaluation"
-    try:
-        await resolve_runtime_credentials(context, db=db, cfg=cfg)
-    except AppError as exc:
-        raise SkillEvaluationExecutionError(exc.message) from exc
-    return context
 
 
 async def mark_running(db: AsyncSession, run: SkillEvaluationRun) -> None:

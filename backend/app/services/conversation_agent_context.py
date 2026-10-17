@@ -23,7 +23,6 @@ from app.agent_runtime.runtime_policy import (
 from app.agent_runtime.subagents import build_subagents_config
 from app.authz.conversation_scope import require_private_conversation
 from app.authz.org_context import OrgContext
-from app.authz.skill_builder_scope import private_skill_builder_predicate
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import ConflictError
@@ -192,11 +191,9 @@ async def _resolve_skill_builder_agent_context(
     경로와 ``moldy.skill_draft`` stream-head 페이로드를 cfg에 싣는다.
     """
 
-    from sqlalchemy import select
-
     from app.error_codes import system_llm_not_configured
-    from app.models.skill_builder_session import SkillBuilderSession
     from app.services import skill_draft_workspace
+    from app.services.skill_builder_run_access import load_skill_builder_run_session
     from app.services.system_credential_resolver import (
         SystemModelNotConfiguredError,
         resolve_system_model,
@@ -206,20 +203,8 @@ async def _resolve_skill_builder_agent_context(
         raise conversation_not_found()
     await require_private_conversation(db, conv.id, context)
 
-    result = await db.execute(
-        select(SkillBuilderSession)
-        .where(
-            SkillBuilderSession.conversation_id == conv.id,
-            private_skill_builder_predicate(context),
-        )
-        # 세션↔대화 1:1은 DB 제약이 아니라 관례다 — 방어적으로 최신 1건만
-        # 취해 MultipleResultsFound 500을 차단한다 (R2).
-        .order_by(SkillBuilderSession.created_at.desc())
-        .limit(1)
-        .with_for_update(of=SkillBuilderSession)
-        .execution_options(populate_existing=True, autoflush=False)
-    )
-    session = result.scalar_one_or_none()
+    # F-13: session owner + target decision (skill can_edit / cap_create_skill).
+    session = await load_skill_builder_run_session(db, conv.id, context)
     if session is None:
         # 빌더 대화인데 매칭 세션이 없거나 남의 세션 — 접근 불가로 통일
         # (enumeration-safe 404).

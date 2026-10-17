@@ -18,6 +18,25 @@ BOUNDARY = "prepare_authorized_runtime"
 # The boundary's entry points (``plan_`` + ``bind_`` are its two steps).
 BOUNDARY_CALLS = {BOUNDARY, "plan_authorized_runtime", "bind_authorized_runtime"}
 # Functions whose bodies enter the boundary; run paths may reach it through them.
+# The separately authorized 11.0 rows (F-13): each entry decides before it binds.
+SEPARATE = {
+    "get_agent_with_eager_load": (
+        "agent_runtime/assistant/tools/helpers.py",
+        "assistant_target_scope",
+    ),
+    "load_skill_builder_run_session": (
+        "services/skill_builder_run_access.py",
+        "authorize_skill_builder_run",
+    ),
+    "authorize_skill_builder_run": (
+        "services/skill_builder_run_access.py",
+        "authorize_builder_target",
+    ),
+    "authorize": ("services/skill_evaluation_access.py", "require"),
+    "authorize_binding": ("mcp/apps_binding_store.py", "linked_tool"),
+    "probe_registered_model": ("services/model_test_run.py", "model_test_credential"),
+    "probe_preview_model": ("services/model_test_run.py", "load_owned_credential"),
+}
 CARRIERS = {
     "resolve_agent_context": "services/conversation_agent_context.py",
     "build_agent_config_for_loaded_agent": "services/agent_invocation_service.py",
@@ -52,21 +71,29 @@ PATHS: dict[str, Path11] = {  # plan 11.0, in table order
     ),
     "Assistant": Path11(
         ("agent_runtime/assistant/assistant_agent.py",),
-        None,
-        "11.7 separate authorized run: AuthzService per tool call (D-08)",
+        "get_agent_with_eager_load",
+        "11.7 separate authorized run: can_edit at build and per tool call (D-08, F-13)",
     ),
     "skill builder hidden agent": Path11(
-        ("services/conversation_agent_context.py",),
-        "_resolve_skill_builder_agent_context",
-        "inside resolve_agent_context: private session owner; session tool decisions F-13",
+        ("services/conversation_agent_context.py", "services/skill_builder_run_access.py"),
+        "load_skill_builder_run_session",
+        "inside resolve_agent_context: session owner + target can_edit/cap_create_skill (F-13)",
     ),
     "skill evaluation": Path11(
-        ("services/skill_evaluation_worker_state.py",), None, "F-13 SkillEvaluationAccessPlanner"
+        ("services/skill_evaluation_worker_state.py", "services/skill_evaluation_access.py"),
+        "SkillEvaluationAccessPlanner",
+        "F-13: creator's skill can_edit when the run executes, own bindings, redaction",
     ),
     "MCP Apps": Path11(
-        ("services/mcp_apps_service.py",), None, "per-call can_invoke + F-05 caller connection"
+        ("routers/mcp_apps.py", "services/mcp_apps_service.py"),
+        "authorize_binding",
+        "per-command can_invoke (D-08) + F-05 credential re-resolution per call (F-13)",
     ),
-    "model test": Path11(("services/model_test.py",), None, "F-13 model + credential can_use"),
+    "model test": Path11(
+        ("routers/models.py", "services/model_test_run.py"),
+        "probe_registered_model",
+        "F-13: model can_use + credential can_use before the probe",
+    ),
     "E2E MCP Apps": Path11(("routers/e2e_mcp_apps_helpers.py",), None, "e2e_test_helpers only"),
 }
 GUARDED = {
@@ -87,7 +114,7 @@ ALLOWED: dict[tuple[str, str], str] = {
     ("agent_runtime/trigger_execution_materialization.py", "build_agent_skills"): (
         "claim without boundary skills (legacy callers)"
     ),
-    ("routers/models.py", "run_model_test"): "F-13 model test",
+    ("services/model_test_run.py", "run_model_test"): "F-13 model test after its decisions",
     ("services/health_check.py", "run_model_test"): "operator health probe",
 }
 
@@ -143,6 +170,20 @@ def test_every_run_path_reaches_the_boundary_or_is_classified(name: str) -> None
         else:
             wanted = BOUNDARY_CALLS if row.reaches == BOUNDARY else {row.reaches}
             assert wanted & _reached(module), f"{name}: {module} skips {row.reaches}"
+
+
+def _body(module: str, name: str) -> ast.AST:
+    return next(
+        n
+        for n in ast.walk(_source(module))
+        if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) and n.name == name
+    )
+
+
+@pytest.mark.parametrize("entry", sorted(SEPARATE))
+def test_separate_paths_decide_before_binding(entry: str) -> None:
+    module, decision = SEPARATE[entry]
+    assert decision in _called(_body(module, entry)), f"{entry} skips {decision}"
 
 
 @pytest.mark.parametrize("carrier", sorted(CARRIERS))

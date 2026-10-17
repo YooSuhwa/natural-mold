@@ -70,10 +70,13 @@ async def model_test_credential(
     context: OrgContext,
     authz: AuthzService,
 ) -> Credential:
-    """Explicit id: owner scope + ``can_use`` (D-10); else the model's owner-checked default."""
+    """Explicit id: owner scope + ``can_use`` (D-10); else the model's owner-checked
+    default, which also needs ``credential#can_use`` outside legacy (F-13)."""
     if credential_id is not None:
         return await load_owned_credential(db, credential_id, context, authz)
     cred = await resolve_credential_for_model(db, model, None, context)
+    if cred is not None and authz.mode != "legacy":
+        return await load_owned_credential(db, cred.id, context, authz)
     if cred is None:  # a useful 422 when the user simply has no default bound
         raise HTTPException(
             status_code=422,

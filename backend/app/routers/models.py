@@ -21,17 +21,12 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.catalog_item_fanout import commit_item_change
-from app.authz.model_access import (
-    load_owned_credential,
-    model_test_credential,
-    require_visible_model,
-)
+from app.authz.model_access import require_visible_model
 from app.authz.org_context import OrgContext
 from app.authz.policies import CANDIDATES, RES, SELF, SUPER, authz_policy
 from app.authz.resource_gate import gate_list, org_context_when_consulted
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
-from app.credentials.boundary import open_values
 from app.dependencies import (
     CurrentUser,
     get_current_user,
@@ -52,8 +47,8 @@ from app.schemas.model import (
 )
 from app.services import model_service
 from app.services.model_service import serialize_model
-from app.services.model_test import run_model_test
 from app.services.model_test_audit import record_model_test
+from app.services.model_test_run import probe_preview_model, probe_registered_model
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -215,36 +210,19 @@ async def test_registered_model(
     credential for this model).
     """
 
-    model = require_visible_model(
-        await model_service.load_model(db, model_id, context, authz), user
+    probe = await probe_registered_model(
+        db, model_id, credential_id, user=user, context=context, authz=authz
     )
-    cred = await model_test_credential(db, model, credential_id, context, authz)
-    data = await open_values(cred, "probe")
-
-    result = await run_model_test(
-        provider=model.provider,
-        model_name=model.model_name,
-        base_url=model.base_url,
-        credential_data=data,
-        cost_per_input_token=model.cost_per_input_token,
-        cost_per_output_token=model.cost_per_output_token,
-    )
-
-    payload = result.to_dict()
     await record_model_test(
         db,
         request,
-        credential_id=cred.id,
+        credential_id=probe.credential_id,
         actor_user_id=user.id,
-        payload=payload,
-        metadata={
-            "model_id": str(model.id),
-            "provider": model.provider,
-            "model_name": model.model_name,
-        },
+        payload=probe.payload,
+        metadata=probe.metadata,
     )
     await db.commit()
-    return ModelTestResponse(**payload)
+    return ModelTestResponse(**probe.payload)
 
 
 @router.post("/test-preview", response_model=ModelTestResponse)
@@ -265,28 +243,14 @@ async def test_preview_model(
     pasted-in ID before committing it to the table.
     """
 
-    cred = await load_owned_credential(db, payload.credential_id, context, authz)
-    data = await open_values(cred, "probe")
-
-    result = await run_model_test(
-        provider=payload.provider,
-        model_name=payload.model_name,
-        base_url=payload.base_url,
-        credential_data=data,
-    )
-
-    body = result.to_dict()
+    probe = await probe_preview_model(db, payload, context=context, authz=authz)
     await record_model_test(
         db,
         request,
-        credential_id=cred.id,
+        credential_id=probe.credential_id,
         actor_user_id=user.id,
-        payload=body,
-        metadata={
-            "preview": True,
-            "provider": payload.provider,
-            "model_name": payload.model_name,
-        },
+        payload=probe.payload,
+        metadata=probe.metadata,
     )
     await db.commit()
-    return ModelTestResponse(**body)
+    return ModelTestResponse(**probe.payload)

@@ -60,7 +60,7 @@ async def mark_execution_error_failed(
         run,
         "skill_evaluation.run_fail",
         outcome="failure",
-        metadata={"reason_code": "SKILL_EVALUATION_EXECUTION_ERROR"},
+        metadata={"reason_code": exc.reason_code},
     )
     await db.flush()
 

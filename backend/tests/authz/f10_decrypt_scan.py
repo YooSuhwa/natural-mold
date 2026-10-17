@@ -32,7 +32,7 @@ PURPOSES: dict[str, frozenset[str]] = {
     "refresh": frozenset({"mcp/auth.py", "mcp/oauth.py", "credentials/oauth_service.py"}),
     "probe": frozenset(
         {
-            "routers/models.py",
+            "services/model_test_run.py",  # F-13: model test probe after its decisions
             "routers/credentials.py",
             "services/health_check.py",
             "services/model_discovery.py",

@@ -93,7 +93,7 @@ async def test_model_test_gates_the_explicit_credential(
     model, credential = await _model(db), await _credential(db)
     authz.use(allow(("can_use", f"llm_model:{model.id}")))
     probe = AsyncMock()
-    with patch("app.routers.models.run_model_test", probe):
+    with patch("app.services.model_test_run.run_model_test", probe):
         response = await client.post(
             f"/api/models/{model.id}/test", params={"credential_id": str(credential.id)}
         )
@@ -107,7 +107,7 @@ async def test_model_test_gates_the_explicit_credential(
 async def test_legacy_model_test_rejects_a_foreign_credential(client: AsyncClient, db) -> None:
     model, foreign = await _model(db), await _credential(db, OTHER_USER_ID)
     probe = AsyncMock()
-    with patch("app.routers.models.run_model_test", probe):
+    with patch("app.services.model_test_run.run_model_test", probe):
         response = await client.post(
             f"/api/models/{model.id}/test", params={"credential_id": str(foreign.id)}
         )
@@ -145,7 +145,7 @@ async def test_hidden_model_health_and_test_are_404_for_members(
     hidden, credential = await _model(db, visible=False), await _credential(db)
     query = {"target_kind": "model", "target_id": str(hidden.id)}
     probe = AsyncMock()
-    with patch("app.routers.models.run_model_test", probe):
+    with patch("app.services.model_test_run.run_model_test", probe):
         history = await client.get("/api/health/history", params=query)
         check = await client.post("/api/health/check", params=query)
         tested = await client.post(

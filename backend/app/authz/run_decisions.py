@@ -66,6 +66,12 @@ def run_decision_scope() -> Iterator[RunDecisionMemo]:
         yield fresh
 
 
+def decisions_sealed() -> bool:
+    """A sealed memo is active (a prepared lease's locks are held: no OpenFGA call)."""
+    memo = _memo.get()
+    return memo is not None and memo.sealed
+
+
 def _key(p: Principal, permission: str, obj: str) -> _Key:
     return (p.fga(), p.run_source, permission, obj)
 
@@ -130,6 +136,7 @@ async def require_decided(
 __all__ = [
     "RunDecisionMemo",
     "batch_decide",
+    "decisions_sealed",
     "fresh_run_decision_scope",
     "open_request_memo",
     "require_decided",

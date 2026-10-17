@@ -46,7 +46,7 @@ def test_the_scan_catches_each_route_around_the_boundary(source: str, expected: 
 
 
 def test_allowed_purposes_and_unrelated_decrypts_pass() -> None:
-    assert scan_module("routers/models.py", "await open_values(c, 'probe')") == []
+    assert scan_module("services/model_test_run.py", "await open_values(c, 'probe')") == []
     assert scan_module("services/x.py", "AESGCM(k).decrypt(n, c, a)") == []
 
 
