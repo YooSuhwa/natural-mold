@@ -36,7 +36,7 @@ async def test_live_catalog_scope_and_serialized_invitation_retries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "b11_company_administration")
+        await run_sync(command.upgrade, lab.config, "head")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:

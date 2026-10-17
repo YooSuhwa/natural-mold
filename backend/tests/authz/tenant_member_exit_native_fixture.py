@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.dependencies import CurrentUser
+from app.models.audit_event import AuditEvent
 from app.models.organization import (
     Organization,
     OrganizationMember,
@@ -141,6 +142,8 @@ async def cleanup_company(
 ) -> None:
     try:
         async with sessions() as db:
+            # Company/org audit rows reference the company and its organizations (RESTRICT).
+            await db.execute(delete(AuditEvent).where(AuditEvent.tenant_id == fixture.tenant_id))
             await db.execute(delete(Skill).where(Skill.tenant_id == fixture.tenant_id))
             await db.execute(
                 delete(OrgInvitation).where(OrgInvitation.tenant_id == fixture.tenant_id)

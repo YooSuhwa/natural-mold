@@ -294,7 +294,8 @@ async def test_native_chat_mcp_timeout_cleans_up_before_marker(
 
     row = await finish(_start(harness))
 
-    assert (row.status, row.error_code) == ("failed", "runtime_error")
+    # The shared pre-marker code table (run_error_codes) surfaces the cause's machine code.
+    assert (row.status, row.error_code) == ("failed", "mcp_preparation_failed")
     assert row.runtime_materialized_at is None and harness.leases == []
     assert server.discoveries == 1 and server.open_sessions == 0 and kit.SENDS == []
     archived = await finish(task10_lane.lifecycle(admin, "archive"))

@@ -77,6 +77,12 @@ async def resolve_org_context(
                 )
             ).first()
         if membership is None:
+            # Plan 8.1: a suspended company denies every request with tenant_suspended,
+            # including members whose fallback found no active company to pick.
+            membership = (
+                await db.execute(query.where(Tenant.status == "suspended").limit(1))
+            ).first()
+        if membership is None:
             raise AppError(code="no_organization", message="참여한 조직이 없습니다", status=409)
     organization, tenant = membership
     if tenant.status == "suspended":

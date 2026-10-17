@@ -90,13 +90,14 @@ async def test_3_policy_applies_after_commit_and_rollback(lab: RlsLab, app_maker
 
 async def _derived_record(ctx: SessionTenant, maker: Maker, tenant_id: UUID) -> UUID:
     """Derived work: receives the starting context explicitly, never via contextvars."""
+    row_id = uuid4()  # kept outside the row: commit expires it and the session detaches it
     row = TenantDomain(
-        id=uuid4(), tenant_id=tenant_id, domain=f"{uuid4().hex[:12]}.d.test", txt_token="t"
+        id=row_id, tenant_id=tenant_id, domain=f"{uuid4().hex[:12]}.d.test", txt_token="t"
     )
     async with tenant_session(ctx, maker=maker) as db:
         db.add(row)
         await db.commit()
-    return row.id
+    return row_id
 
 
 async def test_4_derived_work_records_under_the_original_company(
@@ -144,7 +145,7 @@ async def test_app_role_passes_the_startup_check_and_owner_does_not(
             issues = rls_role_issues(await read_role_facts(db))
     finally:
         await owner.dispose()
-    assert any("owns Moldy tables" in issue for issue in issues)
+    assert any("owns (directly or by membership) Moldy tables" in issue for issue in issues)
 
 
 async def test_disabling_rls_reopens_rows_and_enabling_closes_them(

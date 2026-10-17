@@ -82,6 +82,9 @@ async def test_native_archive_first_config_first_and_recovery_zero_launch(
             )
             assert claimed is not None and claimed.input.id == queued.id
             claimed_revision = claimed.input.revision
+            # An execution proof is bound to one transaction's lock scope: commit the claim
+            # before proving the second (draft) conversation (5d927df9).
+            await db.commit()
             await prepare_executable_conversation(db, draft_id, context)
             await db.commit()
             participants = await db.scalar(

@@ -10,10 +10,19 @@ from uuid import uuid4
 import anyio
 import sqlalchemy as sa
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from anyio.to_thread import run_sync
 from sqlalchemy.engine import Engine, make_url
 
 from alembic import command
+
+
+def alembic_head() -> str:
+    """The single current Alembic head the live app's ORM mappings are written against."""
+    backend = Path(__file__).resolve().parents[2]
+    head = ScriptDirectory.from_config(Config(str(backend / "alembic.ini"))).get_current_head()
+    assert head is not None
+    return head
 
 
 @dataclass(frozen=True, slots=True)

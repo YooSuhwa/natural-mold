@@ -109,6 +109,26 @@ async def test_company_suspension_uses_the_specific_suspension_error(
     assert error.value.status == 403 and error.value.code == "tenant_suspended"
 
 
+async def test_suspended_only_company_without_preference_reports_suspension(
+    db: AsyncSession,
+    org_fixture: OrgFixture,
+) -> None:
+    # Given: the member's only remaining company is suspended and no organization is saved.
+    tenant = await db.get(Tenant, org_fixture.tenant)
+    other = await db.get(OrganizationMember, (org_fixture.second, org_fixture.user.id))
+    user = await db.get(User, org_fixture.user.id)
+    assert tenant is not None and other is not None and user is not None
+    tenant.status = "suspended"
+    other.status = "removed"
+    user.last_active_org_id = None
+    await db.commit()
+    # When: a request without a cookie falls back to "any active membership".
+    with pytest.raises(AppError) as error:
+        await resolve_org_context(db, org_fixture.user, cookie=None)
+    # Then: plan 8.1 — every request of a suspended company is 403 tenant_suspended.
+    assert error.value.status == 403 and error.value.code == "tenant_suspended"
+
+
 async def test_platform_operator_cannot_select_a_foreign_organization(
     db: AsyncSession,
     org_fixture: OrgFixture,

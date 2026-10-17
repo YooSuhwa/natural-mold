@@ -343,13 +343,12 @@ async def test_user_delete_first_returns_transfer_conflict_then_run_succeeds(
 
 
 @pytest.mark.asyncio
-async def test_run_first_blocks_user_delete_then_resource_conflict_preserves_graph(
+async def test_run_first_user_delete_refuses_resource_transfer_and_preserves_graph(
     pg_factory: async_sessionmaker[AsyncSession],
     graph: SeededGraph,
     cleanup_calls: CleanupCalls,
 ) -> None:
     async with pg_factory() as create_db, pg_factory() as delete_db:
-        delete_pid = await _backend_pid(delete_db)
         created_run = await _create_run(create_db, graph)
         attempted = anyio.Event()
         finished = anyio.Event()
@@ -375,11 +374,11 @@ async def test_run_first_blocks_user_delete_then_resource_conflict_preserves_gra
                     tasks.start_soon(remove)
                     with anyio.fail_after(5):
                         await attempted.wait()
-                    await _wait_for_lock(create_db, delete_pid)
-                    assert not finished.is_set()
-                    await create_db.commit()
+                    # E-02 (fcdcda1c): owned resources refuse before any account lock, so
+                    # the uncommitted run no longer blocks the delete; it answers 409 at once.
                     with anyio.fail_after(5):
                         await finished.wait()
+                    await create_db.commit()
                 finally:
                     await rollback_session(create_db)
                     if attempted.is_set() and not finished.is_set():

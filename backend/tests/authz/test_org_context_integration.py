@@ -26,7 +26,7 @@ pytestmark = pytest.mark.integration
 async def test_postgres_cookie_switch_and_removed_membership_block_next_request() -> None:
     # Given: the actual B11 schema in an owned disposable database and real auth routes.
     async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "b11_company_administration")
+        await run_sync(command.upgrade, lab.config, "head")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         try:
             sessions = async_sessionmaker(engine, expire_on_commit=False)

@@ -34,7 +34,7 @@ async def test_live_b11_metadata_policy_uses_real_cookies_and_locked_versions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "b11_company_administration")
+        await run_sync(command.upgrade, lab.config, "head")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:

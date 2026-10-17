@@ -67,9 +67,9 @@ def test_live_upgrade_downgrade_repeats_and_preserves_reviewed_constraints() -> 
 
 
 def test_mapped_models_reject_cross_org_membership_and_clear_deleted_active_org() -> None:
-    # Given: the current B11 schema, two companies, one member in A, and a group in A.
+    # Given: the current head schema, two companies, one member in A, and a group in A.
     with organization_lab() as lab, Session(lab.engine) as session, session.begin():
-        command.upgrade(lab.config, "b11_company_administration")
+        command.upgrade(lab.config, "head")
         user = User(email="org-model@example.test", name="Organization user")
         tenants = [Tenant(name=name, slug=name, secrets_namespace=name) for name in ("a", "b")]
         session.add_all([user, *tenants])
@@ -111,6 +111,8 @@ def test_mapped_models_reject_cross_org_membership_and_clear_deleted_active_org(
 def test_enterprise_identity_is_global_and_ldap_transport_requires_encryption() -> None:
     # Given: one identity accepted through one tenant's connection.
     with organization_lab() as lab, Session(lab.engine) as session, session.begin():
+        # The mapped SsoConnection carries post-m80 columns (H-08), so use the head schema.
+        command.upgrade(lab.config, "head")
         tenant = Tenant(name="Identity", slug="identity", secrets_namespace="identity")
         user = User(email="identity@example.test", name="Identity user")
         session.add_all([tenant, user])

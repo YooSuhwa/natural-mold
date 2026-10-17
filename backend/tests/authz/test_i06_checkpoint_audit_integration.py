@@ -73,8 +73,10 @@ async def _conversations(lab: RlsLab, count: int) -> list[UUID]:
                 for _ in range(count)
             ]
             db.add_all(rows)
+            await db.flush()
+            ids = [row.id for row in rows]  # read before commit expires the rows
             await db.commit()
-            return [row.id for row in rows]
+            return ids
     finally:
         await owner.dispose()
 

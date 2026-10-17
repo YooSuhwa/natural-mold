@@ -46,7 +46,7 @@ async def _seed_user(lab: RlsLab) -> tuple[UUID, str]:
     try:
         maker = async_sessionmaker(owner, class_=database.ShieldedAsyncSession)
         async with platform_session("seed.startup", maker=maker) as db:
-            actor = CurrentUser(id=uuid4(), email=f"{uuid4().hex[:8]}@i06.test", name="I06")
+            actor = CurrentUser(id=uuid4(), email=f"{uuid4().hex[:8]}@i06.example.com", name="I06")
             await ensure_unit_scope(db, actor)
             user = await db.get(User, actor.id)
             assert user is not None
@@ -60,7 +60,8 @@ async def _seed_user(lab: RlsLab) -> tuple[UUID, str]:
 @pytest.fixture
 async def client(lab: RlsLab) -> AsyncIterator[AsyncClient]:
     engine = create_async_engine(async_url(lab.app_url))
-    maker = async_sessionmaker(engine, class_=database.ShieldedAsyncSession)
+    # Same options as the production maker (app.database.async_session).
+    maker = async_sessionmaker(engine, class_=database.ShieldedAsyncSession, expire_on_commit=False)
     app = create_app()
 
     async def request_session() -> AsyncGenerator[AsyncSession, None]:

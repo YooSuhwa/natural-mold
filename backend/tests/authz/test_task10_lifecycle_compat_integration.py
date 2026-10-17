@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.auth.jwt import create_access_token, create_csrf_token, create_org_invitation_token
 from app.config import settings
@@ -230,3 +230,12 @@ async def test_native_restore_never_replays_or_reenables(task10_lane: Lane) -> N
     calls = task10_lane.scheduler_calls
     assert calls["add_trigger_job"] == calls["resume_trigger_job"] == []
     assert calls["remove_trigger_job"] == [(workload.trigger_id,)]
+    # The lane database is shared: park the seeded pending input so a later test's global
+    # queue-recovery sweep does not dispatch this test's leftover workload.
+    async with task10_lane.sessions() as db:
+        await db.execute(
+            update(Conversation)
+            .where(Conversation.id == workload.pending_conversation_id)
+            .values(queue_paused=True)
+        )
+        await db.commit()

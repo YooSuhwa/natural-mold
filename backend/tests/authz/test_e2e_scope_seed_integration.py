@@ -30,7 +30,7 @@ async def test_concurrent_seed_creates_one_explicit_development_membership_on_b1
     monkeypatch.setattr(settings, "e2e_user_email", "native-e2e-scope@example.test")
     monkeypatch.setattr(settings, "e2e_user_password", "native-fixture-password")
     async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "b11_company_administration")
+        await run_sync(command.upgrade, lab.config, "head")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         seeded: list[UUID] = []

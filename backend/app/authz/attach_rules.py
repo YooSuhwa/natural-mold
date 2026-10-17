@@ -59,15 +59,15 @@ async def _account_rows(
         )
         found += [("tool", tool) for tool in tools]
     if mcp_tool_ids:
+        # IN-subquery, not JOIN + DISTINCT: PostgreSQL has no equality operator for the
+        # server's JSON columns, so SELECT DISTINCT mcp_servers.* fails there.
+        server_ids = select(McpTool.server_id).where(McpTool.id.in_(mcp_tool_ids))
         servers = await db.scalars(
-            select(McpServer)
-            .join(McpTool, McpTool.server_id == McpServer.id)
-            .where(
-                McpTool.id.in_(mcp_tool_ids),
+            select(McpServer).where(
+                McpServer.id.in_(server_ids),
                 McpServer.credential_id.is_not(None),
                 McpServer.is_system.is_(False),
             )
-            .distinct()
         )
         found += [("mcp_server", server) for server in servers]
     if credential_ids:

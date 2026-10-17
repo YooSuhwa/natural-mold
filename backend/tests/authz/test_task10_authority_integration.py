@@ -95,8 +95,10 @@ async def test_native_revocation_commits_during_parked_leaf_and_wins_next_dispat
 
     run = asyncio.create_task(_run(harness))
     await gate.wait_entered()
-    archive = task10_lane.lifecycle(admin, "archive")
-    archived, _ = await finish(asyncio.gather(archive, _mutate(task10_lane, harness, mutation)))
+    # Both commit while the leaf is parked. Archive first: it is a company-admin route, so a
+    # suspension committed before it would (correctly) refuse it with 403 tenant_suspended.
+    archived = await finish(task10_lane.lifecycle(admin, "archive"))
+    await finish(_mutate(task10_lane, harness, mutation))
     assert archived.status_code == 200
     assert not run.done()  # the parked send holds no lock and is still in flight
     gate.release.set()

@@ -20,9 +20,9 @@ from tests.authz.test_registration_policy_integration import SignupApp
 async def agentless_history_app(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[SignupApp]:
-    """Run the current app against an owned B11 database with B08 lifecycle history."""
+    """Run the current app against an owned head-schema database with B08 lifecycle history."""
     async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "b11_company_administration")
+        await run_sync(command.upgrade, lab.config, "head")
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:

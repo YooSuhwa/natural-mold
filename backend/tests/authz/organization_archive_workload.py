@@ -63,7 +63,9 @@ def _run(conversation: Conversation, status: str, *, marker: bool = False) -> Co
         conversation_id=conversation.id,
         agent_id=conversation.agent_id,
         user_id=conversation.user_id,
-        source="api" if status == "queued" else "trigger",
+        # API/trigger runs store the canonical "start" source (ck_conversation_runs_source);
+        # the entry kind lives on the envelope rows seeded below.
+        source="start",
         status=status,
         is_active=True,
         runtime_materialized_at=datetime.now(UTC) if marker else None,

@@ -13,6 +13,7 @@ from tests.authz.company_administration_migration_fixture import (
     company_migration_lane,
     seed_company,
 )
+from tests.authz.organization_migration_fixture import alembic_head
 
 pytestmark = pytest.mark.integration
 
@@ -145,6 +146,7 @@ def test_native_acl_copy_roundtrip_and_constraints() -> None:
             assert not CORE_TABLES & set(inspect(connection).get_table_names())
         command.upgrade(lane.config, "head")
         with lane.engine.connect() as connection:
+            # The chain grew past C-04; the roundtrip must land back on the current head.
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "c04_outbox_sequence"
+                alembic_head()
             )

@@ -15,6 +15,7 @@ from tests.authz.agentless_history_fixture import (
     seed_native_history,
 )
 from tests.authz.native_company_selection import select_second_company
+from tests.authz.organization_migration_fixture import alembic_head
 
 pytestmark = pytest.mark.integration
 
@@ -82,7 +83,7 @@ async def test_agentless_history_uses_real_jwt_scope_and_rejects_continuation(
                 )
             ).one()
             assert schema_state == (
-                "b11_company_administration",
+                alembic_head(),
                 "conversation_history_manifests",
                 True,
             )

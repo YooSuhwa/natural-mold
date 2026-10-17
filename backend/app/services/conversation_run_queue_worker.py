@@ -85,11 +85,18 @@ async def dispatch_next_for_conversation(
             context = await resolve_conversation_actor(db, conversation_id, owner_id)
         except AppError:
             return None
-        claimed = await conversation_run_queue_service.claim_next_input(
-            db,
-            conversation_id=conversation_id,
-            context=context,
-        )
+        try:
+            claimed = await conversation_run_queue_service.claim_next_input(
+                db,
+                conversation_id=conversation_id,
+                context=context,
+            )
+        except HTTPException as exc:
+            # The conversation stopped being executable (e.g. its organization was archived
+            # while the previous run finished): nothing to dispatch, not a teardown error.
+            if exc.status_code != 404:
+                raise
+            return None
         if claimed is None:
             return None
         input_id = claimed.input.id

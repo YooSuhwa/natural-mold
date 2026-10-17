@@ -16,6 +16,7 @@ from tests.authz.agent_lifecycle_fixture import (
     registered_lifecycle_fixture,
 )
 from tests.authz.agent_lifecycle_graph_seed import assert_lifecycle_graph
+from tests.authz.organization_migration_fixture import alembic_head
 
 pytestmark = pytest.mark.integration
 
@@ -58,8 +59,8 @@ def test_agent_lifecycle_lane_runs_deployable_b11_head() -> None:
     with psycopg.connect(dsn) as connection:
         row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
 
-    # Then the lane reaches the C01 head while retaining B08 history, not ORM create_all.
-    assert row == ("c04_outbox_sequence",)
+    # Then the lane reaches the current head while retaining B08 history, not ORM create_all.
+    assert row == (alembic_head(),)
 
 
 async def test_full_lifecycle_graph_has_real_auth_roles_rows_and_bytes(

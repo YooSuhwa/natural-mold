@@ -182,3 +182,12 @@ async def test_native_restore_never_replays_canceled_input(
     assert kit.SENDS == [] and harness.leases == []
     calls = task10_lane.scheduler_calls
     assert calls["add_trigger_job"] == calls["resume_trigger_job"] == []
+    # The lane database is shared: settle the fresh input so a later test's global
+    # queue-recovery sweep does not dispatch this test's leftover.
+    async with task10_lane.sessions() as db:
+        await db.execute(
+            update(ConversationRunInput)
+            .where(ConversationRunInput.id == fresh.id)
+            .values(status="canceled")
+        )
+        await db.commit()
