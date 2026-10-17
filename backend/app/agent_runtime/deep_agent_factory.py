@@ -30,6 +30,7 @@ from app.agent_runtime.deep_agent_middleware_factory import (
     with_moldy_deepagents_compatibility_impl as with_moldy_deepagents_compatibility_impl,
 )
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
+from app.agent_runtime.runtime.connection_guard_order import order_connection_guard
 
 type _DeepAgentSubagent = SubAgent | CompiledSubAgent | AsyncSubAgent
 
@@ -211,6 +212,10 @@ def build_agent_impl(
         compatible_middleware = [prepared_task_middleware, *compatible_middleware]
         compatible_subagents = list(subagents)
     else:
+        # F-07: the interactive ConnectionGuard checks before the HITL approval step.
+        compatible_middleware = order_connection_guard(
+            compatible_middleware, interrupt_on=interrupt_on, permissions=permissions
+        )
         compatible_subagents = bindings.normalize_subagents(
             subagents,
             model=model,

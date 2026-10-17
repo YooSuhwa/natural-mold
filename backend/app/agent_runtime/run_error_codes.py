@@ -25,6 +25,8 @@ DENIAL_RUN_ERROR_CODES: Mapping[str, str] = {
     "forbidden": "forbidden",
     "organization_archived": "organization_archived",
     "prepared_run_lease_missing": "prepared_run_lease_missing",
+    # F-07: a run nobody can answer needed a connection (ConnectionBlockedError).
+    "auth_required": "auth_required",
 }
 _INHERITED = frozenset(DENIAL_RUN_ERROR_CODES.values())
 _CODE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}(:[A-Za-z0-9_]{1,64})?")

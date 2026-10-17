@@ -8,6 +8,7 @@ import { createMoldyMcpAppRenderer } from '@/lib/chat/mcp-apps/renderer'
 import { PlanToolUI } from '@/components/chat/tool-ui/plan-tool-ui'
 import { UserInputUI } from '@/components/chat/tool-ui/user-input-ui'
 import { ApprovalCard } from '@/components/chat/tool-ui/approval-card'
+import { AuthRequiredCard } from '@/components/chat/tool-ui/auth-required-card'
 import { ClarifyingQuestionUI } from '@/components/chat/tool-ui/clarifying-question-ui'
 import { SearchToolUI } from '@/components/chat/tool-ui/search-tool-ui'
 import {
@@ -73,6 +74,7 @@ const COMMON_TOOLKIT = {
 export const ALL_TOOLKIT = defineToolkit({
   ask_user: backendRenderer(UserInputUI),
   request_approval: backendRenderer(ApprovalCard),
+  moldy_auth_required: backendRenderer(AuthRequiredCard),
   ...COMMON_TOOLKIT,
 })
 

@@ -8,6 +8,11 @@ import type {
   ToolCallInfo,
 } from '@/lib/types'
 import { standardInterruptToToolCalls } from '@/lib/chat/standard-interrupt'
+import {
+  interruptIdentity,
+  nativeAuthRequiredPayload,
+  resolvedIdentity,
+} from '@/lib/chat/auth-required-interrupt'
 
 export interface LangGraphInterruptLike {
   readonly id?: string
@@ -193,6 +198,8 @@ export function standardPayloadFromInterrupt(
   const namespace = interruptNamespace(interrupt, value)
   const nativeAskUser = nativeAskUserPayload(interruptId, value, namespace)
   if (nativeAskUser) return nativeAskUser
+  const nativeAuthRequired = nativeAuthRequiredPayload(interruptId, value)
+  if (nativeAuthRequired) return withNamespace(nativeAuthRequired, namespace)
   const actions = actionRequests(value)
   const reviews = reviewConfigs(value)
   if (!actions || !reviews) return null
@@ -397,7 +404,7 @@ export function interruptPayloadResolvedByMessages(
 }
 
 function resolvedInterruptId(item: ResolvedInterruptToolCall): string {
-  return String(item.toolCall.args.hitl_interrupt_id ?? '')
+  return resolvedIdentity(item.toolCall.name, item.toolCall.args)
 }
 
 export function activeInterruptPayloads(
@@ -408,10 +415,10 @@ export function activeInterruptPayloads(
   const resolvedIds = new Set([
     ...payloads
       .filter((payload) => interruptPayloadResolvedByMessages(payload, messages))
-      .map((payload) => payload.interrupt_id),
+      .map(interruptIdentity),
     ...resolved.map(resolvedInterruptId),
   ])
-  return payloads.filter((payload) => !resolvedIds.has(payload.interrupt_id))
+  return payloads.filter((payload) => !resolvedIds.has(interruptIdentity(payload)))
 }
 
 function resultFromDecision(decision: Decision): ApprovalResult {

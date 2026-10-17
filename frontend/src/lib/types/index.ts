@@ -527,6 +527,8 @@ export interface StandardInterruptPayload {
   namespace?: string[]
   action_requests: ActionRequest[]
   review_configs: ReviewConfig[]
+  /** Set only by the native interrupt adapter (F-07 `auth_required`), never by tool args. */
+  native?: 'auth_required'
 }
 
 export type InterruptPayload = StandardInterruptPayload

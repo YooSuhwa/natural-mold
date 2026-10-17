@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { HiTLContext } from '@/lib/chat/hitl-context'
+import { AuthRequiredCard } from '../auth-required-card'
 import { PlanToolUI } from '../plan-tool-ui'
 import { UserInputUI } from '../user-input-ui'
 
@@ -25,8 +26,19 @@ type ToolUiRender = {
 
 const renderPlan = PlanToolUI as unknown as ToolUiRender['render']
 const renderUserInput = UserInputUI as unknown as ToolUiRender['render']
+const renderAuthRequired = AuthRequiredCard as unknown as ToolUiRender['render']
 
 describe('부분 스트리밍 args 방어 (M8-4)', () => {
+  it('auth_required: items/reason가 조각이어도 크래시 없이 렌더된다', () => {
+    const fragments = [{ items: '[{"resource_na' }, { items: [{}, null], reason: 7 }, {}]
+    for (const args of fragments) {
+      function AuthRequiredUnderTest() {
+        return renderAuthRequired({ args, status: { type: 'running' } })
+      }
+      expect(() => render(<AuthRequiredUnderTest />)).not.toThrow()
+    }
+  })
+
   it('write_todos: todos가 문자열 조각이어도 크래시 없이 렌더된다', () => {
     expect(() =>
       render(<>{renderPlan({ args: { todos: '회의록에서 담' }, status: { type: 'running' } })}</>),

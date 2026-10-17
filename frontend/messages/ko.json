@@ -1828,6 +1828,18 @@
       "approveAll": "모두 승인",
       "allowForSession": "이 세션에서 계속 허용"
     },
+    "authRequired": {
+      "title": "연결이 필요합니다",
+      "reasonAuthNeeded": "이 작업을 계속하려면 아래 계정 연결이 필요합니다. 연결한 뒤 다시 시도하세요.",
+      "reasonExpired": "아래 계정 연결이 만료되었습니다. 다시 연결한 뒤 다시 시도하세요.",
+      "reasonScopeUpgrade": "아래 연결에 추가 권한이 필요합니다. 권한을 허용한 뒤 다시 시도하세요.",
+      "ownerNotified": "이 연결은 소유자만 고칠 수 있어 소유자에게 알렸습니다.",
+      "retry": "다시 시도",
+      "skip": "건너뛰기",
+      "cancel": "실행 취소",
+      "sent": "응답을 보냈습니다.",
+      "resumeFailed": "응답을 전송하지 못했습니다. 다시 시도하세요."
+    },
     "userInput": {
       "placeholder": "답변을 입력하세요…",
       "sending": "전송 중…",

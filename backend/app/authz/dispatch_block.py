@@ -42,6 +42,7 @@ _BY_CODE: Final[Mapping[str, BlockReason]] = {
     "AGENT_ARCHIVED": "agent_archived",
     "agent_not_ready": "required_unavailable",
     "credential_binding_required": "auth_required",
+    "auth_required": "auth_required",  # F-07 ConnectionBlockedError (connection lost mid-run)
     "authz_unavailable": "authz_unavailable",
 }
 _OWNER_CODES: Final[Mapping[str, BlockReason]] = {

@@ -1828,6 +1828,18 @@
       "approveAll": "Approve all",
       "allowForSession": "Allow for the rest of this session"
     },
+    "authRequired": {
+      "title": "Connection required",
+      "reasonAuthNeeded": "This step needs the connections below. Connect them, then try again.",
+      "reasonExpired": "The connections below have expired. Reconnect them, then try again.",
+      "reasonScopeUpgrade": "The connections below need additional permission. Grant it, then try again.",
+      "ownerNotified": "Only the owner can fix this connection; the owner was notified.",
+      "retry": "Try again",
+      "skip": "Skip",
+      "cancel": "Cancel run",
+      "sent": "Response sent.",
+      "resumeFailed": "Could not send your response. Try again."
+    },
     "userInput": {
       "placeholder": "Placeholder",
       "sending": "Sending",

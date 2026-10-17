@@ -11,6 +11,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.runtime.connection_guard import with_connection_guard
 from app.agent_runtime.runtime.shared_memo import load_shared_memo, memo_governed
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
@@ -247,6 +248,11 @@ async def prepare_runtime_components_impl(
         interrupt_on = _without_stored_filesystem_interrupts(interrupt_on)
     mark_timing("skills_filesystem_ms")
 
+    # F-07 (11.4): root runs interrupt (triggers/invoke API raise); children only refuse.
+    mode = (
+        "refuse" if not include_agent_memory_file else ("raise" if is_trigger_mode else "interrupt")
+    )
+    middleware = with_connection_guard(middleware, cfg, langchain_tools, mode=mode)
     return RuntimeComponents(
         model_candidates=model_candidates,
         model=model,
