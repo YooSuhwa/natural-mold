@@ -63,6 +63,8 @@ PLATFORM_REASONS: dict[str, str] = {
     "tenant_lifecycle.export": "S04 I-07 operator export: one company and its members' accounts",
     "tenant_lifecycle.export_gc": "S04 I-07 leader export GC: stale jobs, expired archives",
     "tenant_lifecycle.cli": "S04 I-07 operator CLI: export/schedule/cancel/purge one company",
+    "startup.rls_role_check": "8.8 roles: boot reads pg_roles/pg_class for the app role (I-06)",
+    "checkpoint.tenant_audit": "8.8 checkpointer: cross-check thread metadata vs conversations",
 }
 
 # Unbound company sessions fail closed under RLS. The request session is bound
@@ -82,6 +84,8 @@ ENGINE_ALLOWLIST: Counter[tuple[str, str]] = Counter(
         ("services/skill_evaluation_worker_leader.py", "engine.connect"): 1,
         ("authz/cli.py", "create_async_engine"): 1,
         ("authz/cli.py", "AsyncSession"): 1,
+        ("migrations/org_authz_v1/rls_activation.py", "create_async_engine"): 1,
+        ("migrations/org_authz_v1/rls_activation.py", "engine.begin"): 1,
     }
 )
 ENGINE_CALLS = frozenset(

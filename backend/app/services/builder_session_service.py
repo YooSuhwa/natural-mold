@@ -28,6 +28,7 @@ from app.models.builder_session import BuilderSession
 from app.schemas.builder import BuilderStatus
 from app.schemas.conversation import Decision
 from app.services.tool_service import get_tools_catalog
+from app.tenancy.checkpoint_audit import checkpoint_tenant
 
 logger = logging.getLogger("app.services.builder_service")
 
@@ -241,7 +242,9 @@ async def run_v3_message_stream(
 
     checkpointer = get_checkpointer()
     graph_compiled = compile_graph(checkpointer)
-    config: dict[str, Any] = {"configurable": {"thread_id": str(session_id)}}
+    config: dict[str, Any] = {
+        "configurable": {"thread_id": str(session_id), **checkpoint_tenant(tenant_id)}
+    }
 
     state_snapshot = await graph_compiled.aget_state(config)
     is_first = not state_snapshot.values
@@ -295,7 +298,9 @@ async def run_v3_resume_stream(
 
     checkpointer = get_checkpointer()
     graph_compiled = compile_graph(checkpointer)
-    config: dict[str, Any] = {"configurable": {"thread_id": str(session_id)}}
+    config: dict[str, Any] = {
+        "configurable": {"thread_id": str(session_id), **checkpoint_tenant(tenant_id)}
+    }
 
     # interrupt_id stale 검증
     if interrupt_id:

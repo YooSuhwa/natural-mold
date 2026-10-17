@@ -1,5 +1,6 @@
 import logging
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from typing import Protocol, overload
 from uuid import UUID
@@ -7,6 +8,7 @@ from uuid import UUID
 import anyio
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Session, SessionTransaction
 
@@ -226,6 +228,69 @@ async def bind_tenant(session: AsyncSession, ctx: TenantScoped) -> None:
         if connection is not None and _supports_transaction_settings(connection):
             sql, params = _set_config(values)
             await session.execute(text(sql), params)
+
+
+def _identity_values(user_id: UUID | None) -> dict[str, str]:
+    values = {"app.scope": "identity"}
+    if user_id is not None:
+        values["app.user_id"] = str(user_id)
+    return values
+
+
+async def _apply_now(session: AsyncSession, values: dict[str, str]) -> None:
+    """Set (or clear, '' for absent names) every scope setting in the open transaction."""
+    if not session.in_transaction():
+        return
+    connection = (await session.connection()).sync_connection
+    if connection is not None and _supports_transaction_settings(connection):
+        sql, params = _set_config({name: values.get(name, "") for name in _SETTINGS})
+        await session.execute(text(sql), params)
+
+
+async def bind_identity(session: AsyncSession) -> None:
+    """Bind a request session to the identity gateway scope (I-06, auth routes only).
+
+    ``app.scope=identity`` opens the account directory (users, refresh tokens,
+    identities, memberships, SSO configuration, audit) and no company payload.
+    Call sites are pinned by ``tests/authz/test_i06_identity_scope.py``.
+    """
+    info = getattr(session, "info", None)
+    if not isinstance(info, dict):  # test doubles
+        return
+    current = info.get(SCOPE_INFO_KEY)
+    if current is not None and current.get("app.scope") != "identity":
+        raise SessionScopeError("database session is already bound to another scope")
+    if current is None:
+        info[SCOPE_INFO_KEY] = _identity_values(None)
+        await _apply_now(session, info[SCOPE_INFO_KEY])
+
+
+@asynccontextmanager
+async def identity_scope(session: AsyncSession, user_id: UUID | None = None) -> AsyncIterator[None]:
+    """Pre-context lookups on an unbound session (token user, org context resolution).
+
+    A bound session is left as it is (its scope already reads the caller's own
+    user row). The identity scope is cleared again on exit, so the session stays
+    unbound until ``bind_tenant``.
+    """
+    info = getattr(session, "info", None)
+    if not isinstance(info, dict) or info.get(SCOPE_INFO_KEY) is not None:
+        yield
+        return
+    values = _identity_values(user_id)
+    info[SCOPE_INFO_KEY] = values
+    await _apply_now(session, values)
+    try:
+        yield
+    except BaseException:
+        if info.get(SCOPE_INFO_KEY) is values:
+            del info[SCOPE_INFO_KEY]
+            with suppress(SQLAlchemyError):  # an aborted transaction keeps nothing
+                await _apply_now(session, {})
+        raise
+    if info.get(SCOPE_INFO_KEY) is values:
+        del info[SCOPE_INFO_KEY]
+        await _apply_now(session, {})
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

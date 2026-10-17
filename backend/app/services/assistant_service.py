@@ -20,6 +20,7 @@ from app.authz.org_context import OrgContext
 from app.schemas.conversation import Decision
 from app.services.spend_writer import SpendEntry, spend_queue
 from app.services.system_credential_resolver import SystemModelNotConfiguredError
+from app.tenancy.checkpoint_audit import checkpoint_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ async def stream_assistant_message(
         return
 
     messages = [HumanMessage(content=user_message)]
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {"configurable": {"thread_id": thread_id, **checkpoint_tenant(context.tenant_id)}}
     usage: dict[str, Any] = {}
 
     try:
@@ -89,7 +90,7 @@ async def stream_assistant_resume(
         return
 
     decisions_payload = [decision.model_dump(exclude_none=True) for decision in decisions]
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {"configurable": {"thread_id": thread_id, **checkpoint_tenant(context.tenant_id)}}
 
     usage: dict[str, Any] = {}
     try:

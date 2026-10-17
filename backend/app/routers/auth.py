@@ -18,7 +18,13 @@ from app.auth.sso.link_pending import clear_link_cookie, pending_link_method
 from app.auth.sso.session_gate import login_gate
 from app.authz.policies import PUBLIC, SELF, authz_policy
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_identity_db,
+    verify_csrf,
+)
 from app.exceptions import AppError
 from app.rate_limit import limiter
 from app.schemas.auth import (
@@ -35,7 +41,8 @@ from app.services.sso.discovery import refuse_sso_domain_signup
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+# I-06: every account gateway route runs its session in the identity scope.
+router = APIRouter(prefix="/api/auth", tags=["auth"], dependencies=[Depends(get_identity_db)])
 
 
 # ---------------------------------------------------------------------------

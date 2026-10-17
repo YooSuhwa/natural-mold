@@ -43,6 +43,7 @@ from app.agent_runtime.runtime_preparation_support import (
 )
 from app.agent_runtime.tool_factory import create_builtin_tool
 from app.config import settings
+from app.tenancy.checkpoint_audit import checkpoint_tenant
 
 # Preserve the facade's logger name for ``agent_prepare_timing`` records.
 logger = logging.getLogger("app.agent_runtime.runtime_component_builder")
@@ -257,7 +258,11 @@ async def _prepare_agent(
 
     lc_messages = runtime_attr("convert_to_langchain_messages")(messages_history)
     mark_timing("messages_ms")
-    configurable: dict[str, Any] = {"thread_id": cfg.thread_id}
+    # I-06: LangGraph copies this into checkpoint metadata for the tenant cross-check.
+    configurable: dict[str, Any] = {
+        "thread_id": cfg.thread_id,
+        **checkpoint_tenant(cfg.org_context.tenant_id),
+    }
     if run_id is not None:
         configurable["moldy_run_id"] = run_id
     config: dict[str, Any] = {"configurable": configurable}

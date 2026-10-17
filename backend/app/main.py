@@ -77,6 +77,7 @@ from app.runtime_lifecycle import lifespan_cleanup_boundary, shutdown_runtime_re
 from app.scheduler import sweep_stale_conversation_runs
 from app.scheduler_runtime import scheduler_leadership_runtime
 from app.security.production_check import enforce_production_safety
+from app.security.rls_role_check import enforce_rls_role_safety
 from app.seed.bootstrap_from_env import bootstrap_system_credentials
 from app.seed.default_marketplace_skills import seed_default_marketplace_skills
 from app.seed.default_models import (
@@ -107,6 +108,8 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     # CORS origins, encryption keys — all the things that are safe
     # locally but catastrophic if shipped with their defaults.
     enforce_production_safety(settings)
+    # I-06: with DB_RLS_ENABLED the app role must not own tables or bypass RLS.
+    await enforce_rls_role_safety(settings)
 
     # Startup: seed default data.
     async with platform_session("seed.startup") as db:

@@ -74,6 +74,7 @@ from app.agent_runtime.prepared_task_tool_handler import PreparedStateProjector
 from app.agent_runtime.runtime_config import PreparedRunBinding
 from app.agent_runtime.runtime_effective_capabilities import tool_node_names
 from app.agent_runtime.tool_access_policy import ToolOrigin
+from app.tenancy.checkpoint_audit import run_configurable
 
 Trace = Callable[[str], None]
 
@@ -232,10 +233,8 @@ async def materialize_prepared_lease(
             for (child_id, _variant), runnable in runnables.items()
         ):
             raise PreparedCompileError("effective_surface_changed")
-        configurable: dict[str, Any] = {
-            "thread_id": inputs.thread_id,
-            "moldy_run_id": str(binding.run_id),
-        }
+        # I-06: the run's company lands in checkpoint metadata for the tenant cross-check.
+        configurable = run_configurable(inputs.thread_id, binding.run_id, binding.tenant_id)
         if inputs.checkpoint_id:
             configurable["checkpoint_id"] = inputs.checkpoint_id
         lease = replace(

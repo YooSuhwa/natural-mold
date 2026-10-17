@@ -188,3 +188,32 @@ bash scripts/run-internal-tls-lane.sh
 이 검증이 들어간 버전으로 올리면, 내부 URL이 평문인 기존 운영 설치는 부팅이 거부됩니다.
 배포 전에 7.2처럼 TLS를 켜거나, 같은 호스트 Compose 설치라면 `INTERNAL_PLAINTEXT_HOSTS`를
 설정합니다.
+
+## 8. 회사 기준 RLS와 DB 역할 분리 (I-06, m92)
+
+`DB_RLS_ENABLED`는 기본값 `false`입니다. 켜기 전에는 m92가 정책만 만들어 두고(비활성) 동작은 바뀌지 않습니다.
+
+### 8.1 역할
+
+| 역할 | 접속 설정 | 권한 |
+|------|-----------|------|
+| 마이그레이션 역할 | `MIGRATION_DATABASE_URL` | 모든 테이블 소유자, `BYPASSRLS`(또는 superuser). Alembic과 `rls_activation`만 사용 |
+| 앱 역할 | `DATABASE_URL`, `DATABASE_URL_SYNC` | 소유자가 아님, `NOBYPASSRLS`, superuser/우회 역할의 구성원도 아님. DML 권한만 |
+
+체크포인터(`DATABASE_URL_SYNC`)와 APScheduler 작업 저장소는 시작할 때 테이블을 만들려고 합니다. 역할을 분리하면 m92가 마이그레이션 역할로 `checkpoint*`·`apscheduler_jobs` 테이블을 미리 만들고, 앱은 LangGraph 마이그레이션이 모두 기록되어 있으면 `setup()`을 건너뜁니다. 그래서 앱 역할에는 스키마 `CREATE` 권한이 필요 없습니다. LangGraph를 올려 새 체크포인트 마이그레이션이 생기면 앱이 `setup()`을 다시 시도하므로, 업그레이드 전에 마이그레이션 역할로 `alembic upgrade head`를 먼저 실행하거나 그 한 번만 `CREATE` 권한이 있는 역할로 기동합니다.
+
+### 8.2 기존 설치 전환 순서
+
+1. 앱 역할 생성: `CREATE ROLE moldy_app LOGIN PASSWORD '...' NOBYPASSRLS;`
+2. 보통은 지금까지 테이블을 소유한 기존 역할(예: `moldy`)을 마이그레이션 역할로 두고 새 앱 역할만 만듭니다. 반대로 기존 소유 역할을 앱 역할로 계속 쓰려면 superuser로 소유권을 옮깁니다: `REASSIGN OWNED BY moldy_app TO moldy_migrator;` m92와 `rls_activation enable`은 앱 역할이 테이블을 소유하고 있으면 이 명령을 출력하고 멈춥니다.
+3. `MIGRATION_DATABASE_URL`(마이그레이션 역할)과 `DATABASE_URL`/`DATABASE_URL_SYNC`(앱 역할)를 설정하고 `alembic upgrade head`. m92가 런타임 테이블을 만들고 앱 역할에 DML 권한과 기본 권한을 줍니다.
+4. 앱 설정에 `DB_RLS_ENABLED=true`를 넣고 재시작합니다. 이때부터 세션이 트랜잭션마다 회사 값을 설정하지만 정책은 아직 꺼져 있습니다.
+5. `python -m app.migrations.org_authz_v1.rls_activation enable [--lock-timeout 5s]` (마이그레이션 역할 환경, `DB_RLS_ENABLED=true` 필요). 정책을 다시 설치한 뒤 `ENABLE`·`FORCE ROW LEVEL SECURITY`를 겁니다. 테이블 잠금을 기다리다 시간이 지나면 실패하므로 한가한 시간에 다시 실행합니다.
+6. 운영 모드(`APP_ENV=production`)는 시작 시 앱 역할이 소유자·우회 역할(구성원 포함)이 아닌지, 보호 대상 테이블마다 `tenant_boundary` 정책과 강제 RLS가 있는지 확인하고 아니면 기동을 거부합니다.
+
+되돌리기: `python -m app.migrations.org_authz_v1.rls_activation disable` 후 `DB_RLS_ENABLED=false`로 재시작.
+
+### 8.3 점검
+
+- `python -m app.tenancy.checkpoint_audit --json`: 체크포인트 메타데이터의 회사와 대화의 회사를 대조합니다. 다른 회사로 기록된 스레드가 있으면 종료 코드 1.
+- m92 이후 새 테이블은 `app/migrations/org_authz_v1/rls_manifest.py`에 분류하고 정책을 넣는 마이그레이션이 필요합니다(분류가 없으면 단위 테스트와 `enable`이 실패).

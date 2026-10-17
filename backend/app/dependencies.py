@@ -22,7 +22,13 @@ from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.auth.jwt import InvalidTokenError, decode_token
 from app.authz.org_context import OrgContext, resolve_org_context
 from app.config import settings
-from app.database import bind_tenant, close_session_shielded, tenant_session
+from app.database import (
+    bind_identity,
+    bind_tenant,
+    close_session_shielded,
+    identity_scope,
+    tenant_session,
+)
 from app.exceptions import AppError
 from app.models.conversation import Conversation
 from app.services import user_service
@@ -62,6 +68,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         await close_session_shielded(session)
 
 
+async def get_identity_db(db: AsyncSession = Depends(get_db)) -> AsyncSession:
+    """The request session bound to the identity gateway scope (I-06).
+
+    Only the account gateway routes (login, register, refresh, logout, profile,
+    SSO sign-in) use it; they act before, or without, any company context.
+    """
+    await bind_identity(db)
+    return db
+
+
 # ---------------------------------------------------------------------------
 # Token extraction
 # ---------------------------------------------------------------------------
@@ -99,7 +115,8 @@ async def _resolve_user(token: str, db: AsyncSession) -> CurrentUser | None:
     except (TypeError, ValueError):
         return None
     with db.no_autoflush:
-        user = await user_service.get_by_id(db, user_id)
+        async with identity_scope(db, user_id):  # I-06: token user before any company
+            user = await user_service.get_by_id(db, user_id)
     if user is None or not user.is_active:
         return None
     return CurrentUser(
@@ -161,11 +178,12 @@ async def get_org_context(
     user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> OrgContext:
-    context = await resolve_org_context(
-        db,
-        user,
-        cookie=request.cookies.get(ACTIVE_ORG_COOKIE),
-    )
+    async with identity_scope(db, user.id):  # I-06: own memberships before the company
+        context = await resolve_org_context(
+            db,
+            user,
+            cookie=request.cookies.get(ACTIVE_ORG_COOKIE),
+        )
     await bind_tenant(db, context)
     request.state.org_context = context
     return context

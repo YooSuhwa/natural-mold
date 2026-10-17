@@ -23,7 +23,7 @@ from app.auth.sso.oidc import authorization_url, discover
 from app.auth.sso.provisioning import LinkPending, sso_sign_in
 from app.authz.policies import PUBLIC, authz_policy
 from app.config import settings
-from app.dependencies import get_db
+from app.dependencies import get_db, get_identity_db
 from app.exceptions import AppError
 from app.rate_limit import limiter
 from app.schemas.auth import AuthResponse, UserResponse
@@ -40,7 +40,8 @@ from app.services.sso.login import (
     record_failure,
 )
 
-router = APIRouter(tags=["auth sso"])
+# I-06: SSO sign-in runs before any company context, in the identity scope.
+router = APIRouter(tags=["auth sso"], dependencies=[Depends(get_identity_db)])
 _LOGIN_CSRF_HEADER = "X-Login-CSRF"
 
 

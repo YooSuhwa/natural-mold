@@ -35,6 +35,25 @@ def _pool_size_kwargs(
     return {"min_size": pool_min_size, "max_size": pool_max_size}
 
 
+async def _needs_setup(pool: AsyncConnectionPool) -> bool:
+    """I-06: skip ``setup()`` (it issues CREATE) once every LangGraph migration is recorded.
+
+    With role separation m92 pre-creates the tables and the app role has no
+    CREATE privilege on the schema; ``setup()`` would fail even as a no-op.
+    """
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+    from psycopg import errors
+
+    try:
+        async with pool.connection() as connection:
+            cursor = await connection.execute("SELECT max(v) FROM checkpoint_migrations")
+            row = await cursor.fetchone()
+    except errors.UndefinedTable:
+        return True
+    latest = len(AsyncPostgresSaver.MIGRATIONS) - 1
+    return row is None or row[0] is None or row[0] < latest
+
+
 async def init_checkpointer(
     conn_string: str,
     *,
@@ -62,7 +81,8 @@ async def init_checkpointer(
         candidate_checkpointer = AsyncPostgresSaver(
             conn=candidate_pool  # type: ignore[arg-type]  # Pool도 Conn 인터페이스 호환
         )
-        await candidate_checkpointer.setup()
+        if await _needs_setup(candidate_pool):
+            await candidate_checkpointer.setup()
     except BaseException:  # noqa: BLE001 - ownership boundary must close on cancellation too
         try:
             await candidate_pool.close()

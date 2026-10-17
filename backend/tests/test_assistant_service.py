@@ -100,4 +100,8 @@ async def test_stream_assistant_resume_sends_standard_hitl_decisions():
     mock_build.assert_called_once_with(mock_db, agent_id, unit_context(user_id), thread_id)
     assert captured["agent"] is mock_agent
     assert captured["stream_input"].resume == {"decisions": [{"type": "approve"}]}
-    assert captured["config"] == {"configurable": {"thread_id": thread_id}}
+    # I-06: the run's company is recorded in checkpoint metadata.
+    tenant = str(unit_context(user_id).tenant_id)
+    assert captured["config"] == {
+        "configurable": {"thread_id": thread_id, "moldy_tenant_id": tenant}
+    }
