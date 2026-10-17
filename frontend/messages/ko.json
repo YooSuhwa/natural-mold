@@ -203,6 +203,45 @@
     }
   },
   "orgAdmin": {
+    "requests": {
+      "title": "접근 요청",
+      "description": "내가 관리하는 자원에 들어온 권한 요청을 처리하고, 내가 보낸 요청을 확인합니다.",
+      "tabs": {
+        "inbox": "받은 요청",
+        "outbox": "보낸 요청",
+        "handled": "처리됨"
+      },
+      "empty": {
+        "inbox": "받은 요청이 없어요",
+        "outbox": "보낸 요청이 없어요",
+        "handled": "처리한 요청이 없어요"
+      },
+      "row": "{requester} → {resource} · {level}",
+      "unknownResource": "이름 없는 자원",
+      "unknownUser": "알 수 없는 사용자",
+      "expiresIn": "{days}일 후 만료",
+      "status": {
+        "pending": "대기",
+        "approved": "승인",
+        "denied": "거절",
+        "cancelled": "취소",
+        "expired": "만료"
+      },
+      "approve": "승인",
+      "deny": "거절",
+      "cancelRequest": "요청 취소",
+      "toast": {
+        "approved": "요청을 승인했어요",
+        "denied": "요청을 거절했어요",
+        "cancelled": "요청을 취소했어요"
+      },
+      "errors": {
+        "access_request_closed": "이미 처리된 요청이에요. 목록을 새로고침했어요.",
+        "confirm_required": "위임된 계정 자원이 있는 에이전트예요. 공유 화면에서 확인한 뒤 공유해 주세요.",
+        "generic": "요청을 처리하지 못했어요. 잠시 후 다시 시도하세요."
+      },
+      "loadFailed": "요청 목록을 불러오지 못했어요."
+    },
     "common": {
       "noOrganization": "선택된 조직이 없습니다",
       "noOrganizationDescription": "사이드바에서 조직을 선택하거나 조직 초대를 받아 주세요.",
@@ -1476,6 +1515,26 @@
     }
   },
   "sharing": {
+    "request": {
+      "open": "권한 요청",
+      "title": "권한 요청",
+      "titleNamed": "{name} · 권한 요청",
+      "description": "요청은 이 자원의 관리자에게 전달됩니다.",
+      "level": "요청할 권한",
+      "reason": "필요한 이유 (선택)",
+      "reasonPlaceholder": "예: 분기 리포트 양식을 수정해야 해요.",
+      "submit": "요청 보내기",
+      "sending": "보내는 중…",
+      "cancel": "취소",
+      "sent": "요청을 보냈어요. 승인되면 바로 사용할 수 있어요.",
+      "pending": "이미 보낸 요청이 대기 중이에요.",
+      "alreadyGranted": "이미 이 권한이 있어요. 새로고침해 보세요.",
+      "rateLimited": "요청을 너무 많이 보냈어요. 잠시 후 다시 시도하세요.",
+      "failed": "요청을 보내지 못했어요. 잠시 후 다시 시도하세요.",
+      "stateTitle": "권한이 필요해요",
+      "stateDescription": "이 화면을 보려면 더 높은 권한이 필요해요. 관리자에게 권한을 요청할 수 있어요.",
+      "stateNoRequest": "이 화면을 볼 권한이 없어요. 소유자에게 문의하세요."
+    },
     "title": "{name} 공유",
     "description": "같은 조직의 사용자, 그룹, 조직 전체에 권한 단계를 골라 공유해요.",
     "loading": "접근 목록을 불러오는 중",
@@ -4318,6 +4377,7 @@
       "organizationMembers": "멤버",
       "organizationGroups": "그룹",
       "organizationRoles": "역할 및 권한",
+      "organizationRequests": "접근 요청",
       "companyOrganizations": "회사 조직 목록"
     },
     "profile": {

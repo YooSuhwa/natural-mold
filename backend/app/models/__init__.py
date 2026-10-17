@@ -1,6 +1,7 @@
 # Greenfield credentials/tools/skills/mcp models — registered first so other
 # modules picking them up via ``Base.metadata`` see the new schema.
 # Existing domain models.
+from app.models.access_request import AccessRequest
 from app.models.agent import Agent
 from app.models.agent_api import (
     AgentApiKey,
@@ -119,6 +120,7 @@ __all__ = [
     "AgentTrigger",
     "AgentTriggerRun",
     "AgentUserPreference",
+    "AccessRequest",
     "AuditEvent",
     "AuthzOutbox",
     "AuthzRevocation",

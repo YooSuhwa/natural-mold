@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeftIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
+import {
+  PermissionRequiredState,
+  isPermissionRequired,
+} from '@/components/access-requests/permission-required-state'
 import { buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PackageSkillEditor } from '@/components/skill/skill-detail-package-editor'
@@ -35,7 +39,13 @@ export function SkillTabPageClient({
   readonly revisionId?: string | null
 }) {
   const t = useTranslations('skill.studio')
-  const { data: skill, isLoading, isError } = useSkill(skillId)
+  const { data: skill, isLoading, isError, error } = useSkill(skillId)
+  const backLink = (
+    <Link href="/skills" className={cn(buttonVariants({ variant: 'outline' }))}>
+      <ArrowLeftIcon className="size-4" />
+      {t('backToList')}
+    </Link>
+  )
 
   if (isLoading) {
     return (
@@ -49,16 +59,24 @@ export function SkillTabPageClient({
     )
   }
 
+  if (isPermissionRequired(error)) {
+    // 403 on a visible skill (plan 8.4): offer an access request (S18) instead of a dead end.
+    return (
+      <div className="moldy-app-surface flex min-h-0 flex-1 items-center justify-center p-3">
+        <PermissionRequiredState error={error} resourceType="skill" resourceId={skillId}>
+          {backLink}
+        </PermissionRequiredState>
+      </div>
+    )
+  }
+
   if (isError || !skill) {
     return (
       <div className="moldy-app-surface flex min-h-0 flex-1 items-center justify-center p-3">
         <div className="moldy-panel max-w-md space-y-3 p-6 text-center">
           <h2 className="text-base font-semibold">{t('skillUnavailableTitle')}</h2>
           <p className="text-sm text-muted-foreground">{t('skillUnavailableHint')}</p>
-          <Link href="/skills" className={cn(buttonVariants({ variant: 'outline' }))}>
-            <ArrowLeftIcon className="size-4" />
-            {t('backToList')}
-          </Link>
+          {backLink}
         </div>
       </div>
     )

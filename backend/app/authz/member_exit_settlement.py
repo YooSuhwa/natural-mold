@@ -16,6 +16,7 @@ locks, under the organization row lock taken by ``members_write_context``:
      in the trash; skills, tools and MCP servers use their delete routes.
 2. Every active grant naming the leaver in this organization is revoked through
    ``GrantService`` (8.6 markers + outbox), audit metadata ``member_exit``.
+3. The leaver's pending access requests are cancelled (H-01, audit ``member_exit``).
 
 Per object the order is organization → grants → resource, as in E-01. Not done here:
 the delegation validator (10.7 item 5, F-02/P6) and the ``delegation.broken`` /
@@ -30,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
+from app.authz.access_requests import cancel_member_requests
 from app.authz.error_codes import authorization_error
 from app.authz.grant_validation import invalid
 from app.authz.grants import GrantService
@@ -115,6 +117,7 @@ class MemberExitSettlement:
             else:
                 await self._transfer(ctx, item, row)
         await self.revoke_held()
+        await cancel_member_requests(self.db, ctx, self.user_id)  # H-01, audited
 
     @property
     def _reason(self) -> str | None:

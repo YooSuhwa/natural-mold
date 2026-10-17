@@ -77,3 +77,8 @@ AGENT_MEMO_UPDATE: Final = "agent_memo.update"
 AGENT_MEMO_PROPOSAL_DECIDE: Final = "agent_memo.proposal_decide"
 # F-09: a non-owner editor changed the agent memory settings (owner changes: unchanged).
 AGENT_MEMORY_SETTINGS_UPDATE: Final = "agent.memory_settings_update"
+# H-01 access requests (14.1 "요청"); expiry is a status change, not an audit action.
+ACCESS_REQUEST_CREATE: Final = "access_request.create"
+ACCESS_REQUEST_APPROVE: Final = "access_request.approve"
+ACCESS_REQUEST_DENY: Final = "access_request.deny"
+ACCESS_REQUEST_CANCEL: Final = "access_request.cancel"

@@ -46,6 +46,273 @@
         ]
       }
     },
+    "/api/access-requests": {
+      "get": {
+        "operationId": "get_access_requests_api_access_requests_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "box",
+            "required": false,
+            "schema": {
+              "default": "inbox",
+              "enum": [
+                "inbox",
+                "outbox",
+                "handled"
+              ],
+              "title": "Box",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRequestPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Access Requests",
+        "tags": [
+          "access requests"
+        ]
+      },
+      "post": {
+        "operationId": "create_access_request_api_access_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRequestView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "description": "Accepted; nothing is revealed about the resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Access Request",
+        "tags": [
+          "access requests"
+        ]
+      }
+    },
+    "/api/access-requests/{request_id}/approve": {
+      "post": {
+        "operationId": "approve_access_request_api_access_requests__request_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessRequestApprove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRequestView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Access Request",
+        "tags": [
+          "access requests"
+        ]
+      }
+    },
+    "/api/access-requests/{request_id}/cancel": {
+      "post": {
+        "operationId": "cancel_access_request_api_access_requests__request_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRequestView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Access Request",
+        "tags": [
+          "access requests"
+        ]
+      }
+    },
+    "/api/access-requests/{request_id}/deny": {
+      "post": {
+        "operationId": "deny_access_request_api_access_requests__request_id__deny_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessRequestDeny"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRequestView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deny Access Request",
+        "tags": [
+          "access requests"
+        ]
+      }
+    },
     "/api/admin/tenants": {
       "get": {
         "operationId": "list_companies_api_admin_tenants_get",
@@ -20584,6 +20851,305 @@
       "title": "AccessList",
       "type": "object"
     },
+    "AccessRequestApprove": {
+      "additionalProperties": false,
+      "properties": {
+        "confirm_delegation": {
+          "default": false,
+          "title": "Confirm Delegation",
+          "type": "boolean"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "enum": [
+                "consumer",
+                "viewer",
+                "editor"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Level"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        }
+      },
+      "title": "AccessRequestApprove",
+      "type": "object"
+    },
+    "AccessRequestCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "enum": [
+            "consumer",
+            "viewer",
+            "editor"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        },
+        "resource_id": {
+          "format": "uuid",
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "enum": [
+            "agent",
+            "skill",
+            "tool",
+            "mcp_server"
+          ],
+          "title": "Resource Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id",
+        "level"
+      ],
+      "title": "AccessRequestCreate",
+      "type": "object"
+    },
+    "AccessRequestDeny": {
+      "additionalProperties": false,
+      "properties": {
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        }
+      },
+      "title": "AccessRequestDeny",
+      "type": "object"
+    },
+    "AccessRequestPage": {
+      "properties": {
+        "has_more": {
+          "default": false,
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/AccessRequestView"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "AccessRequestPage",
+      "type": "object"
+    },
+    "AccessRequestView": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "decided_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Decided At"
+        },
+        "decided_by": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Decided By"
+        },
+        "decision_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Decision Note"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "granted_level": {
+          "anyOf": [
+            {
+              "enum": [
+                "consumer",
+                "viewer",
+                "editor"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Granted Level"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "consumer",
+            "viewer",
+            "editor"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        },
+        "requester": {
+          "$ref": "#/components/schemas/RequestUser"
+        },
+        "resource_id": {
+          "format": "uuid",
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resource Name"
+        },
+        "resource_type": {
+          "enum": [
+            "agent",
+            "skill",
+            "tool",
+            "mcp_server"
+          ],
+          "title": "Resource Type",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "approved",
+            "denied",
+            "cancelled",
+            "expired"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "resource_type",
+        "resource_id",
+        "resource_name",
+        "level",
+        "reason",
+        "status",
+        "requester",
+        "decided_by",
+        "decided_at",
+        "decision_note",
+        "granted_level",
+        "created_at",
+        "expires_at"
+      ],
+      "title": "AccessRequestView",
+      "type": "object"
+    },
     "ActiveOrganizationRequest": {
       "additionalProperties": false,
       "properties": {
@@ -35554,6 +36120,31 @@
         "password"
       ],
       "title": "RegisterRequest",
+      "type": "object"
+    },
+    "RequestUser": {
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "RequestUser",
       "type": "object"
     },
     "ResourceOriginSummaryOut": {

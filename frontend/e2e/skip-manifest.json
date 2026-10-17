@@ -101,6 +101,16 @@
       "owner": "mcp-integrations",
       "expires": "2027-03-31",
       "expected_count": 1
+    },
+    {
+      "id": "org-authz-access-request",
+      "path_glob": "e2e/access-request-approval.spec.ts",
+      "condition": "process.env.E2E_ORG_AUTHZ !== '1'",
+      "reason": "Org-authz role fixtures (plan 16.5) pending",
+      "category": "infrastructure",
+      "owner": "org-authz",
+      "expires": "2027-03-31",
+      "expected_count": 1
     }
   ]
 }

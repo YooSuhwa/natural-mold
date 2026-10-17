@@ -64,6 +64,7 @@ ErrorCode = Literal[
     "authz_unavailable",
     "policy_disabled",
     "tenant_publication_invalid",
+    "access_request_closed",
 ]
 
 
@@ -167,6 +168,7 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         "tenant_publication_invalid": ErrorSpec(
             409, "게시된 공개 항목만 회사 전체에 공개할 수 있습니다"
         ),
+        "access_request_closed": ErrorSpec(409, "이미 처리된 접근 요청입니다"),
     }
 )
 

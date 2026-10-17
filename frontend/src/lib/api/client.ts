@@ -165,6 +165,11 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
   const response = await withAuthRetry(path, send)
   if (!response.ok) await throwApiError(response, 'UNKNOWN_ERROR')
   if (response.status === 204) return undefined as T
+  // A body-less 202 (e.g. an access request on a hidden resource, plan 8.4) has no JSON.
+  if (response.status === 202) {
+    const text = await response.text()
+    return (text ? JSON.parse(text) : undefined) as T
+  }
   return response.json()
 }
 

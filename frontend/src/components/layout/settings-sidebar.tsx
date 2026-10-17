@@ -13,6 +13,7 @@ import {
   Code2Icon,
   FilesIcon,
   HistoryIcon,
+  InboxIcon,
   KeyRoundIcon,
   MonitorCogIcon,
   ShieldCheckIcon,
@@ -119,6 +120,12 @@ export function SettingsSidebar() {
               href: '/settings/organization/groups',
               label: tSettings('nav.organizationGroups'),
               icon: UsersRoundIcon,
+            },
+            {
+              // Anyone may send requests; the inbox shows what the caller can share (S18).
+              href: '/settings/organization/requests',
+              label: tSettings('nav.organizationRequests'),
+              icon: InboxIcon,
             },
             ...(access.canReadGrants
               ? [

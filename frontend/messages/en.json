@@ -203,6 +203,45 @@
     }
   },
   "orgAdmin": {
+    "requests": {
+      "title": "Access requests",
+      "description": "Decide requests for resources you manage and track the requests you sent.",
+      "tabs": {
+        "inbox": "Received",
+        "outbox": "Sent",
+        "handled": "Handled"
+      },
+      "empty": {
+        "inbox": "No requests received",
+        "outbox": "You haven't sent any requests",
+        "handled": "No handled requests"
+      },
+      "row": "{requester} → {resource} · {level}",
+      "unknownResource": "Unnamed resource",
+      "unknownUser": "Unknown user",
+      "expiresIn": "Expires in {days} days",
+      "status": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "denied": "Denied",
+        "cancelled": "Cancelled",
+        "expired": "Expired"
+      },
+      "approve": "Approve",
+      "deny": "Deny",
+      "cancelRequest": "Cancel request",
+      "toast": {
+        "approved": "Request approved",
+        "denied": "Request denied",
+        "cancelled": "Request cancelled"
+      },
+      "errors": {
+        "access_request_closed": "This request was already handled. The list was refreshed.",
+        "confirm_required": "This agent lends delegated accounts. Confirm them in the share dialog and share from there.",
+        "generic": "Couldn't process the request. Try again later."
+      },
+      "loadFailed": "Couldn't load the requests."
+    },
     "common": {
       "noOrganization": "No organization selected",
       "noOrganizationDescription": "Pick an organization in the sidebar or accept an organization invitation.",
@@ -1476,6 +1515,26 @@
     }
   },
   "sharing": {
+    "request": {
+      "open": "Request access",
+      "title": "Request access",
+      "titleNamed": "{name} · Request access",
+      "description": "Your request goes to the managers of this resource.",
+      "level": "Access to request",
+      "reason": "Why you need it (optional)",
+      "reasonPlaceholder": "e.g. I need to update the quarterly report template.",
+      "submit": "Send request",
+      "sending": "Sending…",
+      "cancel": "Cancel",
+      "sent": "Request sent. You can use it as soon as it is approved.",
+      "pending": "Your earlier request is still pending.",
+      "alreadyGranted": "You already have this access. Try refreshing.",
+      "rateLimited": "Too many requests. Try again later.",
+      "failed": "Couldn't send the request. Try again later.",
+      "stateTitle": "You need more access",
+      "stateDescription": "You need a higher access level to open this page. You can ask its managers for access.",
+      "stateNoRequest": "You don't have access to this page. Ask the owner."
+    },
     "title": "Share {name}",
     "description": "Share with people, groups, or the whole organization at the level you choose.",
     "loading": "Loading access",
@@ -4318,6 +4377,7 @@
       "organizationMembers": "Members",
       "organizationGroups": "Groups",
       "organizationRoles": "Roles & capabilities",
+      "organizationRequests": "Access requests",
       "companyOrganizations": "Company organizations"
     },
     "profile": {
