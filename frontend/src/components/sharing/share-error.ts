@@ -1,7 +1,6 @@
 import type { useTranslations } from 'next-intl'
 
-import { ApiError } from '@/lib/api/errors'
-import type { DelegatedAccount } from '@/lib/types/grant'
+import { ApiError } from '@/lib/api/client'
 
 type Translate = ReturnType<typeof useTranslations>
 
@@ -43,19 +42,7 @@ export function shareErrorMessage(error: unknown, t: Translate): string {
   return t('errors.generic')
 }
 
-/** `confirm_required` → the delegated account resources to acknowledge (D17). */
-export function delegationsToConfirm(error: unknown): DelegatedAccount[] | null {
-  if (!(error instanceof ApiError) || error.code !== 'confirm_required') return null
-  const raw = error.details?.delegations
-  if (!Array.isArray(raw)) return []
-  return raw.flatMap((item: unknown) => {
-    if (!item || typeof item !== 'object') return []
-    const { resource_type, resource_id, name } = item as Record<string, unknown>
-    return typeof resource_type === 'string' && typeof resource_id === 'string'
-      ? [{ resource_type, resource_id, name: typeof name === 'string' ? name : resource_id }]
-      : []
-  })
-}
+export { delegationsToConfirm } from '@/lib/sharing/delegations'
 
 export interface PersonalAccountUse {
   key: string

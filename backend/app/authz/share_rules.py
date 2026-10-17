@@ -9,19 +9,19 @@
 * Credentials (personal accounts): only the owner shares them; a manager grantee or a
   company admin gets the 403 a visible caller without ``can_share`` gets.
 * Self: a non-owner may lower their own direct grant, never raise or create one.
-* D17: sharing an agent that runs on delegated account resources (credentials, or a
-  tool/MCP server carrying its owner's credential) needs ``confirm_delegation``.
+* D17: sharing an agent that runs on delegated account resources (its model credential,
+  tools/MCP servers carrying a credential, skill bindings, its subagents' — the list of
+  ``delegation_accounts``) needs ``confirm_delegation``.
 """
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Final
-from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import denials
+from app.authz.delegation_accounts import delegated_accounts
 from app.authz.error_codes import authorization_error
 from app.authz.grant_validation import invalid
 from app.authz.org_context import OrgContext
@@ -29,13 +29,9 @@ from app.authz.org_permissions import organization_permissions
 from app.authz.service import AuthzService
 from app.authz.share_targets import ShareRow, ShareType, is_owner
 from app.models.authz import ResourceGrant
-from app.models.credential import Credential
-from app.models.mcp_server import McpServer
-from app.models.tool import Tool
 from app.schemas.grant import GrantCreate
 
 ORG_WIDE_CAP = "cap_share_org_wide"
-_ACCOUNT_TYPES = {"credential": Credential, "tool": Tool, "mcp_server": McpServer}
 
 
 def utc(value: datetime | None) -> datetime | None:
@@ -78,38 +74,28 @@ async def require_org_wide(
     await authz.require_cap(ctx, ORG_WIDE_CAP, legacy=ORG_WIDE_CAP in capabilities)
 
 
-async def delegated_accounts(db: AsyncSession, agent_id: UUID) -> list[dict[str, object]]:
-    """Account-carrying resources delegated to the agent (10.6 grants, D17 list)."""
-    grants = await db.scalars(
-        select(ResourceGrant)
-        .where(
-            ResourceGrant.principal_type == "agent",
-            ResourceGrant.principal_id == agent_id,
-            ResourceGrant.grant_kind == "delegation",
-            ResourceGrant.state == "active",
-            ResourceGrant.resource_type.in_(tuple(_ACCOUNT_TYPES)),
-        )
-        .order_by(ResourceGrant.resource_type, ResourceGrant.resource_id)
-    )
-    found: list[dict[str, object]] = []
-    for grant in grants:
-        row = await db.get(_ACCOUNT_TYPES[grant.resource_type], grant.resource_id)
-        if row is None or (not isinstance(row, Credential) and row.credential_id is None):
-            continue  # gone, or a tool/server without its owner's account
-        found.append(
-            {
-                "resource_type": grant.resource_type,
-                "resource_id": str(grant.resource_id),
-                "name": row.name,
-            }
-        )
-    return found
+def widens(body: GrantCreate, held: Sequence[ResourceGrant]) -> bool:
+    """Whether the share gives the principal more than its direct grants already do.
+
+    A no-op (same level and expiry) or a lower level lends no account the principal
+    does not already run with, so D17 does not ask again (E-06)."""
+    rank = _RANK[body.level]
+    for grant in held:
+        current = _RANK.get(grant.relation, -1)
+        if current > rank or (current == rank and utc(grant.expires_at) == utc(body.expires_at)):
+            return False
+    return True
 
 
 async def require_delegation_confirmed(
-    db: AsyncSession, kind: ShareType, row: ShareRow, body: GrantCreate
+    db: AsyncSession,
+    kind: ShareType,
+    row: ShareRow,
+    body: GrantCreate,
+    held: Sequence[ResourceGrant] = (),
 ) -> None:
-    if kind.name != "agent" or body.confirm_delegation:
+    """``held``: the principal's active direct grants on the resource."""
+    if kind.name != "agent" or body.confirm_delegation or not widens(body, held):
         return
     delegations = await delegated_accounts(db, row.id)
     if delegations:

@@ -1543,6 +1543,13 @@
       "hint": "사용자마다 연결하는 방식으로 바꾸거나 개인 계정 연결을 뺀 뒤 다시 공유하세요."
     },
     "delegation": {
+      "saveTitle": "공유된 에이전트에 계정 자원을 연결해요",
+      "saveDescription": "저장하면 이 에이전트를 공유받은 사람도 아래 계정으로 실행하게 돼요.",
+      "confirmSave": "확인하고 저장",
+      "account": "{credential} · {owner}의 계정",
+      "companyAccount": "{credential} · 회사 계정",
+      "previewTitle": "이 에이전트가 쓰는 계정 자원",
+      "previewDescription": "공유하면 받은 사람이 아래 계정으로 이 에이전트를 실행해요. 공유 전에 한 번 더 확인해요.",
       "title": "위임된 계정 자원을 확인하세요",
       "description": "이 에이전트는 아래 계정 자원으로 실행돼요. 공유받은 사람이 실행하면 이 계정이 사용돼요.",
       "type": {

@@ -3,16 +3,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { grantsApi } from '@/lib/api/grants'
+import { agentQueryKeys } from '@/lib/query-keys/agents'
+import { credentialQueryKeys } from '@/lib/query-keys/credentials'
 import { grantQueryKeys } from '@/lib/query-keys/grants'
+import { mcpServerQueryKeys } from '@/lib/query-keys/mcp-servers'
+import { skillQueryKeys } from '@/lib/query-keys/skills'
+import { toolQueryKeys } from '@/lib/query-keys/tools'
 import type { GrantCreate, OwnershipTransfer, ShareResourceType } from '@/lib/types/grant'
 
 /** Resource list roots refreshed after any sharing change (owner badges, menus). */
 const RESOURCE_ROOTS: Record<ShareResourceType, readonly string[]> = {
-  agent: ['agents'],
-  skill: ['skills'],
-  tool: ['tools'],
-  mcp_server: ['mcp-servers'],
-  credential: ['credentials'],
+  agent: agentQueryKeys.all,
+  skill: skillQueryKeys.all,
+  tool: toolQueryKeys.all,
+  mcp_server: mcpServerQueryKeys.all,
+  credential: credentialQueryKeys.all,
 }
 
 export function useResourceAccess(type: ShareResourceType, id: string, enabled = true) {
@@ -30,7 +35,7 @@ function useInvalidateSharing(type: ShareResourceType, id: string) {
   return () =>
     Promise.all([
       qc.invalidateQueries({ queryKey: grantQueryKeys.resource(type, id) }),
-      qc.invalidateQueries({ queryKey: [...RESOURCE_ROOTS[type]] }),
+      qc.invalidateQueries({ queryKey: RESOURCE_ROOTS[type] }),
     ])
 }
 

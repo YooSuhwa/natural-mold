@@ -19727,6 +19727,14 @@
     },
     "AccessList": {
       "properties": {
+        "delegations": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/DelegatedAccount"
+          },
+          "title": "Delegations",
+          "type": "array"
+        },
         "items": {
           "items": {
             "$ref": "#/components/schemas/AccessEntry"
@@ -22351,6 +22359,11 @@
     "AgentUpdate": {
       "additionalProperties": false,
       "properties": {
+        "confirm_delegation": {
+          "default": false,
+          "title": "Confirm Delegation",
+          "type": "boolean"
+        },
         "description": {
           "anyOf": [
             {
@@ -26605,6 +26618,53 @@
         "type"
       ],
       "title": "Decision",
+      "type": "object"
+    },
+    "DelegatedAccount": {
+      "description": "An account an agent lends to whoever runs it (D17; ``delegation_accounts``).",
+      "properties": {
+        "credential_id": {
+          "format": "uuid",
+          "title": "Credential Id",
+          "type": "string"
+        },
+        "credential_name": {
+          "title": "Credential Name",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "owner_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Owner Name"
+        },
+        "resource_id": {
+          "format": "uuid",
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "title": "Resource Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_type",
+        "resource_id",
+        "name",
+        "credential_id",
+        "credential_name"
+      ],
+      "title": "DelegatedAccount",
       "type": "object"
     },
     "DirectoryPage_CapabilityGrantView_": {

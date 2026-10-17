@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
+from app.authz.attach_rules import require_attachable
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import require_execution_prefix
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
@@ -77,6 +78,13 @@ async def confirm_build(
 
         # Parent creation gate before the Agent insert (archived org denies).
         await require_execution_prefix(db, context)
+        # D17 (E-06): account-carrying tools/MCP servers need can_share unless owned.
+        await require_attachable(
+            db,
+            context,
+            tool_ids=[t.id for t in tools_to_link],
+            mcp_tool_ids=[mt.id for mt in mcp_tools_to_link],
+        )
         # 에이전트 생성
         agent = Agent(
             user_id=context.user_id,

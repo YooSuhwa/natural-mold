@@ -4,7 +4,8 @@ Rows: the owner (``source=owner``), every active share grant (``direct`` for a u
 ``group`` for a group with its member count, ``organization`` for the whole
 organization) and the governors — organization admins and company admins — who may
 govern (transfer, revoke) without content access (``source=governance``, D8). Only grant
-rows are revocable; ownership moves by transfer.
+rows are revocable; ownership moves by transfer. For an agent, ``delegations`` lists the
+account resources it lends (D17), so the dialog can show them before sharing (E-06).
 """
 
 from uuid import UUID
@@ -13,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import denials
+from app.authz.delegation_accounts import delegated_accounts
 from app.authz.org_administrators import active_administrators
 from app.authz.org_context import OrgContext
 from app.authz.service import AuthzService
@@ -123,4 +125,9 @@ async def access_list(
         for uid in sorted(governors, key=str)
     ]
     permissions = await my_share_permissions(authz, ctx, kind, row)
-    return AccessList.model_validate({"items": items, "my_permissions": permissions})
+    # D17 list for whoever can share (E-06); governors/managers without can_share see none.
+    sharer = kind.name == "agent" and "can_share" in permissions
+    delegations = await delegated_accounts(db, row.id) if sharer else []
+    return AccessList.model_validate(
+        {"items": items, "my_permissions": permissions, "delegations": delegations}
+    )

@@ -225,9 +225,12 @@ async def test_sharing_an_agent_with_delegated_accounts_needs_confirmation(
     assert first.status_code == 409
     error = first.json()["error"]
     assert error["code"] == "confirm_required"
-    assert error["details"]["delegations"] == [
-        {"resource_type": "credential", "resource_id": str(credential.id), "name": "Slack"}
-    ]
+    [item] = error["details"]["delegations"]  # E-06 adds credential_id/_name, owner_name
+    assert {k: item[k] for k in ("resource_type", "resource_id", "name")} == {
+        "resource_type": "credential",
+        "resource_id": str(credential.id),
+        "name": "Slack",
+    }
     confirmed = await client.post(
         path, json=_user(OTHER_USER_ID, "consumer", confirm_delegation=True)
     )

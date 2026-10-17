@@ -53,6 +53,8 @@ export interface AccessEntry {
 export interface AccessList {
   items: AccessEntry[]
   my_permissions: SharePermission[]
+  /** Agents only: the account resources it lends, shown before sharing (E-06). */
+  delegations?: DelegatedAccount[]
 }
 
 export interface OwnershipTransfer {
@@ -70,9 +72,13 @@ export interface OwnershipTransferResult {
   manager_grant_id: string | null
 }
 
-/** `confirm_required` `details.delegations[]` (D17). */
+/** `confirm_required` `details.delegations[]` and `AccessList.delegations` (D17). */
 export interface DelegatedAccount {
   resource_type: string
   resource_id: string
   name: string
+  credential_id?: string
+  credential_name?: string
+  /** `null`: a company credential (no personal owner). */
+  owner_name?: string | null
 }

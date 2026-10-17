@@ -125,6 +125,8 @@ class AgentUpdate(BaseModel):
     model_fallback_ids: list[uuid.UUID] | None = None
     identity_mode: str | None = None
     runtime_policy: RuntimePolicyV1 | None = None
+    # D17 (E-06): the caller saw the accounts a shared agent now lends (confirm_required).
+    confirm_delegation: bool = False
 
     @field_validator("opener_questions")
     @classmethod

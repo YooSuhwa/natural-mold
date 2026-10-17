@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { agentsApi } from '@/lib/api/agents'
 import { agentQueryKeys } from '@/lib/query-keys/agents'
 import type { AgentCreateRequest, AgentUpdateRequest } from '@/lib/types'
+import { updateAgentConfirmingDelegation } from '@/lib/sharing/delegation-confirm-request'
 
 // skill_ids 저장은 스킬 목록/상세의 연결 카운트(역집계)를 바꾼다 (Phase 2 §2.3).
 // used_by_count는 목록(['skills', params])·상세(['skills', id]) — 길이 2 키 —
@@ -50,7 +51,8 @@ export function useCreateAgent() {
 export function useUpdateAgent(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: AgentUpdateRequest) => agentsApi.update(id, data),
+    // D17 (E-06): a shared agent gaining accounts asks the user, then resends.
+    mutationFn: (data: AgentUpdateRequest) => updateAgentConfirmingDelegation(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: agentQueryKeys.all })
       qc.invalidateQueries({ queryKey: agentQueryKeys.detail(id) })

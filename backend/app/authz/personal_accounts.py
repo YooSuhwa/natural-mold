@@ -16,11 +16,11 @@ Refusals are ``409 personal_account_shared`` with ``details.personal_accounts``:
 Grants made before E-05 are not revoked; ``python -m app.authz.cli
 personal-account-shares`` lists them for operators.
 
-Not guarded yet (documented gaps): MCP server credential changes and agent
-tool/skill/subagent attach after the resource is shared (``mcp_service`` and the agent
-link writers are over the size budget; the F-02 delegation validator re-checks
-attachments), and the MCP "조직 공용 계정" marking that would make ``mcp_oauth2``
-non-personal.
+Attaching a carrier to an agent that is already shared (directly or as a subagent of
+a shared agent) is refused the same way by ``attach_rules`` (E-06). Not guarded yet
+(documented gaps): MCP server credential changes after the server is shared
+(``mcp_service`` is over the size budget; the F-02 delegation validator re-checks), and
+the MCP "조직 공용 계정" marking that would make ``mcp_oauth2`` non-personal.
 """
 
 import uuid
@@ -41,7 +41,7 @@ SHARE_KINDS = ("share", "migration")
 SHARE_PRINCIPALS = ("user", "group", "organization")
 
 
-async def _personal(db: AsyncSession, found: Iterable[Carrier]) -> list[dict[str, str]]:
+async def personal_of(db: AsyncSession, found: Iterable[Carrier]) -> list[dict[str, str]]:
     found = list(found)
     ids = {cid for _, _, cid in found}
     if not ids:
@@ -64,7 +64,7 @@ async def _personal(db: AsyncSession, found: Iterable[Carrier]) -> list[dict[str
 
 async def personal_accounts(db: AsyncSession, row: object) -> list[dict[str, str]]:
     """Personal account credentials ``row`` would lend to whoever it is shared with."""
-    return await _personal(db, await carriers(db, row))
+    return await personal_of(db, await carriers(db, row))
 
 
 def _refuse(found: list[dict[str, str]]) -> None:
@@ -77,7 +77,9 @@ async def require_no_personal_accounts(db: AsyncSession, row: object) -> None:
     _refuse(await personal_accounts(db, row))
 
 
-async def _shared(db: AsyncSession, org_id: uuid.UUID, kind: str, ids: set[uuid.UUID]) -> bool:
+async def has_share_grants(
+    db: AsyncSession, org_id: uuid.UUID, kind: str, ids: set[uuid.UUID]
+) -> bool:
     found = await db.scalar(
         select(ResourceGrant.id)
         .where(
@@ -98,10 +100,10 @@ async def require_unshared_for_personal(db: AsyncSession, ctx: OrgContext, tool:
     found = await personal_accounts(db, tool)
     if not found:
         return
-    if await _shared(db, ctx.org_id, "tool", {tool.id}):
+    if await has_share_grants(db, ctx.org_id, "tool", {tool.id}):
         _refuse(found)
     users = set(
         await db.scalars(select(AgentToolLink.agent_id).where(AgentToolLink.tool_id == tool.id))
     )
-    if users and await _shared(db, ctx.org_id, "agent", await with_parents(db, users)):
+    if users and await has_share_grants(db, ctx.org_id, "agent", await with_parents(db, users)):
         _refuse(found)

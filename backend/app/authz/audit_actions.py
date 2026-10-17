@@ -40,6 +40,8 @@ GROUP_MEMBER_REMOVE: Final = "group.member_remove"
 AGENT_ARCHIVE: Final = "agent.archive"
 AGENT_RESTORE: Final = "agent.restore"
 AGENT_PURGE: Final = "agent.purge"
+# E-06 (not in 14.1): accounts newly lent by a shared agent, confirmed on save (D17).
+AGENT_DELEGATION_CONFIRM: Final = "agent.delegation_confirm"
 GRANT_CREATE: Final = "grant.create"
 GRANT_REVOKE: Final = "grant.revoke"
 DELEGATION_CREATE: Final = "delegation.create"

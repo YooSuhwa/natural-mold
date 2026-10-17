@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import type { DelegatedAccount } from '@/lib/types/grant'
 
-import { DelegationConfirm } from './delegation-confirm'
+import { DelegationConfirm, DelegationList } from './delegation-confirm'
 import { PrincipalPicker } from './principal-picker'
 import type { ShareBackend, ShareSubject } from './share-backend'
 import {
@@ -47,6 +47,7 @@ export function ShareForm({ backend, excludeKeys, requiresAccountAck }: ShareFor
   const levelGroupId = useId()
   const expiryId = useId()
   const ackId = useId()
+  const previewId = useId()
   const [subject, setSubject] = useState<ShareSubject | null>(null)
   const [level, setLevel] = useState(backend.levels[0])
   const [expiry, setExpiry] = useState('')
@@ -54,6 +55,8 @@ export function ShareForm({ backend, excludeKeys, requiresAccountAck }: ShareFor
   const [delegations, setDelegations] = useState<DelegatedAccount[] | null>(null)
   const [personal, setPersonal] = useState<PersonalAccountUse[]>([])
   const expiryAllowed = backend.allowsExpiry(level)
+  // D17 (E-06): accounts the agent lends, confirmed before the share request is sent.
+  const preview = backend.snapshot?.delegations ?? []
   const canSubmit =
     !!subject && !backend.pending && (!requiresAccountAck || acknowledged) && !delegations
 
@@ -84,7 +87,9 @@ export function ShareForm({ backend, excludeKeys, requiresAccountAck }: ShareFor
 
   function onSubmit(event: FormEvent) {
     event.preventDefault()
-    if (canSubmit) void submit(false)
+    if (!canSubmit) return
+    if (preview.length > 0) setDelegations(preview)
+    else void submit(false)
   }
 
   return (
@@ -200,6 +205,19 @@ export function ShareForm({ backend, excludeKeys, requiresAccountAck }: ShareFor
           </ul>
           <p className="mt-1 text-muted-foreground">{t('personal.hint')}</p>
         </div>
+      ) : null}
+
+      {preview.length > 0 && !delegations ? (
+        <section
+          aria-labelledby={previewId}
+          className="space-y-1 rounded-md border border-border px-3 py-2 text-xs"
+        >
+          <p id={previewId} className="font-medium text-foreground">
+            {t('delegation.previewTitle')}
+          </p>
+          <p className="text-muted-foreground">{t('delegation.previewDescription')}</p>
+          <DelegationList delegations={preview} />
+        </section>
       ) : null}
 
       {delegations ? (

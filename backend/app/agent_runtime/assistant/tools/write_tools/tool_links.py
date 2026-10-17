@@ -5,6 +5,7 @@ from __future__ import annotations
 from langchain_core.tools import StructuredTool
 from sqlalchemy import func, select
 
+from app.agent_runtime.assistant.tools.write_tools.attach_guard import commit_links
 from app.agent_runtime.assistant.tools.write_tools.context import (
     WriteToolContext,
     get_agent_with_session,
@@ -50,7 +51,9 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
 
             for t in found_tools:
                 agent.tool_links.append(AgentToolLink(tool_id=t.id))
-            await session.commit()
+            ids = [t.id for t in found_tools]
+            if refused := await commit_links(session, ctx.org_context, agent.id, tool_ids=ids):
+                return refused
 
             added = [t.name for t in found_tools]
             return f"도구 추가 완료: {', '.join(added)}"
@@ -113,7 +116,9 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
 
             for mt in found:
                 agent.mcp_tool_links.append(AgentMcpToolLink(mcp_tool_id=mt.id))
-            await session.commit()
+            ids = [mt.id for mt in found]
+            if refused := await commit_links(session, ctx.org_context, agent.id, mcp_tool_ids=ids):
+                return refused
 
             added = [mt.name for mt in found]
             return f"MCP 도구 추가 완료: {', '.join(added)}"

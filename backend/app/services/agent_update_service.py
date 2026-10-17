@@ -11,6 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.identity import validate_identity_mode
 from app.agent_runtime.runtime_policy import runtime_policy_to_json
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.attach_rules import (
+    attach_baseline,
+    audit_delegation_confirm,
+    require_attachable,
+    require_shared_attach,
+)
 from app.authz.org_context import OrgContext
 from app.error_codes import agent_not_found
 from app.models.agent import Agent
@@ -47,6 +53,15 @@ async def update_agent(
     if data.sub_agent_ids is not None and agent.id in data.sub_agent_ids:
         raise HTTPException(status_code=400, detail="Cannot add self as sub-agent")
     await _validate_agent_binding_ids(db, data, context)
+    # D17 (E-06): added account resources need can_share; a shared agent re-confirms.
+    await require_attachable(
+        db,
+        context,
+        tool_ids=_added(data.tool_ids, {link.tool_id for link in agent.tool_links}),
+        mcp_tool_ids=_added(data.mcp_tool_ids, {link.mcp_tool_id for link in agent.mcp_tool_links}),
+    )
+    relinks = (data.tool_ids, data.mcp_tool_ids, data.skill_ids, data.sub_agent_ids)
+    before = await attach_baseline(db, agent.id) if any(v is not None for v in relinks) else None
     if data.identity_mode is not None and data.identity_mode != agent.identity_mode:
         next_mode = validate_identity_mode(data.identity_mode)
         if next_mode == "per_user" and await _count_active_triggers(db, agent.id) > 0:
@@ -102,11 +117,21 @@ async def update_agent(
             for idx, sid in enumerate(data.sub_agent_ids)
         ]
     await db.flush()
+    if before is not None:
+        lent = await require_shared_attach(
+            db, context, agent.id, before, confirm=data.confirm_delegation
+        )
+        if lent and data.confirm_delegation:  # D17 audit: what the actor confirmed
+            await audit_delegation_confirm(db, context, agent, lent)
     await db.refresh(
         agent,
         ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
     )
     return agent
+
+
+def _added(ids: list[uuid.UUID] | None, linked: set[uuid.UUID]) -> list[uuid.UUID]:
+    return [i for i in ids or [] if i not in linked]
 
 
 async def _count_active_triggers(db: AsyncSession, agent_id: uuid.UUID) -> int:

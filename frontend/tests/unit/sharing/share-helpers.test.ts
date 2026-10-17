@@ -61,6 +61,20 @@ describe('error details helpers', () => {
     expect(delegationsToConfirm(new ApiError(409, 'conflict', 'x'))).toBeNull()
   })
 
+  it('keeps the account and owner of each delegation (E-06)', () => {
+    const item = { resource_type: 'tool', resource_id: 't1', name: 'Search' }
+    const error = new ApiError(409, 'confirm_required', 'x', {
+      delegations: [
+        { ...item, credential_id: 'c1', credential_name: 'Key', owner_name: 'Kim' },
+        { ...item, resource_id: 't2', credential_name: 'Org key', owner_name: null },
+      ],
+    })
+    expect(delegationsToConfirm(error)).toEqual([
+      { ...item, credential_id: 'c1', credential_name: 'Key', owner_name: 'Kim' },
+      { ...item, resource_id: 't2', credential_name: 'Org key' },
+    ])
+  })
+
   it('reads personal_account_shared carriers defensively', () => {
     const error = new ApiError(409, 'personal_account_shared', 'x', {
       personal_accounts: [

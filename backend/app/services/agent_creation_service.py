@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.identity import make_agent_runtime_name, validate_identity_mode
 from app.agent_runtime.runtime_policy import runtime_policy_to_json
+from app.authz.attach_rules import require_attachable
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import require_execution_prefix
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
@@ -161,6 +162,8 @@ async def create_agent(db: AsyncSession, data: AgentCreate, context: OrgContext)
         )
         tool_ids_to_link.extend(r[0] for r in result.all())
 
+    # D17 (E-06): account-carrying tools/MCP servers need can_share unless owned.
+    await require_attachable(db, context, tool_ids=tool_ids_to_link, mcp_tool_ids=data.mcp_tool_ids)
     if tool_ids_to_link:
         agent.tool_links = _build_tool_links(tool_ids_to_link)
 

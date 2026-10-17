@@ -56,9 +56,21 @@ class AccessEntry(BaseModel):
     expires_at: datetime | None = None
 
 
+class DelegatedAccount(BaseModel):
+    """An account an agent lends to whoever runs it (D17; ``delegation_accounts``)."""
+
+    resource_type: str
+    resource_id: UUID
+    name: str
+    credential_id: UUID
+    credential_name: str
+    owner_name: str | None = None  # ``None``: a company credential, or an unknown owner
+
+
 class AccessList(BaseModel):
     items: list[AccessEntry]
     my_permissions: list[SharePermission]
+    delegations: list[DelegatedAccount] = []  # agents only: shown before sharing (E-06)
 
 
 class OwnershipTransfer(BaseModel):

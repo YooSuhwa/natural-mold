@@ -7,6 +7,7 @@ import uuid
 from langchain_core.tools import StructuredTool
 from sqlalchemy import func, select
 
+from app.agent_runtime.assistant.tools.write_tools.attach_guard import commit_links
 from app.agent_runtime.assistant.tools.write_tools.composition_lifecycle import (
     get_executable_agent,
     require_executable_agent,
@@ -149,8 +150,8 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             if not added and not skipped:
                 return "추가할 서브에이전트가 없습니다."
 
-            if added:
-                await session.commit()
+            if added and (refused := await commit_links(session, ctx.org_context, agent.id)):
+                return refused
 
             parts = []
             if added:

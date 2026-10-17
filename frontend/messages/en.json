@@ -1543,6 +1543,13 @@
       "hint": "Switch to per-user connections or remove the personal account, then share again."
     },
     "delegation": {
+      "saveTitle": "Connect accounts to a shared agent",
+      "saveDescription": "Once saved, people this agent is shared with also run it with the accounts below.",
+      "confirmSave": "Confirm and save",
+      "account": "{credential} · {owner}'s account",
+      "companyAccount": "{credential} · company account",
+      "previewTitle": "Accounts this agent uses",
+      "previewDescription": "Recipients run this agent with the accounts below. You will confirm them before sharing.",
       "title": "Review the delegated accounts",
       "description": "This agent runs with the account resources below. When recipients run it, these accounts are used.",
       "type": {

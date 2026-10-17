@@ -9,6 +9,7 @@ import {
 } from '@/lib/hooks/use-resource-sharing'
 import type {
   AccessEntry,
+  DelegatedAccount,
   AccessLevel,
   AccessSource,
   GrantPrincipalType,
@@ -50,6 +51,8 @@ export interface ShareSnapshot {
   canShare: boolean
   canRevoke: boolean
   canGovern: boolean
+  /** Accounts an agent lends (D17), confirmed before sharing; empty for other types. */
+  delegations?: DelegatedAccount[]
 }
 
 export interface ShareRequest {
@@ -133,6 +136,7 @@ export function useResourceShareBackend(
           canShare: permissions.includes('can_share'),
           canRevoke: permissions.includes('can_revoke'),
           canGovern: permissions.includes('can_govern'),
+          delegations: access.data.delegations ?? [],
         }
       : undefined,
     isLoading: access.isLoading,

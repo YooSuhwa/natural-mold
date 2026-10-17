@@ -139,7 +139,7 @@ async def share(
         check_self(ctx, body, held)
     await require_org_wide(db, authz, ctx, body)
     await require_no_personal_accounts(db, row)  # 10.4, E-05: before any confirmation
-    await require_delegation_confirmed(db, kind, row, body)
+    await require_delegation_confirmed(db, kind, row, body, held)
     same = [g for g in held if g.relation == body.level]
     others = [g for g in held if g.relation != body.level]
     if same and not others and utc(same[0].expires_at) == utc(body.expires_at):
