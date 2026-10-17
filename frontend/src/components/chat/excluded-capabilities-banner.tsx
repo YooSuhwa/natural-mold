@@ -53,8 +53,11 @@ export function ExcludedCapabilitiesBanner() {
   const notice = useAtomValue(noticeAtom)
   const dismiss = useSetAtom(dismissExcludedCapabilitiesAtom)
 
-  if (!notice || notice.dismissed || notice.groups.length === 0) return null
-  const hasDenied = notice.groups.some((group) => group.reason === 'denied')
+  // Defensive against partial state (blanket `useAtomValue` test mocks, stale shapes):
+  // anything without a groups array renders nothing instead of crashing the thread.
+  const groups = notice && !notice.dismissed && Array.isArray(notice.groups) ? notice.groups : []
+  if (groups.length === 0) return null
+  const hasDenied = groups.some((group) => group.reason === 'denied')
 
   return (
     <div
@@ -68,7 +71,7 @@ export function ExcludedCapabilitiesBanner() {
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <p className="moldy-ui-caption font-medium text-foreground">{t('title')}</p>
             <ul className="flex flex-wrap gap-1" aria-label={t('listLabel')}>
-              {notice.groups.map((group) => (
+              {groups.map((group) => (
                 <GroupLabel key={`${group.type}:${group.reason}`} group={group} />
               ))}
             </ul>

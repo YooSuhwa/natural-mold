@@ -60,6 +60,15 @@ describe('ExcludedCapabilitiesBanner', () => {
     expect(screen.queryByText('requestAccessHint')).toBeNull()
   })
 
+  it('renders nothing (no crash) for a partial notice without groups', () => {
+    const store = createStore()
+    store.set(chatExcludedCapabilitiesAtom, {
+      'conv-1': { runs: ['run-1'], notice: { runKey: 'run-1' } as never },
+    })
+    const { container } = renderBanner(store)
+    expect(container.querySelector('[data-moldy-excluded-capabilities]')).toBeNull()
+  })
+
   it('maps unknown types to the generic label', () => {
     renderBanner(seed([{ type: 'future_kind', reason: 'denied', count: 1 }]))
     expect(screen.getByText('group(type.other/1/reason.denied)')).toBeInTheDocument()
