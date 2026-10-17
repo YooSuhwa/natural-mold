@@ -101,7 +101,8 @@ async def test_disabled_system_mcp_server_loses_its_fanout_everywhere(db: AsyncS
     world, store, clock = await seed_world(db), FakeTupleStore(), Clock()
     catalog = await seed_catalog(db)
     await backfill_catalog_fanout(TestSession, world.ctx.user_id, tenant_id=world.tenant)
-    await process_outbox(TestSession, store, now=clock.tick())
+    # The backfill stamps its rows with the wall clock, so drain at wall-clock time too.
+    await process_outbox(TestSession, store)
     server = await db.get(McpServer, catalog.server)
     assert server is not None
     server.status = "disabled"

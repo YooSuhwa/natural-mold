@@ -90,12 +90,13 @@ async def test_company_policy_narrows_and_other_organizations_keep_their_fanout(
 
 
 async def test_backfill_is_idempotent_and_queues_through_the_outbox(db: AsyncSession) -> None:
-    world, store, clock = await seed_world(db), FakeTupleStore(), Clock()
+    world, store = await seed_world(db), FakeTupleStore()
     catalog = await seed_catalog(db)
     first = await backfill_catalog_fanout(TestSession, world.ctx.user_id, tenant_id=world.tenant)
     # tool, server: allowed_org + consumer; 2 visible models: consumer; two organizations.
     assert (first.organizations, first.queued) == (2, 12)
-    await process_outbox(TestSession, store, now=clock.tick())
+    # The backfill stamps its rows with the wall clock, so drain at wall-clock time too.
+    await process_outbox(TestSession, store)
     for ctx in (world.ctx, world.other_ctx):
         assert all(can_use(store, ctx.org_id, obj) for obj in catalog.objects().values())
     again = await backfill_catalog_fanout(TestSession, world.ctx.user_id, org_id=world.ctx.org_id)
