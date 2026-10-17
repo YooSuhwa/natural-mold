@@ -18,6 +18,7 @@ from app.main import create_app
 from app.models.user import User
 from app.schemas.admin_tenant import AdminTenantDetail
 from app.services import audit_service
+from tests.authz import company_route_inventory as inventory
 from tests.authz.company_route_inventory import (
     COMPANY_ROUTES,
     company_route_violations,
@@ -39,17 +40,20 @@ def _schemas(app: FastAPI) -> dict[str, JsonValue]:
 def test_assembled_app_registers_exact_company_inventory_once() -> None:
     app = create_app()
     assert company_route_violations(app.routes) == []
-    assert len(COMPANY_ROUTES) == 72  # +7 H-06, +17 H-08, +5 H-04
+    assert len(COMPANY_ROUTES) == 77  # +7 H-06, +17 H-08, +5 H-04, +5 I-07
     assert slug_schema_violations(_schemas(app)) == []
 
 
-def test_inventory_rejects_unclassified_deferred_and_legacy_routes() -> None:
+def test_inventory_rejects_unclassified_deferred_and_legacy_routes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(inventory, "DEFERRED_PATHS", frozenset({"/api/admin/later"}))
     app = create_app()
     extra = APIRouter()
 
-    @extra.get("/api/admin/tenants/{tenant_id}/export")
+    @extra.get("/api/admin/later")
     @authz_policy(SUPER)
-    async def deferred_export() -> bool:
+    async def deferred_later() -> bool:
         return True
 
     @extra.get("/api/admin/tenants/{tenant_id}/unreviewed")
@@ -64,18 +68,19 @@ def test_inventory_rejects_unclassified_deferred_and_legacy_routes() -> None:
     app.include_router(extra)
     found = company_route_violations(app.routes)
     assert found == [
-        "deferred:GET /api/admin/tenants/{tenant_id}/export",
+        "deferred:GET /api/admin/later",
         "legacy:GET /api/tenants/{tenant_id}/legacy-probe",
         "unclassified:GET /api/admin/tenants/{tenant_id}/unreviewed",
         "unclassified:GET /api/tenants/{tenant_id}/legacy-probe",
     ]
 
 
-def test_inventory_rejects_later_task_paths_app_wide() -> None:
+def test_inventory_rejects_later_task_paths_app_wide(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(inventory, "DEFERRED_PATHS", frozenset({"/api/admin/later"}))
     app = FastAPI()
     paths = (
-        "/api/admin/tenants/{id}/exports",
-        "/api/admin/tenants/{tenant_id}/exports/{export_id}",
+        "/api/admin/later/{id}",
+        "/api/admin/later/{id}/runs",
     )
     for path in (*paths, "/api/usage-limits-history", "/api/auth/login"):
         app.add_api_route(path, lambda: True, methods=["GET"])

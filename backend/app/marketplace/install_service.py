@@ -234,8 +234,8 @@ async def update_installation(
     if context.user_id != user.id:
         raise marketplace_item_not_found()
     installation = await load_private_installation(db, installation_id, context)
-    if installation is None or installation.user_id != user.id:
-        raise marketplace_item_not_found()
+    if installation is None or installation.user_id != user.id or installation.item_id is None:
+        raise marketplace_item_not_found()  # source_removed (I-07): nothing to update from
 
     item = await installable_source(db, installation.item_id, context, user, authorize)
     if item.latest_version_id is None:

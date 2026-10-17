@@ -100,6 +100,7 @@ async def create_run_row(
         api_key_id=principal.key.id,
         deployment_id=deployment.id,
         deployment_public_id_snapshot=deployment.public_id,
+        tenant_id=deployment.tenant_id,
         conversation_id=conversation_id,
         thread_id=thread_id,
         mode=mode,

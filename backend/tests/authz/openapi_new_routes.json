@@ -719,6 +719,198 @@
         ]
       }
     },
+    "/api/admin/tenants/{tenant_id}/cancel-deletion": {
+      "post": {
+        "operationId": "cancel_company_deletion_api_admin_tenants__tenant_id__cancel_deletion_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PlatformTenantLifecycleRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantDeletionState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Company Deletion",
+        "tags": [
+          "platform company administration"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/export": {
+      "post": {
+        "operationId": "start_company_export_api_admin_tenants__tenant_id__export_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantExportStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Company Export",
+        "tags": [
+          "platform company administration"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/exports": {
+      "get": {
+        "operationId": "list_company_exports_api_admin_tenants__tenant_id__exports_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantExportList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Company Exports",
+        "tags": [
+          "platform company administration"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/exports/{export_id}/download": {
+      "get": {
+        "operationId": "download_company_export_api_admin_tenants__tenant_id__exports__export_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Company Export",
+        "tags": [
+          "platform company administration"
+        ]
+      }
+    },
     "/api/admin/tenants/{tenant_id}/resume": {
       "post": {
         "operationId": "resume_company_api_admin_tenants__tenant_id__resume_post",
@@ -774,6 +966,59 @@
           }
         },
         "summary": "Resume Company",
+        "tags": [
+          "platform company administration"
+        ]
+      }
+    },
+    "/api/admin/tenants/{tenant_id}/schedule-deletion": {
+      "post": {
+        "operationId": "schedule_company_deletion_api_admin_tenants__tenant_id__schedule_deletion_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantDeletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantDeletionState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Schedule Company Deletion",
         "tags": [
           "platform company administration"
         ]
@@ -44750,6 +44995,61 @@
       "title": "TenantCredentialView",
       "type": "object"
     },
+    "TenantDeletionRequest": {
+      "additionalProperties": false,
+      "description": "S04: the operator types the company slug to confirm.",
+      "properties": {
+        "confirm_slug": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Confirm Slug",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "confirm_slug"
+      ],
+      "title": "TenantDeletionRequest",
+      "type": "object"
+    },
+    "TenantDeletionState": {
+      "additionalProperties": false,
+      "properties": {
+        "deletion_due_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Deletion Due At"
+        },
+        "tenant": {
+          "$ref": "#/components/schemas/AdminTenantDetail"
+        }
+      },
+      "required": [
+        "tenant",
+        "deletion_due_at"
+      ],
+      "title": "TenantDeletionState",
+      "type": "object"
+    },
     "TenantDomainCreate": {
       "additionalProperties": false,
       "properties": {
@@ -44833,6 +45133,149 @@
         "created_at"
       ],
       "title": "TenantDomainRead",
+      "type": "object"
+    },
+    "TenantExportJob": {
+      "additionalProperties": false,
+      "properties": {
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completed At"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "download_available": {
+          "title": "Download Available",
+          "type": "boolean"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "progress": {
+          "title": "Progress",
+          "type": "integer"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Size Bytes"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tenant_id": {
+          "format": "uuid",
+          "title": "Tenant Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tenant_id",
+        "status",
+        "progress",
+        "error_code",
+        "size_bytes",
+        "created_at",
+        "started_at",
+        "completed_at",
+        "expires_at",
+        "download_available"
+      ],
+      "title": "TenantExportJob",
+      "type": "object"
+    },
+    "TenantExportList": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TenantExportJob"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "TenantExportList",
+      "type": "object"
+    },
+    "TenantExportStarted": {
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "format": "uuid",
+          "title": "Job Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "title": "TenantExportStarted",
       "type": "object"
     },
     "TenantInvitationCreate": {

@@ -49,6 +49,7 @@ def include_app_routers(app: FastAPI) -> None:
         org_usage,
         orgs,
         platform_tenant_creation,
+        platform_tenant_data,
         platform_tenant_directory,
         platform_tenant_lifecycle,
         resource_permissions,
@@ -143,6 +144,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(platform_tenant_creation.router)
     app.include_router(platform_tenant_lifecycle.router)
     app.include_router(admin_authz.router)
+    app.include_router(platform_tenant_data.router)
     app.include_router(shares.router)
     app.include_router(resource_shares.router)
     app.include_router(resource_permissions.router)

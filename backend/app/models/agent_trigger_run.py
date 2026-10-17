@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -11,6 +11,7 @@ from app.database import Base
 
 class AgentTriggerRun(Base):
     __tablename__ = "agent_trigger_runs"
+    __table_args__ = (Index("ix_agent_trigger_runs_tenant_id", "tenant_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     trigger_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -20,6 +21,11 @@ class AgentTriggerRun(Base):
         ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
     )
     trigger_name_snapshot: Mapped[str] = mapped_column(String(120), nullable=False)
+    # I-07: the trigger's company, so export/purge reach runs whose trigger is gone.
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE", name="fk_agent_trigger_runs_tenant_id"),
+        nullable=True,
+    )
     conversation_run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("conversation_runs.id", ondelete="SET NULL"), nullable=True, unique=True
     )

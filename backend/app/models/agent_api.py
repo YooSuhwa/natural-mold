@@ -142,6 +142,7 @@ class AgentApiRun(Base):
         Index("ix_agent_api_runs_user_id", "user_id"),
         Index("ix_agent_api_runs_deployment_id", "deployment_id"),
         Index("ix_agent_api_runs_thread_id", "thread_id"),
+        Index("ix_agent_api_runs_tenant_id", "tenant_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -156,6 +157,11 @@ class AgentApiRun(Base):
         ForeignKey("agent_deployments.id", ondelete="SET NULL"), nullable=True
     )
     deployment_public_id_snapshot: Mapped[str] = mapped_column(String(80), nullable=False)
+    # I-07: the deployment's company, so export/purge reach runs whose deployment is gone.
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE", name="fk_agent_api_runs_tenant_id"),
+        nullable=True,
+    )
     conversation_run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("conversation_runs.id", ondelete="SET NULL"), nullable=True, unique=True
     )

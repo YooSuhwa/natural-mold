@@ -59,6 +59,10 @@ PLATFORM_REASONS: dict[str, str] = {
     "authz.delegation_retry": "8.6 delegation check: leader polls finalized markers",
     "conversation_run.lifecycle": "interim run-id keyed lifecycle writes (I-06 threading)",
     "conversation_run.queue": "interim queue claim/recovery; dispatch resolves company",
+    "tenant_lifecycle.purge": "S04 I-07 leader purge: lists due companies, deletes one company",
+    "tenant_lifecycle.export": "S04 I-07 operator export: one company and its members' accounts",
+    "tenant_lifecycle.export_gc": "S04 I-07 leader export GC: stale jobs, expired archives",
+    "tenant_lifecycle.cli": "S04 I-07 operator CLI: export/schedule/cancel/purge one company",
 }
 
 # Unbound company sessions fail closed under RLS. The request session is bound

@@ -21,6 +21,8 @@ _B08_ADDED_COLUMN_NULLABILITY = {
 _B08_ADDED_COLUMNS = {name: set(columns) for name, columns in _B08_ADDED_COLUMN_NULLABILITY.items()}
 _B08_NULLABILITY_CHANGES = {
     "conversation_artifacts": {"agent_id": (False, True)},
+    # I-07: another company's installation keeps its copy as ``source_removed``.
+    "marketplace_installations": {"item_id": (False, True), "version_id": (False, True)},
 }
 _B08_REMOVED_FOREIGN_KEYS = {
     "conversation_artifacts": {(("agent_id",), ("agents.id",), "CASCADE")},

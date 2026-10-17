@@ -166,6 +166,7 @@ async def start_trigger_run(
         trigger_id=trigger.id,
         agent_id=trigger.agent_id,
         trigger_name_snapshot=trigger.name,
+        tenant_id=trigger.tenant_id,
         user_id=trigger.user_id,
         input_message=trigger.input_message,
         status="queued",

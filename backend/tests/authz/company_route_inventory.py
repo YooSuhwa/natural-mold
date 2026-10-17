@@ -142,6 +142,16 @@ H04_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"POST {_Z}/reconcile": CompanyRoute("SUPER", 202, False, saas_only=False),
     f"GET {_Z}/reconcile/{{job_id}}": CompanyRoute("SUPER", 200, False, saas_only=False),
 }
+# I-07 company export, deletion schedule and download (9.7, S04).
+I07_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"POST {_A}/{{tenant_id}}/export": CompanyRoute("SUPER", 202, False),
+    f"GET {_A}/{{tenant_id}}/exports": CompanyRoute("SUPER", 200, False),
+    f"GET {_A}/{{tenant_id}}/exports/{{export_id}}/download": CompanyRoute("SUPER", 200, False),
+    f"POST {_A}/{{tenant_id}}/schedule-deletion": CompanyRoute("SUPER", 200, False),
+    f"POST {_A}/{{tenant_id}}/cancel-deletion": CompanyRoute("SUPER", 200, False),
+}
+# File downloads stream the archive and have no JSON response model.
+FILE_ROUTES: Final = frozenset({f"GET {_A}/{{tenant_id}}/exports/{{export_id}}/download"})
 COMPANY_ROUTES: Final = {
     **B11_ROUTES,
     **B12_ROUTES,
@@ -152,18 +162,14 @@ COMPANY_ROUTES: Final = {
     **H06_ROUTES,
     **H08_ROUTES,
     **H04_ROUTES,
+    **I07_ROUTES,
 }
 # Later-task paths from the contract's route-level crosswalk (rows 7-8, 24-35, 38-57),
-# owned by C05/E07/E08/E09/H03/I07. Matched app-wide by path, with parameter
+# owned by C05/E07/E08/E09/H03. Matched app-wide by path, with parameter
 # names erased, at the path itself or below it (CRUD collection/item routes).
-DEFERRED_PATHS: Final = frozenset(
-    {
-        "/api/admin/tenants/{}/export",
-        "/api/admin/tenants/{}/exports",
-        "/api/admin/tenants/{}/schedule-deletion",
-        "/api/admin/tenants/{}/cancel-deletion",
-    }
-)
+# None left: H-04 and I-07 moved their paths to reviewed routes; the tests patch in a
+# placeholder to keep the deferral scan itself covered.
+DEFERRED_PATHS: Final[frozenset[str]] = frozenset()
 _PARAM: Final = re.compile(r"\{[^}]*\}")
 _OPERATOR_CONTENT: Final[frozenset[Callable[..., object]]] = frozenset(
     {get_org_context, get_tenant_context, owned_conversation}
@@ -206,7 +212,11 @@ def _route_violations(identity: str, route: APIRoute, expected: CompanyRoute) ->
         found.append(f"policy:{identity}")
     if (route.status_code or 200) != expected.status:
         found.append(f"status:{identity}")
-    if expected.status not in (204, 302) and route.response_model is None:
+    if (
+        expected.status not in (204, 302)
+        and route.response_model is None
+        and identity not in FILE_ROUTES
+    ):
         found.append(f"response_model:{identity}")
     # PUBLIC login routes carry a login CSRF token / OIDC state instead (9.7).
     if method != "GET" and expected.policy != "PUBLIC" and verify_csrf not in calls:

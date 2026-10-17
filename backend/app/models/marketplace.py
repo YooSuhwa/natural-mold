@@ -361,7 +361,7 @@ class MarketplaceInstallation(RequiredOrgScope, Base):
             name="ck_marketplace_install_resource_target",
         ),
         CheckConstraint(
-            "install_status IN ('active','needs_setup','disabled','uninstalled')",
+            "install_status IN ('active','needs_setup','disabled','uninstalled','source_removed')",
             name="ck_marketplace_install_status",
         ),
         Index("ix_marketplace_install_user_item", "user_id", "item_id"),
@@ -373,11 +373,13 @@ class MarketplaceInstallation(RequiredOrgScope, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    item_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("marketplace_items.id", ondelete="CASCADE"), nullable=False
+    # NULL only for ``source_removed``: the publishing company was permanently deleted
+    # (I-07) and the installed copy stays with the installer's company.
+    item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("marketplace_items.id", ondelete="CASCADE"), nullable=True
     )
-    version_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("marketplace_versions.id", ondelete="RESTRICT"), nullable=False
+    version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("marketplace_versions.id", ondelete="RESTRICT"), nullable=True
     )
     resource_type: Mapped[str] = mapped_column(String(20), nullable=False)
     installed_agent_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -402,10 +404,10 @@ class MarketplaceInstallation(RequiredOrgScope, Base):
     )
 
     # Relationships -----------------------------------------------------
-    item: Mapped[MarketplaceItem] = relationship(
+    item: Mapped[MarketplaceItem | None] = relationship(
         "MarketplaceItem", back_populates="installations", foreign_keys=[item_id]
     )
-    version: Mapped[MarketplaceVersion] = relationship(
+    version: Mapped[MarketplaceVersion | None] = relationship(
         "MarketplaceVersion",
         back_populates="installations",
         foreign_keys=[version_id],

@@ -56,6 +56,12 @@ from app.scheduler import (
     update_model_catalog,
 )
 from app.scheduler_job_ids import LeaderSchedulerJobId
+from app.scheduler_tenant_purge import (
+    register_tenant_export_gc_job,
+    register_tenant_purge_job,
+    tenant_export_gc_run,
+    tenant_purge_run,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +107,10 @@ async def run_leader_scheduler_job(job_id: LeaderSchedulerJobId) -> None:
             await authz_job_run(job_id)
         case LeaderSchedulerJobId.RETENTION_SWEEP:
             await retention_sweep_run()
+        case LeaderSchedulerJobId.TENANT_PURGE:
+            await tenant_purge_run()
+        case LeaderSchedulerJobId.TENANT_EXPORT_GC:
+            await tenant_export_gc_run()
         case unreachable:
             assert_never(unreachable)
 
@@ -183,6 +193,8 @@ async def activate_scheduler() -> None:
     register_skill_runtime_cleanup_job()
     register_authz_jobs()
     register_retention_sweep_job()
+    register_tenant_purge_job()
+    register_tenant_export_gc_job()
     trigger_count = await reconcile_trigger_jobs()
     if scheduler_was_started:
         scheduler.resume()

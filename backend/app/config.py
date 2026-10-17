@@ -94,6 +94,14 @@ class Settings(AuthzSettings):
     # data or company audit rows until an operator turns it on.
     retention_sweep_enabled: bool = False
     retention_sweep_cron: str = "20 3 * * *"
+    # I-07 company deletion (plan S04): grace period, export link lifetime and the daily
+    # leader purge job. The purge job is off by default; schedule/cancel work regardless.
+    tenant_deletion_grace_days: int = 30
+    tenant_export_ttl_days: int = 7
+    tenant_purge_enabled: bool = False
+    tenant_purge_cron: str = "40 3 * * *"
+    tenant_export_stale_minutes: int = 120
+    tenant_export_gc_cron: str = "55 * * * *"
     # Skill draft workspace GC (APScheduler crontab; default: hourly :45).
     # ``data/skill-drafts/<session_id>/`` dirs are deleted by SESSION STATE,
     # not mtime (spec AD-2): active/confirming sessions are preserved

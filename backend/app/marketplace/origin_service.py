@@ -455,7 +455,9 @@ async def _mcp_installation_missing_required_credentials(
     if installation.installed_mcp_server_id is None:
         return False
 
-    if prefetch is not None:
+    if installation.item_id is None or installation.version_id is None:
+        version = None  # source_removed (I-07): the publishing company was deleted
+    elif prefetch is not None:
         version = prefetch.versions.get(installation.version_id)
     else:
         version = await load_item_version(db, installation.item_id, installation.version_id)
@@ -521,7 +523,9 @@ async def _agent_blueprint_installation_state(
     if blueprint is None:
         return True, False
 
-    if prefetch is not None:
+    if installation.item_id is None or installation.version_id is None:
+        version = None  # source_removed (I-07): the publishing company was deleted
+    elif prefetch is not None:
         version = prefetch.versions.get(installation.version_id)
     else:
         version = await load_item_version(db, installation.item_id, installation.version_id)
@@ -591,6 +595,8 @@ async def _load_installation_prefetch(
     server_ids: set[uuid.UUID] = set()
     blueprint_ids: set[uuid.UUID] = set()
     for installation in installations:
+        if installation.item_id is None or installation.version_id is None:
+            continue  # source_removed (I-07)
         if installation.installed_mcp_server_id is not None:
             server_ids.add(installation.installed_mcp_server_id)
             version_targets.add(ItemVersionTarget(installation.item_id, installation.version_id))
@@ -710,6 +716,8 @@ async def bulk_derive_installation_summaries(
         item_id: MarketplaceInstallationSummary(installed=False) for item_id in items_by_id
     }
     for installation in installations:
+        if installation.item_id is None:
+            continue  # source_removed (I-07)
         item = items_by_id[installation.item_id]
         dirty = bool(installation.is_dirty)
         status = installation.install_status
