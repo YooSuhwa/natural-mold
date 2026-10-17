@@ -15,6 +15,7 @@ from app.agent_runtime.mcp_app_runtime import (
     mcp_app_context,
     record_mcp_app_binding,
 )
+from app.agent_runtime.mcp_destination import split_blocked, transport_options
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.mcp.apps import normalize_tool_ui_meta, tool_allows_visibility
 from app.tools.risk import attach_tool_risk, mcp_tool_risk
@@ -119,6 +120,7 @@ def _plan_mcp_servers(mcp_configs: list[dict]) -> _McpPlan:
                 "transport": "streamable_http",
                 "url": url,
                 "headers": headers or None,
+                **transport_options(tc),
             }
             plan.tool_filter[key] = set()
 
@@ -208,10 +210,11 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
 
     from langchain_mcp_adapters.client import MultiServerMCPClient
 
+    mcp_configs, blocked = split_blocked(mcp_configs)  # 11.9 credential destinations
     plan = _plan_mcp_servers(mcp_configs)
 
     # 2. 서버별로 도구 로딩 + 필터링 — (tool, origin) 쌍으로 추적
-    collected: list[tuple[BaseTool, str]] = []
+    collected: list[tuple[BaseTool, str]] = [(stub, "blocked") for stub in blocked]
 
     from app.agent_runtime.mcp_cache import get_cached_mcp_tools
     from app.config import settings as _settings

@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
 from langchain_core.language_models import BaseChatModel
 
 from app.agent_runtime.model_client_cache import (
@@ -17,7 +16,6 @@ from app.agent_runtime.model_client_cache import (
     _MODEL_CACHE_MAXSIZE,
     _close_cached_model,
     _model_cache_key,
-    _ssl_ctx,
 )
 from app.agent_runtime.model_facade_bindings import model_attr
 from app.agent_runtime.model_provider_registry import (
@@ -28,6 +26,7 @@ from app.agent_runtime.model_provider_registry import (
     TEST_COMPLETION_TOKEN_CAP,
     is_gpt5_family,
 )
+from app.outbound.client import outbound_http_client, outbound_sync_http_client
 
 logger = logging.getLogger("app.agent_runtime.model_factory")
 
@@ -237,5 +236,6 @@ def _apply_openai_ssl_clients(cls: type[BaseChatModel], kwargs: dict[str, Any]) 
     """ChatOpenAI 계열만 truststore 기반 SSL client 주입 (사내 VPN / corp proxy 호환)."""
 
     if cls is model_attr("ChatOpenAI"):
-        kwargs["http_async_client"] = httpx.AsyncClient(verify=_ssl_ctx)
-        kwargs["http_client"] = httpx.Client(verify=_ssl_ctx)
+        # 11.9: the shared outbound constructors (httpx default 5s; the SDK sets its own).
+        kwargs["http_async_client"] = outbound_http_client(timeout=5.0)
+        kwargs["http_client"] = outbound_sync_http_client(timeout=5.0)

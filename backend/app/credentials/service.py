@@ -27,6 +27,7 @@ from app.authz.private_actor import (
 )
 from app.authz.scoping import private_scoped
 from app.credentials import tenant_encryption
+from app.credentials.allowed_hosts import default_allowed_hosts
 from app.credentials.creation import CredentialCreation
 from app.credentials.external_secrets import resolve_external_refs
 from app.credentials.mutation_scope import (
@@ -375,6 +376,7 @@ async def create(
         tenant_id=tenant_id,
         scope=scope,
         definition_key=creation.definition_key,
+        allowed_hosts=default_allowed_hosts(creation.definition_key),
         name=creation.name,
         is_shared=creation.is_shared,
         is_system=is_system,

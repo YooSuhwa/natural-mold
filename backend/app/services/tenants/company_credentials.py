@@ -18,6 +18,7 @@ from app.authz.company_catalog import CREDENTIAL_ORGS_KEY, company_tier, with_de
 from app.authz.error_codes import authorization_error
 from app.authz.resource_lifecycle import on_resource_created, on_resource_deleted
 from app.credentials import tenant_encryption
+from app.credentials.allowed_hosts import default_allowed_hosts
 from app.credentials.registry import registry
 from app.credentials.service import write_audit_log
 from app.exceptions import AppError
@@ -105,6 +106,7 @@ async def create_company_credential(
         tenant_id=tenant.id,
         scope="tenant",
         definition_key=payload.definition_key,
+        allowed_hosts=default_allowed_hosts(payload.definition_key),
         name=payload.name,
         is_shared=False,
         is_system=True,

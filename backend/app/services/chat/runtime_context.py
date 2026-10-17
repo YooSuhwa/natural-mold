@@ -35,6 +35,7 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink, Tool
+from app.outbound.destination import destination_config
 from app.skills.runtime import build_skills_for_agent
 from app.tools.risk import trigger_blocked_tools
 
@@ -210,6 +211,7 @@ async def build_tools_config(
                 "parameters": dict(tool.parameters or {}),
                 "credentials": resolved.values.reveal() if resolved else None,
                 "credential_id": str(resolved.credential_id) if resolved else None,
+                "credential_destination": destination_config(resolved, identity, agent.user_id),
                 **actor,
             }
         )
@@ -237,6 +239,9 @@ async def build_tools_config(
                 "org_id": str(context.org_id),
                 "mcp_transport_headers": resolution.headers,
                 "credentials": resolution.credentials,
+                "credential_destination": destination_config(
+                    resolution.resolved, identity, agent.user_id
+                ),
                 "conversation_id": conversation_id,
                 **actor,
             }

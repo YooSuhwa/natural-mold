@@ -12,6 +12,7 @@ definition = CredentialDefinition(
     icon_id="anthropic",
     documentation_url="https://docs.anthropic.com/en/api/getting-started",
     category="llm",
+    hosts=("api.anthropic.com",),
     properties=[
         FieldDef(
             name="api_key",

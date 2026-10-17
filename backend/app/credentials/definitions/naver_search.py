@@ -12,6 +12,7 @@ definition = CredentialDefinition(
     icon_id="naver",
     documentation_url="https://developers.naver.com/docs/serviceapi/search/blog/blog.md",
     category="search",
+    hosts=("openapi.naver.com",),
     properties=[
         FieldDef(
             name="client_id",

@@ -7,11 +7,10 @@ private, loopback, link-local, or otherwise non-global address — this
 blocks localhost, RFC-1918 ranges, and cloud metadata endpoints
 (169.254.169.254).
 
-Known limitation: resolve-then-fetch leaves a DNS-rebinding TOCTOU window;
-closing it requires pinning the resolved IP into the connection, which
-httpx does not expose per-request. The per-hop re-validation plus
-non-global rejection covers the practical attack surface for a scraping
-tool.
+Resolve-then-fetch alone leaves a DNS-rebinding TOCTOU window; clients built by
+``app.outbound.client.outbound_http_client(ssrf_guard=True)`` (the shared runtime
+tool client among them) close it by connecting to the checked address (F-11). The
+address rules live in ``app.outbound.transport.is_blocked_address``.
 """
 
 from __future__ import annotations
@@ -21,18 +20,13 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 
+from app.outbound.transport import is_blocked_address as _is_blocked_address
+
 ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
 
 
 class BlockedUrlError(Exception):
     """The URL failed SSRF validation and must not be fetched."""
-
-
-def _is_blocked_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    # ``is_global`` is False for private, loopback, link-local, reserved,
-    # unspecified, and carrier-grade NAT ranges; multicast is excluded
-    # explicitly because a handful of multicast blocks report as global.
-    return not ip.is_global or ip.is_multicast
 
 
 async def _resolve_host(host: str, port: int) -> list[str]:

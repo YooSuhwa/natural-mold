@@ -31,6 +31,7 @@ from app.authz.private_actor import (
 from app.authz.resource_gate import MCP_SERVER, gate_list, gate_row
 from app.authz.scoping import PrivateParent, private_parent_scoped, private_scoped
 from app.authz.service import AuthzService
+from app.credentials.allowed_hosts import remember_server_host, require_credentialed_url
 from app.credentials.validation import require_credential_use
 from app.dependencies import CurrentUser
 from app.error_codes import mcp_server_not_found
@@ -203,7 +204,10 @@ def validate_payload_consistency(
     transport: str | None,
     url: str | None,
     command: str | None,
+    credential_id: uuid.UUID | None = None,
 ) -> None:
+    if credential_id is not None and url:
+        require_credentialed_url(url)  # 11.9: checked at registration and at run time
     if transport in {"sse", "streamable_http"} and not url:
         raise HTTPException(
             status_code=422,
@@ -229,7 +233,7 @@ async def create_server(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
-    validate_payload_consistency(data.transport, data.url, data.command)
+    validate_payload_consistency(data.transport, data.url, data.command, data.credential_id)
     if data.credential_id is not None:
         await require_credential_use(
             db, credential_id=data.credential_id, context=context, authz=authz
@@ -250,6 +254,7 @@ async def create_server(
         status="unknown",
     )
     db.add(server)
+    await remember_server_host(db, server.credential_id, server.url, context.user_id)
     await db.flush()
     return server
 
@@ -272,7 +277,7 @@ async def create_server_from_registry_entry(
     transport = entry.get("transport")
     url = entry.get("url")
     command = entry.get("command")
-    validate_payload_consistency(transport, url, command)
+    validate_payload_consistency(transport, url, command, credential_id)
     if credential_id is not None:
         await require_credential_use(db, credential_id=credential_id, context=context, authz=authz)
 
@@ -292,6 +297,7 @@ async def create_server_from_registry_entry(
         status="unknown",
     )
     db.add(server)
+    await remember_server_host(db, server.credential_id, server.url, context.user_id)
     await db.flush()
     return server
 
@@ -332,7 +338,10 @@ async def update_server(
     if "status" in fields_set and data.status is not None:
         server.status = data.status
 
-    validate_payload_consistency(server.transport, server.url, server.command)
+    # 11.9: re-check https only when the URL or credential changes (other PATCHes pass).
+    changed = server.credential_id if {"url", "credential_id"} & fields_set else None
+    validate_payload_consistency(server.transport, server.url, server.command, changed)
+    await remember_server_host(db, server.credential_id, server.url, context.user_id)
     await db.flush()
     return server
 

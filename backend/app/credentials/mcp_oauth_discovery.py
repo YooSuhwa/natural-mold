@@ -12,6 +12,8 @@ from typing import Any
 
 import httpx
 
+from app.outbound.client import outbound_http_client
+
 DEFAULT_TIMEOUT = 15.0
 
 
@@ -20,7 +22,10 @@ class AuthorizationServerIssuerError(ValueError):
 
 
 def new_http_client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
+    """Discovery, registration and token calls (F-15 review L5, F-11): https only, public
+    addresses only (pinned), no redirects. Metadata-supplied endpoints go through it too.
+    """
+    return outbound_http_client(timeout=DEFAULT_TIMEOUT, https_only=True, ssrf_guard=True)
 
 
 @dataclass(frozen=True)

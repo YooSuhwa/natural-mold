@@ -534,7 +534,7 @@ async def test_mcp_connect_and_list_interpolates_credentials() -> None:
         async def list_tools(self):
             return _FakeToolsResult()
 
-    def _fake_streamable(url, headers=None):
+    def _fake_streamable(url, headers=None, **_options):
         captured_headers["url"] = url
         captured_headers.update(headers or {})
 
@@ -593,7 +593,7 @@ async def test_mcp_connect_and_list_auto_injects_mcp_secret_header() -> None:
         async def list_tools(self):
             return _FakeToolsResult()
 
-    def _fake_streamable(_url, headers=None):
+    def _fake_streamable(_url, headers=None, **_options):
         captured_headers.update(headers or {})
 
         class _Conn:

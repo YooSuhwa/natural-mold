@@ -28,6 +28,7 @@ from app.credentials.interpolation import resolve_deep
 from app.hooks import HookContext, HookResult, hooks
 from app.mcp.apps import normalize_tool_ui_meta
 from app.mcp.domain import McpServerInfo, McpToolDescriptor
+from app.outbound.client import credentialed_mcp_options
 
 MOLDY_CREDENTIAL_HEADER = "X-Moldy-Credential"
 
@@ -176,7 +177,11 @@ async def connect_and_list(
 
     try:
         async with (
-            streamablehttp_client(url, headers=merged_headers or None) as (read, write, _),
+            streamablehttp_client(
+                url,
+                headers=merged_headers or None,
+                **credentialed_mcp_options(credentials is not None),
+            ) as (read, write, _),
             ClientSession(read, write) as session,
         ):
             init_result = await session.initialize()

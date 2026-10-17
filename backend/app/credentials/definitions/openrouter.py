@@ -17,6 +17,7 @@ definition = CredentialDefinition(
     icon_id="openrouter",
     documentation_url="https://openrouter.ai/docs/api-reference",
     category="llm",
+    hosts=("openrouter.ai",),
     properties=[
         FieldDef(
             name="api_key",
@@ -32,9 +33,7 @@ definition = CredentialDefinition(
             required=False,
             default="https://openrouter.ai/api/v1",
             placeholder="https://openrouter.ai/api/v1",
-            description=(
-                "Override the OpenRouter endpoint. Leave blank for the public host."
-            ),
+            description=("Override the OpenRouter endpoint. Leave blank for the public host."),
         ),
     ],
     authenticate=GenericAuth(

@@ -33,9 +33,7 @@ def _http_mock_definition(
 
 @pytest.mark.asyncio
 async def test_tester_returns_failure_when_definition_lacks_test_recipe() -> None:
-    definition = CredentialDefinition(
-        key="no_test", display_name="x", properties=[]
-    )
+    definition = CredentialDefinition(key="no_test", display_name="x", properties=[])
     result = await CredentialTester().run(definition, {})
     assert result.success is False
     assert "no test recipe" in result.message
@@ -60,7 +58,7 @@ async def test_tester_default_rule_treats_2xx_as_success(
             request = httpx.Request(kwargs["method"], kwargs["url"])
             return httpx.Response(204, request=request)
 
-    monkeypatch.setattr("app.credentials.tester.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.credentials.tester.outbound_http_client", FakeAsyncClient)
     result = await CredentialTester().run(definition, {"api_key": "k"})
     assert result.success is True
     assert result.http_status == 204
@@ -70,21 +68,22 @@ async def test_tester_default_rule_treats_2xx_as_success(
 async def test_tester_response_code_rule_with_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    definition = _http_mock_definition(
-        rules=[{"type": "responseCode", "value": [200, 400]}]
-    )
+    definition = _http_mock_definition(rules=[{"type": "responseCode", "value": [200, 400]}])
 
     class FakeAsyncClient:
         def __init__(self, *args, **kwargs) -> None: ...
 
-        async def __aenter__(self): return self
-        async def __aexit__(self, *exc_info): return None
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc_info):
+            return None
 
         async def request(self, **kwargs):
             request = httpx.Request(kwargs["method"], kwargs["url"])
             return httpx.Response(400, request=request)
 
-    monkeypatch.setattr("app.credentials.tester.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.credentials.tester.outbound_http_client", FakeAsyncClient)
     result = await CredentialTester().run(definition, {"api_key": "k"})
     assert result.success is True
 
@@ -100,16 +99,17 @@ async def test_tester_response_success_body_rule(
     class FakeAsyncClient:
         def __init__(self, *args, **kwargs) -> None: ...
 
-        async def __aenter__(self): return self
-        async def __aexit__(self, *exc_info): return None
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc_info):
+            return None
 
         async def request(self, **kwargs):
             request = httpx.Request(kwargs["method"], kwargs["url"])
-            return httpx.Response(
-                200, json={"status": "ok"}, request=request
-            )
+            return httpx.Response(200, json={"status": "ok"}, request=request)
 
-    monkeypatch.setattr("app.credentials.tester.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.credentials.tester.outbound_http_client", FakeAsyncClient)
     result = await CredentialTester().run(definition, {"api_key": "k"})
     assert result.success is True
 
@@ -125,16 +125,17 @@ async def test_tester_response_success_body_rule_failure(
     class FakeAsyncClient:
         def __init__(self, *args, **kwargs) -> None: ...
 
-        async def __aenter__(self): return self
-        async def __aexit__(self, *exc_info): return None
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc_info):
+            return None
 
         async def request(self, **kwargs):
             request = httpx.Request(kwargs["method"], kwargs["url"])
-            return httpx.Response(
-                200, json={"status": "down"}, request=request
-            )
+            return httpx.Response(200, json={"status": "down"}, request=request)
 
-    monkeypatch.setattr("app.credentials.tester.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.credentials.tester.outbound_http_client", FakeAsyncClient)
     result = await CredentialTester().run(definition, {"api_key": "k"})
     assert result.success is False
     assert "status" in result.message
@@ -147,13 +148,16 @@ async def test_tester_network_error(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeAsyncClient:
         def __init__(self, *args, **kwargs) -> None: ...
 
-        async def __aenter__(self): return self
-        async def __aexit__(self, *exc_info): return None
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc_info):
+            return None
 
         async def request(self, **kwargs):
             raise httpx.ConnectError("dns failure")
 
-    monkeypatch.setattr("app.credentials.tester.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.credentials.tester.outbound_http_client", FakeAsyncClient)
     result = await CredentialTester().run(definition, {"api_key": "k"})
     assert result.success is False
     assert "network" in result.message
@@ -167,35 +171,32 @@ async def test_tester_applies_authentication(
 
     captured: dict = {}
     auth = GenericAuth(
-        properties={
-            "headers": {"Authorization": "=Bearer {{ $credentials.api_key }}"}
-        }
+        properties={"headers": {"Authorization": "=Bearer {{ $credentials.api_key }}"}}
     )
     definition = _http_mock_definition(auth=auth)
 
     class FakeAsyncClient:
         def __init__(self, *args, **kwargs) -> None: ...
 
-        async def __aenter__(self): return self
-        async def __aexit__(self, *exc_info): return None
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc_info):
+            return None
 
         async def request(self, **kwargs):
             captured.update(kwargs)
             request = httpx.Request(kwargs["method"], kwargs["url"], headers=kwargs.get("headers"))
             return httpx.Response(200, request=request)
 
-    monkeypatch.setattr("app.credentials.tester.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("app.credentials.tester.outbound_http_client", FakeAsyncClient)
     await CredentialTester().run(definition, {"api_key": "k-123"})
     assert captured["headers"]["Authorization"] == "Bearer k-123"
 
 
 @pytest.mark.asyncio
 async def test_tester_missing_field_returns_interpolation_error() -> None:
-    auth = GenericAuth(
-        properties={
-            "headers": {"X-Token": "={{ $credentials.missing_field }}"}
-        }
-    )
+    auth = GenericAuth(properties={"headers": {"X-Token": "={{ $credentials.missing_field }}"}})
     definition = _http_mock_definition(auth=auth)
     result = await CredentialTester().run(definition, {})
     assert result.success is False

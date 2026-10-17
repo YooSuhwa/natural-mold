@@ -36,7 +36,12 @@ from app.agent_runtime.temporal import (
 from app.agent_runtime.url_guard import BlockedUrlError, ensure_url_allowed
 from app.config import settings
 from app.hooks import HookContext, HookResult, hooks
-from app.http_ssl import get_outbound_ssl_context
+from app.outbound.client import outbound_http_client
+from app.outbound.destination import (
+    CredentialDestination,
+    bind_destination,
+    guarded_destination,
+)
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.parameters import FieldKind
 from app.tools.registry import registry as tool_registry
@@ -100,9 +105,10 @@ def get_tool_http_client() -> httpx.AsyncClient:
 
     global _TOOL_HTTP_CLIENT
     if _TOOL_HTTP_CLIENT is None or getattr(_TOOL_HTTP_CLIENT, "is_closed", False) is True:
-        _TOOL_HTTP_CLIENT = httpx.AsyncClient(
+        # SSRF guard with DNS pinning; bound credential destinations checked per hop.
+        _TOOL_HTTP_CLIENT = outbound_http_client(
             timeout=settings.tool_call_timeout,
-            verify=get_outbound_ssl_context(),
+            ssrf_guard=True,
             follow_redirects=True,
             headers={"User-Agent": "Mozilla/5.0 (Moldy Agent Builder)"},
         )
@@ -634,6 +640,7 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
 
     stored_params = dict(tool_config.get("parameters") or {})
     credentials = tool_config.get("credentials")
+    destination = CredentialDestination.from_config(tool_config.get("credential_destination"))
 
     runner = definition.runner
 
@@ -666,7 +673,8 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
                 credentials=credentials,
                 http_client=client,
             )
-            output = await runner(run_ctx)
+            with bind_destination(guarded_destination(credentials, destination)):
+                output = await runner(run_ctx)
         except Exception as exc:
             if hook_ctx is not None:
                 await hooks.run_failure(hook_ctx, exc)

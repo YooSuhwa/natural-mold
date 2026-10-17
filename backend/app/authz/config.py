@@ -23,7 +23,9 @@ class AuthzSettings(BaseSettings):
     openfga_api_token: SecretStr = SecretStr("")
     openfga_ca_cert: str = ""
     vault_ca_cert: str = ""
-    credential_http_allowed_hosts: str = ""
+    credential_http_allowed_hosts: str = ""  # 11.9: http allowed for credentialed calls
+    outbound_private_allowed_hosts: str = ""  # 11.9: exempt from the SSRF private-IP block
+    credential_empty_hosts_policy: Literal["warn", "enforce"] = "warn"  # D18/Q14 rollout
     internal_plaintext_hosts: str = ""
     openfga_store_name: str = "moldy"
     openfga_store_id: str = ""

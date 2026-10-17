@@ -5,8 +5,8 @@ coroutine:
 
 - **runner.py** takes the credential resolved for the caller (shared: the tool's,
   per_user: the caller's own connection; :mod:`app.credentials.run_resolution`),
-  validates required parameters, opens an
-  ``httpx.AsyncClient``, and dispatches to the registered runner.
+  validates required parameters, opens an ``outbound_http_client`` (SSRF guard;
+  the credential's allowed hosts bound per request), and dispatches to the runner.
 - **definitions/*.py** owns the actual side-effect (HTTP call, API client,
   message format).
 """
@@ -21,12 +21,14 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.credentials.boundary import ResolvedCredential
 from app.credentials.run_resolution import RunCredentialResolver
 from app.credentials.run_subject import subject_for_caller
 from app.error_codes import credential_not_found
 from app.exceptions import ValidationError
-from app.http_ssl import get_outbound_ssl_context
 from app.models.tool import Tool
+from app.outbound.client import outbound_http_client
+from app.outbound.destination import CredentialDestination, bind_destination
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.execution_scope import ToolRunOptions, ToolRunTarget, load_execution_tool
 from app.tools.parameters import FieldDef
@@ -74,9 +76,9 @@ def _validate_parameters(fields: list[FieldDef], values: dict[str, Any]) -> dict
     return normalized
 
 
-async def _load_credential_payload(
+async def _load_credential(
     db: AsyncSession, tool: Tool, context: OrgContext
-) -> dict[str, Any] | None:
+) -> ResolvedCredential | None:
     resolver = RunCredentialResolver(db, subject_for_caller(context))
     try:
         resolved = await resolver.tool(tool)
@@ -86,7 +88,7 @@ async def _load_credential_payload(
         raise credential_not_found() from None
     if resolver.missing:
         raise ToolRunError("credential_binding_required: 이 도구에 내 계정을 먼저 연결해 주세요")
-    return resolved.values.reveal() if resolved else None
+    return resolved
 
 
 async def run_tool(
@@ -118,15 +120,15 @@ async def run_tool(
 
     try:
         validated = _validate_parameters(definition.parameters, merged)
-        credentials = await _load_credential_payload(db, tool, target.context)
+        resolved = await _load_credential(db, tool, target.context)
     except ToolRunError as exc:
         return ToolRunResult(success=False, error=str(exc))
 
+    credentials = resolved.values.reveal() if resolved else None
+    # The caller's own direct use (11.9): allowed hosts apply; empty hosts are allowed.
+    destination = CredentialDestination(resolved.allowed_hosts, True) if resolved else None
     own_client = options.http_client is None
-    client = options.http_client or httpx.AsyncClient(
-        timeout=30.0,
-        verify=get_outbound_ssl_context(),
-    )
+    client = options.http_client or outbound_http_client(timeout=30.0, ssrf_guard=True)
     started = time.monotonic()
     http_status: int | None = None
     try:
@@ -135,7 +137,8 @@ async def run_tool(
             credentials=credentials,
             http_client=client,
         )
-        result = await definition.runner(ctx)
+        with bind_destination(destination):
+            result = await definition.runner(ctx)
         if isinstance(result, dict):
             maybe_status = result.get("http_status")
             if isinstance(maybe_status, int):

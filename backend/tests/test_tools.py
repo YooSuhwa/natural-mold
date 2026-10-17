@@ -709,14 +709,15 @@ async def test_run_tool_uses_verified_outbound_client_when_it_owns_client(
     await db.commit()
     await db.refresh(tool)
 
-    with patch("app.tools.runner.httpx.AsyncClient") as client_cls:
+    # F-11: the shared trust store and the SSRF guard come from outbound_http_client().
+    with patch("app.tools.runner.outbound_http_client") as client_cls:
         client_cls.return_value.aclose = AsyncMock()
         result = await run_tool(
             db, ToolRunTarget(tool.id, unit_context(TEST_USER_ID)), ToolRunOptions(registry=local)
         )
 
     assert result.success, result.error
-    assert "verify" in client_cls.call_args.kwargs
+    assert client_cls.call_args.kwargs.get("ssrf_guard") is True
 
 
 @pytest.mark.asyncio

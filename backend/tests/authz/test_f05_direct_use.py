@@ -10,7 +10,7 @@ from app.mcp.apps_binding_lifecycle import McpAppsError
 from app.services import mcp_apps_service
 from app.tools.execution_scope import ToolRunOptions, ToolRunTarget
 from app.tools.registry import registry as tool_registry
-from app.tools.runner import _load_credential_payload, run_tool
+from app.tools.runner import _load_credential, run_tool
 from tests.authz.d04_support import add_server, add_tool
 from tests.authz.e01_support import seed
 from tests.authz.f05_support import CALLER, bind, secret
@@ -43,7 +43,8 @@ async def test_a_per_user_tool_test_run_needs_the_callers_connection(db: AsyncSe
 async def test_a_per_user_tool_test_run_uses_the_callers_connection(db: AsyncSession) -> None:
     tool = await _per_user_tool(db)
     await bind(db, CALLER, "tool", tool.id, await secret(db, CALLER, "my-connection"))
-    payload = await _load_credential_payload(db, tool, unit_context(CALLER))
+    resolved = await _load_credential(db, tool, unit_context(CALLER))
+    payload = resolved.values.reveal() if resolved else None
     assert payload is not None and payload["token"] == "my-connection"
 
 

@@ -59,6 +59,9 @@ class CredentialDefinition:
     # 10.4/Q4: an account that belongs to one person (mail, train/forest booking, OAuth
     # user tokens). Never lent to others: no sharing, no transfer, no ``shared`` mode.
     personal: bool = False
+    # D18/Q14 hosts this credential type is sent to; the default ``allowed_hosts`` of a
+    # new credential (and the m87 backfill). Empty for generic HTTP/MCP types.
+    hosts: tuple[str, ...] = ()
 
     def serialize(self) -> dict[str, Any]:
         """JSON-friendly representation for the API catalog endpoint."""
