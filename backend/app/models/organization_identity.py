@@ -10,6 +10,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     PrimaryKeyConstraint,
     String,
     Text,
@@ -29,7 +30,15 @@ class TenantDomain(Identity, Timestamps, Base):
             "status IN ('pending','verified','disabled')", name="ck_tenant_domains_status"
         ),
         PrimaryKeyConstraint(name="pk_tenant_domains"),
-        UniqueConstraint("domain", name="uq_tenant_domains_domain"),
+        # H-08: unique once verified; pending claims may compete (one per company).
+        UniqueConstraint("tenant_id", "domain", name="uq_tenant_domains_tenant_id"),
+        Index(
+            "uq_tenant_domains_verified_domain",
+            "domain",
+            unique=True,
+            postgresql_where=text("status = 'verified'"),
+            sqlite_where=text("status = 'verified'"),
+        ),
     )
     tenant_id: Mapped[UUID] = mapped_column(
         ForeignKey("tenants.id", ondelete="RESTRICT", name="fk_tenant_domains_tenant_id_tenants")
@@ -88,6 +97,7 @@ class SsoConnection(Identity, Timestamps, Base):
     claim_mapping: Mapped[dict[str, JsonValue]] = mapped_column(JSON, server_default="{}")
     group_role_mapping: Mapped[dict[str, JsonValue]] = mapped_column(JSON, server_default="{}")
     jit_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    trust_email_claim: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     default_role: Mapped[str] = mapped_column(String(20), server_default="member")
     tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

@@ -22,6 +22,8 @@ STORAGE = frozenset(
         "credentials/boundary.py",
         "credentials/service.py",
         "credentials/tenant_encryption.py",
+        # H-08: storage layer of the SSO connection secret (client secret / bind password).
+        "auth/sso/secret_box.py",
     }
 )
 PURPOSES: dict[str, frozenset[str]] = {

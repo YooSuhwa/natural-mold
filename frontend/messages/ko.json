@@ -89,7 +89,21 @@
       "sessionExpiredDesc": "다시 로그인해 주세요.",
       "invalidEmail": "올바른 이메일 주소를 입력해 주세요",
       "passwordRequired": "비밀번호를 입력해 주세요",
-      "nameRequired": "표시 이름을 입력해 주세요"
+      "nameRequired": "표시 이름을 입력해 주세요",
+      "ssoRequired": "이 회사는 회사 계정(SSO)으로만 로그인할 수 있습니다. 아래 회사 계정 로그인을 사용하세요.",
+      "ssoSignupBlocked": "이 도메인은 회사 계정(SSO)으로 로그인합니다. 로그인 화면에서 회사 계정으로 계속하세요."
+    },
+    "sso": {
+      "required": "이 회사는 회사 계정(SSO) 로그인이 필수입니다.",
+      "continueWith": "{name} 계정으로 계속",
+      "ldapTitle": "{name} 계정(사번)으로 로그인",
+      "ldapFailed": "아이디 또는 비밀번호가 올바르지 않습니다.",
+      "username": "아이디",
+      "password": "비밀번호",
+      "ldapSubmit": "회사 계정으로 로그인",
+      "failed": "회사 계정 로그인에 실패했습니다. 다시 시도하거나 관리자에게 문의하세요.",
+      "divider": "또는 회사 계정으로 로그인",
+      "linkPending": "이미 있는 계정입니다. 기존 비밀번호로 한 번 로그인하면 회사 계정이 연결됩니다."
     },
     "onboarding": {
       "title": "Moldy에 오신 것을 환영합니다",
@@ -467,6 +481,106 @@
         "tokenCopied": "초대 코드를 복사했습니다.",
         "tokenCopyFailed": "초대 코드를 복사하지 못했습니다.",
         "tokenUnavailable": "초대 코드가 응답에 포함되지 않았습니다."
+      }
+    },
+    "sso": {
+      "title": "SSO와 도메인",
+      "description": "회사 IdP로 로그인하게 하고, 회사 도메인 사용자의 가입 방식을 정합니다.",
+      "adminOnly": "회사 관리자만 볼 수 있습니다",
+      "adminOnlyDescription": "SSO와 도메인 설정은 회사 관리 권한이 필요합니다.",
+      "errors": {
+        "generic": "요청을 처리하지 못했습니다.",
+        "domain_invalid": "도메인 형식이 올바르지 않습니다.",
+        "domain_taken": "이미 다른 곳에서 등록한 도메인입니다.",
+        "domain_not_verified": "DNS TXT 레코드에서 확인 값을 찾지 못했습니다.",
+        "ldap_plaintext_refused": "LDAP은 ldaps:// 또는 StartTLS 연결만 허용합니다.",
+        "sso_config_invalid": "연결 설정이 올바르지 않습니다.",
+        "sso_connection_not_tested": "시험 로그인을 통과한 연결만 활성화할 수 있습니다.",
+        "sso_policy_incomplete": "SSO 필수에는 활성 연결, 확인된 도메인, 비상 관리자 1~2명이 필요합니다.",
+        "sso_issuer_mismatch": "IdP 발급자(issuer)가 연결 설정과 다릅니다.",
+        "sso_discovery_failed": "IdP 설정(Discovery)을 불러오지 못했습니다.",
+        "sso_token_invalid": "IdP 토큰을 확인하지 못했습니다.",
+        "sso_idp_error": "IdP가 로그인을 거부했습니다.",
+        "invalid_credentials": "아이디 또는 비밀번호가 올바르지 않습니다.",
+        "sso_email_unverified": "IdP가 이메일 확인 여부를 보내지 않아 기존 계정에 연결할 수 없습니다.",
+        "ldap_unavailable": "디렉터리 서버에 연결할 수 없습니다."
+      },
+      "domains": {
+        "title": "도메인",
+        "description": "DNS에 TXT 레코드를 추가해 회사 도메인임을 확인합니다. 확인된 도메인은 한 회사에만 속합니다.",
+        "label": "도메인",
+        "placeholder": "example.com",
+        "add": "도메인 추가",
+        "empty": "등록한 도메인이 없습니다.",
+        "verify": "확인",
+        "verified": "도메인을 확인했습니다.",
+        "remove": "삭제",
+        "status": {
+          "pending": "확인 대기",
+          "verified": "확인됨",
+          "disabled": "사용 안 함"
+        }
+      },
+      "connections": {
+        "title": "연결",
+        "description": "OIDC 또는 LDAP·AD 연결을 만들고 시험 로그인을 통과하면 활성화합니다.",
+        "add": "연결 추가",
+        "empty": "만든 연결이 없습니다.",
+        "oidc": "OIDC",
+        "ldap": "LDAP·AD",
+        "redirectUri": "Redirect URI (IdP에 등록)",
+        "testUsername": "시험 아이디",
+        "testPassword": "시험 비밀번호",
+        "test": "시험 로그인",
+        "testPassed": "시험 로그인을 통과했습니다.",
+        "activate": "활성화",
+        "activateHint": "시험 로그인을 통과해야 활성화할 수 있습니다.",
+        "remove": "삭제",
+        "status": {
+          "draft": "초안",
+          "tested": "시험 통과",
+          "active": "활성",
+          "disabled": "사용 안 함"
+        }
+      },
+      "form": {
+        "protocol": "연결 유형",
+        "protocols": {
+          "oidc": "OIDC",
+          "ldap": "LDAP·AD"
+        },
+        "samlHint": "SAML만 지원하는 SSO는 Keycloak을 중계로 두고 OIDC로 연결하세요.",
+        "fields": {
+          "issuer": "Issuer (Discovery URL)",
+          "client_id": "Client ID",
+          "client_secret": "Client Secret",
+          "server_url": "서버 URL (ldaps:// 또는 StartTLS)",
+          "bind_dn": "바인드 DN",
+          "bind_password": "바인드 비밀번호",
+          "user_base_dn": "사용자 기준 DN",
+          "user_filter": "사용자 필터"
+        },
+        "startTls": "StartTLS 사용 (ldap:// 주소일 때 필수)",
+        "jit": "첫 로그인 자동 가입(JIT)",
+        "trustEmail": "IdP가 이메일 확인 여부를 보내지 않아도 이메일을 신뢰 (기존 계정 연결)",
+        "save": "초안으로 저장",
+        "saved": "연결을 초안으로 저장했습니다.",
+        "cancel": "취소"
+      },
+      "policy": {
+        "title": "SSO 필수",
+        "description": "필수로 켜면 비상 관리자를 제외한 구성원은 비밀번호로 로그인할 수 없습니다.",
+        "mode": "로그인 정책",
+        "modes": {
+          "off": "끔",
+          "optional": "선택",
+          "required": "필수"
+        },
+        "breakGlass": "비상 관리자 사용자 ID (최대 2명)",
+        "breakGlassHint": "쉼표로 구분합니다. 회사 관리자만 지정할 수 있습니다.",
+        "requiredNotice": "켜면 비밀번호로 로그인하던 구성원 {count}명이 다음 로그인부터 IdP로 들어옵니다.",
+        "save": "저장",
+        "saved": "SSO 정책을 저장했습니다."
       }
     }
   },
@@ -4391,7 +4505,8 @@
       "organizationGroups": "그룹",
       "organizationRoles": "역할 및 권한",
       "organizationRequests": "접근 요청",
-      "companyOrganizations": "회사 조직 목록"
+      "companyOrganizations": "회사 조직 목록",
+      "companySso": "SSO와 도메인"
     },
     "profile": {
       "title": "프로필",

@@ -3363,6 +3363,59 @@
         ]
       }
     },
+    "/api/auth/ldap/{connection_id}/login": {
+      "post": {
+        "operationId": "ldap_login_api_auth_ldap__connection_id__login_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LdapLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ldap Login",
+        "tags": [
+          "auth sso"
+        ]
+      }
+    },
     "/api/auth/login": {
       "post": {
         "description": "Verify credentials, mint cookies, return user + CSRF body.",
@@ -3628,6 +3681,88 @@
         "summary": "Register Endpoint",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/auth/sso/discover": {
+      "post": {
+        "operationId": "sso_discover_api_auth_sso_discover_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SsoDiscoverRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoDiscoverResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sso Discover",
+        "tags": [
+          "auth sso"
+        ]
+      }
+    },
+    "/api/auth/sso/{connection_id}/start": {
+      "get": {
+        "operationId": "sso_start_api_auth_sso__connection_id__start_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sso Start",
+        "tags": [
+          "auth sso"
         ]
       }
     },
@@ -18633,6 +18768,199 @@
         ]
       }
     },
+    "/api/tenants/{tenant_id}/domains": {
+      "get": {
+        "operationId": "list_tenant_domains_api_tenants__tenant_id__domains_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantDomainList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tenant Domains",
+        "tags": [
+          "company sso"
+        ]
+      },
+      "post": {
+        "operationId": "add_tenant_domain_api_tenants__tenant_id__domains_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantDomainCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantDomainRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Tenant Domain",
+        "tags": [
+          "company sso"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/domains/{domain_id}": {
+      "delete": {
+        "operationId": "remove_tenant_domain_api_tenants__tenant_id__domains__domain_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Domain Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Tenant Domain",
+        "tags": [
+          "company sso"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/domains/{domain_id}/verify": {
+      "post": {
+        "operationId": "verify_tenant_domain_api_tenants__tenant_id__domains__domain_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Domain Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantDomainRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Tenant Domain",
+        "tags": [
+          "company sso"
+        ]
+      }
+    },
     "/api/tenants/{tenant_id}/invitations": {
       "get": {
         "operationId": "get_invitations_api_tenants__tenant_id__invitations_get",
@@ -20342,6 +20670,483 @@
         ]
       }
     },
+    "/api/tenants/{tenant_id}/sso-connections": {
+      "get": {
+        "operationId": "list_sso_connections_api_tenants__tenant_id__sso_connections_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoConnectionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Sso Connections",
+        "tags": [
+          "company sso"
+        ]
+      },
+      "post": {
+        "operationId": "create_sso_connection_api_tenants__tenant_id__sso_connections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OidcConnectionCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LdapConnectionCreate"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoConnectionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Sso Connection",
+        "tags": [
+          "company sso"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/sso-connections/{connection_id}": {
+      "delete": {
+        "operationId": "delete_sso_connection_api_tenants__tenant_id__sso_connections__connection_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Sso Connection",
+        "tags": [
+          "company sso"
+        ]
+      },
+      "get": {
+        "operationId": "get_sso_connection_api_tenants__tenant_id__sso_connections__connection_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoConnectionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Sso Connection",
+        "tags": [
+          "company sso"
+        ]
+      },
+      "patch": {
+        "operationId": "update_sso_connection_api_tenants__tenant_id__sso_connections__connection_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SsoConnectionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoConnectionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Sso Connection",
+        "tags": [
+          "company sso"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/sso-connections/{connection_id}/activate": {
+      "post": {
+        "operationId": "activate_sso_connection_api_tenants__tenant_id__sso_connections__connection_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoConnectionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Sso Connection",
+        "tags": [
+          "company sso"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/sso-connections/{connection_id}/test": {
+      "post": {
+        "operationId": "test_sso_connection_api_tenants__tenant_id__sso_connections__connection_id__test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SsoTestRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoTestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Sso Connection",
+        "tags": [
+          "company sso"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/sso-policy": {
+      "get": {
+        "operationId": "get_tenant_sso_policy_api_tenants__tenant_id__sso_policy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoPolicyRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tenant Sso Policy",
+        "tags": [
+          "company sso"
+        ]
+      },
+      "put": {
+        "operationId": "put_tenant_sso_policy_api_tenants__tenant_id__sso_policy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SsoPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoPolicyRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Tenant Sso Policy",
+        "tags": [
+          "company sso"
+        ]
+      }
+    },
     "/api/tenants/{tenant_id}/usage": {
       "get": {
         "operationId": "get_tenant_usage_api_tenants__tenant_id__usage_get",
@@ -21543,6 +22348,98 @@
         "summary": "Get Usage Summary",
         "tags": [
           "usage"
+        ]
+      }
+    },
+    "/auth/callback/{connection_id}": {
+      "get": {
+        "operationId": "sso_callback_auth_callback__connection_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sso Callback",
+        "tags": [
+          "auth sso"
         ]
       }
     },
@@ -31477,6 +32374,155 @@
         }
       ]
     },
+    "LdapConnectionCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "attribute_mapping": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Attribute Mapping",
+          "type": "object"
+        },
+        "bind_dn": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Bind Dn",
+          "type": "string"
+        },
+        "bind_password": {
+          "format": "password",
+          "title": "Bind Password",
+          "type": "string",
+          "writeOnly": true
+        },
+        "ca_certificate": {
+          "anyOf": [
+            {
+              "maxLength": 20000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ca Certificate"
+        },
+        "default_role": {
+          "default": "member",
+          "enum": [
+            "member",
+            "builder",
+            "admin",
+            "auditor"
+          ],
+          "title": "Default Role",
+          "type": "string"
+        },
+        "group_base_dn": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group Base Dn"
+        },
+        "group_filter": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group Filter"
+        },
+        "group_role_mapping": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/pydantic__types__JsonValue"
+          },
+          "title": "Group Role Mapping",
+          "type": "object"
+        },
+        "jit_enabled": {
+          "default": false,
+          "title": "Jit Enabled",
+          "type": "boolean"
+        },
+        "protocol": {
+          "const": "ldap",
+          "title": "Protocol",
+          "type": "string"
+        },
+        "server_url": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Server Url",
+          "type": "string"
+        },
+        "start_tls": {
+          "default": false,
+          "title": "Start Tls",
+          "type": "boolean"
+        },
+        "trust_email_claim": {
+          "default": false,
+          "title": "Trust Email Claim",
+          "type": "boolean"
+        },
+        "user_base_dn": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "User Base Dn",
+          "type": "string"
+        },
+        "user_filter": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "User Filter",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol",
+        "server_url",
+        "bind_dn",
+        "bind_password",
+        "user_base_dn",
+        "user_filter"
+      ],
+      "title": "LdapConnectionCreate",
+      "type": "object"
+    },
+    "LdapLoginRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "password": {
+          "format": "password",
+          "title": "Password",
+          "type": "string",
+          "writeOnly": true
+        },
+        "username": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Username",
+          "type": "string"
+        }
+      },
+      "required": [
+        "username",
+        "password"
+      ],
+      "title": "LdapLoginRequest",
+      "type": "object"
+    },
     "LoginRequest": {
       "description": "POST /api/auth/login payload.",
       "properties": {
@@ -35966,6 +37012,87 @@
         "state"
       ],
       "title": "OAuth2AuthStartResponse",
+      "type": "object"
+    },
+    "OidcConnectionCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "claim_mapping": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Claim Mapping",
+          "type": "object"
+        },
+        "client_id": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Client Id",
+          "type": "string"
+        },
+        "client_secret": {
+          "format": "password",
+          "title": "Client Secret",
+          "type": "string",
+          "writeOnly": true
+        },
+        "default_role": {
+          "default": "member",
+          "enum": [
+            "member",
+            "builder",
+            "admin",
+            "auditor"
+          ],
+          "title": "Default Role",
+          "type": "string"
+        },
+        "group_role_mapping": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/pydantic__types__JsonValue"
+          },
+          "title": "Group Role Mapping",
+          "type": "object"
+        },
+        "issuer": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Issuer",
+          "type": "string"
+        },
+        "jit_enabled": {
+          "default": false,
+          "title": "Jit Enabled",
+          "type": "boolean"
+        },
+        "protocol": {
+          "const": "oidc",
+          "title": "Protocol",
+          "type": "string"
+        },
+        "scopes": {
+          "items": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Scopes",
+          "type": "array"
+        },
+        "trust_email_claim": {
+          "default": false,
+          "title": "Trust Email Claim",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "protocol",
+        "issuer",
+        "client_id",
+        "client_secret"
+      ],
+      "title": "OidcConnectionCreate",
       "type": "object"
     },
     "OrgAgentUsage": {
@@ -41165,6 +42292,770 @@
       "title": "SkillUsageSummaryResponse",
       "type": "object"
     },
+    "SsoConnectionList": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/SsoConnectionRead"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "SsoConnectionList",
+      "type": "object"
+    },
+    "SsoConnectionRead": {
+      "properties": {
+        "attribute_mapping": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/pydantic__types__JsonValue"
+          },
+          "title": "Attribute Mapping",
+          "type": "object"
+        },
+        "bind_dn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Bind Dn"
+        },
+        "claim_mapping": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/pydantic__types__JsonValue"
+          },
+          "title": "Claim Mapping",
+          "type": "object"
+        },
+        "client_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Client Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "default_role": {
+          "enum": [
+            "member",
+            "builder",
+            "admin",
+            "auditor"
+          ],
+          "title": "Default Role",
+          "type": "string"
+        },
+        "group_base_dn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group Base Dn"
+        },
+        "group_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group Filter"
+        },
+        "group_role_mapping": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/pydantic__types__JsonValue"
+          },
+          "title": "Group Role Mapping",
+          "type": "object"
+        },
+        "has_ca_certificate": {
+          "title": "Has Ca Certificate",
+          "type": "boolean"
+        },
+        "has_secret": {
+          "title": "Has Secret",
+          "type": "boolean"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "issuer": {
+          "title": "Issuer",
+          "type": "string"
+        },
+        "jit_enabled": {
+          "title": "Jit Enabled",
+          "type": "boolean"
+        },
+        "protocol": {
+          "enum": [
+            "oidc",
+            "ldap"
+          ],
+          "title": "Protocol",
+          "type": "string"
+        },
+        "redirect_uri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Redirect Uri"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array"
+        },
+        "server_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Server Url"
+        },
+        "start_tls": {
+          "title": "Start Tls",
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "tested",
+            "active",
+            "disabled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tested_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tested At"
+        },
+        "trust_email_claim": {
+          "title": "Trust Email Claim",
+          "type": "boolean"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "user_base_dn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "User Base Dn"
+        },
+        "user_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "User Filter"
+        }
+      },
+      "required": [
+        "id",
+        "protocol",
+        "status",
+        "issuer",
+        "client_id",
+        "has_secret",
+        "scopes",
+        "claim_mapping",
+        "server_url",
+        "start_tls",
+        "bind_dn",
+        "user_base_dn",
+        "user_filter",
+        "group_base_dn",
+        "group_filter",
+        "attribute_mapping",
+        "has_ca_certificate",
+        "group_role_mapping",
+        "jit_enabled",
+        "trust_email_claim",
+        "default_role",
+        "tested_at",
+        "redirect_uri",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "SsoConnectionRead",
+      "type": "object"
+    },
+    "SsoConnectionUpdate": {
+      "additionalProperties": false,
+      "description": "Changing anything the login depends on sends the connection back to ``draft``.",
+      "properties": {
+        "attribute_mapping": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attribute Mapping"
+        },
+        "bind_dn": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Bind Dn"
+        },
+        "bind_password": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Bind Password"
+        },
+        "ca_certificate": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ca Certificate"
+        },
+        "claim_mapping": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Claim Mapping"
+        },
+        "client_id": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Client Id"
+        },
+        "client_secret": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Client Secret"
+        },
+        "default_role": {
+          "anyOf": [
+            {
+              "enum": [
+                "member",
+                "builder",
+                "admin",
+                "auditor"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Role"
+        },
+        "disabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Disabled"
+        },
+        "group_base_dn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group Base Dn"
+        },
+        "group_filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group Filter"
+        },
+        "group_role_mapping": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/pydantic__types__JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group Role Mapping"
+        },
+        "issuer": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Issuer"
+        },
+        "jit_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Jit Enabled"
+        },
+        "scopes": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scopes"
+        },
+        "server_url": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Server Url"
+        },
+        "start_tls": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Start Tls"
+        },
+        "trust_email_claim": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trust Email Claim"
+        },
+        "user_base_dn": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "User Base Dn"
+        },
+        "user_filter": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "User Filter"
+        }
+      },
+      "title": "SsoConnectionUpdate",
+      "type": "object"
+    },
+    "SsoDiscoverRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "email": {
+          "maxLength": 255,
+          "minLength": 3,
+          "title": "Email",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email"
+      ],
+      "title": "SsoDiscoverRequest",
+      "type": "object"
+    },
+    "SsoDiscoverResponse": {
+      "properties": {
+        "connections": {
+          "items": {
+            "$ref": "#/components/schemas/SsoLoginOption"
+          },
+          "title": "Connections",
+          "type": "array"
+        },
+        "login_csrf": {
+          "title": "Login Csrf",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "password",
+            "sso"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "sso_required": {
+          "title": "Sso Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "method",
+        "sso_required",
+        "connections",
+        "login_csrf"
+      ],
+      "title": "SsoDiscoverResponse",
+      "type": "object"
+    },
+    "SsoLoginOption": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "protocol": {
+          "enum": [
+            "oidc",
+            "ldap"
+          ],
+          "title": "Protocol",
+          "type": "string"
+        },
+        "start_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Start Url"
+        }
+      },
+      "required": [
+        "id",
+        "protocol",
+        "name",
+        "start_url"
+      ],
+      "title": "SsoLoginOption",
+      "type": "object"
+    },
+    "SsoPolicyRead": {
+      "properties": {
+        "break_glass_user_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Break Glass User Ids",
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "off",
+            "optional",
+            "required"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "password_members": {
+          "description": "Active members who sign in with a password and are not break-glass",
+          "title": "Password Members",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mode",
+        "break_glass_user_ids",
+        "password_members"
+      ],
+      "title": "SsoPolicyRead",
+      "type": "object"
+    },
+    "SsoPolicyUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "break_glass_user_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Break Glass User Ids",
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "off",
+            "optional",
+            "required"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "SsoPolicyUpdate",
+      "type": "object"
+    },
+    "SsoTestRequest": {
+      "additionalProperties": false,
+      "description": "LDAP tests take a directory account; OIDC tests take no body.",
+      "properties": {
+        "password": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Password"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Username"
+        }
+      },
+      "title": "SsoTestRequest",
+      "type": "object"
+    },
+    "SsoTestResponse": {
+      "properties": {
+        "authorize_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Authorize Url"
+        },
+        "connection": {
+          "$ref": "#/components/schemas/SsoConnectionRead"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/SsoTestResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "connection"
+      ],
+      "title": "SsoTestResponse",
+      "type": "object"
+    },
+    "SsoTestResult": {
+      "properties": {
+        "claims": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/pydantic__types__JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Claims"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "title": "SsoTestResult",
+      "type": "object"
+    },
     "SubscribeRequest": {
       "additionalProperties": false,
       "properties": {
@@ -41898,6 +43789,91 @@
         "updated_at"
       ],
       "title": "TenantCredentialView",
+      "type": "object"
+    },
+    "TenantDomainCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "maxLength": 253,
+          "minLength": 3,
+          "title": "Domain",
+          "type": "string"
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "title": "TenantDomainCreate",
+      "type": "object"
+    },
+    "TenantDomainList": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/TenantDomainRead"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "TenantDomainList",
+      "type": "object"
+    },
+    "TenantDomainRead": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "domain": {
+          "title": "Domain",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "verified",
+            "disabled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "txt_record": {
+          "title": "Txt Record",
+          "type": "string"
+        },
+        "verified_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Verified At"
+        }
+      },
+      "required": [
+        "id",
+        "domain",
+        "status",
+        "txt_record",
+        "verified_at",
+        "created_at"
+      ],
+      "title": "TenantDomainRead",
       "type": "object"
     },
     "TenantInvitationCreate": {

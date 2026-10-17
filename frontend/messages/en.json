@@ -89,7 +89,21 @@
       "sessionExpiredDesc": "Please log in again.",
       "invalidEmail": "Enter a valid email address.",
       "passwordRequired": "Enter your password.",
-      "nameRequired": "Enter a display name."
+      "nameRequired": "Enter a display name.",
+      "ssoRequired": "This company requires its company account (SSO). Use the company sign-in below.",
+      "ssoSignupBlocked": "This domain signs in with its company account (SSO). Continue with the company account on the sign-in page."
+    },
+    "sso": {
+      "required": "This company requires company account (SSO) sign-in.",
+      "continueWith": "Continue with {name}",
+      "ldapTitle": "Sign in with your {name} account",
+      "ldapFailed": "The user name or password is incorrect.",
+      "username": "User name",
+      "password": "Password",
+      "ldapSubmit": "Sign in with company account",
+      "failed": "Company sign-in failed. Try again or contact your administrator.",
+      "divider": "or sign in with your company account",
+      "linkPending": "This account already exists. Sign in once with its password to link the company account."
     },
     "onboarding": {
       "title": "Welcome to Moldy",
@@ -467,6 +481,106 @@
         "tokenCopied": "Invitation code copied.",
         "tokenCopyFailed": "Could not copy the invitation code.",
         "tokenUnavailable": "The response did not include an invitation code."
+      }
+    },
+    "sso": {
+      "title": "SSO & domains",
+      "description": "Let members sign in with the company IdP and decide how domain users join.",
+      "adminOnly": "Company administrators only",
+      "adminOnlyDescription": "SSO and domain settings require company management permission.",
+      "errors": {
+        "generic": "The request could not be completed.",
+        "domain_invalid": "The domain is not valid.",
+        "domain_taken": "This domain is already registered elsewhere.",
+        "domain_not_verified": "The verification value was not found in the DNS TXT records.",
+        "ldap_plaintext_refused": "LDAP requires ldaps:// or StartTLS.",
+        "sso_config_invalid": "The connection settings are not valid.",
+        "sso_connection_not_tested": "Only a connection that passed a test login can be activated.",
+        "sso_policy_incomplete": "SSO required needs an active connection, a verified domain and 1–2 break-glass administrators.",
+        "sso_issuer_mismatch": "The IdP issuer does not match the connection settings.",
+        "sso_discovery_failed": "The IdP discovery document could not be loaded.",
+        "sso_token_invalid": "The IdP token could not be verified.",
+        "sso_idp_error": "The IdP refused the sign-in.",
+        "invalid_credentials": "The user name or password is incorrect.",
+        "sso_email_unverified": "The IdP did not confirm the email, so it cannot be linked to an existing account.",
+        "ldap_unavailable": "The directory server is unreachable."
+      },
+      "domains": {
+        "title": "Domains",
+        "description": "Add a DNS TXT record to prove the domain is yours. A verified domain belongs to one company only.",
+        "label": "Domain",
+        "placeholder": "example.com",
+        "add": "Add domain",
+        "empty": "No domains yet.",
+        "verify": "Verify",
+        "verified": "Domain verified.",
+        "remove": "Remove",
+        "status": {
+          "pending": "Pending",
+          "verified": "Verified",
+          "disabled": "Disabled"
+        }
+      },
+      "connections": {
+        "title": "Connections",
+        "description": "Create an OIDC or LDAP/AD connection and activate it after a passed test login.",
+        "add": "Add connection",
+        "empty": "No connections yet.",
+        "oidc": "OIDC",
+        "ldap": "LDAP/AD",
+        "redirectUri": "Redirect URI (register in your IdP)",
+        "testUsername": "Test user name",
+        "testPassword": "Test password",
+        "test": "Test login",
+        "testPassed": "Test login passed.",
+        "activate": "Activate",
+        "activateHint": "Pass a test login before activating.",
+        "remove": "Remove",
+        "status": {
+          "draft": "Draft",
+          "tested": "Tested",
+          "active": "Active",
+          "disabled": "Disabled"
+        }
+      },
+      "form": {
+        "protocol": "Connection type",
+        "protocols": {
+          "oidc": "OIDC",
+          "ldap": "LDAP/AD"
+        },
+        "samlHint": "For SAML-only SSO, put Keycloak in between and connect it with OIDC.",
+        "fields": {
+          "issuer": "Issuer (discovery URL)",
+          "client_id": "Client ID",
+          "client_secret": "Client secret",
+          "server_url": "Server URL (ldaps:// or StartTLS)",
+          "bind_dn": "Bind DN",
+          "bind_password": "Bind password",
+          "user_base_dn": "User base DN",
+          "user_filter": "User filter"
+        },
+        "startTls": "Use StartTLS (required for ldap:// URLs)",
+        "jit": "Create members on first sign-in (JIT)",
+        "trustEmail": "Trust the email even without an email_verified claim (links existing accounts)",
+        "save": "Save as draft",
+        "saved": "Connection saved as a draft.",
+        "cancel": "Cancel"
+      },
+      "policy": {
+        "title": "SSO required",
+        "description": "When required, members except break-glass administrators cannot sign in with a password.",
+        "mode": "Sign-in policy",
+        "modes": {
+          "off": "Off",
+          "optional": "Optional",
+          "required": "Required"
+        },
+        "breakGlass": "Break-glass administrator user IDs (up to 2)",
+        "breakGlassHint": "Comma-separated. Only company administrators can be listed.",
+        "requiredNotice": "{count} members who signed in with a password will use the IdP from their next sign-in.",
+        "save": "Save",
+        "saved": "SSO policy saved."
       }
     }
   },
@@ -4391,7 +4505,8 @@
       "organizationGroups": "Groups",
       "organizationRoles": "Roles & capabilities",
       "organizationRequests": "Access requests",
-      "companyOrganizations": "Company organizations"
+      "companyOrganizations": "Company organizations",
+      "companySso": "SSO & domains"
     },
     "profile": {
       "title": "Profile",

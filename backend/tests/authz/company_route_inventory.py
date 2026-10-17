@@ -36,7 +36,8 @@ _R: Final = "/api/orgs/{org_id}/retention"
 _L: Final = "/api/orgs/{org_id}/limits"
 _U: Final = "/api/usage-limits"
 _MU: Final = "/api/me/usage-limits"
-COMPANY_PREFIXES: Final = ("/api/tenants/", "/api/admin/tenants", _R, _L, _U, _MU)
+_SSO_PUBLIC: Final = ("/api/auth/sso/", "/api/auth/ldap/", "/auth/callback/")
+COMPANY_PREFIXES: Final = ("/api/tenants/", "/api/admin/tenants", _R, _L, _U, _MU, *_SSO_PUBLIC)
 B11_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"GET {_T}": CompanyRoute("SELF", 200, False),
     f"PATCH {_T}": CompanyRoute("SELF", 200, True),
@@ -108,6 +109,28 @@ H06_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"GET {_L}": CompanyRoute("SELF", 200, False),
     f"PUT {_L}": CompanyRoute("GOVERNANCE", 200, True),
 }
+# H-08 company SSO (9.7, 10.10, S30): admin settings and the PUBLIC email-first login.
+_D: Final = f"{_T}/domains"
+_C: Final = f"{_T}/sso-connections"
+H08_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_D}": CompanyRoute(_G, 200, False),
+    f"POST {_D}": CompanyRoute(_G, 201, False),
+    f"POST {_D}/{{domain_id}}/verify": CompanyRoute(_G, 200, False),
+    f"DELETE {_D}/{{domain_id}}": CompanyRoute(_G, 204, False),
+    f"GET {_T}/sso-policy": CompanyRoute(_G, 200, False),
+    f"PUT {_T}/sso-policy": CompanyRoute(_G, 200, False),
+    f"GET {_C}": CompanyRoute(_G, 200, False),
+    f"POST {_C}": CompanyRoute(_G, 201, False),
+    f"GET {_C}/{{connection_id}}": CompanyRoute(_G, 200, False),
+    f"PATCH {_C}/{{connection_id}}": CompanyRoute(_G, 200, False),
+    f"DELETE {_C}/{{connection_id}}": CompanyRoute(_G, 204, False),
+    f"POST {_C}/{{connection_id}}/test": CompanyRoute(_G, 200, False),
+    f"POST {_C}/{{connection_id}}/activate": CompanyRoute(_G, 200, False),
+    "POST /api/auth/sso/discover": CompanyRoute("PUBLIC", 200, False),
+    "GET /api/auth/sso/{connection_id}/start": CompanyRoute("PUBLIC", 302, False),
+    "GET /auth/callback/{connection_id}": CompanyRoute("PUBLIC", 302, False),
+    "POST /api/auth/ldap/{connection_id}/login": CompanyRoute("PUBLIC", 200, False),
+}
 COMPANY_ROUTES: Final = {
     **B11_ROUTES,
     **B12_ROUTES,
@@ -116,9 +139,10 @@ COMPANY_ROUTES: Final = {
     **E08_ROUTES,
     **H03_ROUTES,
     **H06_ROUTES,
+    **H08_ROUTES,
 }
 # Later-task paths from the contract's route-level crosswalk (rows 7-8, 24-35, 38-57),
-# owned by C05/E07/E08/E09/H03/H08/I07. Matched app-wide by path, with parameter
+# owned by C05/E07/E08/E09/H03/I07. Matched app-wide by path, with parameter
 # names erased, at the path itself or below it (CRUD collection/item routes).
 DEFERRED_PATHS: Final = frozenset(
     {
@@ -127,11 +151,6 @@ DEFERRED_PATHS: Final = frozenset(
         "/api/admin/tenants/{}/schedule-deletion",
         "/api/admin/tenants/{}/cancel-deletion",
         "/api/admin/authz",
-        "/api/tenants/{}/domains",
-        "/api/tenants/{}/sso-connections",
-        "/api/auth/sso",
-        "/api/auth/ldap",
-        "/auth/callback",
     }
 )
 _PARAM: Final = re.compile(r"\{[^}]*\}")
@@ -176,9 +195,10 @@ def _route_violations(identity: str, route: APIRoute, expected: CompanyRoute) ->
         found.append(f"policy:{identity}")
     if (route.status_code or 200) != expected.status:
         found.append(f"status:{identity}")
-    if expected.status != 204 and route.response_model is None:
+    if expected.status not in (204, 302) and route.response_model is None:
         found.append(f"response_model:{identity}")
-    if method != "GET" and verify_csrf not in calls:
+    # PUBLIC login routes carry a login CSRF token / OIDC state instead (9.7).
+    if method != "GET" and expected.policy != "PUBLIC" and verify_csrf not in calls:
         found.append(f"csrf:{identity}")
     if expected.if_match and "If-Match" not in _headers(route.dependant):
         found.append(f"if_match:{identity}")

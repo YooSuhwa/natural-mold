@@ -17,6 +17,7 @@ class AuthzSettings(BaseSettings):
     data_key_provider: Literal["local", "transit"] = "local"
     tenant_data_keys_enabled: bool = False
     sso_enabled: bool = True
+    sso_public_base_url: str = ""  # H-08: public Moldy URL for IdP redirect URIs (else request)
     authz_mode: Literal["legacy", "shadow", "enforce"] = "legacy"
     authz_enforce_types: str = ""
     openfga_api_url: str = "http://openfga:8080"

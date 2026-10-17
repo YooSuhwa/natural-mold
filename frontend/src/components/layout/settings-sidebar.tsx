@@ -145,6 +145,15 @@ export function SettingsSidebar() {
                   },
                 ]
               : []),
+            ...(tenantOverview?.access === 'admin'
+              ? [
+                  {
+                    href: '/settings/company/sso',
+                    label: tSettings('nav.companySso'),
+                    icon: ShieldIcon,
+                  },
+                ]
+              : []),
           ],
         },
       ]

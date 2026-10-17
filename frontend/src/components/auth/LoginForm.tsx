@@ -18,6 +18,8 @@ interface Props {
   error: unknown
   defaultEmail?: string
   showCallbackNotice?: boolean
+  /** Email-first SSO discovery (plan 10.10) runs when the email field is left. */
+  onEmailBlur?: (email: string) => void
 }
 
 export function LoginForm({
@@ -26,6 +28,7 @@ export function LoginForm({
   error,
   defaultEmail = '',
   showCallbackNotice,
+  onEmailBlur,
 }: Props) {
   const t = useTranslations()
   const [email, setEmail] = useState(defaultEmail)
@@ -81,7 +84,10 @@ export function LoginForm({
               placeholder={t('auth.login.emailPlaceholder')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onBlur={() => setTouched((prev) => ({ ...prev, email: true }))}
+              onBlur={() => {
+                setTouched((prev) => ({ ...prev, email: true }))
+                if (email.includes('@')) onEmailBlur?.(email)
+              }}
               aria-invalid={emailError || mapped?.field === 'email' || undefined}
             />
             {emailError ? (

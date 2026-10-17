@@ -14,6 +14,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.cookies import clear_auth_cookies, set_active_org_cookie, set_auth_cookies
+from app.auth.sso.link_pending import clear_link_cookie, pending_link_method
+from app.auth.sso.session_gate import login_gate
 from app.authz.policies import PUBLIC, SELF, authz_policy
 from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
@@ -29,6 +31,7 @@ from app.schemas.auth import (
     UserResponse,
 )
 from app.services import audit_service, auth_service, user_profile_service, user_service
+from app.services.sso.discovery import refuse_sso_domain_signup
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +59,7 @@ async def register_endpoint(
     operational guidance on disabling this in production.
     """
 
+    await refuse_sso_domain_signup(db, payload.email)  # H-08: company domains use SSO
     user = await auth_service.register(db, payload, request)
     access, refresh, csrf = await auth_service.issue_tokens(db, user, request)
     await user_service.record_login_success(db, user, ip=auth_service.client_ip(request))
@@ -132,7 +136,9 @@ async def login_endpoint(
         )
         await db.commit()
         raise
-    access, refresh, csrf = await auth_service.issue_tokens(db, user, request)
+    method = await pending_link_method(db, request, user)  # H-08 link-pending confirm
+    await login_gate(db, user, request, method)  # H-08 SSO required / break-glass
+    access, refresh, csrf = await auth_service.issue_tokens(db, user, request, method)
     await user_service.record_login_success(db, user, ip=auth_service.client_ip(request))
     await audit_service.record_event(
         db,
@@ -149,6 +155,7 @@ async def login_endpoint(
         request=request,
     )
     await db.commit()
+    clear_link_cookie(response)
     set_auth_cookies(
         response,
         access_token=access,

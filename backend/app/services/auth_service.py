@@ -26,6 +26,7 @@ from app.auth.jwt import (
     hash_refresh_token,
 )
 from app.auth.password import hash_password, verify_password
+from app.auth.sso.session_gate import refresh_session_gate
 from app.config import settings
 from app.database import is_postgres
 from app.exceptions import AppError
@@ -127,18 +128,23 @@ async def authenticate(db: AsyncSession, *, email: str, password: str) -> User:
 # ---------------------------------------------------------------------------
 
 
-async def issue_tokens(db: AsyncSession, user: User, request: Request) -> tuple[str, str, str]:
+async def issue_tokens(
+    db: AsyncSession, user: User, request: Request, auth_method: str | None = None
+) -> tuple[str, str, str]:
     """Mint access/refresh/csrf and persist the refresh hash.
 
-    Returns ``(access, refresh, csrf)`` for the cookie helper.
+    Returns ``(access, refresh, csrf)`` for the cookie helper. ``auth_method`` (H-08)
+    rides on the refresh row and every rotation of it.
     """
 
-    access, _refresh_row, refresh, csrf = await _issue_tokens_with_row(db, user, request)
+    access, _refresh_row, refresh, csrf = await _issue_tokens_with_row(
+        db, user, request, auth_method
+    )
     return access, refresh, csrf
 
 
 async def _issue_tokens_with_row(
-    db: AsyncSession, user: User, request: Request
+    db: AsyncSession, user: User, request: Request, auth_method: str | None = None
 ) -> tuple[str, RefreshToken, str, str]:
     """Like :func:`issue_tokens` but also returns the new ``RefreshToken``.
 
@@ -157,6 +163,7 @@ async def _issue_tokens_with_row(
         expires_at=expires_at,
         user_agent=user_agent(request),
         ip=client_ip(request),
+        auth_method=auth_method,
     )
     db.add(row)
     await db.flush()
@@ -251,7 +258,10 @@ async def _perform_rotation(
     (see :func:`rotate_refresh` chain-walk loop).
     """
 
-    access, new_row, new_refresh, csrf = await _issue_tokens_with_row(db, user, request)
+    await refresh_session_gate(db, user, old_row.auth_method)  # H-08 SSO required
+    access, new_row, new_refresh, csrf = await _issue_tokens_with_row(
+        db, user, request, old_row.auth_method
+    )
     old_row.revoked_at = now
     old_row.replaced_by_id = new_row.id
     return access, new_refresh, csrf

@@ -18,6 +18,7 @@ def include_app_routers(app: FastAPI) -> None:
         assistant,
         audit,
         auth,
+        auth_sso,
         builder,
         conversations,
         credential_bindings,
@@ -73,6 +74,8 @@ def include_app_routers(app: FastAPI) -> None:
         tenant_overview,
         tenant_policies,
         tenant_publication_requests,
+        tenant_sso,
+        tenant_sso_connections,
         tenant_usage,
         tools,
         triggers,
@@ -83,6 +86,7 @@ def include_app_routers(app: FastAPI) -> None:
 
     app.include_router(audit.router)
     app.include_router(auth.router)
+    app.include_router(auth_sso.router)
     app.include_router(agent_blueprints.router)
     app.include_router(agent_api.router)
     app.include_router(agent_runtime_api.router)
@@ -120,6 +124,8 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(org_assignments.router)
     app.include_router(tenant_overview.router)
     app.include_router(tenant_policies.router)
+    app.include_router(tenant_sso.router)
+    app.include_router(tenant_sso_connections.router)
     app.include_router(tenant_catalog.router)
     app.include_router(tenant_audit.router)
     app.include_router(tenant_usage.router)
