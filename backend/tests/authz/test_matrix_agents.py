@@ -39,20 +39,21 @@ async def _agent() -> Target:
     return Target("agents", "agent", uuid.UUID(agent_id), path, grant_relation="consumer")
 
 
-# Documented deferrals: a granted editor passes the route gate but the service still
-# loads the agent in the caller's private scope (progress D-02 -> F-02 for PUT, D-01 ->
-# F-09 for memory settings), so the answer is the existing 404.
+# Documented deferral: a granted editor passes the route gate but the service still
+# loads the agent in the caller's private scope (progress D-02 -> F-02 for PUT), so the
+# answer is the existing 404. Memory settings follow the table since F-09.
 OWNER_ONLY = {("granted", "enforce"): 404}
 PROBES = (
     Probe("GET /api/agents/{agent_id}"),
     Probe("PATCH /api/agents/{agent_id}/favorite", {"is_favorite": True}),
     Probe("PUT /api/agents/{agent_id}", {"name": "renamed"}, known=OWNER_ONLY),
-    Probe("GET /api/agents/{agent_id}/memory-settings", known=OWNER_ONLY),
-    Probe(
-        "PATCH /api/agents/{agent_id}/memory-settings",
-        {"memory_policy_override": "auto"},
-        known=OWNER_ONLY,
-    ),
+    Probe("GET /api/agents/{agent_id}/memory-settings"),
+    Probe("PATCH /api/agents/{agent_id}/memory-settings", {"memory_policy_override": "auto"}),
+    Probe("GET /api/agents/{agent_id}/memo"),
+    Probe("PUT /api/agents/{agent_id}/memo", {"content": "notes"}),
+    Probe("GET /api/agents/{agent_id}/memo/proposals"),
+    # the memo starts switched off, so an admitted proposal answers 409 (F-09)
+    Probe("POST /api/agents/{agent_id}/memo/proposals", {"content": "idea"}, ok=409),
 )
 
 

@@ -10,6 +10,12 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.memory_agent_access import (
+    memory_agent,
+    row_shared_memory_agent_ids,
+    shared_ids,
+    shared_memory_agent_ids,
+)
 from app.authz.memory_scope import (
     private_memory_proposal_predicate,
     private_memory_record_predicate,
@@ -17,7 +23,6 @@ from app.authz.memory_scope import (
 )
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
-from app.authz.scoping import private_scope_predicate
 from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import ValidationError
 from app.models.agent import Agent
@@ -43,6 +48,7 @@ from app.services.agent_memory_settings import (
 from app.services.memory_settings_reads import peek_user_settings
 
 MemoryScope = Literal["user", "agent"]
+AGENT_MEMO_SCOPE = "agent_memo"  # F-09: a proposal to the agent's shared memo (11.8)
 AllowedScopes = Literal["user", "agent", "both"]
 WritePolicy = Literal["off", "ask", "auto"]
 TriggerWritePolicy = Literal["off", "auto"]
@@ -88,6 +94,9 @@ def _validate_memory_content(content: str) -> None:
     _validate_memory_text(content)
 
 
+validate_memory_text = _validate_memory_text  # F-09: the shared memo uses the same rule
+
+
 def _truncate_runtime_memory_content(content: str) -> str:
     if len(content) <= RUNTIME_MEMORY_ITEM_MAX_CHARS:
         return content
@@ -100,10 +109,8 @@ async def _get_owned_agent(
     agent_id: uuid.UUID,
     context: OrgContext,
 ) -> Agent | None:
-    result = await db.execute(
-        select(Agent).where(Agent.id == agent_id, private_scope_predicate(Agent, context))
-    )
-    return result.scalar_one_or_none()
+    """My agent, or (F-09, ``agent`` enforced) a shared agent I may run (11.8)."""
+    return await memory_agent(db, agent_id, context)
 
 
 async def _ensure_agent_owned(
@@ -127,14 +134,17 @@ async def _ensure_agent_owned(
 
 
 async def _is_owned_conversation(
-    db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    context: OrgContext,
+    shared: frozenset = frozenset(),
 ) -> bool:
     return (
         await db.scalar(
             select(Conversation.id)
             .where(
                 Conversation.id == conversation_id,
-                private_memory_source_conversation_predicate(context),
+                private_memory_source_conversation_predicate(context, shared),
             )
             .execution_options(autoflush=False)
         )
@@ -147,11 +157,15 @@ async def _validate_source_conversation(
     *,
     conversation_id: uuid.UUID | None,
     context: OrgContext,
+    shared: frozenset = frozenset(),
 ) -> None:
     if conversation_id is None:
         return
-    if not await _is_owned_conversation(db, conversation_id, context):
+    if not await _is_owned_conversation(db, conversation_id, context, shared):
         raise conversation_not_found()
+
+
+validate_source_conversation = _validate_source_conversation  # F-09 memo proposals
 
 
 async def get_user_settings(db: AsyncSession, user_id: uuid.UUID) -> UserMemorySettings:
@@ -306,6 +320,7 @@ async def create_memory_record(
         db,
         conversation_id=payload.source_conversation_id,
         context=context,
+        shared=shared_ids(agent, context),
     )
     record = MemoryRecord(
         user_id=context.user_id,
@@ -337,13 +352,16 @@ async def list_memory_records(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
-    filters = [private_memory_record_predicate(context), MemoryRecord.status == "active"]
-    if scope in {"user", "agent"}:
-        filters.append(MemoryRecord.scope == scope)
+    shared: frozenset = frozenset()
     if agent_id is not None:
         agent = await _get_owned_agent(db, agent_id, context)
         if agent is None:
             return []
+        shared = shared_ids(agent, context)
+    filters = [private_memory_record_predicate(context, shared), MemoryRecord.status == "active"]
+    if scope in {"user", "agent"}:
+        filters.append(MemoryRecord.scope == scope)
+    if agent_id is not None:
         filters.append(MemoryRecord.agent_id == agent_id)
     search = (q or "").strip()
     if search:
@@ -380,10 +398,11 @@ async def list_runtime_memory_records(
         scope_filters.append((MemoryRecord.scope == "agent") & (MemoryRecord.agent_id == agent_id))
     if not scope_filters:
         return []
+    shared = await shared_memory_agent_ids(db, agent_id, context)
     result = await db.execute(
         select(MemoryRecord)
         .where(
-            private_memory_record_predicate(context),
+            private_memory_record_predicate(context, shared),
             MemoryRecord.status == "active",
             or_(*scope_filters),
         )
@@ -405,11 +424,12 @@ async def get_memory_record(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    shared = await row_shared_memory_agent_ids(db, MemoryRecord, memory_id, context)
     result = await db.execute(
         select(MemoryRecord)
         .where(
             MemoryRecord.id == memory_id,
-            private_memory_record_predicate(context),
+            private_memory_record_predicate(context, shared),
             MemoryRecord.status == "active",
         )
         .execution_options(populate_existing=True, autoflush=False)
@@ -483,6 +503,7 @@ async def create_memory_proposal(
         db,
         conversation_id=payload.conversation_id,
         context=context,
+        shared=shared_ids(agent, context),
     )
     proposal = MemoryProposal(
         user_id=context.user_id,
@@ -501,6 +522,31 @@ async def create_memory_proposal(
     return proposal
 
 
+async def create_agent_memo_proposal(
+    db: AsyncSession,
+    *,
+    context: OrgContext,
+    agent_id: uuid.UUID,
+    content: str,
+    reason: str | None,
+    conversation_id: uuid.UUID | None,
+) -> MemoryProposal | None:
+    """F-09 (11.8): propose to the agent's shared memo; its editors decide."""
+    from app.services import agent_memo_service  # it imports this module
+
+    agent = await _get_owned_agent(db, agent_id, context)
+    if agent is None:
+        return None
+    return await agent_memo_service.create_memo_proposal(
+        db,
+        context=context,
+        agent=agent,
+        content=content,
+        reason=reason,
+        conversation_id=conversation_id,
+    )
+
+
 async def get_memory_proposal(
     db: AsyncSession,
     *,
@@ -510,15 +556,18 @@ async def get_memory_proposal(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    shared = await row_shared_memory_agent_ids(db, MemoryProposal, proposal_id, context)
     result = await db.execute(
         select(MemoryProposal)
         .where(
             MemoryProposal.id == proposal_id,
-            private_memory_proposal_predicate(context),
+            private_memory_proposal_predicate(context, shared),
         )
         .execution_options(populate_existing=True, autoflush=False)
     )
-    return result.scalar_one_or_none()
+    proposal = result.scalar_one_or_none()
+    # F-09: shared-memo proposals are decided by the agent's editors (agent_memo routes).
+    return None if proposal is not None and proposal.scope == AGENT_MEMO_SCOPE else proposal
 
 
 async def approve_memory_proposal(
@@ -536,13 +585,16 @@ async def approve_memory_proposal(
     )
     if proposal is None or proposal.status != "pending":
         return None
+    agent = None
+    if proposal.agent_id is not None:
+        agent = await _get_owned_agent(db, proposal.agent_id, context)
     await _validate_source_conversation(
-        db, conversation_id=proposal.conversation_id, context=context
+        db,
+        conversation_id=proposal.conversation_id,
+        context=context,
+        shared=shared_ids(agent, context),
     )
-    if (
-        proposal.agent_id is not None
-        and await _get_owned_agent(db, proposal.agent_id, context) is None
-    ):
+    if proposal.agent_id is not None and agent is None:
         return None
     await resolve_private_actor(
         db,

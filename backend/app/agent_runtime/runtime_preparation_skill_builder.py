@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.runtime.shared_memo import memo_governed
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
 
@@ -60,6 +61,7 @@ async def prepare_skill_builder_components_impl(
         selected_skill_slugs=[],
         agent_runtime_name=cfg.agent_runtime_name,
         draft_workspace_path=workspace_path or None,
+        agent_memory_file=not memo_governed(),  # F-09: no run writes AGENTS.md (11.8)
     )
 
     if include_ask_user and not is_trigger_mode:

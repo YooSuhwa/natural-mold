@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz.conversation_agent_checks import require_scoped_agent_permission
+from app.authz.memory_agent_access import agent_edit_context
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, RES, authz_policy
 from app.authz.runtime import get_authz
@@ -57,7 +57,6 @@ async def update_user_memory_settings(
     "/api/agents/{agent_id}/memory-settings",
     response_model=AgentMemorySettingsOut,
 )
-# TODO(F-09): RES agent#can_edit is checked, but memory_service is still owner-scoped.
 @authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
 async def get_agent_memory_settings(
     agent_id: uuid.UUID,
@@ -66,8 +65,8 @@ async def get_agent_memory_settings(
     context: OrgContext = Depends(get_org_context),
     authz: AuthzService = Depends(get_authz),
 ) -> AgentMemorySettingsOut:
-    await require_scoped_agent_permission(db, context, agent_id, "can_edit", authz=authz)
-    settings = await memory_service.get_agent_settings(db, agent_id, context)
+    scope = await agent_edit_context(db, authz, context, agent_id)  # F-09: can_edit holders
+    settings = await memory_service.get_agent_settings(db, agent_id, scope)
     if settings is None:
         raise agent_not_found()
     return AgentMemorySettingsOut.model_validate(settings)
@@ -77,7 +76,6 @@ async def get_agent_memory_settings(
     "/api/agents/{agent_id}/memory-settings",
     response_model=AgentMemorySettingsOut,
 )
-# TODO(F-09): RES agent#can_edit is checked, but memory_service is still owner-scoped.
 @authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
 async def update_agent_memory_settings(
     agent_id: uuid.UUID,
@@ -88,8 +86,9 @@ async def update_agent_memory_settings(
     _csrf: None = Depends(verify_csrf),
     authz: AuthzService = Depends(get_authz),
 ) -> AgentMemorySettingsOut:
-    await require_scoped_agent_permission(db, context, agent_id, "can_edit", authz=authz)
-    settings = await memory_service.update_agent_settings(db, agent_id, context, payload)
+    owner = await agent_edit_context(db, authz, context, agent_id)  # F-09: editors too
+    update = memory_service.update_agent_settings
+    settings = await update(db, agent_id, owner, payload, actor=context)
     if settings is None:
         raise agent_not_found()
     return AgentMemorySettingsOut.model_validate(settings)

@@ -28,6 +28,7 @@ from app.agent_runtime.prepared_run_tool_inputs import (
     prepared_tool_set,
 )
 from app.agent_runtime.runtime.reliability import EmptyContentRetryMiddleware
+from app.agent_runtime.runtime.shared_memo import memo_governed
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_preparation import _without_stored_filesystem_interrupts
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
@@ -113,7 +114,7 @@ def _freeze_skills(cfg: AgentConfig, builder: SnapshotCatalogBuilder) -> str | N
 
 
 def _freeze_agents_md(cfg: AgentConfig, data_dir: Path, builder: SnapshotCatalogBuilder) -> list:
-    if not cfg.agent_id:
+    if not cfg.agent_id or memo_governed():  # F-09: governed memo is prompt-only
         return []
     source = data_dir / "agents" / cfg.agent_id / "AGENTS.md"
     if not source.is_file():

@@ -9,6 +9,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.tools.agent_memo import agent_memo_tools
 from app.authz.org_context import OrgContext
 from app.database import async_session, tenant_session
 from app.exceptions import ValidationError
@@ -104,8 +105,12 @@ def build_memory_tools(
     conversation_id: str | None,
     is_trigger_mode: bool,
     session_factory: SessionFactory | None = None,
+    agent_memo_proposals: bool = False,
 ) -> list[BaseTool]:
-    """Build policy-bound long-term memory tools for a Moldy agent run."""
+    """Build policy-bound long-term memory tools for a Moldy agent run.
+
+    ``agent_memo_proposals`` (F-09): a shared run also gets ``propose_agent_memo``.
+    """
 
     user_uuid = context.user_id
     agent_uuid = _parse_uuid(agent_id)
@@ -269,7 +274,11 @@ def build_memory_tools(
 
         return await apply_memory_request(scope="agent", content=content, reason=reason)
 
+    memo = agent_memo_proposals and agent_uuid is not None and not is_trigger_mode
     return [
+        *agent_memo_tools(
+            memo, context, agent_uuid, conversation_uuid, session_factory, service=memory_service
+        ),
         StructuredTool.from_function(
             coroutine=propose_memory,
             name="propose_memory",

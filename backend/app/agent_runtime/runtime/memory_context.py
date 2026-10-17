@@ -8,30 +8,19 @@ from __future__ import annotations
 
 import logging
 import uuid as _uuid
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.runtime.shared_memo import (
+    load_shared_memo,
+    memory_session,
+    render_shared_memo_prompt,
+)
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 
 logger = logging.getLogger(__name__)
-
-
-@asynccontextmanager
-async def _memory_session(db: AsyncSession | None, cfg: AgentConfig) -> AsyncIterator[AsyncSession]:
-    """The caller's (locked) session, else a fresh session in the run's company."""
-
-    if db is not None:
-        yield db
-        return
-    from app.database import async_session as _async_session_factory
-    from app.database import tenant_session
-
-    async with tenant_session(cfg.org_context, maker=_async_session_factory) as session:
-        yield session
 
 
 def _parse_uuid(value: str | None) -> _uuid.UUID | None:
@@ -78,7 +67,18 @@ async def load_memory_context_in(
     cfg: AgentConfig, db: AsyncSession | None
 ) -> tuple[str, list[dict[str, Any]]]:
     """``_load_memory_context`` reading through ``db`` (the prepared adapter's
-    locked transaction); ``None`` is the legacy fresh-session read."""
+    locked transaction); ``None`` is the legacy fresh-session read. Governed runs
+    (F-09) also get the agent's shared memo, framed as reference material."""
+    prompt, briefs = await _user_memory_context_in(cfg, db)
+    memo = render_shared_memo_prompt(await load_shared_memo(cfg, db))
+    if memo:
+        prompt = f"{prompt}\n\n{memo}" if prompt else memo
+    return prompt, briefs
+
+
+async def _user_memory_context_in(
+    cfg: AgentConfig, db: AsyncSession | None
+) -> tuple[str, list[dict[str, Any]]]:
     assert_pre_marker("_load_memory_context")
 
     user_uuid = _parse_uuid(cfg.user_id)
@@ -88,7 +88,7 @@ async def load_memory_context_in(
     try:
         from app.services import memory_service
 
-        async with _memory_session(db, cfg) as session:
+        async with memory_session(db, cfg) as session:
             policy = await memory_service.resolve_effective_policy(
                 session,
                 context=cfg.org_context,
@@ -127,7 +127,7 @@ async def memory_write_policy_in(
     try:
         from app.services import memory_service
 
-        async with _memory_session(db, cfg) as session:
+        async with memory_session(db, cfg) as session:
             policy = await memory_service.resolve_effective_policy(
                 session,
                 context=cfg.org_context,

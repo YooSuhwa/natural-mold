@@ -64,6 +64,8 @@ MEMORY_PROPOSED: Final = "memory_proposed"
 MEMORY_SAVED: Final = "memory_saved"
 MEMORY_REJECTED: Final = "memory_rejected"
 MEMORY_DELETED: Final = "memory_deleted"
+# F-09 (11.8): a proposal to the shared memo; content is redacted like the memory events.
+AGENT_MEMO_PROPOSED: Final = "agent_memo_proposed"
 
 # Resume-only — W3-out M3 GET endpoint 가 broker 가 죽은 채로 streaming
 # row 만 남은 경우 발행. client 는 이 이벤트를 받으면 자동 재시도를 멈춘다.

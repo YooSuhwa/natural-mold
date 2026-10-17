@@ -70,3 +70,8 @@ RETENTION_PURGE: Final = "retention.purge"
 CREDENTIAL_BINDING_CREATE: Final = "credential_binding.create"
 CREDENTIAL_BINDING_DELETE: Final = "credential_binding.delete"
 CREDENTIAL_MODE_UPDATE: Final = "credential_mode.update"
+# F-09 shared operating memo (11.8): editor writes and proposal decisions.
+AGENT_MEMO_UPDATE: Final = "agent_memo.update"
+AGENT_MEMO_PROPOSAL_DECIDE: Final = "agent_memo.proposal_decide"
+# F-09: a non-owner editor changed the agent memory settings (owner changes: unchanged).
+AGENT_MEMORY_SETTINGS_UPDATE: Final = "agent.memory_settings_update"

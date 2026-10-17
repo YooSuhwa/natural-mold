@@ -65,6 +65,7 @@ class BuildMemoryTools(Protocol):
         agent_id: str | None,
         conversation_id: str,
         is_trigger_mode: bool,
+        agent_memo_proposals: bool = False,
     ) -> list[BaseTool]: ...
 
 
@@ -111,6 +112,7 @@ class BuildFilesystemPermissions(Protocol):
         selected_skill_slugs: list[str],
         agent_runtime_name: str | None,
         draft_workspace_path: str | None = None,
+        agent_memory_file: bool = True,
     ) -> list[FilesystemPermission]: ...
 
 
