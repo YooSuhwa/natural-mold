@@ -21,8 +21,9 @@ class AuditEvent(Base):
         Index("ix_audit_events_request_id", "request_id"),
         Index("ix_audit_events_trace_id", "trace_id"),
         Index("ix_audit_events_run_id", "run_id"),
-        # F-14 (m89 row, 14.1): organization audit.
-        Index("ix_audit_events_org_created", "org_id", "created_at"),
+        # F-14 (m89 row, 14.1): organization audit; H-03 adds the cursor ``id``.
+        Index("ix_audit_events_org_created", "org_id", "created_at", "id"),
+        Index("ix_audit_events_tenant_created", "tenant_id", "created_at", "id"),
         ForeignKeyConstraint(
             ["org_id", "tenant_id"],
             ["organizations.id", "organizations.tenant_id"],

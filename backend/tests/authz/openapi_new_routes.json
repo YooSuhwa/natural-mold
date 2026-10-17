@@ -3092,6 +3092,7 @@
               "default": "mine",
               "enum": [
                 "mine",
+                "org",
                 "all"
               ],
               "title": "Scope",
@@ -10932,6 +10933,241 @@
         ]
       }
     },
+    "/api/orgs/{org_id}/audit-events": {
+      "get": {
+        "operationId": "list_org_audit_events_api_orgs__org_id__audit_events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owner_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Request Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trace_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trace Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Org Audit Events",
+        "tags": [
+          "organization administration"
+        ]
+      }
+    },
     "/api/orgs/{org_id}/capabilities": {
       "get": {
         "operationId": "list_capabilities_api_orgs__org_id__capabilities_get",
@@ -13012,6 +13248,249 @@
         "summary": "Replace Roles",
         "tags": [
           "organization assignments"
+        ]
+      }
+    },
+    "/api/orgs/{org_id}/usage": {
+      "get": {
+        "operationId": "get_org_usage_api_orgs__org_id__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive start date.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive start date.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive end date (default: today).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive end date (default: today).",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgUsageSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Org Usage",
+        "tags": [
+          "organization administration"
+        ]
+      }
+    },
+    "/api/orgs/{org_id}/usage/agents": {
+      "get": {
+        "operationId": "get_org_usage_by_agent_api_orgs__org_id__usage_agents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive start date.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive start date.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive end date (default: today).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive end date (default: today).",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgAgentUsagePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Org Usage By Agent",
+        "tags": [
+          "organization administration"
+        ]
+      }
+    },
+    "/api/orgs/{org_id}/usage/members": {
+      "get": {
+        "operationId": "get_org_usage_by_member_api_orgs__org_id__usage_members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive start date.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive start date.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive end date (default: today).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive end date (default: today).",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgMemberUsagePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Org Usage By Member",
+        "tags": [
+          "organization administration"
         ]
       }
     },
@@ -17223,6 +17702,258 @@
           }
         },
         "summary": "Patch Company Overview",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/audit-events": {
+      "get": {
+        "operationId": "list_tenant_audit_events_api_tenants__tenant_id__audit_events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "org_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owner_user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Request Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trace_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trace Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tenant Audit Events",
         "tags": [
           "company administration"
         ]
@@ -34248,6 +34979,152 @@
       "title": "OAuth2AuthStartResponse",
       "type": "object"
     },
+    "OrgAgentUsage": {
+      "properties": {
+        "agent_id": {
+          "format": "uuid",
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "agent_name": {
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "request_count": {
+          "default": 0,
+          "title": "Request Count",
+          "type": "integer"
+        },
+        "total_cost_usd": {
+          "default": 0.0,
+          "title": "Total Cost Usd",
+          "type": "number"
+        },
+        "total_tokens_in": {
+          "default": 0,
+          "title": "Total Tokens In",
+          "type": "integer"
+        },
+        "total_tokens_out": {
+          "default": 0,
+          "title": "Total Tokens Out",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent_id",
+        "agent_name"
+      ],
+      "title": "OrgAgentUsage",
+      "type": "object"
+    },
+    "OrgAgentUsagePage": {
+      "properties": {
+        "from_date": {
+          "format": "date",
+          "title": "From Date",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/OrgAgentUsage"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "org_id": {
+          "format": "uuid",
+          "title": "Org Id",
+          "type": "string"
+        },
+        "to_date": {
+          "format": "date",
+          "title": "To Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org_id",
+        "from_date",
+        "to_date",
+        "items"
+      ],
+      "title": "OrgAgentUsagePage",
+      "type": "object"
+    },
+    "OrgMemberUsage": {
+      "properties": {
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "request_count": {
+          "default": 0,
+          "title": "Request Count",
+          "type": "integer"
+        },
+        "total_cost_usd": {
+          "default": 0.0,
+          "title": "Total Cost Usd",
+          "type": "number"
+        },
+        "total_tokens_in": {
+          "default": 0,
+          "title": "Total Tokens In",
+          "type": "integer"
+        },
+        "total_tokens_out": {
+          "default": 0,
+          "title": "Total Tokens Out",
+          "type": "integer"
+        },
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "display_name"
+      ],
+      "title": "OrgMemberUsage",
+      "type": "object"
+    },
+    "OrgMemberUsagePage": {
+      "properties": {
+        "from_date": {
+          "format": "date",
+          "title": "From Date",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/OrgMemberUsage"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "org_id": {
+          "format": "uuid",
+          "title": "Org Id",
+          "type": "string"
+        },
+        "to_date": {
+          "format": "date",
+          "title": "To Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org_id",
+        "from_date",
+        "to_date",
+        "items"
+      ],
+      "title": "OrgMemberUsagePage",
+      "type": "object"
+    },
     "OrgRetentionUpdate": {
       "additionalProperties": false,
       "description": "``PUT /api/orgs/{org_id}/retention``; a shortening needs ``confirm=true``.",
@@ -34357,6 +35234,52 @@
         "policy"
       ],
       "title": "OrgRetentionWrite",
+      "type": "object"
+    },
+    "OrgUsageSummary": {
+      "properties": {
+        "from_date": {
+          "format": "date",
+          "title": "From Date",
+          "type": "string"
+        },
+        "org_id": {
+          "format": "uuid",
+          "title": "Org Id",
+          "type": "string"
+        },
+        "request_count": {
+          "default": 0,
+          "title": "Request Count",
+          "type": "integer"
+        },
+        "to_date": {
+          "format": "date",
+          "title": "To Date",
+          "type": "string"
+        },
+        "total_cost_usd": {
+          "default": 0.0,
+          "title": "Total Cost Usd",
+          "type": "number"
+        },
+        "total_tokens_in": {
+          "default": 0,
+          "title": "Total Tokens In",
+          "type": "integer"
+        },
+        "total_tokens_out": {
+          "default": 0,
+          "title": "Total Tokens Out",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "org_id",
+        "from_date",
+        "to_date"
+      ],
+      "title": "OrgUsageSummary",
       "type": "object"
     },
     "OrganizationPatch": {

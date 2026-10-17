@@ -52,6 +52,9 @@ def _resolve_window(
     return from_date, to_date
 
 
+resolve_window = _resolve_window  # shared with the org usage views (H-03)
+
+
 async def _label_map(
     db: AsyncSession,
     target_kind: TargetKind,

@@ -57,6 +57,8 @@ logger = logging.getLogger(__name__)
 
 SCOPE_INFO_KEY = "moldy_db_scope"
 REASON_INFO_KEY = "moldy_db_reason"
+# Audit attribution only (14.1, H-03): never part of the RLS scope above.
+ORG_INFO_KEY = "moldy_db_org"
 _SETTINGS = ("app.tenant_id", "app.user_id", "app.scope")
 
 
@@ -99,6 +101,15 @@ def _scoped[S](session: S, values: dict[str, str] | None, reason: str | None = N
     return session
 
 
+def _remember_org[S](session: S, ctx: TenantScoped | None) -> S:
+    """Record the context's organization; two different ones leave it ambiguous (None)."""
+    info = getattr(session, "info", None)
+    org_id = getattr(ctx, "org_id", None)
+    if isinstance(info, dict) and isinstance(org_id, UUID):
+        info[ORG_INFO_KEY] = org_id if info.get(ORG_INFO_KEY, org_id) == org_id else None
+    return session
+
+
 @overload
 def tenant_session(ctx: TenantScoped | None) -> ShieldedAsyncSession: ...
 @overload
@@ -108,7 +119,7 @@ def tenant_session(
 ) -> object:
     """A company session; ``None`` is unbound (fails closed under RLS) until ``bind_tenant``."""
     session = (maker or async_session)()
-    return _scoped(session, None if ctx is None else _tenant_values(ctx))
+    return _remember_org(_scoped(session, None if ctx is None else _tenant_values(ctx)), ctx)
 
 
 @overload
@@ -128,7 +139,7 @@ def tenant_sessions(
     ctx: TenantScoped, *, maker: Callable[[], object] | None = None
 ) -> Callable[[], object]:
     """Factory form for injection points; the default maker is read per call."""
-    return lambda: _scoped((maker or async_session)(), _tenant_values(ctx))
+    return lambda: _remember_org(_scoped((maker or async_session)(), _tenant_values(ctx)), ctx)
 
 
 @overload
@@ -187,6 +198,13 @@ def session_tenant(session: object) -> UUID | None:
     return UUID(raw) if isinstance(raw, str) else None
 
 
+def session_org(session: object) -> UUID | None:
+    """The organization of the context a session was opened/bound with (audit org_id)."""
+    info = getattr(session, "info", None)
+    value = info.get(ORG_INFO_KEY) if isinstance(info, dict) else None
+    return value if isinstance(value, UUID) else None
+
+
 async def bind_tenant(session: AsyncSession, ctx: TenantScoped) -> None:
     """Bind an unbound request session once its company is resolved.
 
@@ -202,6 +220,7 @@ async def bind_tenant(session: AsyncSession, ctx: TenantScoped) -> None:
             "bind the database session at its root, not in a nested transaction"
         )
     session.info[SCOPE_INFO_KEY] = values
+    _remember_org(session, ctx)
     if session.in_transaction():
         connection = (await session.connection()).sync_connection
         if connection is not None and _supports_transaction_settings(connection):

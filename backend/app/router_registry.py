@@ -34,6 +34,7 @@ def include_app_routers(app: FastAPI) -> None:
         memory,
         models,
         org_assignments,
+        org_audit,
         org_catalog,
         org_group_members,
         org_groups,
@@ -41,6 +42,7 @@ def include_app_routers(app: FastAPI) -> None:
         org_members,
         org_retention,
         org_search,
+        org_usage,
         orgs,
         platform_tenant_creation,
         platform_tenant_directory,
@@ -58,6 +60,7 @@ def include_app_routers(app: FastAPI) -> None:
         skills,
         system_llm_settings,
         templates,
+        tenant_audit,
         tenant_catalog,
         tenant_credentials,
         tenant_invitations,
@@ -103,6 +106,8 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(org_catalog.router)
     app.include_router(org_retention.router)
     app.include_router(org_search.router)
+    app.include_router(org_usage.router)
+    app.include_router(org_audit.router)
     app.include_router(org_members.router)
     app.include_router(org_invitations.router)
     app.include_router(org_groups.router)
@@ -111,6 +116,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(tenant_overview.router)
     app.include_router(tenant_policies.router)
     app.include_router(tenant_catalog.router)
+    app.include_router(tenant_audit.router)
     app.include_router(tenant_models.router)
     app.include_router(tenant_credentials.router)
     app.include_router(tenant_publication_requests.router)

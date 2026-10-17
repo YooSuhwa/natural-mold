@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import base64
-import json
 import logging
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import Request
-from sqlalchemy import and_, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import (
@@ -22,17 +19,19 @@ from app.database import (
 )
 from app.dependencies import CurrentUser
 from app.models.audit_event import AuditEvent
+from app.services.audit_listing import (
+    AuditEventPage,
+    AuditScope,
+    AuditScopeFilter,
+    cursor_condition,
+    page_of,
+    tenant_scope_conditions,
+)
+from app.services.audit_org_scope import event_org_scope
 
 logger = logging.getLogger(__name__)
 
-AuditScope = Literal["mine", "all"]
 AuditOutcome = Literal["success", "failure", "denied", "skipped"]
-
-
-@dataclass(frozen=True)
-class AuditEventPage:
-    items: list[AuditEvent]
-    next_cursor: str | None
 
 
 def _truncate(value: str | None, limit: int) -> str | None:
@@ -77,20 +76,6 @@ def sanitize_reason(message: str | None) -> str | None:
     return _truncate(message, 500)
 
 
-def _encode_cursor(row: AuditEvent) -> str:
-    payload = {"created_at": row.created_at.isoformat(), "id": str(row.id)}
-    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
-
-
-def _decode_cursor(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
-    if not cursor:
-        return None
-    padded = cursor + "=" * (-len(cursor) % 4)
-    payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
-    return datetime.fromisoformat(payload["created_at"]), uuid.UUID(payload["id"])
-
-
 async def record_event(
     db: AsyncSession,
     *,
@@ -119,8 +104,16 @@ async def record_event(
     tenant_id: uuid.UUID | None = None,
     org_id: uuid.UUID | None = None,
 ) -> AuditEvent:
-    row = AuditEvent(
+    tenant_id, org_id = await event_org_scope(
+        db,
         tenant_id=tenant_id or session_tenant(db),
+        org_id=org_id,
+        target_type=target_type,
+        target_id=target_id,
+        metadata=metadata,
+    )
+    row = AuditEvent(
+        tenant_id=tenant_id,
         org_id=org_id,
         actor_type=actor_type,
         actor_user_id=actor_user_id,
@@ -232,12 +225,15 @@ async def list_events(
     run_id: str | None = None,
     created_from: datetime | None = None,
     created_to: datetime | None = None,
+    scope_filter: AuditScopeFilter | None = None,
 ) -> AuditEventPage:
     if scope == "all" and not viewer_is_super_user:
         raise PermissionError("scope=all requires super_user")
 
     stmt = select(AuditEvent)
     conditions = []
+    if scope in ("org", "tenant"):
+        conditions.extend(tenant_scope_conditions(scope, scope_filter))
     if scope == "mine":
         conditions.append(
             or_(
@@ -267,15 +263,8 @@ async def list_events(
     if created_to:
         conditions.append(AuditEvent.created_at <= created_to)
 
-    decoded = _decode_cursor(cursor)
-    if decoded:
-        created_at, event_id = decoded
-        conditions.append(
-            or_(
-                AuditEvent.created_at < created_at,
-                and_(AuditEvent.created_at == created_at, AuditEvent.id < event_id),
-            )
-        )
+    if (after := cursor_condition(cursor)) is not None:
+        conditions.append(after)
 
     if conditions:
         stmt = stmt.where(*conditions)
@@ -284,7 +273,4 @@ async def list_events(
     result = await db.execute(
         stmt.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(safe_limit + 1)
     )
-    rows = list(result.scalars().all())
-    items = rows[:safe_limit]
-    next_cursor = _encode_cursor(items[-1]) if len(rows) > safe_limit and items else None
-    return AuditEventPage(items=items, next_cursor=next_cursor)
+    return page_of(list(result.scalars().all()), safe_limit)
