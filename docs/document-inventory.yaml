@@ -351,6 +351,9 @@ documents:
   - path: docs/exec-plans/org-authz-native-scope-matrix.md
     lifecycle: generated-evidence
     status: generated
+  - path: docs/exec-plans/org-authz-pr.md
+    lifecycle: reference/spec
+    status: reference
   - path: docs/exec-plans/org-authz-progress.md
     lifecycle: active-plan
     status: active
@@ -368,6 +371,9 @@ documents:
     lifecycle: reference/spec
     status: reference
   - path: docs/operator-setup.md
+    lifecycle: canonical-current
+    status: current
+  - path: docs/org-authz-operations.md
     lifecycle: canonical-current
     status: current
   - path: docs/prompt/1.md/1.md

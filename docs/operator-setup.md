@@ -84,6 +84,8 @@ uv run alembic upgrade head
 
 ## 6. 관련 문서
 
+- [조직·권한 운영 가이드](org-authz-operations.md) — legacy → shadow → 유형별 enforce → RLS 전환,
+  새 설정, 마이그레이션 되돌리기, OpenFGA·회사 데이터 운영, 모니터링
 - `docs/exec-plans/org-authz-plan.html` 15.1·15.2.1 — Compose 구성과 전송 구간 보호 기준
 - `docs/design-docs/adr-016-multiuser-auth.md` — 인증/세션 전체 설계
 - `backend/.env.example` — 전체 변수 목록 + 인라인 주석
