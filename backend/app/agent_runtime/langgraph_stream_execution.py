@@ -17,6 +17,7 @@ from typing import Any
 from app.agent_runtime.agent_stream_facade_bindings import langgraph_attr
 from app.agent_runtime.message_utils import RuntimeMessage
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
+from app.agent_runtime.run_start_events import excluded_capabilities_of
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
 from app.observability.langfuse import LangfuseTraceRecord
@@ -200,6 +201,8 @@ async def _stream_langgraph_body(
                 # AD-5 — resolve_agent_context가 드래프트 요약을 cfg에 채우면
                 # stream head에서 moldy.skill_draft로 방출된다 (동일 계약).
                 skill_draft_brief=cfg.skill_draft_brief,
+                # F-06 / 13.6 — moldy.excluded_capabilities (counts only, no ids).
+                excluded_capabilities=excluded_capabilities_of(cfg),
                 # AD-4 — 인터럽트 review_configs에 세션 동의 옵션 플래그 주석.
                 session_consent_tools=cfg.skill_builder_consent_offer_tools,
                 run_metrics=run_metrics,

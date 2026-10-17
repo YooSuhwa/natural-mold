@@ -59,6 +59,11 @@ MEMORY_RECALLED: Final = "moldy.memory_recalled"
 # ``moldy.skill_validation`` — ``validate_skill``/``finalize_skill`` 도구 결과
 # projection (memory_event_projection 패턴), 기존 validation_result 스키마 그대로.
 SKILL_DRAFT: Final = "moldy.skill_draft"
+# F-06 / plan 13.6 — optional capabilities the run's access plan left out. Emitted once at
+# stream head (v3: stable id ``<run_id>:excluded_capabilities``; legacy SSE: right after
+# ``message_start``) only when non-empty, as ``{items: [{type, reason, count}], total}`` —
+# per-type counts with reason ``broken|denied``, never resource ids. Not a memory event.
+EXCLUDED_CAPABILITIES: Final = "moldy.excluded_capabilities"
 SKILL_VALIDATION: Final = "moldy.skill_validation"
 MEMORY_PROPOSED: Final = "memory_proposed"
 MEMORY_SAVED: Final = "memory_saved"

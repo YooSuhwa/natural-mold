@@ -21,6 +21,7 @@ from app.agent_runtime.memory_event_projection import (
 )
 from app.agent_runtime.message_utils import content_to_text, extract_usage_breakdown
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
+from app.agent_runtime.run_start_events import excluded_capabilities_payload
 from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.agent_runtime.usage_timing import compute_usage_timing
 from app.config import settings
@@ -243,6 +244,7 @@ async def stream_agent_response(
     run_id: str | None = None,
     subagent_display_names: dict[str, str] | None = None,
     artifact_recorder: ArtifactEventRecorder | None = None,
+    excluded_capabilities: list[dict[str, str]] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream agent SSE events.
 
@@ -398,6 +400,8 @@ async def stream_agent_response(
     stream_started_at = time.monotonic()
     yield emit(event_names.MESSAGE_START, start_data)
     try:
+        if excluded := excluded_capabilities_payload(excluded_capabilities):
+            yield emit(event_names.EXCLUDED_CAPABILITIES, excluded)  # F-06 / plan 13.6
         try:
             async for chunk in agent.astream(
                 actual_input,

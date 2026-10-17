@@ -2518,6 +2518,25 @@
       "scopeAgent": "에이전트",
       "hiddenContent": "내용 비공개"
     },
+    "excludedCapabilities": {
+      "title": "이 실행에서 일부 기능이 제외되었습니다",
+      "listLabel": "제외된 기능",
+      "group": "{type} {count}개 · {reason}",
+      "type": {
+        "tool": "도구",
+        "mcp_tool": "MCP 도구",
+        "skill": "스킬",
+        "agent": "하위 에이전트",
+        "llm_model": "모델",
+        "other": "기타 기능"
+      },
+      "reason": {
+        "broken": "연결 끊김",
+        "denied": "권한 없음"
+      },
+      "requestAccessHint": "권한이 없는 기능이 필요하면 해당 자원의 소유자나 관리자에게 권한을 요청하세요.",
+      "dismiss": "알림 닫기"
+    },
     "followup": {
       "hint": "→ 키로 입력",
       "acceptLabel": "제안 입력: {text}",

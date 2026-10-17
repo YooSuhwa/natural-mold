@@ -31,6 +31,11 @@ import {
 } from '@/lib/stores/chat-store'
 import { upsertArtifactList, upsertChatArtifactAtom } from '@/lib/stores/chat-artifacts'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import {
+  setExcludedCapabilitiesAtom,
+  startExcludedCapabilitiesRunAtom,
+} from '@/lib/stores/chat-excluded-capabilities'
+import { EXCLUDED_CAPABILITIES_EVENT, parseExcludedCapabilities } from './excluded-capabilities'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
 import { streamResumeDecisions } from '@/lib/sse/stream-resume'
@@ -425,6 +430,8 @@ export function useChatRuntime({
   const setChatCancelInFlight = useSetAtom(chatCancelInFlightAtom)
   const upsertArtifact = useSetAtom(upsertChatArtifactAtom)
   const setRightRail = useSetAtom(chatRightRailAtom)
+  const setExcludedCapabilities = useSetAtom(setExcludedCapabilitiesAtom)
+  const startExcludedRun = useSetAtom(startExcludedCapabilitiesRunAtom)
   const queryClient = useQueryClient()
   const tReconnect = useTranslations('chat.reconnect')
   const tPage = useTranslations('chat.page')
@@ -638,6 +645,8 @@ export function useChatRuntime({
       // 스트림이 throw/abort 없이 끝까지 소비됐는지 — finally 에서
       // ``consumedRunIdRef`` 기록 여부를 결정한다.
       let endedNormally = false
+      // F-06 / 13.6 — the run this stream belongs to (from `message_start`).
+      let streamRunId: string | undefined
       const cancelPendingFlush = () => {
         if (rafId === null) return
         cancelAnimationFrame(rafId)
@@ -777,6 +786,19 @@ export function useChatRuntime({
                   },
                 })
               }
+              break
+            }
+            case 'message_start': {
+              // F-06 / 13.6 — a new run clears the banner (exclusions are sent only if any).
+              streamRunId = event.data.id || assistantId
+              startExcludedRun({ conversationId: conversationIdRef.current, runId: streamRunId })
+              break
+            }
+            case EXCLUDED_CAPABILITIES_EVENT: {
+              const groups = parseExcludedCapabilities(event.data)
+              if (!groups) break
+              const runId = streamRunId ?? assistantId
+              setExcludedCapabilities({ conversationId: conversationIdRef.current, runId, groups })
               break
             }
             case 'memory_proposed': {
@@ -950,6 +972,8 @@ export function useChatRuntime({
       setReconnectState,
       upsertArtifact,
       setRightRail,
+      setExcludedCapabilities,
+      startExcludedRun,
       tReconnect,
       tPage,
       tMemory,

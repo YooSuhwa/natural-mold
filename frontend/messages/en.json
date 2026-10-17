@@ -2518,6 +2518,25 @@
       "scopeAgent": "Agent",
       "hiddenContent": "Content hidden"
     },
+    "excludedCapabilities": {
+      "title": "Some capabilities were left out of this run",
+      "listLabel": "Excluded capabilities",
+      "group": "{type} ×{count} · {reason}",
+      "type": {
+        "tool": "Tool",
+        "mcp_tool": "MCP tool",
+        "skill": "Skill",
+        "agent": "Subagent",
+        "llm_model": "Model",
+        "other": "Other"
+      },
+      "reason": {
+        "broken": "broken link",
+        "denied": "no permission"
+      },
+      "requestAccessHint": "If you need a capability you lack permission for, ask its owner or an admin for access.",
+      "dismiss": "Dismiss notice"
+    },
     "followup": {
       "hint": "→ to fill",
       "acceptLabel": "Fill suggestion: {text}",

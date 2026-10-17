@@ -23,6 +23,7 @@ from app.agent_runtime.prepared_run_dispatch import (
     lease_run_config,
     prepared_dispatch,
 )
+from app.agent_runtime.run_start_events import excluded_capabilities_of
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
 from app.observability.langfuse import LangfuseTraceRecord
@@ -169,6 +170,7 @@ async def _stream_with_secrets(
                 run_id=run_id,
                 subagent_display_names=cfg.subagent_display_names,
                 artifact_recorder=artifact_recorder,
+                excluded_capabilities=excluded_capabilities_of(cfg),
             ):
                 yield chunk
     except asyncio.CancelledError:

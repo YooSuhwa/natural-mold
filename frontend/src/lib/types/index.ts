@@ -501,6 +501,7 @@ export type SSEEventType =
   | 'error'
   | 'interrupt'
   | 'stale'
+  | 'moldy.excluded_capabilities'
 
 // ── HiTL — interrupt wire (LangChain HumanInTheLoopMiddleware 표준) ──────
 
@@ -604,6 +605,7 @@ export type SSEEvent = { id?: string } & (
       data: { tool_call_id?: string; tool_name: string; result: string }
     }
   | { event: 'file_event'; data: import('./artifact').FileEventPayload }
+  | { event: 'moldy.excluded_capabilities'; data: unknown } // F-06 / 13.6 counts, no ids
   | { event: 'memory_proposed'; data: import('./memory').MemoryEventPayload }
   | { event: 'memory_saved'; data: import('./memory').MemoryEventPayload }
   | { event: 'memory_rejected'; data: import('./memory').MemoryEventPayload }
