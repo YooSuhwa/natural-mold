@@ -11786,6 +11786,116 @@
         ]
       }
     },
+    "/api/orgs/{org_id}/retention": {
+      "get": {
+        "operationId": "get_org_retention_api_orgs__org_id__retention_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgRetentionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Org Retention",
+        "tags": [
+          "organization administration"
+        ]
+      },
+      "put": {
+        "operationId": "put_org_retention_api_orgs__org_id__retention_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgRetentionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgRetentionWrite"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Org Retention",
+        "tags": [
+          "organization administration"
+        ]
+      }
+    },
     "/api/orgs/{org_id}/roles": {
       "get": {
         "operationId": "list_roles_api_orgs__org_id__roles_get",
@@ -32428,6 +32538,117 @@
       "title": "OAuth2AuthStartResponse",
       "type": "object"
     },
+    "OrgRetentionUpdate": {
+      "additionalProperties": false,
+      "description": "``PUT /api/orgs/{org_id}/retention``; a shortening needs ``confirm=true``.",
+      "properties": {
+        "agent_trash_days": {
+          "default": 30,
+          "maximum": 90.0,
+          "minimum": 7.0,
+          "title": "Agent Trash Days",
+          "type": "integer"
+        },
+        "confirm": {
+          "default": false,
+          "title": "Confirm",
+          "type": "boolean"
+        },
+        "conversation_days": {
+          "anyOf": [
+            {
+              "maximum": 3650.0,
+              "minimum": 30.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Conversation Days"
+        },
+        "removed_member_days": {
+          "default": 30,
+          "maximum": 3650.0,
+          "minimum": 7.0,
+          "title": "Removed Member Days",
+          "type": "integer"
+        }
+      },
+      "title": "OrgRetentionUpdate",
+      "type": "object"
+    },
+    "OrgRetentionView": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_trash_days": {
+          "default": 30,
+          "maximum": 90.0,
+          "minimum": 7.0,
+          "title": "Agent Trash Days",
+          "type": "integer"
+        },
+        "conversation_days": {
+          "anyOf": [
+            {
+              "maximum": 3650.0,
+              "minimum": 30.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Conversation Days"
+        },
+        "removed_member_days": {
+          "default": 30,
+          "maximum": 3650.0,
+          "minimum": 7.0,
+          "title": "Removed Member Days",
+          "type": "integer"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "updated_at"
+      ],
+      "title": "OrgRetentionView",
+      "type": "object"
+    },
+    "OrgRetentionWrite": {
+      "additionalProperties": false,
+      "description": "``saved=false`` with a ``preview``: nothing changed, resend with ``confirm=true``.",
+      "properties": {
+        "policy": {
+          "$ref": "#/components/schemas/OrgRetentionView"
+        },
+        "preview": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RetentionPreview"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "saved": {
+          "title": "Saved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "saved",
+        "policy"
+      ],
+      "title": "OrgRetentionWrite",
+      "type": "object"
+    },
     "OrganizationPatch": {
       "additionalProperties": false,
       "properties": {
@@ -34167,6 +34388,39 @@
         "decisions"
       ],
       "title": "ResumeRequest",
+      "type": "object"
+    },
+    "RetentionPreview": {
+      "additionalProperties": false,
+      "description": "What the next sweep would delete under the submitted (unsaved) policy.",
+      "properties": {
+        "agents": {
+          "default": 0,
+          "title": "Agents",
+          "type": "integer"
+        },
+        "audit_events": {
+          "default": 0,
+          "title": "Audit Events",
+          "type": "integer"
+        },
+        "conversations": {
+          "default": 0,
+          "title": "Conversations",
+          "type": "integer"
+        },
+        "removed_member_conversations": {
+          "default": 0,
+          "title": "Removed Member Conversations",
+          "type": "integer"
+        },
+        "removed_member_memories": {
+          "default": 0,
+          "title": "Removed Member Memories",
+          "type": "integer"
+        }
+      },
+      "title": "RetentionPreview",
       "type": "object"
     },
     "RoleAssignment": {
@@ -39206,6 +39460,10 @@
       "additionalProperties": false,
       "description": "``GET /api/tenants/{tenant_id}/policies`` (company members may read).",
       "properties": {
+        "audit_retention_days": {
+          "title": "Audit Retention Days",
+          "type": "integer"
+        },
         "marketplace_tenant_publish": {
           "enum": [
             "disabled",
@@ -39215,6 +39473,16 @@
           "title": "Marketplace Tenant Publish",
           "type": "string"
         },
+        "preview": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RetentionPreview"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "updated_at": {
           "format": "date-time",
           "title": "Updated At",
@@ -39223,6 +39491,7 @@
       },
       "required": [
         "marketplace_tenant_publish",
+        "audit_retention_days",
         "updated_at"
       ],
       "title": "TenantPolicies",
@@ -39230,7 +39499,26 @@
     },
     "TenantPoliciesUpdate": {
       "additionalProperties": false,
+      "description": "An omitted ``audit_retention_days`` keeps its value; shortening it needs ``confirm``.",
       "properties": {
+        "audit_retention_days": {
+          "anyOf": [
+            {
+              "maximum": 3650.0,
+              "minimum": 90.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Audit Retention Days"
+        },
+        "confirm": {
+          "default": false,
+          "title": "Confirm",
+          "type": "boolean"
+        },
         "marketplace_tenant_publish": {
           "enum": [
             "disabled",

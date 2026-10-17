@@ -13,7 +13,13 @@ from fastapi import Request
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import TenantScoped, async_session, platform_session, tenant_session
+from app.database import (
+    TenantScoped,
+    async_session,
+    platform_session,
+    session_tenant,
+    tenant_session,
+)
 from app.dependencies import CurrentUser
 from app.models.audit_event import AuditEvent
 
@@ -110,8 +116,10 @@ async def record_event(
     ip_address: str | None = None,
     user_agent_value: str | None = None,
     metadata: dict[str, Any] | None = None,
+    tenant_id: uuid.UUID | None = None,
 ) -> AuditEvent:
     row = AuditEvent(
+        tenant_id=tenant_id or session_tenant(db),
         actor_type=actor_type,
         actor_user_id=actor_user_id,
         actor_api_key_id=actor_api_key_id,

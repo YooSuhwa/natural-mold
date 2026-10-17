@@ -921,3 +921,34 @@ def register_authz_jobs() -> None:
             max_instances=1,
         )
     logger.info("Scheduled authz jobs: %s", ", ".join(job_id for job_id, _ in planned) or "none")
+
+
+# ---------------------------------------------------------------------------
+# E-08 retention sweep (plan 6.2, 10.7): body in ``app.services.retention.job``
+# ---------------------------------------------------------------------------
+
+
+async def retention_sweep_run() -> None:
+    """Daily per-company retention; only scheduled with ``retention_sweep_enabled``."""
+
+    from app.services.retention import job
+
+    try:
+        await job.run_retention_sweep(still_leader=scheduler_leader_is_healthy)
+    except Exception:  # noqa: BLE001 — keep cron alive
+        logger.exception("retention sweep failed; will retry next run")
+
+
+def register_retention_sweep_job() -> None:
+    scheduler = get_scheduler()
+    job_id = LeaderSchedulerJobId.RETENTION_SWEEP
+    if not settings.retention_sweep_enabled:
+        if scheduler.running and scheduler.get_job(job_id) is not None:
+            scheduler.remove_job(job_id)
+        return
+    _register_cron_job(
+        job_id=job_id,
+        cron_expr=settings.retention_sweep_cron,
+        cron_setting_name="retention_sweep_cron",
+        log_label="retention sweep",
+    )

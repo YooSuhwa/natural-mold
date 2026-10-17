@@ -32,7 +32,8 @@ class CompanyRoute:
 
 _T: Final = "/api/tenants/{tenant_id}"
 _A: Final = "/api/admin/tenants"
-COMPANY_PREFIXES: Final = ("/api/tenants/", "/api/admin/tenants")
+_R: Final = "/api/orgs/{org_id}/retention"
+COMPANY_PREFIXES: Final = ("/api/tenants/", "/api/admin/tenants", _R)
 B11_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"GET {_T}": CompanyRoute("SELF", 200, False),
     f"PATCH {_T}": CompanyRoute("SELF", 200, True),
@@ -85,7 +86,12 @@ E07_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"PATCH {_T}/credentials/{{credential_id}}": CompanyRoute(_G, 200, False),
     f"DELETE {_T}/credentials/{{credential_id}}": CompanyRoute(_G, 204, False),
 }
-COMPANY_ROUTES: Final = {**B11_ROUTES, **B12_ROUTES, **E09_ROUTES, **E07_ROUTES}
+# E-08 organization retention policy (9.7, S08); audit retention rides E-09 /policies.
+E08_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_R}": CompanyRoute("SELF", 200, False),
+    f"PUT {_R}": CompanyRoute("GOVERNANCE", 200, True),
+}
+COMPANY_ROUTES: Final = {**B11_ROUTES, **B12_ROUTES, **E09_ROUTES, **E07_ROUTES, **E08_ROUTES}
 # Later-task paths from the contract's route-level crosswalk (rows 7-8, 24-35, 38-57),
 # owned by C05/E07/E08/E09/H03/H06/H08/I07. Matched app-wide by path, with parameter
 # names erased, at the path itself or below it (CRUD collection/item routes).
@@ -101,7 +107,6 @@ DEFERRED_PATHS: Final = frozenset(
         "/api/tenants/{}/limits",
         "/api/tenants/{}/domains",
         "/api/tenants/{}/sso-connections",
-        "/api/orgs/{}/retention",
         "/api/usage-limits",
         "/api/me/usage-limits",
         "/api/auth/sso",

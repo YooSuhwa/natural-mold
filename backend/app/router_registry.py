@@ -35,6 +35,7 @@ def include_app_routers(app: FastAPI) -> None:
         org_groups,
         org_invitations,
         org_members,
+        org_retention,
         org_search,
         orgs,
         platform_tenant_creation,
@@ -94,6 +95,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(models.router)
     app.include_router(orgs.router)
     app.include_router(org_catalog.router)
+    app.include_router(org_retention.router)
     app.include_router(org_search.router)
     app.include_router(org_members.router)
     app.include_router(org_invitations.router)

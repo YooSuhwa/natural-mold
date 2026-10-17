@@ -61,3 +61,6 @@ TENANT_CREDENTIAL_CREATE: Final = "tenant.credential_create"
 TENANT_CREDENTIAL_UPDATE: Final = "tenant.credential_update"
 TENANT_CREDENTIAL_DELETE: Final = "tenant.credential_delete"
 TENANT_LLM_SETTINGS_UPDATE: Final = "tenant.llm_settings_update"
+# E-08 retention (14.1 "정책·한도"): policy changes and what the daily sweep deleted.
+POLICY_RETENTION_UPDATE: Final = "policy.retention_update"
+RETENTION_PURGE: Final = "retention.purge"

@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
+from app.schemas.retention import AuditRetentionDays, RetentionPreview
+
 TenantPublishPolicy = Literal["disabled", "open", "approval"]
 TenantPublicationStatus = Literal["none", "pending", "approved", "rejected"]
 RejectionNote = Annotated[
@@ -19,13 +21,20 @@ class TenantPolicies(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     marketplace_tenant_publish: TenantPublishPolicy
+    audit_retention_days: int  # E-08, 14.1 (default 365)
     updated_at: datetime
+    # ``PUT`` only: a shortened audit retention was not saved; resend with ``confirm``.
+    preview: RetentionPreview | None = None
 
 
 class TenantPoliciesUpdate(BaseModel):
+    """An omitted ``audit_retention_days`` keeps its value; shortening it needs ``confirm``."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     marketplace_tenant_publish: TenantPublishPolicy
+    audit_retention_days: AuditRetentionDays | None = None
+    confirm: bool = False
 
 
 class TenantPublicationState(BaseModel):

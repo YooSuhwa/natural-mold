@@ -42,9 +42,11 @@ from app.scheduler import (
     register_mcp_health_job,
     register_orphan_attachment_gc_job,
     register_refresh_token_gc_job,
+    register_retention_sweep_job,
     register_skill_draft_gc_job,
     register_skill_runtime_cleanup_job,
     release_scheduler_leader,
+    retention_sweep_run,
     rotate_credentials_to_active_key,
     scheduler_leader_is_healthy,
     skill_draft_gc_run,
@@ -96,6 +98,8 @@ async def run_leader_scheduler_job(job_id: LeaderSchedulerJobId) -> None:
             | LeaderSchedulerJobId.AUTHZ_ALERT
         ):
             await authz_job_run(job_id)
+        case LeaderSchedulerJobId.RETENTION_SWEEP:
+            await retention_sweep_run()
         case unreachable:
             assert_never(unreachable)
 
@@ -177,6 +181,7 @@ async def activate_scheduler() -> None:
     cleanup_skill_runtime_roots()
     register_skill_runtime_cleanup_job()
     register_authz_jobs()
+    register_retention_sweep_job()
     trigger_count = await reconcile_trigger_jobs()
     if scheduler_was_started:
         scheduler.resume()

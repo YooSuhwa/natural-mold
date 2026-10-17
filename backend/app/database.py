@@ -179,6 +179,14 @@ def _apply_scope(
     logger.debug("unbound database session began a transaction under RLS (fails closed)")
 
 
+def session_tenant(session: object) -> UUID | None:
+    """The company a scoped session is bound to, else ``None`` (E-08 audit retention)."""
+    info = getattr(session, "info", None)  # test doubles may not carry a dict
+    values = info.get(SCOPE_INFO_KEY) if isinstance(info, dict) else None
+    raw = values.get("app.tenant_id") if isinstance(values, dict) else None
+    return UUID(raw) if isinstance(raw, str) else None
+
+
 async def bind_tenant(session: AsyncSession, ctx: TenantScoped) -> None:
     """Bind an unbound request session once its company is resolved.
 

@@ -144,6 +144,7 @@ async def test_scheduler_activation_reconciles_persisted_jobs_before_resume(
         "cleanup_skill_runtime_roots",
         "register_skill_runtime_cleanup_job",
         "register_authz_jobs",
+        "register_retention_sweep_job",
     ):
         monkeypatch.setattr(runtime, registration_name, lambda: None)
 

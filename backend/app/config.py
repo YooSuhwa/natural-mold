@@ -89,6 +89,11 @@ class Settings(AuthzSettings):
     # are BOTH older than the retention window AND have no recorded messages.
     draft_conversation_gc_cron: str = "15 * * * *"
     draft_conversation_gc_retention_hours: int = 24
+    # E-08 daily per-company retention sweep (plan 6.2, 10.7, 14.1). Off by default so
+    # an upgrade never starts deleting conversations, trashed agents, removed members'
+    # data or company audit rows until an operator turns it on.
+    retention_sweep_enabled: bool = False
+    retention_sweep_cron: str = "20 3 * * *"
     # Skill draft workspace GC (APScheduler crontab; default: hourly :45).
     # ``data/skill-drafts/<session_id>/`` dirs are deleted by SESSION STATE,
     # not mtime (spec AD-2): active/confirming sessions are preserved

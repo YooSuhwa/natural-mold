@@ -1,5 +1,7 @@
 """Metadata-only authority for Agent archive, restore, and purge governance."""
 
+from collections.abc import Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, assert_never
@@ -15,17 +17,24 @@ from app.authz.error_codes import (
 )
 from app.authz.org_administrators import active_administrators
 from app.authz.org_context import OrgContext
+from app.config import settings
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found
 from app.exceptions import AppError
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
+from app.schemas.retention import trash_delete_at
 from app.services import audit_service
 from app.tenancy.context import resolve_tenant_context
 
 AgentLifecycleAction = Literal["archive", "restore", "purge"]
 AgentLifecycleState = Literal["active", "archived_stopping", "archived_stopped", "purged"]
+# Set by the E-08 retention sweep around ``purge_agent``: extra ``agent.purge`` audit
+# metadata marking a system purge (audit only; it grants nothing).
+PURGE_AUDIT_METADATA: ContextVar[Mapping[str, object] | None] = ContextVar(
+    "agent_purge_audit_metadata", default=None
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,7 +143,9 @@ async def load_agent_lifecycle_authority(
             archived_by_user_id=target.archived_by,
             archived_at=target.archived_at,
             lifecycle_state="active" if target.archived_at is None else "archived_stopping",
-            policy_delete_at=None,
+            policy_delete_at=trash_delete_at(target.archived_at, organization.settings)
+            if settings.retention_sweep_enabled and target.archived_at is not None
+            else None,
             can_archive=can_archive,
             can_restore=can_restore,
             can_purge=can_purge,
@@ -204,4 +215,7 @@ async def record_agent_lifecycle_success(
         target_name_snapshot=authority.name,
         target_owner_user_id=authority.owner_user_id,
         outcome="success",
+        metadata=dict(extra)
+        if action == "purge" and (extra := PURGE_AUDIT_METADATA.get())
+        else None,
     )
