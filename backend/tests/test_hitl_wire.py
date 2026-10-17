@@ -692,6 +692,8 @@ class TestRestoreResumePayloadEditGate:
                 conversation=MagicMock(),
                 resume=resume,
                 pending_interrupts=[],
+                db=MagicMock(),
+                context=MagicMock(),
             )
 
         decision = restored["intr-1"]["decisions"][0]
@@ -717,6 +719,8 @@ class TestRestoreResumePayloadEditGate:
                 conversation=MagicMock(),
                 resume=resume,
                 pending_interrupts=[],
+                db=MagicMock(),
+                context=MagicMock(),
             )
 
         assert restored == {"intr-1": response}

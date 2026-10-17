@@ -192,7 +192,7 @@ async def test_rest_resume_checks_a_legacy_trace_interrupt_too(
     )
     await db.commit()
 
-    async def checkpoint(_config: Any) -> list[dict[str, Any]]:
+    async def checkpoint(_config: Any, *_saver: Any) -> list[dict[str, Any]]:
         return [{"interrupt_id": "cp-1", "payload": approval_payload(), "namespace": []}]
 
     monkeypatch.setattr(

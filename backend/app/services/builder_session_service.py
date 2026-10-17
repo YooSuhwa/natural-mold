@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.agent_runtime.streaming import format_sse
-from app.authz.builder_scope import resolve_builder_actor
+from app.authz.builder_scope import builder_checkpointer, resolve_builder_actor
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import (
     PrivateResourceActor,
@@ -239,8 +239,8 @@ async def run_v3_message_stream(
         tools_catalog = await get_tools_catalog(db, context)
         default_model_name = await _get_default_model_name(db)
         middlewares_catalog = _get_middlewares_catalog()
+        checkpointer = await builder_checkpointer(db, session_id, user_id, saver=get_checkpointer)
 
-    checkpointer = get_checkpointer()
     graph_compiled = compile_graph(checkpointer)
     config: dict[str, Any] = {
         "configurable": {"thread_id": str(session_id), **checkpoint_tenant(tenant_id)}
@@ -295,8 +295,7 @@ async def run_v3_resume_stream(
 
     async with tenant_session(_scope(tenant_id, user_id), maker=async_session_factory) as db:
         await resolve_builder_actor(db, session_id, user_id)
-
-    checkpointer = get_checkpointer()
+        checkpointer = await builder_checkpointer(db, session_id, user_id, saver=get_checkpointer)
     graph_compiled = compile_graph(checkpointer)
     config: dict[str, Any] = {
         "configurable": {"thread_id": str(session_id), **checkpoint_tenant(tenant_id)}

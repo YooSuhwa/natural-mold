@@ -9,6 +9,7 @@ from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
+from app.agent_runtime.conversation_checkpointer import loaded_conversation_checkpointer
 from app.agent_runtime.mcp_app_projection import (
     extract_mcp_app_candidates,
     project_verified_mcp_apps,
@@ -61,7 +62,9 @@ async def load_live_thread_history(
     if request.conversation.agent_lifecycle_state == "purged":
         raise ValueError("purged conversations require retained checkpoint history")
     try:
-        checkpointer = request.checkpointer_factory()
+        checkpointer = await loaded_conversation_checkpointer(
+            request.conversation, request.context, db=request.db, saver=request.checkpointer_factory
+        )
     except RuntimeError:
         return []
     secrets: tuple[str, ...] | None = None

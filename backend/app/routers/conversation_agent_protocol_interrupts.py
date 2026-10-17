@@ -5,6 +5,7 @@ from typing import Any, TypedDict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.conversation_checkpointer import conversation_checkpointer, deferred_saver
 from app.agent_runtime.langgraph_pending_inputs import interrupt_payloads_from_checkpointer
 from app.agent_runtime.protocol_events import StoredProtocolEvent, protocol_interrupts_from_event
 from app.authz.org_context import OrgContext
@@ -43,11 +44,16 @@ def _pending_interrupts_for_events(events: list[StoredProtocolEvent]) -> list[Th
     return [by_id[interrupt_id] for interrupt_id in order]
 
 
-async def _checkpoint_interrupts(conversation: Conversation) -> list[ThreadInterrupt]:
+async def _checkpoint_interrupts(
+    conversation: Conversation, db: AsyncSession, context: OrgContext
+) -> list[ThreadInterrupt]:
     config = {"configurable": {"thread_id": str(conversation.id)}}
+    saver = await conversation_checkpointer(
+        str(conversation.id), context, db=db, saver=deferred_saver
+    )
     return [
         {"id": p["interrupt_id"], "value": p["payload"], "ns": p["namespace"]}
-        for p in await interrupt_payloads_from_checkpointer(config)
+        for p in await interrupt_payloads_from_checkpointer(config, saver)
     ]
 
 
@@ -74,7 +80,7 @@ async def load_pending_interrupt_tasks(
     ]
     interrupts: list[ThreadInterrupt] = _pending_interrupts_for_events(events)
     if not interrupts:
-        interrupts = await _checkpoint_interrupts(conversation)
+        interrupts = await _checkpoint_interrupts(conversation, db, context)
     if not interrupts:
         return []
     task: ThreadTask = {"id": run_id, "name": "interrupted", "interrupts": interrupts}
@@ -97,7 +103,9 @@ async def require_allowed_rest_resume(
     user_id = context.user_id
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user_id, context=context)
     # A legacy trace resume has no interrupted run row: read the checkpoint directly.
-    pending = interrupts_from_tasks(tasks) or await _checkpoint_interrupts(conversation)
+    pending = interrupts_from_tasks(tasks) or await _checkpoint_interrupts(
+        conversation, db, context
+    )
     if not pending:
         return
     target = next((i for i in pending if i["id"] == interrupt_id), None)

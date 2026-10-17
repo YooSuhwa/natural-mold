@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.conversation_scope import require_conversation_agent_id
@@ -37,6 +37,9 @@ from app.routers.conversation_agent_protocol_resume_redaction import (
     restore_redacted_resume_payload,
 )
 from app.routers.conversation_agent_protocol_runtime import cfg_agent_uuid
+from app.routers.conversation_protocol_messages import (
+    messages_from_protocol_input as _messages_from_protocol_input,
+)
 from app.routers.conversation_protocol_response import _wait_for_interrupted_parent_run
 from app.routers.conversation_protocol_start import RunStartEntry, RunStartValidated
 from app.routers.session_consent_scope import SessionConsentPayload, SessionConsentTarget
@@ -70,6 +73,8 @@ async def seed_run_start(
     if resolved_checkpoint_id:
         append_messages = _messages_from_protocol_input(runtime_input_payload)
         runtime_input_payload = await _commands_attr("_fork_overwrite_input")(
+            db=entry.db,
+            context=entry.context,
             conversation_id=conversation.id,
             checkpoint_id=resolved_checkpoint_id,
             append_messages=append_messages,
@@ -85,54 +90,23 @@ async def seed_run_start(
 
 async def _fork_overwrite_input(
     *,
+    db: AsyncSession,
+    context: OrgContext,
     conversation_id: uuid.UUID,
     checkpoint_id: str,
     append_messages: list[BaseMessage],
     drop_trailing_assistant: bool = False,
 ) -> dict[str, Any]:
-    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.conversation_checkpointer import conversation_checkpointer
     from app.services.thread_branch_service import build_fork_overwrite_input
 
     return await build_fork_overwrite_input(
-        get_checkpointer(),
+        await conversation_checkpointer(str(conversation_id), context, db=db),
         str(conversation_id),
         checkpoint_id,
         append=append_messages,
         drop_trailing_assistant=drop_trailing_assistant,
     )
-
-
-def _messages_from_protocol_input(input_payload: dict[str, Any]) -> list[BaseMessage]:
-    messages = input_payload.get("messages")
-    if not isinstance(messages, list):
-        return []
-
-    converted: list[BaseMessage] = []
-    for raw in messages:
-        if not isinstance(raw, dict):
-            continue
-        msg = _message_from_protocol_mapping(raw)
-        if msg is not None:
-            converted.append(msg)
-    return converted
-
-
-def _message_from_protocol_mapping(raw: dict[str, Any]) -> BaseMessage | None:
-    role = raw.get("role") or raw.get("type")
-    content = raw.get("content", "")
-    if not isinstance(content, str | list):
-        content = str(content)
-
-    message_id = raw.get("id")
-    kwargs = {"id": message_id} if isinstance(message_id, str) and message_id else {}
-
-    if role in {"human", "user"}:
-        return HumanMessage(content=content, **kwargs)
-    if role in {"ai", "assistant"}:
-        return AIMessage(content=content, **kwargs)
-    if role == "system":
-        return SystemMessage(content=content, **kwargs)
-    return None
 
 
 async def _handle_input_respond_command(
@@ -184,6 +158,8 @@ async def _handle_input_respond_command(
             conversation=conversation,
             resume=resume,
             pending_interrupts=interrupts_from_tasks(tasks),
+            db=db,
+            context=context,
         )
     except RedactedResumeArgsUnavailable:
         return command_error(

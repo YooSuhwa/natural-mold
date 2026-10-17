@@ -4,7 +4,10 @@ import uuid
 from dataclasses import replace
 from typing import Any, NamedTuple
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.agent_runtime.runtime_config import AgentConfig
+from app.database import TenantScoped
 
 REGENERATE_PREVIOUS_ANSWER_LIMIT = 1200
 
@@ -38,18 +41,20 @@ async def resolve_branch_checkpoint(
     conversation_id: uuid.UUID,
     target_message_id: uuid.UUID,
     *,
+    db: AsyncSession,
+    context: TenantScoped,
     checkpoints: list | None = None,
 ) -> BranchCheckpointResolution:
     """Translate a frontend-exposed message UUID to a LangGraph fork checkpoint."""
 
-    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.conversation_checkpointer import conversation_checkpointer
     from app.agent_runtime.message_utils import parse_msg_id
     from app.services.thread_branch_service import (
         _collect_checkpoints,  # noqa: PLC2701 - controlled router/service bridge
         rewind_to_checkpoint_before_message,
     )
 
-    checkpointer = get_checkpointer()
+    checkpointer = await conversation_checkpointer(str(conversation_id), context, db=db)
     if checkpoints is None:
         checkpoints = await _collect_checkpoints(checkpointer, str(conversation_id))
     target_uuid_str = str(target_message_id)

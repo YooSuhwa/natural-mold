@@ -131,7 +131,7 @@ async def get_thread_state(
         context=context,
     )
     if conversation.agent_lifecycle_state == "purged":
-        snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=())
+        snapshot = await load_thread_state_snapshot(conversation, context, db=db, secret_values=())
         latest_run = await conversation_run_service.latest_run_for_conversation(
             db,
             conversation_id=conversation.id,
@@ -168,7 +168,7 @@ async def get_thread_state(
         }
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id, context=context)
     secrets = await collect_state_secret_values(db, conversation, context)
-    snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=secrets)
+    snapshot = await load_thread_state_snapshot(conversation, context, db=db, secret_values=secrets)
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,
@@ -376,7 +376,7 @@ async def get_compat_thread_state(
     )
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id, context=context)
     secrets = await collect_state_secret_values(db, conversation, context)
-    snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=secrets)
+    snapshot = await load_thread_state_snapshot(conversation, context, db=db, secret_values=secrets)
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,

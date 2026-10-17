@@ -24,11 +24,11 @@ async def conversation_has_message(
         retained = await list_messages_from_checkpointer(db, conversation, context=context)
         return any(str(message.id) == message_id for message in retained)
 
-    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.conversation_checkpointer import conversation_checkpointer
     from app.services.thread_branch_service import build_message_tree
 
     tree = await build_message_tree(
-        get_checkpointer(),
+        await conversation_checkpointer(str(conversation.id), context, db=db),
         str(conversation.id),
         active_checkpoint_id=conversation.active_branch_checkpoint_id,
     )

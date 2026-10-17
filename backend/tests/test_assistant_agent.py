@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from tests.authz.unit_scope_fixture import unit_context
+
+
+async def _open_gate(*_args: object, saver: Callable[[], object]) -> object:
+    """Mocked DB has no agent row; the I-06 thread gate is covered in tests/authz."""
+    return saver()
+
 
 # ---------------------------------------------------------------------------
 # _load_system_prompt — file exists
@@ -102,6 +109,7 @@ async def test_build_assistant_agent_requires_approval_for_write_tools_only():
         patch.object(mod, "build_write_tools", return_value=[write_tool]),
         patch.object(mod, "build_clarify_tools", return_value=[clarify_tool]),
         patch.object(mod, "get_checkpointer", return_value=MagicMock()),
+        patch.object(mod, "assistant_checkpointer", _open_gate),
         patch.object(mod, "build_agent", fake_build_agent),
     ):
         await mod.build_assistant_agent(
@@ -144,6 +152,7 @@ async def test_build_assistant_agent_requires_approval_for_write_tools_only():
         patch.object(mod, "build_write_tools", return_value=mock_write_tools),
         patch.object(mod, "build_clarify_tools", return_value=mock_clarify_tools),
         patch.object(mod, "get_checkpointer", return_value=mock_checkpointer),
+        patch.object(mod, "assistant_checkpointer", _open_gate),
         patch.object(mod, "build_agent", return_value=mock_compiled_graph) as mock_build,
     ):
         db = AsyncMock()

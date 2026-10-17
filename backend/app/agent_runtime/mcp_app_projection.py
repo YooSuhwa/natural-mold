@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import StoredProtocolEvent
-from app.mcp.apps_projection_store import load_verified_artifact
+from app.mcp.apps_projection_store import OwnerCache, load_verified_artifact
 from app.schemas.mcp_apps import McpAppArtifact
 
 _MAX_SCAN_DEPTH = 8
@@ -88,6 +88,7 @@ async def verified_mcp_app_artifacts(
     """Resolve candidate references to canonical artifacts for one conversation."""
 
     verified: dict[str, dict[str, Any]] = {}
+    owner_cache: OwnerCache = {}  # one company lookup per conversation (I-06)
     for candidate in extract_mcp_app_candidates(raw_value):
         candidate_run_id = str(candidate.artifact.run_id)
         if expected_run_id is not None and candidate_run_id != expected_run_id:
@@ -98,6 +99,7 @@ async def verified_mcp_app_artifacts(
                 run_id=candidate_run_id,
                 tool_call_id=candidate.tool_call_id,
                 binding_id=str(candidate.artifact.binding_id),
+                owner_cache=owner_cache,
             )
         else:
             loaded = await load_verified_artifact(
@@ -106,6 +108,7 @@ async def verified_mcp_app_artifacts(
                 tool_call_id=candidate.tool_call_id,
                 binding_id=str(candidate.artifact.binding_id),
                 session_factory=session_factory,
+                owner_cache=owner_cache,
             )
         if loaded is not None:
             verified[candidate.tool_call_id] = loaded

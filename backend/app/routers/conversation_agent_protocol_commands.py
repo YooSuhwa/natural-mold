@@ -52,9 +52,13 @@ from app.routers.conversation_agent_protocol_runtime import (
 from app.routers.conversation_protocol_fork import (
     _fork_overwrite_input,
     _handle_input_respond_command,
-    _message_from_protocol_mapping,
-    _messages_from_protocol_input,
     seed_run_start,
+)
+from app.routers.conversation_protocol_messages import (
+    message_from_protocol_mapping as _message_from_protocol_mapping,
+)
+from app.routers.conversation_protocol_messages import (
+    messages_from_protocol_input as _messages_from_protocol_input,
 )
 from app.routers.conversation_protocol_persistence import (
     persist_direct_run_start,

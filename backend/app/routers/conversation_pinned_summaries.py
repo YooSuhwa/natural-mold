@@ -9,6 +9,7 @@ from langchain_core.messages import BaseMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
+from app.agent_runtime.conversation_checkpointer import conversation_checkpointer
 from app.agent_runtime.message_utils import content_to_text
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
@@ -112,8 +113,14 @@ def _sources_for_messages(
 async def _load_sources(
     conversation_id: uuid.UUID,
     active_checkpoint_id: str | None,
+    *,
+    db: AsyncSession,
+    context: OrgContext,
 ) -> tuple[tuple[SummarySource, ...], tuple[SummarySource, ...]]:
-    checkpoints = await _collect_checkpoints(get_checkpointer(), str(conversation_id))
+    saver = await conversation_checkpointer(
+        str(conversation_id), context, db=db, saver=get_checkpointer
+    )
+    checkpoints = await _collect_checkpoints(saver, str(conversation_id))
     if not checkpoints:
         return (), ()
     tree = _build_tree_from_checkpoints(checkpoints, active_checkpoint_id)
@@ -148,8 +155,7 @@ async def read_pinned_summary(
     if row is None:
         return PinnedConversationSummaryEnvelope(summary=None)
     active, historical = await _load_sources(
-        conversation_id,
-        conv.active_branch_checkpoint_id,
+        conversation_id, conv.active_branch_checkpoint_id, db=db, context=context
     )
     return PinnedConversationSummaryEnvelope(summary=serialize_summary(row, active, historical))
 
@@ -168,8 +174,7 @@ async def write_pinned_summary(
     context: OrgContext = Depends(get_org_context),
 ) -> PinnedConversationSummaryResponse:
     active, historical = await _load_sources(
-        conversation_id,
-        conv.active_branch_checkpoint_id,
+        conversation_id, conv.active_branch_checkpoint_id, db=db, context=context
     )
     try:
         row = await pin_summary(

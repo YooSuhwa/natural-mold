@@ -30,7 +30,7 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Mock:
 async def _build(agent_id: str) -> object:
     async with TestSession() as db:
         return await assistant_agent.build_assistant_agent(
-            db, uuid.UUID(agent_id), unit_context(TEST_USER_ID), "thread"
+            db, uuid.UUID(agent_id), unit_context(TEST_USER_ID), f"assistant_{agent_id}"
         )
 
 

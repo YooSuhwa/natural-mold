@@ -18,33 +18,50 @@ from tests.conftest import TEST_USER_ID, TestSession
 
 APP = Path(__file__).resolve().parents[2] / "app"
 SAVER = object()
-# Raw ``get_checkpointer()`` reads that do not pass the gate yet (I-06 open item):
-# a new direct read fails here until it is gated or reviewed into this list.
+# Raw ``get_checkpointer()`` reads that bypass the gate, each with the reason it needs
+# none (I-06 review): a new direct read fails here until it is gated or reviewed in.
 UNGATED_CHECKPOINTER_SITES = {
-    "agent_runtime/assistant/assistant_agent.py": 1,  # assistant thread, not a conversation
-    "agent_runtime/checkpointer.py": 1,  # create_lease_checkpointer (run-owned lease)
+    # the pool's own module: create_lease_checkpointer wraps a run-owned lease
+    "agent_runtime/checkpointer.py": 1,
+    # the gate's call-time default saver, only called after the gate passed
+    "agent_runtime/conversation_checkpointer.py": 1,
+    # run-stream fallback for the running run's own thread; request reads pass a gated saver
     "agent_runtime/langgraph_pending_inputs.py": 1,
+    # run preparation: the lease seed / compiled agent use cfg.thread_id, which
+    # resolve_agent_context (or the prepared run binding) loaded in the run's context
     "agent_runtime/prepared_run_inputs.py": 1,
     "agent_runtime/runtime_agent_preparation.py": 1,
-    "routers/conversation_agent_protocol_resume_redaction.py": 1,
-    "routers/conversation_agent_protocol_state_snapshot.py": 1,
-    "routers/conversation_branch_entries.py": 3,
-    "routers/conversation_pinned_summaries.py": 1,
-    "routers/conversation_protocol_fork.py": 1,
-    "routers/e2e_mcp_apps_helpers.py": 1,  # e2e-only helper
+    # e2e-only helper route (E2E flags), never mounted in production
+    "routers/e2e_mcp_apps_helpers.py": 1,
+    # agent purge, after its own authorization: the conversations are the purged
+    # agent's (prepare_agent_purge) / the receipt's company+org, verified first
     "services/agent_purge_cleanup.py": 1,
     "services/agent_purge_service.py": 1,
-    "services/builder_session_service.py": 2,  # builder thread, not a conversation
+    # worker finalize: conversation_run_delivery calls it after load_worker_conversation
+    # locked the conversation in the run's own context
     "services/chat/attachments.py": 1,
-    "services/chat/message_membership.py": 1,
-    "services/chat_quote_context.py": 1,
-    "services/chat_resource_context.py": 1,
-    "services/conversation_branch_service.py": 1,
+    # worker baseline: read after load_worker_conversation(cfg.org_context) found the row
     "services/conversation_run_worker.py": 1,
-    # also ungated: conversation_run_delivery (worker_attr lookup), conversation_protocol_history
-    # (factory default) — the AST pin sees direct calls only.
+    # also direct but call-time: conversation_run_delivery ``worker_attr("get_checkpointer")``
+    # (branch-leaf activation, after load_worker_conversation in the run's context).
 }
-GATED_SITES = {"routers/conversation_messages.py", "services/chat/messages.py"}
+GATED_SITES = {
+    "routers/conversation_messages.py",
+    "services/chat/messages.py",
+    "routers/conversation_branch_entries.py",
+    "routers/conversation_pinned_summaries.py",
+    "routers/conversation_protocol_fork.py",
+    "routers/conversation_agent_protocol_interrupts.py",
+    "routers/conversation_agent_protocol_resume_redaction.py",
+    "services/conversation_branch_service.py",
+    "services/chat/message_membership.py",
+    "services/chat_quote_context.py",
+    "services/chat_resource_context.py",
+}
+LOADED_GATED_SITES = {
+    "routers/conversation_agent_protocol_state_snapshot.py",
+    "services/conversation_protocol_history.py",
+}
 
 
 def _saver() -> object:
@@ -129,5 +146,8 @@ def test_direct_checkpointer_reads_are_pinned() -> None:
     assert _calls("get_checkpointer") == UNGATED_CHECKPOINTER_SITES
 
 
-def test_message_reads_pass_the_gate() -> None:
+def test_conversation_reads_pass_the_gate() -> None:
     assert set(_calls("conversation_checkpointer")) >= GATED_SITES
+    assert set(_calls("loaded_conversation_checkpointer")) >= LOADED_GATED_SITES
+    assert set(_calls("builder_checkpointer")) == {"services/builder_session_service.py"}
+    assert set(_calls("assistant_checkpointer")) == {"agent_runtime/assistant/assistant_agent.py"}

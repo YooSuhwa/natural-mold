@@ -31,6 +31,7 @@ from app.credentials.mcp_oauth_client import build_authorization_url, build_pkce
 from app.credentials.mcp_oauth_prepare import prepare_mcp_oauth_data
 from app.credentials.mcp_oauth_spec import issuer_matches
 from app.credentials.mcp_oauth_step_up import merge_scopes
+from app.credentials.oauth_callback_scope import live_callback_state
 from app.credentials.registry import registry
 from app.error_codes import credential_forbidden, credential_not_found
 from app.models.credential import Credential
@@ -212,17 +213,7 @@ async def handle_callback(
     """
 
     now = utcnow_naive()
-    pending = (
-        await db.execute(
-            select(CredentialOAuthState)
-            .where(
-                CredentialOAuthState.state_hash == hash_oauth_state(state),
-                CredentialOAuthState.consumed_at.is_(None),
-                CredentialOAuthState.expires_at > now,
-            )
-            .with_for_update()
-        )
-    ).scalar_one_or_none()
+    pending = await live_callback_state(db, hash_oauth_state(state), now)
     if pending is None:
         raise HTTPException(status_code=400, detail="invalid or expired state")
     state_metadata = pending.metadata_json or {}

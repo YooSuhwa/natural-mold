@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
+from app.agent_runtime.conversation_checkpointer import loaded_conversation_checkpointer
 from app.agent_runtime.mcp_app_projection import (
     extract_mcp_app_candidates,
     project_verified_mcp_apps,
@@ -84,6 +85,7 @@ async def collect_state_secret_values(
 
 async def load_thread_state_snapshot(
     conversation: Conversation,
+    context: OrgContext,
     db: AsyncSession | None = None,
     *,
     secret_values: Iterable[str] | None = None,
@@ -116,7 +118,9 @@ async def load_thread_state_snapshot(
     # message below; a one-shot generator would be exhausted after the first.
     secrets = tuple(secret_values) if secret_values is not None else None
     try:
-        checkpointer = get_checkpointer()
+        checkpointer = await loaded_conversation_checkpointer(
+            conversation, context, db=db, saver=get_checkpointer
+        )
         tree = await build_message_tree(
             checkpointer,
             str(conversation.id),
@@ -127,17 +131,9 @@ async def load_thread_state_snapshot(
             parent_checkpoint_by_message_id,
         ) = await _checkpoint_maps_by_message_id(checkpointer, str(conversation.id), conversation)
     except RuntimeError:
-        return await _legacy_thread_state_snapshot(
-            conversation,
-            db,
-            secret_values=secrets,
-        )
+        return await _legacy_thread_state_snapshot(conversation, db, secret_values=secrets)
     if not tree.nodes:
-        return await _legacy_thread_state_snapshot(
-            conversation,
-            db,
-            secret_values=secrets,
-        )
+        return await _legacy_thread_state_snapshot(conversation, db, secret_values=secrets)
 
     values = project_and_redact_protocol_data(
         "values",

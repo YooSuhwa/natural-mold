@@ -168,6 +168,7 @@ async def test_state_snapshot_masks_secret_when_passed(monkeypatch, db: AsyncSes
 
     snapshot = await load_thread_state_snapshot(
         conversation,
+        unit_context(TEST_USER_ID),
         db=db,
         secret_values={OPAQUE_SECRET},
     )
@@ -191,7 +192,9 @@ async def test_state_snapshot_leaks_without_secret_values(monkeypatch, db: Async
         lambda: _FakeCheckpointer([_leaky_checkpoint()]),
     )
 
-    snapshot = await load_thread_state_snapshot(conversation, db=db)  # no secret_values
+    snapshot = await load_thread_state_snapshot(
+        conversation, unit_context(TEST_USER_ID), db=db
+    )  # no secret_values
 
     assert OPAQUE_SECRET in json.dumps(snapshot.values), (
         "without secret_values the opaque value must survive (heuristics can't "
@@ -254,6 +257,7 @@ async def test_legacy_state_snapshot_projects_offload_paths_and_redacts_without_
 
     snapshot = await load_thread_state_snapshot(
         conversation,
+        unit_context(TEST_USER_ID),
         db=db,
         secret_values={OPAQUE_SECRET},
     )
@@ -580,11 +584,13 @@ async def test_thread_state_read_path_masks_collected_secret_end_to_end(
     # Negative control: without the collected set the sentinel survives —
     # proving the masking assertion below can only pass via the
     # collect → redact chain (no heuristic tautology).
-    unmasked = await load_thread_state_snapshot(conversation, db=db)
+    unmasked = await load_thread_state_snapshot(conversation, unit_context(TEST_USER_ID), db=db)
     assert sentinel in json.dumps(unmasked.values)
 
     collected = await collect_state_secret_values(db, conversation, unit_context(TEST_USER_ID))
-    snapshot = await load_thread_state_snapshot(conversation, db=db, secret_values=collected)
+    snapshot = await load_thread_state_snapshot(
+        conversation, unit_context(TEST_USER_ID), db=db, secret_values=collected
+    )
 
     rendered = json.dumps(snapshot.values)
     assert sentinel not in rendered, "collected tool secret leaked through the state read path"

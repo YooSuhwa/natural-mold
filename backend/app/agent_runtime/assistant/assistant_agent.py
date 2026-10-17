@@ -23,6 +23,7 @@ from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.model_factory import create_chat_model
 from app.agent_runtime.runtime_component_builder import build_agent
 from app.agent_runtime.runtime_policy import ASSISTANT_RUNTIME_POLICY
+from app.agent_runtime.thread_checkpointers import assistant_checkpointer
 from app.authz.assistant_scope import WRITE
 from app.authz.org_context import OrgContext
 from app.error_codes import agent_not_found
@@ -94,6 +95,9 @@ async def build_assistant_agent(
     tools = read_tools + write_tools + clarify_tools
 
     system_prompt = _load_system_prompt()
+    checkpointer = await assistant_checkpointer(
+        db, thread_id, agent_id, context, saver=get_checkpointer
+    )
 
     return build_agent(
         model=model,
@@ -101,7 +105,7 @@ async def build_assistant_agent(
         system_prompt=system_prompt,
         middleware=[],
         interrupt_on=_assistant_write_interrupt_on(write_tools),
-        checkpointer=get_checkpointer(),
+        checkpointer=checkpointer,
         name=f"assistant_{str(agent_id)[:8]}",
         runtime_policy=ASSISTANT_RUNTIME_POLICY,
     )

@@ -320,7 +320,7 @@ async def test_input_respond_command_restores_redacted_edit_placeholders(
     await db.commit()
     started = {}
 
-    async def fake_raw_pending_actions_by_interrupt(_conversation, _pending_interrupts):
+    async def fake_raw_pending_actions_by_interrupt(_conversation, _pending_interrupts, **_scope):
         return {
             "intr-secret": [
                 {

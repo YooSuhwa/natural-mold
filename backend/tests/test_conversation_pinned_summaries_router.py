@@ -220,6 +220,7 @@ async def test_pinned_summary_http_unpin_clears_selection(
     async def load_sources(
         _conversation_id: uuid.UUID,
         _checkpoint_id: str | None,
+        **_scope: object,
     ) -> tuple[tuple[SummarySource, ...], tuple[SummarySource, ...]]:
         return sources, sources
 
@@ -268,6 +269,7 @@ async def test_pinned_summary_http_hides_foreign_conversation(
     async def load_sources(
         _conversation_id: uuid.UUID,
         _checkpoint_id: str | None,
+        **_scope: object,
     ) -> tuple[tuple[SummarySource, ...], tuple[SummarySource, ...]]:
         nonlocal load_count
         load_count += 1

@@ -72,6 +72,8 @@ PLATFORM_REASONS: dict[str, str] = {
     "share.public_token": "I-06 public token picks the link's company before the public read",
     "operator.system_catalog": "8.9 super_user screens for platform catalog rows (I-06)",
     "platform.tenant_admin": "S04 SaaS operator company directory/lifecycle screens (I-06)",
+    "mcp_apps.conversation_company": "I-06 held conversation picks the MCP App binding company",
+    "oauth.callback_state": "I-06 OAuth callback state row picks its credential's company",
 }
 
 # Unbound company sessions fail closed under RLS. The request session is bound
@@ -80,7 +82,6 @@ PLATFORM_REASONS: dict[str, str] = {
 UNBOUND_TENANT_SITES: Counter[str] = Counter(
     {
         "dependencies.py": 1,
-        "mcp/apps_projection_store.py": 1,
     }
 )
 

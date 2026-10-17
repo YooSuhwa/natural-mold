@@ -906,7 +906,7 @@ async def test_current_state_projects_only_canonical_bound_mcp_app_artifact(
     )
     _use_test_projection_database(monkeypatch)
 
-    snapshot = await load_thread_state_snapshot(seeded.conversation)
+    snapshot = await load_thread_state_snapshot(seeded.conversation, unit_context(TEST_USER_ID))
 
     artifact = snapshot.values["messages"][0]["artifact"]
     assert artifact["structured_content"] == {"temperature": 23}
@@ -940,6 +940,6 @@ async def test_current_state_strips_wrong_run_mcp_app_artifact(
     )
     _use_test_projection_database(monkeypatch)
 
-    snapshot = await load_thread_state_snapshot(seeded.conversation)
+    snapshot = await load_thread_state_snapshot(seeded.conversation, unit_context(TEST_USER_ID))
 
     assert "artifact" not in snapshot.values["messages"][0]

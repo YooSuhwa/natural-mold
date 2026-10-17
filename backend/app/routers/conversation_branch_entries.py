@@ -9,6 +9,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.conversation_checkpointer import conversation_checkpointer
 from app.agent_runtime.runtime_config import AgentConfig
 from app.authz.conversation_scope import require_conversation_agent_id
 from app.authz.org_context import OrgContext
@@ -55,17 +56,18 @@ async def edit_message(
     conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
     if conv is None:
         raise conversation_not_found()
-    resolved = await resolve_branch_checkpoint(conversation_id, data.message_id)
+    resolved = await resolve_branch_checkpoint(
+        conversation_id, data.message_id, db=db, context=context
+    )
     if not resolved.found:
         raise HTTPException(status_code=422, detail="message does not belong to this conversation.")
     checkpoint_id = resolved.checkpoint_id
     from langchain_core.messages import HumanMessage
 
-    from app.agent_runtime.checkpointer import get_checkpointer
     from app.services.thread_branch_service import build_fork_overwrite_input
 
     overwrite_input = await build_fork_overwrite_input(
-        get_checkpointer(),
+        await conversation_checkpointer(str(conversation_id), context, db=db),
         str(conversation_id),
         checkpoint_id,
         append=[HumanMessage(content=data.new_content)],
@@ -128,10 +130,9 @@ async def regenerate_message(
     conv: Conversation,
 ) -> StreamingResponse:
     agent_id = await chat_service.prepare_executable_conversation(db, conversation_id, context)
-    from app.agent_runtime.checkpointer import get_checkpointer
     from app.services.thread_branch_service import _collect_checkpoints  # noqa: PLC2701
 
-    checkpointer = get_checkpointer()
+    checkpointer = await conversation_checkpointer(str(conversation_id), context, db=db)
     checkpoints = await _collect_checkpoints(checkpointer, str(conversation_id))
     if not checkpoints:
         raise HTTPException(status_code=422, detail="conversation has no history yet.")
@@ -242,11 +243,10 @@ async def switch_branch(
     context: OrgContext,
 ) -> None:
     await chat_service.require_executable_conversation(db, conversation_id, context)
-    from app.agent_runtime.checkpointer import get_checkpointer
     from app.services.thread_branch_service import checkpoint_exists
 
     if not await checkpoint_exists(
-        get_checkpointer(),
+        await conversation_checkpointer(str(conversation_id), context, db=db),
         str(conversation_id),
         data.checkpoint_id,
     ):

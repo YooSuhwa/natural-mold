@@ -73,6 +73,11 @@ async def _assistant_manifest(monkeypatch: pytest.MonkeyPatch) -> dict[str, JSON
         assistant_agent, "build_clarify_tools", lambda: [_tool("assistant_clarify")]
     )
     monkeypatch.setattr(assistant_agent, "get_checkpointer", lambda: None)
+
+    async def open_gate(*_args: object, saver: Any) -> object:  # mocked DB: no agent row
+        return saver()
+
+    monkeypatch.setattr(assistant_agent, "assistant_checkpointer", open_gate)
     monkeypatch.setattr(assistant_agent, "_load_system_prompt", lambda: "<assistant-profile>")
 
     monkeypatch.setattr(
