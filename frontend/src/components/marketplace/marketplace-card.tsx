@@ -19,7 +19,6 @@ import { getResourceTone } from '@/lib/resource-tones'
 import type { MarketplaceItem } from '@/lib/types/marketplace'
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 import { cn } from '@/lib/utils'
-import { marketplaceItemAccess } from './marketplace-access'
 
 export type PrimaryCtaKind =
   | 'install'
@@ -37,7 +36,8 @@ export interface PrimaryCta {
   disabled?: boolean
 }
 
-export function derivePrimaryCta(item: MarketplaceItem): PrimaryCta {
+/** `canInstall`: the item's `can_install` (`marketplaceItemAccess`, plan 13.9). */
+export function derivePrimaryCta(item: MarketplaceItem, canInstall = true): PrimaryCta {
   const installation = item.installation
   const supportLevel = item.execution_profile?.support_level
   const publicationState = item.publication_summary?.state
@@ -63,8 +63,7 @@ export function derivePrimaryCta(item: MarketplaceItem): PrimaryCta {
 
   if (!installation?.installed) {
     // Plan 13.9: install needs `can_install`; a view-only grant just opens the details.
-    if (!marketplaceItemAccess(item, null).canInstall)
-      return { kind: 'view_details', variant: 'outline' }
+    if (!canInstall) return { kind: 'view_details', variant: 'outline' }
     return { kind: 'install', variant: 'default' }
   }
 
@@ -90,6 +89,8 @@ export function derivePrimaryCta(item: MarketplaceItem): PrimaryCta {
 interface MarketplaceCardProps {
   item: MarketplaceItem
   onAction?: (item: MarketplaceItem, cta: PrimaryCta) => void
+  /** `can_install` from the page's permissions answer (`useMarketplaceItemAccess`). */
+  canInstall?: boolean
   className?: string
 }
 
@@ -112,9 +113,14 @@ export function getPrimaryCtaHref(item: MarketplaceItem, cta: PrimaryCta): strin
   return null
 }
 
-function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProps) {
+function MarketplaceCardInner({
+  item,
+  onAction,
+  canInstall = true,
+  className,
+}: MarketplaceCardProps) {
   const t = useTranslations('marketplace.card')
-  const cta = derivePrimaryCta(item)
+  const cta = derivePrimaryCta(item, canInstall)
   const ctaLabel = t(`cta.${cta.kind}`)
   const ownerLabel = item.is_system ? t('owner.system') : t('owner.community')
   const resourceLabel = t(`resource.${item.resource_type}`)

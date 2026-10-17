@@ -9,6 +9,7 @@ import { ChevronLeftIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader } from '@/components/shared/page-header'
+import { PermissionsLoadError } from '@/components/shared/permissions-load-error'
 import { DomainIconTile, getDomainIconIdForResource } from '@/components/shared/icon'
 import { CredentialBadge } from '@/components/marketplace/badges/credential-badge'
 import { InstallationBadge } from '@/components/marketplace/badges/installation-badge'
@@ -19,7 +20,7 @@ import { InstallWizard } from '@/components/marketplace/install-wizard'
 import { MarketplaceShareDialog } from '@/components/marketplace/marketplace-share-dialog'
 import { UpdateStrategyDialog } from '@/components/marketplace/update-strategy-dialog'
 import { derivePrimaryCta, getPrimaryCtaHref } from '@/components/marketplace/marketplace-card'
-import { marketplaceItemAccess } from '@/components/marketplace/marketplace-access'
+import { useMarketplaceItemAccess } from '@/components/marketplace/marketplace-access'
 import { useSession } from '@/lib/auth/session'
 import { useMarketplaceItem, useMarketplaceVersions } from '@/lib/hooks/use-marketplace'
 import { MarketplaceDetailCards } from './_components/marketplace-detail-cards'
@@ -38,6 +39,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
   const { data: user } = useSession()
   const { data: item, isLoading, error } = useMarketplaceItem(itemId)
   const { data: versions } = useMarketplaceVersions(itemId)
+  const access = useMarketplaceItemAccess(item ? [item.id] : [])
   const [shareOpen, setShareOpen] = useState(false)
   const [installOpen, setInstallOpen] = useState(false)
   const [updateOpen, setUpdateOpen] = useState(false)
@@ -58,12 +60,9 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
     return <MarketplaceDetailError error={error} />
   }
 
-  // Owner 판별: 백엔드가 ``publication_summary.item_id`` 를 owner+link 동시일
-  // 때만 채워주므로 (service.py `_project_item`), 이 한 줄로 충분하다.
-  // origin_summary.source_user_id 는 다른 user 가 공유해준 케이스에만 set 되어
-  // 본인 publish 에서는 null — 이전 비교는 항상 false 였다.
-  const { canManage, canInstall } = marketplaceItemAccess(item, user?.id)
-  const cta = derivePrimaryCta(item)
+  // Plan 13.9: the server's `my_permissions` decide; management stays hidden until answered.
+  const { canManage, canInstall } = access.accessOf(item.id)
+  const cta = derivePrimaryCta(item, canInstall)
 
   function handlePrimary() {
     if (!item) return
@@ -91,6 +90,8 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
           <ChevronLeftIcon className="size-4" />
           {t('back')}
         </Link>
+
+        <PermissionsLoadError error={access.error} onRetry={() => void access.refetch()} />
 
         <div className="flex items-start gap-3">
           <DomainIconTile

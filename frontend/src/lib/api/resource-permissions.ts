@@ -1,7 +1,12 @@
 import { apiFetch } from './client'
 
 /** Resource types whose list bodies carry no `my_permissions` (H-05). */
-export type PermissionResourceType = 'tool' | 'mcp_server' | 'credential' | 'skill'
+export type PermissionResourceType =
+  | 'tool'
+  | 'mcp_server'
+  | 'credential'
+  | 'skill'
+  | 'marketplace_item'
 
 export interface ResourcePermissionList {
   items: { id: string; my_permissions: string[] }[]

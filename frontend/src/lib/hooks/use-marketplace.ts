@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { marketplaceApi } from '@/lib/api/marketplace'
 import { agentBlueprintQueryKeys } from '@/lib/query-keys/agent-blueprints'
+import { grantQueryKeys } from '@/lib/query-keys/grants'
 import { marketplaceQueryKeys } from '@/lib/query-keys/marketplace'
 import { mcpServerQueryKeys } from '@/lib/query-keys/mcp-servers'
 import { skillQueryKeys } from '@/lib/query-keys/skills'
@@ -98,6 +99,8 @@ export function useKSkillSyncStatus(enabled = true) {
 // ---------- Mutations ----------
 
 function invalidateAllItems(qc: ReturnType<typeof useQueryClient>) {
+  // Item `my_permissions` (H-05) follow every share/manage/install change.
+  qc.invalidateQueries({ queryKey: grantQueryKeys.type('marketplace_item') })
   qc.invalidateQueries({ queryKey: marketplaceQueryKeys.items })
   qc.invalidateQueries({ queryKey: skillQueryKeys.all })
   qc.invalidateQueries({ queryKey: agentBlueprintQueryKeys.all })
@@ -223,6 +226,7 @@ export function useReplaceItemACL(itemId: string) {
   return useMutation({
     mutationFn: (body: MarketplaceItemACLBody) => marketplaceApi.replaceACL(itemId, body),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: grantQueryKeys.type('marketplace_item') })
       qc.invalidateQueries({ queryKey: marketplaceQueryKeys.item(itemId) })
       qc.invalidateQueries({ queryKey: marketplaceQueryKeys.items })
     },
@@ -234,6 +238,7 @@ export function useRemoveItemACLEntry(itemId: string) {
   return useMutation({
     mutationFn: (userId: string) => marketplaceApi.removeACLEntry(itemId, userId),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: grantQueryKeys.type('marketplace_item') })
       qc.invalidateQueries({ queryKey: marketplaceQueryKeys.item(itemId) })
       qc.invalidateQueries({ queryKey: marketplaceQueryKeys.items })
     },

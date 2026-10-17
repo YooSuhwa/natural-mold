@@ -3,11 +3,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import type { ReactNode } from 'react'
 
-import { useInstallItem, useMarketplaceItemsPage } from '@/lib/hooks/use-marketplace'
+import {
+  useInstallItem,
+  useMarketplaceItemsPage,
+  useRemoveItemACLEntry,
+} from '@/lib/hooks/use-marketplace'
 import { server } from '../../setup'
 import { mockMarketplaceItemsPage } from '../../mocks/fixtures'
 
 const API_BASE = 'http://localhost:8001'
+const PERMISSIONS = ['grants', 'marketplace_item', 'permissions', 'item-1']
 
 function createQueryClient() {
   return new QueryClient({
@@ -37,6 +42,7 @@ describe('useInstallItem', () => {
   it('invalidates MCP server list after marketplace install', async () => {
     const queryClient = createQueryClient()
     queryClient.setQueryData(['mcp-servers'], [{ id: 'mcp-1' }])
+    queryClient.setQueryData(PERMISSIONS, new Map())
 
     server.use(
       http.post(`${API_BASE}/api/marketplace/items/:itemId/install`, () =>
@@ -66,5 +72,25 @@ describe('useInstallItem', () => {
     })
 
     expect(queryClient.getQueryState(['mcp-servers'])?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(PERMISSIONS)?.isInvalidated).toBe(true)
+  })
+})
+
+describe('useRemoveItemACLEntry', () => {
+  it('invalidates the item permissions answer (H-05)', async () => {
+    const queryClient = createQueryClient()
+    queryClient.setQueryData(PERMISSIONS, new Map())
+    server.use(
+      http.delete(`${API_BASE}/api/marketplace/items/:itemId/acl/:userId`, () =>
+        HttpResponse.json(null),
+      ),
+    )
+    const { result } = renderHook(() => useRemoveItemACLEntry('item-1'), {
+      wrapper: createWrapper(queryClient),
+    })
+    await act(async () => {
+      await result.current.mutateAsync('user-2')
+    })
+    expect(queryClient.getQueryState(PERMISSIONS)?.isInvalidated).toBe(true)
   })
 })

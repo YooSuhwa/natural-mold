@@ -14833,6 +14833,53 @@
         ]
       }
     },
+    "/api/resources/marketplace_item/permissions": {
+      "get": {
+        "operationId": "list_marketplace_item_permissions_api_resources_marketplace_item_permissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourcePermissionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Marketplace Item Permissions",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
     "/api/resources/mcp_server/permissions": {
       "get": {
         "operationId": "list_mcp_server_permissions_api_resources_mcp_server_permissions_get",

@@ -1,7 +1,8 @@
-import type { MarketplaceItem } from '@/lib/types/marketplace'
+'use client'
 
-/** Shadow/enforce bodies may add `my_permissions` (`can_view`/`can_install`/`can_manage`). */
-export type MarketplaceItemWithPermissions = MarketplaceItem & { my_permissions?: string[] }
+import { useCallback, useMemo } from 'react'
+
+import { useResourcePermissions } from '@/lib/hooks/use-resource-permissions'
 
 export interface MarketplaceItemAccess {
   /** Owner or manager grant: visibility, unpublish, ACL (plan 13.9 `can_manage`). */
@@ -11,21 +12,34 @@ export interface MarketplaceItemAccess {
 }
 
 /**
- * Item actions by permission. Shadow/enforce bodies may carry `my_permissions`
- * (`can_view` / `can_install` / `can_manage`); legacy bodies don't, so the legacy rule
- * applies: the owner manages (`publication_summary.item_id` is filled only for the
- * owner's own linked item) and anyone who sees an item may install it.
+ * Item actions from the server's `my_permissions` (`GET /api/resources/marketplace_item/
+ * permissions`: `can_view` / `can_install` / `can_manage`). Fails closed: until the answer
+ * arrives and when it failed (503), management stays hidden; install stays offered — it
+ * is the listed item's use, and the install route decides. An item the server left out
+ * of a successful answer gets neither.
  */
 export function marketplaceItemAccess(
-  item: MarketplaceItemWithPermissions,
-  userId: string | null | undefined,
+  permissions: readonly string[] | undefined,
+  answered: boolean,
 ): MarketplaceItemAccess {
-  const permissions = item.my_permissions
   if (permissions) {
     return {
       canManage: permissions.includes('can_manage'),
       canInstall: permissions.includes('can_install'),
     }
   }
-  return { canManage: !!userId && item.publication_summary.item_id === item.id, canInstall: true }
+  return { canManage: false, canInstall: !answered }
+}
+
+/** `marketplaceItemAccess` for every listed item, one permissions request per page. */
+export function useMarketplaceItemAccess(ids: readonly (string | null | undefined)[]) {
+  const { permissionsOf, answered, error, refetch } = useResourcePermissions(
+    'marketplace_item',
+    ids,
+  )
+  const accessOf = useCallback(
+    (id: string | null | undefined) => marketplaceItemAccess(permissionsOf(id), answered),
+    [answered, permissionsOf],
+  )
+  return useMemo(() => ({ accessOf, error, refetch }), [accessOf, error, refetch])
 }
