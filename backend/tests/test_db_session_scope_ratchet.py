@@ -17,7 +17,16 @@ from pathlib import Path
 
 APP = Path(__file__).resolve().parents[1] / "app"
 DATABASE = APP / "database.py"
-SCOPED = frozenset({"tenant_session", "tenant_sessions", "platform_session", "platform_sessions"})
+# ``company_session`` (H-07) picks tenant_session or platform_session for a skill's company.
+SCOPED = frozenset(
+    {
+        "tenant_session",
+        "tenant_sessions",
+        "platform_session",
+        "platform_sessions",
+        "company_session",
+    }
+)
 PLATFORM = frozenset({"platform_session", "platform_sessions"})
 
 # reason -> plan anchor. 8.9 rows are platform by design; "interim" rows are
@@ -36,8 +45,8 @@ PLATFORM_REASONS: dict[str, str] = {
     # this read must filter ``tenant_id IS NULL`` (or move to a tenant session).
     "system_llm.resolve": "8.9 system LLM: platform default (company override later)",
     "audit.platform_event": "8.9 audit: platform events (denied before a company)",
-    "skill_evaluation.worker": "interim 8.8 queue items carry tenant_id (H-03)",
-    "spend_writer.flush": "interim 8.8 spend queue items carry tenant_id (H-03)",
+    "skill_evaluation.reconcile": "8.9 restart: leader lists companies of interrupted runs (H-07)",
+    "skill_evaluation.system_skill": "8.9 system skills have no company: platform scope (H-07)",
     "authz.shadow_diffs": "8.9 instance-wide shadow observation (no tenant_id; dropped m91)",
     "authz.reconcile": "8.6 item 8 reconcile/rebuild read every company and the outbox",
     "authz.outbox_drain": "8.6 item 6 leader drain of the instance-wide outbox",

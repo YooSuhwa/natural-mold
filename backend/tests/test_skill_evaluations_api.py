@@ -29,6 +29,7 @@ pytestmark = pytest.mark.asyncio
 class RecordingEvaluationWorker:
     def __init__(self) -> None:
         self.enqueued_run_ids: list[uuid.UUID] = []
+        self.enqueued_scopes: list[tuple[uuid.UUID | None, uuid.UUID]] = []
         self.reserved_slots = 0
 
     def reserve_slot(self) -> None:
@@ -37,10 +38,18 @@ class RecordingEvaluationWorker:
     def release_slot(self) -> None:
         self.reserved_slots -= 1
 
-    def enqueue(self, run_id: uuid.UUID, *, reserved: bool = False) -> None:
+    def enqueue(
+        self,
+        run_id: uuid.UUID,
+        *,
+        tenant_id: uuid.UUID | None,
+        user_id: uuid.UUID,
+        reserved: bool = False,
+    ) -> None:
         if reserved:
             self.release_slot()
         self.enqueued_run_ids.append(run_id)
+        self.enqueued_scopes.append((tenant_id, user_id))
 
 
 @pytest.fixture(autouse=True)
@@ -176,6 +185,8 @@ async def test_estimate_and_create_run(
     assert detail.status_code == 200, detail.text
     assert detail.json()["latest_run"]["id"] == run.json()["id"]
     assert evaluation_worker.enqueued_run_ids == [uuid.UUID(run.json()["id"])]
+    # H-07: the queue item names the skill's company and the requester.
+    assert evaluation_worker.enqueued_scopes == [(skill.tenant_id, skill.user_id)]
     assert evaluation_worker.reserved_slots == 0
 
 
@@ -194,7 +205,14 @@ async def test_create_run_returns_queue_full_when_worker_rejects(
         def release_slot(self) -> None:
             raise AssertionError("release_slot should not be called without a reservation")
 
-        def enqueue(self, run_id: uuid.UUID, *, reserved: bool = False) -> None:
+        def enqueue(
+            self,
+            run_id: uuid.UUID,
+            *,
+            tenant_id: uuid.UUID | None,
+            user_id: uuid.UUID,
+            reserved: bool = False,
+        ) -> None:
             raise AssertionError("enqueue should not be called when reservation fails")
 
     monkeypatch.setattr(

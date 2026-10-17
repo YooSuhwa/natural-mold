@@ -16,7 +16,7 @@ from app.services.skill_evaluation_worker import SkillEvaluationWorker
 from app.services.skill_evaluation_worker_state import build_context
 from app.skills import service as skill_service
 from app.skills.creation import TextSkillCreation
-from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
+from tests.authz.unit_scope_fixture import TEST_TENANT_ID, create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -109,7 +109,7 @@ async def test_worker_persists_llm_evaluation_result(
 
     # The skill-axis ledger event is written after commit in its own session
     # (cancellation there can't roll back the completed run).
-    await worker._record_usage_ledger_after_commit(completed)  # noqa: SLF001 — test seam
+    await worker._record_usage_ledger_after_commit(completed, TEST_TENANT_ID)  # noqa: SLF001
 
     from sqlalchemy import select
 

@@ -279,7 +279,9 @@ async def create_skill_evaluation_run(
         )
         await db.commit()
         await db.refresh(run)
-        skill_evaluation_worker.enqueue(run.id, reserved=True)
+        skill_evaluation_worker.enqueue(
+            run.id, tenant_id=skill.tenant_id, user_id=user.id, reserved=True
+        )
         reserved_slot = False
         return SkillEvaluationRunResponse.model_validate(run)
     finally:

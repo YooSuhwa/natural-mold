@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -182,7 +183,7 @@ async def test_worker_loop_consumes_enqueued_run(db: AsyncSession, tmp_path: Pat
         try:
             assert await worker.start(TestSession) is True
             worker.reserve_slot()
-            worker.enqueue(run.id, reserved=True)
+            worker.enqueue(run.id, tenant_id=uuid.uuid4(), user_id=uuid.uuid4(), reserved=True)
             started_run_id = await asyncio.wait_for(evaluator.started.get(), timeout=5)
             assert started_run_id == run.id
             evaluator.releases[run.id].set()
@@ -209,9 +210,9 @@ async def test_worker_loop_respects_max_concurrent(db: AsyncSession, tmp_path: P
     try:
         await worker.start(TestSession)
         worker.reserve_slot()
-        worker.enqueue(first.id, reserved=True)
+        worker.enqueue(first.id, tenant_id=uuid.uuid4(), user_id=uuid.uuid4(), reserved=True)
         worker.reserve_slot()
-        worker.enqueue(second.id, reserved=True)
+        worker.enqueue(second.id, tenant_id=uuid.uuid4(), user_id=uuid.uuid4(), reserved=True)
         first_started = await asyncio.wait_for(evaluator.started.get(), timeout=1)
         await asyncio.sleep(0.1)
         async with TestSession() as session:

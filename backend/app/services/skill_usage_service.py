@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -27,8 +26,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import SessionTenant, async_session, platform_session, tenant_session
-from app.models.skill_builder_session import JsonValue
+from app.database import SessionTenant, async_session, tenant_session
 from app.models.skill_usage_event import SkillUsageEvent
 
 logger = logging.getLogger(__name__)
@@ -54,12 +52,6 @@ class SkillUsageSummary:
     evaluation_run_count: int
     chat_execution_count: int
     daily: list[SkillUsageDailyPoint]
-
-
-def _usage_int(value: JsonValue | None) -> int:
-    if isinstance(value, bool) or not isinstance(value, str | int | float):
-        return 0
-    return int(value)
 
 
 def _utc_now_naive() -> datetime:
@@ -93,50 +85,6 @@ async def record_evaluation_usage(
     db.add(event)
     await db.flush()
     return event
-
-
-async def record_evaluation_usage_nonfatal(
-    *,
-    skill_id: uuid.UUID,
-    user_id: uuid.UUID,
-    evaluation_run_id: uuid.UUID,
-    model_name: str | None,
-    usage: Mapping[str, JsonValue],
-) -> None:
-    """Own-session, best-effort evaluation-run ledger write.
-
-    Called AFTER the run's completion is committed, so the completion is never
-    rolled back if this write fails or is cancelled — ``asyncio.CancelledError``
-    (a BaseException) would otherwise bypass a broad ``except Exception`` and
-    unwind the run's transaction (repo CLAUDE.md cancel-vs-Exception rule).
-    """
-
-    raw_cost = usage.get("cost_usd")
-    cost = (
-        Decimal(str(raw_cost))
-        if isinstance(raw_cost, int | float) and not isinstance(raw_cost, bool)
-        else None
-    )
-    try:
-        # Interim: evaluation runs are written by the platform-scoped worker (H-03).
-        async with platform_session("skill_evaluation.worker", maker=async_session) as db:
-            await record_evaluation_usage(
-                db,
-                skill_id=skill_id,
-                user_id=user_id,
-                evaluation_run_id=evaluation_run_id,
-                model_name=model_name,
-                tokens_in=_usage_int(usage.get("tokens_in")),
-                tokens_out=_usage_int(usage.get("tokens_out")),
-                cost_usd=cost,
-            )
-            await db.commit()
-    except Exception:  # noqa: BLE001 — ledger write must not fail the run
-        logger.warning(
-            "skill evaluation usage ledger write failed run_id=%s",
-            evaluation_run_id,
-            exc_info=True,
-        )
 
 
 async def record_chat_execution(

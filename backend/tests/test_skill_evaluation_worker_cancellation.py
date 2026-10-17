@@ -128,7 +128,7 @@ async def test_worker_preserves_running_cancellation_after_evaluator_returns(
         await worker.start(TestSession)
         try:
             worker.reserve_slot()
-            worker.enqueue(run.id, reserved=True)
+            worker.enqueue(run.id, tenant_id=uuid.uuid4(), user_id=uuid.uuid4(), reserved=True)
             started = await asyncio.wait_for(evaluator.started.get(), timeout=1)
             assert started == run.id
 
@@ -203,7 +203,7 @@ async def test_worker_stops_when_evaluator_checkpoint_sees_cancelled_run(
         await worker.start(TestSession)
         try:
             worker.reserve_slot()
-            worker.enqueue(run.id, reserved=True)
+            worker.enqueue(run.id, tenant_id=uuid.uuid4(), user_id=uuid.uuid4(), reserved=True)
             started = await asyncio.wait_for(evaluator.started.get(), timeout=1)
             assert started == run.id
 

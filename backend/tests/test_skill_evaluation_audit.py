@@ -37,7 +37,14 @@ class RecordingEvaluationWorker:
     def release_slot(self) -> None:
         self.reserved = False
 
-    def enqueue(self, run_id: uuid.UUID, *, reserved: bool = False) -> None:
+    def enqueue(
+        self,
+        run_id: uuid.UUID,
+        *,
+        tenant_id: uuid.UUID | None,
+        user_id: uuid.UUID,
+        reserved: bool = False,
+    ) -> None:
         if reserved:
             self.release_slot()
 

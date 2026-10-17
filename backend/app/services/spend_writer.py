@@ -13,7 +13,8 @@ Responsibilities
   a background task on ``flush_interval_sec`` ticks **or** when the buffered
   count reaches ``batch_size``. Drained entries are grouped by
   ``(date, org_id, target_id)`` per axis and UPSERTed into ``daily_spend_user`` /
-  ``daily_spend_agent`` / ``daily_spend_model``.
+  ``daily_spend_agent`` / ``daily_spend_model``. Every entry carries its company
+  (``tenant_id``, required); a batch is flushed one company per session (H-07, 8.8).
 
 Concurrency invariants
 ----------------------
@@ -35,14 +36,13 @@ import contextlib
 import logging
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date as date_type
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session, platform_session
-from app.services.spend_upsert import AXES, Bucket, BucketKey, upsert_axis
+from app.services.spend_flush import flush_by_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -71,29 +71,12 @@ class SpendEntry:
     request_count: int = 1
     # F-14 (6.2, 8.7): the run's organization/company; aggregates are keyed by org.
     org_id: uuid.UUID | None = None
-    tenant_id: uuid.UUID | None = None
+    # H-07 (8.8): queue items always name their company; flushes never mix companies.
+    tenant_id: uuid.UUID = field(kw_only=True)
 
-
-# ---------------------------------------------------------------------------
-# Internal aggregation helper
-# ---------------------------------------------------------------------------
-
-
-def _coerce_cost(value: object) -> Decimal:
-    """Normalise float/int/Decimal inputs into a ``Decimal``.
-
-    The hook may be called with floats (LangChain usage_metadata) or with
-    Decimals (LiteLLM-derived pricing). We always store Decimal so the
-    aggregate table stays exact.
-    """
-
-    if isinstance(value, Decimal):
-        return value
-    if isinstance(value, (int, float)):
-        # ``str()`` coercion preserves precision; passing the float directly
-        # to ``Decimal`` would carry binary-float noise into the DB.
-        return Decimal(str(value))
-    return Decimal("0")
+    def __post_init__(self) -> None:
+        if not isinstance(self.tenant_id, uuid.UUID):
+            raise TypeError("spend entries require a tenant_id")
 
 
 # ---------------------------------------------------------------------------
@@ -234,47 +217,10 @@ class DailySpendUpdateQueue:
             await self._flush_batch(entries)
 
     async def _flush_batch(self, entries: list[SpendEntry]) -> None:
-        """UPSERT a batch into the three aggregate tables."""
+        """UPSERT a batch into the three aggregate tables, one company at a time."""
 
-        if not entries:
-            return
-
-        buckets: tuple[dict[BucketKey, Bucket], ...] = tuple({} for _ in AXES)
-        for entry in entries:
-            cost = _coerce_cost(entry.cost_usd)
-            targets = (entry.user_id, entry.agent_id, entry.model_id)
-            for axis_buckets, target_id in zip(buckets, targets, strict=True):
-                if target_id is not None:
-                    key = (entry.date, entry.org_id, entry.tenant_id, target_id)
-                    self._accumulate(axis_buckets, key, entry, cost)
-
-        # Interim platform scope until queue entries carry tenant_id (8.8, H-03).
-        async with platform_session(
-            "spend_writer.flush", maker=self._session_factory or async_session
-        ) as db:
-            try:
-                for (table_cls, target_col), axis_buckets in zip(AXES, buckets, strict=True):
-                    await upsert_axis(db, table_cls, target_col, axis_buckets)
-                await db.commit()
-            except Exception:  # noqa: BLE001 — keep loop alive
-                await db.rollback()
-                raise
-
-    @staticmethod
-    def _accumulate(
-        buckets: dict[BucketKey, Bucket],
-        key: BucketKey,
-        entry: SpendEntry,
-        cost: Decimal,
-    ) -> None:
-        bucket = buckets.get(key)
-        if bucket is None:
-            bucket = Bucket()
-            buckets[key] = bucket
-        bucket.tokens_in += entry.tokens_in
-        bucket.tokens_out += entry.tokens_out
-        bucket.cost_usd += cost
-        bucket.request_count += entry.request_count
+        if entries:
+            await flush_by_tenant(entries, self._session_factory)
 
 
 # Module-global singleton — imported by hooks + lifespan.

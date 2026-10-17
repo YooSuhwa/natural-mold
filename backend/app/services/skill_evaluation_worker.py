@@ -4,19 +4,23 @@ import asyncio
 import contextlib
 import logging
 import uuid
-from collections import deque
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.skill_builder.eval_cancellation import EvalRunCancelled
 from app.config import settings
-from app.database import async_session, platform_session
+from app.database import async_session
 from app.models.skill_evaluation import SkillEvaluationRun
 from app.services.skill_evaluation_llm import LlmSkillEvaluationEvaluator
+from app.services.skill_evaluation_queue import (
+    SkillEvaluationQueue,
+    SkillEvaluationQueueFull,
+    SkillEvaluationQueueItem,
+)
 from app.services.skill_evaluation_service import effective_run_timeout_seconds
+from app.services.skill_evaluation_usage_ledger import record_evaluation_usage_nonfatal
 from app.services.skill_evaluation_worker_leader import (
     release_skill_evaluation_worker_leader,
     try_acquire_skill_evaluation_worker_leader,
@@ -28,21 +32,23 @@ from app.services.skill_evaluation_worker_outcomes import (
     record_completed_audit,
 )
 from app.services.skill_evaluation_worker_state import (
-    RUN_LIFECYCLE_OPTIONS,
     build_context,
     load_run,
     mark_cancelled,
     mark_completed,
-    mark_failed,
     mark_grading,
     mark_running,
     record_run_audit,
+)
+from app.services.skill_evaluation_worker_tenants import (
+    company_session,
+    mark_interrupted_runs,
+    reconcile_interrupted_by_company,
 )
 from app.services.skill_evaluation_worker_types import (
     SkillEvaluationEvaluator,
     SkillEvaluationExecutionError,
 )
-from app.services.skill_usage_service import record_evaluation_usage_nonfatal
 
 logger = logging.getLogger(__name__)
 
@@ -53,54 +59,17 @@ class SkillEvaluationSessionFactory(Protocol):
     def __call__(self) -> AsyncSession: ...
 
 
-class SkillEvaluationQueueFull(RuntimeError):
-    pass
-
-
 @dataclass(slots=True)
-class SkillEvaluationWorker:
+class SkillEvaluationWorker(SkillEvaluationQueue):
     evaluator: SkillEvaluationEvaluator = field(default_factory=LlmSkillEvaluationEvaluator)
     queue_max_size: int = field(default_factory=lambda: settings.skill_evaluation_queue_max_size)
     max_concurrent: int = field(default_factory=lambda: settings.skill_evaluation_max_concurrent)
-    _queue: deque[uuid.UUID] = field(default_factory=deque, init=False)
-    _queued_ids: set[uuid.UUID] = field(default_factory=set, init=False)
-    _reserved_slots: int = field(default=0, init=False)
     _session_factory: SkillEvaluationSessionFactory | None = field(default=None, init=False)
     _task: asyncio.Task[None] | None = field(default=None, init=False)
     _active_tasks: set[asyncio.Task[None]] = field(default_factory=set, init=False)
     _semaphore: asyncio.Semaphore | None = field(default=None, init=False)
     _stopping: asyncio.Event | None = field(default=None, init=False)
-    _wake: asyncio.Event | None = field(default=None, init=False)
     _holds_leader_lock: bool = field(default=False, init=False)
-
-    def reserve_slot(self) -> None:
-        if len(self._queue) + self._reserved_slots >= self.queue_max_size:
-            raise SkillEvaluationQueueFull("skill evaluation queue is full")
-        self._reserved_slots += 1
-
-    def release_slot(self) -> None:
-        self._reserved_slots = max(self._reserved_slots - 1, 0)
-
-    def enqueue(self, run_id: uuid.UUID, *, reserved: bool = False) -> None:
-        if run_id in self._queued_ids:
-            if reserved:
-                self.release_slot()
-            return
-        if not reserved and len(self._queue) + self._reserved_slots >= self.queue_max_size:
-            raise SkillEvaluationQueueFull("skill evaluation queue is full")
-        if reserved:
-            self.release_slot()
-        self._queue.append(run_id)
-        self._queued_ids.add(run_id)
-        if self._wake is not None:
-            self._wake.set()
-
-    def pop_next(self) -> uuid.UUID | None:
-        if not self._queue:
-            return None
-        run_id = self._queue.popleft()
-        self._queued_ids.discard(run_id)
-        return run_id
 
     async def start(
         self,
@@ -151,21 +120,12 @@ class SkillEvaluationWorker:
             self._holds_leader_lock = False
             await release_skill_evaluation_worker_leader()
 
-    def _open_session(self, factory: SkillEvaluationSessionFactory | None = None) -> AsyncSession:
-        """Interim platform scope until queue items carry ``tenant_id`` (8.8, H-03)."""
-        maker = factory or self._session_factory
-        if maker is None:
-            return platform_session("skill_evaluation.worker", maker=async_session)
-        return platform_session("skill_evaluation.worker", maker=maker)
-
     async def reconcile_stale_runs(
         self,
         session_factory: SkillEvaluationSessionFactory | None = None,
     ) -> int:
-        async with self._open_session(session_factory) as db:
-            count = await self.mark_interrupted_runs(db)
-            await db.commit()
-            return count
+        """8.9: list companies with interrupted runs, then fail them per company."""
+        return await reconcile_interrupted_by_company(session_factory or self._session_factory)
 
     async def run_once(self, db: AsyncSession, run_id: uuid.UUID) -> SkillEvaluationRun | None:
         run = await load_run(db, run_id)
@@ -225,7 +185,9 @@ class SkillEvaluationWorker:
         return run
 
     @staticmethod
-    async def _record_usage_ledger_after_commit(run: SkillEvaluationRun) -> None:
+    async def _record_usage_ledger_after_commit(
+        run: SkillEvaluationRun, tenant_id: uuid.UUID | None
+    ) -> None:
         """Best-effort skill-axis usage event for a COMMITTED completed run.
 
         Runs in its own session after the completion is durable — the run's FK
@@ -238,6 +200,7 @@ class SkillEvaluationWorker:
         if not isinstance(usage, dict):
             return
         await record_evaluation_usage_nonfatal(
+            tenant_id=tenant_id,
             skill_id=run.skill_id,
             user_id=run.user_id,
             evaluation_run_id=run.id,
@@ -246,24 +209,7 @@ class SkillEvaluationWorker:
         )
 
     async def mark_interrupted_runs(self, db: AsyncSession) -> int:
-        result = await db.execute(
-            select(SkillEvaluationRun)
-            .options(RUN_LIFECYCLE_OPTIONS)
-            .where(SkillEvaluationRun.status.in_(("running", "grading")))
-            .execution_options(autoflush=False)
-        )
-        rows = list(result.scalars().all())
-        for run in rows:
-            await mark_failed(db, run, "interrupted: process restarted")
-            await record_run_audit(
-                db,
-                run,
-                "skill_evaluation.run_fail",
-                outcome="failure",
-                metadata={"reason": "worker_restart"},
-            )
-        await db.flush()
-        return len(rows)
+        return await mark_interrupted_runs(db)
 
     async def _loop(self) -> None:
         while self._stopping is None or not self._stopping.is_set():
@@ -271,30 +217,32 @@ class SkillEvaluationWorker:
             if len(self._active_tasks) >= max(1, self.max_concurrent):
                 await asyncio.wait(self._active_tasks, return_when=asyncio.FIRST_COMPLETED)
                 continue
-            run_id = self.pop_next()
-            if run_id is None:
+            item = self.pop_next()
+            if item is None:
                 wake = self._wake
                 if wake is None:
                     return
                 await wake.wait()
                 wake.clear()
                 continue
-            task = asyncio.create_task(self._execute_run(run_id))
+            task = asyncio.create_task(self._execute_run(item))
             self._active_tasks.add(task)
         if self._active_tasks:
             await asyncio.gather(*self._active_tasks, return_exceptions=True)
 
-    async def _execute_run(self, run_id: uuid.UUID) -> None:
+    async def _execute_run(self, item: SkillEvaluationQueueItem) -> None:
         semaphore = self._semaphore
         if semaphore is not None:
             async with semaphore:
-                await self._execute_run_with_session(run_id)
+                await self._execute_run_with_session(item)
             return
-        await self._execute_run_with_session(run_id)
+        await self._execute_run_with_session(item)
 
-    async def _execute_run_with_session(self, run_id: uuid.UUID) -> None:
+    async def _execute_run_with_session(self, item: SkillEvaluationQueueItem) -> None:
+        """One queue item, one company session (8.8): items never share a session."""
+        run_id = item.run_id
         run: SkillEvaluationRun | None = None
-        async with self._open_session() as db:
+        async with company_session(item.tenant_id, item.user_id, maker=self._session_factory) as db:
             try:
                 run = await self.run_once(db, run_id)
             except SkillEvaluationExecutionError as exc:
@@ -305,7 +253,9 @@ class SkillEvaluationWorker:
         # Ledger write is deferred to AFTER the durable commit above so a late
         # cancellation can't roll back the completed run (Phase 3 §5.1).
         if run is not None:
-            await self._record_usage_ledger_after_commit(run)
+            await self._record_usage_ledger_after_commit(run, item.tenant_id)
 
 
 skill_evaluation_worker = SkillEvaluationWorker()
+
+__all__ = ["SkillEvaluationQueueFull", "SkillEvaluationWorker", "skill_evaluation_worker"]

@@ -193,7 +193,7 @@ async def test_evaluation_maintenance_avoids_private_json_after_membership_loss(
             case "denied_worker":
                 run = await worker.run_once(db, target.run.id)
                 assert run is not None and run.status == "failed"
-                await worker._record_usage_ledger_after_commit(run)
+                await worker._record_usage_ledger_after_commit(run, target.scopes.first.tenant_id)
             case unreachable:
                 assert_never(unreachable)
     private_selects = [
