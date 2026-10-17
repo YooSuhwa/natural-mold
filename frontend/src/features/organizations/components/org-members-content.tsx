@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
-import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { SettingsSectionCard } from '@/components/shared/settings-section-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,7 +19,6 @@ import {
 import {
   useAddOrgMember,
   useOrgMembers,
-  useRemoveOrgMember,
   useSetOrgMemberStatus,
   useOrganizationInfo,
 } from '@/lib/hooks/use-organizations'
@@ -30,6 +28,7 @@ import { orgAccess } from '../lib/access'
 import { useCursorPager } from '../lib/cursor-pager'
 import { useOrgErrorMessage } from '../lib/error-message'
 import { DirectoryPager } from './directory-pager'
+import { MemberRemovalWizard } from './member-removal/member-removal-wizard'
 import { OrgPageFrame } from './org-page-frame'
 import { PrincipalPicker } from './principal-picker'
 
@@ -54,12 +53,11 @@ function OrgMembersBody({ organization }: { organization: OrganizationSummary })
   const access = orgAccess(organization, info.data?.permissions)
   const add = useAddOrgMember(organization.id)
   const setStatus = useSetOrgMemberStatus(organization.id)
-  const remove = useRemoveOrgMember(organization.id)
   const [removing, setRemoving] = useState<MemberView | null>(null)
 
   const version = page.data?.updated_at
   const onError = (err: unknown) => toast.error(errorMessage(err))
-  const busy = add.isPending || setStatus.isPending || remove.isPending
+  const busy = add.isPending || setStatus.isPending
 
   return (
     <div className="space-y-4">
@@ -162,25 +160,17 @@ function OrgMembersBody({ organization }: { organization: OrganizationSummary })
         />
       </SettingsSectionCard>
 
-      <DeleteConfirmDialog
-        open={removing !== null}
-        onOpenChange={(open) => {
-          if (!open) setRemoving(null)
-        }}
-        title={t('remove.title')}
-        description={
-          removing ? t('remove.description', { name: removing.display_name }) : undefined
-        }
-        confirmLabel={t('actions.remove')}
-        isPending={remove.isPending}
-        onConfirm={() => {
-          if (!removing || !version) return
-          remove.mutate(
-            { userId: removing.user_id, version },
-            { onSuccess: () => setRemoving(null), onError },
-          )
-        }}
-      />
+      {version ? (
+        <MemberRemovalWizard
+          orgId={organization.id}
+          orgName={organization.name}
+          member={
+            removing ? { userId: removing.user_id, displayName: removing.display_name } : null
+          }
+          version={version}
+          onClose={() => setRemoving(null)}
+        />
+      ) : null}
     </div>
   )
 }

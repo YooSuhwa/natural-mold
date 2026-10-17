@@ -317,12 +317,6 @@ export function useSetOrgMemberStatus(orgId: string) {
   )
 }
 
-export function useRemoveOrgMember(orgId: string) {
-  return useOrgWrite(orgId, ({ userId, version }: { userId: string; version: string }) =>
-    orgAdminApi.removeMember(orgId, userId, version),
-  )
-}
-
 export function useCreateOrgGroup(orgId: string) {
   return useOrgWrite(orgId, ({ data, version }: { data: GroupCreate; version: string }) =>
     orgAdminApi.createGroup(orgId, data, version),

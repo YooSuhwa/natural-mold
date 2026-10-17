@@ -401,11 +401,111 @@
         "suspend": "Suspend",
         "reactivate": "Reactivate",
         "remove": "Remove"
-      },
-      "remove": {
-        "title": "Remove this member?",
-        "description": "{name} will be removed from the organization. Their user account is not deleted."
       }
+    },
+    "memberRemoval": {
+      "title": "Remove {name} from {org}",
+      "description": "Their resources must be settled before they can be removed.",
+      "cancel": "Cancel",
+      "back": "Back",
+      "next": "Next",
+      "submit": "Remove",
+      "done": "Removed {name} from the organization.",
+      "lastAdmin": "The last organization admin can't be removed. A company admin must appoint another admin first.",
+      "blockedNotice": "Some resources must be cleaned up before this member can be removed. Resolve the items below, then reopen.",
+      "steps": {
+        "label": "Removal steps",
+        "item": "{number} {label}",
+        "s1": "Owned resources",
+        "s2": "Shares and triggers",
+        "s3": "Confirm"
+      },
+      "resources": {
+        "empty": "This member owns no resources.",
+        "applyAll": "New owner for every transfer",
+        "resource": "Resource",
+        "handling": "Handling",
+        "type": {
+          "agent": "Agent",
+          "skill": "Skill",
+          "tool": "Tool",
+          "mcp_server": "MCP server",
+          "credential": "Credential",
+          "marketplace_item": "Marketplace item",
+          "other": "Other"
+        },
+        "archived": "Archived · stays with the owner",
+        "unsupported": "Can't be transferred here. Unpublish or delete it first.",
+        "blocked": "Clean up first to transfer",
+        "actionFor": "Handling for {name}",
+        "action": {
+          "transfer": "Transfer",
+          "delete": "Delete"
+        },
+        "deleteNote": "This credential is deleted with the removal.",
+        "personalDelete": "Personal-account credentials can't be transferred and are deleted. Connections using it will break.",
+        "newOwner": "New owner: {name}",
+        "change": "Change",
+        "changeOwner": "Change the new owner of {name}",
+        "ownerFor": "New owner of {name}",
+        "transferNow": "Transfer now",
+        "transferNowFor": "Transfer {name} now"
+      },
+      "blocker": {
+        "triggers": "{count} active schedules owned by others",
+        "deployments": "{count} active API deployments",
+        "api_keys": "{count} unrevoked API keys",
+        "credentials": "{count} connections to the previous owner's credentials",
+        "skill_bindings": "{count} skill connections using this credential",
+        "other": "{count} connections to clean up"
+      },
+      "effects": {
+        "description": "Removing this member revokes or stops the following.",
+        "grants": "Shares given to this person",
+        "groups": "Group memberships",
+        "roles": "Roles",
+        "triggers": "Owned schedules (paused)",
+        "deployments": "API deployments (disabled)",
+        "apiKeys": "API keys (revoked)",
+        "count": "{count}",
+        "delegation": "Connections this person delegated are re-checked after removal; agent admins are notified of broken ones."
+      },
+      "confirm": {
+        "transfers": "{count} ownership transfers",
+        "deletes": "{count} deletions",
+        "account": "{name}'s user account is not deleted.",
+        "retention": "Their conversations are kept under the organization's retention policy.",
+        "reason": "Reason for removal (required, recorded in the activity log)"
+      },
+      "errors": {
+        "stale_version": "Someone changed this first. The latest data was loaded; please review again.",
+        "last_admin": "The last organization admin can't be removed.",
+        "resource_transfer_required": "Some owned resources are still unsettled. The list was reloaded.",
+        "transfer_blocked": "A connection blocks the transfer. Please review the list again.",
+        "conflict": "The state changed while processing. The list was reloaded.",
+        "grantInvalid": {
+          "not_owned": "A resource this person doesn't own was included.",
+          "delete_unsupported": "Only credentials can be deleted.",
+          "principal": "The new owner must be an active member of this organization.",
+          "self_transfer": "You can't transfer to yourself.",
+          "default": "This handling isn't allowed."
+        },
+        "generic": "Couldn't remove the member. Please try again later."
+      }
+    },
+    "archiveDialog": {
+      "open": "Archive",
+      "openFor": "Archive {name}",
+      "title": "Archive the {name} organization?",
+      "description": "While archived, nobody can access this organization.",
+      "members": "{count} members lose access to the organization",
+      "runs": "Runs in progress are stopped",
+      "schedules": "Active schedules are paused and stay paused after a restore",
+      "restore": "You can restore it within 30 days",
+      "confirmLabel": "Type the organization name \"{name}\" to confirm",
+      "cancel": "Cancel",
+      "submit": "Archive",
+      "done": "Archived the {name} organization."
     },
     "groups": {
       "title": "Groups",
@@ -1848,6 +1948,12 @@
       "confirmTitle": "Transfer {resource} to {name}?",
       "confirmDescription": "To undo, the new owner has to transfer it back.",
       "done": "Transferred ownership to {name}."
+    },
+    "transferDialog": {
+      "title": "Transfer ownership",
+      "cancel": "Cancel",
+      "noPermission": "You don't have permission to transfer ownership of this resource.",
+      "delegations": "{count} delegated connections stay tied to the person who connected them. If that person loses access, the connection breaks."
     },
     "errors": {
       "generic": "Could not complete the request. Try again.",

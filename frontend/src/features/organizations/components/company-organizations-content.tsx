@@ -37,6 +37,7 @@ import { useCursorPager } from '../lib/cursor-pager'
 import { useOrgErrorMessage } from '../lib/error-message'
 import { DirectoryPager } from './directory-pager'
 import { OrgPageFrame } from './org-page-frame'
+import { OrganizationArchiveAction } from './organization-archive-dialog'
 
 const MEMBER_ROLES: readonly DefaultMemberRole[] = ['member', 'builder']
 
@@ -122,7 +123,9 @@ function CompanyOrganizationsBody({ organization }: { organization: Organization
                       >
                         {t('restore')}
                       </Button>
-                    ) : null}
+                    ) : (
+                      <OrganizationArchiveAction tenantId={tenantId} organization={org} />
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

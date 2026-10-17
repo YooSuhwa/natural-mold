@@ -401,11 +401,111 @@
         "suspend": "정지",
         "reactivate": "재활성화",
         "remove": "제거"
-      },
-      "remove": {
-        "title": "멤버를 제거할까요?",
-        "description": "{name} 님을 조직에서 제거합니다. 사용자 계정은 삭제되지 않습니다."
       }
+    },
+    "memberRemoval": {
+      "title": "{name} 님을 {org}에서 제거",
+      "description": "소유한 자원을 먼저 정리해야 제거할 수 있어요.",
+      "cancel": "취소",
+      "back": "이전",
+      "next": "다음",
+      "submit": "제거",
+      "done": "{name} 님을 조직에서 제거했어요.",
+      "lastAdmin": "마지막 조직 관리자는 제거할 수 없어요. 회사 관리자가 다른 관리자를 먼저 지정해야 해요.",
+      "blockedNotice": "먼저 정리해야 할 자원이 있어 제거할 수 없어요. 아래 표시된 항목을 정리한 뒤 다시 여세요.",
+      "steps": {
+        "label": "제거 단계",
+        "item": "{number} {label}",
+        "s1": "소유 자원",
+        "s2": "공유·트리거 정리",
+        "s3": "확인"
+      },
+      "resources": {
+        "empty": "이 구성원이 소유한 자원이 없어요.",
+        "applyAll": "모든 이전 항목의 새 소유자",
+        "resource": "자원",
+        "handling": "처리",
+        "type": {
+          "agent": "에이전트",
+          "skill": "스킬",
+          "tool": "도구",
+          "mcp_server": "MCP 서버",
+          "credential": "자격 증명",
+          "marketplace_item": "마켓플레이스 항목",
+          "other": "기타"
+        },
+        "archived": "보관됨 · 소유자에게 남아요",
+        "unsupported": "여기서 이전할 수 없어요. 먼저 게시를 취소하거나 삭제하세요.",
+        "blocked": "먼저 정리해야 이전할 수 있어요",
+        "actionFor": "{name} 처리 방식",
+        "action": {
+          "transfer": "이전",
+          "delete": "삭제"
+        },
+        "deleteNote": "제거할 때 이 자격 증명을 삭제해요.",
+        "personalDelete": "개인 계정 자격 증명은 이전할 수 없어 삭제돼요. 이 자격 증명을 쓰던 연결은 끊어져요.",
+        "newOwner": "새 소유자: {name}",
+        "change": "변경",
+        "changeOwner": "{name}의 새 소유자 변경",
+        "ownerFor": "{name}의 새 소유자",
+        "transferNow": "지금 바로 이전",
+        "transferNowFor": "{name} 지금 바로 이전"
+      },
+      "blocker": {
+        "triggers": "다른 사람의 활성 스케줄 {count}개",
+        "deployments": "활성 API 배포 {count}개",
+        "api_keys": "폐기되지 않은 API 키 {count}개",
+        "credentials": "이전 소유자의 자격 증명 연결 {count}개",
+        "skill_bindings": "이 자격 증명을 쓰는 스킬 연결 {count}개",
+        "other": "정리가 필요한 연결 {count}개"
+      },
+      "effects": {
+        "description": "제거하면 다음 항목이 회수되거나 정지돼요.",
+        "grants": "이 사람에게 준 공유",
+        "groups": "그룹 소속",
+        "roles": "역할",
+        "triggers": "소유한 스케줄 (정지)",
+        "deployments": "API 배포 (비활성화)",
+        "apiKeys": "API 키 (폐기)",
+        "count": "{count}개",
+        "delegation": "이 사람이 위임한 연결은 제거 후 다시 검증되고, 끊어진 연결은 에이전트 관리자에게 알려요."
+      },
+      "confirm": {
+        "transfers": "소유권 이전 {count}건",
+        "deletes": "삭제 {count}건",
+        "account": "{name} 님의 사용자 계정은 삭제되지 않아요.",
+        "retention": "이 사람의 대화 기록은 조직 보존 정책에 따라 보관돼요.",
+        "reason": "제거 사유 (필수, 활동 기록에 남아요)"
+      },
+      "errors": {
+        "stale_version": "다른 사람이 먼저 변경했어요. 최신 내용을 불러왔으니 다시 확인해 주세요.",
+        "last_admin": "마지막 조직 관리자는 제거할 수 없어요.",
+        "resource_transfer_required": "아직 정리하지 않은 소유 자원이 있어요. 목록을 다시 불러왔어요.",
+        "transfer_blocked": "이전을 막는 연결이 있어요. 목록을 다시 확인해 주세요.",
+        "conflict": "처리 중 상태가 바뀌었어요. 목록을 다시 불러왔어요.",
+        "grantInvalid": {
+          "not_owned": "이 사람이 소유하지 않은 자원이 포함돼 있어요.",
+          "delete_unsupported": "자격 증명만 삭제할 수 있어요.",
+          "principal": "새 소유자는 이 조직의 활성 구성원이어야 해요.",
+          "self_transfer": "자기 자신에게는 이전할 수 없어요.",
+          "default": "이 처리 방식은 쓸 수 없어요."
+        },
+        "generic": "구성원을 제거하지 못했어요. 잠시 후 다시 시도해 주세요."
+      }
+    },
+    "archiveDialog": {
+      "open": "보관",
+      "openFor": "{name} 보관",
+      "title": "{name} 조직을 보관할까요?",
+      "description": "보관하는 동안 이 조직에는 아무도 접근할 수 없어요.",
+      "members": "구성원 {count}명이 조직에 접근할 수 없게 돼요",
+      "runs": "진행 중인 실행은 중지돼요",
+      "schedules": "활성 스케줄은 정지되고, 복원해도 정지 상태로 남아요",
+      "restore": "30일 안에 복원할 수 있어요",
+      "confirmLabel": "확인을 위해 조직 이름 \"{name}\"을 입력하세요",
+      "cancel": "취소",
+      "submit": "보관",
+      "done": "{name} 조직을 보관했어요."
     },
     "groups": {
       "title": "그룹",
@@ -1848,6 +1948,12 @@
       "confirmTitle": "{resource}의 소유권을 {name}님에게 넘길까요?",
       "confirmDescription": "되돌리려면 새 소유자가 다시 이전해야 해요.",
       "done": "{name}님에게 소유권을 넘겼어요."
+    },
+    "transferDialog": {
+      "title": "소유권 이전",
+      "cancel": "취소",
+      "noPermission": "이 자원의 소유권을 이전할 권한이 없어요.",
+      "delegations": "위임된 자원 {count}개는 처음 연결한 사람 기준으로 유지돼요. 연결한 사람이 권한을 잃으면 연결이 끊어져요."
     },
     "errors": {
       "generic": "요청을 처리하지 못했어요. 다시 시도하세요.",

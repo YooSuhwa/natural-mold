@@ -12,6 +12,23 @@ import { makeOrganization } from '../../unit/hooks/organization-fixtures'
 import { makeOrgView, orgApiMock } from './org-admin-mocks'
 
 vi.mock('@/lib/api/organizations', async () => (await import('./org-admin-mocks')).orgApiMock)
+vi.mock('@/lib/api/member-exit', () => ({
+  memberExitApi: {
+    preview: vi.fn().mockResolvedValue({
+      user_id: 'u1',
+      status: 'active',
+      is_last_admin: false,
+      owned: [],
+      grants: [],
+      group_ids: [],
+      roles: [],
+      trigger_ids: [],
+      deployment_ids: [],
+      api_key_ids: [],
+    }),
+    remove: vi.fn(),
+  },
+}))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const { meOrganizationsApi, orgAdminApi } = orgApiMock
@@ -62,6 +79,18 @@ describe('OrgMembersContent', () => {
     await waitFor(() =>
       expect(orgAdminApi.listMembers).toHaveBeenLastCalledWith('org-1', { cursor: 'cursor-2' }),
     )
+  })
+
+  it('opens the removal wizard from the row action', async () => {
+    meOrganizationsApi.list.mockResolvedValue([makeOrganization({ roles: ['admin'] })])
+    orgAdminApi.get.mockResolvedValue(makeOrgView())
+    render(<OrgMembersContent />)
+    await userEvent.click(await screen.findByRole('button', { name: '제거' }))
+    expect(
+      await screen.findByRole('dialog', { name: 'Kim 님을 Alpha에서 제거' }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('이 구성원이 소유한 자원이 없어요.')).toBeInTheDocument()
+    expect(orgAdminApi.removeMember).not.toHaveBeenCalled()
   })
 
   it('hides member actions from non-admins', async () => {
