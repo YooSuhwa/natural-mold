@@ -313,6 +313,179 @@
         ]
       }
     },
+    "/api/admin/authz/failures": {
+      "get": {
+        "operationId": "get_failures_api_admin_authz_failures_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxFailurePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Failures",
+        "tags": [
+          "platform authorization sync"
+        ]
+      }
+    },
+    "/api/admin/authz/failures/{outbox_id}/retry": {
+      "post": {
+        "operationId": "retry_outbox_failure_api_admin_authz_failures__outbox_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "outbox_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Outbox Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxFailure"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Outbox Failure",
+        "tags": [
+          "platform authorization sync"
+        ]
+      }
+    },
+    "/api/admin/authz/reconcile": {
+      "post": {
+        "operationId": "start_reconcile_api_admin_authz_reconcile_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconcileStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Start Reconcile",
+        "tags": [
+          "platform authorization sync"
+        ]
+      }
+    },
+    "/api/admin/authz/reconcile/{job_id}": {
+      "get": {
+        "operationId": "get_reconcile_api_admin_authz_reconcile__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconcileRunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Reconcile",
+        "tags": [
+          "platform authorization sync"
+        ]
+      }
+    },
+    "/api/admin/authz/status": {
+      "get": {
+        "operationId": "get_status_api_admin_authz_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthzOpsStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Status",
+        "tags": [
+          "platform authorization sync"
+        ]
+      }
+    },
     "/api/admin/tenants": {
       "get": {
         "operationId": "list_companies_api_admin_tenants_get",
@@ -27267,6 +27440,64 @@
       "title": "AuthResponse",
       "type": "object"
     },
+    "AuthzOpsStatus": {
+      "properties": {
+        "delegations": {
+          "$ref": "#/components/schemas/DelegationStats"
+        },
+        "jobs": {
+          "items": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "title": "Jobs",
+          "type": "array"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "openfga": {
+          "$ref": "#/components/schemas/FgaHealthView"
+        },
+        "outbox": {
+          "$ref": "#/components/schemas/OutboxStats"
+        },
+        "reconcile": {
+          "$ref": "#/components/schemas/ReconcileStatus"
+        },
+        "retention": {
+          "$ref": "#/components/schemas/RetentionStats"
+        },
+        "revocations": {
+          "$ref": "#/components/schemas/RevocationStats"
+        },
+        "shadow": {
+          "items": {
+            "$ref": "#/components/schemas/ShadowTypeCount"
+          },
+          "title": "Shadow",
+          "type": "array"
+        },
+        "sync_enabled": {
+          "title": "Sync Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mode",
+        "sync_enabled",
+        "openfga",
+        "outbox",
+        "revocations",
+        "reconcile",
+        "shadow",
+        "delegations",
+        "retention",
+        "jobs"
+      ],
+      "title": "AuthzOpsStatus",
+      "type": "object"
+    },
     "Body_create_upload_api_uploads_post": {
       "properties": {
         "file": {
@@ -30807,6 +31038,24 @@
       "title": "DelegatedAccount",
       "type": "object"
     },
+    "DelegationStats": {
+      "properties": {
+        "broken_last_24h": {
+          "title": "Broken Last 24H",
+          "type": "integer"
+        },
+        "broken_links": {
+          "title": "Broken Links",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "broken_links",
+        "broken_last_24h"
+      ],
+      "title": "DelegationStats",
+      "type": "object"
+    },
     "DirectoryPage_CapabilityGrantView_": {
       "properties": {
         "has_more": {
@@ -31320,6 +31569,60 @@
         "resource_id"
       ],
       "title": "ExitResolution",
+      "type": "object"
+    },
+    "FgaHealthView": {
+      "properties": {
+        "checked_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Checked At"
+        },
+        "last_success_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Success At"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latency Ms"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "degraded",
+            "down",
+            "disabled"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "FgaHealthView",
       "type": "object"
     },
     "FileItem": {
@@ -32353,6 +32656,35 @@
         "status"
       ],
       "title": "InvitationView",
+      "type": "object"
+    },
+    "JobStatus": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Schedule"
+        },
+        "scheduled": {
+          "title": "Scheduled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "scheduled"
+      ],
+      "title": "JobStatus",
       "type": "object"
     },
     "JsonScalar": {
@@ -37712,6 +38044,119 @@
       "title": "OrganizationView",
       "type": "object"
     },
+    "OutboxFailure": {
+      "properties": {
+        "attempts": {
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "error_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Type"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "next_attempt_at": {
+          "format": "date-time",
+          "title": "Next Attempt At",
+          "type": "string"
+        },
+        "op": {
+          "title": "Op",
+          "type": "string"
+        },
+        "resource_id": {
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "resource_type": {
+          "title": "Resource Type",
+          "type": "string"
+        },
+        "tenant_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tenant Id"
+        }
+      },
+      "required": [
+        "id",
+        "resource_type",
+        "resource_id",
+        "op",
+        "attempts",
+        "created_at",
+        "next_attempt_at"
+      ],
+      "title": "OutboxFailure",
+      "type": "object"
+    },
+    "OutboxFailurePage": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/OutboxFailure"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "OutboxFailurePage",
+      "type": "object"
+    },
+    "OutboxStats": {
+      "properties": {
+        "failed": {
+          "title": "Failed",
+          "type": "integer"
+        },
+        "lag_seconds": {
+          "title": "Lag Seconds",
+          "type": "number"
+        },
+        "pending": {
+          "title": "Pending",
+          "type": "integer"
+        },
+        "retrying": {
+          "title": "Retrying",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pending",
+        "retrying",
+        "failed",
+        "lag_seconds"
+      ],
+      "title": "OutboxStats",
+      "type": "object"
+    },
     "OwnedResource": {
       "properties": {
         "archived": {
@@ -39128,6 +39573,208 @@
       "title": "ReadinessSummaryRequest",
       "type": "object"
     },
+    "ReconcileCounts": {
+      "properties": {
+        "changed": {
+          "default": 0,
+          "title": "Changed",
+          "type": "integer"
+        },
+        "deferred": {
+          "default": 0,
+          "title": "Deferred",
+          "type": "integer"
+        },
+        "diff": {
+          "default": 0,
+          "title": "Diff",
+          "type": "integer"
+        },
+        "expected": {
+          "default": 0,
+          "title": "Expected",
+          "type": "integer"
+        },
+        "extra": {
+          "default": 0,
+          "title": "Extra",
+          "type": "integer"
+        },
+        "failed": {
+          "default": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "held": {
+          "default": 0,
+          "title": "Held",
+          "type": "integer"
+        },
+        "missing": {
+          "default": 0,
+          "title": "Missing",
+          "type": "integer"
+        },
+        "queued": {
+          "default": 0,
+          "title": "Queued",
+          "type": "integer"
+        },
+        "repaired": {
+          "default": 0,
+          "title": "Repaired",
+          "type": "integer"
+        },
+        "stored": {
+          "default": 0,
+          "title": "Stored",
+          "type": "integer"
+        }
+      },
+      "title": "ReconcileCounts",
+      "type": "object"
+    },
+    "ReconcileRunView": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finished At"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "partitions_done": {
+          "title": "Partitions Done",
+          "type": "integer"
+        },
+        "partitions_total": {
+          "title": "Partitions Total",
+          "type": "integer"
+        },
+        "report": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ReconcileCounts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "failed",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "trigger": {
+          "enum": [
+            "manual",
+            "scheduled"
+          ],
+          "title": "Trigger",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "trigger",
+        "mode",
+        "partitions_done",
+        "partitions_total",
+        "created_at"
+      ],
+      "title": "ReconcileRunView",
+      "type": "object"
+    },
+    "ReconcileStarted": {
+      "properties": {
+        "job_id": {
+          "format": "uuid",
+          "title": "Job Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "title": "ReconcileStarted",
+      "type": "object"
+    },
+    "ReconcileStatus": {
+      "properties": {
+        "active": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ReconcileRunView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ReconcileRunView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "ReconcileStatus",
+      "type": "object"
+    },
     "RefreshResponse": {
       "description": "Body for /api/auth/refresh \u2014 minimal since cookies do the heavy lifting.",
       "properties": {
@@ -39477,6 +40124,64 @@
       "title": "RetentionPreview",
       "type": "object"
     },
+    "RetentionStats": {
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "last_run_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Run At"
+        },
+        "purges_last_24h": {
+          "title": "Purges Last 24H",
+          "type": "integer"
+        },
+        "schedule": {
+          "title": "Schedule",
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled",
+        "schedule",
+        "purges_last_24h"
+      ],
+      "title": "RetentionStats",
+      "type": "object"
+    },
+    "RevocationStats": {
+      "properties": {
+        "oldest_seconds": {
+          "title": "Oldest Seconds",
+          "type": "number"
+        },
+        "pending": {
+          "title": "Pending",
+          "type": "integer"
+        },
+        "stuck": {
+          "title": "Stuck",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pending",
+        "stuck",
+        "oldest_seconds"
+      ],
+      "title": "RevocationStats",
+      "type": "object"
+    },
     "RoleAssignment": {
       "additionalProperties": false,
       "properties": {
@@ -39663,6 +40368,29 @@
         "version"
       ],
       "title": "RuntimePolicyV1",
+      "type": "object"
+    },
+    "ShadowTypeCount": {
+      "properties": {
+        "fga_only": {
+          "title": "Fga Only",
+          "type": "integer"
+        },
+        "legacy_only": {
+          "title": "Legacy Only",
+          "type": "integer"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "legacy_only",
+        "fga_only"
+      ],
+      "title": "ShadowTypeCount",
       "type": "object"
     },
     "ShareLinkResponse": {

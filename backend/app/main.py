@@ -63,7 +63,9 @@ logger = logging.getLogger(__name__)
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.authz.ops_health import fga_health
 from app.authz.policies import PUBLIC, authz_policy, register_legacy_policies
+from app.authz.reconcile_launch import close_stale_at_startup
 from app.authz.runtime import open_authz_runtime
 from app.config import settings
 from app.database import platform_session
@@ -217,6 +219,7 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     # The AuthzService (P3-0) is closed by shutdown_runtime_resources after the
     # scheduler stops and background runs drain, before the database is disposed.
     await open_authz_runtime(app)
+    await close_stale_at_startup()  # H-04: free reconcile runs a dead process left live
     async with scheduler_leadership_runtime():
         yield
 
@@ -273,7 +276,10 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     @authz_policy(PUBLIC)
     async def health_check():
-        return {"status": "ok"}
+        if settings.authz_mode == "legacy":  # legacy never consults OpenFGA
+            return {"status": "ok"}
+        authz = (await fga_health(settings)).status  # 14.3: ok|degraded|down (H-04)
+        return {"status": "ok", "authz": authz}
 
     register_legacy_policies(app)
     return app

@@ -1,5 +1,6 @@
 """Bounded native SDK adapter; unavailable authorization never becomes an allow."""
 
+import logging
 from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Mapping, Sequence
 from contextlib import asynccontextmanager
@@ -42,6 +43,7 @@ from pydantic import (
 from app.authz.config import AuthzSettings
 from app.authz.tuple_types import RelationTuple
 
+logger = logging.getLogger(__name__)
 T = TypeVar("T")
 Consistency = Literal["MINIMIZE_LATENCY", "HIGHER_CONSISTENCY"]
 
@@ -123,9 +125,17 @@ class FgaClient:
             FgaValidationException,
             ValidationError,
         ) as exc:
+            # 14.3 ``authz_check_errors``: low-cardinality labels only (H-04).
+            logger.warning(
+                "authz_check_errors", extra={"operation": operation, "error": type(exc).__name__}
+            )
             raise AuthzUnavailable(operation) from exc
         finally:
             self.metrics.record(operation, outcome, monotonic() - started)
+
+    async def ping(self) -> None:
+        """Cheapest store-scoped call; the H-04 health probe times it."""
+        await self._run("ping", self.sdk.get_store())
 
     async def check(
         self, query: CheckQuery, *, consistency: Consistency = "MINIMIZE_LATENCY"

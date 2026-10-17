@@ -53,6 +53,7 @@ PLATFORM_REASONS: dict[str, str] = {
     "authz.outbox_apply": "8.6 item 2 post-commit apply-now of the rows a request queued",
     "authz.expiry_cleanup": "8.6 item 7 leader expiry of every company's grants + pruning",
     "authz.backlog_alert": "14.3 instance-wide outbox lag and stuck-marker alert",
+    "authz.ops": "14.3 S27 operator sync screen: instance-wide outbox, markers, runs",
     "authz.revocation_overlay": "8.6 step 4 instance-wide pending-marker hint + overlay",
     "authz.delegation_validate": "8.6 delegation sweep: list companies, then per-company sessions",
     "authz.delegation_retry": "8.6 delegation check: leader polls finalized markers",

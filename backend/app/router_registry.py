@@ -8,6 +8,7 @@ from app.config import settings
 def include_app_routers(app: FastAPI) -> None:
     from app.routers import (
         access_requests,
+        admin_authz,
         agent_api,
         agent_blueprints,
         agent_memo,
@@ -140,6 +141,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(platform_tenant_directory.router)
     app.include_router(platform_tenant_creation.router)
     app.include_router(platform_tenant_lifecycle.router)
+    app.include_router(admin_authz.router)
     app.include_router(shares.router)
     app.include_router(resource_shares.router)
     app.include_router(access_requests.router)

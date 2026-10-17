@@ -1,11 +1,14 @@
 """Shared status/message contracts for staged organization authorization errors."""
 
+import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, Literal
 
 from app.exceptions import AppError
+
+logger = logging.getLogger(__name__)
 
 ErrorCode = Literal[
     "not_found",
@@ -66,6 +69,8 @@ ErrorCode = Literal[
     "policy_disabled",
     "tenant_publication_invalid",
     "access_request_closed",
+    "authz_reconcile_running",
+    "authz_sync_disabled",
 ]
 
 
@@ -171,6 +176,8 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
             409, "게시된 공개 항목만 회사 전체에 공개할 수 있습니다"
         ),
         "access_request_closed": ErrorSpec(409, "이미 처리된 접근 요청입니다"),
+        "authz_reconcile_running": ErrorSpec(409, "권한 대조가 이미 실행 중입니다"),
+        "authz_sync_disabled": ErrorSpec(409, "권한 동기화가 꺼져 있어 실행할 수 없습니다"),
     }
 )
 
@@ -194,7 +201,10 @@ def agent_not_ready(
         details["identity_mode"] = identity_mode
     if agent_id is not None:  # G-04: only when the caller may view the agent's settings
         details["agent_id"] = agent_id
-    details["items"] = [dict(item) for item in items]
+    shown = [dict(item) for item in items]
+    details["items"] = shown
+    # 14.3 ``readiness_blocked_runs`` (H-04): one line per refused run, counts only.
+    logger.info("readiness_blocked_runs", extra={"items": len(shown)})
     return authorization_error("agent_not_ready", details)
 
 

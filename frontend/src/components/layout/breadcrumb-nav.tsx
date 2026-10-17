@@ -22,6 +22,7 @@ const ROUTE_LABELS: Record<string, string> = {
   'agent-api': 'nav.agentApi',
   'marketplace-admin': 'nav.marketplaceAdmin',
   'admin-audit': 'nav.adminAudit',
+  authz: 'nav.authzSync',
   'system-credentials': 'nav.systemCredentials',
   'system-llm': 'nav.systemLlm',
   skills: 'nav.skills',
@@ -38,7 +39,8 @@ const ROUTE_LABELS: Record<string, string> = {
 }
 
 // Segments that never have their own page — always skip
-const SKIP_SEGMENTS = new Set(['agents', 'conversations'])
+// `admin` only groups operator pages (/settings/admin/authz); it has no page itself.
+const SKIP_SEGMENTS = new Set(['agents', 'conversations', 'admin'])
 // (no conditional skip — "new" always shown for context)
 
 function AgentName({ id }: { id: string }) {

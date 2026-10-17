@@ -4475,6 +4475,117 @@
     }
   },
   "appSettings": {
+    "authzOps": {
+      "title": "Authorization sync",
+      "description": "Check that authorization rows in Postgres are reflected in OpenFGA.",
+      "loading": "Loading…",
+      "loadError": "Couldn't load the status. Try again in a moment.",
+      "reconcile": {
+        "button": "Run reconcile",
+        "running": "Reconcile running",
+        "confirmTitle": "Run an authorization reconcile?",
+        "confirmDescription": "Compares every company's authorization rows with OpenFGA and repairs differences. It can take a few minutes depending on the number of companies; writes are not affected while it runs.",
+        "confirm": "Run",
+        "cancel": "Cancel",
+        "started": "Reconcile started",
+        "progress": "Checking company {done}/{total}",
+        "disabledHint": "Unavailable in legacy mode or without a pinned OpenFGA store and model"
+      },
+      "banner": {
+        "downTitle": "Can't connect to OpenFGA",
+        "lastSuccess": "Last success: {time}",
+        "neverSucceeded": "No successful connection yet",
+        "degraded": "OpenFGA is responding slowly ({latency} ms)",
+        "legacy": "Legacy mode is active, so OpenFGA is not used. Values below come from Postgres."
+      },
+      "stats": {
+        "outboxPending": "Outbox pending",
+        "outboxOldest": "Oldest item {seconds}s",
+        "failed": "Failed",
+        "failedHint": "10+ attempts · {retrying} retrying",
+        "lastReconcile": "Last reconcile",
+        "lastReconcileHint": "{diff} differences · {repaired} repaired · {deferred} pending",
+        "noReconcile": "No runs yet",
+        "revocations": "Pending revocations",
+        "revocationsHint": "{stuck} older than 10 minutes"
+      },
+      "failures": {
+        "title": "Failed items",
+        "description": "Only company and resource IDs are shown.",
+        "empty": "No failed items",
+        "company": "Company",
+        "resource": "Resource",
+        "op": "Operation",
+        "attempts": "Attempts",
+        "error": "Error",
+        "action": "Action",
+        "retry": "Retry",
+        "retryLabel": "Retry {resource}",
+        "retried": "Scheduled for retry",
+        "platform": "Platform",
+        "ops": {
+          "write": "Write",
+          "delete": "Delete"
+        },
+        "errorTypes": {
+          "AuthzUnavailable": "OpenFGA unavailable",
+          "TimeoutError": "OpenFGA timed out",
+          "other": "Processing failed"
+        }
+      },
+      "shadow": {
+        "title": "Shadow mismatches",
+        "description": "Decisions where legacy and OpenFGA disagree, by resource type.",
+        "empty": "No mismatches",
+        "type": "Resource type",
+        "legacyOnly": "Legacy only allows",
+        "fgaOnly": "OpenFGA only allows"
+      },
+      "delegations": {
+        "title": "Delegation checks",
+        "brokenLinks": "Broken links",
+        "brokenRecent": "Broken in the last 24 hours"
+      },
+      "retention": {
+        "title": "Retention sweep",
+        "state": "State",
+        "enabled": "On",
+        "disabled": "Off",
+        "schedule": "Schedule",
+        "lastRun": "Last run",
+        "purgesRecent": "Purge records in the last 24 hours",
+        "never": "Never"
+      },
+      "jobs": {
+        "title": "Scheduled jobs",
+        "name": "Job",
+        "state": "State",
+        "schedule": "Schedule",
+        "scheduled": "Scheduled",
+        "notScheduled": "Off",
+        "names": {
+          "authz_outbox_drain": "Outbox drain",
+          "authz_reconcile": "Daily reconcile",
+          "authz_expiry_cleanup": "Expiry cleanup",
+          "authz_backlog_alert": "Backlog alert",
+          "authz_delegation_validate": "Delegation check",
+          "retention_sweep": "Retention sweep"
+        }
+      },
+      "runStatus": {
+        "queued": "Queued",
+        "running": "Running",
+        "succeeded": "Done",
+        "failed": "Failed",
+        "skipped": "Skipped"
+      },
+      "errors": {
+        "authz_reconcile_running": "A reconcile is already running",
+        "authz_sync_disabled": "Authorization sync is off, so this can't run",
+        "not_found": "This item was already processed",
+        "generic": "Couldn't complete the request"
+      }
+    },
     "title": "App Settings",
     "description": "Manage your account and Moldy preferences.",
     "navLabel": "Settings menu",
@@ -4498,6 +4609,7 @@
       "marketplaceAdmin": "Marketplace Admin",
       "systemCredentials": "System Credentials",
       "systemLlm": "System LLM Settings",
+      "authzSync": "Authorization Sync",
       "adminAudit": "All Activity",
       "organization": "Organization",
       "organizationSettings": "Organization settings",
@@ -4803,6 +4915,7 @@
     "appearance": "Appearance & Language",
     "agentApi": "Agent API",
     "marketplaceAdmin": "Marketplace Admin",
+    "authzSync": "Authorization Sync",
     "adminAudit": "All Activity",
     "systemCredentials": "System Credentials",
     "systemLlm": "System LLM Settings",

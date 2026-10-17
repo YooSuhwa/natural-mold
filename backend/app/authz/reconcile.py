@@ -24,7 +24,7 @@ Held tuples are reported but do not count as a difference (exit codes, ``diff``)
 """
 
 import logging
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from itertools import batched
@@ -59,6 +59,7 @@ __all__ = ["SOURCE_TABLE", "ReconcileReport", "reconcile_sessions", "reconcile_s
 logger = logging.getLogger(__name__)
 Mode = Literal["dry_run", "fill", "repair"]
 Sessions = Callable[[], AbstractAsyncContextManager[AsyncSession]]
+Progress = Callable[[int, int], Awaitable[None]]  # (partitions done, total); H-04 S27
 SAMPLE = 20
 REPAIR_LOCK_ID = 0x4D4F4C4459524543  # pg advisory key for repair runs
 
@@ -180,16 +181,18 @@ async def reconcile_store(
     drain: bool = False,
     job_id: UUID | None = None,
     now: datetime | None = None,
+    progress: Progress | None = None,
 ) -> ReconcileReport:
     """One run; ``drain`` applies the queued rows before returning (``failed`` counts rest)."""
     stamp = now or datetime.now(UTC)
+    scope = (tenant_id, org_id)
     if mode != "repair":
-        return await _run(sessions, store, mode, tenant_id, org_id, drain, job_id, stamp)
+        return await _run(sessions, store, mode, scope, drain, job_id, stamp, progress)
     async with sessions() as guard:  # held open for the run: the lock is transaction-scoped
         if not await _try_repair_lock(guard):
             logger.warning("authz_reconcile_skipped", extra={"reason": "repair_in_progress"})
             return ReconcileReport(scope="store", mode=mode, skipped=True)
-        return await _run(sessions, store, mode, tenant_id, org_id, drain, job_id, stamp)
+        return await _run(sessions, store, mode, scope, drain, job_id, stamp, progress)
 
 
 async def _try_repair_lock(db: AsyncSession) -> bool:
@@ -204,19 +207,21 @@ async def _run(
     sessions: Sessions,
     store: TupleStore,
     mode: Mode,
-    tenant_id: UUID | None,
-    org_id: UUID | None,
+    scope: tuple[UUID | None, UUID | None],
     drain: bool,
     job_id: UUID | None,
     stamp: datetime,
+    progress: Progress | None,
 ) -> ReconcileReport:
     started, job = stamp - holds.HOLD_MARGIN, job_id or uuid4()
     async with sessions() as db:
-        parts = await holds.partitions(db, tenant_id, org_id)
+        parts = await holds.partitions(db, *scope)
     label = parts[0].label if len(parts) == 1 else "store"
     index = StoredIndex({key_of(t): t async for t in store.read_all()})
     report, ids = ReconcileReport(scope=label, mode=mode), []
-    for part in parts:
+    for done, part in enumerate(parts):
+        if progress is not None:
+            await progress(done, len(parts))
         diff, want, have, queued = await _partition(
             sessions, index, part, mode=mode, started=started, job_id=job, now=stamp
         )
@@ -240,5 +245,5 @@ def reconcile_sessions(maker: Callable[[], AsyncSession] | None = None) -> Sessi
 async def run_reconcile_job(
     sessions: Sessions, store: TupleStore, *, now: datetime | None = None
 ) -> ReconcileReport:
-    """The daily ``authz_reconcile`` body (C-05 registers it); the outbox drain applies it."""
+    """An unrecorded repair run; the daily job records one via ``reconcile_runs`` (H-04)."""
     return await reconcile_store(sessions, store, mode="repair", now=now)

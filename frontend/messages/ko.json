@@ -4475,6 +4475,117 @@
     }
   },
   "appSettings": {
+    "authzOps": {
+      "title": "권한 동기화 상태",
+      "description": "Postgres의 권한 행이 OpenFGA에 반영된 상태를 확인합니다.",
+      "loading": "불러오는 중…",
+      "loadError": "상태를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+      "reconcile": {
+        "button": "대조 실행",
+        "running": "대조 진행 중",
+        "confirmTitle": "권한 대조를 실행할까요?",
+        "confirmDescription": "모든 회사의 권한 행과 OpenFGA를 비교해 다른 부분을 고칩니다. 회사 수에 따라 몇 분 걸릴 수 있으며, 실행 중에도 쓰기 작업에는 영향이 없어요.",
+        "confirm": "실행",
+        "cancel": "취소",
+        "started": "권한 대조를 시작했어요",
+        "progress": "회사 {done}/{total} 확인 중",
+        "disabledHint": "legacy 모드이거나 OpenFGA 저장소·모델이 고정되지 않아 실행할 수 없어요"
+      },
+      "banner": {
+        "downTitle": "OpenFGA에 연결할 수 없어요",
+        "lastSuccess": "마지막 성공: {time}",
+        "neverSucceeded": "아직 성공한 연결이 없어요",
+        "degraded": "OpenFGA 응답이 느려요 ({latency}ms)",
+        "legacy": "현재 legacy 모드라 OpenFGA를 사용하지 않아요. 아래 값은 Postgres 기준입니다."
+      },
+      "stats": {
+        "outboxPending": "아웃박스 대기",
+        "outboxOldest": "가장 오래된 항목 {seconds}초",
+        "failed": "실패",
+        "failedHint": "재시도 10회 이상 · 재시도 중 {retrying}건",
+        "lastReconcile": "마지막 대조",
+        "lastReconcileHint": "불일치 {diff}건 · 자동 복구 {repaired}건 · 남은 항목 {deferred}건",
+        "noReconcile": "기록 없음",
+        "revocations": "회수 대기",
+        "revocationsHint": "10분 넘게 남은 항목 {stuck}건"
+      },
+      "failures": {
+        "title": "실패 항목",
+        "description": "회사와 자원 ID만 표시합니다.",
+        "empty": "실패한 항목이 없어요",
+        "company": "회사",
+        "resource": "자원",
+        "op": "작업",
+        "attempts": "시도",
+        "error": "오류",
+        "action": "작업",
+        "retry": "다시 시도",
+        "retryLabel": "{resource} 다시 시도",
+        "retried": "다시 시도하도록 예약했어요",
+        "platform": "플랫폼",
+        "ops": {
+          "write": "쓰기",
+          "delete": "삭제"
+        },
+        "errorTypes": {
+          "AuthzUnavailable": "OpenFGA 응답 없음",
+          "TimeoutError": "OpenFGA 시간 초과",
+          "other": "처리 실패"
+        }
+      },
+      "shadow": {
+        "title": "섀도 불일치",
+        "description": "legacy 판정과 OpenFGA 판정이 다른 건수입니다(자원 유형별).",
+        "empty": "불일치가 없어요",
+        "type": "자원 유형",
+        "legacyOnly": "legacy만 허용",
+        "fgaOnly": "OpenFGA만 허용"
+      },
+      "delegations": {
+        "title": "위임 검증",
+        "brokenLinks": "끊긴 연결",
+        "brokenRecent": "최근 24시간 끊김"
+      },
+      "retention": {
+        "title": "보존 정리",
+        "state": "상태",
+        "enabled": "사용",
+        "disabled": "꺼짐",
+        "schedule": "일정",
+        "lastRun": "마지막 실행",
+        "purgesRecent": "최근 24시간 정리 기록",
+        "never": "없음"
+      },
+      "jobs": {
+        "title": "예약 작업",
+        "name": "작업",
+        "state": "상태",
+        "schedule": "일정",
+        "scheduled": "예약됨",
+        "notScheduled": "꺼짐",
+        "names": {
+          "authz_outbox_drain": "아웃박스 처리",
+          "authz_reconcile": "매일 대조",
+          "authz_expiry_cleanup": "만료 정리",
+          "authz_backlog_alert": "지연 경보",
+          "authz_delegation_validate": "위임 검증",
+          "retention_sweep": "보존 정리"
+        }
+      },
+      "runStatus": {
+        "queued": "대기",
+        "running": "실행 중",
+        "succeeded": "완료",
+        "failed": "실패",
+        "skipped": "건너뜀"
+      },
+      "errors": {
+        "authz_reconcile_running": "이미 대조가 실행 중이에요",
+        "authz_sync_disabled": "권한 동기화가 꺼져 있어 실행할 수 없어요",
+        "not_found": "이미 처리된 항목이에요",
+        "generic": "요청을 처리하지 못했어요"
+      }
+    },
     "title": "설정",
     "description": "계정과 Moldy 사용 환경을 관리합니다.",
     "navLabel": "설정 메뉴",
@@ -4498,6 +4609,7 @@
       "marketplaceAdmin": "운영자 관리",
       "systemCredentials": "시스템 자격증명",
       "systemLlm": "시스템 LLM 설정",
+      "authzSync": "권한 동기화",
       "adminAudit": "전체 활동 기록",
       "organization": "조직",
       "organizationSettings": "조직 설정",
@@ -4803,6 +4915,7 @@
     "appearance": "화면 및 언어",
     "agentApi": "Agent API",
     "marketplaceAdmin": "운영자 관리",
+    "authzSync": "권한 동기화",
     "adminAudit": "전체 활동 기록",
     "systemCredentials": "시스템 자격증명",
     "systemLlm": "시스템 LLM 설정",

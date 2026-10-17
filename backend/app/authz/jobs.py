@@ -25,6 +25,7 @@ from apscheduler.triggers.base import BaseTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.client import open_client
 from app.authz.config import AuthzSettings
@@ -32,7 +33,8 @@ from app.authz.delegation_retry import revalidate_finalized
 from app.authz.delegation_sweep import run_delegation_sweep
 from app.authz.grants import GrantService
 from app.authz.outbox import ALERT_ATTEMPTS, OutboxRun, Sessions, TupleWriter, process_outbox
-from app.authz.reconcile import TupleStore, reconcile_sessions, run_reconcile_job
+from app.authz.reconcile import TupleStore, reconcile_sessions
+from app.authz.reconcile_runs import close_stale, scheduled_reconcile
 from app.authz.revocations import oldest_pending_at
 from app.authz.runtime import runtime_authz
 from app.database import platform_sessions
@@ -215,19 +217,23 @@ def _age(since: datetime | None, now: datetime) -> float:
     return max((now - aware).total_seconds(), 0.0)
 
 
+async def read_backlog(db: AsyncSession, now: datetime) -> Backlog:
+    """The 14.3 gauges without logging (also read by the H-04 operator screen)."""
+    failing = func.count().filter(AuthzOutbox.attempts >= ALERT_ATTEMPTS)
+    found = await db.execute(
+        select(func.count(), failing, func.min(AuthzOutbox.created_at)).where(
+            AuthzOutbox.processed_at.is_(None)
+        )
+    )
+    pending, failed, oldest = found.one()
+    marker = await oldest_pending_at(db)
+    return Backlog(int(pending), int(failed), _age(oldest, now), _age(marker, now))
+
+
 async def check_backlog(sessions: Sessions, *, now: datetime | None = None) -> Backlog:
     """14.3 lag metrics; a marker pending past ``STUCK_MARKER_AFTER`` keeps denying."""
-    stamp = now or datetime.now(UTC)
-    failing = func.count().filter(AuthzOutbox.attempts >= ALERT_ATTEMPTS)
     async with sessions() as db:
-        found = await db.execute(
-            select(func.count(), failing, func.min(AuthzOutbox.created_at)).where(
-                AuthzOutbox.processed_at.is_(None)
-            )
-        )
-        pending, failed, oldest = found.one()
-        marker = await oldest_pending_at(db)
-    backlog = Backlog(int(pending), int(failed), _age(oldest, stamp), _age(marker, stamp))
+        backlog = await read_backlog(db, now or datetime.now(UTC))
     logger.info("authz_backlog", extra=asdict(backlog))
     if backlog.authz_revocation_oldest_seconds > STUCK_MARKER_AFTER.total_seconds():
         logger.error("authz_revocation_stuck", extra=asdict(backlog))
@@ -241,6 +247,7 @@ async def run_job(job: JobId, config: AuthzSettings, *, opener: Opener | None = 
     try:
         if job is JobId.AUTHZ_ALERT:
             await check_backlog(platform_sessions("authz.backlog_alert"))
+            await close_stale(reconcile_sessions())  # H-04: dead runs free the slot
             return
         if job is JobId.AUTHZ_DELEGATION_VALIDATE:
             await run_delegation_sweep(runtime_authz())
@@ -258,7 +265,7 @@ async def _with_store(job: JobId, store: TupleStore) -> None:
     if job is JobId.AUTHZ_OUTBOX_DRAIN:
         await drain_outbox(platform_sessions("authz.outbox_drain"), store)
     elif job is JobId.AUTHZ_RECONCILE:
-        await run_reconcile_job(reconcile_sessions(), store)
+        await scheduled_reconcile(reconcile_sessions(), store)  # H-04: recorded run
     else:
         sessions = platform_sessions("authz.expiry_cleanup")
         await expire_grants(sessions, store)

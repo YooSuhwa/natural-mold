@@ -19,6 +19,7 @@ from app.dependencies import (
     get_tenant_context,
     owned_conversation,
     require_saas_platform_operator,
+    require_super_user,
     verify_csrf,
 )
 
@@ -28,16 +29,18 @@ class CompanyRoute:
     policy: str
     status: int
     if_match: bool
+    saas_only: bool = True  # SUPER: SaaS operator gate; False = super user in both modes
 
 
 _T: Final = "/api/tenants/{tenant_id}"
 _A: Final = "/api/admin/tenants"
 _R: Final = "/api/orgs/{org_id}/retention"
+_Z: Final = "/api/admin/authz"
 _L: Final = "/api/orgs/{org_id}/limits"
 _U: Final = "/api/usage-limits"
 _MU: Final = "/api/me/usage-limits"
 _SSO_PUBLIC: Final = ("/api/auth/sso/", "/api/auth/ldap/", "/auth/callback/")
-COMPANY_PREFIXES: Final = ("/api/tenants/", "/api/admin/tenants", _R, _L, _U, _MU, *_SSO_PUBLIC)
+COMPANY_PREFIXES: Final = ("/api/tenants/", "/api/admin/tenants", _R, _L, _U, _MU, *_SSO_PUBLIC, _Z)
 B11_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"GET {_T}": CompanyRoute("SELF", 200, False),
     f"PATCH {_T}": CompanyRoute("SELF", 200, True),
@@ -131,6 +134,14 @@ H08_ROUTES: Final[dict[str, CompanyRoute]] = {
     "GET /auth/callback/{connection_id}": CompanyRoute("PUBLIC", 302, False),
     "POST /api/auth/ldap/{connection_id}/login": CompanyRoute("PUBLIC", 200, False),
 }
+# H-04 operator authorization sync (14.3, S27): super user in both deployment modes.
+H04_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_Z}/status": CompanyRoute("SUPER", 200, False, saas_only=False),
+    f"GET {_Z}/failures": CompanyRoute("SUPER", 200, False, saas_only=False),
+    f"POST {_Z}/failures/{{outbox_id}}/retry": CompanyRoute("SUPER", 200, False, saas_only=False),
+    f"POST {_Z}/reconcile": CompanyRoute("SUPER", 202, False, saas_only=False),
+    f"GET {_Z}/reconcile/{{job_id}}": CompanyRoute("SUPER", 200, False, saas_only=False),
+}
 COMPANY_ROUTES: Final = {
     **B11_ROUTES,
     **B12_ROUTES,
@@ -140,6 +151,7 @@ COMPANY_ROUTES: Final = {
     **H03_ROUTES,
     **H06_ROUTES,
     **H08_ROUTES,
+    **H04_ROUTES,
 }
 # Later-task paths from the contract's route-level crosswalk (rows 7-8, 24-35, 38-57),
 # owned by C05/E07/E08/E09/H03/I07. Matched app-wide by path, with parameter
@@ -150,7 +162,6 @@ DEFERRED_PATHS: Final = frozenset(
         "/api/admin/tenants/{}/exports",
         "/api/admin/tenants/{}/schedule-deletion",
         "/api/admin/tenants/{}/cancel-deletion",
-        "/api/admin/authz",
     }
 )
 _PARAM: Final = re.compile(r"\{[^}]*\}")
@@ -202,9 +213,8 @@ def _route_violations(identity: str, route: APIRoute, expected: CompanyRoute) ->
         found.append(f"csrf:{identity}")
     if expected.if_match and "If-Match" not in _headers(route.dependant):
         found.append(f"if_match:{identity}")
-    if expected.policy == "SUPER" and (
-        require_saas_platform_operator not in calls or calls & _OPERATOR_CONTENT
-    ):
+    gate = require_saas_platform_operator if expected.saas_only else require_super_user
+    if expected.policy == "SUPER" and (gate not in calls or calls & _OPERATOR_CONTENT):
         found.append(f"operator_content:{identity}")
     return found
 

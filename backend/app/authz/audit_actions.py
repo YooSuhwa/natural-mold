@@ -98,3 +98,6 @@ TENANT_SSO_CONNECTION_TEST: Final = "tenant.sso_connection_test"
 TENANT_SSO_CONNECTION_ACTIVATE: Final = "tenant.sso_connection_activate"
 TENANT_SSO_POLICY_UPDATE: Final = "tenant.sso_policy_update"
 AUTH_SSO_LINK: Final = "auth.sso_link"
+# H-04 operator sync screen (14.3, S27): platform events, no company scope.
+AUTHZ_RECONCILE_RUN: Final = "authz.reconcile_run"
+AUTHZ_OUTBOX_RETRY: Final = "authz.outbox_retry"
