@@ -5,8 +5,9 @@ Precedence:
 1. the caller's explicit ``org_id``;
 2. an org-scoped target row (agent, skill, tool, MCP server, credential, conversation,
    trigger, group, invitation, marketplace item/installation, Agent API deployment/key,
-   skill builder session): its own ``org_id`` — the identity map, else one select of
-   ``(tenant_id, org_id)`` only (no private payload columns), no autoflush.
+   skill builder session): its own ``org_id`` — the identity map (unexpired columns only,
+   never a refresh), else one select of ``(tenant_id, org_id)`` only (no private payload
+   columns), no autoflush.
    Such events never take the session's organization: acting from org A on an org B
    resource is attributed to B, and a vanished or org-less (system) row stays empty
    unless ``metadata["org_id"]`` names an organization;
@@ -21,7 +22,7 @@ from collections.abc import Iterator, Mapping
 from typing import Any, Final
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.util import identity_key
 
@@ -75,8 +76,9 @@ async def _row_scope(db: object, model: Any, row_id: UUID) -> Scoped | None:
         return None
     org_attr = "id" if model is Organization else "org_id"  # an organization is its own org
     loaded = db.sync_session.identity_map.get(identity_key(model, row_id))
-    if loaded is not None:
-        return getattr(loaded, "tenant_id", None), getattr(loaded, org_attr, None)
+    loaded_columns = {} if loaded is None else inspect(loaded).dict  # never triggers a load
+    if "tenant_id" in loaded_columns and org_attr in loaded_columns:  # expired rows: select
+        return loaded_columns["tenant_id"], loaded_columns[org_attr]
     with db.no_autoflush:  # never flush the caller; never load private payload columns
         query = select(model.tenant_id, getattr(model, org_attr)).where(model.id == row_id)
         row = (await db.execute(query)).first()
