@@ -8,7 +8,10 @@ Collected from the company's rows before anything is deleted:
 * agents: the avatar directory and the runtime ``agents/<id>`` directory;
 * skills: the company skill's own storage directory (only a directory named after the
   skill id, so a shared or system package directory is never touched);
-* finished export archives.
+* finished export archives;
+* the company folders ``tenants/<tenant_id>/`` I-08 writes under each storage root —
+  uploads, artifacts and ``data_root`` (skills, skill revisions, company marketplace
+  version snapshots) — guarded so a symlinked or escaping folder is never followed.
 
 Removal is idempotent and best effort (a failure is logged); the purge removes files
 before rows, so a rerun after a failure finds the same targets again.
@@ -27,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.runtime_config import runtime_data_dir
+from app.config import settings
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message_attachment import MessageAttachment
@@ -38,7 +42,7 @@ from app.services.retention.conversations import (
     _artifact_root,
     clean_up_files,
 )
-from app.storage.paths import resolve_data_path
+from app.storage.paths import TENANTS_DIR, resolve_data_path
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +54,7 @@ class CompanyFiles:
     agent_dirs: list[tuple[str, Path]] = field(default_factory=list)  # (archive name, dir)
     skill_dirs: list[tuple[UUID, Path]] = field(default_factory=list)
     exports: list[Path] = field(default_factory=list)
+    company_dirs: list[tuple[str, Path]] = field(default_factory=list)  # (root name, dir)
 
 
 def files_to_json(files: CompanyFiles) -> dict[str, list[list[str]]]:
@@ -63,6 +68,7 @@ def files_to_json(files: CompanyFiles) -> dict[str, list[list[str]]]:
         "agent_dirs": [[name, str(p)] for name, p in files.agent_dirs],
         "skill_dirs": [[str(i), str(p)] for i, p in files.skill_dirs],
         "exports": [[str(p)] for p in files.exports],
+        "company_dirs": [[name, str(p)] for name, p in files.company_dirs],
     }
 
 
@@ -79,6 +85,7 @@ def files_from_json(raw: Mapping[str, Any]) -> CompanyFiles:
         agent_dirs=[(name, Path(p)) for name, p in rows("agent_dirs")],
         skill_dirs=[(UUID(i), Path(p)) for i, p in rows("skill_dirs")],
         exports=[Path(row[0]) for row in rows("exports")],
+        company_dirs=[(name, Path(p)) for name, p in rows("company_dirs")],
     )
 
 
@@ -97,8 +104,29 @@ def _skill_dir(skill_id: UUID, storage_path: str | None) -> Path | None:
     return target if target.name == str(skill_id) else None
 
 
+def _storage_roots() -> list[tuple[str, Path]]:
+    roots = [("uploads", Path(settings.upload_dir)), ("data", Path(settings.data_root))]
+    if settings.artifact_storage_backend == "local":
+        roots.append(("artifacts", Path(settings.artifact_storage_dir)))
+    return roots
+
+
+def company_dir(root: Path, tenant_id: UUID) -> Path | None:
+    """``<root>/tenants/<tenant_id>`` when it is a real directory inside that root."""
+    base = (root.resolve() / TENANTS_DIR).resolve()
+    target = root.resolve() / TENANTS_DIR / str(tenant_id)
+    if target.is_symlink() or not target.is_dir():
+        return None
+    if not base.is_relative_to(root.resolve()) or target.resolve().parent != base:
+        return None
+    return target.resolve()
+
+
 async def company_files(db: AsyncSession, tenant_id: UUID) -> CompanyFiles:
     found = CompanyFiles()
+    for name, root in _storage_roots():
+        if (path := await run_sync(company_dir, root, tenant_id)) is not None:
+            found.company_dirs.append((name, path))
     attachments = (
         await db.execute(
             select(
@@ -150,11 +178,14 @@ def export_entries(files: CompanyFiles) -> Iterator[tuple[str, Path]]:
     ]
     roots += [(f"files/{name}", path) for name, path in files.agent_dirs]
     roots += [(f"files/skills/{skill_id}", path) for skill_id, path in files.skill_dirs]
+    roots += [(f"files/company/{name}", path) for name, path in files.company_dirs]
+    seen = {path.resolve() for _, path in files.attachments}
     for prefix, root in roots:
         if root is None or not root.is_dir():
             continue
         for path in sorted(root.rglob("*")):
-            if path.is_file() and not path.is_symlink():
+            if path.is_file() and not path.is_symlink() and path.resolve() not in seen:
+                seen.add(path.resolve())  # a company-folder file is exported once
                 yield f"{prefix}/{path.relative_to(root).as_posix()}", path
 
 
@@ -185,3 +216,19 @@ async def remove_company_files(files: CompanyFiles) -> None:
     paths += [path for _, path in files.skill_dirs]
     paths += files.exports
     await run_sync(_remove_all, paths)
+    await run_sync(_remove_company_dirs, files.company_dirs)
+
+
+def _remove_company_dirs(dirs: list[tuple[str, Path]]) -> None:
+    """Re-check each recorded folder (receipt JSON is replayed) before removing it."""
+    roots = {root.resolve() for _, root in _storage_roots()}
+    for _name, path in dirs:
+        root = path.parent.parent
+        if root not in roots:
+            continue
+        try:
+            tenant_id = UUID(path.name)
+        except ValueError:
+            continue
+        if company_dir(root, tenant_id) == path:
+            _remove(path)
