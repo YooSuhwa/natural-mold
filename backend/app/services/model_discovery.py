@@ -23,7 +23,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
 from app.models.credential import Credential
 from app.models.model import Model
 from app.services.model_filtering import (
@@ -142,7 +142,7 @@ async def discover_from_credential(
     Credential's definition is not a known LLM provider.
     """
 
-    data = await credential_service.decrypt_with_external(credential)
+    data = await open_values(credential, "probe")
     entry = _DISPATCH.get(credential.definition_key)
     if entry is None:
         raise ValueError(

@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.mcp_probe_scope import require_mcp_probe_scope
 from app.config import settings
-from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
 from app.exceptions import AppError
 from app.mcp import client as mcp_client
 from app.mcp.auth import resolve_mcp_auth
@@ -65,7 +65,7 @@ async def check_model(
     payload: dict[str, Any] = {}
     if credential is not None:
         try:
-            payload = await credential_service.decrypt_with_external(credential)
+            payload = await open_values(credential, "probe")
         except Exception as exc:  # noqa: BLE001 — surface as unhealthy
             return await _record(
                 db,

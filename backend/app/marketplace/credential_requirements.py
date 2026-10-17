@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate, private_scoped
 from app.authz.skill_binding_scope import require_private_skill, skill_binding_scope_predicate
+from app.credentials.boundary import open_values
 from app.error_codes import (
     credential_not_found,
     marketplace_credential_mismatch,
@@ -330,7 +331,7 @@ async def resolve_credential_bindings(
     3. Otherwise — counted as missing if the requirement is
        ``required=True`` and ``scope='user'``.
 
-    Decryption uses ``credential_service.decrypt_with_external`` which
+    Decryption uses ``credentials.boundary.open_values`` which
     is Cipher V2 + ``__external__`` ref expansion (same path as the
     rest of the codebase). The decrypted dict is held in memory only —
     callers are responsible for not logging the returned object.
@@ -392,10 +393,9 @@ async def resolve_credential_bindings(
 
         # Lazy import — keeps credential_requirements importable from
         # unit tests that don't need the cipher path.
-        from app.credentials import service as credential_service
 
         try:
-            decrypted = await credential_service.decrypt_with_external(credential)
+            decrypted = await open_values(credential, "install")
         except Exception:
             if req.required:
                 missing.append(req.key)

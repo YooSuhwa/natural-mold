@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
 from app.credentials.oauth2_base import is_token_expired, refresh_oauth_token
 from app.credentials.registry import registry
 from app.models.credential import Credential
@@ -23,7 +23,7 @@ async def ensure_fresh_token(credential: Credential) -> dict[str, Any]:
     responsible for persisting any updates back to the row.
     """
 
-    data = await credential_service.decrypt_with_external(credential)
+    data = await open_values(credential, "refresh")
     if not is_token_expired(data):
         return data
 

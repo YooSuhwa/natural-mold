@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.run_secrets import collect_secret_values, collect_url_userinfo
-from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
 from app.credentials.external_secrets import EXTERNAL_MARKER
 from app.credentials.service import PROVIDER_TO_DEFINITION_KEY
 from app.mcp.client import build_env_vars, build_headers
@@ -156,7 +156,7 @@ async def _credential_payloads(
     payloads: dict[UUID, dict[str, JsonValue]] = {}
     for credential in credentials:
         try:
-            payload = await credential_service.decrypt_with_external(credential)
+            payload = await open_values(credential, "redaction")
         except (CipherError, OSError, ValueError, RuntimeError, KeyError) as error:
             raise HistorySecretSourceError("credential source could not be resolved") from error
         if _contains_external_marker(payload):

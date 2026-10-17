@@ -19,17 +19,15 @@ from sqlalchemy.orm import contains_eager, selectinload
 from app.agent_runtime.identity import AgentRunIdentity
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
+from app.authz.run_agent_scope import require_runnable_agent
 from app.authz.runtime_capability_scope import (
     require_agent_capabilities,
     require_runtime_capability_tree,
 )
 from app.authz.scoping import private_scope_predicate, private_scoped
-from app.credentials import service as credential_service
-from app.credentials.per_user_guard import require_resource_credential
-from app.error_codes import agent_not_found, mcp_server_not_found, tool_not_found
-from app.exceptions import ValidationError
-from app.mcp.auth import resolve_mcp_auth
-from app.mcp.client import build_headers
+from app.authz.service import AuthzService
+from app.credentials.run_resolution import RunCredentialResolver
+from app.credentials.run_subject import subject_for_agent
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation import Conversation
@@ -168,89 +166,41 @@ async def build_tools_config(
     db: AsyncSession | None = None,
     conversation_id: str | None = None,
     identity: AgentRunIdentity | None = None,
+    read_only: bool = False,
+    authz: AuthzService | None = None,
 ) -> list[dict[str, Any]]:
     """Build the runtime tools_config list for an agent.
 
-    The shape is intentionally minimal — every entry exposes the registry
-    ``definition_key`` (so the executor knows which runner to instantiate),
-    the user-supplied ``parameters``, and an optional decrypted
-    ``credentials`` dict.
-
-    The legacy 4-way ``ToolType`` branch + per-user default connection map +
-    cross-tenant ownership gates are gone. ``Tool.credential_id`` is the only
-    auth source; ownership is enforced by ``user_id`` filters on the writes.
-
-    MCP tools are not represented as ``Tool`` rows under the greenfield model
-    (they live in ``mcp_servers``/``mcp_tools``). Until ``agent_mcp_servers``
-    link binding ships, this function only emits regular tool entries; MCP
-    bindings will come in via a separate config list. See
-    ``app/mcp/client.py`` and the M5 follow-up note in ``progress.txt``.
+    Every entry exposes the registry ``definition_key``, the user-supplied
+    ``parameters`` and the decrypted ``credentials`` resolved by
+    ``RunCredentialResolver`` (11.3, F-05): ``shared`` resources use their owner's
+    credential, ``per_user`` resources the run account's connection (caller for
+    caller-identity runs, owner for fixed runs). ``read_only`` (response masking)
+    resolves without decisions, errors for missing connections or OAuth refresh.
+    MCP tool links are emitted in the executor's ``mcp_server_url`` shape.
     """
 
-    if (agent.user_id, agent.org_id, agent.tenant_id) != (
-        context.user_id,
-        context.org_id,
-        context.tenant_id,
-    ):
-        raise agent_not_found()
-
+    await require_runnable_agent(agent, context, identity, authz)
+    subject = subject_for_agent(agent, context, identity, read_only=read_only)
+    resolver = RunCredentialResolver(db, subject, authz)
     configs: list[dict[str, Any]] = []
-    credential_cache: dict[uuid.UUID, dict[str, Any] | None] = {}
-    credential_subject_user_id = (
-        identity.credential_subject_user_id if identity is not None else agent.user_id
-    )
     runtime_actor_user_id = (
         identity.caller_user_id or identity.agent_owner_user_id
         if identity is not None
         else agent.user_id
     )
-
-    async def decrypt_cached(credential: Any) -> dict[str, Any] | None:
-        if (
-            credential.user_id != credential_subject_user_id
-            or credential.org_id != context.org_id
-            or credential.tenant_id != context.tenant_id
-            or bool(getattr(credential, "is_system", False)) is True
-        ):
-            raise ValidationError(
-                "CREDENTIAL_SUBJECT_MISMATCH",
-                "credential is not available for this agent run identity",
-            )
-        cached = credential_cache.get(credential.id)
-        if credential.id in credential_cache:
-            return cached
-        try:
-            cached = await credential_service.decrypt_with_external(credential)
-        except Exception:  # noqa: BLE001 — surface as missing creds, never crash chat
-            logger.exception(
-                "credential decryption failed for credential %s",
-                credential.id,
-            )
-            cached = None
-        credential_cache[credential.id] = cached
-        return cached
+    actor = {
+        "user_id": str(runtime_actor_user_id),
+        "tenant_id": str(context.tenant_id),
+        "agent_id": str(agent.id),
+        "credential_subject_user_id": str(subject.account_user_id),
+    }
 
     for link in agent.tool_links:
         tool = link.tool
         if tool is None or not tool.enabled:
             continue
-        private_tool = (tool.user_id, tool.org_id, tool.tenant_id) == (
-            context.user_id,
-            context.org_id,
-            context.tenant_id,
-        )
-        platform_tool = tool.is_system and (
-            tool.user_id is None and tool.org_id is None and tool.tenant_id is None
-        )
-        if not (private_tool or platform_tool):
-            raise tool_not_found()
-
-        require_resource_credential(tool)  # per_user: never the owner's account (F-04)
-        credentials: dict[str, Any] | None = None
-        credential = getattr(tool, "credential", None)
-        if credential is not None:
-            credentials = await decrypt_cached(credential)
-
+        resolved = await resolver.tool(tool)
         configs.append(
             {
                 "tool_id": str(tool.id),
@@ -258,88 +208,20 @@ async def build_tools_config(
                 "name": tool.name,
                 "description": tool.description,
                 "parameters": dict(tool.parameters or {}),
-                "credentials": credentials,
-                "credential_id": (str(tool.credential_id) if tool.credential_id else None),
-                # Hook-framework correlation — wire down to ``tool_factory``.
-                "user_id": str(runtime_actor_user_id),
-                "tenant_id": str(context.tenant_id),
-                "agent_id": str(agent.id),
-                "credential_subject_user_id": str(credential_subject_user_id),
+                "credentials": resolved.values.reveal() if resolved else None,
+                "credential_id": str(resolved.credential_id) if resolved else None,
+                **actor,
             }
         )
 
-    # MCP tool bindings — emit in the executor's mcp_server_url shape so
-    # ``_build_mcp_tools`` instantiates them. m25 added the link table that
-    # makes this possible (previously a m5 follow-up).
     for mcp_link in agent.mcp_tool_links:
         mcp_tool = mcp_link.mcp_tool
-        if mcp_tool is None or not mcp_tool.enabled:
+        if mcp_tool is None or not mcp_tool.enabled or mcp_tool.server is None:
             continue
         server = mcp_tool.server
-        if server is None:
+        resolution = await resolver.mcp(server)
+        if resolution is None:
             continue
-
-        private_server = (server.user_id, server.org_id, server.tenant_id) == (
-            context.user_id,
-            context.org_id,
-            context.tenant_id,
-        )
-        platform_server = server.is_system and server.org_id is None and server.tenant_id is None
-        if not (private_server or platform_server):
-            raise mcp_server_not_found()
-        require_resource_credential(server)  # per_user: never the owner's account (F-04)
-        if server.credential is not None and (
-            server.credential.user_id,
-            server.credential.org_id,
-            server.credential.tenant_id,
-            server.credential.is_system,
-        ) != (credential_subject_user_id, context.org_id, context.tenant_id, False):
-            raise ValidationError(
-                "CREDENTIAL_SUBJECT_MISMATCH",
-                "credential is not available for this agent run identity",
-            )
-        if not server.url:
-            continue
-
-        mcp_credentials: dict[str, Any] | None = None
-        mcp_headers: dict[str, str] = dict(server.headers or {})
-        if server.credential is not None:
-            if db is not None:
-                if (
-                    server.credential.user_id,
-                    server.credential.org_id,
-                    server.credential.tenant_id,
-                ) != (
-                    credential_subject_user_id,
-                    context.org_id,
-                    context.tenant_id,
-                ) or server.credential.is_system:
-                    raise ValidationError(
-                        "CREDENTIAL_SUBJECT_MISMATCH",
-                        "credential is not available for this agent run identity",
-                    )
-                resolved_auth = await resolve_mcp_auth(
-                    db,
-                    credential_id=server.credential_id,
-                    user_id=credential_subject_user_id,
-                    static_headers=dict(server.headers or {}),
-                )
-                if resolved_auth.error:
-                    if resolved_auth.status == "credential_not_found":
-                        raise ValidationError(
-                            "CREDENTIAL_SUBJECT_MISMATCH",
-                            "credential is not available for this agent run identity",
-                        )
-                    raise ValidationError(
-                        "MCP_CREDENTIAL_AUTH_NEEDED",
-                        resolved_auth.error,
-                    )
-                mcp_credentials = resolved_auth.credentials
-                mcp_headers = resolved_auth.headers
-            else:
-                mcp_credentials = await decrypt_cached(server.credential)
-                mcp_headers = build_headers(dict(server.headers or {}), mcp_credentials)
-
         configs.append(
             {
                 "tool_id": f"mcp:{mcp_tool.id}",
@@ -347,23 +229,20 @@ async def build_tools_config(
                 "name": mcp_tool.name,
                 "description": mcp_tool.description,
                 "parameters": {},
-                # _build_mcp_tools branches on these keys (see executor.py
-                # ``mcp_server_url``).
+                # _build_mcp_tools branches on these keys (``mcp_server_url``).
                 "mcp_server_url": server.url,
                 "mcp_server_id": str(server.id),
                 "mcp_tool_id": str(mcp_tool.id),
                 "mcp_tool_name": mcp_tool.name,
                 "org_id": str(context.org_id),
-                "tenant_id": str(context.tenant_id),
-                "mcp_transport_headers": mcp_headers,
-                "credentials": mcp_credentials,
+                "mcp_transport_headers": resolution.headers,
+                "credentials": resolution.credentials,
                 "conversation_id": conversation_id,
-                "user_id": str(runtime_actor_user_id),
-                "agent_id": str(agent.id),
-                "credential_subject_user_id": str(credential_subject_user_id),
+                **actor,
             }
         )
 
+    resolver.raise_missing()
     return configs
 
 

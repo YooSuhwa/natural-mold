@@ -3,8 +3,9 @@
 Responsibilities split between this module and the per-definition runner
 coroutine:
 
-- **runner.py** loads + decrypts the credential (delegating to
-  :mod:`app.credentials.service`), validates required parameters, opens an
+- **runner.py** takes the credential resolved for the caller (shared: the tool's,
+  per_user: the caller's own connection; :mod:`app.credentials.run_resolution`),
+  validates required parameters, opens an
   ``httpx.AsyncClient``, and dispatches to the registered runner.
 - **definitions/*.py** owns the actual side-effect (HTTP call, API client,
   message format).
@@ -15,16 +16,17 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from typing import Any
-from uuid import UUID
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
-from app.credentials import service as credential_service
-from app.credentials.mutation_scope import load_scoped_credential
-from app.credentials.per_user_guard import CREDENTIAL_BINDING_REQUIRED, MESSAGE, is_per_user
+from app.credentials.run_resolution import RunCredentialResolver
+from app.credentials.run_subject import subject_for_caller
+from app.error_codes import credential_not_found
+from app.exceptions import ValidationError
 from app.http_ssl import get_outbound_ssl_context
+from app.models.tool import Tool
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.execution_scope import ToolRunOptions, ToolRunTarget, load_execution_tool
 from app.tools.parameters import FieldDef
@@ -73,12 +75,18 @@ def _validate_parameters(fields: list[FieldDef], values: dict[str, Any]) -> dict
 
 
 async def _load_credential_payload(
-    db: AsyncSession, credential_id: UUID | None, context: OrgContext
+    db: AsyncSession, tool: Tool, context: OrgContext
 ) -> dict[str, Any] | None:
-    if credential_id is None:
-        return None
-    row = await load_scoped_credential(db, credential_id, context)
-    return await credential_service.decrypt_with_external(row)
+    resolver = RunCredentialResolver(db, subject_for_caller(context))
+    try:
+        resolved = await resolver.tool(tool)
+    except ValidationError as error:  # not the tool owner's: the neutral 404 as before
+        if error.code != "CREDENTIAL_SUBJECT_MISMATCH":
+            raise
+        raise credential_not_found() from None
+    if resolver.missing:
+        raise ToolRunError("credential_binding_required: 이 도구에 내 계정을 먼저 연결해 주세요")
+    return resolved.values.reveal() if resolved else None
 
 
 async def run_tool(
@@ -108,11 +116,9 @@ async def run_tool(
     if options.runtime_args:
         merged.update(options.runtime_args)
 
-    if is_per_user(tool):  # never the owner's account (F-04); F-05 resolves connections
-        return ToolRunResult(success=False, error=f"{CREDENTIAL_BINDING_REQUIRED}: {MESSAGE}")
     try:
         validated = _validate_parameters(definition.parameters, merged)
-        credentials = await _load_credential_payload(db, tool.credential_id, target.context)
+        credentials = await _load_credential_payload(db, tool, target.context)
     except ToolRunError as exc:
         return ToolRunResult(success=False, error=str(exc))
 

@@ -8,8 +8,8 @@ needs the resource's ``can_share`` and the credential's ``can_share`` (S28; some
 else's credential: ``409 credential_reshare_blocked``), and is refused
 (``personal_account_shared``) when a personal account would be lent to the people the
 resource, or an agent using it, is shared with (10.4). ``none`` needs no credential and
-``shared`` needs one (``credential_mode_invalid``). Until F-05 the runtime refuses
-``per_user`` resources (``app.credentials.per_user_guard``).
+``shared`` needs one (``credential_mode_invalid``). Runs resolve ``per_user`` resources
+through the run account's connection (``app.credentials.run_resolution``).
 """
 
 from __future__ import annotations

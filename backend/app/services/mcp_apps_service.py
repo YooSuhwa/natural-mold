@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.agent_runtime.run_secrets import collect_secret_values
 from app.credentials import service as credential_service
-from app.credentials.per_user_guard import CREDENTIAL_BINDING_REQUIRED, MESSAGE, is_per_user
+from app.credentials.run_resolution import RunCredentialResolver
+from app.credentials.run_subject import subject_for_caller
 from app.mcp.apps import (
     normalize_resource_ui_meta,
     normalize_tool_ui_meta,
@@ -133,19 +134,24 @@ async def call_bound_tool(
 
 
 async def _auth_for_context(db: AsyncSession, context: AuthorizedBinding) -> ResolvedMcpAuth:
-    if is_per_user(context.server):  # never the owner's account (F-04)
-        raise McpAppsError(CREDENTIAL_BINDING_REQUIRED.lower(), MESSAGE, 409)
-    if context.server.credential_id is not None:
-        credential = await credential_service.get_for_user(
-            db, context.server.credential_id, context.org_context
-        )
+    """Re-resolved on every call: shared → the server's credential, per_user → the
+    binding subject's own connection (11.3, F-05)."""
+    server, subject_user_id = context.server, context.binding.credential_subject_user_id
+    credential_id, owner_id = server.credential_id, subject_user_id
+    if server.credential_mode == "per_user":
+        subject = subject_for_caller(context.org_context, subject_user_id)
+        bound = await RunCredentialResolver(db, subject).bound(server, "mcp_server")
+        if bound is None:
+            raise McpAppsError(
+                "credential_binding_required", "connect your own account to this server", 409
+            )
+        credential_id, owner_id = bound.id, bound.user_id
+    elif credential_id is not None:
+        credential = await credential_service.get_for_user(db, credential_id, context.org_context)
         if credential is None:
             raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 404)
     auth = await resolve_mcp_auth(
-        db,
-        credential_id=context.server.credential_id,
-        user_id=context.binding.credential_subject_user_id,
-        static_headers=context.server.headers,
+        db, credential_id=credential_id, user_id=owner_id, static_headers=server.headers
     )
     if auth.error:
         raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 403)

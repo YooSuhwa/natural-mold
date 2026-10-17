@@ -57,6 +57,7 @@ ErrorCode = Literal[
     "credential_type_mismatch",
     "credential_mode_invalid",
     "credential_reshare_blocked",
+    "credential_binding_required",
     "tenant_suspended",
     "quota_exceeded",
     "authz_unavailable",
@@ -144,6 +145,9 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
             422, "이 도구·MCP 서버에 연결할 수 없는 자격 증명 유형입니다"
         ),
         "credential_mode_invalid": ErrorSpec(422, "연결 방식과 자격 증명 설정이 맞지 않습니다"),
+        "credential_binding_required": ErrorSpec(
+            409, "사용자별 연결이 필요합니다. 내 계정을 연결한 뒤 다시 시도해 주세요"
+        ),
         "credential_reshare_blocked": ErrorSpec(
             409, "다른 사람의 자격 증명은 공용 방식으로 되돌릴 수 없습니다"
         ),

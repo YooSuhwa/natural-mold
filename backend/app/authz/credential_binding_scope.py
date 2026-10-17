@@ -27,6 +27,16 @@ def my_bindings(ctx: OrgContext) -> ColumnElement[bool]:
     )
 
 
+def account_bindings(ctx: OrgContext, user_id: UUID) -> ColumnElement[bool]:
+    """One run account's connections in the run's organization (F-05: the caller for
+    caller-identity runs, the agent owner for fixed runs)."""
+    return (
+        (Binding.user_id == user_id)
+        & (Binding.org_id == ctx.org_id)
+        & (Binding.tenant_id == ctx.tenant_id)
+    )
+
+
 def binding_of(resource_type: str, resource_id: UUID) -> ColumnElement[bool]:
     return (Binding.resource_type == resource_type) & (Binding.resource_id == resource_id)
 
@@ -45,4 +55,4 @@ async def drop_bindings_for(db: AsyncSession, row: object) -> None:
     await db.execute(delete(Binding).where(clause).execution_options(synchronize_session=False))
 
 
-__all__ = ["binding_of", "drop_bindings_for", "my_bindings"]
+__all__ = ["account_bindings", "binding_of", "drop_bindings_for", "my_bindings"]

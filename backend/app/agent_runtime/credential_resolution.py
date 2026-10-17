@@ -26,9 +26,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.authz.org_context import OrgContext
+from app.authz.runtime import runtime_authz
 from app.authz.scoping import private_scoped
+from app.authz.service_types import Verdict
 from app.config import settings
 from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
+from app.credentials.run_subject import subject_for_agent
 from app.credentials.service import PROVIDER_TO_DEFINITION_KEY
 from app.exceptions import AppError
 from app.models.agent import Agent
@@ -87,7 +91,7 @@ async def resolve_llm_api_key_for_agent(
 
     cred = getattr(agent, "llm_credential", None)
     if cred is not None:
-        if _credential_owned_by_subject(cred, subject):
+        if _credential_owned_by_subject(cred, subject) or await _delegated(cred, agent, access):
             key = await _decrypt_api_key(cred)
             if key is not None:
                 logger.info(
@@ -203,11 +207,39 @@ def _credential_owned_by_subject(cred: Credential, subject: OrgContext) -> bool:
     )
 
 
+async def _delegated(cred: Credential, agent: Agent, access: AgentCredentialAccess) -> bool:
+    """Tier 1 delegation (11.3): a credential the run does not own is usable when the
+    11.1 decision subject (``agent:A`` for fixed runs, ``user:caller`` for caller-identity
+    runs) has ``credential#can_use``. Legacy keeps the owner-only answer."""
+    context = access.context
+    if (
+        bool(getattr(cred, "is_system", False))
+        or (cred.org_id, cred.tenant_id) != (context.org_id, context.tenant_id)
+        or getattr(cred, "status", "active") != "active"
+    ):
+        return False
+    subject = subject_for_agent(agent, context, access.identity)
+    try:
+        await runtime_authz().require(
+            subject.principal,
+            "can_use",
+            f"credential:{cred.id}",
+            min_visible="can_use",
+            resource_org_id=cred.org_id,
+            legacy=Verdict.NOT_FOUND,
+        )
+    except AppError as denied:
+        if denied.status in (403, 404):
+            return False
+        raise
+    return True
+
+
 async def _decrypt_api_key(cred: Credential) -> str | None:
     """Decrypt and pluck out the conventional ``api_key`` / ``token`` field."""
 
     try:
-        payload = await credential_service.decrypt_with_external(cred)
+        payload = await open_values(cred, "run")
     except Exception:  # noqa: BLE001 — surface as missing key
         logger.exception("LLM credential %s decryption failed", cred.id)
         return None

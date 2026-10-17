@@ -31,7 +31,7 @@ from app.authz.policies import CANDIDATES, RES, SELF, SUPER, authz_policy
 from app.authz.resource_gate import gate_list, org_context_when_consulted
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
-from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
 from app.dependencies import (
     CurrentUser,
     get_current_user,
@@ -219,7 +219,7 @@ async def test_registered_model(
         await model_service.load_model(db, model_id, context, authz), user
     )
     cred = await model_test_credential(db, model, credential_id, context, authz)
-    data = await credential_service.decrypt_with_external(cred)
+    data = await open_values(cred, "probe")
 
     result = await run_model_test(
         provider=model.provider,
@@ -266,7 +266,7 @@ async def test_preview_model(
     """
 
     cred = await load_owned_credential(db, payload.credential_id, context, authz)
-    data = await credential_service.decrypt_with_external(cred)
+    data = await open_values(cred, "probe")
 
     result = await run_model_test(
         provider=payload.provider,

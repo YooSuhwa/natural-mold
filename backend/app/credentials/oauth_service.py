@@ -26,6 +26,7 @@ from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.credentials import service as credential_service
 from app.credentials import tenant_encryption
+from app.credentials.boundary import open_values
 from app.credentials.mcp_oauth_client import build_authorization_url, build_pkce_pair
 from app.credentials.mcp_oauth_prepare import prepare_mcp_oauth_data
 from app.credentials.mcp_oauth_spec import issuer_matches
@@ -118,7 +119,7 @@ async def start_oauth(
             status_code=400,
             detail=f"definition '{cred.definition_key}' does not support OAuth2",
         )
-    data = await credential_service.decrypt_with_external(cred)
+    data = await open_values(cred, "refresh")
     redirect_uri = data.get("redirect_uri") or fallback_redirect_uri
     code_verifier: str | None = None
     # RFC 9207: the issuer travels with the state/PKCE row (plan 11.4.1).
@@ -259,7 +260,7 @@ async def handle_callback(
             detail=f"definition '{cred.definition_key}' does not support OAuth2",
         )
 
-    data = await credential_service.decrypt_with_external(cred)
+    data = await open_values(cred, "refresh")
     # Use the authorization-code grant: hand the code off to pre_authentication
     # by stashing it in the data payload; definition implementations switch on
     # presence of ``authorization_code``.

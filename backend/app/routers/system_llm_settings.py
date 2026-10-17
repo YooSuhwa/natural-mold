@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.policies import SUPER, authz_policy
 from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
 from app.dependencies import (
     CurrentUser,
     get_db,
@@ -63,7 +64,7 @@ async def _build_out(db: AsyncSession, setting: SystemLlmSetting) -> SystemLlmSe
             credential_name = cred.name
             provider = cred.definition_key
             try:
-                payload = await credential_service.decrypt_with_external(cred)
+                payload = await open_values(cred, "system")
                 raw = payload.get("base_url")
                 base_url = str(raw) if raw else None
             except Exception:  # noqa: BLE001

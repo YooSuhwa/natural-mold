@@ -20,8 +20,9 @@ from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.agent_runtime.run_secrets import collect_secret_values, collect_url_userinfo
 from app.authz.conversation_scope import require_private_conversation
 from app.authz.org_context import OrgContext
+from app.authz.run_agent_scope import masking_scope
 from app.authz.runtime_capability_scope import require_runtime_capability_tree
-from app.authz.scoping import private_scoped
+from app.authz.scoping import org_scoped
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.schemas.conversation import MessageResponse
@@ -69,7 +70,7 @@ async def collect_conversation_secret_values(
     try:
         with db.no_autoflush:
             result = await db.execute(
-                private_scoped(select(Agent).where(Agent.id == agent_id), Agent, context)
+                org_scoped(select(Agent).where(Agent.id == agent_id), Agent, context)
                 .options(*_agent_runtime_load_options())
                 .execution_options(populate_existing=True, autoflush=False)
             )
@@ -79,8 +80,6 @@ async def collect_conversation_secret_values(
         return secrets
     if agent is None:
         return secrets
-    require_runtime_capability_tree(agent, context)
-
     identity = resolve_agent_run_identity(
         agent_id=agent.id,
         agent_owner_user_id=agent.user_id,
@@ -89,6 +88,13 @@ async def collect_conversation_secret_values(
         source=AgentRunSource.CHAT,
         caller_user_id=context.user_id,
     )
+    # The same agent scope as the run (F-05): a shared agent the caller may run masks its
+    # LLM key, shared tool credentials and the caller's own connections too.
+    scope = await masking_scope(agent, context, identity)
+    if scope is None:
+        return secrets
+    if scope == "own":
+        require_runtime_capability_tree(agent, context)
     # Each source is isolated: a failure in ONE (e.g. resolve_llm_api_key_for_agent
     # raises for an agent whose LLM credential was deleted) must NOT abort the
     # others, or tool/MCP/base_url secrets would silently go uncollected →
@@ -118,15 +124,18 @@ async def collect_conversation_secret_values(
         logger.debug("secret-collect fallback chain skipped for %s", conversation.id, exc_info=True)
 
     try:
-        # db=None on purpose (BE-P3): with a session, the MCP branch calls
-        # resolve_mcp_auth per tool — a SELECT … FOR UPDATE (row lock!) plus
-        # potential OAuth refresh WRITE per credential, on a GET-polled path.
-        # The light branch decrypts the credential rows already eager-loaded
-        # by _agent_runtime_load_options above, which is exactly what secret
-        # collection needs (mask what's stored; the live run path collects
-        # refreshed tokens itself).
+        # read_only (BE-P3, 11.3): no decision, no resolve_mcp_auth (a SELECT … FOR
+        # UPDATE row lock plus potential OAuth refresh WRITE) on this GET-polled path.
+        # Stored values are decrypted as-is (mask what's stored; the live run path
+        # collects refreshed tokens itself); the session only reads per-user
+        # connections so their values are masked too.
         tools_config = await build_tools_config(
-            agent, context=context, identity=identity, db=None, conversation_id=str(conversation.id)
+            agent,
+            context=context,
+            identity=identity,
+            db=db,
+            read_only=True,
+            conversation_id=str(conversation.id),
         )
         for tool_config in tools_config or []:
             if not isinstance(tool_config, dict):

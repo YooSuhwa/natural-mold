@@ -2,7 +2,8 @@
 
 ``CRUD /api/credential-bindings`` is ``SELF`` + target ``can_use`` + credential
 ``can_use``: the caller connects one of their own (or shared-to-them) credentials to a
-tool or MCP server they may use. Runtime resolution of these rows is F-05.
+tool or MCP server they may use. Runs resolve these rows in
+``app.credentials.run_resolution`` (F-05).
 """
 
 from __future__ import annotations

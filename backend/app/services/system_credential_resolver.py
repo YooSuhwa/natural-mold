@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.model_factory import PROVIDER_API_KEY_MAP
 from app.authz.company_catalog import allows_system_models
 from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
 from app.models.credential import Credential
 from app.models.organization import Tenant
 from app.models.system_llm_setting import SystemLlmSetting
@@ -79,7 +80,7 @@ async def resolve_system_api_key(db: AsyncSession, provider: str) -> str | None:
     if cred is None:
         return None
     try:
-        payload = await credential_service.decrypt_with_external(cred)
+        payload = await open_values(cred, "system")
     except Exception:  # noqa: BLE001
         logger.exception("System credential %s decryption failed", cred.id)
         return None
@@ -151,7 +152,7 @@ async def resolve_system_model(
         # applied, or race). Treat as unconfigured.
         raise SystemModelNotConfiguredError(role)
 
-    payload = await credential_service.decrypt_with_external(cred)
+    payload = await open_values(cred, "system")
     api_key = payload.get("api_key") or payload.get("token")
     base_url = payload.get("base_url")
     return ResolvedSystemModel(

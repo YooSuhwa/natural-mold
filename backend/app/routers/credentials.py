@@ -29,6 +29,7 @@ from app.authz.resource_lifecycle import apply_lifecycle, on_resource_created, o
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
 from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
 from app.credentials.creation import CredentialCreation
 from app.credentials.mutation_scope import (
     CredentialAuditQuery,
@@ -415,7 +416,7 @@ async def test_credential(
             status_code=400,
             detail=f"definition '{cred.definition_key}' is not registered",
         )
-    data = await credential_service.decrypt_with_external(cred)
+    data = await open_values(cred, "probe")
     result = await CredentialTester().run(definition, data)
     payload = result.to_dict()
     await credential_service.record_test(
