@@ -30,6 +30,9 @@ class OrganizationSummary(BaseModel):
     is_active: bool = False
     roles: tuple[OrgRole, ...] = ()
     capabilities: tuple[OrgCapability, ...] = ()
+    # False while capabilities are not enforced (legacy/shadow): every member may create,
+    # so screens gate create buttons on ``capabilities`` only when this is True (H-05).
+    capabilities_enforced: bool = False
 
 
 class ActiveOrganizationRequest(BaseModel):

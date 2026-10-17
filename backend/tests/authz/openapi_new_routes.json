@@ -14351,6 +14351,53 @@
         ]
       }
     },
+    "/api/resources/credential/permissions": {
+      "get": {
+        "operationId": "list_credential_permissions_api_resources_credential_permissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourcePermissionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Credential Permissions",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
     "/api/resources/credential/{resource_id}/access": {
       "get": {
         "operationId": "get_access_credential_api_resources_credential__resource_id__access_get",
@@ -14536,6 +14583,53 @@
           }
         },
         "summary": "Transfer Ownership Credential",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/mcp_server/permissions": {
+      "get": {
+        "operationId": "list_mcp_server_permissions_api_resources_mcp_server_permissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourcePermissionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Mcp Server Permissions",
         "tags": [
           "sharing"
         ]
@@ -14731,6 +14825,53 @@
         ]
       }
     },
+    "/api/resources/skill/permissions": {
+      "get": {
+        "operationId": "list_skill_permissions_api_resources_skill_permissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourcePermissionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skill Permissions",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
     "/api/resources/skill/{resource_id}/access": {
       "get": {
         "operationId": "get_access_skill_api_resources_skill__resource_id__access_get",
@@ -14916,6 +15057,53 @@
           }
         },
         "summary": "Transfer Ownership Skill",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/tool/permissions": {
+      "get": {
+        "operationId": "list_tool_permissions_api_resources_tool_permissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourcePermissionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tool Permissions",
         "tags": [
           "sharing"
         ]
@@ -37911,6 +38099,11 @@
           "title": "Capabilities",
           "type": "array"
         },
+        "capabilities_enforced": {
+          "default": false,
+          "title": "Capabilities Enforced",
+          "type": "boolean"
+        },
         "id": {
           "format": "uuid",
           "title": "Id",
@@ -39968,6 +40161,44 @@
         "label"
       ],
       "title": "ResourceOriginSummaryOut",
+      "type": "object"
+    },
+    "ResourcePermissionItem": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "my_permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "My Permissions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "my_permissions"
+      ],
+      "title": "ResourcePermissionItem",
+      "type": "object"
+    },
+    "ResourcePermissionList": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/ResourcePermissionItem"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ResourcePermissionList",
       "type": "object"
     },
     "ResourcePublicationSummaryOut": {

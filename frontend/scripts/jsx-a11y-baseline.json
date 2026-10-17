@@ -1,7 +1,7 @@
 [
   {
     "filePath": "src/components/artifacts/artifact-library-content.tsx",
-    "line": 192,
+    "line": 195,
     "column": 21,
     "ruleId": "jsx-a11y/anchor-has-content",
     "message": "Anchors must have content and the content must be accessible by a screen reader."
@@ -92,7 +92,7 @@
   },
   {
     "filePath": "src/components/artifacts/artifact-library-content.tsx",
-    "line": 192,
+    "line": 195,
     "column": 21,
     "ruleId": "jsx-a11y/control-has-associated-label",
     "message": "A control must be associated with a text label."

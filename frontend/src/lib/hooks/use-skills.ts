@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { skillsApi } from '@/lib/api/skills'
-import { ApiError } from '@/lib/api/errors'
+import { isNotFoundError } from '@/lib/api/error-ui'
 import { skillQueryKeys, type SkillListQueryParams } from '@/lib/query-keys/skills'
 import { requiredQueryValue } from './required-query-value'
 import type {
@@ -18,7 +18,7 @@ export function getSkillExportUrl(skillId: string): string {
 
 /** Treat a skill already deleted in another flow as an idempotent success. */
 export function isSkillNotFoundError(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 404
+  return isNotFoundError(error)
 }
 
 export function useSkills(params?: SkillListQueryParams) {

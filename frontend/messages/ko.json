@@ -133,6 +133,52 @@
     }
   },
   "common": {
+    "apiError": {
+      "unauthenticated": {
+        "title": "다시 로그인해 주세요",
+        "description": "로그인이 만료되었어요."
+      },
+      "permissionRequired": {
+        "title": "권한이 필요해요",
+        "description": "이 작업을 할 권한이 없어요. 소유자나 관리자에게 권한을 요청하세요."
+      },
+      "capabilityRequired": {
+        "title": "조직 기능 권한이 필요해요",
+        "description": "이 기능은 조직 관리자가 허용한 구성원만 쓸 수 있어요."
+      },
+      "orgAccessDenied": {
+        "title": "이 조직에 접근할 수 없어요",
+        "description": "사이드바에서 다른 조직을 선택하세요."
+      },
+      "tenantSuspended": {
+        "title": "회사 계정이 정지되었어요",
+        "description": "회사 관리자에게 문의하세요."
+      },
+      "notFound": {
+        "title": "찾을 수 없어요",
+        "description": "삭제되었거나 볼 수 없는 항목이에요."
+      },
+      "agentNotReady": {
+        "title": "에이전트를 아직 실행할 수 없어요",
+        "description": "연결이 필요한 항목을 점검한 뒤 다시 시도하세요.",
+        "check": "점검하기"
+      },
+      "quotaExceeded": {
+        "title": "사용 한도를 넘었어요",
+        "description": "잠시 후 다시 시도하거나 관리자에게 한도를 문의하세요."
+      },
+      "authzUnavailable": {
+        "title": "권한을 확인하지 못했어요",
+        "description": "권한 서버에 일시적인 문제가 있어요. 잠시 후 다시 시도하세요."
+      },
+      "unknown": {
+        "title": "문제가 발생했습니다",
+        "description": "잠시 후 다시 시도하세요."
+      },
+      "login": "로그인",
+      "retry": "다시 시도"
+    },
+    "readOnly": "보기 전용이에요. 수정하려면 편집 권한이 필요해요.",
     "save": "저장",
     "create": "생성",
     "cancel": "취소",
@@ -801,6 +847,20 @@
     "tip": "💡 팁: 템플릿을 활용하면 더 빠르게 시작할 수 있어요!"
   },
   "agent": {
+    "triggerStopReason": {
+      "label": "정지 사유: {reason}",
+      "reasons": {
+        "permission_revoked": "실행 권한이 회수되었어요",
+        "owner_left": "예약을 만든 사람이 조직을 떠났어요",
+        "org_archived": "조직이 보관되었어요",
+        "tenant_suspended": "회사 계정이 정지되었어요",
+        "agent_archived": "에이전트가 보관되었어요",
+        "delegation_broken": "위임된 연결을 쓸 수 없어요",
+        "required_unavailable": "필수 연결을 쓸 수 없어요",
+        "auth_required": "연결 인증이 필요해요",
+        "authz_unavailable": "권한을 확인하지 못해 건너뛰었어요"
+      }
+    },
     "context": {
       "trigger": "에이전트 정보",
       "loading": "에이전트",
@@ -1816,6 +1876,7 @@
     }
   },
   "share": {
+    "publicLinksDisabled": "이 조직은 공개 공유 링크를 허용하지 않아요. 조직 관리자에게 문의하세요.",
     "title": "대화 공유",
     "description": "누구나 링크로 이 대화를 읽기 전용으로 볼 수 있어요.",
     "loading": "불러오는 중…",
@@ -3744,11 +3805,6 @@
     "detail": {
       "back": "마켓플레이스로 돌아가기",
       "saving": "저장 중…",
-      "error": {
-        "notFound": "항목을 찾을 수 없어요",
-        "loadFailed": "항목을 불러오지 못했어요",
-        "description": "이 항목을 찾을 수 없거나 접근 권한이 없습니다."
-      },
       "versions": {
         "title": "버전",
         "emptyTitle": "아직 공개된 버전이 없어요",
@@ -5175,6 +5231,7 @@
       "save": "자격증명 저장"
     },
     "detail": {
+      "sharedMetadataOnly": "공유받은 자격 증명이에요. 정보만 볼 수 있어요.",
       "toast": {
         "statusChanged": "자격증명 상태가 {status}(으)로 변경되었습니다",
         "updateFailed": "업데이트에 실패했습니다",

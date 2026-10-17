@@ -15,6 +15,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ScheduleDialog } from '@/features/schedules/components/schedule-dialog'
 import { getScheduleStatusVariant } from '@/features/schedules/lib/cron-labels'
+import { TriggerStopReason } from '@/features/schedules/components/trigger-stop-reason'
+import { useAgentAccess } from '@/components/agent/agent-access-context'
 import type { AgentTrigger } from '@/lib/types'
 
 interface TriggersTabProps {
@@ -28,6 +30,8 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
   const { data: triggers } = useTriggers(agentId)
   const createTrigger = useCreateTrigger(agentId)
   const updateTrigger = useUpdateTrigger(agentId)
+  // Plan 13.9 row 3: creating a schedule needs can_run on the agent.
+  const { canRun } = useAgentAccess()
 
   const [showForm, setShowForm] = useState(false)
   const [editingTrigger, setEditingTrigger] = useState<AgentTrigger | null>(null)
@@ -78,6 +82,7 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
                   <p className="text-xs text-muted-foreground truncate max-w-md">
                     &quot;{trigger.input_message}&quot;
                   </p>
+                  <TriggerStopReason lastError={trigger.last_error} />
                   <div className="flex gap-3 text-xs text-muted-foreground">
                     {trigger.schedule_conversation_id ? (
                       <Link
@@ -158,15 +163,17 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
         </div>
       ) : null}
 
-      <Button
-        variant="outline"
-        size="sm"
-        data-testid="trigger-add-button"
-        onClick={() => setShowForm(true)}
-      >
-        <PlusIcon className="size-4" />
-        {t('trigger.addNew')}
-      </Button>
+      {canRun ? (
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="trigger-add-button"
+          onClick={() => setShowForm(true)}
+        >
+          <PlusIcon className="size-4" />
+          {t('trigger.addNew')}
+        </Button>
+      ) : null}
       <ScheduleDialog
         open={showForm || !!editingTrigger}
         onOpenChange={(open) => {

@@ -107,7 +107,7 @@ const ARBITRARY_LAYOUT_ALLOWLIST = [
     reason: 'manual builder route keeps a stable editor shell floor',
   },
   {
-    filePath: 'src/app/marketplace/[item-id]/page.tsx',
+    filePath: 'src/app/marketplace/[item-id]/_components/marketplace-detail-cards.tsx',
     tokenPattern: /^grid-cols-\[120px_1fr\]$/,
     reason: 'marketplace metadata label/value grid',
   },

@@ -1,5 +1,6 @@
 'use client'
 
+import { useCanPublishMarketplace } from '@/components/marketplace/use-marketplace-publish'
 import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Download, Trash2, UploadCloud } from 'lucide-react'
@@ -7,6 +8,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
+import { useApiErrorMessage } from '@/components/shared/api-error-state'
 import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { Button } from '@/components/ui/button'
 import { PublishWizard } from '@/components/marketplace/publish-wizard'
@@ -20,12 +22,27 @@ import type { Skill } from '@/lib/types/skill'
  * 설정 탭 (Phase 2 결정 D1) — 목업 5탭이 누락한 자격증명 바인딩·메타데이터
  * 편집을 보존하고, 게시/내보내기/삭제를 에디터 푸터에서 옮겨와 소유한다.
  */
-export function SkillSettingsSections({ skill }: { readonly skill: Skill }) {
+export function SkillSettingsSections({
+  skill,
+  canEdit = true,
+  canShare = true,
+  canDelete = true,
+}: {
+  readonly skill: Skill
+  /** Plan 13.9: metadata and credential binding edits. */
+  readonly canEdit?: boolean
+  /** Marketplace publication. */
+  readonly canShare?: boolean
+  readonly canDelete?: boolean
+}) {
   const t = useTranslations('skill.studio.settings')
   const dialog = useTranslations('skill.detailDialog')
   const actions = useTranslations('skill.actions')
+  const common = useTranslations('common')
   const router = useRouter()
   const removeSkill = useDeleteSkill()
+  const errorMessage = useApiErrorMessage()
+  const canPublish = useCanPublishMarketplace()
   const [publishOpen, setPublishOpen] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
@@ -35,32 +52,41 @@ export function SkillSettingsSections({ skill }: { readonly skill: Skill }) {
       toast.success(dialog('deleted'))
       router.push('/skills')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : dialog('deleteFailed'))
+      toast.error(
+        errorMessage(error, error instanceof Error ? error.message : dialog('deleteFailed')),
+      )
     }
   }
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8">
-      <SettingsSection title={t('metadataTitle')}>
-        <SkillMetadataTab skill={skill}>{renderSettingsSectionSlots}</SkillMetadataTab>
-      </SettingsSection>
+      {canEdit ? null : (
+        <p role="note" className="text-xs text-muted-foreground">
+          {common('readOnly')}
+        </p>
+      )}
+      <fieldset disabled={!canEdit} className="contents" data-testid="skill-settings-editable">
+        <SettingsSection title={t('metadataTitle')}>
+          <SkillMetadataTab skill={skill}>{renderSettingsSectionSlots}</SkillMetadataTab>
+        </SettingsSection>
 
-      <SettingsSection title={t('credentialsTitle')}>
-        <SkillCredentialBindingsPanel
-          skillId={skill.id}
-          emptyFallback={
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              {dialog('credentialsEmpty')}
-            </div>
-          }
-        />
-      </SettingsSection>
+        <SettingsSection title={t('credentialsTitle')}>
+          <SkillCredentialBindingsPanel
+            skillId={skill.id}
+            emptyFallback={
+              <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                {dialog('credentialsEmpty')}
+              </div>
+            }
+          />
+        </SettingsSection>
+      </fieldset>
 
       <SettingsSection title={t('actionsTitle')}>
         <div className="flex flex-wrap items-center gap-2">
           {/* 구 SkillCard의 canPublish 가드 이관 — 이미 게시된 스킬은 상태 배지만. */}
-          {!skill.publication_summary?.state ||
-          skill.publication_summary.state === 'not_published' ? (
+          {!canShare || !canPublish ? null : !skill.publication_summary?.state ||
+            skill.publication_summary.state === 'not_published' ? (
             <Button type="button" variant="outline" onClick={() => setPublishOpen(true)}>
               <UploadCloud className="size-4" />
               {actions('publish')}
@@ -83,15 +109,17 @@ export function SkillSettingsSections({ skill }: { readonly skill: Skill }) {
               {dialog('exportPackage')}
             </Button>
           ) : null}
-          <Button
-            type="button"
-            variant="ghost"
-            className="ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => setConfirmingDelete(true)}
-          >
-            <Trash2 className="size-4" />
-            {dialog('deleteSkill')}
-          </Button>
+          {canDelete ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              <Trash2 className="size-4" />
+              {dialog('deleteSkill')}
+            </Button>
+          ) : null}
         </div>
         <p className="moldy-ui-micro text-muted-foreground">
           {t('deleteHint', { count: skill.used_by_count })}

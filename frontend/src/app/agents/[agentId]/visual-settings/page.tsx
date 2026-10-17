@@ -9,6 +9,8 @@ import { useSkills } from '@/lib/hooks/use-skills'
 import { useMiddlewares } from '@/lib/hooks/use-middlewares'
 import { useTriggers } from '@/lib/hooks/use-triggers'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAgentAccess } from '@/components/agent/agent-access-context'
+import { useTranslations } from 'next-intl'
 
 function VisualFlowLoading() {
   return (
@@ -40,6 +42,8 @@ export default function VisualSettingsPage({ params }: { params: Promise<{ agent
   const { data: skills } = useSkills()
   const { data: middlewares } = useMiddlewares()
   const { data: triggers } = useTriggers(agentId)
+  const { canEdit } = useAgentAccess()
+  const tc = useTranslations('common')
 
   if (agentLoading || !agent) {
     return (
@@ -52,15 +56,23 @@ export default function VisualSettingsPage({ params }: { params: Promise<{ agent
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <VisualSettingsIsland
-        agent={agent}
-        agentId={agentId}
-        models={models ?? EMPTY_RESOURCE_LIST}
-        tools={tools ?? EMPTY_RESOURCE_LIST}
-        skills={skills ?? EMPTY_RESOURCE_LIST}
-        middlewares={middlewares ?? EMPTY_RESOURCE_LIST}
-        triggers={triggers ?? EMPTY_RESOURCE_LIST}
-      />
+      {canEdit ? null : (
+        <p role="note" className="px-6 pt-3 text-xs text-muted-foreground">
+          {tc('readOnly')}
+        </p>
+      )}
+      {/* Plan 13.9 row 2: without can_edit the canvas is view-only. */}
+      <fieldset disabled={!canEdit} className="flex min-h-0 flex-1 flex-col">
+        <VisualSettingsIsland
+          agent={agent}
+          agentId={agentId}
+          models={models ?? EMPTY_RESOURCE_LIST}
+          tools={tools ?? EMPTY_RESOURCE_LIST}
+          skills={skills ?? EMPTY_RESOURCE_LIST}
+          middlewares={middlewares ?? EMPTY_RESOURCE_LIST}
+          triggers={triggers ?? EMPTY_RESOURCE_LIST}
+        />
+      </fieldset>
     </div>
   )
 }

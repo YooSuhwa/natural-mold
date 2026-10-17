@@ -133,6 +133,52 @@
     }
   },
   "common": {
+    "apiError": {
+      "unauthenticated": {
+        "title": "Please sign in again",
+        "description": "Your session has expired."
+      },
+      "permissionRequired": {
+        "title": "Permission required",
+        "description": "You don't have permission to do this. Ask the owner or an administrator for access."
+      },
+      "capabilityRequired": {
+        "title": "Organization permission required",
+        "description": "Only members allowed by an organization administrator can use this feature."
+      },
+      "orgAccessDenied": {
+        "title": "You can't access this organization",
+        "description": "Choose another organization in the sidebar."
+      },
+      "tenantSuspended": {
+        "title": "Company account suspended",
+        "description": "Contact your company administrator."
+      },
+      "notFound": {
+        "title": "Not found",
+        "description": "It was deleted or you can't see it."
+      },
+      "agentNotReady": {
+        "title": "This agent can't run yet",
+        "description": "Check the items that need a connection, then try again.",
+        "check": "Check"
+      },
+      "quotaExceeded": {
+        "title": "Usage limit reached",
+        "description": "Try again later or ask an administrator about the limit."
+      },
+      "authzUnavailable": {
+        "title": "Couldn't check permissions",
+        "description": "The permission service is temporarily unavailable. Try again shortly."
+      },
+      "unknown": {
+        "title": "Something went wrong",
+        "description": "Please try again shortly."
+      },
+      "login": "Sign in",
+      "retry": "Try again"
+    },
+    "readOnly": "View only. You need edit permission to make changes.",
     "save": "Save",
     "create": "Create",
     "cancel": "Cancel",
@@ -801,6 +847,20 @@
     "tip": "Tip: Templates help you get started faster."
   },
   "agent": {
+    "triggerStopReason": {
+      "label": "Stopped: {reason}",
+      "reasons": {
+        "permission_revoked": "permission to run was revoked",
+        "owner_left": "the schedule's owner left the organization",
+        "org_archived": "the organization was archived",
+        "tenant_suspended": "the company account is suspended",
+        "agent_archived": "the agent was archived",
+        "delegation_broken": "a delegated connection can't be used",
+        "required_unavailable": "a required connection can't be used",
+        "auth_required": "a connection needs authentication",
+        "authz_unavailable": "skipped because permissions couldn't be checked"
+      }
+    },
     "context": {
       "trigger": "Agent information",
       "loading": "Agent",
@@ -1816,6 +1876,7 @@
     }
   },
   "share": {
+    "publicLinksDisabled": "This organization doesn't allow public share links. Ask an organization administrator.",
     "title": "Share conversation",
     "description": "Anyone with the link can view this conversation read-only.",
     "loading": "Loading…",
@@ -3744,11 +3805,6 @@
     "detail": {
       "back": "Back to marketplace",
       "saving": "Saving…",
-      "error": {
-        "notFound": "Item not found",
-        "loadFailed": "Failed to load the item",
-        "description": "The marketplace item could not be loaded."
-      },
       "versions": {
         "title": "Versions",
         "emptyTitle": "No published versions yet",
@@ -5175,6 +5231,7 @@
       "save": "Save"
     },
     "detail": {
+      "sharedMetadataOnly": "Shared with you. You can only view its details.",
       "toast": {
         "statusChanged": "Credential status changed to {status}.",
         "updateFailed": "Operation failed.",

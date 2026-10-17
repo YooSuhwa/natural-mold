@@ -30,6 +30,8 @@ export interface OrganizationSummary {
   is_active: boolean
   roles: OrgRole[]
   capabilities: OrgCapability[]
+  /** False while capabilities are not enforced (legacy/shadow): everyone may create (H-05). */
+  capabilities_enforced?: boolean
 }
 
 /** `POST /api/me/active-org` body. */

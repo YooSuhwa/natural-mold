@@ -1,5 +1,6 @@
 'use client'
 
+import { PermissionsLoadError } from '@/components/shared/permissions-load-error'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BookOpen, Plus } from 'lucide-react'
@@ -16,6 +17,8 @@ import {
 } from '@/components/shared/resource-layout'
 import { useBuilderSessionLauncher } from '@/lib/hooks/use-skill-builder'
 import { useSkills } from '@/lib/hooks/use-skills'
+import { useCapability } from '@/lib/hooks/use-resource-permissions'
+import { useResourceAccess } from '@/lib/authz/use-resource-access'
 import {
   ALL_SKILL_FILTER,
   filterSkillList,
@@ -79,6 +82,10 @@ export function SkillsPageClient() {
   }
 
   const data = useMemo(() => skills ?? [], [skills])
+  // Plan 13.9: row actions follow each skill's can_view/can_edit; creating (builder,
+  // text, package upload) needs cap_create_skill.
+  const access = useResourceAccess('skill', data)
+  const canCreate = useCapability('cap_create_skill')
 
   const filteredSkills = useMemo(() => {
     // 스프레드는 useMemo 안에서 1회 — 렌더마다 새 identity를 만들면
@@ -127,17 +134,20 @@ export function SkillsPageClient() {
       title={t('title')}
       description={t('description')}
       action={
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => openCreate('package')}>
-            {t('studio.list.uploadPackage')}
-          </Button>
-          <Button onClick={() => openCreate('chat')}>
-            <Plus className="size-4" />
-            {t('new')}
-          </Button>
-        </div>
+        canCreate ? (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => openCreate('package')}>
+              {t('studio.list.uploadPackage')}
+            </Button>
+            <Button onClick={() => openCreate('chat')}>
+              <Plus className="size-4" />
+              {t('new')}
+            </Button>
+          </div>
+        ) : undefined
       }
     >
+      <PermissionsLoadError error={access.error} onRetry={() => void access.refetch()} />
       <ResourcePanel>
         {isInitialEmpty ? (
           <ResourcePanel.Body>
@@ -147,10 +157,12 @@ export function SkillsPageClient() {
               description={t('empty.description')}
               className="bg-card/50"
               action={
-                <Button onClick={() => openCreate('chat')}>
-                  <Plus className="size-4" />
-                  {t('firstSkill')}
-                </Button>
+                canCreate ? (
+                  <Button onClick={() => openCreate('chat')}>
+                    <Plus className="size-4" />
+                    {t('firstSkill')}
+                  </Button>
+                ) : undefined
               }
             />
           </ResourcePanel.Body>
@@ -187,6 +199,7 @@ export function SkillsPageClient() {
                 skills={filteredSkills}
                 isLoading={isLoading}
                 emptyTitle={t('empty.filtered')}
+                can={access.can}
                 onImprove={openBuilderImprove}
                 improvePending={launcher.pending}
                 onPublish={setPublishSkill}

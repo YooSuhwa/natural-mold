@@ -19,6 +19,7 @@ import { getResourceTone } from '@/lib/resource-tones'
 import type { MarketplaceItem } from '@/lib/types/marketplace'
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 import { cn } from '@/lib/utils'
+import { marketplaceItemAccess } from './marketplace-access'
 
 export type PrimaryCtaKind =
   | 'install'
@@ -61,6 +62,9 @@ export function derivePrimaryCta(item: MarketplaceItem): PrimaryCta {
   }
 
   if (!installation?.installed) {
+    // Plan 13.9: install needs `can_install`; a view-only grant just opens the details.
+    if (!marketplaceItemAccess(item, null).canInstall)
+      return { kind: 'view_details', variant: 'outline' }
     return { kind: 'install', variant: 'default' }
   }
 

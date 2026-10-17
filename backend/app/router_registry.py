@@ -51,6 +51,7 @@ def include_app_routers(app: FastAPI) -> None:
         platform_tenant_creation,
         platform_tenant_directory,
         platform_tenant_lifecycle,
+        resource_permissions,
         resource_shares,
         shares,
         skill_builder,
@@ -144,6 +145,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(admin_authz.router)
     app.include_router(shares.router)
     app.include_router(resource_shares.router)
+    app.include_router(resource_permissions.router)
     app.include_router(access_requests.router)
     app.include_router(notifications.router)
     app.include_router(credential_bindings.router)

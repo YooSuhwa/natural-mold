@@ -13,6 +13,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
 import { useBuilderSessionLauncher, useSkillBuilderSessions } from '@/lib/hooks/use-skill-builder'
 import { useSkill } from '@/lib/hooks/use-skills'
+import { useCapability } from '@/lib/hooks/use-resource-permissions'
+import { useResourceAccess } from '@/lib/authz/use-resource-access'
 import { formatDisplayDateTime } from '@/lib/utils/display-format'
 import type { SkillBuilderSessionBrief } from '@/lib/types/skill-builder'
 
@@ -31,6 +33,10 @@ export function SkillBuilderIndexClient() {
   )
   const launcher = useBuilderSessionLauncher()
   const [createOpen, setCreateOpen] = useState(false)
+  // Plan 13.9: a create session needs cap_create_skill, an improve session can_edit.
+  const canCreate = useCapability('cap_create_skill')
+  const access = useResourceAccess('skill', skill ? [skill] : null)
+  const canImprove = access.can(skill, 'can_edit')
 
   // 세션 시작/라우팅/실패 토스트는 공유 launcher가 소유한다 (리뷰 R).
   // 다이얼로그는 onStartChat 직후 스스로 닫힌다.
@@ -47,7 +53,7 @@ export function SkillBuilderIndexClient() {
             {skill ? t('scopedHint', { name: skill.name }) : t('hint')}
           </span>
           <span className="ml-auto flex shrink-0 items-center gap-2">
-            {skill ? (
+            {skill && canImprove ? (
               <Button
                 type="button"
                 variant="outline"
@@ -59,10 +65,12 @@ export function SkillBuilderIndexClient() {
                 {t('improveSkill', { name: skill.name })}
               </Button>
             ) : null}
-            <Button type="button" size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="size-4" />
-              {t('startCreate')}
-            </Button>
+            {canCreate ? (
+              <Button type="button" size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus className="size-4" />
+                {t('startCreate')}
+              </Button>
+            ) : null}
           </span>
         </header>
 
@@ -79,10 +87,12 @@ export function SkillBuilderIndexClient() {
               description={t('emptyHint')}
               className="bg-card/50"
               action={
-                <Button onClick={() => setCreateOpen(true)}>
-                  <Plus className="size-4" />
-                  {t('startCreate')}
-                </Button>
+                canCreate ? (
+                  <Button onClick={() => setCreateOpen(true)}>
+                    <Plus className="size-4" />
+                    {t('startCreate')}
+                  </Button>
+                ) : undefined
               }
             />
           ) : (

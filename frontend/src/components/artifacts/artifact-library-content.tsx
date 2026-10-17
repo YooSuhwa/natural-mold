@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ArtifactPreview } from '@/components/chat/artifacts/artifact-preview'
+import { ApiErrorState } from '@/components/shared/api-error-state'
 import { ArtifactLibraryFilters } from './artifact-library-filters'
 import { ArtifactLibraryStatsView } from './artifact-library-stats'
 import { useAgentSummaries } from '@/lib/hooks/use-agents'
@@ -100,6 +101,8 @@ export function ArtifactLibraryContent() {
           <div className="max-h-[640px] overflow-y-auto p-3">
             {library.isLoading ? (
               <div className="p-4 text-sm text-muted-foreground">{t('loading')}</div>
+            ) : library.isError ? (
+              <ApiErrorState error={library.error} onRetry={() => void library.refetch()} />
             ) : items.length === 0 ? (
               <div className="moldy-muted-panel px-4 py-8 text-center text-sm text-muted-foreground">
                 {t('empty')}

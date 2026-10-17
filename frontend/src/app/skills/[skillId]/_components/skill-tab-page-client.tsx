@@ -1,25 +1,26 @@
 'use client'
 
+import { PermissionsLoadError } from '@/components/shared/permissions-load-error'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeftIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
-import {
-  PermissionRequiredState,
-  isPermissionRequired,
-} from '@/components/access-requests/permission-required-state'
+import { ApiErrorState } from '@/components/shared/api-error-state'
 import { buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PackageSkillEditor } from '@/components/skill/skill-detail-package-editor'
 import { TextSkillEditor } from '@/components/skill/skill-detail-text-editor'
 import { SkillEvaluationTab } from '@/components/skill/skill-evaluation-tab'
 import { SkillHistoryTab } from '@/components/skill/skill-history-tab'
+import { ApiError } from '@/lib/api/client'
+import { useResourceAccess } from '@/lib/authz/use-resource-access'
 import { useSkill } from '@/lib/hooks/use-skills'
 import { cn } from '@/lib/utils'
 import type { Skill } from '@/lib/types/skill'
 
 import type { SkillScopedStudioTab } from '../../_lib/skill-studio-tabs'
+import { renderSkillReadOnlyTabShell } from './skill-read-only-tab-shell'
 import { renderSkillStudioTabShell } from './skill-studio-tab-shell'
 import { SkillRevisionSourceViewer } from './skill-revision-source-viewer'
 import { SkillSettingsSections } from './skill-settings-sections'
@@ -59,13 +60,14 @@ export function SkillTabPageClient({
     )
   }
 
-  if (isPermissionRequired(error)) {
-    // 403 on a visible skill (plan 8.4): offer an access request (S18) instead of a dead end.
+  if (error instanceof ApiError) {
+    // Shared state (plan 13.1): a 403 on a visible skill offers an access request (S18);
+    // 404, 429 and 503 use the same display as every other screen.
     return (
       <div className="moldy-app-surface flex min-h-0 flex-1 items-center justify-center p-3">
-        <PermissionRequiredState error={error} resourceType="skill" resourceId={skillId}>
+        <ApiErrorState error={error} resource={{ type: 'skill', id: skillId }}>
           {backLink}
-        </PermissionRequiredState>
+        </ApiErrorState>
       </div>
     )
   }
@@ -101,9 +103,21 @@ function SkillTabBody({
   readonly revisionId: string | null
 }) {
   const router = useRouter()
+  // Plan 13.9: every tab is readable with can_view (the GET above); edits need can_edit.
+  const access = useResourceAccess('skill', [skill])
+  const canEdit = access.can(skill, 'can_edit')
+  const shell = canEdit ? renderSkillStudioTabShell : renderSkillReadOnlyTabShell
+  if (access.error) {
+    // Permissions could not be checked (503): no tab renders on a guess (fail closed).
+    return (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <PermissionsLoadError error={access.error} onRetry={() => void access.refetch()} />
+      </div>
+    )
+  }
 
   if (tab === 'evaluation') {
-    return renderSkillStudioTabShell({
+    return shell({
       body: (
         <SkillEvaluationTab
           skillId={skill.id}
@@ -116,11 +130,18 @@ function SkillTabBody({
     })
   }
   if (tab === 'versions') {
-    return <SkillHistoryTab skillId={skill.id}>{renderSkillStudioTabShell}</SkillHistoryTab>
+    return <SkillHistoryTab skillId={skill.id}>{shell}</SkillHistoryTab>
   }
   if (tab === 'settings') {
     return renderSkillStudioTabShell({
-      body: <SkillSettingsSections skill={skill} />,
+      body: (
+        <SkillSettingsSections
+          skill={skill}
+          canEdit={canEdit}
+          canShare={access.can(skill, 'can_share')}
+          canDelete={access.can(skill, 'can_delete')}
+        />
+      ),
       footer: null,
     })
   }
@@ -131,7 +152,7 @@ function SkillTabBody({
   }
   // source — 저장(=리비전 생성)은 유지, 삭제/내보내기/자격증명은 설정 탭 소유 (D1/D2).
   if (skill.kind === 'text') {
-    return <TextSkillEditor skillId={skill.id}>{renderSkillStudioTabShell}</TextSkillEditor>
+    return <TextSkillEditor skillId={skill.id}>{shell}</TextSkillEditor>
   }
-  return <PackageSkillEditor skillId={skill.id}>{renderSkillStudioTabShell}</PackageSkillEditor>
+  return <PackageSkillEditor skillId={skill.id}>{shell}</PackageSkillEditor>
 }

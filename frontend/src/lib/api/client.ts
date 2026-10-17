@@ -247,3 +247,5 @@ export async function apiUpload<T>(
 }
 
 export { API_BASE, ApiError }
+// Screen-facing error mapping (plan 13.1) through the one allowed API entry point.
+export { isNotFoundError, mapApiErrorToUiState, type ApiErrorUiKind } from './error-ui'

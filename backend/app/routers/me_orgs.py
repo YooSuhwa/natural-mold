@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.cookies import ACTIVE_ORG_COOKIE, set_active_org_cookie
 from app.authz.policies import SELF, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.schemas.organization import (
     ActiveOrganizationRequest,
@@ -22,10 +24,13 @@ async def list_organizations(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[OrganizationSummary]:
-    return await org_service.list_user_organizations(
+    summaries = await org_service.list_user_organizations(
         db, user, active_cookie=request.cookies.get(ACTIVE_ORG_COOKIE)
     )
+    enforced = authz.enforces("organization")
+    return [s.model_copy(update={"capabilities_enforced": enforced}) for s in summaries]
 
 
 @router.post(

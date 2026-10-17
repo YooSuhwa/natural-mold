@@ -1,5 +1,6 @@
 'use client'
 
+import { PermissionsLoadError } from '@/components/shared/permissions-load-error'
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
@@ -12,11 +13,14 @@ import { DomainIconTile } from '@/components/shared/icon'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
 import { ResourceShareButton } from '@/components/sharing/resource-share-button'
+import { useApiErrorMessage } from '@/components/shared/api-error-state'
+import { usePermissionCheck } from '@/lib/authz/use-permission'
+import { useResourcePermissions } from '@/lib/hooks/use-resource-permissions'
+import { CredentialAuditSection } from './credential-audit-section'
 import { PersonalAccountBadge } from './personal-account-badge'
 import { CredentialTestButton } from './credential-test-button'
 import {
   useCredential,
-  useCredentialAuditLogs,
   useDeleteCredential,
   useUpdateCredential,
 } from '@/lib/hooks/use-credentials'
@@ -39,11 +43,22 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
   const t = useTranslations('credentials.detail')
   const tc = useTranslations('common')
   const { data: credential, isLoading } = useCredential(credentialId)
-  const { data: auditLogs } = useCredentialAuditLogs(credentialId, 10)
+  const permissions = useResourcePermissions('credential', [credentialId])
+  const { permissionsOf } = permissions
+  const can = usePermissionCheck()
+  const errorMessage = useApiErrorMessage()
   const update = useUpdateCredential()
   const remove = useDeleteCredential()
   const oauth = useStartOAuth2()
   const [confirming, setConfirming] = useState(false)
+  // Plan 13.9: a credential shared with me shows its metadata only (no test/edit/delete).
+  const source = {
+    myPermissions: permissionsOf(credential?.id),
+    ownerId: credential?.user_id ?? null,
+    isSystem: credential?.is_system,
+  }
+  const canEdit = !!credential && can(source, 'can_edit')
+  const canDelete = !!credential && can(source, 'can_delete')
 
   async function toggleStatus() {
     if (!credential) return
@@ -52,7 +67,7 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
       await update.mutateAsync({ id: credential.id, data: { status: next } })
       toast.success(t('toast.statusChanged', { status: next }))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('toast.updateFailed'))
+      toast.error(errorMessage(e, t('toast.updateFailed')))
     }
   }
 
@@ -63,7 +78,7 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
       toast.success(t('toast.deleted'))
       onOpenChange(false)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('toast.deleteFailed'))
+      toast.error(errorMessage(e, t('toast.deleteFailed')))
     }
   }
 
@@ -75,7 +90,7 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
         toast.error(t('toast.oauthStartFailed'))
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('toast.oauthStartFailed'))
+      toast.error(errorMessage(e, t('toast.oauthStartFailed')))
     }
   }
 
@@ -115,17 +130,25 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
             }
           />
           <DialogShell.Body>
-            <div className="flex flex-wrap gap-2">
-              <CredentialTestButton credentialId={credential.id} />
-              <Button variant="outline" size="sm" onClick={toggleStatus}>
-                <Power className="size-3.5" />
-                {credential.status === 'disabled' ? t('enable') : t('disable')}
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleOAuth}>
-                <KeyRound className="size-3.5" />
-                {t('reauthorize')}
-              </Button>
-            </div>
+            <PermissionsLoadError
+              error={permissions.error}
+              onRetry={() => void permissions.refetch()}
+            />
+            {canEdit ? (
+              <div className="flex flex-wrap gap-2">
+                <CredentialTestButton credentialId={credential.id} />
+                <Button variant="outline" size="sm" onClick={toggleStatus}>
+                  <Power className="size-3.5" />
+                  {credential.status === 'disabled' ? t('enable') : t('disable')}
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleOAuth}>
+                  <KeyRound className="size-3.5" />
+                  {t('reauthorize')}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">{t('sharedMetadataOnly')}</p>
+            )}
 
             <div className="space-y-2 text-xs">
               <Row label={t('rows.id')} value={credential.id} mono />
@@ -150,37 +173,12 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
               />
             </div>
 
-            <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {t('audit.title')}
-              </h3>
-              {auditLogs && auditLogs.length > 0 ? (
-                <ul className="space-y-1.5 text-xs">
-                  {auditLogs.slice(0, 10).map((log) => (
-                    <li
-                      key={log.id}
-                      className="flex items-start justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-2 py-1.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium">{log.action}</p>
-                        <p className="moldy-ui-caption text-muted-foreground">
-                          {log.source}
-                          {log.error ? ` · ${log.error}` : ''}
-                        </p>
-                      </div>
-                      <span className="shrink-0 moldy-ui-caption text-muted-foreground">
-                        {formatDisplayDateTime(log.created_at)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs text-muted-foreground">{t('audit.empty')}</p>
-              )}
-            </section>
+            {canEdit ? <CredentialAuditSection credentialId={credential.id} /> : null}
           </DialogShell.Body>
           <DialogShell.Footer>
-            {confirming ? (
+            {!canDelete ? (
+              <span className="mr-auto" />
+            ) : confirming ? (
               <div className="flex-1">
                 <DeleteConfirmInline
                   entity={t('entity')}
@@ -206,6 +204,7 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
                 resourceId={credential.id}
                 resourceName={credential.name}
                 ownerId={credential.user_id}
+                myPermissions={permissionsOf(credential.id)}
               />
             )}
             <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -17,6 +17,7 @@ import { Tabs } from '@/components/ui/tabs'
 import { SkillSummaryStrip } from '@/components/skill/skill-summary-strip'
 import { useBuilderSessionLauncher, useSkillBuilderSession } from '@/lib/hooks/use-skill-builder'
 import { useSkill, useSkills } from '@/lib/hooks/use-skills'
+import { useResourceAccess } from '@/lib/authz/use-resource-access'
 import type { Skill } from '@/lib/types/skill'
 
 import {
@@ -52,6 +53,11 @@ export function SkillStudioShell() {
       : null
   const contextSkillId = context.skillId ?? builderSkillId ?? builderIndexSkillId
   const { data: contextSkill } = useSkill(contextSkillId)
+  // Plan 13.9: the improve (builder) entry needs can_edit on the context skill.
+  const canImprove = useResourceAccess('skill', contextSkill ? [contextSkill] : null).can(
+    contextSkill,
+    'can_edit',
+  )
   const launcher = useBuilderSessionLauncher()
 
   function handleTabChange(value: string) {
@@ -105,7 +111,7 @@ export function SkillStudioShell() {
           skill={contextSkill ?? null}
           isBuilderDraft={context.activeTab === 'builder' && !contextSkillId}
           improvePending={launcher.pending}
-          showImprove={context.activeTab !== 'builder' && Boolean(contextSkillId)}
+          showImprove={context.activeTab !== 'builder' && Boolean(contextSkillId) && canImprove}
           onSwitchSkill={handleSwitchSkill}
           onImprove={handleImprove}
         />

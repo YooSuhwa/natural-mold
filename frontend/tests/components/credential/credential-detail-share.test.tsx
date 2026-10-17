@@ -17,6 +17,10 @@ vi.mock('@/lib/hooks/use-credential-test', () => ({
 vi.mock('@/components/credential/credential-test-button', () => ({
   CredentialTestButton: () => null,
 }))
+vi.mock('@/lib/api/resource-permissions', () => ({
+  RESOURCE_PERMISSION_BATCH: 100,
+  resourcePermissionsApi: { list: vi.fn().mockResolvedValue({ items: [] }) },
+}))
 vi.mock('@/lib/auth/session', () => ({ useSession: () => ({ data: { id: 'user-me' } }) }))
 
 function makeCredential(overrides: Partial<Credential> = {}): Credential {

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AgentContextPopover } from '@/components/agent/agent-context-popover'
+import { agentCan } from '@/lib/authz/permissions'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -78,10 +79,12 @@ export function ChatPageHeader({
               <SquarePenIcon />
               {t('newConversation')}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onOpenSettings}>
-              <Settings2Icon />
-              {t('settings')}
-            </DropdownMenuItem>
+            {agentCan(agent, 'can_view_config') ? (
+              <DropdownMenuItem onClick={onOpenSettings}>
+                <Settings2Icon />
+                {t('settings')}
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

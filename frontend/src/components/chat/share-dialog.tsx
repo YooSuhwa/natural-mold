@@ -5,9 +5,12 @@ import { CheckIcon, CopyIcon, GlobeIcon, Trash2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
+import { useApiErrorMessage } from '@/components/shared/api-error-state'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ApiError } from '@/lib/api/client'
+import { useActiveOrganization, useOrganizationInfo } from '@/lib/hooks/use-organizations'
 import { useActiveShare, useCreateShare, useRevokeShare } from '@/lib/hooks/use-share'
 
 interface ShareDialogProps {
@@ -44,6 +47,11 @@ function ShareDialogBody({ conversationId }: { conversationId: string }) {
   const { data: link, isLoading } = useActiveShare(conversationId)
   const create = useCreateShare(conversationId)
   const revoke = useRevokeShare(conversationId)
+  const errorMessage = useApiErrorMessage()
+  // Plan 13.9: the organization may turn public links off (its existing links then 404).
+  const { activeOrganization } = useActiveOrganization()
+  const organization = useOrganizationInfo(activeOrganization?.id)
+  const publicLinksOff = organization.data?.settings.allow_public_share_links === false
   const [copied, setCopied] = useState(false)
   // Tracks the "copied" indicator timeout so rapid re-clicks reset cleanly
   // and an unmount during the 2s window doesn't leak a pending setState.
@@ -76,7 +84,11 @@ function ShareDialogBody({ conversationId }: { conversationId: string }) {
       await create.mutateAsync()
       toast.success(t('toast.created'))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('toast.createFailed'))
+      toast.error(
+        e instanceof ApiError && e.code === 'PUBLIC_SHARE_LINKS_DISABLED'
+          ? t('publicLinksDisabled')
+          : errorMessage(e, t('toast.createFailed')),
+      )
     }
   }
 
@@ -85,7 +97,7 @@ function ShareDialogBody({ conversationId }: { conversationId: string }) {
       await revoke.mutateAsync()
       toast.success(t('toast.revoked'))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('toast.revokeFailed'))
+      toast.error(errorMessage(e, t('toast.revokeFailed')))
     }
   }
 
@@ -122,6 +134,11 @@ function ShareDialogBody({ conversationId }: { conversationId: string }) {
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">{t('privateHint')}</p>
+            {publicLinksOff ? (
+              <p role="note" className="text-sm text-muted-foreground">
+                {t('publicLinksDisabled')}
+              </p>
+            ) : null}
           </div>
         )}
       </DialogShell.Body>
@@ -137,7 +154,7 @@ function ShareDialogBody({ conversationId }: { conversationId: string }) {
             {t('revoke')}
           </Button>
         ) : (
-          <Button onClick={handleCreate} disabled={create.isPending}>
+          <Button onClick={handleCreate} disabled={create.isPending || publicLinksOff}>
             <GlobeIcon className="size-4" />
             {t('create')}
           </Button>

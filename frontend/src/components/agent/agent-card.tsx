@@ -1,5 +1,6 @@
 'use client'
 
+import { useCanPublishMarketplace } from '@/components/marketplace/use-marketplace-publish'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -60,6 +61,7 @@ export function AgentCard({ agent, onPublish, onShare }: AgentCardProps) {
   const toolCount = 'tool_count' in agent ? agent.tool_count : agent.tools.length
   // Shadow/enforce bodies carry `my_permissions`; legacy lists hold own agents only.
   const permissions = agent.my_permissions
+  const canPublish = useCanPublishMarketplace()
   const canShare =
     !!onShare && canShareResource({ myPermissions: permissions, currentUserId: null })
   const canViewConfig = !permissions || permissions.includes('can_view_config')
@@ -145,7 +147,7 @@ export function AgentCard({ agent, onPublish, onShare }: AgentCardProps) {
               : t('neverUsed')}
           </span>
           <div className="flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
-            {onPublish ? (
+            {onPublish && canPublish ? (
               <button
                 type="button"
                 onClick={(e) => {
