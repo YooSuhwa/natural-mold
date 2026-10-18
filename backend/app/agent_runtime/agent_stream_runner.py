@@ -64,6 +64,7 @@ async def execute_agent_stream(
     artifact_recorder: Any | None = None,
     moldy_source: str = "chat",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
+    run_metrics: Any | None = None,  # noqa: ARG001 - run worker passes it; legacy runs record none
 ) -> AsyncGenerator[str, None]:
     """스트리밍 실행 (채팅용).
 
@@ -131,6 +132,7 @@ async def resume_agent_stream(
     artifact_recorder: Any | None = None,
     moldy_source: str = "resume",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
+    run_metrics: Any | None = None,  # noqa: ARG001 - run worker passes it; legacy runs record none
 ) -> AsyncGenerator[str, None]:
     """인터럽트 재개 스트리밍 (HiTL resume)."""
     from langgraph.types import Command
