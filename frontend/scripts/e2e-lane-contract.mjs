@@ -24,6 +24,7 @@ import {
   validateCaptureTour,
   validatePlaywrightCliArguments,
 } from './e2e-lane-runtime.mjs'
+import { validateOrgAuthzOptIn } from './e2e-lane-org-authz.mjs'
 
 export {
   assertE2ELaneNodeVersion,
@@ -67,6 +68,7 @@ export function getPlaywrightArtifactsDirectory(lane, environment, project) {
 export function buildLaneEnvironment(lane, inheritedEnvironment, project) {
   const e2eProject = resolveE2EProject(lane, project ?? inheritedEnvironment.E2E_PROJECT)
   validateCaptureTour(lane, e2eProject, inheritedEnvironment)
+  validateOrgAuthzOptIn(lane, e2eProject, inheritedEnvironment)
   const environment = copySafeEnvironment(inheritedEnvironment, lane)
   environment.E2E_LANE = lane
   environment.E2E_PROJECT = e2eProject

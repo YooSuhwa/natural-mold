@@ -1,5 +1,6 @@
 import type { BrowserContext, Page, Route } from '@playwright/test'
 
+import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '../src/lib/auth/session-flags'
 import { test, expect } from './fixtures'
 
 // Plan 16.5 E2E #7 (H-01): "접근 요청 → 관리자 승인 → 즉시 사용".
@@ -145,8 +146,18 @@ test.describe('Access request → approval → immediate use (E2E #7)', () => {
     expect(server.state.requests).toHaveLength(1)
 
     // 2. The skill's manager approves it from the S18 inbox.
-    const managerContext = await browser.newContext({ storageState: undefined })
+    // A separate signed-in context (the proxy bounces cookie-less contexts to /login); the
+    // manager role comes from the mocked access API, not from the session. The `page`
+    // fixture's onboarding dismissal does not reach hand-made contexts, so repeat it here.
+    const managerContext = await browser.newContext()
     try {
+      await managerContext.addInitScript(
+        ({ onboarding, welcome }) => {
+          sessionStorage.setItem(onboarding, '1')
+          sessionStorage.setItem(welcome, '1')
+        },
+        { onboarding: ONBOARDING_DISMISSED_FLAG, welcome: SUPER_USER_WELCOMED_FLAG },
+      )
       await server.install(managerContext, 'manager')
       const manager = await managerContext.newPage()
       await manager.goto('/settings/organization/requests')
