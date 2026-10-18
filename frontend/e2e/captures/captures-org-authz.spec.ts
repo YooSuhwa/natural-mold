@@ -694,12 +694,14 @@ test.describe('Org-authz screens — capture tour', () => {
       await dialog().getByRole('button', { name: '이전', exact: true }).click()
       await dialog().getByRole('button', { name: '이전', exact: true }).click()
       await page.waitForTimeout(300)
-      await dialog()
-        .getByRole('button', { name: /지금 바로 이전/ })
-        .first()
-        .click()
-      await page.waitForTimeout(800)
-      await shot('30-u04-transfer-ownership-dialog.png')
+      // "Transfer now" is offered only when the caller can govern the resource;
+      // legacy mode hides it by design, so shot 30 exists only in fga mode.
+      const transferNow = dialog().getByRole('button', { name: /지금 바로 이전/ })
+      if ((await transferNow.count()) > 0) {
+        await transferNow.first().click()
+        await page.waitForTimeout(800)
+        await shot('30-u04-transfer-ownership-dialog.png')
+      }
     })
 
     // ── E-04 resource share dialog (agent) + marketplace share ───────────────

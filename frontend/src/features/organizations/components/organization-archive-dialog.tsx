@@ -39,7 +39,7 @@ export function OrganizationArchiveAction({
       >
         {t('open')}
       </Button>
-      <DialogShell open={open} onOpenChange={setOpen} size="sm" height="auto">
+      <DialogShell open={open} onOpenChange={setOpen} size="sm" height="compact">
         <DialogShell.Header
           title={t('title', { name: organization.name })}
           description={t('description')}

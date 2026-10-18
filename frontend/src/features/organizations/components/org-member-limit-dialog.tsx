@@ -33,7 +33,7 @@ export function MemberLimitDialog({ orgId, member, version, onClose }: MemberLim
       open
       onOpenChange={(open) => (open ? undefined : onClose())}
       size="sm"
-      height="auto"
+      height="compact"
     >
       <DialogShell.Header
         title={t('title', { name: member.display_name })}

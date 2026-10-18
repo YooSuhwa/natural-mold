@@ -34,7 +34,7 @@ export function CatalogDisableDialog({
       open={item !== null}
       onOpenChange={(open) => (open ? undefined : onCancel())}
       size="sm"
-      height="auto"
+      height="compact"
     >
       <DialogShell.Header
         title={t('title', { name: item?.name ?? '' })}

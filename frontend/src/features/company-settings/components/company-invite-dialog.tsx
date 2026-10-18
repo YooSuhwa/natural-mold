@@ -41,7 +41,7 @@ export function CompanyInviteDialog({
       open
       onOpenChange={(open) => (open ? undefined : onClose())}
       size="sm"
-      height="auto"
+      height="compact"
     >
       <DialogShell.Header title={t('inviteTitle')} description={t('inviteDescription')} />
       <DialogShell.Body>
@@ -122,7 +122,7 @@ export function InvitationTokenResult({
       open
       onOpenChange={(open) => (open ? undefined : onClose())}
       size="sm"
-      height="auto"
+      height="compact"
     >
       <DialogShell.Header
         title={t('createdTitle')}

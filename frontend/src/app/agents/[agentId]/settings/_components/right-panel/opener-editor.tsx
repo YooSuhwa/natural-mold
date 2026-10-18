@@ -6,6 +6,7 @@ import { CheckIcon, PencilIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { DialogShell } from '@/components/shared/dialog-shell'
+import { useAgentAccess } from '@/components/agent/agent-access-context'
 
 interface OpenerEditorProps {
   questions: string[]
@@ -16,6 +17,8 @@ interface OpenerEditorProps {
 export function OpenerEditor({ questions, onChange, max = 12 }: OpenerEditorProps) {
   const t = useTranslations('agent.settings')
   const tc = useTranslations('common')
+  // Read-only viewers see the questions, not the add/edit/delete controls (13.9).
+  const { canEdit } = useAgentAccess()
 
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -74,10 +77,12 @@ export function OpenerEditor({ questions, onChange, max = 12 }: OpenerEditorProp
           <span className="text-xs tabular-nums text-muted-foreground">
             {t('openerCounter', { count: questions.length, max })}
           </span>
-          <Button size="sm" variant="outline" onClick={openAdd} disabled={isFull}>
-            <PlusIcon className="size-3.5" />
-            {t('openerAdd')}
-          </Button>
+          {canEdit ? (
+            <Button size="sm" variant="outline" onClick={openAdd} disabled={isFull}>
+              <PlusIcon className="size-3.5" />
+              {t('openerAdd')}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -130,24 +135,26 @@ export function OpenerEditor({ questions, onChange, max = 12 }: OpenerEditorProp
                 ) : (
                   <>
                     <span className="flex-1 truncate text-sm">{q}</span>
-                    <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => startEdit(index)}
-                        aria-label={t('openerEdit')}
-                      >
-                        <PencilIcon className="size-3.5 text-muted-foreground" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleRemove(index)}
-                        aria-label={t('openerDelete')}
-                      >
-                        <Trash2Icon className="size-3.5 text-muted-foreground" />
-                      </Button>
-                    </div>
+                    {canEdit ? (
+                      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => startEdit(index)}
+                          aria-label={t('openerEdit')}
+                        >
+                          <PencilIcon className="size-3.5 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleRemove(index)}
+                          aria-label={t('openerDelete')}
+                        >
+                          <Trash2Icon className="size-3.5 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    ) : null}
                   </>
                 )}
               </li>
@@ -156,7 +163,9 @@ export function OpenerEditor({ questions, onChange, max = 12 }: OpenerEditorProp
         </ul>
       )}
 
-      {isFull && <p className="text-xs text-muted-foreground">{t('openerMaxReached', { max })}</p>}
+      {isFull && canEdit && (
+        <p className="text-xs text-muted-foreground">{t('openerMaxReached', { max })}</p>
+      )}
 
       <DialogShell open={addOpen} onOpenChange={setAddOpen} size="sm" height="auto">
         <DialogShell.Header title={t('openerAddDialogTitle')} />

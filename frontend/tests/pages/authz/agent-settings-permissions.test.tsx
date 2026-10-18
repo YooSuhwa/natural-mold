@@ -111,6 +111,8 @@ function expectEditor({ share, deploy }: { share: boolean; deploy: boolean }) {
   expect(screen.getByRole('tab', { name: /테스트/ })).toBeInTheDocument()
   const form = screen.getByTestId('agent-settings-form')
   expect(within(form).getAllByRole('button', { name: '추가' })).toHaveLength(2)
+  expect(screen.getByRole('button', { name: '모델 설정' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '서브에이전트 관리' })).toBeInTheDocument()
 }
 
 describe('agent settings per permission level (plan 13.9)', () => {
@@ -133,7 +135,7 @@ describe('agent settings per permission level (plan 13.9)', () => {
   })
 
   it('viewer: read-only screen', () => {
-    renderAs({ ...agent, my_permissions: VIEWER })
+    renderAs({ ...agent, opener_questions: ['첫 질문'], my_permissions: VIEWER })
     expect(
       screen.getByText('보기 전용이에요. 수정하려면 편집 권한이 필요해요.'),
     ).toBeInTheDocument()
@@ -148,6 +150,11 @@ describe('agent settings per permission level (plan 13.9)', () => {
     // Mutation affordances are hidden, not just disabled (capture 47).
     const form = screen.getByTestId('agent-settings-form')
     expect(within(form).queryByRole('button', { name: /추가/ })).not.toBeInTheDocument()
+    // Opener tab: questions stay readable, add/edit/delete are gone; no model/sub-agent gears.
+    expect(screen.getByText('첫 질문')).toBeInTheDocument()
+    for (const name of ['추가', '편집', '삭제', '모델 설정', '서브에이전트 관리']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    }
     expect(screen.getByTestId('agent-settings-form')).toBeDisabled()
     expect(screen.getByDisplayValue('Test Agent')).toHaveAttribute('readonly')
   })

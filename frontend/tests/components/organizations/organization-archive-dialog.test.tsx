@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { OrganizationArchiveAction } from '@/features/organizations/components/organization-archive-dialog'
 import type { TenantOrganizationSummary } from '@/lib/types/organization'
 import { ApiError } from '@/lib/api/errors'
+import { DIALOG_HEIGHT } from '@/lib/design-tokens'
 import { trapConsole } from '../sharing/sharing-mocks'
 import { orgApiMock } from './org-admin-mocks'
 
@@ -60,6 +61,9 @@ describe('OrganizationArchiveAction', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Sales 조직을 보관할까요?' })
     expect(dialog).toHaveTextContent('구성원 12명이 조직에 접근할 수 없게 돼요')
     expect(dialog).toHaveTextContent('진행 중인 실행은 중지돼요')
+    // Short confirm: content-sized, no large empty body (capture 06).
+    for (const token of DIALOG_HEIGHT.compact.split(' ')) expect(dialog).toHaveClass(token)
+    expect(dialog).not.toHaveClass('h-[480px]')
     const submit = screen.getByRole('button', { name: '보관' })
     expect(submit).toBeDisabled()
     await userEvent.type(screen.getByRole('textbox'), 'Sales')

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { SettingsIcon, UsersIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useAgentAccess } from '@/components/agent/agent-access-context'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SubAgentsDialog } from '@/components/agent/sub-agents-dialog'
 import { useAgents } from '@/lib/hooks/use-agents'
@@ -24,6 +25,7 @@ export function SectionSubAgents({
 }: SectionSubAgentsProps) {
   const t = useTranslations('agent.settings.subAgents')
   const [open, setOpen] = useState(false)
+  const { canEdit } = useAgentAccess()
   const { data: agents } = useAgents()
 
   const candidates = useMemo(
@@ -55,14 +57,16 @@ export function SectionSubAgents({
           <span className="text-sm font-medium">{t('title')}</span>
           <span className="truncate text-sm text-muted-foreground">{summary}</span>
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => setOpen(true)}
-          aria-label={t('manageTitle')}
-        >
-          <SettingsIcon className="size-4" />
-        </Button>
+        {canEdit ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setOpen(true)}
+            aria-label={t('manageTitle')}
+          >
+            <SettingsIcon className="size-4" />
+          </Button>
+        ) : null}
       </div>
       <SubAgentsDialog
         open={open}
