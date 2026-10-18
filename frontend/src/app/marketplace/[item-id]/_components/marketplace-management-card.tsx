@@ -29,6 +29,8 @@ interface Props {
   onManageAcl: () => void
 }
 
+const VISIBILITIES = ['private', 'restricted', 'public', 'unlisted'] as const
+
 /** Owner/manager and operator controls of an item (moved out of the detail page). */
 export function MarketplaceManagementCard({ item, canManage, isSuperUser, onManageAcl }: Props) {
   const t = useTranslations('marketplace.detail')
@@ -110,13 +112,21 @@ export function MarketplaceManagementCard({ item, canManage, isSuperUser, onMana
               onValueChange={(v) => v && handleVisibilityChange(v as MarketplaceVisibility)}
             >
               <SelectTrigger className="w-56">
-                <SelectValue />
+                {/* The trigger shows the label, never the raw value ("restricted"). */}
+                <SelectValue>
+                  {(selected: unknown) =>
+                    VISIBILITIES.find((value) => value === selected)
+                      ? t(`visibility.${selected as (typeof VISIBILITIES)[number]}`)
+                      : String(selected ?? '')
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="private">{t('visibility.private')}</SelectItem>
-                <SelectItem value="restricted">{t('visibility.restricted')}</SelectItem>
-                <SelectItem value="public">{t('visibility.public')}</SelectItem>
-                <SelectItem value="unlisted">{t('visibility.unlisted')}</SelectItem>
+                {VISIBILITIES.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {t(`visibility.${value}`)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             {patchItem.isPending ? (

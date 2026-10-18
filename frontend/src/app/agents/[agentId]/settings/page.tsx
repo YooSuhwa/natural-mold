@@ -86,7 +86,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
 
   const [leftTab, setLeftTab] = useState<LeftTab>('form')
   const access = useAgentAccess()
-  const [rightTab, setRightTab] = useState<RightTab>(access.canEdit ? 'fix' : 'test')
+  const [rightTab, setRightTab] = useState<RightTab>(access.canEdit ? 'fix' : 'opener')
   const [initialFixMessage, setInitialFixMessage] = useState<string | undefined>()
   const [justCreated, setJustCreated] = useState(false)
   const [deleteAgentConfirmOpen, setDeleteAgentConfirmOpen] = useState(false)
@@ -104,7 +104,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     const msg = consumeFixInitialMessage()
     if (msg) {
       setInitialFixMessage(msg)
-      setRightTab(access.canEdit ? 'fix' : 'test')
+      setRightTab(access.canEdit ? 'fix' : 'opener')
       setJustCreated(true)
     }
   }, [access.canEdit])

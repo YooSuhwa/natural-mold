@@ -8,6 +8,7 @@ from app.authz.org_administrators import active_administrators
 from app.authz.org_assignment_queries import role_query
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
 from app.authz.org_principals import PrincipalTarget, validate_principal
+from app.authz.principal_names import principal_names
 from app.models.organization import OrganizationRoleGrant
 from app.schemas.org_assignments import GrantDirectoryQuery, RoleAssignment, RoleGrantView
 from app.schemas.org_groups import DirectoryPage
@@ -18,16 +19,22 @@ from app.services.orgs.pagination import decode_cursor, encode_cursor
 from app.services.orgs.versioning import utc_timestamp
 
 
-def role_view(row: OrganizationRoleGrant) -> RoleGrantView:
+def role_view(row: OrganizationRoleGrant, name: str | None = None) -> RoleGrantView:
     return RoleGrantView.model_validate(
         {
             "id": row.id,
             "principal": {"type": row.principal_type, "id": row.principal_id},
+            "principal_name": name,
             "role": row.role,
             "granted_by": row.granted_by,
             "granted_at": utc_timestamp(row.granted_at),
         }
     )
+
+
+async def _views(db: AsyncSession, rows: list[OrganizationRoleGrant]) -> list[RoleGrantView]:
+    names = await principal_names(db, [(row.principal_type, row.principal_id) for row in rows])
+    return [role_view(row, names.get((row.principal_type, row.principal_id))) for row in rows]
 
 
 async def list_roles(
@@ -57,7 +64,7 @@ async def list_roles(
     )
     selected, more = rows[: query.limit], len(rows) > query.limit
     return DirectoryPage[RoleGrantView](
-        items=[role_view(row) for row in selected],
+        items=await _views(db, selected),
         has_more=more,
         next_cursor=encode_cursor(context.organization.id, selected[-1].id) if more else None,
         updated_at=utc_timestamp(context.organization.updated_at),
@@ -130,7 +137,7 @@ async def replace_roles(
         )
     rows = list((await db.scalars(statement.order_by(OrganizationRoleGrant.id))).all())
     return DirectoryPage[RoleGrantView](
-        items=[role_view(row) for row in rows],
+        items=await _views(db, rows),
         next_cursor=None,
         has_more=False,
         updated_at=utc_timestamp(context.organization.updated_at),

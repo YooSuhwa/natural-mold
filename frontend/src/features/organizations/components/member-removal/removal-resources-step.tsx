@@ -182,7 +182,8 @@ function RowHandling({
           }
         />
       )}
-      {row.canTransfer ? (
+      {/* S17 shortcut only when the caller can govern it; else the removal moves it. */}
+      {row.canTransfer && row.resource.can_transfer_now ? (
         <Button
           type="button"
           variant="link"
@@ -193,6 +194,8 @@ function RowHandling({
         >
           {t('transferNow')}
         </Button>
+      ) : row.canTransfer && choice.action === 'transfer' ? (
+        <p className="text-xs text-muted-foreground">{t('transferNowUnavailable')}</p>
       ) : null}
     </div>
   )

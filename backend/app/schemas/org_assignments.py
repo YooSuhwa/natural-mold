@@ -70,6 +70,8 @@ class RoleGrantView(BaseModel):
     model_config = ConfigDict(frozen=True)
     id: UUID
     principal: RolePrincipal
+    # Display name (users: profile name, else account name), so the list needs no lookup.
+    principal_name: str | None = None
     role: OrgRole
     granted_by: UUID | None
     granted_at: datetime
@@ -79,6 +81,7 @@ class CapabilityGrantView(BaseModel):
     model_config = ConfigDict(frozen=True)
     id: UUID
     principal: Principal
+    principal_name: str | None = None
     capability: OrgCapability
     granted_by: UUID | None
     granted_at: datetime

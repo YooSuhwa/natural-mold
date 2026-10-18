@@ -229,7 +229,11 @@ export function ShareForm({ backend, excludeKeys, requiresAccountAck }: ShareFor
         />
       ) : null}
 
-      <div className="flex justify-end">
+      {/* Sticky so the submit never hides below the fold of the scrolling dialog body. */}
+      <div
+        data-testid="share-form-actions"
+        className="sticky bottom-0 -mx-4 flex justify-end border-t border-border/60 bg-popover px-4 py-3 sm:-mx-6 sm:px-6"
+      >
         <Button type="submit" disabled={!canSubmit}>
           {backend.pending ? t('form.sharing') : t('form.submit')}
         </Button>

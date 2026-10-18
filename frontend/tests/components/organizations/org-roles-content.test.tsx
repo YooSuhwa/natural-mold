@@ -67,6 +67,19 @@ describe('OrgRolesContent', () => {
     installRoleServer()
   })
 
+  it('names listed principals by the server display name, not an id prefix', async () => {
+    grantsByPrincipal = { 'user:u2': ['admin'], 'group:g1': ['builder'] }
+    unfilteredPage = page([
+      { ...grant(U2, 'admin'), principal_name: '김지원' },
+      { ...grant(G1, 'builder'), principal_name: '플랫폼팀' },
+    ])
+    render(<OrgRolesContent />)
+
+    expect(await groupFor(/김지원 \(사용자\) 권한/)).toBeInTheDocument()
+    expect(await groupFor(/플랫폼팀 \(그룹\) 권한/)).toBeInTheDocument()
+    expect(screen.queryByText('u2')).not.toBeInTheDocument()
+  })
+
   it('keeps grants that live on another list page when saving', async () => {
     // Given: g1 holds builder (page 1) and auditor (only visible on page 2).
     grantsByPrincipal = { 'group:g1': ['builder', 'auditor'] }

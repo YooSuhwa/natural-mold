@@ -92,9 +92,10 @@ async def preview_member_exit(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
     context: OrgControlContext = Depends(org_members_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> MemberExitPreview:
     """10.7 / S15 steps (1)-(2): what removing the member settles and stops."""
-    return await member_exit_preview(db, context, user_id)
+    return await member_exit_preview(db, context, user_id, authz)
 
 
 @router.post(

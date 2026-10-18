@@ -12,11 +12,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
+from app.authz.client import AuthzUnavailable
 from app.authz.error_codes import authorization_error
 from app.authz.member_exit_settlement import credential_delete_blockers, held_grants_query
 from app.authz.org_administrators import active_administrators
 from app.authz.org_control import OrgControlContext
-from app.authz.share_targets import SHARE_TYPES, ShareRow
+from app.authz.principal import Principal
+from app.authz.service import AuthzService
+from app.authz.share_targets import SHARE_TYPES, ShareRow, share_object
 from app.authz.share_transfer_blocks import check_transferable
 from app.exceptions import AppError
 from app.models.agent import Agent
@@ -75,9 +78,46 @@ async def _owned(db: AsyncSession, org_id: UUID, user_id: UUID) -> list[OwnedRes
     return owned
 
 
+async def _mark_governable(
+    authz: AuthzService, context: OrgControlContext, user_id: UUID, owned: list[OwnedResource]
+) -> list[OwnedResource]:
+    """S17 shortcut: whether the caller holds ``can_govern`` for the E-01 transfer.
+
+    Enforced types are answered by one BatchCheck; an outage leaves every shortcut off
+    instead of failing the preview (the removal itself still transfers). Other types use
+    the legacy rule: the leaver owns every row here, and only the owner governs.
+    """
+    caller = context.actor.id
+    principal = Principal(kind="user", id=caller, org_id=context.organization.id)
+    objects = {
+        index: share_object(SHARE_TYPES[entry.resource_type], entry.resource_id)
+        for index, entry in enumerate(owned)
+        if entry.resource_type in SHARE_TYPES and entry.transferable and not entry.archived
+    }
+    enforced = [obj for obj in objects.values() if authz.enforces(obj.partition(":")[0])]
+    answers: dict[tuple[str, str], bool] = {}
+    if enforced:
+        try:
+            answers = await authz.batch_check(principal, [("can_govern", o) for o in enforced])
+        except AuthzUnavailable:
+            answers = {}
+    marked: list[OwnedResource] = []
+    for index, entry in enumerate(owned):
+        obj = objects.get(index)
+        if obj is not None:
+            held = answers.get(("can_govern", obj), False) if obj in enforced else caller == user_id
+            entry = entry.model_copy(update={"can_transfer_now": held})
+        marked.append(entry)
+    return marked
+
+
 async def member_exit_preview(
-    db: AsyncSession, context: OrgControlContext, user_id: UUID
+    db: AsyncSession,
+    context: OrgControlContext,
+    user_id: UUID,
+    authz: AuthzService | None = None,
 ) -> MemberExitPreview:
+    """Without ``authz`` no resource offers the S17 shortcut (fail closed)."""
     org = context.organization
     member = await db.scalar(
         select(OrganizationMember).where(
@@ -90,11 +130,14 @@ async def member_exit_preview(
         raise authorization_error("not_found")
     administrators = await active_administrators(db, org)
     grants = await db.scalars(held_grants_query(org.id, user_id).order_by(ResourceGrant.id))
+    owned = await _owned(db, org.id, user_id)
+    if authz is not None:
+        owned = await _mark_governable(authz, context, user_id, owned)
     return MemberExitPreview(
         user_id=user_id,
         status=member.status,
         is_last_admin=member.status == "active" and administrators == {user_id},
-        owned=await _owned(db, org.id, user_id),
+        owned=owned,
         grants=[
             HeldGrant(
                 grant_id=grant.id,

@@ -2,6 +2,7 @@
 // Authentication + CSRF handled by `apiFetch`.
 
 import { apiFetch } from './client'
+import type { MarketplaceAclList } from '@/lib/types/marketplace-acl'
 import type {
   AgentBlueprint,
   CredentialRequirement,
@@ -139,6 +140,9 @@ export const marketplaceApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  /** Named recipients (managers only); the item itself carries only their ids. */
+  listACL: (itemId: string) => apiFetch<MarketplaceAclList>(`/api/marketplace/items/${itemId}/acl`),
 
   removeACLEntry: (itemId: string, userId: string) =>
     apiFetch<void>(`/api/marketplace/items/${itemId}/acl/${userId}`, {

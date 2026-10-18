@@ -144,6 +144,29 @@ describe('MemberRemovalWizard', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('offers "transfer now" only for resources the caller can govern', async () => {
+    memberExitApi.preview.mockResolvedValue(
+      preview({
+        owned: [
+          owned({ name: 'Recruiter' }),
+          owned({ name: 'Report bot', can_transfer_now: true }),
+        ],
+      }),
+    )
+    renderWizard()
+
+    const dialog = await screen.findByRole('dialog', { name: 'Choi 님을 HR에서 제거' })
+    expect(
+      await within(dialog).findByRole('button', { name: 'Report bot 지금 바로 이전' }),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).queryByRole('button', { name: 'Recruiter 지금 바로 이전' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(dialog).getByText(/바로 이전하려면 이 자원을 관리할 권한이 필요해요/),
+    ).toBeVisible()
+  })
+
   it('lists blockers and keeps the removal closed while anything cannot be settled', async () => {
     memberExitApi.preview.mockResolvedValue(
       preview({

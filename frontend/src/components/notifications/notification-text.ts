@@ -33,13 +33,19 @@ export function notificationText(item: NotificationView, t: Translate): string {
   }
   switch (item.kind) {
     case 'access_request.created':
-      return t('kinds.accessRequestCreated', values)
+      return item.actor?.display_name
+        ? t('kinds.accessRequestCreated', values)
+        : t('kinds.accessRequestCreatedNoActor', values)
     case 'access_request.decided':
       return field(item, 'decision') === 'approved'
         ? t('kinds.accessRequestApproved', values)
         : t('kinds.accessRequestDenied', values)
     case 'grant.received':
-      return t('kinds.grantReceived', values)
+      // Fallbacks read as whole sentences (no "누군가 님이", no "을(를)").
+      if (!item.target?.accessible) return t('kinds.grantReceivedHidden', values)
+      return item.actor?.display_name
+        ? t('kinds.grantReceived', values)
+        : t('kinds.grantReceivedNoActor', values)
     case 'trigger.blocked':
       return t('kinds.triggerBlocked', values)
     case 'connection.owner_needed':

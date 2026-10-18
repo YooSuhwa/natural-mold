@@ -14,6 +14,8 @@ export interface OwnedResource {
   transferable: boolean
   /** `409 transfer_blocked` details (or credential `skill_bindings`), if any. */
   blocked_by: Record<string, unknown> | null
+  /** The caller holds `can_govern` (E-01 transfer); legacy admins do not. */
+  can_transfer_now?: boolean
 }
 
 export interface HeldGrant {

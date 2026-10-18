@@ -48,6 +48,17 @@ interface PrincipalGrants<Value extends string> {
   values: Value[]
 }
 
+/** Server-reported principal names of a grant page, keyed like the picker's names. */
+export function grantPrincipalNames(
+  items: readonly { principal: Principal; principal_name?: string | null }[] | undefined,
+): Record<string, string> {
+  const names: Record<string, string> = {}
+  for (const item of items ?? []) {
+    if (item.principal_name) names[principalKey(item.principal)] = item.principal_name
+  }
+  return names
+}
+
 /** Group a grant page by principal (one row per grant on the wire). */
 export function groupGrantsByPrincipal<Value extends string>(
   items: readonly { principal: Principal; value: Value }[],
@@ -131,7 +142,7 @@ function RoleGrantsSection({ orgId, canEdit, names, onPicked }: SectionProps) {
       pickerTypes={ROLE_PICKER_TYPES}
       canEdit={canEdit}
       isSaving={replace.isPending}
-      names={names}
+      names={{ ...grantPrincipalNames(page.data?.items), ...names }}
       onPicked={onPicked}
       onSave={(principal, values, version, handlers) => {
         if (principal.type === 'organization') return
@@ -165,7 +176,7 @@ function CapabilityGrantsSection({ orgId, canEdit, names, onPicked }: SectionPro
       pickerTypes={CAPABILITY_PICKER_TYPES}
       canEdit={canEdit}
       isSaving={replace.isPending}
-      names={names}
+      names={{ ...grantPrincipalNames(page.data?.items), ...names }}
       onPicked={onPicked}
       onSave={(principal, values, version, handlers) =>
         replace.mutate({ data: { principal, capabilities: values }, version }, handlers)

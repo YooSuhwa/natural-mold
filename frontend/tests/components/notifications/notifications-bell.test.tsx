@@ -86,7 +86,7 @@ describe('NotificationsBell', () => {
     })
     render(<NotificationsBell />)
     await userEvent.click(await screen.findByRole('button', { name: '알림, 안읽음 1개' }))
-    const row = await screen.findByText(/접근할 수 없는 항목을\(를\) 공유했어요/)
+    const row = await screen.findByText('공유받은 항목이 있지만 지금은 열 수 없어요')
     await userEvent.click(row)
     await waitFor(() => expect(api.markRead).toHaveBeenCalled())
     expect(api.markRead.mock.calls[0][0]).toBe('n-1')

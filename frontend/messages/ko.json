@@ -610,7 +610,8 @@
         "changeOwner": "{name}의 새 소유자 변경",
         "ownerFor": "{name}의 새 소유자",
         "transferNow": "지금 바로 이전",
-        "transferNowFor": "{name} 지금 바로 이전"
+        "transferNowFor": "{name} 지금 바로 이전",
+        "transferNowUnavailable": "바로 이전하려면 이 자원을 관리할 권한이 필요해요. 제거를 마치면 고른 새 소유자에게 이전돼요."
       },
       "blocker": {
         "triggers": "다른 사람의 활성 스케줄 {count}개",
@@ -5773,7 +5774,16 @@
     "skillEvaluation": "평가",
     "skillVersions": "버전 관리",
     "skillSource": "소스",
-    "skillBuilder": "빌더"
+    "skillBuilder": "빌더",
+    "company": "회사",
+    "organization": "조직",
+    "invite": "초대",
+    "newConversation": "새 대화",
+    "agentDetail": "에이전트",
+    "skillDetail": "스킬 상세",
+    "companyDetail": "회사 상세",
+    "marketplaceItem": "마켓플레이스 항목",
+    "traces": "실행 추적"
   },
   "connections": {
     "pageTitle": "연결 관리",
@@ -6156,7 +6166,7 @@
       "viewer": "보기",
       "editor": "편집",
       "manager": "관리",
-      "other": "권한"
+      "other": "일부"
     },
     "reasons": {
       "permission_revoked": "권한 회수",
@@ -6170,9 +6180,12 @@
     },
     "kinds": {
       "accessRequestCreated": "{actor} 님이 {target} {level} 권한을 요청했어요",
+      "accessRequestCreatedNoActor": "{target} {level} 권한 요청이 들어왔어요",
       "accessRequestApproved": "{target} {level} 권한 요청이 승인됐어요",
       "accessRequestDenied": "{target} 권한 요청이 거절됐어요",
-      "grantReceived": "{actor} 님이 {target}을(를) 공유했어요 ({level})",
+      "grantReceived": "{actor} 님이 {target}의 {level} 권한을 공유했어요",
+      "grantReceivedNoActor": "{target}의 {level} 권한을 공유받았어요",
+      "grantReceivedHidden": "공유받은 항목이 있지만 지금은 열 수 없어요",
       "triggerBlocked": "{trigger} 스케줄이 멈췄어요 ({reason})",
       "ownerNeeded": "{target} 연결을 다시 해 달라는 요청이 있어요",
       "delegationBroken": "{target}의 연결 하나가 끊겼어요 ({reason})",

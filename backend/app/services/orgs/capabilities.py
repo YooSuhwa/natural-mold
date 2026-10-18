@@ -6,6 +6,7 @@ from app.authz import audit_actions
 from app.authz.org_assignment_queries import capability_query
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
 from app.authz.org_principals import PrincipalTarget, validate_principal
+from app.authz.principal_names import principal_names
 from app.models.organization_group import OrgCapabilityGrant
 from app.schemas.org_assignments import (
     CapabilityAssignment,
@@ -20,16 +21,22 @@ from app.services.orgs.pagination import decode_cursor, encode_cursor
 from app.services.orgs.versioning import utc_timestamp
 
 
-def capability_view(row: OrgCapabilityGrant) -> CapabilityGrantView:
+def capability_view(row: OrgCapabilityGrant, name: str | None = None) -> CapabilityGrantView:
     return CapabilityGrantView.model_validate(
         {
             "id": row.id,
             "principal": {"type": row.principal_type, "id": row.principal_id},
+            "principal_name": name,
             "capability": row.capability,
             "granted_by": row.granted_by,
             "granted_at": utc_timestamp(row.granted_at),
         }
     )
+
+
+async def _views(db: AsyncSession, rows: list[OrgCapabilityGrant]) -> list[CapabilityGrantView]:
+    names = await principal_names(db, [(row.principal_type, row.principal_id) for row in rows])
+    return [capability_view(row, names.get((row.principal_type, row.principal_id))) for row in rows]
 
 
 async def list_capabilities(
@@ -57,7 +64,7 @@ async def list_capabilities(
     )
     selected, more = rows[: query.limit], len(rows) > query.limit
     return DirectoryPage[CapabilityGrantView](
-        items=[capability_view(row) for row in selected],
+        items=await _views(db, selected),
         has_more=more,
         next_cursor=encode_cursor(context.organization.id, selected[-1].id) if more else None,
         updated_at=utc_timestamp(context.organization.updated_at),
@@ -112,7 +119,7 @@ async def replace_capabilities(
         )
     rows = list((await db.scalars(statement.order_by(OrgCapabilityGrant.id))).all())
     return DirectoryPage[CapabilityGrantView](
-        items=[capability_view(row) for row in rows],
+        items=await _views(db, rows),
         next_cursor=None,
         has_more=False,
         updated_at=utc_timestamp(context.organization.updated_at),

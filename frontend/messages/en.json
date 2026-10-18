@@ -610,7 +610,8 @@
         "changeOwner": "Change the new owner of {name}",
         "ownerFor": "New owner of {name}",
         "transferNow": "Transfer now",
-        "transferNowFor": "Transfer {name} now"
+        "transferNowFor": "Transfer {name} now",
+        "transferNowUnavailable": "Transferring right away needs permission to manage this resource. It moves to the chosen new owner when the removal completes."
       },
       "blocker": {
         "triggers": "{count} active schedules owned by others",
@@ -5773,7 +5774,16 @@
     "skillEvaluation": "Evaluation",
     "skillVersions": "Versions",
     "skillSource": "Source",
-    "skillBuilder": "Builder"
+    "skillBuilder": "Builder",
+    "company": "Company",
+    "organization": "Organization",
+    "invite": "Invitation",
+    "newConversation": "New conversation",
+    "agentDetail": "Agent",
+    "skillDetail": "Skill details",
+    "companyDetail": "Company details",
+    "marketplaceItem": "Marketplace item",
+    "traces": "Traces"
   },
   "connections": {
     "pageTitle": "Page title",
@@ -6170,9 +6180,12 @@
     },
     "kinds": {
       "accessRequestCreated": "{actor} requested {level} access to {target}",
+      "accessRequestCreatedNoActor": "New request for {level} access to {target}",
       "accessRequestApproved": "Your request for {level} access to {target} was approved",
       "accessRequestDenied": "Your request for access to {target} was declined",
       "grantReceived": "{actor} shared {target} with you ({level})",
+      "grantReceivedNoActor": "{target} was shared with you ({level})",
+      "grantReceivedHidden": "Something was shared with you, but you can't open it right now",
       "triggerBlocked": "The {trigger} schedule stopped ({reason})",
       "ownerNeeded": "Someone asked you to reconnect {target}",
       "delegationBroken": "A connection of {target} broke ({reason})",

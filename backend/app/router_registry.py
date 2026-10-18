@@ -28,6 +28,7 @@ def include_app_routers(app: FastAPI) -> None:
         health,
         invitation_accept,
         marketplace,
+        marketplace_acl,
         marketplace_tenant_publication,
         mcp,
         mcp_apps,
@@ -105,6 +106,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(health.router)
     app.include_router(invitation_accept.router)
     app.include_router(marketplace.router)
+    app.include_router(marketplace_acl.router)
     app.include_router(marketplace_tenant_publication.router)
     app.include_router(memory.router)
     app.include_router(agent_memo.router)

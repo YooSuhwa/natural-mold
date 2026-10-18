@@ -9195,6 +9195,47 @@
       }
     },
     "/api/marketplace/items/{item_id}/acl": {
+      "get": {
+        "operationId": "list_item_acl_api_marketplace_items__item_id__acl_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceAclList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Item Acl",
+        "tags": [
+          "marketplace"
+        ]
+      },
       "post": {
         "operationId": "replace_item_acl_api_marketplace_items__item_id__acl_post",
         "parameters": [
@@ -28446,6 +28487,17 @@
             }
           ],
           "title": "Principal"
+        },
+        "principal_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Principal Name"
         }
       },
       "required": [
@@ -33452,6 +33504,52 @@
         }
       },
       "title": "LogoutResponse",
+      "type": "object"
+    },
+    "MarketplaceAclEntry": {
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "permission": {
+          "title": "Permission",
+          "type": "string"
+        },
+        "user_id": {
+          "format": "uuid",
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "permission"
+      ],
+      "title": "MarketplaceAclEntry",
+      "type": "object"
+    },
+    "MarketplaceAclList": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/MarketplaceAclEntry"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "MarketplaceAclList",
       "type": "object"
     },
     "MarketplaceInstallationOut": {
@@ -38747,6 +38845,11 @@
           ],
           "title": "Blocked By"
         },
+        "can_transfer_now": {
+          "default": false,
+          "title": "Can Transfer Now",
+          "type": "boolean"
+        },
         "name": {
           "title": "Name",
           "type": "string"
@@ -40874,6 +40977,17 @@
             }
           ],
           "title": "Principal"
+        },
+        "principal_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Principal Name"
         },
         "role": {
           "enum": [

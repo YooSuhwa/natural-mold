@@ -3,7 +3,7 @@
  * missing `can_view_config` into the permission notice; viewers get a read-only screen;
  * share/API/fix follow `can_share`/`can_deploy`/`can_edit`.
  */
-import { render, screen } from '../../test-utils'
+import { render, screen, within } from '../../test-utils'
 import AgentSettingsPage from '@/app/agents/[agentId]/settings/page'
 import { AgentSettingsGate } from '@/components/agent/agent-settings-gate'
 import { ApiError } from '@/lib/api/errors'
@@ -108,6 +108,9 @@ function expectEditor({ share, deploy }: { share: boolean; deploy: boolean }) {
   expect(screen.getByDisplayValue('Test Agent')).not.toHaveAttribute('readonly')
   expect(!!screen.queryByRole('button', { name: '에이전트 공유' })).toBe(share)
   expect(!!screen.queryByRole('tab', { name: /API/ })).toBe(deploy)
+  expect(screen.getByRole('tab', { name: /테스트/ })).toBeInTheDocument()
+  const form = screen.getByTestId('agent-settings-form')
+  expect(within(form).getAllByRole('button', { name: '추가' })).toHaveLength(2)
 }
 
 describe('agent settings per permission level (plan 13.9)', () => {
@@ -139,7 +142,12 @@ describe('agent settings per permission level (plan 13.9)', () => {
     expect(screen.queryByRole('button', { name: '에이전트 공유' })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: /Fix 에이전트/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: /API/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /테스트/ })).toHaveAttribute('aria-selected', 'true')
+    // The test chat streams through the can_edit assistant endpoint: no tab for viewers.
+    expect(screen.queryByRole('tab', { name: /테스트/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /오프너/ })).toHaveAttribute('aria-selected', 'true')
+    // Mutation affordances are hidden, not just disabled (capture 47).
+    const form = screen.getByTestId('agent-settings-form')
+    expect(within(form).queryByRole('button', { name: /추가/ })).not.toBeInTheDocument()
     expect(screen.getByTestId('agent-settings-form')).toBeDisabled()
     expect(screen.getByDisplayValue('Test Agent')).toHaveAttribute('readonly')
   })

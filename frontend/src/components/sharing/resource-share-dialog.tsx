@@ -34,7 +34,8 @@ export function ShareDialogFrame({
 }: ShareDialogFrameProps) {
   const t = useTranslations('sharing')
   return (
-    <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
+    // `fixed` (640px) height: the form, access list and transfer section scroll in one body.
+    <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="fixed">
       <DialogShell.Header
         icon={<UsersIcon className="size-5" />}
         title={t('title', { name: resourceName })}

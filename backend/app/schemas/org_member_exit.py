@@ -16,6 +16,9 @@ class OwnedResource(BaseModel):
     archived: bool = False  # agents in the trash stay with their owner (10.7 "보관")
     transferable: bool = True
     blocked_by: dict[str, object] | None = None  # 409 transfer_blocked details, if any
+    # The caller may move it now via E-01 transfer (``can_govern``); the removal itself
+    # transfers it either way. Legacy: only the owner governs, so an admin cannot.
+    can_transfer_now: bool = False
 
 
 class HeldGrant(BaseModel):

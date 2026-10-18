@@ -244,6 +244,8 @@ export type Principal = RolePrincipal | { type: 'organization'; id: string }
 export interface RoleGrantView {
   id: string
   principal: RolePrincipal
+  /** Profile name (users) or group name; absent on older payloads. */
+  principal_name?: string | null
   role: OrgRole
   granted_by: string | null
   granted_at: string
@@ -257,6 +259,7 @@ export interface RoleAssignment {
 export interface CapabilityGrantView {
   id: string
   principal: Principal
+  principal_name?: string | null
   capability: OrgCapability
   granted_by: string | null
   granted_at: string

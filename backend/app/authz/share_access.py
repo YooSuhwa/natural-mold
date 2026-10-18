@@ -17,6 +17,7 @@ from app.authz import denials
 from app.authz.delegation_accounts import delegated_accounts
 from app.authz.org_administrators import active_administrators
 from app.authz.org_context import OrgContext
+from app.authz.principal_names import user_display_names
 from app.authz.service import AuthzService
 from app.authz.share_targets import ShareType, authorize_target, my_share_permissions
 from app.authz.sharing import share_grants
@@ -47,10 +48,10 @@ async def _company_admins(db: AsyncSession, tenant_id: UUID) -> set[UUID]:
     return set(found)
 
 
-async def _names(db: AsyncSession, model: type[User] | type[Group], ids: set[UUID]) -> dict:
+async def _group_names(db: AsyncSession, ids: set[UUID]) -> dict:
     if not ids:
         return {}
-    rows = await db.execute(select(model.id, model.name).where(model.id.in_(ids)))
+    rows = await db.execute(select(Group.id, Group.name).where(Group.id.in_(ids)))
     return dict(rows.tuples().all())
 
 
@@ -80,8 +81,9 @@ async def access_list(
     governors.discard(owner)
     users = {g.principal_id for g in grants if g.principal_type == "user"} | governors | {owner}
     groups = {g.principal_id for g in grants if g.principal_type == "group"}
-    user_names = await _names(db, User, users)
-    group_names, sizes = await _names(db, Group, groups), await _group_sizes(db, groups)
+    # The profile name, not the registration name (a renamed owner showed "E2E User").
+    user_names = await user_display_names(db, users)
+    group_names, sizes = await _group_names(db, groups), await _group_sizes(db, groups)
     org_name = organization.name if organization is not None else None
 
     def principal(kind_: str, pid: UUID) -> PrincipalView:

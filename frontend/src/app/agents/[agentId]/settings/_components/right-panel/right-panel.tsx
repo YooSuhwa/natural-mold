@@ -62,7 +62,8 @@ export function RightPanel({
   initialFixMessage,
 }: RightPanelProps) {
   const t = useTranslations('agent.settings')
-  // Plan 13.9 row 2: edit (fix) needs can_edit, the API panel can_deploy.
+  // Plan 13.9 row 2: edit (fix) needs can_edit, the API panel can_deploy. The test chat
+  // streams through the assistant endpoint, which also needs can_edit (H-05).
   const { canEdit, canDeploy } = useAgentAccess()
 
   return (
@@ -79,10 +80,12 @@ export function RightPanel({
               {t('tabs.fix')}
             </LineTabsTrigger>
           ) : null}
-          <LineTabsTrigger value="test">
-            <MessageSquareIcon className="size-3.5" />
-            {t('tabs.test')}
-          </LineTabsTrigger>
+          {canEdit ? (
+            <LineTabsTrigger value="test">
+              <MessageSquareIcon className="size-3.5" />
+              {t('tabs.test')}
+            </LineTabsTrigger>
+          ) : null}
           <LineTabsTrigger value="opener">
             <HelpCircleIcon className="size-3.5" />
             {t('tabs.opener')}
@@ -128,9 +131,9 @@ export function RightPanel({
       >
         {!agentId ? (
           <CreateModePlaceholder label={t('createModeLocked')} />
-        ) : (
+        ) : canEdit ? (
           <TestChatPanel agentId={agentId} agentName={agentName} agentImageUrl={agentImageUrl} />
-        )}
+        ) : null}
       </TabsContent>
 
       <TabsContent

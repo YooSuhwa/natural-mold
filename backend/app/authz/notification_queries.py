@@ -6,7 +6,9 @@ company admin, within the 90-day retention. Pages are newest first with a keyset
 cursor ``created_at|id``. Every listed target is re-checked against the recipient's
 current access (the type's 8.4 ``min_visible``; legacy: the owner in this organization):
 a target they can no longer see keeps only its type — no id, no name, no link. An
-OpenFGA outage hides every target rather than failing the bell.
+OpenFGA outage hides every target rather than failing the bell. A ``grant.received``
+target also keeps its name (not its link) while the share is still active: the sharer
+disclosed it, even where the type's legacy rule (owner only) does not yet open it.
 """
 
 import base64
@@ -18,6 +20,7 @@ from sqlalchemy import ColumnElement, and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import denials
+from app.authz.candidates import granted_resource_ids
 from app.authz.error_codes import authorization_error
 from app.authz.notifications import RETENTION, now
 from app.authz.org_context import OrgContext
@@ -26,6 +29,7 @@ from app.authz.service import AuthzService
 from app.authz.share_targets import SHARE_TYPES
 from app.authz.tenant_scoping import tenant_role_query
 from app.exceptions import AppError
+from app.models.authz import ResourceGrant
 from app.models.notification import Notification
 from app.models.organization import OrganizationMember
 from app.models.user import User
@@ -89,10 +93,27 @@ async def _accessible(
     return kept
 
 
+async def _still_shared(
+    db: AsyncSession, ctx: OrgContext, rows: Sequence[Notification]
+) -> set[str]:
+    kept: set[str] = set()
+    for name in SHARE_TYPES:
+        ids = {
+            row.target_id
+            for row in rows
+            if row.kind == "grant.received" and row.target_type == name and row.target_id
+        }
+        if ids:
+            query = granted_resource_ids(name, ctx).where(ResourceGrant.resource_id.in_(ids))
+            kept.update(f"{name}:{rid}" for rid in await db.scalars(query))
+    return kept
+
+
 async def _views(
     db: AsyncSession, authz: AuthzService, ctx: OrgContext, rows: Sequence[Notification]
 ) -> list[NotificationView]:
     kept = await _accessible(db, authz, ctx, rows)
+    shared = await _still_shared(db, ctx, rows)
     actors = {row.actor_id for row in rows if row.actor_id}
     people = {
         user.id: user.display_name or user.name
@@ -105,11 +126,13 @@ async def _views(
         if row.target_type is not None:
             # H-06 usage warnings name the recipient's own limit, not a shared resource.
             own = row.target_type == "usage_limit"
-            visible = own or f"{row.target_type}:{row.target_id}" in kept
+            key = f"{row.target_type}:{row.target_id}"
+            disclosed = row.kind == "grant.received" and key in shared
+            visible = own or key in kept or disclosed
             target = NotificationTarget(type=row.target_type, accessible=visible)
             if visible:
                 target.id, target.name = row.target_id, (row.payload or {}).get("target_name")
-            else:
+            if not (own or key in kept):
                 link = None
         actor = None
         if row.actor_id is not None and (target is None or target.accessible):

@@ -8,7 +8,7 @@ import { orgApiMock } from '../organizations/org-admin-mocks'
 import { trapConsole } from './sharing-mocks'
 
 const { marketplaceApi } = vi.hoisted(() => ({
-  marketplaceApi: { replaceACL: vi.fn(), removeACLEntry: vi.fn() },
+  marketplaceApi: { replaceACL: vi.fn(), removeACLEntry: vi.fn(), listACL: vi.fn() },
 }))
 
 vi.mock('@/lib/api/marketplace', () => ({ marketplaceApi }))
@@ -37,6 +37,7 @@ describe('MarketplaceShareDialog (revoke-only ACL adapter until I-04)', () => {
     vi.clearAllMocks()
     consoleTrap = trapConsole()
     meOrganizationsApi.list.mockResolvedValue([makeOrganization()])
+    marketplaceApi.listACL.mockResolvedValue({ items: [] })
   })
 
   afterEach(() => {
@@ -47,13 +48,23 @@ describe('MarketplaceShareDialog (revoke-only ACL adapter until I-04)', () => {
   it('lists recipients without an add form, a level choice or transfer', async () => {
     render(<MarketplaceShareDialog item={makeItem(['user-a'])} open onOpenChange={vi.fn()} />)
     expect(await screen.findByRole('dialog', { name: 'Image skill 공유' })).toBeInTheDocument()
-    expect(screen.getByRole('note')).toHaveTextContent('지금은 회수만 할 수 있고')
+    expect(await screen.findByRole('note')).toHaveTextContent('지금은 회수만 할 수 있고')
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '공유' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '소유권 이전' })).not.toBeInTheDocument()
     expect(screen.queryByText(/공유 권한이 없어/)).not.toBeInTheDocument()
     expect(marketplaceApi.replaceACL).not.toHaveBeenCalled()
+  })
+
+  it('names recipients by display name instead of their user id', async () => {
+    marketplaceApi.listACL.mockResolvedValue({
+      items: [{ user_id: 'user-a', display_name: '이하은', permission: 'install' }],
+    })
+    render(<MarketplaceShareDialog item={makeItem(['user-a'])} open onOpenChange={vi.fn()} />)
+    expect(await screen.findByText('이하은')).toBeInTheDocument()
+    expect(screen.queryByText('user-a')).not.toBeInTheDocument()
+    expect(marketplaceApi.listACL).toHaveBeenCalledWith('item-1')
   })
 
   it('removes one recipient through the per-row ACL endpoint', async () => {
