@@ -358,6 +358,9 @@ documents:
     lifecycle: active-plan
     status: active
     index: active-plan
+  - path: docs/exec-plans/org-authz-u05-study.md
+    lifecycle: canonical-current
+    status: current
   - path: docs/lint-hardening-plan.md
     lifecycle: active-plan
     status: active
