@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import create_org_invitation_token
 from app.authz import audit_actions
+from app.authz.membership_sync import capture_user
 from app.authz.org_control import OrgControlContext
 from app.authz.org_member_queries import company_member_target
 from app.authz.tenant_org_write_locks import lock_member_rows
@@ -45,6 +46,7 @@ async def assign_initial_administrator(
         case user_id, None if user_id is not None:
             await lock_member_rows(db, organization.tenant_id, organization.id, user_id)
             await company_member_target(db, context, user_id)
+            sync = await capture_user(db, organization.tenant_id, user_id, organization.id)
             db.add(
                 OrganizationMember(
                     org_id=organization.id,
@@ -64,6 +66,7 @@ async def assign_initial_administrator(
                     granted_by=actor.id,
                 )
             )
+            await sync.queue(db)
             await _record_member_audits(db, request, organization, actor, user_id)
             return TenantOrganizationMemberAdministrator(user_id=user_id)
         case None, email if email is not None:

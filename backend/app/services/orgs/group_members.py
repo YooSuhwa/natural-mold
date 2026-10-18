@@ -5,6 +5,7 @@ from uuid import UUID
 
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
+from app.authz.membership_sync import capture_user
 from app.authz.org_administrators import active_administrators
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
 from app.authz.org_directory import scoped_group
@@ -80,6 +81,8 @@ async def add_group_member(
     existing = await db.get(GroupMember, (group.id, payload.user_id))
     created = existing is None
     if created:
+        org = context.organization
+        sync = await capture_user(db, org.tenant_id, payload.user_id, org.id)
         db.add(
             GroupMember(
                 group_id=group.id,
@@ -90,6 +93,7 @@ async def add_group_member(
             )
         )
         group.updated_at = datetime.now(UTC)
+        await sync.queue(db)
         await finish_group_write(
             mutation.request,
             context,
@@ -122,12 +126,15 @@ async def remove_group_member(
     ):
         raise authorization_error("not_found")
     administrators = await active_administrators(db, context.organization)
+    org = context.organization
+    sync = await capture_user(db, org.tenant_id, user_id, org.id)
     async with db.begin_nested():
         await db.delete(member)
         await db.flush()
         if administrators and not await active_administrators(db, context.organization):
             raise authorization_error("last_admin")
     group.updated_at = datetime.now(UTC)
+    await sync.queue(db)
     await finish_group_write(
         mutation.request,
         context,

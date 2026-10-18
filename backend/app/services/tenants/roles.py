@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
+from app.authz.membership_sync import capture_user
 from app.models.organization import TenantMember, TenantRoleGrant
 from app.schemas.tenant_members import TenantRolePage, TenantRoleView
 from app.services import audit_service
@@ -115,7 +116,7 @@ async def list_roles(
 async def replace_roles(
     command: TenantMemberWrite, user_id: UUID, roles: tuple[TenantRole, ...]
 ) -> TenantRoleMutationResult:
-    context = await lock_tenant_member_write(command, lock_children=True)
+    context = await lock_tenant_member_write(command, lock_children=True, lock_organizations=True)
     member = context.member(user_id)
     if member is None or member.status != "active":
         raise authorization_error("not_found")
@@ -131,6 +132,7 @@ async def replace_roles(
     if "admin" in current - wanted and user_id in active_admins and len(active_admins) == 1:
         raise authorization_error("last_tenant_admin")
     try:
+        sync = await capture_user(command.db, command.tenant_id, user_id, None)
         for row in current_rows:
             if row.role not in wanted:
                 await command.db.delete(row)
@@ -143,6 +145,7 @@ async def replace_roles(
                     granted_by=command.actor.id,
                 )
             )
+        await sync.queue(command.db)  # tenant role tuples (company-scoped: no marker)
         context.tenant.updated_at = bump_timestamp(context.tenant.updated_at)
         await _record_role_audits(command, user_id, current, wanted)
         await command.db.commit()

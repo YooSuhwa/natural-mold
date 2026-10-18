@@ -26,6 +26,7 @@ from app.models.skill import Skill
 from app.models.user import User
 from app.services.tenants.member_exit import TenantMemberExitRequest, exit_tenant_member
 from tests.authz.company_administration_migration_fixture import _runner_dsns
+from tests.authz.native_marker_cleanup import delete_revocation_markers
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +149,7 @@ async def cleanup_company(
             await db.execute(
                 delete(OrgInvitation).where(OrgInvitation.tenant_id == fixture.tenant_id)
             )
+            await delete_revocation_markers(db, [fixture.tenant_id])
             await db.execute(
                 delete(Organization).where(Organization.tenant_id == fixture.tenant_id)
             )

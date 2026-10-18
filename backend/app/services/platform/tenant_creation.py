@@ -17,6 +17,8 @@ from app.auth.jwt import create_tenant_invitation_token
 from app.authz import audit_actions
 from app.authz.catalog_fanout import sync_organization
 from app.authz.error_codes import authorization_error
+from app.authz.membership_projection import OrgSubject
+from app.authz.membership_sync import apply_membership_outbox, queue_created
 from app.authz.resource_lifecycle import LifecycleChange, apply_lifecycle
 from app.authz.service import AuthzService
 from app.dependencies import CurrentUser
@@ -138,6 +140,8 @@ async def create_platform_tenant(
             request=creation.request,
             metadata={"tenant_id": str(tenant_id), "org_id": str(organization_id)},
         )
+        # 7.2.1 "조직 생성": tenant:T tenant organization:O (after the staged flushes)
+        await queue_created(creation.db, tenant_id, [OrgSubject(organization_id)])
         if authz is not None:  # E-03: platform catalog fans out to the first organization
             fanout = await sync_organization(
                 creation.db, organization, creation.actor.id, mode=authz.mode
@@ -161,6 +165,7 @@ async def create_platform_tenant(
         raise
     if authz is not None:
         await apply_lifecycle(fanout, authz)
+        await apply_membership_outbox(creation.db, authz)
 
     return PlatformTenantCreateResult(
         tenant=AdminTenantDetail(

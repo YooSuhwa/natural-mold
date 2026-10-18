@@ -8,6 +8,7 @@ from pydantic import JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
+from app.authz.membership_sync import capture_user
 from app.authz.registration_queries import RegistrationOrganization
 from app.models.organization import (
     OrganizationMember,
@@ -41,6 +42,7 @@ async def enroll_default_organization(
     ensure_signup_scope_active(enrollment.scope)
     if not enrollment.bootstrap:
         await require_member_capacity(db, company.id)  # H-06 member_limit
+    sync = await capture_user(db, company.id, user.id, org.id)
     db.add(TenantMember(tenant_id=company.id, user_id=user.id))
     db.add(
         OrganizationMember(org_id=org.id, tenant_id=company.id, user_id=user.id, status="active")
@@ -80,7 +82,7 @@ async def enroll_default_organization(
         events.append((audit_actions.TENANT_ROLE_GRANT, "tenant", company.id, {"role": "admin"}))
     user.last_active_org_id = org.id
     bump_version(org)
-    await db.flush()
+    await sync.queue(db)  # 7.2.1 "구성원 추가": member/role tuples without the nightly reconcile
     for action, target_type, target_id, details in events:
         await audit_service.record_event(
             db,

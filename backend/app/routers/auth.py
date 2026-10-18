@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.cookies import clear_auth_cookies, set_active_org_cookie, set_auth_cookies
 from app.auth.sso.link_pending import clear_link_cookie, pending_link_method
 from app.auth.sso.session_gate import login_gate
+from app.authz.membership_apply import apply_for_request
 from app.authz.policies import PUBLIC, SELF, authz_policy
 from app.config import settings
 from app.dependencies import (
@@ -104,6 +105,7 @@ async def register_endpoint(
         metadata={"source": "register"},
     )
     await db.commit()
+    await apply_for_request(request, db)  # 7.2.1: the new member's tuples now
     set_auth_cookies(
         response,
         access_token=access,
@@ -162,6 +164,7 @@ async def login_endpoint(
         request=request,
     )
     await db.commit()
+    await apply_for_request(request, db)  # a confirmed SSO link may have joined the company
     clear_link_cookie(response)
     set_auth_cookies(
         response,

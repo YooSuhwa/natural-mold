@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.cookies import set_active_org_cookie
+from app.authz.membership_apply import apply_for_request
 from app.authz.policies import SELF, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_identity_db, verify_csrf
 from app.routers.orgs import mutation_request
@@ -33,6 +34,7 @@ async def authenticated_acceptance(
     else:
         result = await accept_invitation(InvitationAcceptance(mutation, user.id, payload.token))
     await mutation.db.commit()
+    await apply_for_request(mutation.request, mutation.db)
     return result
 
 

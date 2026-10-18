@@ -150,5 +150,6 @@ async def test_concurrent_replacement_and_last_admin_removal_are_serialized(
             case.unrelated_id: "active",
         }
         assert organization.settings == initial_settings
-        assert organization.authz_epoch == initial_epoch + 2
+        # Two versioned writes, and the revocation's role marker bumps once more (8.6).
+        assert organization.authz_epoch == initial_epoch + 3
         assert audit_after - audit_before == Counter({"org.role_grant": 1, "org.role_revoke": 1})

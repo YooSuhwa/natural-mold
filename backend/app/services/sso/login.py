@@ -17,6 +17,7 @@ from app.auth.sso.secret_box import open_secret
 from app.auth.sso.session_gate import login_gate, sso_method
 from app.auth.sso.state import LoginTransaction
 from app.authz import audit_actions
+from app.authz.membership_apply import apply_for_request
 from app.models.organization import Tenant
 from app.models.organization_identity import SsoConnection
 from app.models.user import User
@@ -114,6 +115,7 @@ async def finish_login(
     await audit_login(db, request, connection_ref(row), (user, None))
     active_org = user.last_active_org_id
     await db.commit()
+    await apply_for_request(request, db)  # JIT/SSO membership tuples (7.2.1)
     set_auth_cookies(response, access_token=access, refresh_token=refresh, csrf_token=csrf)
     if active_org is not None:
         set_active_org_cookie(response, active_org)

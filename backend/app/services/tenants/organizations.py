@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz import audit_actions
 from app.authz.catalog_fanout import sync_organization
 from app.authz.error_codes import authorization_error
+from app.authz.membership_projection import OrgSubject
+from app.authz.membership_sync import apply_membership_outbox, queue_created
 from app.authz.resource_lifecycle import LifecycleChange, apply_lifecycle
 from app.authz.service import AuthzService
 from app.authz.tenant_org_write_locks import lock_tenant_org_write
@@ -181,6 +183,8 @@ async def create_organization(
             )
             db.add(organization)
             await db.flush()
+            # 7.2.1 "조직 생성": tenant:T tenant organization:O before its members
+            await queue_created(db, organization.tenant_id, [OrgSubject(organization.id)])
             administrator = await assign_initial_administrator(
                 db, mutation.request, organization, mutation.actor, payload.administrator
             )
@@ -206,6 +210,7 @@ async def create_organization(
         raise
     if authz is not None:
         await apply_lifecycle(fanout, authz)
+        await apply_membership_outbox(db, authz)
     projection = (await _projections(db, [organization]))[0]
     return schemas.TenantOrganizationCreateResult(
         organization=schemas.TenantOrganizationSummary.from_projection(projection),

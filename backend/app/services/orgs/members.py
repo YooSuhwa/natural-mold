@@ -7,6 +7,7 @@ from uuid import UUID
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
 from app.authz.member_exit_settlement import MemberExitSettlement
+from app.authz.membership_sync import capture_user
 from app.authz.org_administrators import active_administrators
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
 from app.authz.org_member_exit import (
@@ -152,6 +153,9 @@ async def create_member(
     was_removed = member.status == "removed"
     changed = created or member.status != "active"
     if changed:
+        sync = await capture_user(
+            db, context.organization.tenant_id, payload.user_id, context.organization.id
+        )
         member.status, member.removed_at = "active", None
         db.add(member)
         role = OrganizationSettings.model_validate(
@@ -168,6 +172,7 @@ async def create_member(
                     granted_by=context.actor.id,
                 )
             )
+        await sync.queue(db)
         await finish_member_write(
             mutation, context, MemberWrite(member, audit_actions.ORG_MEMBER_ADD)
         )
@@ -196,6 +201,9 @@ async def change_member_status(
             else set()
         )
     if member.status != payload.status:
+        sync = await capture_user(
+            db, context.organization.tenant_id, mutation.user_id, context.organization.id
+        )
         async with db.begin_nested():
             member.status = payload.status
             await db.flush()
@@ -203,6 +211,7 @@ async def change_member_status(
                 raise authorization_error("last_admin")
             if payload.status == "suspended":
                 await pause_member_triggers(db, context, mutation.user_id)
+        await sync.queue(db)
         await finish_member_write(
             mutation.request,
             context,
@@ -243,10 +252,14 @@ async def remove_member(
                 await db.commit()
             return MemberRemovalOutcome(mutation.user_id, settle.result)
         plan = await preflight_member_exit(db, context, mutation.user_id, settle=settle)
+    sync = await capture_user(
+        db, context.organization.tenant_id, mutation.user_id, context.organization.id
+    )
     async with db.begin_nested():
         await apply_member_exit(db, plan)
         await clear_active_org(db, mutation.user_id, context.organization.id)
         await db.flush()
+    await sync.queue(db)  # 7.2.1 "구성원 제거": membership marker + tuple deletes
     await db.refresh(context.organization)  # revocations bumped authz_epoch (8.6)
     await finish_member_write(
         mutation.request,

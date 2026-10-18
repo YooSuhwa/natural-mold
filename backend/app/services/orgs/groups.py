@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
+from app.authz.membership_projection import GroupSubject
+from app.authz.membership_sync import MembershipSync, queue_created
 from app.authz.org_administrators import active_administrators
 from app.authz.org_control import (
     OrgControlContext,
@@ -133,6 +135,8 @@ async def create_group(
     )
     mutation.db.add(group)
     await mutation.db.flush()
+    org = context.organization
+    await queue_created(mutation.db, org.tenant_id, [GroupSubject(org.id, group.id)])
     await finish_group_write(mutation, context, GroupWrite(group, audit_actions.GROUP_CREATE))
     return GroupView.model_validate(group)
 
@@ -172,12 +176,15 @@ async def delete_group(mutation: GroupMutationRequest, context: OrgControlContex
         if group.source != "manual":
             raise authorization_error("policy_locked")
         administrators = await active_administrators(db, context.organization)
+    org = context.organization
+    sync = await MembershipSync.capture(db, org.tenant_id, [GroupSubject(org.id, group.id)])
     async with db.begin_nested():
         await delete_group_links(db, context, group)
         await db.delete(group)
         await db.flush()
         if administrators and not await active_administrators(db, context.organization):
             raise authorization_error("last_admin")
+    await sync.queue(db)
     await finish_group_write(
         mutation.request, context, GroupWrite(group, audit_actions.GROUP_DELETE)
     )

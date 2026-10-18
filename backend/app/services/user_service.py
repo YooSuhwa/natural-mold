@@ -247,6 +247,7 @@ async def delete_user(
     actor, then the User row is locked and both checks repeat; a grant that slipped in
     answers 409 ``conflict``. No route calls this yet (E-02 follow-up).
     """
+    from app.authz.membership_sync import capture_account  # call-time: import cycle
     from app.authz.resource_lifecycle import LifecycleChange  # call-time: import cycle
 
     if await db.scalar(select(User.id).where(User.id == user_id)) is None:
@@ -259,7 +260,9 @@ async def delete_user(
         return change
     await require_account_resources_released(db, user_id)
     await require_no_account_grants(db, user_id)
+    syncs = await capture_account(db, user_id)
     await cleanup_user_resources(db, user_id)
     await db.delete(user)
     await db.flush()
-    return change
+    queued = [i for sync in syncs for i in await sync.queue(db)]  # membership rows cascade
+    return LifecycleChange((*change.outbox_ids, *queued))

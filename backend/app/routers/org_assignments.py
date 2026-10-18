@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
+from app.authz.membership_apply import apply_for_request
 from app.authz.org_control import OrgControlContext
 from app.authz.policies import SELF, authz_policy
 from app.dependencies import verify_csrf
@@ -47,6 +48,7 @@ async def replace_roles(
     mutation: OrgMutationRequest = Depends(mutation_request),
 ) -> JSONResponse:
     result = await roles.replace_roles(mutation, context, payload)
+    await apply_for_request(mutation.request, mutation.db)
     return JSONResponse(
         content=result.model_dump(mode="json"), headers={"ETag": etag(result.updated_at)}
     )
@@ -77,6 +79,7 @@ async def replace_capabilities(
     mutation: OrgMutationRequest = Depends(mutation_request),
 ) -> JSONResponse:
     result = await capabilities.replace_capabilities(mutation, context, payload)
+    await apply_for_request(mutation.request, mutation.db)
     return JSONResponse(
         content=result.model_dump(mode="json"), headers={"ETag": etag(result.updated_at)}
     )

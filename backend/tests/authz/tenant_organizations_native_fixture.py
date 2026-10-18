@@ -33,6 +33,7 @@ from app.models.organization_group import OrgInvitation
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from tests.authz.company_administration_migration_fixture import _runner_dsns
+from tests.authz.native_marker_cleanup import delete_revocation_markers
 from tests.authz.registration_fixture import clear_default_membership, seed_registration_default
 from tests.conftest import AuthSession, register_session
 
@@ -216,6 +217,7 @@ async def native_task7_cleanup_guard(
                 delete(TenantRoleGrant).where(TenantRoleGrant.tenant_id.in_(tenant_ids))
             )
             await db.execute(delete(TenantMember).where(TenantMember.tenant_id.in_(tenant_ids)))
+            await delete_revocation_markers(db, tenant_ids)
             await db.execute(delete(Organization).where(Organization.tenant_id.in_(tenant_ids)))
             await db.execute(delete(Tenant).where(Tenant.id.in_(tenant_ids)))
         if user_ids:

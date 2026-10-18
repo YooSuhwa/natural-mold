@@ -36,6 +36,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.services.tenants.versioning import etag
 from tests.authz.company_administration_migration_fixture import _runner_dsns
+from tests.authz.native_marker_cleanup import delete_revocation_markers
 
 PASSWORD = "task8-native-password"
 APPLICATIONS = ("task8_member_first", "task8_member_second", "task8_member_observer")
@@ -218,6 +219,7 @@ async def cleanup_owned_rows(sessions: NativeSessions) -> None:
                 delete(TenantRoleGrant).where(TenantRoleGrant.tenant_id.in_(tenant_ids))
             )
             await db.execute(delete(TenantMember).where(TenantMember.tenant_id.in_(tenant_ids)))
+            await delete_revocation_markers(db, tenant_ids)
             await db.execute(delete(Organization).where(Organization.tenant_id.in_(tenant_ids)))
             await db.execute(delete(Tenant).where(Tenant.id.in_(tenant_ids)))
         if user_ids:

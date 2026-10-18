@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse
 
+from app.authz.membership_apply import apply_for_request
 from app.authz.org_control import OrgControlContext
 from app.authz.policies import SELF, authz_policy
 from app.dependencies import verify_csrf
@@ -44,6 +45,7 @@ async def add_group_member(
     mutation: GroupMutationRequest = Depends(group_mutation_request),
 ) -> JSONResponse:
     result, created = await group_members.add_group_member(mutation, context, payload)
+    await apply_for_request(mutation.request.request, mutation.request.db)
     return JSONResponse(
         status_code=201 if created else 200,
         content=result.model_dump(mode="json"),
@@ -59,4 +61,5 @@ async def remove_group_member(
     mutation: GroupMutationRequest = Depends(group_mutation_request),
 ) -> Response:
     await group_members.remove_group_member(mutation, context, user_id)
+    await apply_for_request(mutation.request.request, mutation.request.db)
     return Response(status_code=204)

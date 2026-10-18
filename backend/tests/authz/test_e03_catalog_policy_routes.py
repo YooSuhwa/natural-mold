@@ -96,12 +96,14 @@ async def test_legacy_put_stores_policy_without_fanout_writes(
     db: AsyncSession, raw_client: AsyncClient, org_fixture: OrgFixture
 ) -> None:
     catalog = await _seed(db, org_fixture)
+    # The fixture's signup queued its (inert in legacy) membership tuples; the PUT adds none.
+    queued = await db.scalar(select(func.count()).select_from(AuthzOutbox))
     changed = await _put(
         raw_client, org_fixture, [{"type": "tool", "id": str(catalog.tool), "enabled": False}]
     )
     assert changed.status_code == 200
     assert await db.scalar(select(func.count()).select_from(ResourceGrant)) == 0
-    assert await db.scalar(select(func.count()).select_from(AuthzOutbox)) == 0
+    assert await db.scalar(select(func.count()).select_from(AuthzOutbox)) == queued
 
 
 async def test_impact_counts_live_agents_and_hides_unknown_items(

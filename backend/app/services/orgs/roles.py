@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
+from app.authz.membership_sync import MembershipSync, principal_subject
 from app.authz.org_administrators import active_administrators
 from app.authz.org_assignment_queries import role_query
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
@@ -99,6 +100,11 @@ async def replace_roles(
             await active_administrators(db, context.organization) if wanted != existing else set()
         )
     if wanted != existing:
+        org = context.organization
+        subject = principal_subject(
+            org.tenant_id, org.id, payload.principal.type, payload.principal.id
+        )
+        sync = await MembershipSync.capture(db, org.tenant_id, [subject])
         async with db.begin_nested():
             for row in current:
                 if row.role not in wanted:
@@ -119,6 +125,7 @@ async def replace_roles(
             await db.flush()
             if administrators and not await active_administrators(db, context.organization):
                 raise authorization_error("last_admin")
+        await sync.queue(db)
         await finish_assignment_write(
             mutation,
             context,

@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
+from app.authz.membership_projection import UserSubject
+from app.authz.membership_sync import MembershipSync
 from app.authz.org_control import OrgControlActor, OrgControlContext
 from app.authz.org_member_exit import MemberExitPlan, apply_member_exit, preflight_member_exit
 from app.authz.session_revocation import revoke_sessions_without_company
@@ -113,6 +115,8 @@ async def exit_tenant_member(command: TenantMemberExitRequest) -> TenantMemberEx
             .with_for_update()
             .execution_options(populate_existing=True)
         )
+        subject = UserSubject(command.tenant_id, command.user_id)
+        sync = await MembershipSync.capture(db, command.tenant_id, [subject])
     async with db.begin_nested():
         for plan in plans:
             await apply_member_exit(db, plan)
@@ -128,6 +132,7 @@ async def exit_tenant_member(command: TenantMemberExitRequest) -> TenantMemberEx
         await record_tenant_exit(command)
         await db.flush()
         await revoke_sessions_without_company(db, command.user_id)
+    await sync.queue(db)  # every organization's membership marker + the tenant tuples
     return TenantMemberExitResult(organization_ids)
 
 

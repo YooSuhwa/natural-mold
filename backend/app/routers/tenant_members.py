@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.membership_apply import apply_for_request
 from app.authz.policies import SELF, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.schemas.tenant_members import (
@@ -80,6 +81,7 @@ async def post_member(
     mutation: TenantMemberWrite = Depends(mutation_request),
 ) -> JSONResponse:
     result = await add_member(mutation, payload.user_id)
+    await apply_for_request(mutation.request, mutation.db)
     return JSONResponse(
         status_code=201,
         content=result.view.model_dump(mode="json"),
@@ -99,6 +101,7 @@ async def patch_member(
     mutation: TenantMemberWrite = Depends(mutation_request),
 ) -> JSONResponse:
     result = await set_member_status(mutation, user_id, payload.status)
+    await apply_for_request(mutation.request, mutation.db)
     return JSONResponse(
         content=result.view.model_dump(mode="json"),
         headers={"ETag": etag(result.updated_at)},
@@ -112,6 +115,7 @@ async def delete_member(
     mutation: TenantMemberWrite = Depends(mutation_request),
 ) -> Response:
     updated_at = await remove_member(mutation, user_id)
+    await apply_for_request(mutation.request, mutation.db)
     return Response(status_code=204, headers={"ETag": etag(updated_at)})
 
 
@@ -140,6 +144,7 @@ async def put_roles(
     mutation: TenantMemberWrite = Depends(mutation_request),
 ) -> JSONResponse:
     result = await replace_roles(mutation, user_id, payload.roles)
+    await apply_for_request(mutation.request, mutation.db)
     return JSONResponse(
         content=result.view.model_dump(mode="json"),
         headers={"ETag": etag(result.updated_at)},

@@ -6,6 +6,8 @@ from uuid import NAMESPACE_URL, uuid5
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.membership_projection import OrgSubject, UserSubject
+from app.authz.membership_sync import MembershipSync
 from app.authz.tenant_scoping import tenant_role_query
 from app.database import is_postgres
 from app.exceptions import AppError
@@ -63,6 +65,11 @@ async def seed_e2e_scope(db: AsyncSession, user: User) -> None:
         await db.flush()
     if org.tenant_id != E2E_TENANT_ID or org.status != "active":
         raise unavailable_scope()
+    subjects = [
+        UserSubject(E2E_TENANT_ID, user.id, frozenset({E2E_ORG_ID})),
+        OrgSubject(E2E_ORG_ID),
+    ]
+    sync = await MembershipSync.capture(db, E2E_TENANT_ID, subjects)
     company_member = await db.get(TenantMember, (E2E_TENANT_ID, user.id))
     if company_member is None:
         db.add(TenantMember(tenant_id=E2E_TENANT_ID, user_id=user.id))
@@ -104,4 +111,4 @@ async def seed_e2e_scope(db: AsyncSession, user: User) -> None:
         )
     if user.last_active_org_id is None:
         user.last_active_org_id = E2E_ORG_ID
-    await db.flush()
+    await sync.queue(db)  # the drain projects the fixture's tuples in shadow/enforce runs

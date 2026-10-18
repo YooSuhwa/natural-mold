@@ -3,6 +3,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
+from app.authz.membership_sync import MembershipSync, principal_subject
 from app.authz.org_assignment_queries import capability_query
 from app.authz.org_control import OrgControlContext, OrgControlTarget, load_org_control
 from app.authz.org_principals import PrincipalTarget, validate_principal
@@ -85,6 +86,11 @@ async def replace_capabilities(
     current = list((await db.scalars(statement)).all())
     wanted, existing = set(payload.capabilities), {row.capability for row in current}
     if wanted != existing:
+        org = context.organization
+        subject = principal_subject(
+            org.tenant_id, org.id, payload.principal.type, payload.principal.id
+        )
+        sync = await MembershipSync.capture(db, org.tenant_id, [subject])
         for row in current:
             if row.capability not in wanted:
                 await db.delete(row)
@@ -101,6 +107,7 @@ async def replace_capabilities(
                     granted_by=context.actor.id,
                 )
             )
+        await sync.queue(db)
         await finish_assignment_write(
             mutation,
             context,

@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.delegation_links import DelegationScope
 from app.authz.delegation_sweep import revalidate_after
 from app.authz.member_exit_preview import member_exit_preview
+from app.authz.membership_apply import apply_for_request
+from app.authz.membership_sync import apply_membership_outbox
 from app.authz.org_control import OrgControlContext
 from app.authz.policies import SELF, authz_policy
 from app.authz.resource_lifecycle import apply_lifecycle
@@ -65,6 +67,7 @@ async def create_member(
     mutation: OrgMutationRequest = Depends(mutation_request),
 ) -> JSONResponse:
     result, created = await members.create_member(mutation, context, payload)
+    await apply_for_request(mutation.request, mutation.db)
     return JSONResponse(
         status_code=201 if created else 200,
         content=result.model_dump(mode="json"),
@@ -80,6 +83,7 @@ async def change_member_status(
     mutation: MemberMutationRequest = Depends(member_mutation_request),
 ) -> JSONResponse:
     result = await members.change_member_status(mutation, context, payload)
+    await apply_for_request(mutation.request.request, mutation.request.db)
     return JSONResponse(
         content=result.model_dump(mode="json"),
         headers={"ETag": etag(context.organization.updated_at)},
@@ -112,6 +116,7 @@ async def remove_member_with_settlement(
     their entry points and remove the membership in one transaction."""
     outcome = await members.remove_member(mutation, context, authz, payload)
     await apply_lifecycle(outcome.change, authz)
+    await apply_membership_outbox(mutation.request.db, authz)
     await _validate_delegations(mutation, context, authz)
     return JSONResponse(
         content=outcome.view().model_dump(mode="json"),
@@ -128,5 +133,6 @@ async def remove_member(
 ) -> Response:
     outcome = await members.remove_member(mutation, context, authz)
     await apply_lifecycle(outcome.change, authz)
+    await apply_membership_outbox(mutation.request.db, authz)
     await _validate_delegations(mutation, context, authz)
     return Response(status_code=204)

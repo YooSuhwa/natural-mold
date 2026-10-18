@@ -31,6 +31,7 @@ from app.models.organization import (
 )
 from app.models.user import User
 from tests.authz.company_administration_migration_fixture import _runner_dsns
+from tests.authz.native_marker_cleanup import delete_revocation_markers
 from tests.conftest import AuthSession, register_session
 
 
@@ -172,6 +173,7 @@ async def cleanup_native_b04(sessions: NativeB04Sessions, case: NativeB04Case) -
         await db.execute(
             delete(OrganizationRoleGrant).where(OrganizationRoleGrant.tenant_id == case.tenant_id)
         )
+        await delete_revocation_markers(db, [case.tenant_id])
         await db.execute(delete(Organization).where(Organization.tenant_id == case.tenant_id))
         await db.execute(delete(Tenant).where(Tenant.id == case.tenant_id))
         await db.execute(delete(User).where(User.id == case.target_id))
@@ -195,6 +197,7 @@ async def native_b04_cleanup_guard(
             await db.execute(
                 delete(OrganizationRoleGrant).where(OrganizationRoleGrant.tenant_id.in_(tenant_ids))
             )
+            await delete_revocation_markers(db, tenant_ids)
             await db.execute(delete(Organization).where(Organization.tenant_id.in_(tenant_ids)))
             await db.execute(delete(Tenant).where(Tenant.id.in_(tenant_ids)))
         await db.execute(

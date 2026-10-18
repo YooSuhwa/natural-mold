@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.error_codes import authorization_error
+from app.authz.membership_sync import capture_user
 from app.models.organization import (
     Organization,
     OrganizationMember,
@@ -71,6 +72,8 @@ async def join_invited_membership(db: AsyncSession, target: InvitationMembership
         raise authorization_error("policy_locked")
     if company is None:
         await require_member_capacity(db, organization.tenant_id)  # H-06 member_limit
+    sync = await capture_user(db, organization.tenant_id, user.id, organization.id)
+    if company is None:
         db.add(TenantMember(tenant_id=organization.tenant_id, user_id=user.id))
     member_added = member is None or member.status != "active"
     if member is None:
@@ -122,4 +125,5 @@ async def join_invited_membership(db: AsyncSession, target: InvitationMembership
                 )
             )
             added_groups.append(group_id)
+    await sync.queue(db)  # 7.2.1 "구성원 추가(초대 수락)"
     return JoinedFacts(target, member_added, role_added, tuple(added_groups), company is None)

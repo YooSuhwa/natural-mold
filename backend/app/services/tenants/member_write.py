@@ -42,12 +42,17 @@ class TenantMemberWriteContext:
 
 
 async def lock_tenant_member_write(
-    command: TenantMemberWrite, *, lock_children: bool
+    command: TenantMemberWrite, *, lock_children: bool, lock_organizations: bool = False
 ) -> TenantMemberWriteContext:
-    """Lock Tenant first, authorize the caller, then lock children; DELETE defers them to exit."""
+    """Lock Tenant first, authorize the caller, then lock children; DELETE defers them to exit.
+
+    ``lock_organizations`` also locks every organization (tenant first, then UUID-byte
+    order) before the children: company role/status changes record a revocation marker in
+    each organization (8.6, ``membership_sync``)."""
     db = command.db
     with db.no_autoflush:
-        locked = await lock_tenant_org_write(db, command.tenant_id, ())
+        orgs = None if lock_organizations else ()
+        locked = await lock_tenant_org_write(db, command.tenant_id, orgs)
         members, roles = await _child_rows(command, actor_only=True, lock=False)
         _authorize(locked.tenant, members, roles, command.actor.id)
         if lock_children:
