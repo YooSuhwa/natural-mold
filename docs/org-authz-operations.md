@@ -330,8 +330,60 @@ ORDER BY hits DESC;
 
 ## 9. 부하·보안 점검 (I-05) — 미완료
 
-I-05 중 **운영 문서(이 문서)만 작성했습니다.** 부하·보안 점검은 스테이징에서 `AUTHZ_MODE=enforce`(I-09 TLS 구성)로
-실행해야 하므로 아직 하지 않았습니다. 아래 목표(기획서 16.6, 8.10)를 모두 달성해야 I-05가 완료됩니다.
+I-05 중 **운영 문서(이 문서)와 점검 스크립트는 준비했고, 스테이징 실행은 아직입니다.** 부하·보안 점검은 스테이징에서
+`AUTHZ_MODE=enforce`(I-09 TLS 구성)로 실행해야 합니다. 아래 목표(기획서 16.6, 8.10)를 모두 달성해야 I-05가 완료됩니다.
+
+### 9.0 실행 방법 (스크립트)
+
+두 스크립트는 HTTP(S)로 배포된 API(부하 시험은 OpenFGA HTTP API도)만 호출합니다. DB에 직접 붙지 않으며 새 패키지 없이
+`backend/.venv`의 Python으로 실행합니다.
+
+- **설정 파일.** `scripts/i05_config.example.json`을 복사해 스테이징 값으로 채웁니다. 회사 A 사용자(구성원·소유자·동료),
+  회사 B 사용자, 부하용 에이전트, 회사 B의 자원 ID(`security.foreign`, 경로 변수 이름별), 자기 자원 ID(`security.own`,
+  중첩 경로용)를 적습니다. **비밀번호·토큰은 설정 파일에 쓰지 않습니다.** 설정에는 `password_env`, `token_env`처럼 환경 변수
+  이름만 적고 값은 셸에서 `export`합니다. 설정에 비밀 값이 그대로 있으면 두 스크립트 모두 실행을 거부합니다(종료 코드 2).
+- **안전장치.** localhost가 아닌 주소는 `--i-know-this-is-staging`이 없으면 거부하고, https가 아니면 거부합니다
+  (`--allow-http`로만 허용). DB·브로커 포트(5432, 6432, 6379 등)와 주소 안 자격 증명도 거부합니다. `--dry-run`은 로그인하지
+  않고 설정 검사, 시나리오·프로브 계획, 비어 있는 환경 변수 이름만 출력합니다. 먼저 `--dry-run`으로 확인합니다.
+- **부하 시험** — `scripts/i05_load_test.py`.
+
+  ```bash
+  export I05_A_MEMBER_PASSWORD=... I05_A_OWNER_PASSWORD=... I05_A_PEER_PASSWORD=... I05_FGA_TOKEN=...
+  backend/.venv/bin/python scripts/i05_load_test.py --config i05.json --i-know-this-is-staging --dry-run
+  backend/.venv/bin/python scripts/i05_load_test.py --config i05.json --i-know-this-is-staging \
+      --concurrency 8 --iterations 500 --warmup 10 --ramp-seconds 5
+  ```
+
+  시나리오(`--list`로 확인, `--scenarios a,b`로 선택): `fga.check`(p95 20ms), `fga.check_concurrent_8`(동시 8, p95 20ms),
+  `fga.batch_check_50`(p95 60ms), `fga.list_objects`(3초 한도, 1,000개 도달 시 오류), `api.resource_check`(`GET
+  /api/agents/{id}` 단건 판정), `api.run_readiness`(실행 준비 BatchCheck), `api.list.*`(에이전트·스킬·자격 증명·MCP·도구·
+  마켓플레이스·대화 목록, 후보 + 페이지 BatchCheck), `share.propagation`(grant 생성 → 받는 사람에게 보일 때까지,
+  회수 → 404가 될 때까지의 아웃박스 반영 지연, 기본 p95 2초 = 8.6 즉시 반영 제한 시간), `api.run_start`(대화 생성 →
+  `run.start` 명령 응답 시간 → 즉시 취소; LLM 호출이 생기므로 scripted 모델 에이전트로 `--scenarios`에 명시할 때만 실행).
+  기획서에 수치가 없는 항목(목록 API, 실행 준비, 실행 시작)은 `measured`로 기록만 하며, 설정 `targets`로 기준을 줄 수 있습니다.
+  결과는 `output/i05/load-<시각>/load-report.json`·`.md`(p50/p95/p99, 오류율, 기준 대비 판정)에 남고, 기준을 하나라도
+  못 맞추면 종료 코드 1입니다. OpenFGA 기준선 재측정은 기존 `scripts/p0/fga_bench.py`를 스테이징 OpenFGA에 그대로 씁니다.
+- **보안 점검** — `scripts/i05_security_check.py`. 배포한 커밋에서 라우트 목록을 먼저 뽑습니다(정책은 `app/authz`의
+  `authz_policy` 표식).
+
+  ```bash
+  PYTHONPATH=backend backend/.venv/bin/python scripts/i05_route_inventory.py --out output/i05/routes.json
+  backend/.venv/bin/python scripts/i05_security_check.py --config i05.json --i-know-this-is-staging --dry-run
+  backend/.venv/bin/python scripts/i05_security_check.py --config i05.json --i-know-this-is-staging
+  ```
+
+  점검(`--checks`로 선택): `idor`(경로 변수가 있는 모든 RES·PRIVATE·SELF·CAP·GOVERNANCE 라우트에 회사 B ID를 넣어 404,
+  그리고 어디에도 없는 ID와 상태·오류 코드가 같은지 = 404 동일성; 중첩 경로는 자기 대화 + 남의 아티팩트처럼 섞음),
+  `csrf`(없는 ID로 변경 요청을 CSRF 헤더 없이·위조해 보내 403 `csrf_mismatch`), `org_cookie`(구성원이 아닌 조직을
+  `moldy_active_org`에 넣으면 403), `rate_limit`(회사 A 사용자로 조직 검색 한도를 소진해도 회사 B는 429가 아님),
+  `share`(자기 대화 공유 → 익명 열람 200, 공유 토큰 아래 남의 아티팩트 404, 임의 토큰 404, 정지 회사 토큰 404, 회수 후 404),
+  `transport`(인증 쿠키 HttpOnly·Secure, `moldy_active_org` 속성이 인증 쿠키와 같음, http→https 리다이렉트 또는 거부,
+  인증서 검증·TLS 1.2 이상, 권장 헤더는 경고), `rls_parity`(같은 사용자로 RLS 켠 배포와 끈 배포의 목록 ID가 같은지).
+  변경 라우트 IDOR는 빈 본문으로만 보내며 `--include-mutations`(DELETE는 `--include-delete`도)를 줄 때만 실행합니다.
+  계획 요약의 `unprobed`(고정 ID가 없는 라우트)와 `families_without_probe`를 보고 `security.foreign`을 채워 빈 곳을 없앱니다.
+  결과는 `output/i05/security-<시각>/security-report.json`·`.md`, 실패가 하나라도 있으면 종료 코드 1입니다.
+- 두 스크립트로 확인되지 않는 항목(9.2 RLS 코드 검사, 9.3의 래칫·기동 거부, 9.4의 도구·위임·마켓플레이스·어시스턴트 항목)은
+  기존 테스트와 수동 점검으로 확인합니다.
 
 ### 9.1 부하 (조직 1, 사용자 2,000, 에이전트 5,000, grant 50,000)
 
