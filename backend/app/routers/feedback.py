@@ -29,6 +29,7 @@ from app.dependencies import (
     get_current_user,
     get_db,
     get_org_context,
+    owned_conversation,
     verify_csrf,
 )
 from app.error_codes import conversation_not_found, message_not_found
@@ -118,8 +119,9 @@ async def clear_feedback(
 @router.get(
     "/api/conversations/{conversation_id}/feedback",
     response_model=list[MessageFeedbackResponse],
+    dependencies=[Depends(owned_conversation)],  # I-05: foreign/unknown conversation -> 404
 )
-@authz_policy(PRIVATE("message_feedbacks"))
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def list_feedback_for_conversation(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_company_db),

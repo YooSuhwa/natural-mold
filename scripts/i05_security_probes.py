@@ -13,12 +13,31 @@ from typing import Any
 
 import httpx
 from i05_http import ACTIVE_ORG_COOKIE, Session, error_code
-from i05_report import Finding
+from i05_report import Finding, FindingVerdict
 from i05_route_inventory import Probe
 
 
 def _body(method: str) -> dict[str, Any]:
     return {} if method in ("GET", "HEAD", "DELETE") else {"json": {}}
+
+
+# Shared non-404 answers that still hide existence: plan 13.12.1 "현재 조직 구성원이 아님".
+HIDING_DENIALS = frozenset({(403, "org_access_denied")})
+GATE_NOT_REACHED = "gate not reached: request validation answered first (needs a valid body); "
+
+
+def parity_verdict(foreign: httpx.Response, control: httpx.Response) -> tuple[FindingVerdict, str]:
+    """``(verdict, detail prefix)``: 404 parity passes; same 422 means the gate was not hit."""
+    answer = (foreign.status_code, error_code(foreign))
+    if foreign.is_success:
+        return "fail", "CRITICAL foreign resource answered 2xx; "
+    if answer != (control.status_code, error_code(control)):
+        return "fail", "foreign and nonexistent IDs answer differently; "
+    if answer[0] == 404 or answer in HIDING_DENIALS:
+        return "pass", ""
+    if answer[0] == 422:
+        return "warn", GATE_NOT_REACHED
+    return "fail", ""
 
 
 async def idor(session: Session, probes: Sequence[Probe]) -> list[Finding]:
@@ -28,30 +47,35 @@ async def idor(session: Session, probes: Sequence[Probe]) -> list[Finding]:
         foreign = await session.call(probe.method, probe.path, **_body(probe.method))
         control = await session.call(probe.method, probe.control_path, **_body(probe.method))
         target = f"{probe.method} {probe.template}"
+        verdict, prefix = parity_verdict(foreign, control)
         detail = (
-            f"foreign={foreign.status_code}/{error_code(foreign)} "
+            f"{prefix}foreign={foreign.status_code}/{error_code(foreign)} "
             f"control={control.status_code}/{error_code(control)} "
             f"params={list(probe.foreign_params)}"
         )
-        same = (foreign.status_code, error_code(foreign)) == (
-            control.status_code,
-            error_code(control),
-        )
-        ok = foreign.status_code == 404 and same
-        if foreign.is_success:
-            detail = "CRITICAL foreign resource answered 2xx; " + detail
-        findings.append(Finding("idor.404_parity", target, "pass" if ok else "fail", detail))
+        findings.append(Finding("idor.404_parity", target, verdict, detail))
     return findings
 
 
-async def csrf(session: Session, probes: Sequence[Probe]) -> list[Finding]:
-    """Mutations without (or with a forged) X-CSRF-Token must get 403 csrf_mismatch."""
+async def csrf(
+    session: Session, probes: Sequence[Probe], *, operator: Session | None = None
+) -> list[Finding]:
+    """Mutations without (or with a forged) X-CSRF-Token must get 403 csrf_mismatch.
+
+    Operator-only (SUPER) routes refuse a non-operator before CSRF, so they are probed
+    with the ``operator`` session, or skipped without one.
+    """
     findings: list[Finding] = []
     forged = {"X-CSRF-Token": secrets.token_urlsafe(24)}
     for probe in probes:
         target = f"{probe.method} {probe.template}"
+        caller = operator if probe.kind == "SUPER" else session
+        if caller is None:
+            reason = "operator-only route; set security.operator to probe its CSRF check"
+            findings.append(Finding("csrf.operator_route", target, "skipped", reason))
+            continue
         for label, headers, use_csrf in (("missing", {}, False), ("forged", forged, False)):
-            response = await session.call(
+            response = await caller.call(
                 probe.method, probe.path, csrf=use_csrf, headers=headers, **_body(probe.method)
             )
             ok = response.status_code == 403 and error_code(response) == "csrf_mismatch"

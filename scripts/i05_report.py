@@ -29,9 +29,14 @@ def _ms(value: float | None) -> str:
     return "-" if value is None else f"{value:.1f}"
 
 
+def _title(base: str, meta: dict[str, Any]) -> str:
+    label = meta.get("label")
+    return f"# {base} ({label})" if label else f"# {base}"
+
+
 def load_markdown(meta: dict[str, Any], results: Sequence[MetricResult]) -> str:
     lines = [
-        "# I-05 load test report",
+        _title("I-05 load test report", meta),
         "",
         f"- base URL: `{meta.get('base_url')}`",
         f"- started: {meta.get('started_at')}",
@@ -57,7 +62,7 @@ def findings_markdown(meta: dict[str, Any], findings: Sequence[Finding]) -> str:
     for finding in findings:
         counts[finding.verdict] = counts.get(finding.verdict, 0) + 1
     lines = [
-        "# I-05 security probe report",
+        _title("I-05 security probe report", meta),
         "",
         f"- base URL: `{meta.get('base_url')}`",
         f"- started: {meta.get('started_at')}",

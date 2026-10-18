@@ -32,6 +32,7 @@ PLACEHOLDERS = {
     "filename": "i05-probe.png",
     "tool_call_id": "i05-probe",
     "key": "i05-probe",
+    "resource_type": "tool",  # credential-bindings enum; a UUID would fail path validation
 }
 
 
@@ -52,6 +53,7 @@ class Probe:
     family: str
     foreign_params: tuple[str, ...]
     control_path: str
+    kind: str = ""
 
 
 def path_params(path: str) -> list[str]:
@@ -152,7 +154,9 @@ def plan_csrf(entries: Sequence[RouteEntry], limit: int | None = None) -> list[P
         if entry.method in SAFE_METHODS or entry.kind not in SESSION_KINDS or not params:
             continue
         path = fill(entry.path, _random_ids(params, seed=0xC5))
-        probes.append(Probe(entry.method, path, entry.path, family(entry.path), (), path))
+        probes.append(
+            Probe(entry.method, path, entry.path, family(entry.path), (), path, entry.kind)
+        )
     return probes[:limit] if limit else probes
 
 

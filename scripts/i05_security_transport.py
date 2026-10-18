@@ -51,9 +51,8 @@ def check_cookies(session: Session, https: bool) -> list[Finding]:
     else:
         diff = [key for key in COMPARED_ATTRS if org.get(key) != reference.get(key)]
         verdict = "fail" if diff else "pass"
-        out.append(
-            Finding("cookie.active_org_attrs", ACTIVE_ORG_COOKIE, verdict, f"differs {diff}")
-        )
+        detail = f"differs {diff}" if diff else ""
+        out.append(Finding("cookie.active_org_attrs", ACTIVE_ORG_COOKIE, verdict, detail))
     return out
 
 

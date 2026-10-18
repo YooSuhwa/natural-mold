@@ -380,8 +380,15 @@ I-05 중 **운영 문서(이 문서)와 점검 스크립트는 준비했고, 스
   `transport`(인증 쿠키 HttpOnly·Secure, `moldy_active_org` 속성이 인증 쿠키와 같음, http→https 리다이렉트 또는 거부,
   인증서 검증·TLS 1.2 이상, 권장 헤더는 경고), `rls_parity`(같은 사용자로 RLS 켠 배포와 끈 배포의 목록 ID가 같은지).
   변경 라우트 IDOR는 빈 본문으로만 보내며 `--include-mutations`(DELETE는 `--include-delete`도)를 줄 때만 실행합니다.
+  빈 본문 때문에 남의 ID와 없는 ID가 똑같이 422로 답하면 판정 게이트에 닿지 못한 것이라 `warn`(존재 여부는 드러나지 않음)으로,
+  비구성원 조직에 대한 403 `org_access_denied`가 양쪽에 같으면 통과로 기록합니다. 운영자 전용(SUPER) 라우트의 CSRF는
+  `security.operator`(super user 페르소나)로 보내며, 없으면 `skipped`입니다. `--label "local rehearsal"`처럼 주면 보고서 제목에 붙습니다.
   계획 요약의 `unprobed`(고정 ID가 없는 라우트)와 `families_without_probe`를 보고 `security.foreign`을 채워 빈 곳을 없앱니다.
   결과는 `output/i05/security-<시각>/security-report.json`·`.md`, 실패가 하나라도 있으면 종료 코드 1입니다.
+- **로컬 리허설(2026-10-18).** 임시 Postgres·메모리 OpenFGA·`AUTHZ_MODE=enforce` 로컬 스택에서 두 스크립트를 끝까지 돌려
+  하네스가 동작함을 확인했습니다. 이 수치는 스테이징 결과를 대신하지 않습니다. 회사 B 시드 시 주의: 회사 초대로 가입한 첫 관리자는
+  조직 구성원이 아니므로 `POST /api/orgs/{org_id}/members`로 자신을 넣어야 하고, 기본 조직 가입·구성원 추가는 OpenFGA 구성원 튜플을
+  바로 쓰지 않으므로(C-04 미완) 시드 뒤 `authz reconcile --apply`를 실행합니다. 가입 한도(시간당 5회)는 시드 동안만 끄고 점검 전에 켭니다.
 - 두 스크립트로 확인되지 않는 항목(9.2 RLS 코드 검사, 9.3의 래칫·기동 거부, 9.4의 도구·위임·마켓플레이스·어시스턴트 항목)은
   기존 테스트와 수동 점검으로 확인합니다.
 

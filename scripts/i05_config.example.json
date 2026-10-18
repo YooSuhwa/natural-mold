@@ -4,7 +4,8 @@
     "a_member": {"email": "i05-a-member@a.example", "password_env": "I05_A_MEMBER_PASSWORD", "org_id": "00000000-0000-4000-8000-00000000a001"},
     "a_owner": {"email": "i05-a-owner@a.example", "password_env": "I05_A_OWNER_PASSWORD", "org_id": "00000000-0000-4000-8000-00000000a001"},
     "a_peer": {"email": "i05-a-peer@a.example", "password_env": "I05_A_PEER_PASSWORD", "org_id": "00000000-0000-4000-8000-00000000a001"},
-    "b_member": {"email": "i05-b-member@b.example", "password_env": "I05_B_MEMBER_PASSWORD", "org_id": "00000000-0000-4000-8000-00000000b001"}
+    "b_member": {"email": "i05-b-member@b.example", "password_env": "I05_B_MEMBER_PASSWORD", "org_id": "00000000-0000-4000-8000-00000000b001"},
+    "operator": {"email": "i05-operator@a.example", "password_env": "I05_OPERATOR_PASSWORD"}
   },
   "load": {"user": "a_member", "agent_id": "<agent a_member can run>"},
   "run_start": {"user": "a_member", "agent_id": "<agent on the scripted model>"},
@@ -23,6 +24,7 @@
   "targets": {"api.list.agents": {"p95_ms": null, "source": "plan 16.6 (measure only)"}},
   "security": {
     "prober": "a_member",
+    "operator": "operator",
     "other_company": "b_member",
     "inventory": "output/i05/routes.json",
     "foreign_org_id": "00000000-0000-4000-8000-00000000b001",

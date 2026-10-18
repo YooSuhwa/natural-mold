@@ -48,6 +48,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ramp-seconds", type=float, default=0.0)
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument("--label", default="", help='report label, e.g. "local rehearsal"')
     parser.add_argument("--dry-run", action="store_true", help="validate and print the plan")
     parser.add_argument("--allow-http", action="store_true")
     parser.add_argument("--i-know-this-is-staging", dest="staging_ack", action="store_true")
@@ -155,7 +156,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (GuardError, ValueError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
-    meta = {"base_url": config.base_url, "started_at": now_iso(), "settings": asdict(settings)}
+    meta = {"base_url": config.base_url, "label": args.label, "started_at": now_iso()}
+    meta["settings"] = asdict(settings)
     results = asyncio.run(execute(config, chosen, settings, args))
     payload = {**meta, "results": [r.as_dict() for r in results]}
     out_dir = args.output_dir or default_output_dir("load")

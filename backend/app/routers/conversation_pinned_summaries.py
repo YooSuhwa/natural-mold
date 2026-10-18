@@ -169,8 +169,8 @@ async def write_pinned_summary(
     conversation_id: uuid.UUID,
     data: PinConversationSummaryRequest,
     db: AsyncSession = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),  # before the ownership gate: CSRF 403 -> 404
     conv: PinnedConversationRef = Depends(owned_conversation),
-    _csrf: None = Depends(verify_csrf),
     context: OrgContext = Depends(get_org_context),
 ) -> PinnedConversationSummaryResponse:
     active, historical = await _load_sources(
@@ -197,8 +197,8 @@ async def write_pinned_summary(
 async def delete_pinned_summary(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _conv: PinnedConversationRef = Depends(owned_conversation),
     _csrf: None = Depends(verify_csrf),
+    _conv: PinnedConversationRef = Depends(owned_conversation),
     context: OrgContext = Depends(get_org_context),
 ) -> Response:
     await unpin_summary(db, conversation_id, context)

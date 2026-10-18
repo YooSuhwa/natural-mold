@@ -167,3 +167,11 @@ def test_cli_refuses_remote_without_ack_and_dry_run_never_logs_in(
 def test_cli_refuses_real_run_when_secret_env_is_unset(tmp_path: Path) -> None:
     local = _config(tmp_path, "http://localhost:8001")
     assert i05_load_test.main(["--config", str(local), "--scenarios", "api.list.agents"]) == 2
+
+
+def test_load_report_carries_the_run_label() -> None:
+    from i05_report import load_markdown
+
+    meta = {"base_url": "http://localhost", "label": "local rehearsal"}
+    assert "local rehearsal" in load_markdown(meta, []).splitlines()[0]
+    assert i05_load_test.parse_args(["--label", "local rehearsal"]).label == "local rehearsal"

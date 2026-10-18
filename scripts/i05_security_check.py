@@ -41,6 +41,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--include-delete", action="store_true")
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument("--label", default="", help='report label, e.g. "local rehearsal"')
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--allow-http", action="store_true")
     parser.add_argument("--i-know-this-is-staging", dest="staging_ack", action="store_true")
@@ -91,7 +92,11 @@ async def run(
         if "idor" in checks:
             out += await probes.idor(prober, plan["idor"])
         if "csrf" in checks:
-            out += await probes.csrf(prober, plan["csrf"])
+            operator = None
+            if sec.get("operator"):
+                operator = await login(config.base_url, config.persona(str(sec["operator"])))
+                others.append(operator)
+            out += await probes.csrf(prober, plan["csrf"], operator=operator)
         if "org_cookie" in checks and sec.get("foreign_org_id"):
             out += await probes.forged_org_cookie(prober, str(sec["foreign_org_id"]))
         if "rate_limit" in checks and sec.get("other_company"):
@@ -154,7 +159,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (GuardError, ValueError, OSError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
-    meta = {"base_url": config.base_url, "started_at": now_iso(), "checks": sorted(checks)}
+    meta = {"base_url": config.base_url, "label": args.label, "started_at": now_iso()}
+    meta["checks"] = sorted(checks)
     findings = asyncio.run(run(config, plan, args, checks))
     payload = {
         **meta,

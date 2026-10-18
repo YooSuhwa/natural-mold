@@ -176,3 +176,59 @@ def test_security_cli_guard_and_dry_run(tmp_path: Path, capsys: pytest.CaptureFi
     assert summary["idor_probes"] == 1 and summary["missing_env"] == ["I05_UNSET_PW"]
     assert "/api/skills" in summary["families_without_probe"]
     assert i05_security_check.main(["--config", str(remote), "--i-know-this-is-staging"]) == 2
+
+
+def _parity_session(monkeypatch: pytest.MonkeyPatch, answer: httpx.Response) -> Session:
+    def reply(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/auth/login":
+            return handler(request)
+        return httpx.Response(answer.status_code, json=answer.json())
+
+    monkeypatch.setenv("I05_T_PW", "pw")
+    persona = Persona("a", "a@x.test", "I05_T_PW")
+    return asyncio.run(login("http://localhost", persona, transport=httpx.MockTransport(reply)))
+
+
+@pytest.mark.parametrize(
+    ("status", "code", "verdict"),
+    [
+        (404, "not_found", "pass"),
+        (403, "org_access_denied", "pass"),  # plan 13.12.1 non-member organization denial
+        (422, "VALIDATION_ERROR", "warn"),  # body validation answered before the gate
+        (403, "permission_required", "fail"),
+        (200, None, "fail"),
+    ],
+)
+def test_idor_parity_verdict_by_shared_answer(
+    monkeypatch: pytest.MonkeyPatch, status: int, code: str | None, verdict: str
+) -> None:
+    body = {"error": {"code": code}} if code else {"id": FOREIGN}
+    session = _parity_session(monkeypatch, httpx.Response(status, json=body))
+    found, _ = plan_idor(ENTRIES[:1], {"agent_id": FOREIGN})
+    (finding,) = asyncio.run(probes.idor(session, found))
+    assert finding.verdict == verdict
+
+
+def test_csrf_on_operator_routes_needs_an_operator_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entries = [RouteEntry("PATCH", "/api/models/{model_id}", "SUPER")]
+    planned = plan_csrf(entries)
+    assert planned[0].kind == "SUPER"
+    member = _parity_session(
+        monkeypatch, httpx.Response(403, json={"error": {"code": "forbidden"}})
+    )
+    skipped = asyncio.run(probes.csrf(member, planned))
+    assert {f.verdict for f in skipped} == {"skipped"}
+    operator = _session(monkeypatch)
+    checked = asyncio.run(probes.csrf(member, planned, operator=operator))
+    assert len(checked) == 2 and all(f.verdict == "pass" for f in checked)
+
+
+def test_reports_carry_the_run_label() -> None:
+    from i05_report import Finding, findings_markdown
+
+    meta = {"base_url": "http://localhost", "label": "local rehearsal"}
+    text = findings_markdown(meta, [Finding("x", "y", "pass")])
+    assert "local rehearsal" in text.splitlines()[0]
+    assert i05_security_check.parse_args(["--label", "local rehearsal"]).label == "local rehearsal"
