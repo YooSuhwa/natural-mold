@@ -65,7 +65,7 @@ async def create_invitation(
 
 
 def _require_version_syntax(supplied: str | None) -> None:
-    if parse_version(supplied) is None:
+    if parse_version(supplied, quoted=True) is None:
         raise authorization_error("stale_version")
 
 

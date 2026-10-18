@@ -15,7 +15,6 @@ ACCEPTED = [
     '"2026-10-18T03:04:05.123456Z"',
     'W/"2026-10-18T03:04:05.123456Z"',
     '"2026-10-18T12:04:05.123456+09:00"',
-    "2026-10-18T03:04:05.123456Z",
     '"2026-10-18T03:04:05.123456"',  # naive (aiosqlite) values are UTC
 ]
 REJECTED = [
@@ -51,3 +50,14 @@ def test_neighbouring_microsecond_is_stale() -> None:
     other = (INSTANT + timedelta(microseconds=1)).astimezone(timezone(timedelta(hours=9)))
     with pytest.raises(AppError):
         require_current_version(INSTANT, f'"{other.isoformat()}"')
+
+
+def test_company_writes_require_a_quoted_entity_tag_but_orgs_accept_bare() -> None:
+    bare = "2026-10-18T03:04:05.123456Z"
+    assert parse_version(bare) == INSTANT
+    assert parse_version(bare, quoted=True) is None
+    with pytest.raises(AppError):
+        require_current_version(INSTANT, bare)
+    require_current_version(INSTANT, f'"{bare}"')
+
+    org_versioning.require_current_version(Organization(updated_at=INSTANT), bare)
