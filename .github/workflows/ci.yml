@@ -33,6 +33,8 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    # A healthy run takes about 75 minutes; stop a hung run instead of using the 6 h default.
+    timeout-minutes: 120
     defaults:
       run:
         working-directory: backend

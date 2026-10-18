@@ -90,6 +90,8 @@ markers = [
     "integration: tests requiring live Postgres (skipped by default via addopts)",
 ]
 addopts = "-m 'not integration'"
+# Dump every thread's stack when a single test runs longer than 15 minutes (hang triage).
+faulthandler_timeout = 900
 filterwarnings = [
     "ignore:'crypt' is deprecated and slated for removal in Python 3.13:DeprecationWarning:passlib\\.utils",
 ]
