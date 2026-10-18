@@ -101,7 +101,7 @@ async def test_login_refresh_me_and_org_context_work_under_forced_rls(
     assert {"auth.login", "auth.refresh"} <= actions
 
 
-async def test_wrong_password_is_still_audited_and_refused(
+async def test_wrong_credentials_are_still_audited_and_refused(
     lab: RlsLab, client: AsyncClient
 ) -> None:
     _user_id, email = await _seed_user(lab)

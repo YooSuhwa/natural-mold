@@ -23,7 +23,7 @@ from tests.conftest import register_session
 pytestmark = pytest.mark.integration
 
 
-async def test_postgres_cookie_switch_and_removed_membership_block_next_request() -> None:
+async def test_postgres_org_switch_and_removed_membership_block_next_request() -> None:
     # Given: the actual B11 schema in an owned disposable database and real auth routes.
     async with async_organization_lab() as lab:
         await run_sync(command.upgrade, lab.config, "head")

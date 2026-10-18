@@ -30,7 +30,7 @@ from tests.conftest import register_session
 pytestmark = pytest.mark.integration
 
 
-async def test_live_b11_metadata_policy_uses_real_cookies_and_locked_versions(
+async def test_live_b11_metadata_policy_uses_real_session_and_locked_versions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async with async_organization_lab() as lab:
