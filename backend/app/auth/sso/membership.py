@@ -23,8 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.sso.errors import sso_error
 from app.authz import audit_actions
+from app.authz.membership_capture import LazySync
 from app.authz.membership_projection import UserSubject
-from app.authz.membership_sync import LazySync
 from app.models.organization import (
     Organization,
     OrganizationMember,

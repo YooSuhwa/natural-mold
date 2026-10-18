@@ -247,7 +247,7 @@ async def delete_user(
     actor, then the User row is locked and both checks repeat; a grant that slipped in
     answers 409 ``conflict``. No route calls this yet (E-02 follow-up).
     """
-    from app.authz.membership_sync import capture_account  # call-time: import cycle
+    from app.authz.membership_capture import capture_account  # call-time: import cycle
     from app.authz.resource_lifecycle import LifecycleChange  # call-time: import cycle
 
     if await db.scalar(select(User.id).where(User.id == user_id)) is None:

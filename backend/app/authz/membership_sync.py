@@ -50,9 +50,8 @@ from app.authz.outbox import OutboxRun, TupleOp, enqueue
 from app.authz.resource_lifecycle import LifecycleChange, apply_lifecycle
 from app.authz.revocations import ANY_SUBJECT, RevocationScope, record_revocation
 from app.authz.service_core import AuthzDecisions
-from app.authz.tenant_org_write_locks import TenantOrgWriteTarget, lock_tenant_org_writes
 from app.authz.tuple_types import RelationTuple
-from app.models.organization import Organization, TenantMember
+from app.models.organization import Organization
 
 SOURCE_TABLE = "membership"
 _TRACKED = "authz.membership.outbox"
@@ -95,12 +94,14 @@ Markers = dict[MarkerKey, tuple[RevocationScope, list[TupleOp]]]
 def _scopes(
     item: RelationTuple, before: Projection, tenant_orgs: Sequence[UUID]
 ) -> list[tuple[UUID, RevocationScope]]:
-    """The organizations (and scope) whose decisions a deleted tuple narrows."""
+    """The organizations (and scope) whose decisions a deleted tuple narrows; ``tenant_orgs``
+    is every organization of the company when the event is company-wide (role revocation,
+    company suspension), else empty."""
     kind = item.object.split(":", 1)[0]
     if kind == "tenant" and item.relation != "member":  # admin/auditor: every organization
         return [(org, "role") for org in tenant_orgs]
-    if kind == "tenant":  # company membership: the organizations the user belonged to
-        return [(org, "membership") for org in _member_orgs(item.user, before)]
+    if kind == "tenant":  # company membership: suspension marks all, an exit its own orgs
+        return [(org, "membership") for org in tenant_orgs or _member_orgs(item.user, before)]
     if kind == "group" and item.relation == "member":
         org = before.group_orgs.get(_ref_id(item.object))
         return [] if org is None else [(org, "group_member")]
@@ -184,14 +185,18 @@ class MembershipSync:
         found = tuple(dict.fromkeys(subjects))
         return cls(tenant_id, found, await project(db, found, now=now or datetime.now(UTC)))
 
-    async def queue(self, db: AsyncSession, *, now: datetime | None = None) -> tuple[UUID, ...]:
-        """Diff after the change and enqueue (no commit); ids are also ``track``-ed."""
+    async def queue(
+        self, db: AsyncSession, *, now: datetime | None = None, company_wide: bool = False
+    ) -> tuple[UUID, ...]:
+        """Diff after the change and enqueue (no commit); ids are also ``track``-ed.
+
+        ``company_wide``: a company membership delete (suspension) marks every organization."""
         stamp = now or datetime.now(UTC)
         await db.flush()
         after = await project(db, self.subjects, now=stamp)
         ops = diff_ops(self.before.tuples, after.tuples)
         deletes = [op for op in ops if op.op == "delete"]
-        tenant_orgs = await _tenant_orgs(db, self.tenant_id, deletes)
+        tenant_orgs = await _tenant_orgs(db, self.tenant_id, deletes, company_wide)
         markers, plain = plan_markers(deletes, self.before, tenant_orgs)
         ids: list[UUID] = []
         for (org, subject), (scope, rows) in sorted(markers.items(), key=_marker_order):
@@ -215,11 +220,14 @@ class MembershipSync:
         return tuple(ids)
 
 
-async def _tenant_orgs(db: AsyncSession, tenant_id: UUID, deletes: Sequence[TupleOp]) -> list[UUID]:
-    """Every organization of the company when a company tuple is deleted (callers hold the
-    tenant and organization locks: tenant first, organizations in UUID-byte order)."""
+async def _tenant_orgs(
+    db: AsyncSession, tenant_id: UUID, deletes: Sequence[TupleOp], company_wide: bool
+) -> list[UUID]:
+    """Every organization of the company for company-wide deletes (callers hold the tenant
+    and organization locks: tenant first, organizations in UUID-byte order)."""
     company = f"tenant:{tenant_id}"
-    if not any(op.tuple.object == company and op.tuple.relation != "member" for op in deletes):
+    wide = [op for op in deletes if op.tuple.object == company]
+    if not any(company_wide or op.tuple.relation != "member" for op in wide):
         return []
     found = await db.scalars(select(Organization.id).where(Organization.tenant_id == tenant_id))
     return sorted(found, key=lambda value: value.bytes)
@@ -261,45 +269,9 @@ async def queue_created(db: AsyncSession, tenant_id: UUID, subjects: Iterable[Su
     await MembershipSync(tenant_id, tuple(subjects), Projection()).queue(db)
 
 
-async def capture_account(db: AsyncSession, user_id: UUID) -> list[MembershipSync]:
-    """One capture per company the account belongs to (account erasure, 10.7)."""
-    tenants = list(
-        await db.scalars(
-            select(TenantMember.tenant_id).where(TenantMember.user_id == user_id).distinct()
-        )
-    )
-    # Company tuples mark every organization: lock them all (tenant, then UUID-byte order).
-    await lock_tenant_org_writes(db, [TenantOrgWriteTarget(t, None) for t in tenants])
-    return [
-        await MembershipSync.capture(db, tenant, [UserSubject(tenant, user_id)])
-        for tenant in sorted(tenants)
-    ]
-
-
 async def capture_user(
     db: AsyncSession, tenant_id: UUID, user_id: UUID, org_id: UUID | None
 ) -> MembershipSync:
     """One account in one organization plus its company tuples (``None``: company only)."""
     orgs = frozenset() if org_id is None else frozenset({org_id})
     return await MembershipSync.capture(db, tenant_id, [UserSubject(tenant_id, user_id, orgs)])
-
-
-@dataclass(slots=True)
-class LazySync:
-    """Capture only right before the first change (logins that change nothing read nothing)."""
-
-    tenant_id: UUID
-    subjects: tuple[Subject, ...]
-    sync: MembershipSync | None = None
-
-    async def before_change(self, db: AsyncSession) -> None:
-        if self.sync is None:
-            self.sync = await MembershipSync.capture(db, self.tenant_id, self.subjects)
-
-    async def queue(self, db: AsyncSession) -> tuple[UUID, ...]:
-        return () if self.sync is None else await self.sync.queue(db)
-
-
-async def capture_company(db: AsyncSession, tenant_id: UUID, user_id: UUID) -> MembershipSync:
-    """The account across every organization of the company (all locked by the caller)."""
-    return await MembershipSync.capture(db, tenant_id, [UserSubject(tenant_id, user_id)])

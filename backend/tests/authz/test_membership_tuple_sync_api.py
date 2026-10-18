@@ -17,9 +17,13 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz import audit_actions
 from app.authz.catalog_fanout_backfill import backfill_catalog_fanout
+from app.authz.grants import GrantService
+from app.authz.org_context import OrgContext
 from app.authz.service import AuthzService
 from app.migrations.org_authz_v1.contracts import ORG, TENANT
+from app.models.audit_event import AuditEvent
 from app.models.authz import ResourceGrant
 from app.models.model import Model
 from app.models.organization import TenantMember
@@ -200,3 +204,49 @@ async def test_role_capability_and_group_changes_track_expected_tuples(
     assert scopes == {"role", "capability", "group_member"}
     # The group's role revocation named its member (the fixture user) as well.
     assert ("role", org_fixture.first, True) in await markers(f"user:{org_fixture.user.id}")
+
+
+async def test_group_deletion_revokes_the_groups_grants_through_grant_service(
+    db: AsyncSession, raw_client: AsyncClient, org_fixture: OrgFixture
+) -> None:
+    await grant_admin(db, org_fixture)
+    group = await db.scalar(select(Group).where(Group.org_id == org_fixture.first))
+    assert group is not None
+    tool = uuid4()
+    grant = ResourceGrant(
+        org_id=org_fixture.first,
+        tenant_id=org_fixture.tenant,
+        resource_type="tool",
+        resource_id=tool,
+        relation="viewer",
+        principal_type="group",
+        principal_id=group.id,
+    )
+    db.add(grant)
+    await db.commit()
+    store = await reconciled_store()
+    assert (f"group:{group.id}#member", "viewer", f"tool:{tool}") in {
+        (t.user, t.relation, t.object) for t in store.stored()
+    }
+    headers = await _headers(raw_client, org_fixture, "/members")
+    deleted = await raw_client.delete(
+        f"/api/orgs/{org_fixture.first}/groups/{group.id}", headers=headers
+    )
+    assert deleted.status_code == 204, deleted.text
+    await assert_parity(store)  # the drain also completes the revocation
+    async with TestSession() as fresh:
+        row = await fresh.get(ResourceGrant, grant.id)
+        assert row is not None and row.state == "revoked" and row.revoked_at is not None
+        ctx = OrgContext(org_fixture.first, org_fixture.tenant, org_fixture.user.id)
+        listed = await GrantService().list_grants(fresh, ctx, "tool", tool)
+        assert listed == []
+        events = list(
+            await fresh.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.action == audit_actions.GRANT_REVOKE,
+                    AuditEvent.target_id == str(tool),
+                )
+            )
+        )
+    assert [e.event_metadata["reason"] for e in events if e.event_metadata] == ["group_deleted"]
+    assert ("grant", org_fixture.first, True) in await markers(f"group:{group.id}#member")

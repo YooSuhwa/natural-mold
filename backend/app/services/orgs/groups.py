@@ -6,14 +6,16 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import JsonValue
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
+from app.authz.grants import GrantService
 from app.authz.membership_projection import GroupSubject
-from app.authz.membership_sync import MembershipSync, queue_created
+from app.authz.membership_sync import MembershipSync, queue_created, track
 from app.authz.org_administrators import active_administrators
+from app.authz.org_context import OrgContext
 from app.authz.org_control import (
     OrgControlContext,
     OrgControlTarget,
@@ -21,6 +23,7 @@ from app.authz.org_control import (
     load_org_write_control,
 )
 from app.authz.org_directory import group_query, scoped_group
+from app.models.authz import ResourceGrant
 from app.models.organization import OrganizationRoleGrant
 from app.models.organization_group import Group, GroupMember, OrgCapabilityGrant
 from app.schemas.org_groups import DirectoryPage, DirectoryQuery, GroupCreate, GroupPatch, GroupView
@@ -177,6 +180,7 @@ async def delete_group(mutation: GroupMutationRequest, context: OrgControlContex
             raise authorization_error("policy_locked")
         administrators = await active_administrators(db, context.organization)
     org = context.organization
+    await revoke_group_grants(db, context, group)  # before the capture: GrantService owns them
     sync = await MembershipSync.capture(db, org.tenant_id, [GroupSubject(org.id, group.id)])
     async with db.begin_nested():
         await delete_group_links(db, context, group)
@@ -188,6 +192,27 @@ async def delete_group(mutation: GroupMutationRequest, context: OrgControlContex
     await finish_group_write(
         mutation.request, context, GroupWrite(group, audit_actions.GROUP_DELETE)
     )
+
+
+async def revoke_group_grants(db: AsyncSession, context: OrgControlContext, group: Group) -> None:
+    """7.2.1 "그룹 삭제": grants naming the group are revoked like any revoke (8.6 markers,
+    outbox, ``grant.revoke`` audit with reason ``group_deleted``); applied after commit."""
+    org = context.organization
+    ctx = OrgContext(org.id, org.tenant_id, context.actor.id, context.actor.is_super_user)
+    held = await db.scalars(
+        select(ResourceGrant.id)
+        .where(
+            ResourceGrant.org_id == org.id,
+            ResourceGrant.principal_type == "group",
+            ResourceGrant.principal_id == group.id,
+            ResourceGrant.state == "active",
+        )
+        .order_by(ResourceGrant.id)
+    )
+    service = GrantService()
+    audit = {"reason": "group_deleted", "group_id": str(group.id)}
+    for grant_id in list(held):
+        track(db, (await service.revoke(db, ctx, grant_id, audit=audit)).outbox_ids)
 
 
 async def delete_group_links(db: AsyncSession, context: OrgControlContext, group: Group) -> None:

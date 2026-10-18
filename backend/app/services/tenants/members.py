@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
-from app.authz.membership_sync import capture_company, capture_user
+from app.authz.membership_sync import capture_user
 from app.models.organization import TenantMember, TenantRoleGrant
 from app.models.user import User
 from app.schemas.tenant_members import (
@@ -168,10 +168,9 @@ async def set_member_status(
     active_admins = context.active_admin_ids()
     if status == "suspended" and user_id in active_admins and len(active_admins) == 1:
         raise authorization_error("last_tenant_admin")
-    # Every organization: company suspension marks the organizations the member is in.
-    sync = await capture_company(command.db, command.tenant_id, user_id)
+    sync = await capture_user(command.db, command.tenant_id, user_id, None)
     member.status = status
-    await sync.queue(command.db)
+    await sync.queue(command.db, company_wide=True)  # suspension: a marker in every org
     action = (
         audit_actions.TENANT_MEMBER_SUSPEND
         if status == "suspended"

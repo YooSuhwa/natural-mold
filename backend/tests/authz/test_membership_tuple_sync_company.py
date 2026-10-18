@@ -163,7 +163,7 @@ async def test_company_admin_demotion_is_denied_at_once_by_markers_in_every_org(
     await assert_parity(store)
     assert await markers(f"user:{user.id}") == sorted(("role", o.id, True) for o in orgs)
     assert ("admin", f"tenant:{tenant.id}") not in user_tuples(store, user.id)
-    # Company suspension marks only the organizations the member belongs to.
+    # Company suspension marks every organization of the company (user decision, 8.6).
     suspended = await fixture.client.patch(
         f"/api/tenants/{tenant.id}/members/{user.id}",
         json={"status": "suspended"},
@@ -171,8 +171,8 @@ async def test_company_admin_demotion_is_denied_at_once_by_markers_in_every_org(
     )
     assert suspended.status_code == 200, suspended.text
     await assert_parity(store)
-    assert ("membership", orgs[0].id, True) in await markers(f"user:{user.id}")
-    assert ("membership", orgs[1].id, True) not in await markers(f"user:{user.id}")
+    found = await markers(f"user:{user.id}")
+    assert all(("membership", org.id, True) in found for org in orgs)
 
 
 async def test_company_admin_created_organization_projects_tenant_and_administrator(
