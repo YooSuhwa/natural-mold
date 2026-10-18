@@ -111,7 +111,7 @@ export function MarketplaceManagementCard({ item, canManage, isSuperUser, onMana
               value={item.visibility}
               onValueChange={(v) => v && handleVisibilityChange(v as MarketplaceVisibility)}
             >
-              <SelectTrigger className="w-56">
+              <SelectTrigger className="w-56" aria-label={t('management.visibility')}>
                 {/* The trigger shows the label, never the raw value ("restricted"). */}
                 <SelectValue>
                   {(selected: unknown) =>

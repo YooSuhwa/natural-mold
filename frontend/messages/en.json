@@ -1420,6 +1420,7 @@
     },
     "myAgents": "My Agents",
     "searchPlaceholder": "Search agents...",
+    "favoritesOnly": "Show favorites only",
     "sort": {
       "latest": "Newest",
       "name": "Name",

@@ -1420,6 +1420,7 @@
     },
     "myAgents": "내 에이전트",
     "searchPlaceholder": "에이전트 검색...",
+    "favoritesOnly": "즐겨찾기만 보기",
     "sort": {
       "latest": "최신순",
       "name": "이름순",

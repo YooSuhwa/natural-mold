@@ -210,6 +210,7 @@ export default function DashboardPage() {
                   size="sm"
                   onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
                   aria-pressed={showFavoritesOnly}
+                  aria-label={t('favoritesOnly')}
                   className={cn(
                     'h-9',
                     showFavoritesOnly && 'moldy-status-surface moldy-status-warn hover:opacity-90',

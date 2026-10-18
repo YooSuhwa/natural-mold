@@ -141,6 +141,16 @@
       "owner": "org-authz",
       "expires": "2027-03-31",
       "expected_count": 1
+    },
+    {
+      "id": "org-authz-axe",
+      "path_glob": "e2e/a11y/org-authz-axe.spec.ts",
+      "condition": "process.env.E2E_ORG_AUTHZ !== '1'",
+      "reason": "Set E2E_ORG_AUTHZ=1 to run the org-authz axe scan",
+      "category": "infrastructure",
+      "owner": "org-authz",
+      "expires": "2027-03-31",
+      "expected_count": 1
     }
   ]
 }

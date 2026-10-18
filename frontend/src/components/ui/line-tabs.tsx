@@ -21,7 +21,7 @@ function LineTabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   return (
     <TabsTrigger
       className={cn(
-        'px-4 py-2.5 after:bg-primary-strong data-active:text-primary-strong',
+        'px-4 py-2.5 after:bg-primary-strong data-active:text-primary-strong-text',
         className,
       )}
       {...props}
