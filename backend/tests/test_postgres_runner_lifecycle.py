@@ -188,7 +188,7 @@ def test_child_timeout_budget_is_extended_only_for_all_mode(monkeypatch) -> None
         run_test_child(environment, current)
 
     assert set(observed) == set(modes)
-    assert observed["all"] == 900
+    assert observed["all"] == 1800
     assert {timeout for mode, timeout in observed.items() if mode != "all"} == {600}
 
 

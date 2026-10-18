@@ -359,7 +359,8 @@ def run_test_child(env: dict[str, str], kind: ScenarioKind) -> tuple[int, str]:
     }
     # company-administration keeps the 600s named-lane budget; it is unmeasured and should be
     # revisited after the first native run of that lane.
-    result = run_command(commands[kind], env=env, timeout=900 if kind == "all" else 600)
+    # The full lane (372 nodes) takes about 15 minutes on a CI runner.
+    result = run_command(commands[kind], env=env, timeout=1800 if kind == "all" else 600)
     target = parse_lane_dsns(
         LaneDsns(
             env["DATABASE_URL"],
