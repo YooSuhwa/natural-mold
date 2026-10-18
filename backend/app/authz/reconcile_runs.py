@@ -13,6 +13,7 @@ Operator runs drain their own outbox rows so the screen can show repaired counts
 """
 
 import asyncio
+import contextlib
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -125,17 +126,24 @@ async def execute_run(
             sessions, store, mode="repair", drain=drain, job_id=run_id, now=now, progress=progress
         )
     except asyncio.CancelledError:
+        await asyncio.shield(_stop(beat))
         await asyncio.shield(_finish(sessions, run_id, "failed", error="cancelled"))
         raise
     except Exception as exc:  # noqa: BLE001 - recorded on the run, alert logged
         logger.exception("authz_reconcile_failed", extra={"run_id": str(run_id)})
+        await _stop(beat)
         await _finish(sessions, run_id, "failed", error=type(exc).__name__)
         return None
-    finally:
-        beat.cancel()
+    await _stop(beat)  # the final status is written after the last beat, never beside it
     status = "skipped" if report.skipped else "succeeded"
     await _finish(sessions, run_id, status, report=_counts(report, drained=drain))
     return report
+
+
+async def _stop(beat: asyncio.Task[None]) -> None:
+    beat.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await beat
 
 
 async def _finish(

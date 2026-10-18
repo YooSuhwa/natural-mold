@@ -192,3 +192,22 @@ async def test_startup_cleanup_is_a_legacy_noop_and_frees_dead_runs(
     pinned = AuthzSettings(authz_mode="shadow", openfga_store_id="s", openfga_model_id="m")
     await reconcile_launch.close_stale_at_startup(pinned)
     assert ((await _row(old.id)).active, (await _row(old.id)).error) == (None, "abandoned")
+
+
+async def test_the_heartbeat_has_stopped_before_the_run_returns(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    run = await _claim(db)
+    monkeypatch.setattr(reconcile_runs, "HEARTBEAT", timedelta(milliseconds=5))
+
+    async def fail(*_args: object, **_kwargs: object) -> None:
+        await asyncio.sleep(0.05)  # let a few beats run
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(reconcile_runs, "reconcile_store", fail)
+    await execute_run(TestSession, object(), run.id, drain=True)  # type: ignore[arg-type]
+    beats = [
+        t for t in asyncio.all_tasks() if getattr(t.get_coro(), "__qualname__", "") == "_heartbeat"
+    ]
+    assert beats == []  # no beat left writing after the final status
+    assert ((await _row(run.id)).status, (await _row(run.id)).error) == ("failed", "RuntimeError")
