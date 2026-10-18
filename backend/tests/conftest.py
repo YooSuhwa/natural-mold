@@ -13,6 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 pytest_plugins = ["tests.agent_lifecycle_sqlite_lock_adapter"]
 
+# Never read a developer's ``backend/.env`` in unit tests (the isolated runner
+# sets the same flag): its E2E/Langfuse/runtime values change runtime behaviour
+# and made the plain ``pytest tests/`` pre-push run fail where isolated runs pass.
+os.environ.setdefault("MOLDY_DISABLE_ENV_FILE", "true")
+os.environ.setdefault("PYTHON_DOTENV_DISABLED", "1")
+
 # Cipher V2 / new credential domain require ``ENCRYPTION_KEYS`` to be set
 # before ``app.config.settings`` is evaluated. Set it at import time so any
 # module that reads settings during collection sees a valid value.
