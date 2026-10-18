@@ -109,7 +109,7 @@ TLS를 켜거나(같은 호스트 Compose만) `INTERNAL_PLAINTEXT_HOSTS`를 설�
 
 ## 1.3 완료 기준 검증 결과
 
-이 PR을 준비한 환경에는 Docker가 없어 **네이티브 PostgreSQL 레인, OpenFGA 실연동 레인, TLS 레인, Playwright E2E를 실행하지 못했습니다.**
+2026-10-18에 사용자 승인으로 Docker 레인을 실행했습니다. **네이티브 PostgreSQL `all` 레인 371/371 통과**(`fca4c9d1`, 첫 실행 29건 실패를 같은 커밋에서 수정; OpenFGA 실연동 테스트 포함), **내부 TLS 레인 5건 통과**, **Playwright `scripted-smoke` 18/18 통과**(`9dfe173d`). 화면 캡처 투어(`e2e/captures/captures-org-authz.spec.ts`, 49장)도 실행했습니다. 그 밖의 Playwright 스펙(점검 패널·인증 카드 등 opt-in `E2E_ORG_AUTHZ`), 업그레이드 E2E, axe 검사는 아직 실행하지 않았습니다. 아래 표의 레인 미실행 표기는 이 실행으로 갱신했습니다.
 해당 테스트는 작성·등록만 되어 있습니다. 진행 기록의 체크박스 상당수가 비어 있는 이유도 이 네이티브 검증이 남아 있기 때문입니다
 (일부 항목의 "uncommitted" 문구는 작성 당시 상태이며 현재는 모두 커밋되어 있습니다).
 
@@ -122,11 +122,11 @@ TLS를 켜거나(같은 호스트 Compose만) `INTERNAL_PLAINTEXT_HOSTS`를 설�
 | 업그레이드 후 기본 조직에서 기존 자원 사용(E2E 회귀) | 미검증 | m82 이전·스냅숏 테스트는 SQLite. 업그레이드 E2E 미실행 |
 | 점검 패널·인증 카드 Playwright | 미검증 | `frontend/e2e/readiness-*.spec.ts`, `org-authz-auth-card-oauth.spec.ts` 작성, 미실행 |
 | 실행 경로 13개가 단일 권한 경계 통과 | 충족(SQLite) | `tests/authz/test_f06_runtime_paths.py` |
-| CSRF 유지, 다른 조직 자원 ID 404 | 충족(SQLite) | `test_csrf_invariant.py`, 매트릭스 테스트. 네이티브 레인 미실행 |
+| CSRF 유지, 다른 조직 자원 ID 404 | 충족(SQLite) | `test_csrf_invariant.py`, 매트릭스 테스트, 네이티브 PostgreSQL 레인 통과 |
 | 신규 경로 OpenAPI 스냅숏 | 충족(SQLite) | `tests/authz/openapi_new_routes.json` |
 | 이벤트별 기대 튜플 = 실제 튜플 | 충족(SQLite) | `test_tuples_expected.py`, `test_event_source_contract.py` |
 | 마이그레이션 upgrade/backfill/downgrade, m90~m92 백업·복원 기록 | 일부 | SQLite 체인·downgrade 테스트. PostgreSQL upgrade/downgrade와 백업·복원 시험 미실행. m90/m91은 PR 2 |
-| 회사 격리 묶음(SaaS, RLS 0행 등) | 미검증 | `test_i06_rls_postgres_integration.py` 등 회사 레인에 등록, 미실행 |
+| 회사 격리 묶음(SaaS, RLS 0행 등) | 충족(네이티브 PG) | `test_i06_rls_postgres_integration.py` 등 회사 레인 포함 네이티브 PostgreSQL 레인 371/371 통과(`fca4c9d1`) |
 | MCP 인증 명세(2026-07-28) 필수 항목 | 충족(단위) | `tests/authz/test_f15_*.py` |
 | axe 심각·치명 0, U-05 과업 성공률 80% | 미충족 | U-05 사용자 시험 미실시. axe 검사 미실행 |
 
