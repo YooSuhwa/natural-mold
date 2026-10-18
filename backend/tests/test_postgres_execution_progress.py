@@ -54,7 +54,12 @@ def _wait_for_call_phase(receipt: Path) -> None:
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         if receipt.is_file():
-            progress = load_progress_receipt(receipt, require_finished=False)["progress"]
+            try:
+                progress = load_progress_receipt(receipt, require_finished=False)["progress"]
+            except ProgressReceiptError:
+                # The child is still publishing this poll's receipt; the final load stays strict.
+                time.sleep(0.02)
+                continue
             if progress["active_phase"] == "call":
                 return
         time.sleep(0.02)
