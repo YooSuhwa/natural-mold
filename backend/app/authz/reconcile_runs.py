@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.reconcile import ReconcileReport, Sessions, TupleStore, reconcile_store
 from app.models.authz_reconcile_run import AuthzReconcileRun as Run
 from app.schemas.admin_authz import ReconcileCounts, ReconcileRunView, ReconcileStatus
+from app.services.cancel_deferred import finish_then_cancel
 
 logger = logging.getLogger(__name__)
 STALE_AFTER = timedelta(minutes=15)
@@ -55,8 +56,8 @@ async def close_stale(sessions: Sessions) -> None:
 async def _heartbeat(sessions: Sessions, run_id: UUID) -> None:
     while True:
         await asyncio.sleep(HEARTBEAT.total_seconds())
-        try:
-            await _set(sessions, run_id)
+        try:  # ``_stop`` cancels this task; a cancel never tears a beat mid-statement
+            await finish_then_cancel(_set(sessions, run_id))
         except Exception:  # noqa: BLE001 - a missed beat only shortens the margin
             logger.warning("authz_reconcile_heartbeat_failed", extra={"run_id": str(run_id)})
 

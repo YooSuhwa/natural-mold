@@ -8,6 +8,7 @@ rotation, revocation, deletion and per-user binding changes drop the entries.
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -116,7 +117,8 @@ async def test_cache_is_lru_bounded_swept_and_prunes_locks(monkeypatch) -> None:
 
     await mcp_cache.clear_mcp_tool_cache()
     clock = [1000.0]
-    monkeypatch.setattr(mcp_tool_cache.time, "monotonic", lambda: clock[0])
+    # Only the cache's clock: patching ``time.monotonic`` itself freezes the event loop.
+    monkeypatch.setattr(mcp_tool_cache, "time", SimpleNamespace(monotonic=lambda: clock[0]))
     await mcp_tool_cache.get_cached_mcp_tools("d", _factory, ttl_seconds=5)
     clock[0] += 10
     await mcp_tool_cache.get_cached_mcp_tools("e", _factory, ttl_seconds=5)

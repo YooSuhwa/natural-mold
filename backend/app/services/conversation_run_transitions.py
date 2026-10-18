@@ -27,6 +27,7 @@ from app.error_codes import conversation_not_found
 from app.exceptions import AppError
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service
+from app.services.cancel_deferred import finish_then_cancel
 from app.services.conversation_run_metrics_service import persist_run_metrics_and_usage
 from app.services.conversation_run_task_registry import (
     _CANCEL_POLL_SECONDS,
@@ -214,8 +215,10 @@ async def _heartbeat_until_terminal(
     """I-06: the run's own company session (the run belongs to its conversation's company)."""
     interval = worker_attr("_heartbeat_interval_seconds")()
     next_heartbeat = time.monotonic()
-    while True:
-        await asyncio.sleep(_CANCEL_POLL_SECONDS)
+
+    async def poll() -> bool:
+        """One poll/beat; ``True`` ends the heartbeat."""
+        nonlocal next_heartbeat
         async with _tenant_session(tenant) as session:
             run = await session.get(ConversationRun, run_id)
             if run is None or not run.is_active:
@@ -223,7 +226,7 @@ async def _heartbeat_until_terminal(
                 # worker): stop the local task; the run finalizes nothing new.
                 if run is not None:
                     registry.request_cancel(run_id, reason="stop")
-                return
+                return True
             if run.status == "canceling":
                 reason = (
                     cast(CancelReason, run.cancel_reason)
@@ -231,13 +234,20 @@ async def _heartbeat_until_terminal(
                     else "stop"
                 )
                 registry.request_cancel(run_id, reason=reason)
-                return
+                return True
             if time.monotonic() >= next_heartbeat:
                 alive = await conversation_run_service.heartbeat_run(session, run_id)
                 await session.commit()
                 if not alive:
-                    return
+                    return True
                 next_heartbeat = time.monotonic() + interval
+        return False
+
+    while True:
+        await asyncio.sleep(_CANCEL_POLL_SECONDS)
+        # The run's finally cancels this task; a cancel never tears a poll mid-statement.
+        if await finish_then_cancel(poll()):
+            return
 
 
 async def _persist_shutdown_intent(run_ids: list[uuid.UUID]) -> None:

@@ -27,6 +27,7 @@ from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_TERMINAL_STATUSES, ConversationRun
 from app.services import conversation_run_service
+from app.services.cancel_deferred import finish_then_cancel
 
 
 @dataclass(slots=True)
@@ -112,8 +113,8 @@ async def poll_cancel(runtime: Any, heartbeat: bool = False) -> None:
     registry = owned.get_run_task_registry()
     run_id = runtime.request.run_id
     next_beat = time.monotonic() + _interval()
-    while True:
-        await anyio.sleep(owned._CANCEL_POLL_SECONDS)  # noqa: SLF001
+
+    async def read_run() -> Any:
         async with tenant_session(runtime.request.context, maker=owned.async_session) as db:
             row = await db.execute(
                 select(ConversationRun)
@@ -129,7 +130,12 @@ async def poll_cancel(runtime: Any, heartbeat: bool = False) -> None:
                 )
                 .where(ConversationRun.id == run_id)
             )
-            run = row.scalar_one_or_none()
+            return row.scalar_one_or_none()
+
+    while True:
+        await anyio.sleep(owned._CANCEL_POLL_SECONDS)  # noqa: SLF001
+        # The owner cancels this poller when the body ends; never mid-statement.
+        run = await finish_then_cancel(read_run())
         if run is None:
             return
         if run.status in RUN_TERMINAL_STATUSES or not run.is_active:
@@ -140,7 +146,7 @@ async def poll_cancel(runtime: Any, heartbeat: bool = False) -> None:
             registry.request_cancel(run.id, reason="stop")
             return
         if heartbeat and time.monotonic() >= next_beat:
-            await _heartbeat(run_id, runtime.request.context)
+            await finish_then_cancel(_heartbeat(run_id, runtime.request.context))
             next_beat = time.monotonic() + _interval()
 
 

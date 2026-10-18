@@ -9,7 +9,7 @@ import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from passlib.context import CryptContext
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 pytest_plugins = ["tests.agent_lifecycle_sqlite_lock_adapter"]
 
@@ -46,6 +46,7 @@ from app.main import create_app  # noqa: E402
 from app.rate_limit import limiter  # noqa: E402
 from app.security import key_provider  # noqa: E402
 from app.services import share_cache  # noqa: E402
+from tests.sqlite_test_engine import TestSession, engine  # noqa: E402
 
 # Rate limiting is meaningful in production but not in unit tests — keeping
 # it on would couple assertions to slowapi's internal counters.
@@ -70,8 +71,6 @@ key_provider.reset_cache()
 
 TEST_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
-engine = create_async_engine("sqlite+aiosqlite://", echo=False)
-TestSession = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 _schema_ready = False
 
 
