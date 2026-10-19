@@ -13,9 +13,19 @@ from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.cookies import clear_auth_cookies, set_auth_cookies
+from app.auth.cookies import clear_auth_cookies, set_active_org_cookie, set_auth_cookies
+from app.auth.sso.link_pending import clear_link_cookie, pending_link_method
+from app.auth.sso.session_gate import login_gate
+from app.authz.membership_apply import apply_for_request
+from app.authz.policies import PUBLIC, SELF, authz_policy
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_identity_db,
+    verify_csrf,
+)
 from app.exceptions import AppError
 from app.rate_limit import limiter
 from app.schemas.auth import (
@@ -28,10 +38,12 @@ from app.schemas.auth import (
     UserResponse,
 )
 from app.services import audit_service, auth_service, user_profile_service, user_service
+from app.services.sso.discovery import refuse_sso_domain_signup
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+# I-06: every account gateway route runs its session in the identity scope.
+router = APIRouter(prefix="/api/auth", tags=["auth"], dependencies=[Depends(get_identity_db)])
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +52,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
+@authz_policy(PUBLIC)
 @limiter.limit("5/hour")
 async def register_endpoint(
     request: Request,
@@ -54,6 +67,7 @@ async def register_endpoint(
     operational guidance on disabling this in production.
     """
 
+    await refuse_sso_domain_signup(db, payload.email)  # H-08: company domains use SSO
     user = await auth_service.register(db, payload, request)
     access, refresh, csrf = await auth_service.issue_tokens(db, user, request)
     await user_service.record_login_success(db, user, ip=auth_service.client_ip(request))
@@ -91,16 +105,20 @@ async def register_endpoint(
         metadata={"source": "register"},
     )
     await db.commit()
+    await apply_for_request(request, db)  # 7.2.1: the new member's tuples now
     set_auth_cookies(
         response,
         access_token=access,
         refresh_token=refresh,
         csrf_token=csrf,
     )
+    if user.last_active_org_id is not None:
+        set_active_org_cookie(response, user.last_active_org_id)
     return AuthResponse(user=UserResponse.model_validate(user), csrf_token=csrf)
 
 
 @router.post("/login", response_model=AuthResponse)
+@authz_policy(PUBLIC)
 @limiter.limit("10/minute")
 async def login_endpoint(
     request: Request,
@@ -111,9 +129,7 @@ async def login_endpoint(
     """Verify credentials, mint cookies, return user + CSRF body."""
 
     try:
-        user = await auth_service.authenticate(
-            db, email=payload.email, password=payload.password
-        )
+        user = await auth_service.authenticate(db, email=payload.email, password=payload.password)
     except AppError as exc:
         await audit_service.record_event(
             db,
@@ -129,7 +145,9 @@ async def login_endpoint(
         )
         await db.commit()
         raise
-    access, refresh, csrf = await auth_service.issue_tokens(db, user, request)
+    method = await pending_link_method(db, request, user)  # H-08 link-pending confirm
+    await login_gate(db, user, request, method)  # H-08 SSO required / break-glass
+    access, refresh, csrf = await auth_service.issue_tokens(db, user, request, method)
     await user_service.record_login_success(db, user, ip=auth_service.client_ip(request))
     await audit_service.record_event(
         db,
@@ -146,6 +164,8 @@ async def login_endpoint(
         request=request,
     )
     await db.commit()
+    await apply_for_request(request, db)  # a confirmed SSO link may have joined the company
+    clear_link_cookie(response)
     set_auth_cookies(
         response,
         access_token=access,
@@ -156,6 +176,7 @@ async def login_endpoint(
 
 
 @router.post("/logout", response_model=LogoutResponse)
+@authz_policy(SELF)
 async def logout_endpoint(
     request: Request,
     response: Response,
@@ -192,6 +213,7 @@ async def logout_endpoint(
 
 
 @router.post("/refresh", response_model=RefreshResponse)
+@authz_policy(PUBLIC)
 @limiter.limit("30/minute")
 async def refresh_endpoint(
     request: Request,
@@ -202,12 +224,8 @@ async def refresh_endpoint(
 
     refresh = request.cookies.get(settings.cookie_name_refresh)
     if not refresh:
-        raise AppError(
-            code="invalid_refresh", message="세션이 만료되었습니다", status=401
-        )
-    access, new_refresh, csrf, user = await auth_service.rotate_refresh(
-        db, refresh, request
-    )
+        raise AppError(code="invalid_refresh", message="세션이 만료되었습니다", status=401)
+    access, new_refresh, csrf, user = await auth_service.rotate_refresh(db, refresh, request)
     await audit_service.record_event(
         db,
         actor_type="user",
@@ -233,6 +251,7 @@ async def refresh_endpoint(
 
 
 @router.get("/me", response_model=UserResponse)
+@authz_policy(SELF)
 async def me_endpoint(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
@@ -246,22 +265,19 @@ async def me_endpoint(
     db_user = await user_service.get_by_id(db, user.id)
     if db_user is None:
         # Should be impossible — ``get_current_user`` already loaded the row.
-        raise AppError(
-            code="not_authenticated", message="인증이 필요합니다", status=401
-        )
+        raise AppError(code="not_authenticated", message="인증이 필요합니다", status=401)
     return UserResponse.model_validate(db_user)
 
 
 async def _load_profile_user(db: AsyncSession, user: CurrentUser):
     db_user = await user_service.get_by_id(db, user.id)
     if db_user is None:
-        raise AppError(
-            code="not_authenticated", message="인증이 필요합니다", status=401
-        )
+        raise AppError(code="not_authenticated", message="인증이 필요합니다", status=401)
     return db_user
 
 
 @router.patch("/me/profile", response_model=UserResponse)
+@authz_policy(SELF)
 async def update_profile_endpoint(
     request: Request,
     payload: ProfileUpdateRequest,
@@ -293,6 +309,7 @@ async def update_profile_endpoint(
 
 
 @router.post("/me/avatar-image", response_model=UserResponse)
+@authz_policy(SELF)
 async def upload_avatar_image_endpoint(
     request: Request,
     file: UploadFile = File(...),
@@ -323,6 +340,7 @@ async def upload_avatar_image_endpoint(
 
 
 @router.delete("/me/avatar-image", response_model=UserResponse)
+@authz_policy(SELF)
 async def delete_avatar_image_endpoint(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -351,6 +369,7 @@ async def delete_avatar_image_endpoint(
 
 
 @router.get("/me/avatar-image")
+@authz_policy(SELF)
 async def get_avatar_image_endpoint(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),

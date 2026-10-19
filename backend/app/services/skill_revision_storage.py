@@ -10,6 +10,7 @@ from app.config import settings
 from app.models.skill import Skill
 from app.skills import service as skill_service
 from app.skills.package_hash import is_excluded_package_path
+from app.storage.paths import tenant_relative
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +81,10 @@ def _unlink_missing_ok(path: Path) -> None:
 
 
 def _revision_path(skill: Skill, revision_number: int) -> tuple[str, Path]:
-    object_key = f"skill-revisions/{skill.id}/r{revision_number}/skill.zip"
+    # I-08: a company skill's revisions live in its company folder.
+    object_key = tenant_relative(
+        skill.tenant_id, f"skill-revisions/{skill.id}/r{revision_number}/skill.zip"
+    )
     return object_key, _object_path(object_key)
 
 

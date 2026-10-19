@@ -183,7 +183,9 @@ def _interrupt_payloads_from_pending_writes(
 
 async def interrupt_payloads_from_checkpointer(
     config: dict[str, Any],
+    saver: Callable[[], Any] | None = None,
 ) -> list[PendingInputPayload]:
+    """``saver`` is a gated factory (request reads); the run stream reads its own thread."""
     thread_id = _thread_id_from_config(config)
     if thread_id is None:
         return []
@@ -191,7 +193,7 @@ async def interrupt_payloads_from_checkpointer(
     try:
         from app.agent_runtime.checkpointer import get_checkpointer
 
-        checkpointer = get_checkpointer()
+        checkpointer = saver() if saver is not None else get_checkpointer()
         checkpoint_tuple = await checkpointer.aget_tuple({"configurable": {"thread_id": thread_id}})
     except RuntimeError:
         return []

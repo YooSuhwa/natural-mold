@@ -10,13 +10,22 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.credentials.registry import registry
+from app.dependencies import CurrentUser
 from app.models.health_check_history import HealthCheckHistory
 from app.models.mcp_server import McpServer
 from app.models.model import Model
 from app.models.user import User
 from app.services import health_check as health_check_service
 from app.services.model_test import ErrorKind, ModelTestError, ModelTestResult
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_credential,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -28,12 +37,12 @@ async def _seed_user_and_model() -> Model:
     async with TestSession() as db:
         db.add(User(id=TEST_USER_ID, email="h@test", name="h"))
         await db.flush()
-        cred = await credential_service.create(
+        cred = await create_test_credential(
             db,
-            user_id=TEST_USER_ID,
-            definition_key="openai",
-            name="model cred",
-            data={"api_key": "sk-test"},
+            CredentialCreation(
+                definition_key="openai", name="model cred", data={"api_key": "sk-test"}
+            ),
+            unit_context(TEST_USER_ID),
         )
         model = Model(
             provider="openai",
@@ -55,6 +64,8 @@ async def _seed_user_and_model() -> Model:
             system_prompt="ok",
             model_id=model.id,
             llm_credential_id=cred.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(agent)
         await db.commit()
@@ -69,6 +80,7 @@ async def _seed_mcp_server(*, transport: str = "streamable_http") -> McpServer:
         if existing is None:
             db.add(User(id=TEST_USER_ID, email="h@test", name="h"))
             await db.flush()
+        await ensure_unit_scope(db, CurrentUser(id=TEST_USER_ID, email="h@test", name="h"))
         server = McpServer(
             user_id=TEST_USER_ID,
             name="example",
@@ -80,6 +92,8 @@ async def _seed_mcp_server(*, transport: str = "streamable_http") -> McpServer:
             headers={},
             credential_id=None,
             status="unknown",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(server)
         await db.commit()
@@ -217,19 +231,21 @@ async def test_check_mcp_server_oauth_refresh_failure_marks_auth_needed(
         if existing is None:
             db.add(User(id=TEST_USER_ID, email="h@test", name="h"))
             await db.flush()
-        cred = await credential_service.create(
+        cred = await create_test_credential(
             db,
-            user_id=TEST_USER_ID,
-            definition_key="mcp_oauth2",
-            name="expired oauth",
-            data={
-                "access_token": "old",
-                "refresh_token": "refresh",
-                "expires_at": 1,
-                "access_token_url": "https://issuer.example/token",
-                "client_id": "cid",
-                "authentication": "none",
-            },
+            CredentialCreation(
+                definition_key="mcp_oauth2",
+                name="expired oauth",
+                data={
+                    "access_token": "old",
+                    "refresh_token": "refresh",
+                    "expires_at": 1,
+                    "access_token_url": "https://issuer.example/token",
+                    "client_id": "cid",
+                    "authentication": "none",
+                },
+            ),
+            unit_context(TEST_USER_ID),
         )
         server = McpServer(
             user_id=TEST_USER_ID,
@@ -239,6 +255,8 @@ async def test_check_mcp_server_oauth_refresh_failure_marks_auth_needed(
             headers={},
             credential_id=cred.id,
             status="connected",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(server)
         await db.commit()

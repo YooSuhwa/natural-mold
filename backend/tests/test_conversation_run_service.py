@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from datetime import timedelta
 
 import pytest
@@ -10,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.runtime_policy import resolve_runtime_policy, runtime_policy_to_json
+from app.dependencies import CurrentUser
 from app.exceptions import ConflictError
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -20,6 +23,12 @@ from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from app.services import conversation_run_service
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -34,15 +43,26 @@ async def _seed_agent_and_conversation(
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     agent = Agent(
         user_id=user.id,
         name="Run Agent",
         system_prompt="You are helpful.",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
-    conversation = Conversation(agent_id=agent.id, title=conversation_title)
+    conversation = Conversation(
+        agent_id=agent.id,
+        title=conversation_title,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.flush()
     return agent, conversation
@@ -61,7 +81,7 @@ async def test_first_run_snapshots_current_agent_policy_and_copies_provenance(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="first",
     )
@@ -91,7 +111,7 @@ async def test_existing_conversation_snapshot_survives_agent_policy_edit(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="first",
     )
@@ -108,7 +128,7 @@ async def test_existing_conversation_snapshot_survives_agent_policy_edit(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="follow-up",
     )
@@ -141,7 +161,7 @@ async def test_resume_rejects_parent_policy_tuple_mismatch_before_new_run(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="approval",
     )
@@ -155,7 +175,7 @@ async def test_resume_rejects_parent_policy_tuple_mismatch_before_new_run(
             db,
             conversation_id=conversation.id,
             agent_id=agent.id,
-            user_id=agent.user_id,
+            context=unit_context(agent.user_id),
             source="resume",
             input_preview=None,
             parent_run_id=parent.id,
@@ -175,7 +195,7 @@ async def test_create_run_rejects_second_active_run(db: AsyncSession) -> None:
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="first",
     )
@@ -185,7 +205,7 @@ async def test_create_run_rejects_second_active_run(db: AsyncSession) -> None:
             db,
             conversation_id=conversation.id,
             agent_id=agent.id,
-            user_id=agent.user_id,
+            context=unit_context(agent.user_id),
             source="chat",
             input_preview="second",
         )
@@ -217,7 +237,7 @@ async def test_create_run_translates_active_unique_race_to_conflict(
             db,
             conversation_id=conversation.id,
             agent_id=agent.id,
-            user_id=agent.user_id,
+            context=unit_context(agent.user_id),
             source="chat",
             input_preview="racing request",
         )
@@ -233,7 +253,7 @@ async def test_transition_completed_clears_active(db: AsyncSession) -> None:
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="hello",
     )
@@ -254,7 +274,7 @@ async def test_terminal_run_cannot_transition_to_running(db: AsyncSession) -> No
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview=None,
     )
@@ -271,7 +291,7 @@ async def test_canceling_can_transition_to_canceled(db: AsyncSession) -> None:
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="cancel me",
     )
@@ -294,7 +314,7 @@ async def test_interrupted_is_terminal_and_resume_creates_new_run(db: AsyncSessi
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="needs approval",
     )
@@ -314,7 +334,7 @@ async def test_interrupted_is_terminal_and_resume_creates_new_run(db: AsyncSessi
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="resume",
         input_preview="approve",
         parent_run_id=interrupted.id,
@@ -335,7 +355,7 @@ async def test_resume_requires_latest_interrupted_parent_run(db: AsyncSession) -
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="older",
     )
@@ -345,7 +365,7 @@ async def test_resume_requires_latest_interrupted_parent_run(db: AsyncSession) -
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="newer",
     )
@@ -357,7 +377,7 @@ async def test_resume_requires_latest_interrupted_parent_run(db: AsyncSession) -
             db,
             conversation_id=conversation.id,
             agent_id=agent.id,
-            user_id=agent.user_id,
+            context=unit_context(agent.user_id),
             source="resume",
             input_preview="resume old",
             parent_run_id=older.id,
@@ -374,7 +394,7 @@ async def test_resume_rejects_mismatched_interrupt_id(db: AsyncSession) -> None:
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="needs approval",
     )
@@ -391,7 +411,7 @@ async def test_resume_rejects_mismatched_interrupt_id(db: AsyncSession) -> None:
             db,
             conversation_id=conversation.id,
             agent_id=agent.id,
-            user_id=agent.user_id,
+            context=unit_context(agent.user_id),
             source="resume",
             input_preview="approve",
             parent_run_id=interrupted.id,
@@ -410,7 +430,7 @@ async def test_resume_rejects_interrupted_parent_that_already_has_resume_child(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="needs approval",
     )
@@ -425,7 +445,7 @@ async def test_resume_rejects_interrupted_parent_that_already_has_resume_child(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="resume",
         input_preview=None,
         parent_run_id=interrupted.id,
@@ -439,7 +459,7 @@ async def test_resume_rejects_interrupted_parent_that_already_has_resume_child(
             db,
             conversation_id=conversation.id,
             agent_id=agent.id,
-            user_id=agent.user_id,
+            context=unit_context(agent.user_id),
             source="resume",
             input_preview=None,
             parent_run_id=interrupted.id,
@@ -449,8 +469,7 @@ async def test_resume_rejects_interrupted_parent_that_already_has_resume_child(
     assert exc.value.status_code == 409
     assert (
         await conversation_run_service.current_run_for_conversation(
-            db,
-            conversation_id=conversation.id,
+            db, conversation_id=conversation.id, context=unit_context(TEST_USER_ID)
         )
         is None
     )
@@ -463,7 +482,7 @@ async def test_get_active_run_is_ownership_scoped(db: AsyncSession) -> None:
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="visible",
     )
@@ -472,14 +491,22 @@ async def test_get_active_run_is_ownership_scoped(db: AsyncSession) -> None:
         await conversation_run_service.get_active_run(
             db,
             conversation_id=conversation.id,
-            user_id=agent.user_id,
+            context=unit_context(agent.user_id),
         )
     ) == run
+    await ensure_unit_scope(
+        db,
+        CurrentUser(
+            id=uuid.UUID("00000000-0000-0000-0000-000000000099"),
+            email="other-run@test.local",
+            name="Other Run User",
+        ),
+    )
     assert (
         await conversation_run_service.get_active_run(
             db,
             conversation_id=conversation.id,
-            user_id=uuid.UUID("00000000-0000-0000-0000-000000000099"),
+            context=unit_context(uuid.UUID("00000000-0000-0000-0000-000000000099")),
         )
         is None
     )
@@ -516,14 +543,22 @@ async def test_db_rejects_two_active_runs_for_same_conversation(db: AsyncSession
 @pytest.mark.asyncio
 async def test_active_runs_for_conversations_batches_by_ids(db: AsyncSession) -> None:
     agent, first = await _seed_agent_and_conversation(db, conversation_title="first")
-    second = Conversation(agent_id=agent.id, title="second")
+    second = Conversation(
+        agent_id=agent.id,
+        title="second",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(second)
     await db.flush()
     first_run = await conversation_run_service.create_run(
         db,
         conversation_id=first.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="first",
     )
@@ -531,14 +566,13 @@ async def test_active_runs_for_conversations_batches_by_ids(db: AsyncSession) ->
         db,
         conversation_id=second.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="second",
     )
 
     active = await conversation_run_service.active_runs_for_conversations(
-        db,
-        [first.id, second.id, uuid.uuid4()],
+        db, [first.id, second.id, uuid.uuid4()], context=unit_context(TEST_USER_ID)
     )
 
     assert active == {first.id: first_run, second.id: second_run}
@@ -558,7 +592,7 @@ async def test_mark_stale_active_runs_only_marks_old_active_runs(db: AsyncSessio
         db,
         conversation_id=stale_conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="old",
     )
@@ -570,14 +604,22 @@ async def test_mark_stale_active_runs_only_marks_old_active_runs(db: AsyncSessio
     )
     stale.heartbeat_at = run_utc_now_naive() - timedelta(minutes=20)
 
-    fresh_conversation = Conversation(agent_id=agent.id, title="fresh run")
+    fresh_conversation = Conversation(
+        agent_id=agent.id,
+        title="fresh run",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(fresh_conversation)
     await db.flush()
     fresh = await conversation_run_service.create_run(
         db,
         conversation_id=fresh_conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="fresh",
     )
@@ -614,7 +656,7 @@ async def test_mark_stale_active_runs_scopes_to_conversation(db: AsyncSession) -
         db,
         conversation_id=target_conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="target",
     )
@@ -626,14 +668,22 @@ async def test_mark_stale_active_runs_scopes_to_conversation(db: AsyncSession) -
     )
     target.heartbeat_at = run_utc_now_naive() - timedelta(minutes=20)
 
-    other_conversation = Conversation(agent_id=agent.id, title="other sweep")
+    other_conversation = Conversation(
+        agent_id=agent.id,
+        title="other sweep",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(other_conversation)
     await db.flush()
     other = await conversation_run_service.create_run(
         db,
         conversation_id=other_conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="other",
     )
@@ -672,7 +722,7 @@ async def test_mark_stale_active_runs_finalizes_trace_and_artifacts(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="artifact run",
     )
@@ -703,6 +753,8 @@ async def test_mark_stale_active_runs_finalizes_trace_and_artifacts(
         size_bytes=12,
         sha256="0" * 64,
         status="ready",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([record, artifact])
     await db.flush()

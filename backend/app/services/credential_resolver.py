@@ -19,6 +19,7 @@ from collections.abc import Iterable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.credentials import service as credential_service
 from app.models.credential import Credential
 from app.models.model import Model
@@ -28,7 +29,7 @@ async def resolve_credential_for_model(
     db: AsyncSession,
     model: Model,
     explicit_credential_id: uuid.UUID | None,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> Credential | None:
     """Tiered credential lookup for a Model.
 
@@ -42,9 +43,7 @@ async def resolve_credential_for_model(
     """
 
     if explicit_credential_id is not None:
-        cred = await credential_service.get_for_user(
-            db, explicit_credential_id, user_id
-        )
+        cred = await credential_service.get_for_user(db, explicit_credential_id, context)
         if cred is not None:
             return cred
         # Explicit but invalid — surface to caller; do not silently fall
@@ -52,9 +51,7 @@ async def resolve_credential_for_model(
         return None
 
     if model.default_credential_id is not None:
-        cred = await credential_service.get_for_user(
-            db, model.default_credential_id, user_id
-        )
+        cred = await credential_service.get_for_user(db, model.default_credential_id, context)
         if cred is not None:
             return cred
 

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.policies import PRIVATE, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation, verify_csrf
 from app.models.conversation import Conversation
 from app.services.followup_service import generate_followup_suggestion
@@ -27,6 +28,7 @@ class FollowupSuggestionResponse(BaseModel):
     "/api/conversations/{conversation_id}/followup-suggestion",
     response_model=FollowupSuggestionResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def create_followup_suggestion(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

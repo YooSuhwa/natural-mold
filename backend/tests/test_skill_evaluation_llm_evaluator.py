@@ -15,6 +15,8 @@ from app.services.skill_evaluation_llm import LlmSkillEvaluationEvaluator
 from app.services.skill_evaluation_worker import SkillEvaluationWorker
 from app.services.skill_evaluation_worker_state import build_context
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import TEST_TENANT_ID, create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -107,7 +109,7 @@ async def test_worker_persists_llm_evaluation_result(
 
     # The skill-axis ledger event is written after commit in its own session
     # (cancellation there can't roll back the completed run).
-    await worker._record_usage_ledger_after_commit(completed)  # noqa: SLF001 — test seam
+    await worker._record_usage_ledger_after_commit(completed, TEST_TENANT_ID)  # noqa: SLF001
 
     from sqlalchemy import select
 
@@ -175,14 +177,16 @@ async def _create_llm_run(
     tmp_path: Path,
 ):
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="LLM Evaluator",
-            slug=f"llm-evaluator-{uuid.uuid4().hex[:8]}",
-            description="Use when testing LLM skill evaluation.",
-            content=_skill_content(),
-            version="1.0.0",
+            TextSkillCreation(
+                name="LLM Evaluator",
+                slug=f"llm-evaluator-{uuid.uuid4().hex[:8]}",
+                description="Use when testing LLM skill evaluation.",
+                content=_skill_content(),
+                version="1.0.0",
+            ),
+            unit_context(TEST_USER_ID),
         )
     evaluation_set = await skill_evaluation_service.create_evaluation_set(
         db,

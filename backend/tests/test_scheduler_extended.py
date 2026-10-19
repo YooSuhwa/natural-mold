@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -12,6 +14,7 @@ from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -37,6 +40,12 @@ from app.services import conversation_run_service
 from app.services.conversation_run_worker import (
     RunTaskRegistry,
     reset_run_task_registry_for_tests,
+)
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
 )
 from tests.conftest import TEST_USER_ID, TestSession
 
@@ -288,22 +297,33 @@ async def _seed_run_for_stale_sweep(
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     agent = Agent(
         user_id=user.id,
         name="Scheduler Agent",
         system_prompt="You are helpful.",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
-    conversation = Conversation(agent_id=agent.id, title="stale sweep")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="stale sweep",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.flush()
     run = await conversation_run_service.create_run(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=user.id,
+        context=unit_context(user.id),
         source="chat",
         input_preview="slow",
     )

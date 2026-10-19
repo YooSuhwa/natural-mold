@@ -12,15 +12,24 @@ import logging
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, selectinload
 
 from app.agent_runtime.identity import AgentRunIdentity
-from app.credentials import service as credential_service
-from app.exceptions import ValidationError
-from app.mcp.auth import resolve_mcp_auth
-from app.mcp.client import build_headers
+from app.agent_runtime.mcp_auth_context import mcp_auth_fields
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import require_private_actor
+from app.authz.run_agent_loader import attach_shared_conversation_agent
+from app.authz.run_agent_scope import require_runnable_agent
+from app.authz.runtime_access_planner import RuntimeAccessPlan
+from app.authz.runtime_capability_scope import (
+    require_agent_capabilities,
+)
+from app.authz.scoping import private_scope_predicate, private_scoped
+from app.authz.service import AuthzService
+from app.credentials.run_resolution import RunCredentialResolver
+from app.credentials.run_subject import subject_for_agent
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation import Conversation
@@ -28,8 +37,8 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink, Tool
+from app.outbound.destination import destination_config
 from app.skills.runtime import build_skills_for_agent
-from app.tools.risk import trigger_blocked_tools
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +79,9 @@ def _agent_runtime_load_options() -> list[Any]:
 
 
 async def get_owned_conversation_with_agent(
-    db: AsyncSession, conversation_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext
 ) -> Conversation | None:
-    """Single SELECT joining ``conversations ⨝ agents on user_id`` + agent
+    """Single SELECT scoped by private conversation ownership and org/company + agent
     runtime eager-loads (model / llm_credential / tool_links / mcp_tool_links
     / skill_links). 결과 ``conv.agent`` 는 별도 query 없이 hydrated.
 
@@ -91,21 +100,32 @@ async def get_owned_conversation_with_agent(
     another user — caller should map both to a single 404 (rules/security.md
     enumeration oracle, ``get_owned_conversation`` 와 동일 contract).
     """
-    result = await db.execute(
-        select(Conversation)
-        .join(Agent, Conversation.agent_id == Agent.id)
-        .where(Conversation.id == conversation_id, Agent.user_id == user_id)
-        .options(
-            contains_eager(Conversation.agent).options(
-                *_agent_runtime_load_options(),
+    with db.no_autoflush:
+        await require_private_actor(db, context)
+        result = await db.execute(
+            private_scoped(
+                select(Conversation).where(Conversation.id == conversation_id),
+                Conversation,
+                context,
+            )
+            .outerjoin(
+                Agent,
+                and_(Conversation.agent_id == Agent.id, private_scope_predicate(Agent, context)),
+            )
+            .execution_options(populate_existing=True)
+            .options(
+                contains_eager(Conversation.agent).options(
+                    *_agent_runtime_load_options(),
+                )
             )
         )
-    )
-    return result.unique().scalar_one_or_none()
+        conv = result.unique().scalar_one_or_none()
+    await attach_shared_conversation_agent(db, conv, context, _agent_runtime_load_options)
+    return conv
 
 
 async def get_agent_with_tools(
-    db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
 ) -> Agent | None:
     """Load agent with everything needed by the runtime in one round-trip.
 
@@ -120,12 +140,14 @@ async def get_agent_with_tools(
     callers (closing the M11 ``trigger_executor.py`` prefetch-skew bug).
     """
 
-    result = await db.execute(
-        select(Agent)
-        .where(Agent.id == agent_id, Agent.user_id == user_id)
-        .options(*_agent_runtime_load_options())
-    )
-    return result.scalar_one_or_none()
+    with db.no_autoflush:
+        await require_private_actor(db, context)
+        result = await db.execute(
+            private_scoped(select(Agent).where(Agent.id == agent_id), Agent, context)
+            .execution_options(populate_existing=True, autoflush=False)
+            .options(*_agent_runtime_load_options())
+        )
+        return result.scalar_one_or_none()
 
 
 def build_effective_prompt(agent: Agent) -> str:
@@ -134,81 +156,63 @@ def build_effective_prompt(agent: Agent) -> str:
     return agent.system_prompt
 
 
-def build_agent_skills(agent: Agent) -> list[dict[str, Any]]:
-    """Forward the agent's skill links to the runtime descriptor list."""
+def build_agent_skills(
+    agent: Agent, context: OrgContext, plan: RuntimeAccessPlan | None = None
+) -> list[dict[str, Any]]:
+    """Forward the agent's skill links (``plan``: the ones it allows) to the runtime."""
 
+    if plan is not None:
+        return build_skills_for_agent(list(plan.skill_links))
+    require_agent_capabilities(agent, context)
     return build_skills_for_agent(agent.skill_links)
 
 
 async def build_tools_config(
     agent: Agent,
     *,
+    context: OrgContext,
     db: AsyncSession | None = None,
     conversation_id: str | None = None,
     identity: AgentRunIdentity | None = None,
+    read_only: bool = False,
+    authz: AuthzService | None = None,
+    plan: RuntimeAccessPlan | None = None,
 ) -> list[dict[str, Any]]:
     """Build the runtime tools_config list for an agent.
 
-    The shape is intentionally minimal — every entry exposes the registry
-    ``definition_key`` (so the executor knows which runner to instantiate),
-    the user-supplied ``parameters``, and an optional decrypted
-    ``credentials`` dict.
-
-    The legacy 4-way ``ToolType`` branch + per-user default connection map +
-    cross-tenant ownership gates are gone. ``Tool.credential_id`` is the only
-    auth source; ownership is enforced by ``user_id`` filters on the writes.
-
-    MCP tools are not represented as ``Tool`` rows under the greenfield model
-    (they live in ``mcp_servers``/``mcp_tools``). Until ``agent_mcp_servers``
-    link binding ships, this function only emits regular tool entries; MCP
-    bindings will come in via a separate config list. See
-    ``app/mcp/client.py`` and the M5 follow-up note in ``progress.txt``.
+    Every entry exposes the registry ``definition_key``, the user-supplied
+    ``parameters`` and the decrypted ``credentials`` resolved by
+    ``RunCredentialResolver`` (11.3, F-05): ``shared`` resources use their owner's
+    credential, ``per_user`` resources the run account's connection (caller for
+    caller-identity runs, owner for fixed runs). ``read_only`` (response masking)
+    resolves without decisions, errors for missing connections or OAuth refresh.
+    MCP tool links are emitted in the executor's ``mcp_server_url`` shape. ``plan``
+    (``prepare_authorized_runtime``, F-06) already decided the agent and its links.
     """
 
+    if plan is None:
+        await require_runnable_agent(agent, context, identity, authz)
+    subject = subject_for_agent(agent, context, identity, read_only=read_only)
+    decided = plan.decided if plan is not None else frozenset()
+    resolver = RunCredentialResolver(db, subject, authz, decided=decided)
     configs: list[dict[str, Any]] = []
-    credential_cache: dict[uuid.UUID, dict[str, Any] | None] = {}
-    credential_subject_user_id = (
-        identity.credential_subject_user_id if identity is not None else agent.user_id
-    )
     runtime_actor_user_id = (
         identity.caller_user_id or identity.agent_owner_user_id
         if identity is not None
         else agent.user_id
     )
+    actor = {
+        "user_id": str(runtime_actor_user_id),
+        "tenant_id": str(context.tenant_id),
+        "agent_id": str(agent.id),
+        "credential_subject_user_id": str(subject.account_user_id),
+    }
 
-    async def decrypt_cached(credential: Any) -> dict[str, Any] | None:
-        if (
-            credential.user_id != credential_subject_user_id
-            or bool(getattr(credential, "is_system", False)) is True
-        ):
-            raise ValidationError(
-                "CREDENTIAL_SUBJECT_MISMATCH",
-                "credential is not available for this agent run identity",
-            )
-        cached = credential_cache.get(credential.id)
-        if credential.id in credential_cache:
-            return cached
-        try:
-            cached = await credential_service.decrypt_with_external(credential.data_encrypted)
-        except Exception:  # noqa: BLE001 — surface as missing creds, never crash chat
-            logger.exception(
-                "credential decryption failed for credential %s",
-                credential.id,
-            )
-            cached = None
-        credential_cache[credential.id] = cached
-        return cached
-
-    for link in agent.tool_links:
+    for link in plan.tool_links if plan is not None else agent.tool_links:
         tool = link.tool
         if tool is None or not tool.enabled:
             continue
-
-        credentials: dict[str, Any] | None = None
-        credential = getattr(tool, "credential", None)
-        if credential is not None:
-            credentials = await decrypt_cached(credential)
-
+        resolved = await resolver.tool(tool)
         configs.append(
             {
                 "tool_id": str(tool.id),
@@ -216,52 +220,21 @@ async def build_tools_config(
                 "name": tool.name,
                 "description": tool.description,
                 "parameters": dict(tool.parameters or {}),
-                "credentials": credentials,
-                "credential_id": (str(tool.credential_id) if tool.credential_id else None),
-                # Hook-framework correlation — wire down to ``tool_factory``.
-                "user_id": str(runtime_actor_user_id),
-                "agent_id": str(agent.id),
-                "credential_subject_user_id": str(credential_subject_user_id),
+                "credentials": resolved.values.reveal() if resolved else None,
+                "credential_id": str(resolved.credential_id) if resolved else None,
+                "credential_destination": destination_config(resolved, identity, agent.user_id),
+                **actor,
             }
         )
 
-    # MCP tool bindings — emit in the executor's mcp_server_url shape so
-    # ``_build_mcp_tools`` instantiates them. m25 added the link table that
-    # makes this possible (previously a m5 follow-up).
-    for mcp_link in agent.mcp_tool_links:
+    for mcp_link in plan.mcp_tool_links if plan is not None else agent.mcp_tool_links:
         mcp_tool = mcp_link.mcp_tool
-        if mcp_tool is None or not mcp_tool.enabled:
+        if mcp_tool is None or not mcp_tool.enabled or mcp_tool.server is None:
             continue
         server = mcp_tool.server
-        if server is None or not server.url:
+        resolution = await resolver.mcp(server)
+        if resolution is None:
             continue
-
-        mcp_credentials: dict[str, Any] | None = None
-        mcp_headers: dict[str, str] = dict(server.headers or {})
-        if server.credential is not None:
-            if db is not None:
-                resolved_auth = await resolve_mcp_auth(
-                    db,
-                    credential_id=server.credential_id,
-                    user_id=credential_subject_user_id,
-                    static_headers=dict(server.headers or {}),
-                )
-                if resolved_auth.error:
-                    if resolved_auth.status == "credential_not_found":
-                        raise ValidationError(
-                            "CREDENTIAL_SUBJECT_MISMATCH",
-                            "credential is not available for this agent run identity",
-                        )
-                    raise ValidationError(
-                        "MCP_CREDENTIAL_AUTH_NEEDED",
-                        resolved_auth.error,
-                    )
-                mcp_credentials = resolved_auth.credentials
-                mcp_headers = resolved_auth.headers
-            else:
-                mcp_credentials = await decrypt_cached(server.credential)
-                mcp_headers = build_headers(dict(server.headers or {}), mcp_credentials)
-
         configs.append(
             {
                 "tool_id": f"mcp:{mcp_tool.id}",
@@ -269,48 +242,23 @@ async def build_tools_config(
                 "name": mcp_tool.name,
                 "description": mcp_tool.description,
                 "parameters": {},
-                # _build_mcp_tools branches on these keys (see executor.py
-                # ``mcp_server_url``).
+                # _build_mcp_tools branches on these keys (``mcp_server_url``).
                 "mcp_server_url": server.url,
                 "mcp_server_id": str(server.id),
                 "mcp_tool_id": str(mcp_tool.id),
                 "mcp_tool_name": mcp_tool.name,
-                "mcp_transport_headers": mcp_headers,
-                "credentials": mcp_credentials,
+                "org_id": str(context.org_id),
+                "mcp_transport_headers": resolution.headers,
+                "credentials": resolution.credentials,
+                # F-12: cache identity + typed auth errors (who can re-authorize).
+                **mcp_auth_fields(server, resolution.resolved, runtime_actor_user_id, identity),
+                "credential_destination": destination_config(
+                    resolution.resolved, identity, agent.user_id
+                ),
                 "conversation_id": conversation_id,
-                "user_id": str(runtime_actor_user_id),
-                "agent_id": str(agent.id),
-                "credential_subject_user_id": str(credential_subject_user_id),
+                **actor,
             }
         )
 
+    resolver.raise_missing()
     return configs
-
-
-async def trigger_blocked_tools_for_agent_tree(
-    agent: Agent,
-    *,
-    db: AsyncSession,
-) -> list[Any]:
-    """Return trigger-unsafe capabilities for parent plus one-hop children."""
-
-    blocked = trigger_blocked_tools(
-        await build_tools_config(agent, db=db, conversation_id=None),
-        has_agent_skills=bool(build_agent_skills(agent)),
-    )
-    for link in agent.sub_agent_links:
-        child = link.sub_agent
-        if child is None:
-            continue
-        child_tools_config = await build_tools_config(
-            child,
-            db=db,
-            conversation_id=None,
-        )
-        blocked.extend(
-            trigger_blocked_tools(
-                child_tools_config,
-                has_agent_skills=bool(build_agent_skills(child)),
-            )
-        )
-    return blocked

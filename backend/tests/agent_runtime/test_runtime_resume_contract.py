@@ -21,6 +21,8 @@ from tests.agent_runtime.runtime_contract_helpers import (
     contract_diff_paths,
     load_contract_fixture,
 )
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore:The v3 streaming protocol on Pregel is experimental"
@@ -40,6 +42,7 @@ class FakeToolBindingChatModel(FakeMessagesListChatModel):
 
 def _cfg() -> AgentConfig:
     return AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="fake",
         model_name="fake-chat",
         api_key=None,

@@ -189,6 +189,13 @@ async def test_runtime_shutdown_disposes_database_after_checkpointer_close_failu
     monkeypatch.setattr(scheduler_module, "release_scheduler_leader", release_leader)
     monkeypatch.setattr(spend_writer, "spend_queue", SpendQueue())
     monkeypatch.setattr(tool_factory, "close_tool_http_client", close_tool_client)
+
+    async def close_authz() -> None:
+        calls.append("authz")
+
+    import app.authz.runtime as authz_runtime_module
+
+    monkeypatch.setattr(authz_runtime_module, "close_authz_runtime", close_authz)
     monkeypatch.setattr(checkpointer, "shutdown_checkpointer", close_checkpointer)
     monkeypatch.setattr(database, "shutdown_database", dispose_database)
 
@@ -203,6 +210,7 @@ async def test_runtime_shutdown_disposes_database_after_checkpointer_close_failu
         "scheduler_release",
         "spend_queue",
         "tool_http_client",
+        "authz",
         "checkpointer",
         "database",
     ]

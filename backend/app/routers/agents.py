@@ -8,25 +8,53 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import dependencies
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.agent_runtime.runtime_policy import resolve_runtime_policy
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.agent_delegations import commit_and_apply
+from app.authz.agent_lifecycle_scope import (
+    AgentLifecycleAuthorization,
+    authorize_agent_lifecycle,
+)
+from app.authz.org_context import OrgContext
+from app.authz.policies import CANDIDATES, CAP, CATALOG, GOVERNANCE, RES, authz_policy
+from app.authz.resource_lifecycle import on_resource_created
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import agent_not_found, image_not_found
-from app.exceptions import ExternalServiceError, ValidationError
+from app.exceptions import AppError, ExternalServiceError, ValidationError
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.schemas.agent import (
     AgentBrief,
     AgentCreate,
     AgentResponse,
-    AgentSummaryResponse,
     AgentUpdate,
     GenerateImageResponse,
     McpToolBrief,
     ToolBrief,
 )
+from app.schemas.agent_access import AgentDetail, AgentListItem, AgentSummaryItem
+from app.schemas.agent_lifecycle import (
+    AgentLifecycleMetadataResponse,
+    AgentPurgeReceiptResponse,
+    AgentPurgeRequest,
+    AgentRestoreResponse,
+)
 from app.schemas.skill import SkillBrief
-from app.services import agent_service, audit_service, image_service
+from app.services import (
+    agent_access_views,
+    agent_service,
+    audit_service,
+    image_service,
+)
+from app.services.agent_execution_owner import notify_local_owner
 from app.services.agent_image_paths import build_agent_image_url, resolve_agent_image_path
+from app.services.agent_lifecycle import archive_agent, list_archived_agents, restore_agent
+from app.services.agent_purge_service import purge_agent
+from app.services.agent_purge_types import AgentPurgeCommand
+from app.services.agent_update_service import linked_targets
+from app.services.conversation_run_worker import get_run_task_registry
 from app.services.image_preview import get_or_create_image_preview_async
 from app.tools.registry import registry as tool_registry
 
@@ -113,6 +141,7 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
             )
             for link in agent.sub_agent_links
         ],
+        required_link_ids=[target for link, target in linked_targets(agent) if link.required],
         middleware_configs=agent.middleware_configs or [],
         runtime_policy=(
             resolved_runtime_policy.effective if agent.runtime_policy is not None else None
@@ -140,32 +169,73 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
     )
 
 
-@router.get("", response_model=list[AgentResponse])
+async def _scoped_agent_response(
+    db: AsyncSession, agent_id: uuid.UUID, context: OrgContext
+) -> AgentResponse:
+    presentation = await agent_service.get_agent_projection(db, agent_id, context)
+    if presentation is None:
+        raise agent_not_found()
+    return _agent_to_response(presentation.agent).model_copy(
+        update={"unread_count": presentation.unread_count}
+    )
+
+
+async def _present(
+    db: AsyncSession, authz: AuthzService, context: OrgContext, agent_id: uuid.UUID
+) -> AgentDetail:
+    return await agent_access_views.present_agent(db, authz, context, agent_id, _agent_to_response)
+
+
+@router.get("", response_model=list[AgentListItem])
+@authz_policy(CANDIDATES("agent", "can_run"))
 async def list_agents(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ):
-    agents = await agent_service.list_agents(db, user.id)
-    return [_agent_to_response(a) for a in agents]
+    agents = await agent_service.list_agents(db, context)
+    if authz.mode == "legacy":
+        return [_agent_to_response(a) for a in agents]
+    return await agent_access_views.list_agent_views(db, authz, context, agents, _agent_to_response)
 
 
-@router.get("/summary", response_model=list[AgentSummaryResponse])
+@router.get("/summary", response_model=list[AgentSummaryItem])
+@authz_policy(CANDIDATES("agent", "can_run"))
 async def list_agent_summaries(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ):
-    return await agent_service.list_agent_summaries(db, user.id)
+    summaries = await agent_service.list_agent_summaries(db, context)
+    if authz.mode == "legacy":
+        return summaries
+    return await agent_access_views.list_summary_views(db, authz, context, summaries)
 
 
-@router.post("", response_model=AgentResponse, status_code=201)
+@router.get("/archived", response_model=list[AgentLifecycleMetadataResponse])
+@authz_policy(GOVERNANCE)
+async def list_archived_agent_metadata(
+    db: AsyncSession = Depends(dependencies.get_company_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> list[AgentLifecycleMetadataResponse]:
+    return await list_archived_agents(db, user)
+
+
+@router.post("", response_model=AgentDetail, status_code=201)
+@authz_policy(CAP("cap_create_agent"))
 async def create_agent(
     data: AgentCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
-    agent = await agent_service.create_agent(db, data, user.id)
+    await authz.require_cap(context, "cap_create_agent", legacy=True)
+    agent = await agent_service.create_agent(db, data, context)
     await audit_service.record_self_event(
         db,
         user,
@@ -183,36 +253,38 @@ async def create_agent(
             "system_prompt_changed": True,
         },
     )
-    await db.commit()
-    return _agent_to_response(agent)
+    created = await on_resource_created(db, agent, mode=authz.mode)
+    await commit_and_apply(db, authz, created)  # with F-02 delegations (8.6 item 2)
+    return await _present(db, authz, context, agent.id)
 
 
-@router.get("/{agent_id}", response_model=AgentResponse)
+@router.get("/{agent_id}", response_model=AgentDetail)
+@authz_policy(RES("agent", "can_run", param="agent_id", min_visible="can_run"))
 async def get_agent(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
-    if not agent:
-        raise agent_not_found()
-    return _agent_to_response(agent)
+    return await _present(db, authz, context, agent_id)
 
 
-@router.put("/{agent_id}", response_model=AgentResponse)
+@router.put("/{agent_id}", response_model=AgentDetail)
+@authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
 async def update_agent(
     agent_id: uuid.UUID,
     data: AgentUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
-    if not agent:
-        raise agent_not_found()
+    agent = await agent_access_views.authorized_agent(db, authz, context, agent_id, "can_edit")
     _require_standard_profile(agent)
-    updated = await agent_service.update_agent(db, agent, data)
+    updated = await agent_service.update_agent(db, agent, data, context=context)
     changed_fields = sorted(data.model_fields_set - {"system_prompt"})
     await audit_service.record_self_event(
         db,
@@ -227,23 +299,24 @@ async def update_agent(
             "system_prompt_changed": "system_prompt" in data.model_fields_set,
         },
     )
-    await db.commit()
-    return _agent_to_response(updated)
+    await commit_and_apply(db, authz)  # F-02 delegation tuples right after commit
+    return await _present(db, authz, context, updated.id)
 
 
-@router.patch("/{agent_id}/favorite", response_model=AgentResponse)
+@router.patch("/{agent_id}/favorite", response_model=AgentDetail)
+@authz_policy(RES("agent", "can_run", param="agent_id", min_visible="can_run"))
 async def toggle_favorite(
     agent_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
-    if not agent:
-        raise agent_not_found()
+    agent = await agent_access_views.authorized_agent(db, authz, context, agent_id, "can_run")
     _require_standard_profile(agent)
-    updated = await agent_service.toggle_favorite(db, agent)
+    updated, favorite = await agent_access_views.toggle_favorite(db, context, agent)
     await audit_service.record_self_event(
         db,
         user,
@@ -252,47 +325,89 @@ async def toggle_favorite(
         target_id=updated.id,
         target_name=updated.name,
         request=request,
-        metadata={"is_favorite": updated.is_favorite},
+        metadata={"is_favorite": favorite},
     )
     await db.commit()
-    return _agent_to_response(updated)
+    return await _present(db, authz, context, updated.id)
 
 
 @router.delete("/{agent_id}", status_code=204)
+@authz_policy(GOVERNANCE)
 async def delete_agent(
     agent_id: uuid.UUID,
-    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
-):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
-    if not agent:
-        raise agent_not_found()
-    _require_standard_profile(agent)
-    await audit_service.record_self_event(
-        db,
-        user,
-        action="agent.delete",
-        target_type="agent",
-        target_id=agent.id,
-        target_name=agent.name,
-        request=request,
-    )
-    await agent_service.delete_agent(db, agent)
+) -> None:
+    try:
+        await authorize_agent_lifecycle(
+            db,
+            user,
+            AgentLifecycleAuthorization(agent_id=agent_id, action="archive", context=context),
+        )
+    except AppError as error:
+        if error.code != "AGENT_LIFECYCLE_PERMISSION_REQUIRED":
+            raise
+        raise agent_not_found() from error
+    result = await archive_agent(db, user, agent_id)
+    await commit_and_apply(db)  # F-02: the archived subagent links' delegation revokes
+    registry = get_run_task_registry()
+    for intent in result.cancel_intents:
+        notify_local_owner(intent, registry)
+    if result.disabled_trigger_ids:
+        from app.scheduler import remove_trigger_job
+
+        for trigger_id in result.disabled_trigger_ids:
+            remove_trigger_job(trigger_id)
+
+
+@router.post("/{agent_id}/restore", response_model=AgentRestoreResponse)
+@authz_policy(GOVERNANCE)
+async def restore_archived_agent(
+    agent_id: uuid.UUID,
+    _csrf: None = Depends(verify_csrf),
+    db: AsyncSession = Depends(dependencies.get_company_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> AgentRestoreResponse:
+    response = await restore_agent(db, user, agent_id)
     await db.commit()
+    return response
+
+
+@router.post("/{agent_id}/purge", response_model=AgentPurgeReceiptResponse)
+@authz_policy(GOVERNANCE)
+async def purge_archived_agent(
+    agent_id: uuid.UUID,
+    data: AgentPurgeRequest,
+    response: Response,
+    _csrf: None = Depends(verify_csrf),
+    db: AsyncSession = Depends(dependencies.get_company_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> AgentPurgeReceiptResponse:
+    receipt = await purge_agent(
+        AgentPurgeCommand(
+            db=db,
+            actor=user,
+            agent_id=agent_id,
+            confirmation_name=data.confirmation_name,
+        )
+    )
+    response.status_code = 200 if receipt.state == "completed" else 202
+    return receipt
 
 
 @router.post("/{agent_id}/image", response_model=GenerateImageResponse)
+@authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
 async def generate_agent_image(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
-    if not agent:
-        raise agent_not_found()
+    agent = await agent_access_views.authorized_agent(db, authz, context, agent_id, "can_edit")
     _require_standard_profile(agent)
     try:
         image_url = await image_service.generate_agent_image(db, agent)
@@ -304,15 +419,18 @@ async def generate_agent_image(
 
 
 @router.get("/{agent_id}/image")
+@authz_policy(RES("agent", "can_run", param="agent_id", min_visible="can_run"))
 async def get_agent_image(
     agent_id: uuid.UUID,
     variant: Literal["original", "preview"] = Query("original"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ):
-    agent = await agent_service.get_agent(db, agent_id, user.id)
-    if not agent:
-        raise image_not_found()
+    agent = await agent_access_views.authorized_agent(
+        db, authz, context, agent_id, "can_run", not_found=image_not_found()
+    )
     if not agent.image_path:
         target = resolve_agent_image_path(None, agent_id=agent.id)
     else:
@@ -341,6 +459,7 @@ async def get_agent_image(
 
 
 @middleware_router.get("/api/middlewares")
+@authz_policy(CATALOG)
 async def list_middlewares() -> list[dict[str, Any]]:
     """Return the available middleware catalog.
 

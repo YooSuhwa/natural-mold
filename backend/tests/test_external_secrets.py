@@ -86,7 +86,9 @@ async def test_vault_provider_init_and_connect(
     provider = VaultSecretsProvider()
     provider.init(settings_for_vault)
     await provider.connect()
-    fake_hvac.Client.assert_called_once_with(url="http://vault.local:8200", token="root")
+    fake_hvac.Client.assert_called_once_with(
+        url="http://vault.local:8200", token="root", verify=True
+    )
 
 
 @pytest.mark.asyncio

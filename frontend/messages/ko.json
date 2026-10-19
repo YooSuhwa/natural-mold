@@ -89,7 +89,21 @@
       "sessionExpiredDesc": "다시 로그인해 주세요.",
       "invalidEmail": "올바른 이메일 주소를 입력해 주세요",
       "passwordRequired": "비밀번호를 입력해 주세요",
-      "nameRequired": "표시 이름을 입력해 주세요"
+      "nameRequired": "표시 이름을 입력해 주세요",
+      "ssoRequired": "이 회사는 회사 계정(SSO)으로만 로그인할 수 있습니다. 아래 회사 계정 로그인을 사용하세요.",
+      "ssoSignupBlocked": "이 도메인은 회사 계정(SSO)으로 로그인합니다. 로그인 화면에서 회사 계정으로 계속하세요."
+    },
+    "sso": {
+      "required": "이 회사는 회사 계정(SSO) 로그인이 필수입니다.",
+      "continueWith": "{name} 계정으로 계속",
+      "ldapTitle": "{name} 계정(사번)으로 로그인",
+      "ldapFailed": "아이디 또는 비밀번호가 올바르지 않습니다.",
+      "username": "아이디",
+      "password": "비밀번호",
+      "ldapSubmit": "회사 계정으로 로그인",
+      "failed": "회사 계정 로그인에 실패했습니다. 다시 시도하거나 관리자에게 문의하세요.",
+      "divider": "또는 회사 계정으로 로그인",
+      "linkPending": "이미 있는 계정입니다. 기존 비밀번호로 한 번 로그인하면 회사 계정이 연결됩니다."
     },
     "onboarding": {
       "title": "Moldy에 오신 것을 환영합니다",
@@ -116,9 +130,92 @@
       "avatarLabel": "{name} 프로필 아이콘",
       "avatarFallback": "사용자",
       "profileComingSoon": "프로필 설정은 곧 지원됩니다"
+    },
+    "invite": {
+      "title": "초대를 받았어요",
+      "loggedOut": "가입하거나 로그인하면 초대한 조직에 참여합니다. 초대받은 이메일로 진행해 주세요.",
+      "register": "가입하고 참여하기",
+      "login": "이미 계정이 있나요? 로그인 후 수락",
+      "signedInAs": "{email} 계정으로 참여합니다.",
+      "join": "참여하기",
+      "joined": "참여했어요. 홈으로 이동합니다.",
+      "switchAccount": "다른 계정으로 로그인",
+      "home": "홈으로",
+      "failure": {
+        "mismatch": {
+          "title": "다른 계정으로 로그인돼 있어요",
+          "description": "{email} 계정은 이 초대의 대상이 아니에요. 로그아웃한 뒤 초대받은 이메일로 로그인하고 링크를 다시 열어 주세요."
+        },
+        "expired": {
+          "title": "초대 링크가 만료됐어요",
+          "description": "초대한 관리자에게 초대를 다시 보내 달라고 요청해 주세요."
+        },
+        "used": {
+          "title": "이미 사용한 초대 링크예요",
+          "description": "이미 참여했다면 홈에서 조직을 바로 쓸 수 있어요. 아니라면 관리자에게 새 초대를 요청해 주세요."
+        },
+        "invalid": {
+          "title": "사용할 수 없는 초대 링크예요",
+          "description": "초대가 취소됐거나 새 링크로 바뀌었어요. 관리자에게 초대를 다시 보내 달라고 요청해 주세요."
+        },
+        "blocked": {
+          "title": "이 조직에 참여할 수 없어요",
+          "description": "계정이 이 조직에서 정지되었거나 제외된 상태예요. 관리자에게 문의해 주세요."
+        },
+        "unavailable": {
+          "title": "지금은 참여할 수 없어요",
+          "description": "초대한 조직이나 회사를 지금 사용할 수 없어요. 관리자에게 문의해 주세요."
+        }
+      }
     }
   },
   "common": {
+    "apiError": {
+      "unauthenticated": {
+        "title": "다시 로그인해 주세요",
+        "description": "로그인이 만료되었어요."
+      },
+      "permissionRequired": {
+        "title": "권한이 필요해요",
+        "description": "이 작업을 할 권한이 없어요. 소유자나 관리자에게 권한을 요청하세요."
+      },
+      "capabilityRequired": {
+        "title": "조직 기능 권한이 필요해요",
+        "description": "이 기능은 조직 관리자가 허용한 구성원만 쓸 수 있어요."
+      },
+      "orgAccessDenied": {
+        "title": "이 조직에 접근할 수 없어요",
+        "description": "사이드바에서 다른 조직을 선택하세요."
+      },
+      "tenantSuspended": {
+        "title": "회사 계정이 정지되었어요",
+        "description": "회사 관리자에게 문의하세요."
+      },
+      "notFound": {
+        "title": "찾을 수 없어요",
+        "description": "삭제되었거나 볼 수 없는 항목이에요."
+      },
+      "agentNotReady": {
+        "title": "에이전트를 아직 실행할 수 없어요",
+        "description": "연결이 필요한 항목을 점검한 뒤 다시 시도하세요.",
+        "check": "점검하기"
+      },
+      "quotaExceeded": {
+        "title": "사용 한도를 넘었어요",
+        "description": "잠시 후 다시 시도하거나 관리자에게 한도를 문의하세요."
+      },
+      "authzUnavailable": {
+        "title": "권한을 확인하지 못했어요",
+        "description": "권한 서버에 일시적인 문제가 있어요. 잠시 후 다시 시도하세요."
+      },
+      "unknown": {
+        "title": "문제가 발생했습니다",
+        "description": "잠시 후 다시 시도하세요."
+      },
+      "login": "로그인",
+      "retry": "다시 시도"
+    },
+    "readOnly": "보기 전용이에요. 수정하려면 편집 권한이 필요해요.",
     "save": "저장",
     "create": "생성",
     "cancel": "취소",
@@ -175,7 +272,13 @@
       "unknown": "알 수 없음",
       "healthy": "정상",
       "degraded": "주의",
-      "unhealthy": "비정상"
+      "unhealthy": "비정상",
+      "needs_connection": "연결 필요",
+      "limited": "일부 제외",
+      "blocked": "사용 불가",
+      "no_permission": "권한 없음",
+      "archived": "보관됨",
+      "suspended": "정지됨"
     },
     "comingSoon": {
       "default": "이 기능은 준비 중입니다",
@@ -202,8 +305,935 @@
       "skipToMain": "본문으로 건너뛰기"
     }
   },
+  "orgAdmin": {
+    "requests": {
+      "title": "접근 요청",
+      "description": "내가 관리하는 자원에 들어온 권한 요청을 처리하고, 내가 보낸 요청을 확인합니다.",
+      "tabs": {
+        "inbox": "받은 요청",
+        "outbox": "보낸 요청",
+        "handled": "처리됨"
+      },
+      "empty": {
+        "inbox": "받은 요청이 없어요",
+        "outbox": "보낸 요청이 없어요",
+        "handled": "처리한 요청이 없어요"
+      },
+      "row": "{requester} → {resource} · {level}",
+      "unknownResource": "이름 없는 자원",
+      "unknownUser": "알 수 없는 사용자",
+      "expiresIn": "{days}일 후 만료",
+      "status": {
+        "pending": "대기",
+        "approved": "승인",
+        "denied": "거절",
+        "cancelled": "취소",
+        "expired": "만료"
+      },
+      "approve": "승인",
+      "deny": "거절",
+      "cancelRequest": "요청 취소",
+      "toast": {
+        "approved": "요청을 승인했어요",
+        "denied": "요청을 거절했어요",
+        "cancelled": "요청을 취소했어요"
+      },
+      "errors": {
+        "access_request_closed": "이미 처리된 요청이에요. 목록을 새로고침했어요.",
+        "confirm_required": "위임된 계정 자원이 있는 에이전트예요. 공유 화면에서 확인한 뒤 공유해 주세요.",
+        "generic": "요청을 처리하지 못했어요. 잠시 후 다시 시도하세요."
+      }
+    },
+    "common": {
+      "noOrganization": "선택된 조직이 없습니다",
+      "noOrganizationDescription": "사이드바에서 조직을 선택하거나 조직 초대를 받아 주세요.",
+      "previous": "이전",
+      "next": "다음",
+      "cancel": "취소",
+      "save": "저장",
+      "close": "닫기"
+    },
+    "errors": {
+      "invalid_cursor": "목록 위치 정보가 올바르지 않습니다. 처음부터 다시 불러와 주세요.",
+      "stale_version": "다른 사람이 먼저 변경했습니다. 최신 내용을 불러왔으니 다시 시도해 주세요.",
+      "organization_archive_name_mismatch": "조직 이름이 일치하지 않습니다.",
+      "organization_restore_expired": "조직 복원 가능 기간이 지났습니다.",
+      "default_organization_archive_forbidden": "기본 조직은 보관할 수 없습니다.",
+      "last_admin": "마지막 관리자는 제거하거나 강등할 수 없습니다.",
+      "last_organization": "회사의 마지막 조직은 보관할 수 없습니다.",
+      "permission_required": "이 작업을 할 권한이 없습니다.",
+      "policy_locked": "회사 정책으로 잠겨 있어 변경할 수 없습니다.",
+      "conflict": "현재 상태와 충돌해 처리하지 못했습니다.",
+      "not_found": "대상을 찾을 수 없습니다.",
+      "forbidden": "권한이 없습니다.",
+      "generic": "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      "last_tenant_admin": "마지막 회사 관리자는 해제하거나 제거할 수 없습니다.",
+      "catalog_policy_locked": "상위 단계에서 막힌 항목이라 켤 수 없습니다.",
+      "validation_error": "입력값을 확인해 주세요.",
+      "invitation_membership_blocked": "이미 회사에 속해 있거나 초대할 수 없는 사용자입니다.",
+      "invitation_used": "이미 수락된 초대입니다.",
+      "limit_exceeds_parent": "상위 한도보다 큰 값은 저장할 수 없습니다."
+    },
+    "picker": {
+      "placeholder": "이름 또는 이메일로 검색",
+      "hint": "두 글자 이상 입력하세요.",
+      "searching": "검색 중...",
+      "empty": "검색 결과가 없습니다.",
+      "type": {
+        "user": "사용자",
+        "group": "그룹",
+        "org": "조직 전체"
+      }
+    },
+    "settings": {
+      "title": "조직 설정",
+      "description": "현재 조직의 이름, 가입·공유 정책, 보존 기간과 사용 한도를 관리합니다.",
+      "readOnly": "조직 관리자만 변경할 수 있습니다.",
+      "rename": {
+        "title": "조직 이름",
+        "description": "구성원에게 보이는 조직 이름입니다.",
+        "label": "이름",
+        "slug": "주소 식별자: {slug}",
+        "submit": "이름 저장",
+        "saved": "조직 이름을 저장했습니다."
+      },
+      "lifecycle": {
+        "title": "보관",
+        "description": "보관한 조직은 회사 조직 목록에서 기간 내에 복원할 수 있습니다."
+      },
+      "archive": {
+        "description": "조직을 보관하면 구성원이 더 이상 이 조직을 사용할 수 없습니다.",
+        "open": "조직 보관",
+        "title": "조직을 보관할까요?",
+        "confirmDescription": "확인을 위해 조직 이름을 정확히 입력해 주세요.",
+        "confirmLabel": "조직 이름 입력: {name}",
+        "submit": "보관",
+        "done": "조직을 보관했습니다."
+      },
+      "restore": {
+        "description": "이 조직은 보관된 상태입니다.",
+        "submit": "조직 복원",
+        "done": "조직을 복원했습니다."
+      },
+      "policy": {
+        "title": "가입·공유 정책",
+        "description": "새 구성원의 기본 역할과 가입 방식, 공개 링크 허용 여부를 정합니다.",
+        "defaultRole": "새 구성원 기본 역할",
+        "defaultRoleHint": "초대할 때 바꿀 수 있어요.",
+        "role": {
+          "member": "구성원",
+          "builder": "빌더"
+        },
+        "registration": "가입 방식",
+        "registrationHint": "회사 정책이 더 엄격하면 회사 정책을 따릅니다.",
+        "registrationOption": {
+          "inherit": "회사 정책 따르기",
+          "invite_only": "초대한 사람만",
+          "default_org": "회사 가입자 누구나",
+          "closed": "가입 닫기"
+        },
+        "publicLinks": "대화 공개 링크 허용",
+        "publicLinksHint": "끄면 기존 공개 링크도 즉시 열리지 않아요.",
+        "submit": "정책 저장",
+        "saved": "정책을 저장했습니다.",
+        "readOnly": "조직 관리자만 변경할 수 있습니다."
+      },
+      "retention": {
+        "title": "보존 정책",
+        "description": "대화 기록, 에이전트 휴지통, 제외된 구성원 데이터를 보관하는 기간입니다.",
+        "conversation_days": {
+          "label": "대화 기록 보존(일)"
+        },
+        "agent_trash_days": {
+          "label": "에이전트 휴지통 기간(일)"
+        },
+        "removed_member_days": {
+          "label": "제외된 구성원 데이터 보존(일)"
+        },
+        "unlimited": "대화 기록 무기한 보존",
+        "range": "{min}~{max}일",
+        "outOfRange": "허용 범위를 벗어났습니다.",
+        "submit": "보존 정책 저장",
+        "saved": "보존 정책을 저장했습니다.",
+        "readOnly": "조직 관리자만 변경할 수 있습니다.",
+        "confirm": {
+          "title": "보존 기간을 줄일까요?",
+          "description": "저장하면 다음 정리 때 대화 {conversations}건, 에이전트 {agents}개, 제외된 구성원의 대화 {removed_member_conversations}건과 메모리 {removed_member_memories}건이 삭제돼요.",
+          "submit": "줄이고 저장"
+        }
+      },
+      "limits": {
+        "title": "사용 한도",
+        "description": "이번 달 조직 사용량과 회사가 정한 조직 한도(읽기 전용), 구성원 기본 월 한도입니다.",
+        "usage": "이번 달 사용 {used} / 한도 {limit}",
+        "noLimit": "없음",
+        "resets": "{date}에 초기화돼요.",
+        "memberDefault": "구성원 기본 월 한도(USD)",
+        "memberDefaultHint": "비우면 구성원 기본 한도를 두지 않아요.",
+        "memberDefaultCap": "조직 한도 {cap} 이하로 정할 수 있어요.",
+        "placeholder": "예: 50",
+        "overCap": "조직 한도보다 클 수 없어요.",
+        "invalid": "0 이상의 금액을 입력해 주세요.",
+        "submit": "기본 한도 저장",
+        "saved": "구성원 기본 한도를 저장했습니다."
+      }
+    },
+    "members": {
+      "title": "멤버",
+      "description": "조직 구성원을 조회하고 관리합니다.",
+      "add": {
+        "title": "멤버 추가",
+        "description": "회사 사용자 중에서 검색해 조직에 추가합니다.",
+        "submit": "추가",
+        "done": "멤버를 추가했습니다."
+      },
+      "list": {
+        "title": "구성원",
+        "empty": "구성원이 없습니다.",
+        "name": "이름",
+        "status": "상태",
+        "joined": "참여일",
+        "actions": "작업"
+      },
+      "status": {
+        "active": "활성",
+        "suspended": "정지",
+        "removed": "제거됨"
+      },
+      "actions": {
+        "suspend": "정지",
+        "reactivate": "재활성화",
+        "remove": "제거",
+        "limit": "월 한도",
+        "grants": "기능 권한"
+      },
+      "role": {
+        "member": "구성원",
+        "builder": "빌더",
+        "admin": "관리자",
+        "auditor": "감사자"
+      },
+      "invite": {
+        "open": "구성원 초대",
+        "title": "구성원 초대",
+        "description": "초대 링크는 7일 동안 유효하며 한 번만 쓸 수 있어요.",
+        "emails": "이메일",
+        "emailsHint": "쉼표나 줄바꿈으로 여러 명을 입력할 수 있어요.",
+        "invalid": "이메일 형식이 올바르지 않아요: {emails}",
+        "role": "역할",
+        "group": "그룹 (선택)",
+        "noGroup": "그룹 없음",
+        "submit": "초대 보내기 ({count})",
+        "linkOnce": "초대 링크는 여기서만 복사할 수 있어요. 받는 사람에게 직접 전달해 주세요.",
+        "created": "초대 링크를 만들었어요.",
+        "existing": "이미 대기 중인 초대가 있어요. 새 링크가 필요하면 재발송하세요.",
+        "copy": "링크 복사",
+        "copyFor": "{email} 초대 링크 복사",
+        "copied": "초대 링크를 복사했습니다.",
+        "copyFailed": "초대 링크를 복사하지 못했습니다."
+      },
+      "invitations": {
+        "title": "초대 대기",
+        "description": "아직 수락되지 않은 초대입니다. 재발송하면 이전 링크는 더 이상 쓸 수 없어요.",
+        "empty": "대기 중인 초대가 없습니다.",
+        "expiresIn": "만료 {days}일 남음",
+        "status": {
+          "pending": "초대 대기",
+          "accepted": "수락됨",
+          "revoked": "취소됨",
+          "expired": "만료됨"
+        },
+        "resend": "재발송",
+        "resentTitle": "새 초대 링크",
+        "revoke": "초대 취소",
+        "revokeTitle": "초대를 취소할까요?",
+        "revokeDescription": "{email} 님에게 보낸 초대 링크를 더 이상 쓸 수 없게 됩니다.",
+        "revoked": "초대를 취소했습니다."
+      },
+      "limit": {
+        "title": "{name} 님의 월 한도",
+        "description": "이 조직 안에서의 월 사용 한도입니다. 비우면 조직 기본값을 따릅니다.",
+        "usage": "이번 달 사용 {used} / 적용 한도 {limit}",
+        "noLimit": "없음",
+        "label": "월 한도(USD)",
+        "hint": "비우면 조직 기본값을 따릅니다.",
+        "cap": "{cap} 이하로 정할 수 있어요.",
+        "placeholder": "조직 기본값",
+        "overCap": "상위 한도보다 클 수 없어요.",
+        "invalid": "0 이상의 금액을 입력해 주세요.",
+        "saved": "월 한도를 저장했습니다."
+      }
+    },
+    "memberRemoval": {
+      "title": "{name} 님을 {org}에서 제거",
+      "description": "소유한 자원을 먼저 정리해야 제거할 수 있어요.",
+      "cancel": "취소",
+      "back": "이전",
+      "next": "다음",
+      "submit": "제거",
+      "done": "{name} 님을 조직에서 제거했어요.",
+      "lastAdmin": "마지막 조직 관리자는 제거할 수 없어요. 회사 관리자가 다른 관리자를 먼저 지정해야 해요.",
+      "blockedNotice": "먼저 정리해야 할 자원이 있어 제거할 수 없어요. 아래 표시된 항목을 정리한 뒤 다시 여세요.",
+      "steps": {
+        "label": "제거 단계",
+        "item": "{number} {label}",
+        "s1": "소유 자원",
+        "s2": "공유·트리거 정리",
+        "s3": "확인"
+      },
+      "resources": {
+        "empty": "이 구성원이 소유한 자원이 없어요.",
+        "applyAll": "모든 이전 항목의 새 소유자",
+        "resource": "자원",
+        "handling": "처리",
+        "type": {
+          "agent": "에이전트",
+          "skill": "스킬",
+          "tool": "도구",
+          "mcp_server": "MCP 서버",
+          "credential": "자격 증명",
+          "marketplace_item": "마켓플레이스 항목",
+          "other": "기타"
+        },
+        "archived": "보관됨 · 소유자에게 남아요",
+        "unsupported": "여기서 이전할 수 없어요. 먼저 게시를 취소하거나 삭제하세요.",
+        "blocked": "먼저 정리해야 이전할 수 있어요",
+        "actionFor": "{name} 처리 방식",
+        "action": {
+          "transfer": "이전",
+          "delete": "삭제"
+        },
+        "deleteNote": "제거할 때 이 자격 증명을 삭제해요.",
+        "personalDelete": "개인 계정 자격 증명은 이전할 수 없어 삭제돼요. 이 자격 증명을 쓰던 연결은 끊어져요.",
+        "newOwner": "새 소유자: {name}",
+        "change": "변경",
+        "changeOwner": "{name}의 새 소유자 변경",
+        "ownerFor": "{name}의 새 소유자",
+        "transferNow": "지금 바로 이전",
+        "transferNowFor": "{name} 지금 바로 이전",
+        "transferNowUnavailable": "바로 이전하려면 이 자원을 관리할 권한이 필요해요. 제거를 마치면 고른 새 소유자에게 이전돼요."
+      },
+      "blocker": {
+        "triggers": "다른 사람의 활성 스케줄 {count}개",
+        "deployments": "활성 API 배포 {count}개",
+        "api_keys": "폐기되지 않은 API 키 {count}개",
+        "credentials": "이전 소유자의 자격 증명 연결 {count}개",
+        "skill_bindings": "이 자격 증명을 쓰는 스킬 연결 {count}개",
+        "other": "정리가 필요한 연결 {count}개"
+      },
+      "effects": {
+        "description": "제거하면 다음 항목이 회수되거나 정지돼요.",
+        "grants": "이 사람에게 준 공유",
+        "groups": "그룹 소속",
+        "roles": "역할",
+        "triggers": "소유한 스케줄 (정지)",
+        "deployments": "API 배포 (비활성화)",
+        "apiKeys": "API 키 (폐기)",
+        "count": "{count}개",
+        "delegation": "이 사람이 위임한 연결은 제거 후 다시 검증되고, 끊어진 연결은 에이전트 관리자에게 알려요."
+      },
+      "confirm": {
+        "transfers": "소유권 이전 {count}건",
+        "deletes": "삭제 {count}건",
+        "account": "{name} 님의 사용자 계정은 삭제되지 않아요.",
+        "retention": "이 사람의 대화 기록은 조직 보존 정책에 따라 보관돼요.",
+        "reason": "제거 사유 (필수, 활동 기록에 남아요)"
+      },
+      "errors": {
+        "stale_version": "다른 사람이 먼저 변경했어요. 최신 내용을 불러왔으니 다시 확인해 주세요.",
+        "last_admin": "마지막 조직 관리자는 제거할 수 없어요.",
+        "resource_transfer_required": "아직 정리하지 않은 소유 자원이 있어요. 목록을 다시 불러왔어요.",
+        "transfer_blocked": "이전을 막는 연결이 있어요. 목록을 다시 확인해 주세요.",
+        "conflict": "처리 중 상태가 바뀌었어요. 목록을 다시 불러왔어요.",
+        "grantInvalid": {
+          "not_owned": "이 사람이 소유하지 않은 자원이 포함돼 있어요.",
+          "delete_unsupported": "자격 증명만 삭제할 수 있어요.",
+          "principal": "새 소유자는 이 조직의 활성 구성원이어야 해요.",
+          "self_transfer": "자기 자신에게는 이전할 수 없어요.",
+          "default": "이 처리 방식은 쓸 수 없어요."
+        },
+        "generic": "구성원을 제거하지 못했어요. 잠시 후 다시 시도해 주세요."
+      }
+    },
+    "archiveDialog": {
+      "open": "보관",
+      "openFor": "{name} 보관",
+      "title": "{name} 조직을 보관할까요?",
+      "description": "보관하는 동안 이 조직에는 아무도 접근할 수 없어요.",
+      "members": "구성원 {count}명이 조직에 접근할 수 없게 돼요",
+      "runs": "진행 중인 실행은 중지돼요",
+      "schedules": "활성 스케줄은 정지되고, 복원해도 정지 상태로 남아요",
+      "restore": "30일 안에 복원할 수 있어요",
+      "confirmLabel": "확인을 위해 조직 이름 \"{name}\"을 입력하세요",
+      "cancel": "취소",
+      "submit": "보관",
+      "done": "{name} 조직을 보관했어요."
+    },
+    "groups": {
+      "title": "그룹",
+      "description": "조직 그룹과 그룹 구성원을 관리합니다.",
+      "list": {
+        "title": "그룹 목록",
+        "empty": "그룹이 없습니다."
+      },
+      "source": {
+        "manual": "직접 관리",
+        "idp": "외부 연동"
+      },
+      "create": {
+        "open": "그룹 만들기",
+        "title": "새 그룹"
+      },
+      "edit": {
+        "open": "편집",
+        "title": "그룹 편집"
+      },
+      "delete": {
+        "open": "삭제",
+        "title": "그룹을 삭제할까요?",
+        "description": "{name} 그룹과 그룹에 부여된 역할이 삭제됩니다."
+      },
+      "form": {
+        "name": "그룹 이름",
+        "description": "설명"
+      },
+      "members": {
+        "toggle": "구성원",
+        "empty": "그룹 구성원이 없습니다.",
+        "add": "그룹에 추가",
+        "remove": "빼기"
+      }
+    },
+    "roles": {
+      "title": "역할 및 권한",
+      "description": "사용자와 그룹에 조직 역할과 기능 권한을 부여합니다.",
+      "rowLegend": "{name} ({type}) 권한",
+      "saveFor": "{name} 저장",
+      "loadFailed": "전체 권한 목록을 불러오지 못했습니다.",
+      "noAccess": "조직 관리자만 볼 수 있습니다.",
+      "pick": "선택",
+      "empty": "부여된 항목이 없습니다.",
+      "saved": "변경 사항을 저장했습니다.",
+      "roleSection": {
+        "title": "역할",
+        "description": "관리자, 빌더, 감사자 역할을 부여합니다."
+      },
+      "capabilitySection": {
+        "title": "기능 권한",
+        "description": "에이전트·도구 생성 등 개별 기능 권한을 부여합니다."
+      },
+      "role": {
+        "admin": "관리자",
+        "builder": "빌더",
+        "auditor": "감사자"
+      },
+      "capability": {
+        "cap_create_agent": "에이전트 만들기",
+        "cap_create_skill": "스킬 만들기",
+        "cap_create_tool": "도구 만들기",
+        "cap_register_mcp": "MCP 서버 등록",
+        "cap_connect_database": "데이터베이스 연결",
+        "cap_share_org_wide": "조직 전체 공유",
+        "cap_publish_marketplace": "마켓플레이스 게시"
+      },
+      "principal": {
+        "user": "사용자",
+        "group": "그룹",
+        "organization": "조직 전체"
+      },
+      "defaults": {
+        "title": "역할별 기본 기능",
+        "description": "역할마다 기본으로 갖는 기능입니다. 기본값은 고정이며, 아래에서 사람·그룹에 기능을 추가로 줄 수 있어요.",
+        "feature": "기능",
+        "role": {
+          "admin": "관리자",
+          "builder": "빌더",
+          "member": "구성원",
+          "auditor": "감사자"
+        },
+        "viewActivity": "활동 기록·사용량 보기",
+        "granted": "기본 포함",
+        "notGranted": "기본 미포함",
+        "privacyNote": "관리자도 다른 사람의 대화와 지식 원문은 볼 수 없어요. 에이전트 중지·소유권 이전·공유 회수만 할 수 있어요."
+      }
+    },
+    "company": {
+      "title": "회사 조직 목록",
+      "description": "회사에 속한 조직을 조회하고 새 조직을 만듭니다.",
+      "list": {
+        "title": "{company}의 조직",
+        "adminView": "회사 관리자 보기",
+        "auditorView": "회사 감사자 보기 (요약 정보만 표시)",
+        "empty": "조직이 없습니다.",
+        "name": "이름",
+        "status": "상태",
+        "members": "구성원 수",
+        "actions": "작업",
+        "default": "기본 조직"
+      },
+      "status": {
+        "active": "활성",
+        "suspended": "정지",
+        "archived": "보관됨"
+      },
+      "restore": "복원",
+      "restoreDone": "조직을 복원했습니다.",
+      "create": {
+        "open": "조직 만들기",
+        "title": "새 조직",
+        "description": "회사에 새 조직을 만듭니다.",
+        "name": "조직 이름",
+        "defaultRole": "기본 구성원 역할",
+        "role": {
+          "member": "멤버",
+          "builder": "빌더"
+        },
+        "adminEmail": "관리자 이메일 (선택)",
+        "adminEmailHint": "회사 사용자가 아니면 초대가 발송됩니다.",
+        "submit": "만들기"
+      },
+      "created": {
+        "title": "조직을 만들었습니다",
+        "description": "{name} 조직이 생성되었습니다.",
+        "noAdministrator": "지정된 관리자가 없습니다.",
+        "memberAdministrator": "기존 회사 사용자를 관리자로 지정했습니다.",
+        "invitationSent": "{email} 님에게 관리자 초대를 만들었습니다.",
+        "invitationExpires": "초대 만료: {date}",
+        "tokenOnce": "초대 코드는 지금 한 번만 복사할 수 있습니다. 안전한 경로로만 전달해 주세요.",
+        "copyToken": "초대 코드 복사",
+        "tokenCopied": "초대 코드를 복사했습니다.",
+        "tokenCopyFailed": "초대 코드를 복사하지 못했습니다.",
+        "tokenUnavailable": "초대 코드가 응답에 포함되지 않았습니다."
+      }
+    },
+    "sso": {
+      "title": "SSO와 도메인",
+      "description": "회사 IdP로 로그인하게 하고, 회사 도메인 사용자의 가입 방식을 정합니다.",
+      "adminOnly": "회사 관리자만 볼 수 있습니다",
+      "adminOnlyDescription": "SSO와 도메인 설정은 회사 관리 권한이 필요합니다.",
+      "errors": {
+        "generic": "요청을 처리하지 못했습니다.",
+        "domain_invalid": "도메인 형식이 올바르지 않습니다.",
+        "domain_taken": "이미 다른 곳에서 등록한 도메인입니다.",
+        "domain_not_verified": "DNS TXT 레코드에서 확인 값을 찾지 못했습니다.",
+        "ldap_plaintext_refused": "LDAP은 ldaps:// 또는 StartTLS 연결만 허용합니다.",
+        "sso_config_invalid": "연결 설정이 올바르지 않습니다.",
+        "sso_connection_not_tested": "시험 로그인을 통과한 연결만 활성화할 수 있습니다.",
+        "sso_policy_incomplete": "SSO 필수에는 활성 연결, 확인된 도메인, 비상 관리자 1~2명이 필요합니다.",
+        "sso_issuer_mismatch": "IdP 발급자(issuer)가 연결 설정과 다릅니다.",
+        "sso_discovery_failed": "IdP 설정(Discovery)을 불러오지 못했습니다.",
+        "sso_token_invalid": "IdP 토큰을 확인하지 못했습니다.",
+        "sso_idp_error": "IdP가 로그인을 거부했습니다.",
+        "invalid_credentials": "아이디 또는 비밀번호가 올바르지 않습니다.",
+        "sso_email_unverified": "IdP가 이메일 확인 여부를 보내지 않아 기존 계정에 연결할 수 없습니다.",
+        "ldap_unavailable": "디렉터리 서버에 연결할 수 없습니다."
+      },
+      "domains": {
+        "title": "도메인",
+        "description": "DNS에 TXT 레코드를 추가해 회사 도메인임을 확인합니다. 확인된 도메인은 한 회사에만 속합니다.",
+        "label": "도메인",
+        "placeholder": "example.com",
+        "add": "도메인 추가",
+        "empty": "등록한 도메인이 없습니다.",
+        "verify": "확인",
+        "verified": "도메인을 확인했습니다.",
+        "remove": "삭제",
+        "status": {
+          "pending": "확인 대기",
+          "verified": "확인됨",
+          "disabled": "사용 안 함"
+        }
+      },
+      "connections": {
+        "title": "연결",
+        "description": "OIDC 또는 LDAP·AD 연결을 만들고 시험 로그인을 통과하면 활성화합니다.",
+        "add": "연결 추가",
+        "empty": "만든 연결이 없습니다.",
+        "oidc": "OIDC",
+        "ldap": "LDAP·AD",
+        "redirectUri": "Redirect URI (IdP에 등록)",
+        "testUsername": "시험 아이디",
+        "testPassword": "시험 비밀번호",
+        "test": "시험 로그인",
+        "testPassed": "시험 로그인을 통과했습니다.",
+        "activate": "활성화",
+        "activateHint": "시험 로그인을 통과해야 활성화할 수 있습니다.",
+        "remove": "삭제",
+        "status": {
+          "draft": "초안",
+          "tested": "시험 통과",
+          "active": "활성",
+          "disabled": "사용 안 함"
+        }
+      },
+      "form": {
+        "protocol": "연결 유형",
+        "protocols": {
+          "oidc": "OIDC",
+          "ldap": "LDAP·AD"
+        },
+        "samlHint": "SAML만 지원하는 SSO는 Keycloak을 중계로 두고 OIDC로 연결하세요.",
+        "fields": {
+          "issuer": "Issuer (Discovery URL)",
+          "client_id": "Client ID",
+          "client_secret": "Client Secret",
+          "server_url": "서버 URL (ldaps:// 또는 StartTLS)",
+          "bind_dn": "바인드 DN",
+          "bind_password": "바인드 비밀번호",
+          "user_base_dn": "사용자 기준 DN",
+          "user_filter": "사용자 필터"
+        },
+        "startTls": "StartTLS 사용 (ldap:// 주소일 때 필수)",
+        "jit": "첫 로그인 자동 가입(JIT)",
+        "trustEmail": "IdP가 이메일 확인 여부를 보내지 않아도 이메일을 신뢰 (기존 계정 연결)",
+        "save": "초안으로 저장",
+        "saved": "연결을 초안으로 저장했습니다.",
+        "cancel": "취소"
+      },
+      "policy": {
+        "title": "SSO 필수",
+        "description": "필수로 켜면 비상 관리자를 제외한 구성원은 비밀번호로 로그인할 수 없습니다.",
+        "mode": "로그인 정책",
+        "modes": {
+          "off": "끔",
+          "optional": "선택",
+          "required": "필수"
+        },
+        "breakGlass": "비상 관리자 사용자 ID (최대 2명)",
+        "breakGlassHint": "쉼표로 구분합니다. 회사 관리자만 지정할 수 있습니다.",
+        "requiredNotice": "켜면 비밀번호로 로그인하던 구성원 {count}명이 다음 로그인부터 IdP로 들어옵니다.",
+        "save": "저장",
+        "saved": "SSO 정책을 저장했습니다."
+      }
+    },
+    "companySettings": {
+      "adminOnly": "회사 관리자만 볼 수 있습니다",
+      "adminOnlyDescription": "이 화면은 회사 관리자 권한이 필요합니다. 필요하면 회사 관리자에게 요청해 주세요.",
+      "profile": {
+        "title": "회사 개요",
+        "description": "회사 안의 조직과 구성원, 공용 설정을 관리합니다. 조직의 대화와 자원 내용은 볼 수 없습니다.",
+        "access": {
+          "admin": "회사 관리자",
+          "auditor": "회사 감사자 (읽기 전용)",
+          "member": "회사 구성원"
+        },
+        "status": {
+          "active": "활성",
+          "suspended": "정지",
+          "deletion_scheduled": "삭제 예정"
+        },
+        "organizations": "조직",
+        "members": "구성원",
+        "admins": "회사 관리자",
+        "slug": "회사 주소 식별자: {slug}",
+        "name": "회사 이름",
+        "save": "이름 저장",
+        "saved": "회사 이름을 바꿨습니다."
+      },
+      "policies": {
+        "title": "회사 정책",
+        "description": "회사 공개 게시와 감사 기록 보존 기간을 정합니다.",
+        "sectionTitle": "정책",
+        "sectionDescription": "회사 관리자만 바꿀 수 있습니다.",
+        "readOnly": "회사 구성원은 정책을 볼 수만 있습니다. 변경은 회사 관리자가 합니다.",
+        "publish": {
+          "label": "회사 공개 게시",
+          "description": "마켓플레이스 항목을 회사 전체에 공개하는 방식을 정합니다.",
+          "disabled": "불가",
+          "open": "자유",
+          "approval": "승인"
+        },
+        "retention": {
+          "label": "감사 기록 보존 기간 (일)",
+          "description": "{min}~{max}일 사이로 정합니다. 기본값은 365일입니다.",
+          "invalid": "{min}~{max}일 사이의 정수를 입력해 주세요."
+        },
+        "save": "정책 저장",
+        "saved": "회사 정책을 저장했습니다.",
+        "confirmTitle": "보존 기간을 줄일까요?",
+        "confirmDescription": "줄인 기간보다 오래된 감사 기록 {count}건이 다음 정리 때 삭제됩니다.",
+        "confirm": "줄이고 저장"
+      },
+      "publications": {
+        "title": "공개 승인",
+        "description": "회사 공개를 요청한 항목입니다. 원본 내용은 열 수 없습니다.",
+        "empty": "승인 대기 중인 항목이 없습니다.",
+        "origin": "게시 조직 {organization} · 게시자 {publisher}",
+        "unknownPublisher": "알 수 없음",
+        "credentialTypes": "필요한 자격증명 유형: {types}",
+        "noCredentials": "없음",
+        "approve": "승인",
+        "reject": "거절",
+        "approveItem": "{name} 승인",
+        "rejectItem": "{name} 거절",
+        "approved": "회사 공개를 승인했습니다.",
+        "rejected": "회사 공개를 거절했습니다.",
+        "rejectTitle": "공개 요청 거절",
+        "rejectDescription": "{name} 요청을 거절하는 사유를 남겨 주세요. 요청자에게 전달됩니다.",
+        "note": "거절 사유",
+        "submitReject": "거절하기"
+      },
+      "members": {
+        "title": "회사 구성원",
+        "description": "회사에 속한 사람과 회사 관리자·감사자를 관리합니다. 조직 소속은 각 조직에서 정합니다.",
+        "listTitle": "구성원",
+        "listDescription": "회사 관리자는 조직 구성원이 아니어도 모든 조직을 관리할 수 있지만, 조직 자원을 쓰려면 조직 구성원이어야 합니다.",
+        "empty": "회사 구성원이 없습니다.",
+        "name": "이름",
+        "roles": "회사 역할",
+        "status": "상태",
+        "actions": "작업",
+        "role": {
+          "admin": "회사 관리자",
+          "auditor": "회사 감사자",
+          "member": "구성원"
+        },
+        "memberStatus": {
+          "active": "활성",
+          "suspended": "정지",
+          "removed": "제거됨"
+        },
+        "grant": {
+          "admin": "{name} 님을 회사 관리자로 지정",
+          "auditor": "{name} 님을 회사 감사자로 지정"
+        },
+        "revoke": {
+          "admin": "{name} 님의 회사 관리자 해제",
+          "auditor": "{name} 님의 회사 감사자 해제"
+        },
+        "grantShort": {
+          "admin": "관리자 지정",
+          "auditor": "감사자 지정"
+        },
+        "revokeShort": {
+          "admin": "관리자 해제",
+          "auditor": "감사자 해제"
+        },
+        "suspend": "{name} 님 정지",
+        "reactivate": "{name} 님 정지 해제",
+        "suspendShort": "정지",
+        "reactivateShort": "정지 해제",
+        "remove": "{name} 님을 회사에서 제거",
+        "removeShort": "제거",
+        "removeTitle": "회사에서 제거할까요?",
+        "removeDescription": "{name} 님을 회사와 모든 조직에서 제거합니다.",
+        "updated": "구성원을 변경했습니다."
+      },
+      "invitations": {
+        "title": "회사 초대",
+        "description": "초대 링크를 만들어 직접 전달합니다. 메일은 보내지 않으며 링크는 7일 동안 한 번 쓸 수 있습니다.",
+        "empty": "초대가 없습니다.",
+        "invite": "회사에 초대",
+        "expires": "만료: {date}",
+        "role": {
+          "none": "구성원",
+          "admin": "회사 관리자",
+          "auditor": "회사 감사자"
+        },
+        "status": {
+          "pending": "대기",
+          "accepted": "수락됨",
+          "revoked": "회수됨",
+          "expired": "만료됨"
+        },
+        "resend": "다시 만들기",
+        "resendFor": "{email} 초대 다시 만들기",
+        "revoke": "회수",
+        "revokeFor": "{email} 초대 회수",
+        "revoked": "초대를 회수했습니다.",
+        "inviteTitle": "회사에 초대",
+        "inviteDescription": "초대받은 사람은 링크로 가입하거나 로그인해 회사에 들어옵니다.",
+        "email": "이메일",
+        "roleLabel": "회사 역할",
+        "submit": "초대 만들기",
+        "createdTitle": "초대를 만들었습니다",
+        "createdDescription": "{email} 님에게 전달할 초대 코드입니다.",
+        "tokenOnce": "초대 코드는 지금 한 번만 복사할 수 있습니다. 안전한 경로로만 전달해 주세요.",
+        "copyToken": "초대 코드 복사",
+        "tokenCopied": "초대 코드를 복사했습니다.",
+        "tokenCopyFailed": "초대 코드를 복사하지 못했습니다.",
+        "tokenUnavailable": "초대 코드가 응답에 포함되지 않았습니다."
+      },
+      "orgSelect": {
+        "all": "모든 조직",
+        "none": "없음",
+        "unknown": "알 수 없는 조직",
+        "loading": "조직 목록을 불러오는 중입니다.",
+        "empty": "선택할 수 있는 조직이 없습니다."
+      },
+      "catalogPage": {
+        "title": "모델과 LLM 설정",
+        "description": "회사가 쓰는 모델과 키를 정합니다. 조직마다 쓸 수 있는 모델은 조직 카탈로그 정책에서 좁힐 수 있습니다.",
+        "tabsLabel": "회사 설정 영역",
+        "tabs": {
+          "models": "모델",
+          "credentials": "공용 자격증명",
+          "llm": "서비스 LLM",
+          "catalog": "회사 카탈로그"
+        }
+      },
+      "models": {
+        "title": "모델",
+        "description": "플랫폼 모델은 허용 조직만 정하고, 회사 모델은 직접 등록·수정합니다.",
+        "platformDisabled": "이 회사는 플랫폼 키를 쓸 수 없습니다. 플랫폼 모델은 회사 키를 연결해야 켤 수 있습니다.",
+        "add": "모델 추가",
+        "empty": "모델이 없습니다.",
+        "name": "모델",
+        "source": "제공",
+        "keyColumn": "키",
+        "orgs": "허용 조직",
+        "actions": "작업",
+        "sourceLabel": {
+          "platform": "플랫폼",
+          "company": "회사"
+        },
+        "companyDisabled": "회사에서 꺼짐",
+        "key": {
+          "platform": "플랫폼 키",
+          "none": "키 없음",
+          "companyRequired": "회사 키 필요"
+        },
+        "edit": "수정",
+        "delete": "삭제",
+        "editFor": "{name} 수정",
+        "deleteFor": "{name} 삭제",
+        "deleteTitle": "회사 모델을 삭제할까요?",
+        "deleteDescription": "{name} 모델을 삭제하면 이 모델을 쓰던 조직에서 더 이상 쓸 수 없습니다.",
+        "deleted": "모델을 삭제했습니다.",
+        "dialog": {
+          "createTitle": "회사 모델 추가",
+          "editTitle": "{name} 수정",
+          "companyDescription": "회사 모델은 지정한 조직에서만 쓸 수 있습니다.",
+          "platformDescription": "플랫폼 모델은 회사에서 허용 조직만 정할 수 있습니다.",
+          "provider": "제공자",
+          "modelName": "모델 ID",
+          "displayName": "표시 이름",
+          "baseUrl": "Base URL (선택)",
+          "baseUrlHint": "사내 vLLM처럼 OpenAI 호환 엔드포인트일 때 입력합니다.",
+          "credential": "기본 자격증명",
+          "noCredential": "지정 안 함",
+          "orgs": "허용 조직",
+          "save": "저장",
+          "saved": "모델을 저장했습니다."
+        }
+      },
+      "credentials": {
+        "title": "공용 자격증명",
+        "description": "회사 공용 자격증명입니다. 값은 표시하지 않고 쓸 수 있는 조직만 지정합니다.",
+        "add": "자격증명 만들기",
+        "empty": "공용 자격증명이 없습니다.",
+        "name": "이름",
+        "fields": "필드",
+        "orgs": "쓸 수 있는 조직",
+        "actions": "작업",
+        "disabled": "꺼짐",
+        "edit": "수정",
+        "delete": "삭제",
+        "editFor": "{name} 수정",
+        "deleteFor": "{name} 삭제",
+        "deleteTitle": "공용 자격증명을 삭제할까요?",
+        "deleteDescription": "{name}을 삭제하면 이 자격증명을 쓰던 모델과 에이전트가 동작하지 않을 수 있습니다.",
+        "deleted": "공용 자격증명을 삭제했습니다.",
+        "dialog": {
+          "createTitle": "공용 자격증명 만들기",
+          "editTitle": "{name} 수정",
+          "description": "저장한 값은 다시 표시되지 않습니다. 개인 계정 유형은 공용으로 만들 수 없습니다.",
+          "type": "유형",
+          "typePlaceholder": "유형 선택",
+          "name": "이름",
+          "active": "사용",
+          "replace": "값 교체",
+          "orgs": "쓸 수 있는 조직",
+          "save": "저장",
+          "saved": "공용 자격증명을 저장했습니다."
+        }
+      },
+      "llm": {
+        "title": "서비스 LLM",
+        "description": "빌더·어시스턴트·이미지 등 서비스 기능이 쓰는 모델입니다. 플랫폼 기본값을 따르거나 회사 값으로 덮어씁니다.",
+        "platformDisabled": "이 회사는 플랫폼 기본값을 쓸 수 없습니다. 역할마다 회사 값을 지정해 주세요.",
+        "role": {
+          "text_primary": "기본 텍스트 모델",
+          "text_fallback": "대체 텍스트 모델",
+          "image": "이미지 모델"
+        },
+        "inherits": "플랫폼 기본값을 따릅니다.",
+        "override": "회사 값: {credential} / {model}",
+        "configured": "사용 가능",
+        "notConfigured": "설정 필요",
+        "edit": "회사 값 지정",
+        "editFor": "{role} 회사 값 지정",
+        "inherit": "기본값 따르기",
+        "inheritFor": "{role} 플랫폼 기본값 따르기",
+        "dialogDescription": "회사 공용 자격증명과 모델 ID를 지정합니다.",
+        "credential": "자격증명",
+        "pickCredential": "자격증명 선택",
+        "model": "모델 ID",
+        "save": "저장",
+        "saved": "서비스 LLM 설정을 저장했습니다."
+      },
+      "catalog": {
+        "title": "회사 카탈로그",
+        "description": "회사에서 쓸 모델·도구·스킬·MCP 서버를 켜고 끕니다. 조직은 여기서 켠 항목 안에서만 다시 좁힐 수 있습니다.",
+        "platformDisabled": "이 회사는 플랫폼 모델을 쓸 수 없습니다. 플랫폼에서 숨긴 항목은 켤 수 없습니다.",
+        "empty": "카탈로그 항목이 없습니다.",
+        "save": "카탈로그 저장",
+        "saved": "회사 카탈로그를 저장했습니다.",
+        "kind": {
+          "model": "모델",
+          "tool": "도구",
+          "skill": "스킬",
+          "mcp_server": "MCP 서버"
+        },
+        "source": {
+          "platform": "플랫폼",
+          "company": "회사"
+        },
+        "platformHidden": "플랫폼에서 숨김",
+        "toggle": "{name} 사용"
+      }
+    },
+    "catalog": {
+      "title": "카탈로그 정책",
+      "description": "이 조직에서 쓸 수 있는 모델과 시스템 도구·스킬·MCP 서버를 정합니다. 끄면 이미 붙어 있는 에이전트에서도 실행 시 제외됩니다.",
+      "noAccess": "조직 관리자만 볼 수 있습니다.",
+      "listTitle": "카탈로그 항목",
+      "listDescription": "회사에서 끈 항목은 조직에서 켤 수 없어요.",
+      "kind": {
+        "model": "모델",
+        "tool": "시스템 도구",
+        "skill": "시스템 스킬",
+        "mcp_server": "시스템 MCP"
+      },
+      "source": {
+        "platform": "플랫폼",
+        "company": "회사"
+      },
+      "companyDisabled": "회사에서 꺼짐",
+      "empty": "이 종류의 항목이 없습니다.",
+      "enabled": "{name}을(를) 켰습니다.",
+      "disabled": "{name}을(를) 껐습니다.",
+      "disable": {
+        "title": "{name}을(를) 끌까요?",
+        "description": "끄면 이 조직의 에이전트에서 실행 시 이 항목이 빠집니다.",
+        "affected": "에이전트 {count}개에서 이 항목이 빠집니다.",
+        "required": "필수로 연결된 에이전트 {count}개는 실행할 수 없게 됩니다.",
+        "submit": "끄기"
+      }
+    }
+  },
   "sidebar": {
     "brand": "Moldy",
+    "orgSwitcher": {
+      "label": "조직 전환",
+      "trigger": "현재 조직: {name} (전환)",
+      "current": "현재 조직",
+      "unavailable": "사용할 수 없는 회사",
+      "switchFailed": "조직을 전환하지 못했습니다. 다시 시도해 주세요.",
+      "choose": "조직 선택",
+      "switching": "조직을 전환하는 중입니다…",
+      "discardDraftsConfirm": "저장하지 않은 변경사항이 있습니다. 조직을 전환하면 변경사항이 사라집니다. 전환할까요?"
+    },
     "nav": {
       "home": "홈",
       "connectors": "커넥터",
@@ -390,6 +1420,7 @@
     },
     "myAgents": "내 에이전트",
     "searchPlaceholder": "에이전트 검색...",
+    "favoritesOnly": "즐겨찾기만 보기",
     "sort": {
       "latest": "최신순",
       "name": "이름순",
@@ -409,6 +1440,20 @@
     "tip": "💡 팁: 템플릿을 활용하면 더 빠르게 시작할 수 있어요!"
   },
   "agent": {
+    "triggerStopReason": {
+      "label": "정지 사유: {reason}",
+      "reasons": {
+        "permission_revoked": "실행 권한이 회수되었어요",
+        "owner_left": "예약을 만든 사람이 조직을 떠났어요",
+        "org_archived": "조직이 보관되었어요",
+        "tenant_suspended": "회사 계정이 정지되었어요",
+        "agent_archived": "에이전트가 보관되었어요",
+        "delegation_broken": "위임된 연결을 쓸 수 없어요",
+        "required_unavailable": "필수 연결을 쓸 수 없어요",
+        "auth_required": "연결 인증이 필요해요",
+        "authz_unavailable": "권한을 확인하지 못해 건너뛰었어요"
+      }
+    },
     "context": {
       "trigger": "에이전트 정보",
       "loading": "에이전트",
@@ -623,6 +1668,8 @@
       "visualSettings": "비주얼 설정",
       "settings": "설정",
       "publish": "마켓플레이스에 게시",
+      "share": "{name} 공유",
+      "sharedWithMe": "공유받음",
       "modelLabel": "모델:",
       "createdAt": "{date} 생성",
       "lastUsed": "{time} 사용",
@@ -1149,6 +2196,11 @@
         "sat": "토",
         "sun": "일"
       }
+    },
+    "linkRequired": {
+      "label": "필수",
+      "toggle": "{name} 필수",
+      "help": "필수 항목을 쓸 수 없으면 대화를 시작하지 않고 연결 안내를 보여 줘요. 선택 항목은 빼고 실행합니다."
     }
   },
   "scheduleCenter": {
@@ -1240,7 +2292,190 @@
       "exported": "대화를 내보냈어요"
     }
   },
+  "sharing": {
+    "request": {
+      "open": "권한 요청",
+      "title": "권한 요청",
+      "titleNamed": "{name} · 권한 요청",
+      "description": "요청은 이 자원의 관리자에게 전달됩니다.",
+      "level": "요청할 권한",
+      "reason": "필요한 이유 (선택)",
+      "reasonPlaceholder": "예: 분기 리포트 양식을 수정해야 해요.",
+      "submit": "요청 보내기",
+      "sending": "보내는 중…",
+      "cancel": "취소",
+      "sent": "요청을 보냈어요. 승인되면 바로 사용할 수 있어요.",
+      "pending": "이미 보낸 요청이 대기 중이에요.",
+      "alreadyGranted": "이미 이 권한이 있어요. 새로고침해 보세요.",
+      "rateLimited": "요청을 너무 많이 보냈어요. 잠시 후 다시 시도하세요.",
+      "failed": "요청을 보내지 못했어요. 잠시 후 다시 시도하세요.",
+      "stateTitle": "권한이 필요해요",
+      "stateDescription": "이 화면을 보려면 더 높은 권한이 필요해요. 관리자에게 권한을 요청할 수 있어요.",
+      "stateNoRequest": "이 화면을 볼 권한이 없어요. 소유자에게 문의하세요."
+    },
+    "title": "{name} 공유",
+    "description": "같은 조직의 사용자, 그룹, 조직 전체에 권한 단계를 골라 공유해요.",
+    "loading": "접근 목록을 불러오는 중",
+    "retry": "다시 시도",
+    "readOnly": "공유 권한이 없어 접근 목록만 볼 수 있어요.",
+    "share": "공유",
+    "open": "{name} 공유 설정 열기",
+    "sharedWithMe": "공유받음",
+    "picker": {
+      "placeholder": "이름, 이메일 또는 그룹 검색",
+      "hint": "두 글자 이상 입력하세요.",
+      "searching": "검색 중…",
+      "error": "검색하지 못했어요. 잠시 후 다시 시도하세요.",
+      "empty": "일치하는 대상이 없어요.",
+      "count": "검색 결과 {count}개. 위아래 화살표로 고르고 Enter로 선택하세요.",
+      "noOrganization": "조직을 선택한 뒤 공유할 수 있어요.",
+      "groupMembers": "그룹 · {count}명",
+      "type": {
+        "user": "사용자",
+        "group": "그룹",
+        "org": "조직 전체"
+      }
+    },
+    "form": {
+      "title": "공유 대상 추가",
+      "recipient": "공유할 사람 또는 그룹",
+      "clearRecipient": "{name} 선택 해제",
+      "level": "권한 단계",
+      "levelHint": "같은 대상의 단계를 바꾸면 기존 공유를 대체해요.",
+      "expiry": "만료일 (선택)",
+      "expiryHint": "실행 공유만 기간을 정할 수 있어요. 비워 두면 기한이 없어요.",
+      "submit": "공유",
+      "sharing": "공유 중…"
+    },
+    "principalType": {
+      "user": "사용자",
+      "group": "그룹",
+      "organization": "조직 전체"
+    },
+    "level": {
+      "consumer": "사용",
+      "consumerAgent": "실행",
+      "viewer": "보기",
+      "editor": "편집",
+      "manager": "관리",
+      "owner": "소유자",
+      "governor": "관리자 권한",
+      "install": "설치"
+    },
+    "levelHelp": {
+      "consumer": "실행하거나 사용할 수만 있어요.",
+      "viewer": "설정을 볼 수 있어요.",
+      "editor": "설정을 바꿀 수 있어요.",
+      "manager": "편집하고 다른 사람에게 공유할 수 있어요.",
+      "install": "마켓플레이스에서 보고 설치할 수 있어요."
+    },
+    "notice": {
+      "sharedAccount": "이 자원은 소유자 계정의 자격 증명으로 호출돼요. 공유받은 사람도 소유자 계정으로 호출하게 돼요.",
+      "sharedAccountAck": "소유자 계정으로 호출된다는 점을 확인했어요",
+      "credential": "공유받은 사람은 이 자격 증명을 자기 도구에 연결할 수 있어요. 비밀 값은 누구에게도 보이지 않아요.",
+      "marketplace": "제한 공개 항목을 보고 설치할 수 있는 사용자예요. 지금은 회수만 할 수 있고, 대상 추가는 게시 마법사에서 해요. 마지막 대상은 공개 범위를 바꾼 뒤에만 뺄 수 있어요."
+    },
+    "personal": {
+      "title": "개인 계정이 연결되어 있어 공유할 수 없어요",
+      "hint": "사용자마다 연결하는 방식으로 바꾸거나 개인 계정 연결을 뺀 뒤 다시 공유하세요."
+    },
+    "delegation": {
+      "saveTitle": "공유된 에이전트에 계정 자원을 연결해요",
+      "saveDescription": "저장하면 이 에이전트를 공유받은 사람도 아래 계정으로 실행하게 돼요.",
+      "confirmSave": "확인하고 저장",
+      "account": "{credential} · {owner}의 계정",
+      "companyAccount": "{credential} · 회사 계정",
+      "previewTitle": "이 에이전트가 쓰는 계정 자원",
+      "previewDescription": "공유하면 받은 사람이 아래 계정으로 이 에이전트를 실행해요. 공유 전에 한 번 더 확인해요.",
+      "title": "위임된 계정 자원을 확인하세요",
+      "description": "이 에이전트는 아래 계정 자원으로 실행돼요. 공유받은 사람이 실행하면 이 계정이 사용돼요.",
+      "type": {
+        "credential": "자격 증명",
+        "tool": "도구",
+        "mcp_server": "MCP 서버",
+        "agent": "에이전트",
+        "skill": "스킬",
+        "other": "자원"
+      },
+      "cancel": "취소",
+      "confirm": "확인하고 공유"
+    },
+    "access": {
+      "title": "접근 권한이 있는 대상",
+      "empty": "아직 공유한 대상이 없어요.",
+      "you": "(나)",
+      "groupMembers": "그룹 · {count}명",
+      "expires": "{date}까지",
+      "revoke": "회수",
+      "revokeLabel": "{name} 공유 회수"
+    },
+    "source": {
+      "governance": "조직·회사 관리자"
+    },
+    "revoke": {
+      "title": "{name}의 공유를 회수할까요?",
+      "description": "이 대상은 더 이상 접근할 수 없고, 진행 중인 대화는 읽기 전용이 돼요. 다시 공유하면 되돌릴 수 있어요.",
+      "groupDescription": "그룹 구성원 {count}명의 접근이 사라지고, 진행 중인 대화는 읽기 전용이 돼요. 다시 공유하면 되돌릴 수 있어요."
+    },
+    "toast": {
+      "shared": "{name}에게 공유했어요.",
+      "revoked": "{name}의 공유를 회수했어요."
+    },
+    "transfer": {
+      "toggle": "소유권 이전",
+      "description": "새 소유자가 이 자원의 모든 권한을 갖게 돼요. 같은 조직의 활성 구성원에게만 넘길 수 있어요.",
+      "change": "변경",
+      "newOwner": "새 소유자",
+      "reasonOptional": "사유 (선택)",
+      "reasonRequired": "사유 (필수)",
+      "keepManager": "이전한 뒤에도 나에게 관리 권한 남기기",
+      "blockedTitle": "먼저 정리해야 할 항목이 있어요",
+      "blocker": {
+        "personal_account": "개인 계정 자격 증명은 이전할 수 없어요.",
+        "triggers": "실행 중인 스케줄 {count}개",
+        "deployments": "활성 API 배포 {count}개",
+        "api_keys": "폐기되지 않은 API 키 {count}개",
+        "credentials": "이전 소유자의 자격 증명 연결 {count}개"
+      },
+      "submit": "소유권 이전",
+      "confirmTitle": "{resource}의 소유권을 {name}님에게 넘길까요?",
+      "confirmDescription": "되돌리려면 새 소유자가 다시 이전해야 해요.",
+      "done": "{name}님에게 소유권을 넘겼어요."
+    },
+    "transferDialog": {
+      "title": "소유권 이전",
+      "cancel": "취소",
+      "noPermission": "이 자원의 소유권을 이전할 권한이 없어요.",
+      "delegations": "위임된 자원 {count}개는 처음 연결한 사람 기준으로 유지돼요. 연결한 사람이 권한을 잃으면 연결이 끊어져요."
+    },
+    "errors": {
+      "generic": "요청을 처리하지 못했어요. 다시 시도하세요.",
+      "not_found": "찾을 수 없어요.",
+      "permission_required": "권한이 없어요.",
+      "capability_required": "조직 전체에 공유할 권한이 없어요.",
+      "transfer_name_conflict": "새 소유자에게 같은 이름의 자원이 이미 있어요.",
+      "stale_version": "다른 사람이 먼저 변경했어요. 다시 시도하세요.",
+      "conflict": "다른 사람이 먼저 변경했어요. 다시 시도하세요.",
+      "authz_unavailable": "잠시 후 다시 시도하세요.",
+      "marketplace_acl_required": "제한 공개 항목에는 대상이 한 명 이상 있어야 해요. 공개 범위를 먼저 바꾸세요.",
+      "transferBlocked": "아직 소유권을 이전할 수 없어요.",
+      "personal_account_shared": "개인 계정 자격 증명이 연결된 자원은 공유할 수 없어요. 도구·MCP 서버는 연결 방식을 사용자별 연결로 바꾸면 공유할 수 있어요.",
+      "grantInvalid": {
+        "default": "이 대상에게 이 권한을 줄 수 없어요.",
+        "archived": "보관된 에이전트는 공유하거나 이전할 수 없어요.",
+        "expired": "만료일은 오늘 이후여야 해요.",
+        "expires_at": "실행 공유에만 만료일을 정할 수 있어요.",
+        "level": "이 자원에는 이 권한 단계를 줄 수 없어요.",
+        "owner": "소유자는 이미 모든 권한을 가지고 있어요.",
+        "principal": "같은 조직의 활성 구성원이나 그룹만 선택할 수 있어요.",
+        "reason_required": "관리자로 이전할 때는 사유가 필요해요.",
+        "self_grant": "내 권한은 낮추기만 할 수 있어요.",
+        "self_transfer": "관리자는 자기 자신에게 이전할 수 없어요."
+      }
+    }
+  },
   "share": {
+    "publicLinksDisabled": "이 조직은 공개 공유 링크를 허용하지 않아요. 조직 관리자에게 문의하세요.",
     "title": "대화 공유",
     "description": "누구나 링크로 이 대화를 읽기 전용으로 볼 수 있어요.",
     "loading": "불러오는 중…",
@@ -1435,7 +2670,25 @@
       "invalidFieldValue": "값 형식이 올바르지 않습니다",
       "pendingCount": "승인 대기 {count}건",
       "approveAll": "모두 승인",
-      "allowForSession": "이 세션에서 계속 허용"
+      "allowForSession": "이 세션에서 계속 허용",
+      "noReviewConfig": "검토 설정을 읽을 수 없어 이 작업은 여기서 응답할 수 없습니다."
+    },
+    "authRequired": {
+      "title": "연결이 필요합니다",
+      "reasonAuthNeeded": "이 작업을 계속하려면 아래 계정 연결이 필요합니다. 연결한 뒤 다시 시도하세요.",
+      "reasonExpired": "아래 계정 연결이 만료되었습니다. 다시 연결한 뒤 다시 시도하세요.",
+      "reasonScopeUpgrade": "아래 연결에 추가 권한이 필요합니다. 권한을 허용한 뒤 다시 시도하세요.",
+      "ownerNotified": "이 연결은 소유자만 고칠 수 있어 소유자에게 알렸습니다.",
+      "retry": "다시 시도",
+      "skip": "건너뛰기",
+      "cancel": "실행 취소",
+      "sent": "응답을 보냈습니다.",
+      "resumeFailed": "응답을 전송하지 못했습니다. 다시 시도하세요.",
+      "stillNotConnected": "아직 연결되지 않았어요. 연결한 뒤 다시 시도하세요.",
+      "connectOAuth": "{name} 연결하기",
+      "oauthWaiting": "팝업에서 연결을 마치면 다시 시도해요",
+      "oauthPopupBlocked": "팝업이 차단됐어요. 팝업을 허용한 뒤 다시 눌러 주세요.",
+      "oauthStartFailed": "연결을 시작하지 못했어요"
     },
     "userInput": {
       "placeholder": "답변을 입력하세요…",
@@ -1863,6 +3116,25 @@
       "scopeUser": "사용자",
       "scopeAgent": "에이전트",
       "hiddenContent": "내용 비공개"
+    },
+    "excludedCapabilities": {
+      "title": "이 실행에서 일부 기능이 제외되었습니다",
+      "listLabel": "제외된 기능",
+      "group": "{type} {count}개 · {reason}",
+      "type": {
+        "tool": "도구",
+        "mcp_tool": "MCP 도구",
+        "skill": "스킬",
+        "agent": "하위 에이전트",
+        "llm_model": "모델",
+        "other": "기타 기능"
+      },
+      "reason": {
+        "broken": "연결 끊김",
+        "denied": "권한 없음"
+      },
+      "requestAccessHint": "권한이 없는 기능이 필요하면 해당 자원의 소유자나 관리자에게 권한을 요청하세요.",
+      "dismiss": "알림 닫기"
     },
     "followup": {
       "hint": "→ 키로 입력",
@@ -3155,11 +4427,6 @@
     "detail": {
       "back": "마켓플레이스로 돌아가기",
       "saving": "저장 중…",
-      "error": {
-        "notFound": "항목을 찾을 수 없어요",
-        "loadFailed": "항목을 불러오지 못했어요",
-        "description": "이 항목을 찾을 수 없거나 접근 권한이 없습니다."
-      },
       "versions": {
         "title": "버전",
         "emptyTitle": "아직 공개된 버전이 없어요",
@@ -3220,9 +4487,8 @@
       },
       "acl": {
         "title": "공유 대상 (제한 공유)",
-        "empty": "공유된 사용자가 없어요. 새 사용자 추가는 ACL 엔드포인트 직접 호출이 필요합니다 (후속 슬라이스에 마법사 추가 예정).",
-        "revoke": "공유 취소",
-        "lastTargetHint": "마지막 대상을 제거하려면 먼저 공개 범위를 다른 값으로 변경하세요."
+        "summary": "{count, plural, =0 {아직 공유된 사용자가 없어요.} other {사용자 #명에게 공유했어요.}}",
+        "manage": "공유 대상 관리"
       },
       "toast": {
         "requestFailed": "요청에 실패했습니다.",
@@ -3233,9 +4499,6 @@
         "alreadyPrivate": "이미 비공개 상태입니다.",
         "unpublished": "비공개 전환 완료 — 카탈로그에서 미노출. 이미 설치된 사본은 영향 없음.",
         "unpublishFailed": "비공개 전환에 실패했습니다.",
-        "aclRevoked": "공유 취소 완료",
-        "aclRevokeFailed": "공유 취소에 실패했습니다.",
-        "lastAclRequired": "restricted 상태에서는 마지막 ACL 을 비울 수 없습니다. visibility 를 먼저 바꾸세요.",
         "visibilityFailed": "공개 범위 변경에 실패했습니다.",
         "aclRequired": "제한 공유 전환은 공유 대상이 최소 1명 필요합니다. 대상 추가 후 다시 시도하세요."
       },
@@ -3890,6 +5153,278 @@
     }
   },
   "appSettings": {
+    "platformTenants": {
+      "gate": {
+        "loading": "권한을 확인하는 중…",
+        "deniedTitle": "이 화면을 찾을 수 없어요",
+        "deniedDescription": "플랫폼 운영 화면은 SaaS 운영자만 볼 수 있어요.",
+        "back": "설정으로 돌아가기"
+      },
+      "status": {
+        "active": "이용 중",
+        "suspended": "정지",
+        "deletion_scheduled": "삭제 예정",
+        "deletionScheduledDue": "삭제 예정(D-{days})"
+      },
+      "errors": {
+        "stale_version": "다른 운영자가 먼저 변경했어요. 최신 내용을 불러온 뒤 다시 시도하세요.",
+        "duplicate_tenant_slug": "이미 쓰고 있는 슬러그예요. 다른 슬러그를 입력하세요.",
+        "tenant_namespace_collision": "이 슬러그로는 회사를 만들 수 없어요. 다른 슬러그를 입력하세요.",
+        "tenant_deletion_slug_mismatch": "입력한 슬러그가 회사 슬러그와 달라요.",
+        "tenant_export_in_progress": "이미 진행 중인 내보내기가 있어요. 끝난 뒤 다시 시도하세요.",
+        "tenant_status_conflict": "지금 상태에서는 이 동작을 할 수 없어요. 새로고침 후 다시 시도하세요.",
+        "generic": "요청을 처리하지 못했어요. 잠시 후 다시 시도하세요."
+      },
+      "list": {
+        "title": "회사 목록",
+        "description": "이 인스턴스를 쓰는 고객사를 만들고 이용 상태와 한도를 관리합니다. 회사의 대화와 자원 내용은 볼 수 없습니다.",
+        "create": "회사 만들기",
+        "sectionTitle": "회사",
+        "filterLabel": "상태로 거르기",
+        "all": "전체",
+        "searchLabel": "회사 검색",
+        "searchPlaceholder": "회사 이름, 슬러그 검색",
+        "empty": "조건에 맞는 회사가 없어요.",
+        "company": "회사",
+        "organizations": "조직",
+        "members": "구성원 / 한도",
+        "spendLimit": "월 비용 한도",
+        "status": "상태",
+        "actions": "메뉴",
+        "noLimit": "제한 없음",
+        "ofLimit": "{used} / {limit}"
+      },
+      "actions": {
+        "menu": "{name} 메뉴",
+        "detail": "상세",
+        "suspend": "정지",
+        "resume": "재개",
+        "export": "데이터 내보내기",
+        "cancelDeletion": "삭제 예약 취소",
+        "scheduleDeletion": "삭제 예약",
+        "resumeDone": "{name} 이용을 재개했어요.",
+        "cancelDeletionDone": "{name} 삭제 예약을 취소했어요. 회사는 정지 상태로 남아요.",
+        "exportStarted": "{name} 데이터 내보내기를 시작했어요."
+      },
+      "risky": {
+        "impact": {
+          "members": "구성원 {count}명이 영향을 받아요.",
+          "runs": "진행 중인 실행 {count}건은 다음 단계에서 멈춰요.",
+          "runsUnknown": "진행 중인 실행 수를 불러오지 못했어요."
+        },
+        "slugLabel": "확인을 위해 회사 슬러그 {slug}를 입력하세요",
+        "suspend": {
+          "title": "{name} 이용을 정지할까요?",
+          "effect": "회사 사용자 전원이 접근할 수 없게 돼요. '재개'로 되돌릴 수 있어요.",
+          "confirm": "정지",
+          "done": "{name} 이용을 정지했어요."
+        },
+        "scheduleDeletion": {
+          "title": "{name} 삭제를 예약할까요?",
+          "effect": "회사 사용자 전원의 접근이 바로 막히고, 30일 유예 후 회사의 모든 데이터가 영구 삭제돼요. 영구 삭제 뒤에는 되돌릴 수 없고 감사 기록 tenant.deleted만 남아요. 유예 기간에는 '예약 취소'로 되돌릴 수 있어요.",
+          "confirm": "삭제 예약",
+          "done": "{name} 삭제를 예약했어요."
+        }
+      },
+      "create": {
+        "title": "회사 만들기",
+        "description": "첫 회사 관리자에게 전달할 초대 링크가 만들어집니다.",
+        "defaultOrganization": "기본 조직",
+        "done": "{name} 회사를 만들었어요.",
+        "name": "회사 이름",
+        "slug": "슬러그",
+        "slugHint": "영문 소문자, 숫자, 하이픈 3~40자",
+        "slugInvalid": "영문 소문자, 숫자, 하이픈으로 3~40자를 입력하세요. 하이픈으로 시작하거나 끝날 수 없어요.",
+        "adminEmail": "첫 회사 관리자 이메일",
+        "emailInvalid": "이메일 형식이 올바르지 않아요.",
+        "organization": "첫 조직 이름",
+        "systemModels": "시스템 모델 사용",
+        "systemModelsHint": "플랫폼 모델과 시스템 LLM 키를 이 회사에 허용합니다.",
+        "cancel": "취소",
+        "submit": "만들고 초대 보내기",
+        "created": "{name} 회사와 첫 조직을 만들었어요.",
+        "invitationFor": "{email} 앞으로 회사 관리자 초대를 만들었어요.",
+        "invitationExpires": "초대 만료: {date} (1회용)",
+        "noMail": "메일은 보내지 않아요. 초대 코드를 복사해 직접 전달하세요. 이 창을 닫으면 다시 볼 수 없어요.",
+        "tokenCopied": "초대 코드를 복사했어요.",
+        "tokenCopyFailed": "초대 코드를 복사하지 못했어요.",
+        "copyToken": "초대 코드 복사",
+        "tokenUnavailable": "초대 코드를 받지 못했어요. 회사 관리자 초대를 다시 만들어야 해요.",
+        "close": "닫기"
+      },
+      "limitField": {
+        "members": "구성원 한도",
+        "spend": "월 비용 한도 (USD)",
+        "runs": "동시 실행 한도",
+        "hint": "비우면 제한 없음, 0이면 사용 불가",
+        "invalid": "0 이상의 숫자를 입력하세요. 구성원과 실행 한도는 정수만 쓸 수 있어요."
+      },
+      "detail": {
+        "back": "회사 목록",
+        "description": "슬러그 {slug} · 회사의 대화와 자원 내용은 볼 수 없습니다.",
+        "noLimit": "제한 없음",
+        "overview": "개요",
+        "overviewHint": "이용 상태와 이번 달 사용량입니다.",
+        "status": "상태",
+        "createdAt": "생성일",
+        "organizations": "조직",
+        "members": "구성원 / 한도",
+        "ofLimit": "{used} / {limit}",
+        "spend": "이번 달 비용 / 한도",
+        "usageUnavailable": "불러오지 못함",
+        "usageLoading": "불러오는 중…",
+        "resetsAt": "{date}에 초기화",
+        "activeRuns": "진행 중 실행 / 동시 실행 한도"
+      },
+      "limits": {
+        "title": "한도",
+        "description": "회사 이름과 이용 한도를 바꿉니다.",
+        "name": "회사 이름",
+        "systemModels": "시스템 모델 사용",
+        "systemModelsHint": "플랫폼 모델과 시스템 LLM 키를 이 회사에 허용합니다.",
+        "save": "저장",
+        "saved": "한도를 저장했어요."
+      },
+      "data": {
+        "title": "데이터",
+        "description": "회사 데이터 내보내기 기록과 삭제 예약입니다.",
+        "exports": "내보내기",
+        "startExport": "내보내기 시작",
+        "exportsLoading": "내보내기 기록을 불러오는 중…",
+        "noExports": "아직 내보내기 기록이 없어요.",
+        "deletion": "삭제 예약",
+        "scheduledUntil": "{date}에 영구 삭제돼요(D-{days}).",
+        "scheduled": "삭제가 예약되어 있어요.",
+        "scheduledHint": "예약을 취소하면 회사는 정지 상태로 돌아가요.",
+        "cancelDeletion": "예약 취소",
+        "deletionHint": "삭제를 예약하면 회사 사용자 전원의 접근이 막히고, 30일 뒤 회사 데이터가 영구 삭제돼요.",
+        "scheduleDeletion": "삭제 예약",
+        "createdAt": "요청 시각",
+        "status": "상태",
+        "expiresAt": "다운로드 만료",
+        "download": "다운로드",
+        "jobRunning": "진행 중 {progress}%",
+        "jobFailed": "실패 ({code})",
+        "job": {
+          "queued": "대기",
+          "running": "진행 중",
+          "succeeded": "완료",
+          "failed": "실패"
+        },
+        "downloadFailed": "내보내기 파일을 내려받지 못했어요."
+      }
+    },
+    "authzOps": {
+      "title": "권한 동기화 상태",
+      "description": "Postgres의 권한 행이 OpenFGA에 반영된 상태를 확인합니다.",
+      "loading": "불러오는 중…",
+      "loadError": "상태를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+      "reconcile": {
+        "button": "대조 실행",
+        "running": "대조 진행 중",
+        "confirmTitle": "권한 대조를 실행할까요?",
+        "confirmDescription": "모든 회사의 권한 행과 OpenFGA를 비교해 다른 부분을 고칩니다. 회사 수에 따라 몇 분 걸릴 수 있으며, 실행 중에도 쓰기 작업에는 영향이 없어요.",
+        "confirm": "실행",
+        "cancel": "취소",
+        "started": "권한 대조를 시작했어요",
+        "progress": "회사 {done}/{total} 확인 중",
+        "disabledHint": "legacy 모드이거나 OpenFGA 저장소·모델이 고정되지 않아 실행할 수 없어요"
+      },
+      "banner": {
+        "downTitle": "OpenFGA에 연결할 수 없어요",
+        "lastSuccess": "마지막 성공: {time}",
+        "neverSucceeded": "아직 성공한 연결이 없어요",
+        "degraded": "OpenFGA 응답이 느려요 ({latency}ms)",
+        "legacy": "현재 legacy 모드라 OpenFGA를 사용하지 않아요. 아래 값은 Postgres 기준입니다."
+      },
+      "stats": {
+        "outboxPending": "아웃박스 대기",
+        "outboxOldest": "가장 오래된 항목 {seconds}초",
+        "failed": "실패",
+        "failedHint": "재시도 10회 이상 · 재시도 중 {retrying}건",
+        "lastReconcile": "마지막 대조",
+        "lastReconcileHint": "불일치 {diff}건 · 자동 복구 {repaired}건 · 남은 항목 {deferred}건",
+        "noReconcile": "기록 없음",
+        "revocations": "회수 대기",
+        "revocationsHint": "10분 넘게 남은 항목 {stuck}건"
+      },
+      "failures": {
+        "title": "실패 항목",
+        "description": "회사와 자원 ID만 표시합니다.",
+        "empty": "실패한 항목이 없어요",
+        "company": "회사",
+        "resource": "자원",
+        "op": "작업",
+        "attempts": "시도",
+        "error": "오류",
+        "action": "작업",
+        "retry": "다시 시도",
+        "retryLabel": "{resource} 다시 시도",
+        "retried": "다시 시도하도록 예약했어요",
+        "platform": "플랫폼",
+        "ops": {
+          "write": "쓰기",
+          "delete": "삭제"
+        },
+        "errorTypes": {
+          "AuthzUnavailable": "OpenFGA 응답 없음",
+          "TimeoutError": "OpenFGA 시간 초과",
+          "other": "처리 실패"
+        }
+      },
+      "shadow": {
+        "title": "섀도 불일치",
+        "description": "legacy 판정과 OpenFGA 판정이 다른 건수입니다(자원 유형별).",
+        "empty": "불일치가 없어요",
+        "type": "자원 유형",
+        "legacyOnly": "legacy만 허용",
+        "fgaOnly": "OpenFGA만 허용"
+      },
+      "delegations": {
+        "title": "위임 검증",
+        "brokenLinks": "끊긴 연결",
+        "brokenRecent": "최근 24시간 끊김"
+      },
+      "retention": {
+        "title": "보존 정리",
+        "state": "상태",
+        "enabled": "사용",
+        "disabled": "꺼짐",
+        "schedule": "일정",
+        "lastRun": "마지막 실행",
+        "purgesRecent": "최근 24시간 정리 기록",
+        "never": "없음"
+      },
+      "jobs": {
+        "title": "예약 작업",
+        "name": "작업",
+        "state": "상태",
+        "schedule": "일정",
+        "scheduled": "예약됨",
+        "notScheduled": "꺼짐",
+        "names": {
+          "authz_outbox_drain": "아웃박스 처리",
+          "authz_reconcile": "매일 대조",
+          "authz_expiry_cleanup": "만료 정리",
+          "authz_backlog_alert": "지연 경보",
+          "authz_delegation_validate": "위임 검증",
+          "retention_sweep": "보존 정리"
+        }
+      },
+      "runStatus": {
+        "queued": "대기",
+        "running": "실행 중",
+        "succeeded": "완료",
+        "failed": "실패",
+        "skipped": "건너뜀"
+      },
+      "errors": {
+        "authz_reconcile_running": "이미 대조가 실행 중이에요",
+        "authz_sync_disabled": "권한 동기화가 꺼져 있어 실행할 수 없어요",
+        "not_found": "이미 처리된 항목이에요",
+        "generic": "요청을 처리하지 못했어요"
+      }
+    },
     "title": "설정",
     "description": "계정과 Moldy 사용 환경을 관리합니다.",
     "navLabel": "설정 메뉴",
@@ -3913,7 +5448,21 @@
       "marketplaceAdmin": "운영자 관리",
       "systemCredentials": "시스템 자격증명",
       "systemLlm": "시스템 LLM 설정",
-      "adminAudit": "전체 활동 기록"
+      "authzSync": "권한 동기화",
+      "adminAudit": "전체 활동 기록",
+      "organization": "조직",
+      "organizationSettings": "조직 설정",
+      "organizationMembers": "멤버",
+      "organizationGroups": "그룹",
+      "organizationRoles": "역할 및 권한",
+      "organizationRequests": "접근 요청",
+      "companyOrganizations": "회사 조직 목록",
+      "companySso": "SSO와 도메인",
+      "companyMembers": "회사 구성원",
+      "companyPolicies": "회사 정책",
+      "companyModels": "모델과 LLM 설정",
+      "platformTenants": "회사 목록",
+      "organizationCatalog": "카탈로그 정책"
     },
     "profile": {
       "title": "프로필",
@@ -4210,6 +5759,8 @@
     "appearance": "화면 및 언어",
     "agentApi": "Agent API",
     "marketplaceAdmin": "운영자 관리",
+    "authzSync": "권한 동기화",
+    "platformTenants": "회사 목록",
     "adminAudit": "전체 활동 기록",
     "systemCredentials": "시스템 자격증명",
     "systemLlm": "시스템 LLM 설정",
@@ -4224,7 +5775,16 @@
     "skillEvaluation": "평가",
     "skillVersions": "버전 관리",
     "skillSource": "소스",
-    "skillBuilder": "빌더"
+    "skillBuilder": "빌더",
+    "company": "회사",
+    "organization": "조직",
+    "invite": "초대",
+    "newConversation": "새 대화",
+    "agentDetail": "에이전트",
+    "skillDetail": "스킬 상세",
+    "companyDetail": "회사 상세",
+    "marketplaceItem": "마켓플레이스 항목",
+    "traces": "실행 추적"
   },
   "connections": {
     "pageTitle": "연결 관리",
@@ -4369,6 +5929,10 @@
     }
   },
   "credentials": {
+    "personalAccount": {
+      "badge": "개인 계정",
+      "hint": "개인 계정 자격 증명은 다른 사람과 공유하거나 소유권을 이전할 수 없습니다."
+    },
     "page": {
       "title": "자격증명",
       "description": "도구와 MCP 서버에서 사용하는 API 키와 OAuth 권한을 관리하세요.",
@@ -4449,7 +6013,9 @@
     "create": {
       "toast": {
         "saved": "자격증명이 저장되었습니다",
-        "saveFailed": "저장에 실패했습니다"
+        "saveFailed": "저장에 실패했습니다",
+        "oauthPopupBlocked": "팝업이 차단돼 계정 연결을 시작하지 못했어요. 자격증명 화면에서 다시 연결하세요.",
+        "oauthStartFailed": "계정 연결을 시작하지 못했어요"
       },
       "title": "새 자격증명",
       "titleWithType": "새 {type} 자격증명",
@@ -4465,6 +6031,7 @@
       "save": "자격증명 저장"
     },
     "detail": {
+      "sharedMetadataOnly": "공유받은 자격 증명이에요. 정보만 볼 수 있어요.",
       "toast": {
         "statusChanged": "자격증명 상태가 {status}(으)로 변경되었습니다",
         "updateFailed": "업데이트에 실패했습니다",
@@ -4581,6 +6148,141 @@
       "savedToast": "Fallback 모델이 저장되었습니다",
       "saveFailedToast": "Fallback 저장에 실패했습니다",
       "badge": "Fallback +{count}"
+    }
+  },
+  "notifications": {
+    "title": "알림",
+    "bell": "알림",
+    "bellUnread": "알림, 안읽음 {count}개",
+    "markAllRead": "모두 읽음",
+    "empty": "새 알림이 없어요",
+    "loading": "알림을 불러오는 중…",
+    "loadFailed": "알림을 불러오지 못했어요",
+    "hidden": "접근할 수 없는 항목",
+    "unnamed": "이름 없음",
+    "someone": "누군가",
+    "unreadMark": "안읽음",
+    "levels": {
+      "consumer": "실행",
+      "viewer": "보기",
+      "editor": "편집",
+      "manager": "관리",
+      "other": "일부"
+    },
+    "reasons": {
+      "permission_revoked": "권한 회수",
+      "owner_left": "소유자가 조직을 떠남",
+      "auth_required": "인증 필요",
+      "delegation_broken": "위임 연결 끊김",
+      "required_unavailable": "필수 항목 사용 불가",
+      "delegator_lost_access": "연결한 사람의 권한 없음",
+      "resource_unavailable": "자원을 쓸 수 없음",
+      "other": "사유 확인 필요"
+    },
+    "kinds": {
+      "accessRequestCreated": "{actor} 님이 {target} {level} 권한을 요청했어요",
+      "accessRequestCreatedNoActor": "{target} {level} 권한 요청이 들어왔어요",
+      "accessRequestApproved": "{target} {level} 권한 요청이 승인됐어요",
+      "accessRequestDenied": "{target} 권한 요청이 거절됐어요",
+      "grantReceived": "{actor} 님이 {target}의 {level} 권한을 공유했어요",
+      "grantReceivedNoActor": "{target}의 {level} 권한을 공유받았어요",
+      "grantReceivedHidden": "공유받은 항목이 있지만 지금은 열 수 없어요",
+      "triggerBlocked": "{trigger} 스케줄이 멈췄어요 ({reason})",
+      "ownerNeeded": "{target} 연결을 다시 해 달라는 요청이 있어요",
+      "delegationBroken": "{target}의 연결 하나가 끊겼어요 ({reason})",
+      "ownershipNew": "{target}의 소유자가 되었어요",
+      "ownershipPrevious": "{target}의 소유권이 이전됐어요",
+      "generic": "새 알림이 있어요"
+    }
+  },
+  "readiness": {
+    "badge": {
+      "needsConnection": "연결 필요 {count}",
+      "limited": "{count}개 제외",
+      "blocked": "사용 불가 · {reason}",
+      "reason": {
+        "no_permission": "권한 필요",
+        "owner_must_connect": "소유자 연결 필요",
+        "unavailable": "점검 필요"
+      }
+    },
+    "panel": {
+      "title": "{name} 시작 전 점검",
+      "titleUnnamed": "시작 전 연결 점검",
+      "summary": {
+        "ready": "모든 항목을 바로 쓸 수 있어요",
+        "needs_connection": "필수 항목 {count}개를 연결하면 바로 쓸 수 있어요",
+        "limited": "일부 선택 항목은 이번 실행에서 빠져요",
+        "blocked": "필수 항목을 쓸 수 없어 대화를 시작할 수 없어요"
+      },
+      "required": "필수",
+      "optional": "선택",
+      "kind": {
+        "llm_model": "모델",
+        "tool": "도구",
+        "mcp_server": "MCP 서버",
+        "skill": "스킬",
+        "sub_agent": "하위 에이전트"
+      },
+      "counted": "{kind} {count}개",
+      "result": {
+        "ready": "사용 가능",
+        "connect_by_me": "내 계정 연결이 필요해요",
+        "connect_by_me_expired": "내 연결이 만료됐어요",
+        "owner_must_connect": "소유자 계정 연결이 필요해요",
+        "no_permission": "권한이 없어 이번 실행에서 제외돼요",
+        "no_permission_required": "권한이 없어 실행할 수 없어요",
+        "unavailable": "관리자 점검을 기다리고 있어요"
+      },
+      "chip": {
+        "ready": "사용 가능",
+        "connect_by_me": "연결 필요",
+        "owner_must_connect": "소유자 연결 필요",
+        "no_permission": "권한 없음",
+        "unavailable": "사용 불가"
+      },
+      "connect": "연결하기",
+      "openCredentials": "자격증명 열기",
+      "notifyOwner": "소유자에게 알림",
+      "notified": "알렸어요",
+      "notifySent": "소유자에게 알렸어요",
+      "notifyFailed": "알림을 보내지 못했어요. 잠시 후 다시 시도하세요.",
+      "requestAccess": "권한 요청",
+      "close": "닫기",
+      "loading": "연결 상태를 확인하고 있어요",
+      "loadFailed": "점검 결과를 불러오지 못했어요",
+      "retry": "다시 시도",
+      "notReadyToast": "필수 연결이 끝나지 않아 대화를 시작하지 못했어요",
+      "collapsed": {
+        "needs_connection": "필수 항목 {count}개 연결이 필요해요",
+        "limited": "일부 항목이 이번 실행에서 빠져요",
+        "blocked": "지금은 이 에이전트를 쓸 수 없어요"
+      },
+      "open": "점검 보기",
+      "confirm": "확인",
+      "notifyNone": "소유자에게 알리지 못했어요. 소유자 계정을 확인할 수 없어요."
+    },
+    "binding": {
+      "title": "{name} 연결",
+      "description": "{agent}에서 내 계정으로 사용합니다",
+      "descriptionGeneric": "이 서비스를 내 계정으로 사용합니다",
+      "mine": "내 자격증명",
+      "empty": "연결할 수 있는 내 자격증명이 없어요",
+      "use": "이 계정 연결",
+      "useNamed": "{name} 연결",
+      "create": "새로 연결",
+      "createHelp": "새 자격증명을 만들고 바로 연결해요",
+      "connected": "연결했어요",
+      "failed": "연결하지 못했어요",
+      "typeMismatch": "이 자격증명 유형은 이 서비스에 연결할 수 없어요",
+      "notPerUser": "이 서비스는 사용자마다 연결하는 방식이 아니에요",
+      "close": "닫기",
+      "oauthWaiting": "팝업에서 계정 연결을 마쳐 주세요. 끝나면 자동으로 연결돼요."
+    },
+    "authCard": {
+      "connect": "연결하기",
+      "reconnectNote": "이 연결은 자격증명 화면에서 다시 연결한 뒤 다시 시도하세요.",
+      "openCredentials": "자격증명 열기"
     }
   }
 }

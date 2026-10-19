@@ -5,11 +5,10 @@ from __future__ import annotations
 import time
 from typing import Any
 
-import httpx
-
 from app.credentials.authenticate import GenericAuth
 from app.credentials.domain import CredentialDefinition
 from app.credentials.field import FieldDef, FieldKind
+from app.outbound.client import outbound_http_client
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 — OAuth endpoint URL, not a secret
 
@@ -25,7 +24,7 @@ async def _refresh(credentials: dict[str, Any]) -> dict[str, Any]:
             "google_workspace_oauth2: client_id, client_secret and refresh_token "
             "are all required for refresh"
         )
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with outbound_http_client(timeout=15.0, https_only=True) as client:
         response = await client.post(
             GOOGLE_TOKEN_URL,
             data={
@@ -46,10 +45,12 @@ async def _refresh(credentials: dict[str, Any]) -> dict[str, Any]:
 
 definition = CredentialDefinition(
     key="google_workspace_oauth2",
+    personal=True,
     display_name="Google Workspace OAuth2",
     icon_id="google",
     documentation_url="https://developers.google.com/identity/protocols/oauth2",
     category="oauth",
+    hosts=("oauth2.googleapis.com", "gmail.googleapis.com", "www.googleapis.com"),
     properties=[
         FieldDef(
             name="client_id",

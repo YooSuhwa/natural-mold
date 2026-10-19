@@ -328,8 +328,8 @@ function LangGraphRuntimeSection({
   const isRunning = runtimeIsRunning ?? stream.isLoading
   const wasRunningRef = useRef(false)
   const hitlValue = useMemo(
-    () => ({ onResumeDecisions, registerDecision }),
-    [onResumeDecisions, registerDecision],
+    () => ({ onResumeDecisions, registerDecision, agentId }),
+    [onResumeDecisions, registerDecision, agentId],
   )
   usePublishSubagentRuntime(conversationId, stream)
 

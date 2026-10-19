@@ -11,6 +11,7 @@ import {
   ResourcePage,
   ResourcePanel,
 } from '@/components/shared/resource-layout'
+import { useMarketplaceItemAccess } from '@/components/marketplace/marketplace-access'
 import { MarketplaceCard, type PrimaryCta } from '@/components/marketplace/marketplace-card'
 import { MarketplaceFilterBar } from '@/components/marketplace/marketplace-filter-bar'
 import { InstallWizard } from '@/components/marketplace/install-wizard'
@@ -64,6 +65,8 @@ export default function MarketplaceCatalogPage() {
     offset: 0,
   })
   const items = itemsPage?.items
+  const itemIds = useMemo(() => (items ?? []).map((item) => item.id), [items])
+  const { accessOf } = useMarketplaceItemAccess(itemIds)
   const countLabel =
     !isLoading && items ? t('count', { count: itemsPage?.total ?? items.length }) : undefined
   const tabs = TABS.map((tabOption) => ({
@@ -113,7 +116,12 @@ export default function MarketplaceCatalogPage() {
           ) : (
             <ResourceGrid minColumnWidth={300}>
               {items.map((item) => (
-                <MarketplaceCard key={item.id} item={item} onAction={handleAction} />
+                <MarketplaceCard
+                  key={item.id}
+                  item={item}
+                  canInstall={accessOf(item.id).canInstall}
+                  onAction={handleAction}
+                />
               ))}
             </ResourceGrid>
           )}

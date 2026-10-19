@@ -18,7 +18,15 @@ from app.agent_runtime.ag_ui_adapter import (
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
-from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation
+from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_org_context,
+    owned_conversation,
+)
 from app.error_codes import resume_not_found
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun
@@ -139,6 +147,7 @@ def _headers(run_id: str, mode: str) -> dict[str, str]:
 @router.get(
     "/api/conversations/{conversation_id}/runs/{run_id}/ag-ui-stream",
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def stream_conversation_run_ag_ui(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
@@ -147,6 +156,7 @@ async def stream_conversation_run_ag_ui(
     last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     conversation: Conversation = Depends(owned_conversation),
 ) -> StreamingResponse:
     after_id = last_event_id or last_event_id_header
@@ -154,13 +164,15 @@ async def stream_conversation_run_ag_ui(
         db,
         conversation_id=conversation_id,
         run_id=run_id,
-        user_id=user.id,
+        context=context,
     )
     if run is None:
         raise resume_not_found()
 
     run_id_str = str(run_id)
-    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
+    secrets = tuple(
+        await chat_secrets.collect_conversation_secret_values(db, conversation, context)
+    )
     broker = broker_registry.get(run_id_str)
     if broker is not None and not broker.is_closed:
         if broker.conversation_id != str(conversation_id):

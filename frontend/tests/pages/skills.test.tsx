@@ -1,4 +1,4 @@
-import { render, screen, userEvent, within } from '../test-utils'
+import { render, screen, userEvent, waitFor, within } from '../test-utils'
 // Phase 2: page.tsx는 async 서버 redirect 래퍼 — UI는 클라이언트 컴포넌트를 직접 렌더.
 import { SkillsPageClient } from '@/app/skills/_components/skills-page-client'
 import type { Skill } from '@/lib/types/skill'
@@ -35,6 +35,18 @@ vi.mock('@/lib/hooks/use-agents', () => ({
   }),
 }))
 
+vi.mock('@/lib/api/resource-permissions', () => ({
+  RESOURCE_PERMISSION_BATCH: 100,
+  resourcePermissionsApi: {
+    // The legacy owner answer for the caller's own rows.
+    list: vi.fn(async (_type: string, ids: string[]) => ({
+      items: ids.map((id) => ({
+        id,
+        my_permissions: ['can_use', 'can_view', 'can_edit', 'can_share', 'can_delete'],
+      })),
+    })),
+  },
+}))
 vi.mock('@/components/marketplace/publish-wizard', () => ({
   PublishWizard: () => null,
 }))
@@ -155,6 +167,12 @@ describe('SkillsPage', () => {
 
     expect(screen.getByTestId('skill-bulk-bar')).toHaveTextContent('1개 선택됨')
 
+    // Deletion waits for the per-row permissions answer (fail closed, H-05).
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('skill-bulk-bar')).getByRole('button', { name: '삭제' }),
+      ).toBeEnabled(),
+    )
     await user.click(
       within(screen.getByTestId('skill-bulk-bar')).getByRole('button', { name: '삭제' }),
     )
@@ -181,6 +199,12 @@ describe('SkillsPage', () => {
     render(<SkillsPageClient />)
 
     await user.click(screen.getByRole('checkbox', { name: '모든 행 선택' }))
+    // Deletion waits for the per-row permissions answer (fail closed, H-05).
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('skill-bulk-bar')).getByRole('button', { name: '삭제' }),
+      ).toBeEnabled(),
+    )
     await user.click(
       within(screen.getByTestId('skill-bulk-bar')).getByRole('button', { name: '삭제' }),
     )

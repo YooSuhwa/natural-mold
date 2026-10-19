@@ -41,6 +41,7 @@ import { ToolIconProvider } from '@/components/chat/tool-ui/tool-icon-context'
 import { ChatEmptyState } from '@/components/chat/chat-empty-state'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
 import { PinnedConversationSummary } from '@/components/chat/pinned-conversation-summary'
+import { AgentReadinessGate } from '@/components/readiness/agent-readiness-gate'
 import { ExportDialog } from '@/components/chat/export-dialog'
 import { SideChatWorkspace } from '@/components/chat/side-chat/side-chat-workspace'
 import { SideChatPanel, ConversationDetailRail } from '@/components/chat/side-chat/side-chat-panel'
@@ -434,6 +435,11 @@ export default function ChatPage({
             onToggleArtifacts={handleToggleArtifacts}
           />
           <PinnedConversationSummary conversationId={activeConversationId} />
+          <AgentReadinessGate
+            agentId={agentId}
+            agentName={agent?.name}
+            conversationId={activeConversationId}
+          />
 
           {/* Thread */}
           {(!isPromotedDraftRoute && !isDraftConversation && messagesLoading) ||

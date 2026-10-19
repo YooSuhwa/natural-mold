@@ -12,6 +12,7 @@ from app.schemas.conversation import MessageResponse
 from app.services.artifact_service import ArtifactDeltaRecorder, ArtifactRuntimeContext
 from app.services.artifact_storage import LocalArtifactStorageBackend
 from tests.artifact_test_helpers import seed_artifact_conversation
+from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -31,7 +32,7 @@ async def _create_artifact_for_conversation(
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id=assistant_msg_id,
             output_dir=output_dir,
@@ -240,7 +241,7 @@ async def test_public_share_artifacts_respect_revoke(
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="share-run-revoke",
             output_dir=output_dir,

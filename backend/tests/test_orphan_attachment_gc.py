@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.message_attachment import MessageAttachment
 from app.models.user import User
 from app.services.chat_service import gc_orphan_attachments
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 
 
 def _exists(path: Path) -> bool:
@@ -59,6 +60,8 @@ def _attach(
         storage_path=str(storage_path),
         url=f"/api/uploads/{upload_id}",
         created_at=created,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
 
 

@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { TriggerRun } from '@/lib/types'
 
+import { TriggerStopReason } from './trigger-stop-reason'
+
 interface ScheduleRunListLabels {
   runNow: string
   scheduled: string
@@ -13,8 +15,11 @@ interface ScheduleRunListLabels {
   empty: string
 }
 
+/** `TriggerRunResponse.reason_code` (F-08 BLOCKED reason; null for ordinary runs). */
+type ScheduleRun = TriggerRun & { reason_code?: string | null }
+
 interface ScheduleRunListProps {
-  runs: TriggerRun[] | undefined
+  runs: ScheduleRun[] | undefined
   loading: boolean
   labels: ScheduleRunListLabels
   formatDate: (value: string | null) => string
@@ -67,6 +72,7 @@ export function ScheduleRunList({ runs, loading, labels, formatDate }: ScheduleR
               {run.output_preview}
             </p>
           ) : null}
+          <TriggerStopReason reasonCode={run.reason_code} />
           {run.error_message ? (
             <p className="mt-2 text-xs text-destructive">{run.error_message}</p>
           ) : null}

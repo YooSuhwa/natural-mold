@@ -5,6 +5,7 @@ import contextlib
 import os
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import patch
 
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.agent_runtime import event_names
 from app.agent_runtime.streaming import format_sse
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.audit_event import AuditEvent
 from app.models.conversation import Conversation
@@ -26,8 +28,15 @@ from app.models.model import Model
 from app.models.user import User
 from app.services import conversation_run_service, trace_storage
 from app.services.conversation_run_worker import RunTaskRegistry, reset_run_task_registry_for_tests
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TestSession
 from tests.integration._seed import seed_conversation_with_agent
+from tests.integration.run_status_wait import wait_for_run_status as _wait_for_run_status
 
 
 @pytest.fixture
@@ -61,29 +70,6 @@ async def _publish_event(kwargs: dict[str, Any], evt: dict[str, Any]) -> str:
     kwargs["trace_sink"].append(evt)
     await kwargs["persist_callback"]([evt])
     return format_sse(evt["event"], evt["data"], event_id=evt["id"])
-
-
-async def _wait_for_run_status(
-    run_id: str,
-    status: str,
-    *,
-    # 2s flaked on CI (2-core runner + xdist -n 4 starves the background
-    # worker task — PR #280 first run). The poll returns as soon as the
-    # status lands, so a generous deadline costs nothing when healthy.
-    timeout_seconds: float = 15.0,
-) -> ConversationRun:
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout_seconds
-    last_seen: str | None = None
-    while loop.time() < deadline:
-        async with TestSession() as db:
-            run = await db.get(ConversationRun, uuid.UUID(run_id))
-            if run is not None:
-                last_seen = run.status
-                if run.status == status:
-                    return run
-        await asyncio.sleep(0.01)
-    raise AssertionError(f"timeout waiting for run {run_id} status={status}; last={last_seen}")
 
 
 async def _audit_actions_for_run(run_id: str) -> set[str]:
@@ -128,17 +114,34 @@ async def test_first_accepted_run_wins_runtime_policy_snapshot_under_postgres_lo
                 display_name="Policy Race Model",
             )
         )
+        await db.flush()
+        await ensure_unit_scope(
+            db, CurrentUser(id=user_id, email=f"{user_id}@fixture.local", name="Race fixture")
+        )
         db.add(
             Agent(
                 id=agent_id,
                 user_id=user_id,
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
                 name="Policy Race Agent",
                 system_prompt="Stay deterministic.",
                 model_id=model_id,
                 runtime_policy={"version": 1, "todo": {"enabled": False}},
             )
         )
-        db.add(Conversation(id=conversation_id, agent_id=agent_id, title="Policy Race"))
+        db.add(
+            Conversation(
+                id=conversation_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
+                agent_name_snapshot="Race fixture",
+                title="Policy Race",
+                last_activity_at=datetime.now(UTC),
+            )
+        )
         await db.commit()
 
     winner_ready = asyncio.Event()
@@ -152,7 +155,7 @@ async def test_first_accepted_run_wins_runtime_policy_snapshot_under_postgres_lo
                 db,
                 conversation_id=conversation_id,
                 agent_id=agent_id,
-                user_id=user_id,
+                context=unit_context(user_id),
                 source="chat",
                 input_preview="winner",
             )
@@ -175,7 +178,7 @@ async def test_first_accepted_run_wins_runtime_policy_snapshot_under_postgres_lo
                     db,
                     conversation_id=conversation_id,
                     agent_id=agent_id,
-                    user_id=user_id,
+                    context=unit_context(user_id),
                     source="chat",
                     input_preview="contender",
                 )

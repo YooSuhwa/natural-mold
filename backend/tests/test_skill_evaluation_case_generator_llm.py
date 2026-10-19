@@ -22,6 +22,7 @@ from app.services.skill_evaluation_case_generator_llm import (
 )
 from app.services.system_credential_resolver import SystemModelNotConfiguredError
 from app.storage.paths import ensure_relative
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -219,6 +220,8 @@ async def _package_skill(
         size_bytes=1,
         version="1.0.0",
         package_metadata={"name": "generated"},
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(skill)
     await db.flush()

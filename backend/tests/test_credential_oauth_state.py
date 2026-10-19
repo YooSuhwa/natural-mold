@@ -6,9 +6,10 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.models.credential_oauth_state import CredentialOAuthState
 from app.models.user import User
+from tests.authz.unit_scope_fixture import create_test_credential, unit_context
 from tests.conftest import TEST_USER_ID
 
 
@@ -22,12 +23,14 @@ async def _ensure_test_user(db: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_credential_oauth_state_can_be_created_and_consumed(db: AsyncSession) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Atlassian",
-        data={"server_url": "https://mcp.atlassian.com/v1/mcp/authv2"},
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Atlassian",
+            data={"server_url": "https://mcp.atlassian.com/v1/mcp/authv2"},
+        ),
+        unit_context(TEST_USER_ID),
     )
     state = CredentialOAuthState(
         state_hash="hash-1",

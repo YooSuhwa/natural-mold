@@ -37,6 +37,8 @@ from app.models.marketplace import (
 from app.models.skill import Skill
 from app.models.user import User
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 
@@ -78,13 +80,10 @@ async def _make_user_skill(db: AsyncSession, *, tmp_path: Path, name: str = "dem
     populated (publish service reads it)."""
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name=name,
-            slug=None,
-            description="demo",
-            content=_skill_md(name),
+            TextSkillCreation(name=name, slug=None, description="demo", content=_skill_md(name)),
+            unit_context(TEST_USER_ID),
         )
     await db.flush()
     return skill
@@ -193,6 +192,7 @@ async def test_publish_new_version_response_projects_the_new_latest_version(
             db,
             skill=skill,
             content=_skill_md("fresh-latest") + "\nVersion two body.\n",
+            context=unit_context(TEST_USER_ID),
         )
         skill.version = "2.0.0"
         await db.commit()

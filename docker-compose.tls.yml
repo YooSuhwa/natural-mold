@@ -1,0 +1,81 @@
+# Internal-hop TLS overlay (org-authz plan 15.1 / 15.2.1, task I-09).
+#
+#   bash scripts/internal-tls-certs.sh            # once: CA + server cert into certs/internal
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+#
+# Every internal connection becomes verified TLS, so APP_ENV=production boots
+# with INTERNAL_PLAINTEXT_HOSTS empty:
+#   backend  -> postgres          ssl=verify-full (asyncpg) / sslmode=verify-full (psycopg)
+#   backend  -> openfga           https + OPENFGA_CA_CERT
+#   openfga  -> openfga-postgres  sslmode=verify-full
+# Both Postgres servers reject non-TLS TCP clients (pg_hba "hostnossl ... reject").
+# Production installs should replace the generated files with certificates
+# issued by the company CA (docs/operator-setup.md section 7). The cert
+# directory needs ca.crt, server.crt and server.key (0640, group =
+# MOLDY_TLS_KEY_GID) and never the CA private key; the server certificate's
+# SANs must include postgres, openfga-postgres and openfga.
+
+x-tls-certs: &tls-certs "${MOLDY_TLS_CERT_DIR:-./certs/internal}:/certs:ro"
+
+# Postgres refuses a key file it does not own (0600), so copy the mounted
+# files into the container before handing off to the stock entrypoint.
+x-postgres-tls: &postgres-tls
+  entrypoint: ["sh", "-c"]
+  command:
+    - |
+      set -eu
+      tls=/var/lib/postgresql/tls
+      mkdir -p "$$tls"
+      install -m 0644 -o postgres -g postgres /certs/server.crt "$$tls/server.crt"
+      install -m 0600 -o postgres -g postgres /certs/server.key "$$tls/server.key"
+      printf '%s\n' 'local all all trust' 'hostssl all all all scram-sha-256' \
+        'hostnossl all all all reject' > "$$tls/pg_hba.conf"
+      chown postgres:postgres "$$tls/pg_hba.conf"
+      exec docker-entrypoint.sh postgres -c ssl=on \
+        -c ssl_cert_file="$$tls/server.crt" -c ssl_key_file="$$tls/server.key" \
+        -c hba_file="$$tls/pg_hba.conf"
+
+services:
+  openfga-postgres:
+    <<: *postgres-tls
+    volumes:
+      - openfga_data:/var/lib/postgresql/data
+      - *tls-certs
+
+  openfga-migrate:
+    environment:
+      OPENFGA_DATASTORE_URI: postgres://openfga:${OPENFGA_DB_PASSWORD:?Set OPENFGA_DB_PASSWORD}@openfga-postgres:5432/openfga?sslmode=verify-full&sslrootcert=/certs/ca.crt
+    volumes:
+      - *tls-certs
+
+  openfga:
+    environment:
+      OPENFGA_DATASTORE_URI: postgres://openfga:${OPENFGA_DB_PASSWORD:?Set OPENFGA_DB_PASSWORD}@openfga-postgres:5432/openfga?sslmode=verify-full&sslrootcert=/certs/ca.crt
+      # v1.22.0 --http-tls-* options. The image runs as a non-root user; it reads
+      # the 0640 key through the key file's group (see group_add below).
+      OPENFGA_HTTP_TLS_ENABLED: "true"
+      OPENFGA_HTTP_TLS_CERT: /certs/server.crt
+      OPENFGA_HTTP_TLS_KEY: /certs/server.key
+    group_add:
+      - "${MOLDY_TLS_KEY_GID:?Set MOLDY_TLS_KEY_GID to the group id owning server.key}"
+    volumes:
+      - *tls-certs
+
+  postgres:
+    <<: *postgres-tls
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - *tls-certs
+
+  backend:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://moldy:moldy@postgres:5432/moldy?ssl=verify-full
+      DATABASE_URL_SYNC: postgresql://moldy:moldy@postgres:5432/moldy?sslmode=verify-full&sslrootcert=/certs/ca.crt
+      # asyncpg cannot take sslrootcert in the SQLAlchemy URL; it reads this instead.
+      PGSSLROOTCERT: /certs/ca.crt
+      OPENFGA_API_URL: https://openfga:8080
+      OPENFGA_CA_CERT: /certs/ca.crt
+      INTERNAL_PLAINTEXT_HOSTS: ""
+    volumes:
+      - backend_data:/app/data
+      - *tls-certs

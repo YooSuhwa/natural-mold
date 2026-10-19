@@ -16,7 +16,8 @@ from app.services.skill_evaluation_worker_types import (
 
 
 async def cancel_if_requested(db: AsyncSession, run: SkillEvaluationRun) -> bool:
-    await db.refresh(run)
+    with db.no_autoflush:
+        await db.refresh(run, ["status", "cancellation_requested_at", "completed_at"])
     if run.status != "cancelled" and run.cancellation_requested_at is None:
         return False
     await mark_cancelled(db, run)
@@ -59,7 +60,7 @@ async def mark_execution_error_failed(
         run,
         "skill_evaluation.run_fail",
         outcome="failure",
-        metadata={"reason_code": "SKILL_EVALUATION_EXECUTION_ERROR"},
+        metadata={"reason_code": exc.reason_code},
     )
     await db.flush()
 

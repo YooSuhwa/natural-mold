@@ -20,7 +20,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.agent_runtime.model_factory import create_chat_model
-from app.database import async_session
+from app.database import async_session, platform_session
 from app.services.system_credential_resolver import (
     ResolvedSystemModel,
     SystemModelNotConfiguredError,
@@ -84,7 +84,8 @@ async def _resolve_cached_model(role: str) -> BaseChatModel:
 
     Raises ``SystemModelNotConfiguredError`` when the role is unconfigured.
     """
-    async with async_session() as db:
+    # TODO(8.9): filter tenant_id IS NULL once per-company system LLM overrides land.
+    async with platform_session("system_llm.resolve", maker=async_session) as db:
         resolved = await resolve_system_model(db, role)
     cached = _MODEL_CACHE.get(role)
     if cached is not None and cached[0] == resolved:

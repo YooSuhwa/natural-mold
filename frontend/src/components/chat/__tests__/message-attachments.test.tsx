@@ -7,6 +7,11 @@ import {
 } from '@/components/chat/message-attachments'
 import type { FileItem, MessageAttachmentBrief } from '@/lib/types'
 
+vi.mock('@/lib/hooks/use-api-object-url', () => ({
+  useApiObjectUrl: (url: string | null) =>
+    url ? { status: 'ready', objectUrl: 'blob:test-image' } : { status: 'idle', objectUrl: null },
+}))
+
 vi.mock('@assistant-ui/react', async () => ({
   ...(await vi.importActual<typeof import('@assistant-ui/react')>('@assistant-ui/react')),
   useAuiState: (

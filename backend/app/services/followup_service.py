@@ -15,6 +15,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_scope import resolve_conversation_actor
 from app.config import settings
 from app.models.conversation import Conversation
 from app.services import chat_service
@@ -114,7 +115,12 @@ async def generate_followup_suggestion(
         return None
 
     try:
-        messages = await chat_service.list_messages_from_checkpointer(db, conversation, user_id)
+        messages = await chat_service.list_messages_from_checkpointer(
+            db,
+            conversation,
+            user_id,
+            context=await resolve_conversation_actor(db, conversation.id, user_id),
+        )
         transcript = _transcript_tail(messages)
         if transcript is None:
             return None

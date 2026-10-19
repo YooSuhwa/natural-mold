@@ -18,6 +18,8 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
+    /** ``error.details`` of the AppError envelope (e.g. ``confirm_required``). */
+    public readonly details: Record<string, unknown> | null = null,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -25,7 +27,7 @@ export class ApiError extends Error {
 }
 
 type ApiErrorBodyShape = {
-  error?: { code?: string; message?: string }
+  error?: { code?: string; message?: string; details?: unknown }
   detail?: { code?: string; message?: string } | string
   code?: string
   message?: string
@@ -56,7 +58,11 @@ interface ReadOptions {
 export async function parseApiErrorBody(
   response: Response,
   { clone = false }: { clone?: boolean } = {},
-): Promise<{ code: string | null; message: string | null }> {
+): Promise<{
+  code: string | null
+  message: string | null
+  details: Record<string, unknown> | null
+}> {
   const source = clone ? response.clone() : response
   const body = (await source.json().catch(() => ({}))) as ApiErrorBodyShape
 
@@ -71,9 +77,14 @@ export async function parseApiErrorBody(
     message = detail
   }
 
+  const rawDetails = body.error?.details
   return {
     code: code ?? body.code ?? null,
     message: message ?? body.message ?? null,
+    details:
+      rawDetails && typeof rawDetails === 'object' && !Array.isArray(rawDetails)
+        ? (rawDetails as Record<string, unknown>)
+        : null,
   }
 }
 
@@ -83,17 +94,18 @@ export async function parseApiErrorBody(
 export async function readApiErrorBody(
   response: Response,
   { fallbackCode, fallbackMessage, clone = false }: ReadOptions,
-): Promise<{ code: string; message: string }> {
-  const { code, message } = await parseApiErrorBody(response, { clone })
+): Promise<{ code: string; message: string; details: Record<string, unknown> | null }> {
+  const { code, message, details } = await parseApiErrorBody(response, { clone })
   return {
     code: code ?? fallbackCode,
     message: message ?? fallbackMessage ?? response.statusText,
+    details,
   }
 }
 
 /** Shortcut: parse + throw an ``ApiError``. Used by JSON callers; SSE
  *  callers want the raw fields to feed a ``StreamApiError`` subclass. */
 export async function throwApiError(response: Response, fallbackCode: string): Promise<never> {
-  const { code, message } = await readApiErrorBody(response, { fallbackCode })
-  throw new ApiError(response.status, code, message)
+  const { code, message, details } = await readApiErrorBody(response, { fallbackCode })
+  throw new ApiError(response.status, code, message, details)
 }

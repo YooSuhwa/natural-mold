@@ -19,7 +19,10 @@ from typing import Any
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
+from app.authz.scoping import private_scope_predicate
+from app.database import async_session, tenant_session
 from app.dependencies import CurrentUser
 from app.models.skill_builder_session import SkillBuilderSession
 from app.models.user import User
@@ -35,6 +38,7 @@ from app.services.skill_builder_errors import (
     SkillBuilderSourceSkillNotFound,
     SkillBuilderValidationError,
 )
+from app.services.skill_builder_mutation_scope import SkillBuilderMutationTarget
 from app.services.skill_revision_audit import record_revision_create_audit
 from app.skills.packager import PackageError
 
@@ -49,7 +53,7 @@ async def finalize_draft_session(
     db: AsyncSession,
     *,
     session_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> dict[str, Any]:
     """finalize 전체 플로우 실행 — 도구 결과로 쓸 dict 반환 (커밋 포함).
 
@@ -57,7 +61,10 @@ async def finalize_draft_session(
     실패: ``{error_code, message, ...}`` — 에이전트가 사용자에게 설명한다.
     """
 
-    session = await skill_builder_service.get_session(db, session_id, user_id)
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    session = await skill_builder_service.get_session(db, session_id, context)
     if session is None:
         return _error("SESSION_NOT_FOUND", "builder session not found")
 
@@ -68,12 +75,14 @@ async def finalize_draft_session(
     ):
         from app.skills import service as skill_service
 
-        existing = await skill_service.get_skill(db, session.finalized_skill_id, user_id)
+        existing = await skill_service.get_skill(db, session.finalized_skill_id, context)
         if existing is not None:
             return _success(session, existing)
 
     if not session.draft_workspace_path:
         return _error("DRAFT_WORKSPACE_MISSING", "draft workspace is not attached")
+    if session.draft_workspace_path != workspace.workspace_storage_path(session.id):
+        return _error("SESSION_NOT_FOUND", "builder session not found")
 
     # REST /confirm과 동일한 상태 게이트(R2) — save_draft_package가 상태를
     # 무조건 REVIEW로 리셋하므로, 게이트 없이 동시 finalize B의 save가 A의
@@ -85,24 +94,26 @@ async def finalize_draft_session(
     # 바이너리 asset은 confirm 단계의 디스크 기반 zip(build_workspace_zip_bytes)이
     # 그대로 싣는다 (Phase 1.5) — draft_package(text 어댑터)는 검증/메타데이터용.
     draft = workspace.build_draft_package(session.draft_workspace_path)
-    await skill_builder_service.save_draft_package(db, session, draft=draft.model_dump(mode="json"))
+    await skill_builder_service.save_draft_package(
+        db, SkillBuilderMutationTarget(session.id, context), draft.model_dump(mode="json")
+    )
     await db.commit()
 
-    claimed = await skill_builder_service.claim_for_confirming(db, session.id, user_id)
+    claimed = await skill_builder_service.claim_for_confirming(db, session.id, context)
     if not claimed:
         return _error("SESSION_CONFIRMING", "another finalize is already in progress")
 
-    session = await skill_builder_service.get_session(db, session_id, user_id)
+    session = await skill_builder_service.get_session(db, session_id, context)
     if session is None:
         return _error("SESSION_NOT_FOUND", "builder session not found")
 
-    actor = await _actor_for(db, user_id)
+    actor = await _actor_for(db, context.user_id)
     try:
         # zip_from_workspace=True — 빌더 챗 경로는 워크스페이스 디스크가 source of
         # truth라 바이너리 asset을 포함한 zip을 만든다 (Phase 1.5). REST /confirm은
         # 게시된 draft_package 계약을 유지하므로 이 플래그를 켜지 않는다.
         skill = await skill_builder_service.confirm_session(
-            db, session, user_id=user_id, zip_from_workspace=True
+            db, session, context=context, zip_from_workspace=True
         )
     except SkillBuilderConflictError as exc:
         await _record_audit(
@@ -144,14 +155,14 @@ async def finalize_draft_session(
         # 대칭으로 REVIEW로 되돌려야 재시도가 self-heal된다(rollback만으로는 이미
         # 커밋된 CONFIRMING을 못 되돌려 CONFIRMING 게이트가 재시도를 영구 차단).
         await db.rollback()
-        await _release_confirming_claim(db, session_id, user_id)
+        await _release_confirming_claim(db, session_id, context)
         return _error("SOURCE_SKILL_NOT_FOUND", "source skill not found")
     except PackageError as exc:
         # zip 추출 가드(크기/파일 수/경로 방어) 실패 — 바이너리 asset이 실리며
         # 패키지 상한 초과가 현실화됐다(Phase 1.5). 위 경로들과 대칭으로 claim을
         # 풀어 에이전트가 파일을 줄인 뒤 재시도할 수 있게 사유를 그대로 전한다.
         await db.rollback()
-        await _release_confirming_claim(db, session_id, user_id)
+        await _release_confirming_claim(db, session_id, context)
         return _error("PACKAGE_INVALID", str(exc))
     except asyncio.CancelledError:
         # 런 취소(stop)는 BaseException이라 아래 Exception 캐치와 도구 경로의
@@ -159,13 +170,13 @@ async def finalize_draft_session(
         # 재전파해 CONFIRMING 잠금 잔존을 막는다 (자체 세션이라 요청 세션
         # teardown과 무관하게 끝까지 커밋된다).
         with contextlib.suppress(Exception):
-            await asyncio.shield(_release_confirming_claim(db, session_id, user_id))
+            await asyncio.shield(_release_confirming_claim(db, session_id, context))
         raise
     except Exception:
         # 예기치 못한 실패(transient DB 오류 등)도 claim을 해제해 세션이
         # 거짓 "다른 finalize 진행 중" 상태에 갇히지 않게 한다.
         await db.rollback()
-        await _release_confirming_claim(db, session_id, user_id)
+        await _release_confirming_claim(db, session_id, context)
         raise
 
     await _record_audit(
@@ -212,22 +223,24 @@ def _success(session: SkillBuilderSession, skill: Any) -> dict[str, Any]:
 
 
 async def _release_confirming_claim(
-    _db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
+    _db: AsyncSession, session_id: uuid.UUID, context: OrgContext
 ) -> None:
     """post-claim 실패 시 CONFIRMING → REVIEW 복귀 (best-effort self-heal).
 
     자체 세션을 연다 — 취소(shield) 경로에서 요청 세션이 teardown돼도 복귀
     커밋이 완료되고, 조건부 UPDATE(claim과 대칭)라 원자적이다. 호출자 세션은
-    rollback 상태 그대로 둔다.
+    rollback 상태 그대로 둔다. Original claim scope stays fixed even if the actor
+    switches company or the session scope changes before recovery. This only
+    releases status metadata; content execution still requires a fresh actor.
     """
 
     try:
-        async with async_session() as fresh:
+        async with tenant_session(context, maker=async_session) as fresh:
             await fresh.execute(
                 update(SkillBuilderSession)
                 .where(
                     SkillBuilderSession.id == session_id,
-                    SkillBuilderSession.user_id == user_id,
+                    private_scope_predicate(SkillBuilderSession, context),
                     SkillBuilderSession.status == SkillBuilderStatus.CONFIRMING.value,
                 )
                 .values(status=SkillBuilderStatus.REVIEW.value)

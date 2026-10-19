@@ -12,6 +12,7 @@ leak does not expose usable tokens.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 import secrets
 import uuid
@@ -84,6 +85,24 @@ def _resolve_secret() -> str:
 
 def _encode(payload: dict[str, object]) -> str:
     return pyjwt.encode(payload, _resolve_secret(), algorithm=settings.jwt_algorithm)
+
+
+def create_org_invitation_token(invitation_id: uuid.UUID) -> str:
+    """Reproduce an authorized invite link without storing its plaintext.
+
+    A distinct purpose prefix separates this MAC from JWT/CSRF signatures.
+    Acceptance verifies the stored hash and database expiry, not JWT claims.
+    """
+    message = b"moldy/org-invitation/v1\x00" + invitation_id.bytes
+    signature = hmac.new(_resolve_secret().encode(), message, hashlib.sha256).hexdigest()
+    return f"v1.{invitation_id.hex}.{signature}"
+
+
+def create_tenant_invitation_token(invitation_id: uuid.UUID) -> str:
+    """Reproduce a company invite using a company-specific MAC purpose."""
+    message = b"moldy/tenant-invitation/v1\x00" + invitation_id.bytes
+    signature = hmac.new(_resolve_secret().encode(), message, hashlib.sha256).hexdigest()
+    return f"tv1.{invitation_id.hex}.{signature}"
 
 
 def _now() -> datetime:
@@ -174,3 +193,72 @@ def hash_refresh_token(token: str) -> str:
     """Return the SHA-256 hex digest used as the DB whitelist key."""
 
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# H-08 SSO: short-lived signed browser transactions and third-party ID tokens.
+# Kept here so ``jwt`` stays imported by this module only.
+# ---------------------------------------------------------------------------
+
+
+class ExternalTokenError(ValueError):
+    """A third-party (IdP) JWT failed verification."""
+
+
+class ExternalIssuerError(ExternalTokenError):
+    """A third-party JWT has another ``iss`` than expected."""
+
+
+def encode_transaction(claims: dict[str, object], *, audience: str, ttl: timedelta) -> str:
+    """HS256 with the session secret, audience-bound and expiring (never a session token)."""
+    return pyjwt.encode(
+        {**claims, "aud": audience, "exp": _now() + ttl}, _resolve_secret(), algorithm="HS256"
+    )
+
+
+def decode_transaction(token: str, *, audience: str) -> dict[str, object] | None:
+    try:
+        return pyjwt.decode(token, _resolve_secret(), algorithms=["HS256"], audience=audience)
+    except pyjwt.PyJWTError:
+        return None
+
+
+def unverified_jwt_header(token: str) -> dict[str, object]:
+    try:
+        return dict(pyjwt.get_unverified_header(token))
+    except pyjwt.PyJWTError as exc:
+        raise ExternalTokenError("malformed token header") from exc
+
+
+def jwks_keys(document: dict[str, object]) -> list[tuple[str | None, object]]:
+    """``(kid, verification key)`` for every usable key of a JWKS document."""
+    try:
+        return [(key.key_id, key.key) for key in pyjwt.PyJWKSet.from_dict(document).keys]
+    except pyjwt.PyJWTError as exc:
+        raise ExternalTokenError("unusable JWKS") from exc
+
+
+def verify_external_jwt(
+    token: str,
+    key: object,
+    *,
+    algorithm: str,
+    audience: str,
+    issuer: str,
+    leeway: int,
+) -> dict[str, object]:
+    """Signature, ``iss``, ``aud``, ``exp`` and required claims of an IdP ID token."""
+    try:
+        return pyjwt.decode(
+            token,
+            key,  # type: ignore[arg-type]
+            algorithms=[algorithm],
+            audience=audience,
+            issuer=issuer,
+            leeway=leeway,
+            options={"require": ["exp", "iat", "iss", "aud", "sub"]},
+        )
+    except pyjwt.InvalidIssuerError as exc:
+        raise ExternalIssuerError("issuer mismatch") from exc
+    except pyjwt.PyJWTError as exc:
+        raise ExternalTokenError("token rejected") from exc

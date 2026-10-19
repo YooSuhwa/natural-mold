@@ -46,6 +46,7 @@ async def shutdown_runtime_resources() -> list[BaseException]:
     from app.agent_runtime.checkpointer import shutdown_checkpointer
     from app.agent_runtime.event_broker import registry as broker_registry
     from app.agent_runtime.tool_factory import close_tool_http_client
+    from app.authz.runtime import close_authz_runtime
     from app.database import shutdown_database
     from app.scheduler import release_scheduler_leader, stop_scheduler
     from app.services.conversation_run_worker import get_run_task_registry
@@ -76,6 +77,7 @@ async def shutdown_runtime_resources() -> list[BaseException]:
             ("scheduler", close_scheduler),
             ("spend_queue", spend_queue.stop),
             ("tool_http_client", close_tool_http_client),
+            ("authz", close_authz_runtime),
             ("checkpointer", shutdown_checkpointer),
             ("database", shutdown_database),
         )

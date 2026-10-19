@@ -4,13 +4,15 @@ import json
 import logging
 import re
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Required, TypedDict, TypeGuard
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from app.agent_runtime.offload_protocol_projection import project_offload_egress_data
 from app.schemas.conversation import MessageResponse, TokenUsageBreakdown
+from app.schemas.conversation_refs import JsonValue
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,25 @@ _PRIVATE_REASONING_BLOCK_TYPES = frozenset(
         "redacted_thinking",
     }
 )
+
+type RuntimeMessageContent = str | list[str | dict[str, JsonValue]]
+
+
+class RuntimeMessage(TypedDict, total=False):
+    role: Required[str]
+    content: Required[RuntimeMessageContent]
+
+
+def is_runtime_message(value: dict[str, JsonValue]) -> TypeGuard[RuntimeMessage]:
+    """Recognize LangChain message input without discarding extension keys."""
+
+    role = value.get("role")
+    content = value.get("content")
+    if not isinstance(role, str):
+        return False
+    if isinstance(content, str):
+        return True
+    return isinstance(content, list) and all(isinstance(block, (str, dict)) for block in content)
 
 
 def flatten_base_messages(value: Any, *, source: str) -> list[BaseMessage]:
@@ -210,7 +231,7 @@ def extract_usage_breakdown(
     )
 
 
-def convert_to_langchain_messages(messages: list[dict[str, str]]) -> list[BaseMessage]:
+def convert_to_langchain_messages(messages: Sequence[RuntimeMessage]) -> list[BaseMessage]:
     lc_messages: list[BaseMessage] = []
     for msg in messages:
         role = msg.get("role", "")

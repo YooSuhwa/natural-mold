@@ -7,44 +7,46 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.authz.agent_usage_access import agent_usage_gate
+from app.authz.policies import RES, SELF, authz_policy
+from app.dependencies import CurrentUser, get_company_db, get_current_user, get_db
 from app.services import usage_aggregate, usage_service
 
 router = APIRouter(prefix="/api", tags=["usage"])
 
 
 @router.get("/agents/{agent_id}/usage")
+@authz_policy(RES("agent", "can_view_config", param="agent_id", min_visible="can_run"))
 async def get_agent_usage(
     agent_id: uuid.UUID,
     period: str | None = None,
     db: AsyncSession = Depends(get_db),
+    own_usage_of: uuid.UUID | None = Depends(agent_usage_gate),
 ):
-    return await usage_service.get_agent_usage(db, agent_id, period)
+    return await usage_service.get_agent_usage(db, agent_id, period, caller_user_id=own_usage_of)
 
 
 @router.get("/usage/summary")
+@authz_policy(SELF)
 async def get_usage_summary(
     period: str | None = None,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
 ):
     return await usage_service.get_usage_summary(db, user.id, period)
 
 
 @router.get("/usage/daily")
+@authz_policy(SELF)
 async def get_daily_spend(
-    target_kind: Literal["user", "agent", "model"] = Query(
-        ..., description="Aggregate axis."
-    ),
+    target_kind: Literal["user", "agent", "model"] = Query(..., description="Aggregate axis."),
     target_id: uuid.UUID | None = Query(
         None, description="Optional single target id; omit for all targets."
     ),
     from_: date_type | None = Query(
         None, alias="from", description="Inclusive start date (default: today - 30d)."
     ),
-    to: date_type | None = Query(
-        None, description="Inclusive end date (default: today)."
-    ),
+    to: date_type | None = Query(None, description="Inclusive end date (default: today)."),
     group_by: Literal["date", "target"] = Query(
         "date",
         description=(
@@ -52,7 +54,7 @@ async def get_daily_spend(
             "(date, target_id) pair so the dashboard can render multi-series."
         ),
     ),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     """Daily spend aggregates for the current user.

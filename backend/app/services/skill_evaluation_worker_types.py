@@ -28,7 +28,16 @@ DEFAULT_GRADER_PROMPT_VERSION: Final = "deterministic-grader-1"
 
 
 class SkillEvaluationExecutionError(RuntimeError):
-    pass
+    reason_code = "SKILL_EVALUATION_EXECUTION_ERROR"
+
+
+class SkillEvaluationAuthzUnavailable(SkillEvaluationExecutionError):
+    """The run could not be decided (OpenFGA down, authz not running): retry it (F-13)."""
+
+    reason_code = "AUTHZ_UNAVAILABLE"
+
+    def __init__(self) -> None:
+        super().__init__("authz_unavailable: authorization was unavailable, retry the run")
 
 
 @dataclass(frozen=True, slots=True)

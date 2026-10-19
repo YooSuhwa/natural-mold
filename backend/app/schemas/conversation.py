@@ -4,10 +4,12 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
 
 from app.schemas.artifact import ArtifactSummary
-from app.schemas.conversation_run import ConversationRunResponse
+from app.schemas.conversation_resume import Decision as Decision  # re-export (G-06 move)
+from app.schemas.conversation_resume import ResumeRequest as ResumeRequest
+from app.schemas.conversation_run import ConversationRunHistoryResponse, ConversationRunResponse
 
 
 def _utc_iso(dt: datetime) -> str:
@@ -39,7 +41,9 @@ class ConversationUpdate(BaseModel):
 
 class ConversationResponse(BaseModel):
     id: uuid.UUID
-    agent_id: uuid.UUID
+    agent_id: uuid.UUID | None
+    agent_name_snapshot: str
+    last_activity_at: UtcDatetime
     title: str | None
     is_pinned: bool
     unread_count: int = 0
@@ -66,46 +70,13 @@ class ConversationAgentBrief(BaseModel):
 
 
 class ConversationWithAgentResponse(ConversationResponse):
-    agent: ConversationAgentBrief
+    agent: ConversationAgentBrief | None
 
 
 class ConversationWithAgentListEnvelope(BaseModel):
     items: list[ConversationWithAgentResponse]
     next_cursor: str | None = None
     has_more: bool = False
-
-
-class Decision(BaseModel):
-    """단일 tool_call에 대한 인간 결정.
-
-    LangChain ``HumanInTheLoopMiddleware``의 ``HITLResponse.decisions[i]``와
-    동일 shape (1:1 매칭). router에서 검증한 뒤 ``model_dump(exclude_none=True)``
-    로 dict 직렬화하여 ``Command(resume={"decisions": [dict, ...]})``로 송신한다
-    (LangChain 미들웨어는 ``NotRequired`` TypedDict를 받음).
-
-    - ``approve``: 추가 필드 없음.
-    - ``edit``: ``edited_action={"name": str, "args": dict}`` 필수.
-    - ``reject``: ``message`` 선택 (없으면 미들웨어가 기본 메시지 생성).
-    - ``respond``: ``message`` 필수 (synthetic ToolMessage content).
-    """
-
-    type: Literal["approve", "edit", "reject", "respond"]
-    edited_action: dict[str, Any] | None = None  # type=edit 시 필수
-    message: str | None = None  # type=respond 시 필수, type=reject 시 선택
-
-    @model_validator(mode="after")
-    def _validate_payload_for_type(self) -> Decision:
-        if self.type == "edit" and self.edited_action is None:
-            raise ValueError("Decision(type='edit') requires 'edited_action'")
-        if self.type == "respond" and self.message is None:
-            raise ValueError("Decision(type='respond') requires 'message'")
-        return self
-
-
-class ResumeRequest(BaseModel):
-    """HiTL resume 요청. LangChain ``HITLResponse`` 호환 표준 wire."""
-
-    decisions: list[Decision]
 
 
 class MessageAttachmentRef(BaseModel):
@@ -249,12 +220,12 @@ class MessagesEnvelope(BaseModel):
     """
 
     messages: list[MessageResponse]
-    active_run: ConversationRunResponse | None = None
+    active_run: ConversationRunHistoryResponse | None = None
     # 최신 run (상태 무관). ``active_run`` 은 terminal run 을 보고하지 않아
     # 마지막 turn 이 취소되었는지(canceled/canceling)를 새로고침·refetch 후에
     # 알 수 없다. 메시지가 checkpointer 파생이라 run ↔ message id 매칭이
     # 불가능하므로, 프론트는 이 필드로 "중단됨" notice 를 durable 하게 렌더.
-    latest_run: ConversationRunResponse | None = None
+    latest_run: ConversationRunHistoryResponse | None = None
     active_tip_message_id: uuid.UUID | None = None
     active_checkpoint_id: str | None = None
     # W7-4 — conversation 단위 누적 비용 (USD). 메시지 단위는 model_id를 추적

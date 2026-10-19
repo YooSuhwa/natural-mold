@@ -1,0 +1,49 @@
+{
+  "base_url": "https://moldy-staging.example.internal",
+  "personas": {
+    "a_member": {"email": "i05-a-member@a.example", "password_env": "I05_A_MEMBER_PASSWORD", "org_id": "00000000-0000-4000-8000-00000000a001"},
+    "a_owner": {"email": "i05-a-owner@a.example", "password_env": "I05_A_OWNER_PASSWORD", "org_id": "00000000-0000-4000-8000-00000000a001"},
+    "a_peer": {"email": "i05-a-peer@a.example", "password_env": "I05_A_PEER_PASSWORD", "org_id": "00000000-0000-4000-8000-00000000a001"},
+    "b_member": {"email": "i05-b-member@b.example", "password_env": "I05_B_MEMBER_PASSWORD", "org_id": "00000000-0000-4000-8000-00000000b001"},
+    "operator": {"email": "i05-operator@a.example", "password_env": "I05_OPERATOR_PASSWORD"}
+  },
+  "load": {"user": "a_member", "agent_id": "<agent a_member can run>"},
+  "run_start": {"user": "a_member", "agent_id": "<agent on the scripted model>"},
+  "share": {"owner": "a_owner", "recipient": "a_peer", "agent_id": "<agent a_owner owns, not shared with a_peer>", "poll_interval_ms": 25, "timeout_s": 10},
+  "fga": {
+    "url": "https://openfga-staging.example.internal:8443",
+    "store_id": "<store id>",
+    "model_id": "<authorization model id>",
+    "token_env": "I05_FGA_TOKEN",
+    "check": {"user": "user:<a_member id>", "relation": "can_run", "object": "agent:<agent id>"},
+    "batch_user": "user:<a_member id>",
+    "batch_relation": "can_run",
+    "batch_objects": ["agent:<id 1>", "agent:<id 2>"],
+    "list_objects": {"user": "user:<a_member id>", "relation": "can_run", "type": "agent"}
+  },
+  "targets": {"api.list.agents": {"p95_ms": null, "source": "plan 16.6 (measure only)"}},
+  "security": {
+    "prober": "a_member",
+    "operator": "operator",
+    "other_company": "b_member",
+    "inventory": "output/i05/routes.json",
+    "foreign_org_id": "00000000-0000-4000-8000-00000000b001",
+    "foreign": {
+      "agent_id": "<company B agent>",
+      "conversation_id": "<company B conversation>",
+      "artifact_id": "<company B artifact>",
+      "skill_id": "<company B skill>",
+      "credential_id": "<company B credential>",
+      "server_id": "<company B MCP server>",
+      "tool_id": "<company B tool>",
+      "item_id": "<company B marketplace item>",
+      "resource_id": "<company B agent>",
+      "grant_id": "<company B grant>",
+      "org_id": "00000000-0000-4000-8000-00000000b001",
+      "tenant_id": "<company B tenant>"
+    },
+    "own": {"conversation_id": "<a_member conversation>"},
+    "share": {"conversation_id": "<a_member conversation>", "foreign_artifact_id": "<company B artifact>", "suspended_share_token_env": "I05_SUSPENDED_SHARE_TOKEN"},
+    "rls_parity": {"base_url_rls_off": "https://moldy-staging-rls-off.example.internal", "paths": ["/api/agents", "/api/skills", "/api/conversations/page"]}
+  }
+}

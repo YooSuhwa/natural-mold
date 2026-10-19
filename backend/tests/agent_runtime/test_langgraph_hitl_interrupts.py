@@ -16,6 +16,8 @@ from app.agent_runtime.langgraph_agent_stream_runner import (
 from app.agent_runtime.runtime_component_builder import build_agent
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import resolve_runtime_policy
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore:The v3 streaming protocol on Pregel is experimental"
@@ -123,6 +125,7 @@ async def test_langgraph_runner_emits_input_requested_for_execute_in_skill_inter
                 system_prompt="Use execute_in_skill.",
                 tools_config=[],
                 thread_id="thread-hitl",
+                org_context=unit_context(TEST_USER_ID),
             ),
             [{"role": "user", "content": "make a document"}],
             run_id="run-hitl",
@@ -149,6 +152,7 @@ async def test_langgraph_runner_emits_input_requested_for_execute_in_skill_inter
                 system_prompt="Use execute_in_skill.",
                 tools_config=[],
                 thread_id="thread-hitl",
+                org_context=unit_context(TEST_USER_ID),
             ),
             {"decisions": [{"type": "approve"}]},
             run_id="run-hitl",

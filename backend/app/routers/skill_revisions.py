@@ -5,16 +5,20 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.authz.policies import RES, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.authz.skill_access import SKILL_MIN_VISIBLE, authorize_skill
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     skill_file_not_found,
-    skill_not_found,
     skill_revision_not_found,
     skill_revision_snapshot_unavailable,
 )
-from app.models.skill import Skill
 from app.models.skill_revision import SkillRevision
 from app.routers.skill_router_support import serialize_skill
+from app.schemas.resource_view_context import ResourceViewContext
 from app.schemas.skill_revision import (
     SkillRevisionDetail,
     SkillRevisionFileContentResponse,
@@ -24,21 +28,23 @@ from app.schemas.skill_revision import (
     SkillRollbackResponse,
 )
 from app.services import audit_service, skill_revision_audit, skill_revision_service
-from app.skills import service as skill_service
 
 router = APIRouter(prefix="/api/skills/{skill_id}/revisions", tags=["skill-revisions"])
 
 
 @router.get("", response_model=list[SkillRevisionSummary])
+@authz_policy(RES("skill", "can_view", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def list_skill_revisions(
     skill_id: uuid.UUID,
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[SkillRevisionSummary]:
     # 리비전 목록 — 최신순 상한(형제 세션 목록과 동일한 bounded 계약).
     # 저장/롤백마다 리비전이 늘므로 무제한 반환은 수백 행 응답·DOM으로 자란다.
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_view")
     revisions = await skill_revision_service.list_revisions(
         db, skill=skill, user_id=user.id, limit=limit
     )
@@ -46,13 +52,16 @@ async def list_skill_revisions(
 
 
 @router.get("/{revision_id}", response_model=SkillRevisionDetail)
+@authz_policy(RES("skill", "can_view", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def get_skill_revision(
     skill_id: uuid.UUID,
     revision_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillRevisionDetail:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_view")
     revision = await skill_revision_service.get_revision(
         db,
         skill=skill,
@@ -65,11 +74,14 @@ async def get_skill_revision(
 
 
 @router.get("/{revision_id}/files", response_model=SkillRevisionFilesResponse)
+@authz_policy(RES("skill", "can_view", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def list_skill_revision_files(
     skill_id: uuid.UUID,
     revision_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillRevisionFilesResponse:
     """리비전 스냅샷 zip의 파일 목록 (버전 diff/소스 보기, Phase 2).
 
@@ -78,7 +90,7 @@ async def list_skill_revision_files(
     """
 
     revision = await _load_revision_or_404(
-        db, skill_id=skill_id, revision_id=revision_id, user=user
+        db, authz, skill_id=skill_id, revision_id=revision_id, user=user, context=context
     )
     if skill_revision_service.snapshot_pruned(revision):
         return SkillRevisionFilesResponse(snapshot_pruned=True, files=[])
@@ -96,6 +108,7 @@ async def list_skill_revision_files(
 
 
 @router.get("/{revision_id}/files/content", response_model=SkillRevisionFileContentResponse)
+@authz_policy(RES("skill", "can_view", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def get_skill_revision_file_content(
     skill_id: uuid.UUID,
     revision_id: uuid.UUID,
@@ -107,6 +120,8 @@ async def get_skill_revision_file_content(
     ),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillRevisionFileContentResponse:
     """리비전 스냅샷의 단일 파일 텍스트 (소유자 전용).
 
@@ -115,7 +130,7 @@ async def get_skill_revision_file_content(
     """
 
     revision = await _load_revision_or_404(
-        db, skill_id=skill_id, revision_id=revision_id, user=user
+        db, authz, skill_id=skill_id, revision_id=revision_id, user=user, context=context
     )
     if skill_revision_service.snapshot_pruned(revision):
         raise skill_file_not_found()
@@ -126,15 +141,18 @@ async def get_skill_revision_file_content(
 
 
 @router.post("/{revision_id}/rollback", response_model=SkillRollbackResponse)
+@authz_policy(RES("skill", "can_edit", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def rollback_skill_revision(
     skill_id: uuid.UUID,
     revision_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillRollbackResponse:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_edit")
     revision = await skill_revision_service.get_revision(
         db,
         skill=skill,
@@ -149,6 +167,7 @@ async def rollback_skill_revision(
             skill=skill,
             user_id=user.id,
             revision=revision,
+            context=context,
             changelog_summary=f"Rolled back to revision {revision.revision_number}.",
         )
     except (
@@ -181,31 +200,21 @@ async def rollback_skill_revision(
     await db.refresh(restored)
     return SkillRollbackResponse(
         # bare model_validate 대신 serializer — used_by_count/health enrichment 정렬.
-        skill=await serialize_skill(db, skill, user),
+        skill=await serialize_skill(db, skill, ResourceViewContext(user, context)),
         revision=SkillRevisionSummary.model_validate(restored),
     )
 
 
-async def _load_skill_or_404(
-    db: AsyncSession,
-    *,
-    skill_id: uuid.UUID,
-    user: CurrentUser,
-) -> Skill:
-    skill = await skill_service.get_skill(db, skill_id, user.id)
-    if skill is None:
-        raise skill_not_found()
-    return skill
-
-
 async def _load_revision_or_404(
     db: AsyncSession,
+    authz: AuthzService,
     *,
     skill_id: uuid.UUID,
     revision_id: uuid.UUID,
     user: CurrentUser,
+    context: OrgContext,
 ) -> SkillRevision:
-    skill = await _load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_view")
     revision = await skill_revision_service.get_revision(
         db,
         skill=skill,

@@ -6,7 +6,7 @@ from typing import Any, Final
 from app.agent_runtime import event_names
 
 MEMORY_TOOL_NAMES: Final[frozenset[str]] = frozenset(
-    {"propose_memory", "save_user_memory", "save_agent_memory"}
+    {"propose_memory", "save_user_memory", "save_agent_memory", "propose_agent_memo"}
 )
 MEMORY_EVENT_NAMES: Final[frozenset[str]] = frozenset(
     {
@@ -14,6 +14,7 @@ MEMORY_EVENT_NAMES: Final[frozenset[str]] = frozenset(
         event_names.MEMORY_SAVED,
         event_names.MEMORY_REJECTED,
         event_names.MEMORY_DELETED,
+        event_names.AGENT_MEMO_PROPOSED,  # F-09: registered so redaction matches it
     }
 )
 

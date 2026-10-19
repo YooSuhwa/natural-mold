@@ -12,16 +12,20 @@ partial flush 마다 누적 chunk 의 event id 전체를 재 SELECT 하던 O(T²
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from typing import Any
 
 import pytest
 
+from app.database import SessionTenant
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.user import User
 from app.services import trace_storage
 from app.services.conversation_stream_service import build_persist_callback
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -40,10 +44,20 @@ async def _seed_conversation() -> uuid.UUID:
             system_prompt="...",
             model_id=model.id,
             status="active",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(agent)
         await db.flush()
-        conv = Conversation(agent_id=agent.id, title="t1")
+        conv = Conversation(
+            agent_id=agent.id,
+            title="t1",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conv)
         await db.commit()
         return conv.id
@@ -73,7 +87,7 @@ async def test_persist_callback_seeds_once_then_dedups_without_reload(
 ) -> None:
     conv_id = await _seed_conversation()
     run_id = "run-cb-cache"
-    callback = build_persist_callback(conv_id, run_id)
+    callback = build_persist_callback(conv_id, run_id, tenant=SessionTenant(uuid.uuid4()))
 
     seed_calls = 0
     real_seed = trace_storage.load_persisted_event_ids
@@ -104,7 +118,7 @@ async def test_persist_callback_failure_resets_cache_then_recovers(
 ) -> None:
     conv_id = await _seed_conversation()
     run_id = "run-cb-retry"
-    callback = build_persist_callback(conv_id, run_id)
+    callback = build_persist_callback(conv_id, run_id, tenant=SessionTenant(uuid.uuid4()))
 
     seed_calls = 0
     real_seed = trace_storage.load_persisted_event_ids

@@ -14,10 +14,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.message_utils import parse_msg_id
+from app.authz.conversation_scope import load_private_conversation, require_private_conversation
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
+from app.error_codes import conversation_not_found
 from app.models.conversation import Conversation
 from app.models.message_attachment import MessageAttachment
 from app.schemas.conversation import FileItem
@@ -86,7 +90,7 @@ async def link_attachments_to_conversation(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     attachment_ids: list[uuid.UUID],
 ) -> None:
     """Stamp orphan ``MessageAttachment`` rows with their conversation id.
@@ -99,11 +103,16 @@ async def link_attachments_to_conversation(
 
     if not attachment_ids:
         return
+    await require_private_conversation(db, conversation_id, context)
     await db.execute(
         update(MessageAttachment)
         .where(
             MessageAttachment.id.in_(attachment_ids),
-            MessageAttachment.user_id == user_id,
+            private_scope_predicate(MessageAttachment, context),
+            or_(
+                MessageAttachment.conversation_id.is_(None),
+                MessageAttachment.conversation_id == conversation_id,
+            ),
         )
         .values(conversation_id=conversation_id)
     )
@@ -163,6 +172,8 @@ async def link_attachments_to_message(
     *,
     attachment_ids: list[uuid.UUID],
     message_id: str,
+    context: OrgContext,
+    conversation_id: uuid.UUID,
 ) -> int:
     """Backfill ``message_attachments.message_id`` for this send's uploads (M1).
 
@@ -173,11 +184,14 @@ async def link_attachments_to_message(
 
     if not attachment_ids:
         return 0
+    await require_private_conversation(db, conversation_id, context)
     result = await db.execute(
         update(MessageAttachment)
         .where(
             MessageAttachment.id.in_(attachment_ids),
             MessageAttachment.message_id.is_(None),
+            private_scope_predicate(MessageAttachment, context),
+            MessageAttachment.conversation_id == conversation_id,
         )
         .values(message_id=message_id)
     )
@@ -190,6 +204,7 @@ async def list_conversation_files(
     *,
     user_id: uuid.UUID,
     conversation_id: uuid.UUID,
+    context: OrgContext,
 ) -> list[FileItem]:
     """Unified conversation file list (D12/M3): generated + attached, merged.
 
@@ -201,8 +216,10 @@ async def list_conversation_files(
     conversation (and artifacts additionally to ``user_id``).
     """
 
+    if await load_private_conversation(db, conversation_id, context) is None:
+        raise conversation_not_found()
     artifacts = await list_conversation_artifacts(
-        db, user_id=user_id, conversation_id=conversation_id
+        db, context=context, conversation_id=conversation_id
     )
     items: list[FileItem] = [
         FileItem(
@@ -231,6 +248,7 @@ async def list_conversation_files(
                 select(MessageAttachment).where(
                     MessageAttachment.conversation_id == conversation_id,
                     MessageAttachment.message_id.is_not(None),
+                    private_scope_predicate(MessageAttachment, context),
                 )
             )
         )

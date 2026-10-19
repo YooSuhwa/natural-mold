@@ -1,10 +1,15 @@
-"""Runtime MCP tool cache and retry wrapper."""
+"""Runtime MCP retry wrapper (the discovery cache lives in ``mcp_tool_cache``).
+
+MCP 401/403 responses are typed (``McpAuthError``, F-12): they are never retried
+and come back as an error ToolMessage with an ``mcp_auth_error`` artifact (see
+``mcp_auth_context``); transport errors keep the bounded retry and the
+``[MCP Tool Error]`` text.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from typing import Any
@@ -14,6 +19,10 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from pydantic import PrivateAttr
 
+from app.agent_runtime.mcp_auth_context import McpAuthContext, auth_error_result
+from app.agent_runtime.mcp_auth_errors import McpAuthError, classify_mcp_error
+from app.agent_runtime.mcp_cache_invalidation import register_mcp_cache_invalidation
+from app.agent_runtime.mcp_tool_cache import clear_mcp_tool_cache, get_cached_mcp_tools
 from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.mcp.apps import sanitize_result_meta, sanitize_result_payload
 from app.mcp.domain import McpAppRuntimeContext
@@ -35,64 +44,7 @@ BindingRecorder = Callable[
     Awaitable[str | None],
 ]
 
-_CACHE: dict[str, tuple[float, list[BaseTool]]] = {}
-_LOCKS: dict[str, asyncio.Lock] = {}
-_CACHE_GUARD = asyncio.Lock()
-
-
-def _clone_tool(tool: BaseTool) -> BaseTool:
-    try:
-        return tool.model_copy(deep=True)
-    except Exception:  # noqa: BLE001
-        try:
-            return tool.model_copy()
-        except Exception:  # noqa: BLE001
-            return tool
-
-
-def _clone_tools(tools: list[BaseTool]) -> list[BaseTool]:
-    return [_clone_tool(tool) for tool in tools]
-
-
-async def _lock_for_key(key: str) -> asyncio.Lock:
-    async with _CACHE_GUARD:
-        lock = _LOCKS.get(key)
-        if lock is None:
-            lock = asyncio.Lock()
-            _LOCKS[key] = lock
-        return lock
-
-
-async def get_cached_mcp_tools(
-    key: str,
-    factory: Callable[[], Awaitable[list[BaseTool]]],
-    *,
-    ttl_seconds: float,
-) -> list[BaseTool]:
-    """Return cached MCP tools for ``key``, refreshing with ``factory`` on miss."""
-
-    now = time.monotonic()
-    cached = _CACHE.get(key)
-    if cached is not None and now - cached[0] < ttl_seconds:
-        return _clone_tools(cached[1])
-
-    lock = await _lock_for_key(key)
-    async with lock:
-        now = time.monotonic()
-        cached = _CACHE.get(key)
-        if cached is not None and now - cached[0] < ttl_seconds:
-            return _clone_tools(cached[1])
-        tools = await factory()
-        _CACHE[key] = (time.monotonic(), _clone_tools(tools))
-        return _clone_tools(tools)
-
-
-async def clear_mcp_tool_cache() -> None:
-    """Clear all cached MCP tool discovery results."""
-
-    async with _CACHE_GUARD:
-        _CACHE.clear()
-        _LOCKS.clear()
+register_mcp_cache_invalidation()
 
 
 class MCPToolWithRetry(BaseTool):
@@ -104,6 +56,7 @@ class MCPToolWithRetry(BaseTool):
     _timeout_seconds: float = PrivateAttr()
     _mcp_app_context: McpAppRuntimeContext | None = PrivateAttr(default=None)
     _binding_recorder: BindingRecorder | None = PrivateAttr(default=None)
+    _auth_context: McpAuthContext | None = PrivateAttr(default=None)
 
     def __init__(
         self,
@@ -114,6 +67,7 @@ class MCPToolWithRetry(BaseTool):
         timeout_seconds: float = 30.0,
         mcp_app_context: McpAppRuntimeContext | None = None,
         binding_recorder: BindingRecorder | None = None,
+        auth_context: McpAuthContext | None = None,
     ) -> None:
         super().__init__(
             name=original_tool.name,
@@ -129,6 +83,7 @@ class MCPToolWithRetry(BaseTool):
         self._timeout_seconds = max(0.1, timeout_seconds)
         self._mcp_app_context = mcp_app_context
         self._binding_recorder = binding_recorder
+        self._auth_context = auth_context
 
     async def ainvoke(
         self,
@@ -147,6 +102,19 @@ class MCPToolWithRetry(BaseTool):
         run_token = _ACTIVE_RUN_ID.set(run_id if isinstance(run_id, str) else None)
         try:
             return await super().ainvoke(input, config=config, **kwargs)
+        except McpAuthError as error:
+            content, artifact = await auth_error_result(
+                error, self._auth_context, self.name, run_id=_ACTIVE_RUN_ID.get()
+            )
+            if not isinstance(tool_call_id, str):
+                return content
+            return ToolMessage(
+                content,
+                artifact=artifact,
+                tool_call_id=tool_call_id,
+                name=self.name,
+                status="error",
+            )
         finally:
             _ACTIVE_RUN_ID.reset(run_token)
             _ACTIVE_TOOL_CALL_ID.reset(call_token)
@@ -191,6 +159,11 @@ class MCPToolWithRetry(BaseTool):
                     return result.content, artifact
                 return result
             except Exception as exc:  # noqa: BLE001
+                auth_error = classify_mcp_error(exc)
+                if auth_error is not None:  # 401/403: never re-sent, typed for the runtime
+                    # ``from None``: the httpx error carries the request URL; keep it out
+                    # of any later traceback/exc_info log (kind/status stay on the error).
+                    raise auth_error from None
                 last_error = exc
                 if attempt + 1 < self._max_retries and self._retry_delay > 0:
                     await asyncio.sleep(self._retry_delay)

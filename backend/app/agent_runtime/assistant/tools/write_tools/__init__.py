@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 
 from langchain_core.tools import StructuredTool
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,13 +37,28 @@ from app.agent_runtime.assistant.tools.write_tools.composition import build_comp
 from app.agent_runtime.assistant.tools.write_tools.context import WriteToolContext
 from app.agent_runtime.assistant.tools.write_tools.cron import build_cron_tools
 from app.agent_runtime.assistant.tools.write_tools.tool_links import build_tool_link_tools
+from app.authz.org_context import OrgContext
+from app.authz.organization_execution_prefix import mark_org_writer
 from app.database import async_session as async_session_factory
+from app.database import tenant_sessions
+
+
+def org_writer_sessions(factory: Callable[[], AsyncSession]) -> Callable[[], AsyncSession]:
+    """F-02: write-tool sessions take the org row FOR UPDATE in the canonical prefix,
+    so a link change's delegation lock/revocation never upgrades a share lock."""
+
+    def make() -> AsyncSession:
+        session = factory()
+        mark_org_writer(session)
+        return session
+
+    return make
 
 
 def build_write_tools(
     db: AsyncSession,  # noqa: ARG001 — kept for interface compatibility
     agent_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> list[StructuredTool]:
     """Assistant 쓰기 도구 18개를 생성한다.
 
@@ -54,9 +70,9 @@ def build_write_tools(
     # monkeypatch하므로, import 시점 바인딩이 아니라 호출 시점에 모듈 전역을 읽어
     # 컨텍스트에 주입한다. 그룹 모듈은 ctx.session_factory만 사용해야 한다.
     ctx = WriteToolContext(
-        session_factory=async_session_factory,
+        session_factory=org_writer_sessions(tenant_sessions(context, maker=async_session_factory)),
         agent_id=agent_id,
-        user_id=user_id,
+        org_context=context,
     )
     return [
         *build_tool_link_tools(ctx),

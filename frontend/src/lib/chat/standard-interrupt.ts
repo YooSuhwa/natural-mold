@@ -6,6 +6,7 @@ import type {
   ToolCallInfo,
 } from '@/lib/types'
 import { redactSensitiveRecord } from './sensitive-display'
+import { AUTH_REQUIRED_ACTION } from './auth-required-interrupt'
 
 interface ToolUiMetadata {
   approval_id: string
@@ -38,9 +39,10 @@ function reviewForAction(
 ): ReviewConfig {
   return (
     reviewConfigs[index] ??
+    // No readable review config: offer nothing (the server refuses every decision, G-06).
     reviewConfigs.find((config) => config.action_name === action.name) ?? {
       action_name: action.name,
-      allowed_decisions: ['approve', 'reject'],
+      allowed_decisions: [],
     }
   )
 }
@@ -132,6 +134,14 @@ export function standardInterruptToToolCalls(payload: StandardInterruptPayload):
     const reviewConfig = reviewForAction(action, payload.review_configs, index)
     const metadata = metadataForAction(payload, reviewConfig, index)
     const safeArgs = redactSensitiveRecord(action.args)
+    if (payload.native === 'auth_required') {
+      // Keyed on the native origin (not the action name); the attempt makes a re-ask a new card.
+      return {
+        id: `${metadata.approval_id}#${String(action.args.attempt ?? 1)}`,
+        name: AUTH_REQUIRED_ACTION,
+        args: { ...safeArgs, ...metadata },
+      }
+    }
     if (isAskUserRespondOnly(action, reviewConfig)) {
       return {
         id: metadata.approval_id,

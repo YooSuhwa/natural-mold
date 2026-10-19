@@ -36,6 +36,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.dependencies import CurrentUser
 from app.marketplace.credential_requirements import (
     build_runtime_env,
     resolve_credential_bindings,
@@ -44,6 +45,12 @@ from app.models.credential import Credential
 from app.models.marketplace import SkillCredentialBinding
 from app.models.skill import Skill
 from app.models.user import User
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -65,10 +72,12 @@ async def seeded_user(db_session: AsyncSession) -> uuid.UUID:
         await db_session.execute(select(User).where(User.id == TEST_USER_ID))
     ).scalar_one_or_none()
     if existing is None:
-        db_session.add(
-            User(id=TEST_USER_ID, email="test@test.com", name="Test User")
-        )
+        db_session.add(User(id=TEST_USER_ID, email="test@test.com", name="Test User"))
         await db_session.commit()
+    await ensure_unit_scope(
+        db_session, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test")
+    )
+    await db_session.commit()
     return TEST_USER_ID
 
 
@@ -89,6 +98,8 @@ def _make_skill(
         content_hash="0" * 64,
         size_bytes=0,
         credential_requirements=requirements,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
 
 
@@ -146,6 +157,8 @@ def _persist_credential(
         key_id=key_id,
         field_keys=field_keys,
         is_system=False,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(cred)
     return cred
@@ -172,7 +185,7 @@ class TestMissingRequiredCredential:
         await db_session.commit()
 
         resolved, missing = await resolve_credential_bindings(
-            db_session, skill=skill, user_id=seeded_user
+            db_session, skill=skill, context=unit_context(seeded_user)
         )
         assert resolved == {}
         assert missing == ["srt_account"]
@@ -180,13 +193,12 @@ class TestMissingRequiredCredential:
         # build_runtime_env converts the same input into the documented
         # 409 — chat_service uses this before any LLM tokens are spent.
         from app.exceptions import ConflictError
-        from app.marketplace.credential_requirements import _LightUser
 
         with pytest.raises(ConflictError) as exc_info:
             await build_runtime_env(
                 db_session,
                 skill=skill,
-                user=_LightUser(seeded_user),  # type: ignore[arg-type]
+                context=unit_context(seeded_user),
             )
         assert exc_info.value.code == "MARKETPLACE_CREDENTIAL_REQUIRED"
         assert exc_info.value.status == 409
@@ -207,19 +219,17 @@ class TestMissingRequiredCredential:
         await db_session.commit()
 
         resolved, missing = await resolve_credential_bindings(
-            db_session, skill=skill, user_id=seeded_user
+            db_session, skill=skill, context=unit_context(seeded_user)
         )
         # Optional requirement with no binding → not in resolved, not in
         # missing. The skill executes; the env-var simply isn't set.
         assert resolved == {}
         assert missing == []
 
-        from app.marketplace.credential_requirements import _LightUser
-
         env = await build_runtime_env(
             db_session,
             skill=skill,
-            user=_LightUser(seeded_user),  # type: ignore[arg-type]
+            context=unit_context(seeded_user),
         )
         assert env == {}, "optional credential leaked into runtime env"
 
@@ -281,12 +291,10 @@ class TestEnvInjectionScope:
         )
         await db_session.commit()
 
-        from app.marketplace.credential_requirements import _LightUser
-
         env = await build_runtime_env(
             db_session,
             skill=skill,
-            user=_LightUser(seeded_user),  # type: ignore[arg-type]
+            context=unit_context(seeded_user),
         )
         assert env == {
             "KSKILL_SRT_ID": "srt-id-A",
@@ -314,16 +322,12 @@ class TestEnvInjectionScope:
         db_session.add(skill)
         await db_session.commit()
 
-        from app.marketplace.credential_requirements import _LightUser
-
         env = await build_runtime_env(
             db_session,
             skill=skill,
-            user=_LightUser(seeded_user),  # type: ignore[arg-type]
+            context=unit_context(seeded_user),
         )
-        assert "SECRET_PASTE" not in env, (
-            "host env var leaked through build_runtime_env"
-        )
+        assert "SECRET_PASTE" not in env, "host env var leaked through build_runtime_env"
         assert env == {}
 
 
@@ -376,10 +380,8 @@ class TestOverridePrecedence:
         resolved, missing = await resolve_credential_bindings(
             db_session,
             skill=skill,
-            user_id=seeded_user,
-            agent_skill_config={
-                "credential_bindings": {"srt_account": str(cred_b.id)}
-            },
+            context=unit_context(seeded_user),
+            agent_skill_config={"credential_bindings": {"srt_account": str(cred_b.id)}},
         )
         assert missing == []
         entry = resolved["srt_account"]
@@ -423,7 +425,7 @@ class TestOverridePrecedence:
         resolved, missing = await resolve_credential_bindings(
             db_session,
             skill=skill,
-            user_id=seeded_user,
+            context=unit_context(seeded_user),
             agent_skill_config=None,
         )
         assert missing == []
@@ -434,7 +436,7 @@ class TestOverridePrecedence:
         resolved2, missing2 = await resolve_credential_bindings(
             db_session,
             skill=skill,
-            user_id=seeded_user,
+            context=unit_context(seeded_user),
             agent_skill_config={"credential_bindings": {}},
         )
         assert missing2 == []
@@ -493,9 +495,7 @@ class TestOwnershipMismatchSilentMissing:
 
         # Seed a second user + their credential.
         other_user_id = uuid.uuid4()
-        db_session.add(
-            User(id=other_user_id, email="other@test.com", name="Other")
-        )
+        db_session.add(User(id=other_user_id, email="other@test.com", name="Other"))
         other_cred = _persist_credential(
             db_session,
             user_id=other_user_id,
@@ -524,11 +524,9 @@ class TestOwnershipMismatchSilentMissing:
         await db_session.commit()
 
         resolved, missing = await resolve_credential_bindings(
-            db_session, skill=skill, user_id=seeded_user
+            db_session, skill=skill, context=unit_context(seeded_user)
         )
-        assert resolved == {}, (
-            "ownership mismatch leaked decrypted credential into resolution"
-        )
+        assert resolved == {}, "ownership mismatch leaked decrypted credential into resolution"
         assert missing == ["srt_account"]
 
 

@@ -12,11 +12,21 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.skill import Skill
 from app.skills import service as skill_service
+from app.skills.creation import PackageSkillCreation, TextSkillCreation
 from app.skills.inspector import SkillMetadataError, parse_skill_md
 from app.skills.packager import PackageError, extract_package
 from app.storage.paths import resolve_data_path
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_package_skill,
+    create_test_text_skill,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 OTHER_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000099")
@@ -90,13 +100,10 @@ class TestTextSkill:
     async def test_create_persists_to_disk(self, db: AsyncSession, tmp_path: Path) -> None:
         content = _skill_md("my-skill", "desc")
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-            skill = await skill_service.create_text_skill(
+            skill = await create_test_text_skill(
                 db,
-                user_id=TEST_USER_ID,
-                name="My Skill",
-                slug=None,
-                description="desc",
-                content=content,
+                TextSkillCreation(name="My Skill", slug=None, description="desc", content=content),
+                unit_context(TEST_USER_ID),
             )
             await db.commit()
             await db.refresh(skill)
@@ -113,17 +120,16 @@ class TestTextSkill:
         v1 = _skill_md("a", "first version")
         v2 = _skill_md("a", "updated version")
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-            skill = await skill_service.create_text_skill(
+            skill = await create_test_text_skill(
                 db,
-                user_id=TEST_USER_ID,
-                name="A",
-                slug="a",
-                description=None,
-                content=v1,
+                TextSkillCreation(name="A", slug="a", description=None, content=v1),
+                unit_context(TEST_USER_ID),
             )
             await db.commit()
             old_hash = skill.content_hash
-            await skill_service.update_text_content(db, skill=skill, content=v2)
+            await skill_service.update_text_content(
+                db, skill=skill, content=v2, context=unit_context(TEST_USER_ID)
+            )
             await db.commit()
             await db.refresh(skill)
 
@@ -135,47 +141,47 @@ class TestTextSkill:
     @pytest.mark.asyncio
     async def test_delete_removes_disk(self, db: AsyncSession, tmp_path: Path) -> None:
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-            skill = await skill_service.create_text_skill(
+            skill = await create_test_text_skill(
                 db,
-                user_id=TEST_USER_ID,
-                name="ToDelete",
-                slug="to-delete",
-                description=None,
-                content=_skill_md("to-delete"),
+                TextSkillCreation(
+                    name="ToDelete",
+                    slug="to-delete",
+                    description=None,
+                    content=_skill_md("to-delete"),
+                ),
+                unit_context(TEST_USER_ID),
             )
             await db.commit()
             assert skill.storage_path is not None
             skill_dir = resolve_data_path(skill.storage_path).parent
             assert skill_dir.is_dir()
-            await skill_service.delete_skill(db, skill)
+            await skill_service.delete_skill(db, skill, context=unit_context(TEST_USER_ID))
             await db.commit()
             assert not skill_dir.exists()
 
     @pytest.mark.asyncio
     async def test_list_filters(self, db: AsyncSession, tmp_path: Path) -> None:
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-            await skill_service.create_text_skill(
+            await create_test_text_skill(
                 db,
-                user_id=TEST_USER_ID,
-                name="Alpha",
-                slug="alpha",
-                description=None,
-                content=_skill_md("alpha"),
+                TextSkillCreation(
+                    name="Alpha", slug="alpha", description=None, content=_skill_md("alpha")
+                ),
+                unit_context(TEST_USER_ID),
             )
-            await skill_service.create_text_skill(
+            await create_test_text_skill(
                 db,
-                user_id=TEST_USER_ID,
-                name="Bravo",
-                slug="bravo",
-                description=None,
-                content=_skill_md("bravo"),
+                TextSkillCreation(
+                    name="Bravo", slug="bravo", description=None, content=_skill_md("bravo")
+                ),
+                unit_context(TEST_USER_ID),
             )
             await db.commit()
 
-        all_ = await skill_service.list_skills(db, TEST_USER_ID)
+        all_ = await skill_service.list_skills(db, unit_context(TEST_USER_ID))
         assert len(all_) == 2
 
-        only_alpha = await skill_service.list_skills(db, TEST_USER_ID, query="alph")
+        only_alpha = await skill_service.list_skills(db, unit_context(TEST_USER_ID), query="alph")
         assert len(only_alpha) == 1
         assert only_alpha[0].name == "Alpha"
 
@@ -187,13 +193,15 @@ class TestTextSkill:
             patch.object(skill_service.settings, "data_root", str(tmp_path)),
             pytest.raises(SkillMetadataError, match="description"),
         ):
-            await skill_service.create_text_skill(
+            await create_test_text_skill(
                 db,
-                user_id=TEST_USER_ID,
-                name="Invalid",
-                slug=None,
-                description=None,
-                content="---\nname: invalid\n---\n\n# Missing description\n",
+                TextSkillCreation(
+                    name="Invalid",
+                    slug=None,
+                    description=None,
+                    content="---\nname: invalid\n---\n\n# Missing description\n",
+                ),
+                unit_context(TEST_USER_ID),
             )
 
 
@@ -279,7 +287,9 @@ class TestPackageSkill:
             }
         )
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-            skill = await skill_service.create_package_skill(db, user_id=TEST_USER_ID, zip_bytes=zb)
+            skill = await create_test_package_skill(
+                db, PackageSkillCreation(zip_bytes=zb), unit_context(TEST_USER_ID)
+            )
             await db.commit()
             await db.refresh(skill)
 
@@ -297,7 +307,9 @@ class TestPackageSkill:
     ) -> None:
         zb = _zip_with({"SKILL.md": _skill_md("trav")})
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-            skill = await skill_service.create_package_skill(db, user_id=TEST_USER_ID, zip_bytes=zb)
+            skill = await create_test_package_skill(
+                db, PackageSkillCreation(zip_bytes=zb), unit_context(TEST_USER_ID)
+            )
             await db.commit()
             await db.refresh(skill)
 
@@ -485,6 +497,9 @@ class TestRouter:
 class TestIsolation:
     @pytest.mark.asyncio
     async def test_list_other_user_excluded(self, db: AsyncSession, tmp_path: Path) -> None:
+        await ensure_unit_scope(
+            db, CurrentUser(id=TEST_USER_ID, email="skill-reader@test.dev", name="Fixture")
+        )
         # Seed a skill for OTHER_USER_ID directly (no FK enforcement on aiosqlite).
         other = Skill(
             id=uuid.uuid4(),
@@ -499,9 +514,11 @@ class TestIsolation:
             version=None,
             package_metadata=None,
             used_by_count=0,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(other)
         await db.commit()
 
-        result = await skill_service.list_skills(db, TEST_USER_ID)
+        result = await skill_service.list_skills(db, unit_context(TEST_USER_ID))
         assert all(s.user_id == TEST_USER_ID for s in result)

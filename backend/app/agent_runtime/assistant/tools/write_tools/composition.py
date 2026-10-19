@@ -7,11 +7,17 @@ import uuid
 from langchain_core.tools import StructuredTool
 from sqlalchemy import func, select
 
+from app.agent_runtime.assistant.tools.write_tools.attach_guard import commit_links, commit_relinked
+from app.agent_runtime.assistant.tools.write_tools.composition_lifecycle import (
+    get_executable_agent,
+    require_executable_agent,
+)
 from app.agent_runtime.assistant.tools.write_tools.context import (
     WriteToolContext,
-    get_agent_with_session,
 )
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
+from app.authz.assistant_scope import keep_linkable
+from app.authz.scoping import private_scope_predicate
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.skill import AgentSkillLink, Skill
@@ -29,7 +35,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             middleware_names: 추가할 미들웨어 type 키 목록
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 
@@ -60,7 +66,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             middleware_names: 제거할 미들웨어 type 키 목록
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 
@@ -90,7 +96,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             agent_ids: 추가할 서브에이전트 UUID 목록 (문자열)
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 
@@ -120,12 +126,15 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                 result = await session.execute(
                     select(Agent.id, Agent.name).where(
                         Agent.id.in_(candidates.keys()),
-                        Agent.user_id == ctx.user_id,
+                        private_scope_predicate(Agent, ctx.org_context),
                         # 히든 런타임 에이전트는 서브에이전트 결선 불가.
                         Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
                     )
                 )
-                name_by_id = {row.id: row.name for row in result.all()}
+                rows = await keep_linkable(ctx.org_context, "agent", result.all())
+                name_by_id = {row.id: row.name for row in rows}
+                for sub_agent_id in sorted(name_by_id, key=lambda item: item.bytes):
+                    await require_executable_agent(ctx, session, sub_agent_id)
 
             # 3차 append (검증 통과한 것만)
             next_pos = max((link.position for link in agent.sub_agent_links), default=-1) + 1
@@ -141,8 +150,8 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             if not added and not skipped:
                 return "추가할 서브에이전트가 없습니다."
 
-            if added:
-                await session.commit()
+            if added and (refused := await commit_links(session, ctx.org_context, agent.id)):
+                return refused
 
             parts = []
             if added:
@@ -160,7 +169,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             agent_ids: 제거할 서브에이전트 UUID 목록 (문자열)
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 
@@ -184,7 +193,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                     msg += f" (유효하지 않은 ID: {', '.join(invalid)})"
                 return msg
 
-            await session.commit()
+            await commit_relinked(session, ctx.org_context, agent.id)
             result_msg = f"서브에이전트 제거 완료: {', '.join(removed)}"
             if invalid:
                 result_msg += f" | 유효하지 않은 ID 건너뜀: {', '.join(invalid)}"
@@ -199,7 +208,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             skill_names: 추가할 스킬 이름 목록 (Skill.name 매칭)
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 
@@ -211,7 +220,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             result = await session.execute(
                 select(Skill)
                 .where(
-                    Skill.user_id == ctx.user_id,
+                    private_scope_predicate(Skill, ctx.org_context),
                     func.lower(Skill.name).in_(lower_names),
                 )
                 .order_by(Skill.created_at.asc())
@@ -222,13 +231,13 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                 key = s.name.lower()
                 if key not in unique_by_name:
                     unique_by_name[key] = s
-            found_skills = list(unique_by_name.values())
+            found_skills = await keep_linkable(ctx.org_context, "skill", unique_by_name.values())
             if not found_skills:
                 return f"스킬을 찾을 수 없습니다: {', '.join(skill_names)}"
 
             for s in found_skills:
                 agent.skill_links.append(AgentSkillLink(skill_id=s.id))
-            await session.commit()
+            await commit_relinked(session, ctx.org_context, agent.id)
 
             added = [s.name for s in found_skills]
             found_lower = {s.name.lower() for s in found_skills}
@@ -249,7 +258,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             skill_names: 제거할 스킬 이름 목록 (Skill.name 매칭)
         """
         async with ctx.session_factory() as session:
-            agent = await get_agent_with_session(ctx, session)
+            agent = await get_executable_agent(ctx, session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
 
@@ -262,7 +271,7 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             if not removed:
                 return f"해당 스킬이 에이전트에 없습니다: {', '.join(skill_names)}"
 
-            await session.commit()
+            await commit_relinked(session, ctx.org_context, agent.id)
             return f"스킬 제거 완료: {', '.join(removed)}"
 
     return [

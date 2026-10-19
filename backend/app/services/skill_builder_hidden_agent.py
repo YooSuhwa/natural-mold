@@ -15,6 +15,10 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import require_execution_prefix
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
+from app.authz.scoping import private_scope_predicate
 from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER, Agent
 from app.models.model import Model
 from app.services.system_credential_resolver import (
@@ -32,15 +36,16 @@ _PLACEHOLDER_PROMPT = (
 )
 
 
-async def get_or_create_skill_builder_agent(
-    db: AsyncSession, user_id: uuid.UUID
-) -> Agent:
+async def get_or_create_skill_builder_agent(db: AsyncSession, context: OrgContext) -> Agent:
     """사용자의 히든 빌더 에이전트를 반환한다 (없으면 생성, flush까지만)."""
 
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     result = await db.execute(
         select(Agent)
         .where(
-            Agent.user_id == user_id,
+            private_scope_predicate(Agent, context),
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER,
         )
         # 동시 시드로 중복이 생겨도 항상 같은 row를 고르도록 결정적 정렬.
@@ -51,9 +56,13 @@ async def get_or_create_skill_builder_agent(
     if existing is not None:
         return existing
 
+    # Parent creation gate before the hidden Agent insert (archived org denies).
+    await require_execution_prefix(db, context)
     resolved = await resolve_system_model(db, "text_primary")
     agent = Agent(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=SKILL_BUILDER_AGENT_NAME,
         description="스킬 빌더 챗 전용 히든 에이전트",
         system_prompt=_PLACEHOLDER_PROMPT,
@@ -68,14 +77,15 @@ async def get_or_create_skill_builder_agent(
 async def _seed_model_id(db: AsyncSession, model_name: str) -> uuid.UUID:
     """FK 충족용 모델 id — 시스템 모델과 같은 ``model_name`` 우선, 없으면 카탈로그 첫 행."""
 
+    platform = Model.tenant_id.is_(None)  # a hidden system agent never binds a company model
     result = await db.execute(
-        select(Model.id).where(Model.model_name == model_name).limit(1)
+        select(Model.id).where(platform, Model.model_name == model_name).limit(1)
     )
     model_id = result.scalar_one_or_none()
     if model_id is not None:
         return model_id
     result = await db.execute(
-        select(Model.id).order_by(Model.created_at.asc(), Model.id.asc()).limit(1)
+        select(Model.id).where(platform).order_by(Model.created_at.asc(), Model.id.asc()).limit(1)
     )
     model_id = result.scalar_one_or_none()
     if model_id is None:

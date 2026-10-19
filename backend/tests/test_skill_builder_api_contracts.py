@@ -10,10 +10,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.dependencies import CurrentUser
 from app.models.audit_event import AuditEvent
 from app.models.skill_builder_session import SkillBuilderSession
 from app.services import skill_builder_service, skill_revision_service
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, ensure_unit_scope, unit_context
 from tests.conftest import TEST_USER_ID
 from tests.skill_builder_test_helpers import configure_system_llm as _configure_system_llm
 
@@ -61,9 +64,12 @@ async def test_get_builder_session_is_user_scoped(
 ) -> None:
     await _configure_system_llm(db)
     owned = await client.post(BASE, json={"mode": "create", "user_request": "owned"})
+    other_context = await ensure_unit_scope(
+        db, CurrentUser(id=uuid.uuid4(), email="other-builder@test.dev", name="Other fixture")
+    )
     unowned = await skill_builder_service.create_session(
         db,
-        user_id=uuid.uuid4(),
+        context=other_context,
         user_request="other user session",
     )
     await db.commit()
@@ -110,13 +116,15 @@ async def test_improve_conflict_audit_excludes_prompt_and_file_content(
 ) -> None:
     await _configure_system_llm(db)
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Notes",
-            slug="notes",
-            description="Use when summarizing notes.",
-            content=_skill_content(body="BASE_MARKER"),
+            TextSkillCreation(
+                name="Notes",
+                slug="notes",
+                description="Use when summarizing notes.",
+                content=_skill_content(body="BASE_MARKER"),
+            ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
         started = await client.post(
@@ -131,6 +139,7 @@ async def test_improve_conflict_audit_excludes_prompt_and_file_content(
             db,
             skill=skill,
             content=_skill_content(body="MANUAL_MARKER"),
+            context=unit_context(TEST_USER_ID),
         )
         await db.commit()
         await client.post(
@@ -155,13 +164,15 @@ async def test_rollback_audit_is_sanitized_and_unowned_rollback_returns_404(
     tmp_path: Path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Notes",
-            slug="notes",
-            description="Use when summarizing notes.",
-            content=_skill_content(body="ROLLBACK_ORIGINAL_MARKER"),
+            TextSkillCreation(
+                name="Notes",
+                slug="notes",
+                description="Use when summarizing notes.",
+                content=_skill_content(body="ROLLBACK_ORIGINAL_MARKER"),
+            ),
+            unit_context(TEST_USER_ID),
         )
         original = await skill_revision_service.create_revision_for_skill(
             db,
@@ -173,6 +184,7 @@ async def test_rollback_audit_is_sanitized_and_unowned_rollback_returns_404(
             db,
             skill=skill,
             content=_skill_content(body="ROLLBACK_CHANGED_MARKER"),
+            context=unit_context(TEST_USER_ID),
         )
         await skill_revision_service.create_revision_for_skill(
             db,
@@ -180,13 +192,15 @@ async def test_rollback_audit_is_sanitized_and_unowned_rollback_returns_404(
             user_id=TEST_USER_ID,
             operation="manual_content_update",
         )
-        other_skill = await skill_service.create_text_skill(
+        other_skill = await create_test_text_skill(
             db,
-            user_id=uuid.uuid4(),
-            name="Other",
-            slug="other",
-            description="Use when summarizing notes.",
-            content=_skill_content("other"),
+            TextSkillCreation(
+                name="Other",
+                slug="other",
+                description="Use when summarizing notes.",
+                content=_skill_content("other"),
+            ),
+            unit_context(uuid.uuid4()),
         )
         other_revision = await skill_revision_service.create_revision_for_skill(
             db,

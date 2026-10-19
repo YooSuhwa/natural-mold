@@ -9,6 +9,8 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from app.agent_runtime.runtime_component_builder import _prepare_agent
 from app.agent_runtime.runtime_config import AgentConfig
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore:The v3 streaming protocol on Pregel is experimental"
@@ -96,6 +98,7 @@ async def test_moldy_runtime_v3_stream_preserves_subagent_namespace_and_message_
                 "model": subagent_model,
             }
         ],
+        org_context=unit_context(TEST_USER_ID),
     )
 
     events = await _collect_moldy_v3_events(monkeypatch, model=supervisor_model, cfg=cfg)
@@ -166,6 +169,7 @@ async def test_moldy_runtime_v3_stream_exposes_todos_when_write_todos_runs(
         tools_config=[],
         thread_id="moldy-v3-todos-thread",
         agent_runtime_name="moldy-v3-todos-agent",
+        org_context=unit_context(TEST_USER_ID),
     )
 
     events = await _collect_moldy_v3_events(monkeypatch, model=model, cfg=cfg)

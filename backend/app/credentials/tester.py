@@ -14,6 +14,7 @@ import httpx
 from app.credentials.authenticate import apply_authentication
 from app.credentials.domain import CredentialDefinition, TestRequestSpec
 from app.credentials.interpolation import InterpolationError, resolve_deep
+from app.outbound.client import outbound_http_client
 
 
 @dataclass
@@ -53,23 +54,17 @@ def _evaluate_rules(
             expected = rule.get("value")
             if isinstance(expected, list):
                 if response.status_code not in expected:
-                    return False, (
-                        f"expected status in {expected}, got {response.status_code}"
-                    )
+                    return False, (f"expected status in {expected}, got {response.status_code}")
             else:
                 if response.status_code != int(expected or 0):
-                    return False, (
-                        f"expected status {expected}, got {response.status_code}"
-                    )
+                    return False, (f"expected status {expected}, got {response.status_code}")
         elif rule_type == "responseSuccessBody":
             key = rule.get("key")
             expected_value = rule.get("value")
             if not isinstance(body, dict):
                 return False, "response body is not a JSON object"
             if body.get(key) != expected_value:
-                return False, (
-                    f"body[{key!r}] != {expected_value!r} (got {body.get(key)!r})"
-                )
+                return False, (f"body[{key!r}] != {expected_value!r} (got {body.get(key)!r})")
         else:
             return False, f"unknown rule type: {rule_type!r}"
 
@@ -107,7 +102,8 @@ class CredentialTester:
             )
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            # 11.9: a connection test carries the credential, so https only.
+            async with outbound_http_client(timeout=self._timeout, https_only=True) as client:
                 response = await client.request(**request_opts)
         except httpx.HTTPError as exc:
             return TestResult(

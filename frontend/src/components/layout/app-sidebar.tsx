@@ -20,6 +20,7 @@ import {
   type AppSidebarNavChild,
 } from '@/components/layout/app-sidebar-collapsible-nav-item'
 import { ChatNavigator } from '@/components/layout/chat-navigator'
+import { OrganizationSwitcher } from '@/components/layout/organization-switcher'
 import { SidebarBrandHeader } from '@/components/layout/sidebar-brand-header'
 import { SidebarUtilityFooter } from '@/components/layout/sidebar-utility-footer'
 import {
@@ -71,6 +72,8 @@ export function AppSidebar() {
       <SidebarBrandHeader brandLabel={t('brand')} homeHref="/" toggleLabel={t('toggleSidebar')} />
 
       <SidebarContent className="min-h-0 px-1">
+        <OrganizationSwitcher />
+
         {/* New Agent Button */}
         <SidebarGroup>
           <SidebarGroupContent>

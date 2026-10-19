@@ -4,9 +4,61 @@ import uuid
 
 import pytest
 
+from app.agent_api.runtime_service import validate_messages
+from app.agent_runtime.message_utils import convert_to_langchain_messages
+from app.exceptions import ValidationError
+from app.schemas.agent_api import AgentRunInput, AgentRunRequest
+from app.schemas.conversation_refs import JsonValue
 from tests.test_agent_runtime_public_api import _seed_deployed_agent_with_key
 
 pytestmark = pytest.mark.anyio
+
+
+async def test_api_message_boundary_preserves_multimodal_tool_use_extensions() -> None:
+    message = {
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "Find the deployment",
+                "cache_control": {"type": "ephemeral"},
+            },
+            {
+                "type": "tool_use",
+                "id": "call-1",
+                "name": "lookup_deployment",
+                "input": {"query": "agent", "options": {"locale": "ko", "limit": 3}},
+                "provider_extension": {"trace": {"sampled": True}},
+            },
+        ],
+        "provider_options": {"priority": "high", "nested": {"attempt": 1}},
+    }
+    request = AgentRunRequest(agent_id="agent-1", input=AgentRunInput(messages=[message]))
+
+    messages = validate_messages(request)
+    converted = convert_to_langchain_messages(messages)
+
+    assert messages == [message]
+    assert converted[0].content == message["content"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"role": 7, "content": "invalid role"},
+        {"role": "user", "content": [42]},
+    ],
+    ids=["non-string-role", "non-block-content"],
+)
+async def test_api_message_boundary_rejects_malformed_role_or_content(
+    message: dict[str, JsonValue],
+) -> None:
+    request = AgentRunRequest(agent_id="agent-1", input=AgentRunInput(messages=[message]))
+
+    with pytest.raises(ValidationError) as error:
+        validate_messages(request)
+
+    assert error.value.code == "AGENT_API_MESSAGE_INVALID"
 
 
 async def test_dify_chat_messages_blocking_adapter(client, db, monkeypatch):
@@ -21,7 +73,7 @@ async def test_dify_chat_messages_blocking_adapter(client, db, monkeypatch):
         return "Dify style answer"
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_invoke",
+        "app.agent_api.runtime_service.execute_agent_invoke",
         fake_invoke,
     )
 
@@ -64,7 +116,7 @@ async def test_dify_existing_thread_rejects_noncanonical_runtime_policy_snapshot
     async def fail_invoke(*_args, **_kwargs):
         raise AssertionError("invalid policy must reject before invocation")
 
-    monkeypatch.setattr("app.routers.agent_runtime_api.execute_agent_invoke", fail_invoke)
+    monkeypatch.setattr("app.agent_api.runtime_service.execute_agent_invoke", fail_invoke)
     response = await client.post(
         f"/v1/agents/{deployment.public_id}/chat-messages",
         headers={"Authorization": f"Bearer {cleartext}"},
@@ -93,7 +145,7 @@ async def test_dify_workflow_run_blocking_adapter(client, db, monkeypatch):
         return "Workflow answer"
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_invoke",
+        "app.agent_api.runtime_service.execute_agent_invoke",
         fake_invoke,
     )
 
@@ -119,7 +171,7 @@ async def test_openai_chat_completions_blocking_adapter(client, db, monkeypatch)
         return "OpenAI compatible answer"
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_invoke",
+        "app.agent_api.runtime_service.execute_agent_invoke",
         fake_invoke,
     )
 
@@ -151,7 +203,7 @@ async def test_openai_chat_completions_streaming_adapter_emits_openai_chunks(
         yield 'event: content_delta\ndata: {"content":"lo"}\n\n'
 
     monkeypatch.setattr(
-        "app.routers.agent_runtime_api.execute_agent_stream",
+        "app.agent_api.runtime_service.execute_agent_stream",
         fake_stream,
     )
 

@@ -10,6 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services import skill_revision_service
 from app.services.skill_revision_storage import write_skill_revision_snapshot
 from app.skills import service as skill_service
+from app.skills.creation import PackageSkillCreation, TextSkillCreation
+from tests.authz.unit_scope_fixture import (
+    create_test_package_skill,
+    create_test_text_skill,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -39,13 +45,15 @@ def _zip_names(zip_path) -> set[str]:
 @pytest.mark.asyncio
 async def test_write_text_skill_revision_snapshot(db: AsyncSession, tmp_path) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Revision Demo",
-            slug="revision-demo",
-            description="Use when testing revision snapshots.",
-            content=_skill_content(),
+            TextSkillCreation(
+                name="Revision Demo",
+                slug="revision-demo",
+                description="Use when testing revision snapshots.",
+                content=_skill_content(),
+            ),
+            unit_context(TEST_USER_ID),
         )
         snapshot = await write_skill_revision_snapshot(skill, revision_number=1)
 
@@ -59,15 +67,17 @@ async def test_write_text_skill_revision_snapshot(db: AsyncSession, tmp_path) ->
 @pytest.mark.asyncio
 async def test_write_package_skill_revision_snapshot(db: AsyncSession, tmp_path) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_bytes(
-                {
-                    "SKILL.md": _skill_content("revision-package"),
-                    "scripts/run.py": "print('ok')\n",
-                }
+            PackageSkillCreation(
+                zip_bytes=_zip_bytes(
+                    {
+                        "SKILL.md": _skill_content("revision-package"),
+                        "scripts/run.py": "print('ok')\n",
+                    }
+                )
             ),
+            unit_context(TEST_USER_ID),
         )
         snapshot = await write_skill_revision_snapshot(skill, revision_number=2)
 
@@ -82,13 +92,15 @@ async def test_create_revision_for_skill_updates_current_pointer(
     tmp_path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Revision Demo",
-            slug="revision-demo",
-            description="Use when testing revision snapshots.",
-            content=_skill_content(),
+            TextSkillCreation(
+                name="Revision Demo",
+                slug="revision-demo",
+                description="Use when testing revision snapshots.",
+                content=_skill_content(),
+            ),
+            unit_context(TEST_USER_ID),
         )
         revision = await skill_revision_service.create_revision_for_skill(
             db,
@@ -109,13 +121,15 @@ async def test_create_revision_for_skill_updates_current_pointer(
 @pytest.mark.asyncio
 async def test_list_revisions_returns_newest_first(db: AsyncSession, tmp_path) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Revision Demo",
-            slug="revision-demo",
-            description="Use when testing revision snapshots.",
-            content=_skill_content(),
+            TextSkillCreation(
+                name="Revision Demo",
+                slug="revision-demo",
+                description="Use when testing revision snapshots.",
+                content=_skill_content(),
+            ),
+            unit_context(TEST_USER_ID),
         )
         first = await skill_revision_service.create_revision_for_skill(
             db,
@@ -136,41 +150,40 @@ async def test_list_revisions_returns_newest_first(db: AsyncSession, tmp_path) -
 
 
 @pytest.mark.asyncio
-async def test_get_revision_is_user_scoped(db: AsyncSession, tmp_path) -> None:
+async def test_get_revision_is_skill_scoped(db: AsyncSession, tmp_path) -> None:
+    """D-03: the route authorized the skill; a revision of skill B never leaks via A."""
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
-            db,
-            user_id=TEST_USER_ID,
-            name="Revision Demo",
-            slug="revision-demo",
-            description="Use when testing revision snapshots.",
-            content=_skill_content(),
-        )
-        revision = await skill_revision_service.create_revision_for_skill(
-            db,
-            skill=skill,
-            user_id=TEST_USER_ID,
-            operation="create",
+        skills = [
+            await create_test_text_skill(
+                db,
+                TextSkillCreation(
+                    name=f"Revision Demo {suffix}",
+                    slug=f"revision-demo-{suffix}",
+                    description="Use when testing revision snapshots.",
+                    content=_skill_content(),
+                ),
+                unit_context(TEST_USER_ID),
+            )
+            for suffix in ("a", "b")
+        ]
+        skill_a, skill_b = skills
+        revision_a, revision_b = [
+            await skill_revision_service.create_revision_for_skill(
+                db, skill=skill, user_id=TEST_USER_ID, operation="create"
+            )
+            for skill in skills
+        ]
+
+    async def get(skill, revision):
+        return await skill_revision_service.get_revision(
+            db, skill=skill, user_id=TEST_USER_ID, revision_id=revision.id
         )
 
-    assert (
-        await skill_revision_service.get_revision(
-            db,
-            skill=skill,
-            user_id=TEST_USER_ID,
-            revision_id=revision.id,
-        )
-        == revision
-    )
-    assert (
-        await skill_revision_service.get_revision(
-            db,
-            skill=skill,
-            user_id=revision.id,
-            revision_id=revision.id,
-        )
-        is None
-    )
+    assert await get(skill_a, revision_a) == revision_a
+    assert await get(skill_a, revision_b) is None
+    assert await get(skill_b, revision_a) is None
+    listed = await skill_revision_service.list_revisions(db, skill=skill_a, user_id=TEST_USER_ID)
+    assert revision_b not in listed
 
 
 @pytest.mark.asyncio
@@ -179,13 +192,15 @@ async def test_rollback_to_revision_restores_text_skill_and_creates_revision(
     tmp_path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Revision Demo",
-            slug="revision-demo",
-            description="Use when testing revision snapshots.",
-            content=_skill_content(),
+            TextSkillCreation(
+                name="Revision Demo",
+                slug="revision-demo",
+                description="Use when testing revision snapshots.",
+                content=_skill_content(),
+            ),
+            unit_context(TEST_USER_ID),
         )
         first = await skill_revision_service.create_revision_for_skill(
             db,
@@ -197,6 +212,7 @@ async def test_rollback_to_revision_restores_text_skill_and_creates_revision(
             db,
             skill=skill,
             content=_skill_content("revision-updated"),
+            context=unit_context(TEST_USER_ID),
         )
         second = await skill_revision_service.create_revision_for_skill(
             db,
@@ -211,6 +227,7 @@ async def test_rollback_to_revision_restores_text_skill_and_creates_revision(
             user_id=TEST_USER_ID,
             revision=first,
             changelog_summary="Rollback to initial version",
+            context=unit_context(TEST_USER_ID),
         )
         restored = await skill_service.read_text_content(skill)
 
@@ -228,15 +245,17 @@ async def test_rollback_to_revision_restores_package_skill_and_hash(
     tmp_path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_bytes(
-                {
-                    "SKILL.md": _skill_content("revision-package"),
-                    "scripts/run.py": "print('v1')\n",
-                }
+            PackageSkillCreation(
+                zip_bytes=_zip_bytes(
+                    {
+                        "SKILL.md": _skill_content("revision-package"),
+                        "scripts/run.py": "print('v1')\n",
+                    }
+                )
             ),
+            unit_context(TEST_USER_ID),
         )
         first = await skill_revision_service.create_revision_for_skill(
             db,
@@ -263,6 +282,7 @@ async def test_rollback_to_revision_restores_package_skill_and_hash(
             skill=skill,
             user_id=TEST_USER_ID,
             revision=first,
+            context=unit_context(TEST_USER_ID),
         )
         restored = skill_service.get_file_bytes(skill, "scripts/run.py")
 
@@ -280,15 +300,17 @@ async def test_rollback_package_missing_skill_md_fails_before_mutation(
     무변경 SnapshotMissing으로 끝난다. rmtree 후에 터지면 부분 변이가 남는다."""
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_bytes(
-                {
-                    "SKILL.md": _skill_content("revision-package"),
-                    "scripts/run.py": "print('v1')\n",
-                }
+            PackageSkillCreation(
+                zip_bytes=_zip_bytes(
+                    {
+                        "SKILL.md": _skill_content("revision-package"),
+                        "scripts/run.py": "print('v1')\n",
+                    }
+                )
             ),
+            unit_context(TEST_USER_ID),
         )
         first = await skill_revision_service.create_revision_for_skill(
             db,
@@ -307,6 +329,7 @@ async def test_rollback_package_missing_skill_md_fails_before_mutation(
                 skill=skill,
                 user_id=TEST_USER_ID,
                 revision=first,
+                context=unit_context(TEST_USER_ID),
             )
         # 디스크 무변경 — 현재 패키지 파일이 그대로 살아 있어야 한다.
         assert skill_service.get_file_bytes(skill, "SKILL.md")
@@ -322,15 +345,17 @@ async def test_rollback_package_zip_slip_snapshot_fails_before_mutation(
     tempdir 추출은 rmtree 이전이므로 409 계약으로 수렴한다 (R6)."""
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_bytes(
-                {
-                    "SKILL.md": _skill_content("revision-package"),
-                    "scripts/run.py": "print('v1')\n",
-                }
+            PackageSkillCreation(
+                zip_bytes=_zip_bytes(
+                    {
+                        "SKILL.md": _skill_content("revision-package"),
+                        "scripts/run.py": "print('v1')\n",
+                    }
+                )
             ),
+            unit_context(TEST_USER_ID),
         )
         first = await skill_revision_service.create_revision_for_skill(
             db,
@@ -349,6 +374,7 @@ async def test_rollback_package_zip_slip_snapshot_fails_before_mutation(
                 skill=skill,
                 user_id=TEST_USER_ID,
                 revision=first,
+                context=unit_context(TEST_USER_ID),
             )
         # 디스크 무변경.
         assert skill_service.get_file_bytes(skill, "scripts/run.py") == b"print('v1')\n"
@@ -364,15 +390,17 @@ async def test_rollback_package_malformed_yaml_fails_before_mutation(
     500으로 샜다. 무변이 SnapshotMissing으로 수렴 (R7)."""
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_bytes(
-                {
-                    "SKILL.md": _skill_content("revision-package"),
-                    "scripts/run.py": "print('v1')\n",
-                }
+            PackageSkillCreation(
+                zip_bytes=_zip_bytes(
+                    {
+                        "SKILL.md": _skill_content("revision-package"),
+                        "scripts/run.py": "print('v1')\n",
+                    }
+                )
             ),
+            unit_context(TEST_USER_ID),
         )
         first = await skill_revision_service.create_revision_for_skill(
             db,
@@ -391,6 +419,7 @@ async def test_rollback_package_malformed_yaml_fails_before_mutation(
                 skill=skill,
                 user_id=TEST_USER_ID,
                 revision=first,
+                context=unit_context(TEST_USER_ID),
             )
         # 디스크 무변경.
         assert skill_service.get_file_bytes(skill, "scripts/run.py") == b"print('v1')\n"
@@ -404,10 +433,12 @@ async def test_rollback_package_bumps_last_modified_at(
     """패키지 rollback도 형제 변이처럼 last_modified_at을 갱신한다 (R5)."""
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_bytes({"SKILL.md": _skill_content("revision-package")}),
+            PackageSkillCreation(
+                zip_bytes=_zip_bytes({"SKILL.md": _skill_content("revision-package")})
+            ),
+            unit_context(TEST_USER_ID),
         )
         first = await skill_revision_service.create_revision_for_skill(
             db,
@@ -421,6 +452,7 @@ async def test_rollback_package_bumps_last_modified_at(
             skill=skill,
             user_id=TEST_USER_ID,
             revision=first,
+            context=unit_context(TEST_USER_ID),
         )
 
     assert skill.last_modified_at is not None
@@ -436,13 +468,15 @@ async def test_list_revisions_limit_none_is_unbounded(
     영구히 놓치지 않기 위한 계약 (R5)."""
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Limit Demo",
-            slug="limit-demo",
-            description="Use when testing revision limits.",
-            content=_skill_content("limit-demo"),
+            TextSkillCreation(
+                name="Limit Demo",
+                slug="limit-demo",
+                description="Use when testing revision limits.",
+                content=_skill_content("limit-demo"),
+            ),
+            unit_context(TEST_USER_ID),
         )
         for _ in range(3):
             await skill_revision_service.create_revision_for_skill(

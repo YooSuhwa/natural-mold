@@ -53,18 +53,20 @@ class BuilderState(TypedDict, total=False):
     # 카탈로그/메타 (Phase 1에서 주입)
     user_id: str
     session_id: str
+    org_id: str
+    tenant_id: str
     tools_catalog: list[dict[str, Any]]
     middlewares_catalog: list[dict[str, Any]]
     default_model_name: str
     project_path: str
 
     # Phase별 결과
-    intent: dict[str, Any] | None             # Phase 2
-    tools: list[dict[str, Any]]               # Phase 3 (ToolRecommendation list)
-    middlewares: list[dict[str, Any]]         # Phase 4
-    system_prompt: str | None                 # Phase 5
-    image_url: str | None                     # Phase 6 (None이면 이미지 없음)
-    draft_config: dict[str, Any] | None       # Phase 7
+    intent: dict[str, Any] | None  # Phase 2
+    tools: list[dict[str, Any]]  # Phase 3 (ToolRecommendation list)
+    middlewares: list[dict[str, Any]]  # Phase 4
+    system_prompt: str | None  # Phase 5
+    image_url: str | None  # Phase 6 (None이면 이미지 없음)
+    draft_config: dict[str, Any] | None  # Phase 7
 
     # 진행 위치
     current_phase: int
@@ -93,9 +95,7 @@ class BuilderState(TypedDict, total=False):
 
 def initial_todos() -> list[PhaseTodo]:
     """8개 phase 초기 상태 (모두 pending)."""
-    return [
-        {"id": p["id"], "name": p["name"], "status": "pending"} for p in PHASE_DEFINITIONS
-    ]
+    return [{"id": p["id"], "name": p["name"], "status": "pending"} for p in PHASE_DEFINITIONS]
 
 
 def get_phase_name(phase_id: int) -> str:

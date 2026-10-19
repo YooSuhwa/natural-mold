@@ -33,6 +33,7 @@ from app.models.marketplace import (
 from app.models.skill import Skill
 from app.models.user import User
 from app.skills import service as skill_service
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 
@@ -106,6 +107,8 @@ async def _make_published_skill_item(
         status="published",
         moderation_status="approved",
         source_kind="user",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(item)
     await db.flush()
@@ -226,6 +229,8 @@ async def test_install_with_binding_supplied_is_active(
         is_shared=False,
         is_system=False,
         status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(cred)
     await db.flush()
@@ -293,6 +298,8 @@ async def test_install_reuse_applies_missing_credential_binding(
         is_shared=False,
         is_system=False,
         status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(credential)
     await db.flush()

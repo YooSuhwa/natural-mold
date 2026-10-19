@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from app.models.user import User
 from app.services.artifact_service import ArtifactDeltaRecorder, ArtifactRuntimeContext
 from app.services.artifact_storage import LocalArtifactStorageBackend
 from tests.artifact_test_helpers import seed_artifact_conversation
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -26,7 +28,7 @@ async def _create_artifact(tmp_path: Path, *, name: str = "report.md") -> tuple[
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="router-run-1",
             output_dir=output_dir,
@@ -51,7 +53,7 @@ async def test_same_run_write_then_edit_remains_recordable(tmp_path: Path) -> No
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="stored-artifact-write-run",
             output_dir=output_dir,
@@ -151,10 +153,20 @@ async def test_conversation_artifact_list_hides_other_user_conversation(
         system_prompt="Other",
         model_id=model.id,
         status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
-    conv = Conversation(agent_id=agent.id, title="Other conversation")
+    conv = Conversation(
+        agent_id=agent.id,
+        title="Other conversation",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=datetime.now(UTC),
+    )
     db.add(conv)
     await db.commit()
 
@@ -185,6 +197,8 @@ async def test_conversation_artifact_list_skips_versionless_artifacts(
             sha256="f" * 64,
             status="ready",
             metadata_json={},
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
     )
     await db.commit()
@@ -218,10 +232,20 @@ async def test_legacy_conversation_file_endpoint_hides_other_user_file(
         system_prompt="Other",
         model_id=model.id,
         status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
-    conv = Conversation(agent_id=agent.id, title="Other file conversation")
+    conv = Conversation(
+        agent_id=agent.id,
+        title="Other file conversation",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=datetime.now(UTC),
+    )
     db.add(conv)
     await db.commit()
     output_dir = tmp_path / "conversations" / str(conv.id)

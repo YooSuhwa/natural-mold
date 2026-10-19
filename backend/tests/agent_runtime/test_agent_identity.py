@@ -15,6 +15,7 @@ from app.agent_runtime.identity import (
     resolve_agent_run_identity,
 )
 from app.models.agent import Agent
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 
 
 def test_make_agent_runtime_name_is_tool_safe_and_agent_stable() -> None:
@@ -96,6 +97,8 @@ def test_child_per_user_identity_uses_parent_caller_subject() -> None:
         model_id=uuid.uuid4(),
         runtime_name=make_agent_runtime_name(child_id),
         identity_mode=AGENT_IDENTITY_PER_USER,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
 
     identity = derive_child_agent_run_identity(parent_identity, child)
@@ -127,6 +130,8 @@ def test_child_fixed_identity_uses_child_owner_subject() -> None:
         model_id=uuid.uuid4(),
         runtime_name=make_agent_runtime_name(child_id),
         identity_mode=AGENT_IDENTITY_FIXED,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
 
     identity = derive_child_agent_run_identity(parent_identity, child)

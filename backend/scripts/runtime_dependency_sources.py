@@ -52,13 +52,22 @@ def _is_checked(module: str) -> bool:
     return any(module == prefix or module.startswith(f"{prefix}.") for prefix in CHECKED_PREFIXES)
 
 
-def _git_tracked_python(backend_root: Path) -> tuple[str, ...]:
+def _git_source_python(backend_root: Path) -> tuple[str, ...]:
     executable = shutil.which("git")
     if executable is None:
         raise DependencyGraphError("git executable is unavailable")
     try:
         result = subprocess.run(  # noqa: S603 - fixed executable, no shell
-            [executable, "ls-files", "-z", "--", "app"],
+            [
+                executable,
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                "--",
+                "app",
+            ],
             cwd=backend_root,
             stdin=subprocess.DEVNULL,
             capture_output=True,
@@ -90,7 +99,7 @@ def _git_tracked_python(backend_root: Path) -> tuple[str, ...]:
     return tuple(sorted(set(paths)))
 
 
-def _read_regular_source(backend_root: Path, relative: str) -> ModuleSource:
+def _read_current_source(backend_root: Path, relative: str) -> ModuleSource | None:
     pure = PurePosixPath(relative)
     if (
         not relative
@@ -106,6 +115,8 @@ def _read_regular_source(backend_root: Path, relative: str) -> ModuleSource:
         current /= part
         try:
             metadata = current.lstat()
+        except FileNotFoundError:
+            return None
         except OSError as error:
             raise DependencyGraphError(f"tracked source is unreadable: {relative}") from error
         if stat.S_ISLNK(metadata.st_mode):
@@ -127,6 +138,13 @@ def _read_regular_source(backend_root: Path, relative: str) -> ModuleSource:
     return ModuleSource(module, relative, source)
 
 
+def _read_regular_source(backend_root: Path, relative: str) -> ModuleSource:
+    source = _read_current_source(backend_root, relative)
+    if source is None:
+        raise DependencyGraphError(f"tracked source is unreadable: {relative}")
+    return source
+
+
 def load_selected_sources(
     backend_root: Path, tracked_files: Sequence[str]
 ) -> tuple[ModuleSource, ...]:
@@ -136,6 +154,10 @@ def load_selected_sources(
 
 
 def load_tracked_sources(backend_root: Path) -> tuple[ModuleSource, ...]:
-    """Load guarded, Git-tracked sources without following symbolic links."""
+    """Load the current guarded Git source union without following symbolic links."""
     root = backend_root.resolve()
-    return load_selected_sources(root, _git_tracked_python(root))
+    return tuple(
+        source
+        for path in _git_source_python(root)
+        if (source := _read_current_source(root, path)) is not None
+    )

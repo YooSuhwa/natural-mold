@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,12 +12,14 @@ from app.models.conversation_pinned_summary import ConversationPinnedSummary
 from app.services.conversation_pinned_summary_service import (
     InvalidPinnedSummarySourceError,
     MessageRole,
+    PinSummaryTarget,
     SummarySource,
     pin_summary,
     resolve_source_status,
     unpin_summary,
 )
-from tests.conftest import seed_agent
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, unit_context
+from tests.conftest import TEST_USER_ID, seed_agent
 
 
 def _source(
@@ -42,11 +46,23 @@ async def test_pin_summary_persists_bounded_snapshot_across_session_reload(
     message_id = f"lc-run-{uuid.uuid4()}"
     source = _source(message_id, text="x" * 5000)
     _, _, agent = await seed_agent(db)
-    db.add(Conversation(id=conversation_id, agent_id=agent.id))
+    db.add(
+        Conversation(
+            id=conversation_id,
+            agent_id=agent.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
+    )
     await db.flush()
 
     # When
-    row = await pin_summary(db, conversation_id, message_id, (source,))
+    row = await pin_summary(
+        db, PinSummaryTarget(conversation_id, unit_context(TEST_USER_ID), message_id, (source,))
+    )
     await db.commit()
     db.expunge_all()
     restored = await db.get(ConversationPinnedSummary, conversation_id)
@@ -84,9 +100,21 @@ async def test_pin_summary_treats_trimmed_source_as_current(db: AsyncSession) ->
     message_id = f"lc-run-{uuid.uuid4()}"
     source = _source(message_id, text="  Pinned answer  ")
     _, _, agent = await seed_agent(db)
-    db.add(Conversation(id=conversation_id, agent_id=agent.id))
+    db.add(
+        Conversation(
+            id=conversation_id,
+            agent_id=agent.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
+    )
     await db.flush()
-    row = await pin_summary(db, conversation_id, message_id, (source,))
+    row = await pin_summary(
+        db, PinSummaryTarget(conversation_id, unit_context(TEST_USER_ID), message_id, (source,))
+    )
 
     # When
     status = resolve_source_status(row, (source,), ())
@@ -117,16 +145,29 @@ def test_resolve_source_status_distinguishes_other_branch_from_deleted() -> None
 
 @pytest.mark.asyncio
 async def test_pin_summary_rejects_non_assistant_source(db: AsyncSession) -> None:
-    # Given
+    # Given an authorized conversation and a non-assistant source.
+    _, _, agent = await seed_agent(db)
+    conversation = Conversation(
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
+    db.add(conversation)
+    await db.flush()
     message_id = f"lc-run-{uuid.uuid4()}"
-
-    # When / Then
+    # When / Then only valid assistant sources can be pinned.
     with pytest.raises(InvalidPinnedSummarySourceError) as exc_info:
         await pin_summary(
             db,
-            uuid.uuid4(),
-            message_id,
-            (_source(message_id, role="user"),),
+            PinSummaryTarget(
+                conversation.id,
+                unit_context(TEST_USER_ID),
+                message_id,
+                (_source(message_id, role="user"),),
+            ),
         )
     assert exc_info.value.reason == "not_assistant"
 
@@ -137,13 +178,28 @@ async def test_unpin_summary_removes_persisted_selection(db: AsyncSession) -> No
     conversation_id = uuid.uuid4()
     message_id = f"lc-run-{uuid.uuid4()}"
     _, _, agent = await seed_agent(db)
-    db.add(Conversation(id=conversation_id, agent_id=agent.id))
+    db.add(
+        Conversation(
+            id=conversation_id,
+            agent_id=agent.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
+    )
     await db.flush()
-    await pin_summary(db, conversation_id, message_id, (_source(message_id),))
+    await pin_summary(
+        db,
+        PinSummaryTarget(
+            conversation_id, unit_context(TEST_USER_ID), message_id, (_source(message_id),)
+        ),
+    )
     await db.commit()
 
     # When
-    await unpin_summary(db, conversation_id)
+    await unpin_summary(db, conversation_id, unit_context(TEST_USER_ID))
     await db.commit()
 
     # Then

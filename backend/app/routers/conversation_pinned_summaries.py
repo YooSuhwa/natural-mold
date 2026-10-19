@@ -2,23 +2,27 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from typing import Protocol
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from langchain_core.messages import BaseMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
+from app.agent_runtime.conversation_checkpointer import conversation_checkpointer
 from app.agent_runtime.message_utils import content_to_text
-from app.dependencies import get_db, owned_conversation, verify_csrf
+from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.dependencies import get_db, get_org_context, owned_conversation, verify_csrf
 from app.schemas.conversation_pinned_summary import (
     PinConversationSummaryRequest,
     PinnedConversationSummaryEnvelope,
     PinnedConversationSummaryResponse,
 )
-from app.schemas.conversation_refs import conversation_ref
 from app.services.conversation_pinned_summary_service import (
     InvalidPinnedSummarySourceError,
     MessageRole,
+    PinSummaryTarget,
     SummarySource,
     get_summary,
     pin_summary,
@@ -29,6 +33,12 @@ from app.services.thread_branch_service import (
     _build_tree_from_checkpoints,
     _collect_checkpoints,
 )
+
+
+class PinnedConversationRef(Protocol):
+    @property
+    def active_branch_checkpoint_id(self) -> str | None: ...
+
 
 router = APIRouter(tags=["conversations"])
 _TURN_ID_SEPARATOR = "::moldy-turn-"
@@ -103,8 +113,14 @@ def _sources_for_messages(
 async def _load_sources(
     conversation_id: uuid.UUID,
     active_checkpoint_id: str | None,
+    *,
+    db: AsyncSession,
+    context: OrgContext,
 ) -> tuple[tuple[SummarySource, ...], tuple[SummarySource, ...]]:
-    checkpoints = await _collect_checkpoints(get_checkpointer(), str(conversation_id))
+    saver = await conversation_checkpointer(
+        str(conversation_id), context, db=db, saver=get_checkpointer
+    )
+    checkpoints = await _collect_checkpoints(saver, str(conversation_id))
     if not checkpoints:
         return (), ()
     tree = _build_tree_from_checkpoints(checkpoints, active_checkpoint_id)
@@ -128,17 +144,18 @@ async def _load_sources(
     "/api/conversations/{conversation_id}/pinned-summary",
     response_model=PinnedConversationSummaryEnvelope,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def read_pinned_summary(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    conv: object = Depends(owned_conversation),
+    conv: PinnedConversationRef = Depends(owned_conversation),
+    context: OrgContext = Depends(get_org_context),
 ) -> PinnedConversationSummaryEnvelope:
-    row = await get_summary(db, conversation_id)
+    row = await get_summary(db, conversation_id, context)
     if row is None:
         return PinnedConversationSummaryEnvelope(summary=None)
     active, historical = await _load_sources(
-        conversation_id,
-        conversation_ref(conv).active_branch_checkpoint_id,
+        conversation_id, conv.active_branch_checkpoint_id, db=db, context=context
     )
     return PinnedConversationSummaryEnvelope(summary=serialize_summary(row, active, historical))
 
@@ -147,19 +164,22 @@ async def read_pinned_summary(
     "/api/conversations/{conversation_id}/pinned-summary",
     response_model=PinnedConversationSummaryResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def write_pinned_summary(
     conversation_id: uuid.UUID,
     data: PinConversationSummaryRequest,
     db: AsyncSession = Depends(get_db),
-    conv: object = Depends(owned_conversation),
-    _csrf: None = Depends(verify_csrf),
+    _csrf: None = Depends(verify_csrf),  # before the ownership gate: CSRF 403 -> 404
+    conv: PinnedConversationRef = Depends(owned_conversation),
+    context: OrgContext = Depends(get_org_context),
 ) -> PinnedConversationSummaryResponse:
     active, historical = await _load_sources(
-        conversation_id,
-        conversation_ref(conv).active_branch_checkpoint_id,
+        conversation_id, conv.active_branch_checkpoint_id, db=db, context=context
     )
     try:
-        row = await pin_summary(db, conversation_id, data.message_id, active)
+        row = await pin_summary(
+            db, PinSummaryTarget(conversation_id, context, data.message_id, active)
+        )
     except InvalidPinnedSummarySourceError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -173,12 +193,14 @@ async def write_pinned_summary(
     "/api/conversations/{conversation_id}/pinned-summary",
     status_code=status.HTTP_204_NO_CONTENT,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def delete_pinned_summary(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _conv: object = Depends(owned_conversation),
     _csrf: None = Depends(verify_csrf),
+    _conv: PinnedConversationRef = Depends(owned_conversation),
+    context: OrgContext = Depends(get_org_context),
 ) -> Response:
-    await unpin_summary(db, conversation_id)
+    await unpin_summary(db, conversation_id, context)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

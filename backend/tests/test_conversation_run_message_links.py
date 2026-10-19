@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from datetime import timedelta
 
 import pytest
@@ -8,6 +10,7 @@ from httpx import AsyncClient
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun, utc_now_naive
@@ -15,6 +18,12 @@ from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from app.services import conversation_run_service
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -32,15 +41,26 @@ async def _seed_conversation(
     )
     db.add_all([user, model])
     await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     agent = Agent(
         user_id=user.id,
         name="Run Links Agent",
         system_prompt="help",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
-    conversation = Conversation(agent_id=agent.id, title="Run links")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="Run links",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.flush()
     return agent, conversation
@@ -56,7 +76,7 @@ async def _create_run(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="link",
     )

@@ -10,6 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.credentials import tenant_encryption
+from app.credentials.boundary import open_values
 from app.credentials.interpolation import resolve_deep
 from app.credentials.oauth2_base import is_token_expired, refresh_oauth_token
 from app.credentials.registry import registry
@@ -70,7 +72,7 @@ async def resolve_mcp_auth(
             status="credential_not_found",
         )
 
-    data = await credential_service.decrypt_with_external(credential.data_encrypted)
+    data = await open_values(credential, "refresh")
     definition = registry.get(credential.definition_key)
     if (
         definition is not None
@@ -98,10 +100,7 @@ async def resolve_mcp_auth(
                 error=str(exc),
                 status="auth_needed",
             )
-        blob, key_id, field_keys = credential_service.encrypt_data(data)
-        credential.data_encrypted = blob
-        credential.key_id = key_id
-        credential.field_keys = field_keys
+        await tenant_encryption.seal(credential, data, db=db)
         credential.status = "active"
         await credential_service.write_audit_log(
             db,

@@ -11,7 +11,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, Numeric, String
+from sqlalchemy import JSON, Boolean, ForeignKey, ForeignKeyConstraint, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -19,9 +19,20 @@ from app.database import Base
 
 class Model(Base):
     __tablename__ = "models"
-    __table_args__ = {"extend_existing": True}
+    # m81 owns ``tenant_id`` and the per-company / platform default partial indexes
+    # (``uq_models_tenant_default``, ``uq_models_platform_default``). The indexes are not
+    # redeclared here because unit fixtures seed several platform defaults; the company
+    # model service keeps one default per company itself (E-07).
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id"], ["tenants.id"], name="fk_models_tenant", ondelete="RESTRICT"
+        ),
+        {"extend_existing": True},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    # NULL = platform model (operator catalog); set = company model (plan 6.2 설정 3단).
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     model_name: Mapped[str] = mapped_column(String(200), nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)

@@ -15,6 +15,7 @@ import {
   ResourceListCard,
 } from '@/components/shared/resource-layout'
 import { StatusChip } from '@/components/shared/status-chip'
+import { SharedWithMeBadge } from '@/components/sharing/resource-share-button'
 import { getResourceTone, resourceStatusChipClassName } from '@/lib/resource-tones'
 import { cn } from '@/lib/utils'
 import type { ToolDefinition, ToolInstance } from '@/lib/types/tool'
@@ -253,6 +254,7 @@ function InstalledToolCard({
           variant={tool.enabled ? 'active' : 'disabled'}
           className={resourceStatusChipClassName}
         />
+        <SharedWithMeBadge ownerId={tool.user_id} />
         {tool.credential_id ? (
           <StatusChip
             variant={credentialStatus ?? 'unknown'}

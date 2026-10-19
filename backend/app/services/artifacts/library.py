@@ -13,6 +13,13 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.artifact_scope import private_artifact_predicate
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.models.message_event import MessageEvent
 from app.schemas.artifact import (
@@ -58,15 +65,16 @@ def _decode_library_cursor(cursor: str) -> tuple[datetime, uuid.UUID | None] | N
 async def list_conversation_artifacts(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     conversation_id: uuid.UUID,
 ) -> list[ArtifactSummary]:
+    await require_private_actor(db, context)
     artifacts = (
         (
             await db.execute(
                 select(ConversationArtifact)
                 .where(
-                    ConversationArtifact.user_id == user_id,
+                    private_artifact_predicate(context),
                     ConversationArtifact.conversation_id == conversation_id,
                     ConversationArtifact.status != "deleted",
                 )
@@ -85,15 +93,16 @@ async def list_conversation_artifacts(
 async def list_conversation_artifacts_by_message_id(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     conversation_id: uuid.UUID,
 ) -> dict[str, list[ArtifactSummary]]:
+    await require_private_actor(db, context)
     artifacts = (
         (
             await db.execute(
                 select(ConversationArtifact)
                 .where(
-                    ConversationArtifact.user_id == user_id,
+                    private_artifact_predicate(context),
                     ConversationArtifact.conversation_id == conversation_id,
                     ConversationArtifact.status != "deleted",
                 )
@@ -145,7 +154,7 @@ async def list_conversation_artifacts_by_message_id(
 async def list_library_artifacts(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     q: str | None,
     agent_id: uuid.UUID | None,
     conversation_id: uuid.UUID | None,
@@ -154,9 +163,10 @@ async def list_library_artifacts(
     limit: int,
     cursor: str | None,
 ) -> ArtifactLibraryPage:
+    await require_private_actor(db, context)
     limit = max(1, min(limit, 100))
     filters = [
-        ConversationArtifact.user_id == user_id,
+        private_artifact_predicate(context),
         ConversationArtifact.status != "deleted",
     ]
     if q:
@@ -216,15 +226,16 @@ async def list_library_artifacts(
 async def list_recent_artifacts(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     limit: int,
 ) -> list[ArtifactSummary]:
+    await require_private_actor(db, context)
     rows = (
         (
             await db.execute(
                 select(ConversationArtifact)
                 .where(
-                    ConversationArtifact.user_id == user_id,
+                    private_artifact_predicate(context),
                     ConversationArtifact.status != "deleted",
                 )
                 .order_by(
@@ -243,11 +254,11 @@ async def list_recent_artifacts(
 async def set_artifact_favorite(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     artifact_id: uuid.UUID | str,
     is_favorite: bool,
 ) -> ArtifactSummary:
-    artifact = await _get_owned_artifact(db, user_id=user_id, artifact_id=artifact_id)
+    artifact = await _get_owned_artifact(db, context=context, artifact_id=artifact_id)
     artifact.is_favorite = is_favorite
     await db.flush()
     return await _summary_from_artifact(db, artifact, include_names=True)
@@ -256,10 +267,10 @@ async def set_artifact_favorite(
 async def record_artifact_opened(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     artifact_id: uuid.UUID | str,
 ) -> ArtifactSummary:
-    artifact = await _get_owned_artifact(db, user_id=user_id, artifact_id=artifact_id)
+    artifact = await _get_owned_artifact(db, context=context, artifact_id=artifact_id)
     artifact.last_opened_at = datetime.now(UTC).replace(tzinfo=None)
     artifact.preview_count += 1
     await db.flush()
@@ -269,18 +280,19 @@ async def record_artifact_opened(
 async def record_artifact_download(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     artifact_id: uuid.UUID | str,
 ) -> ArtifactSummary:
-    artifact = await _get_owned_artifact(db, user_id=user_id, artifact_id=artifact_id)
+    artifact = await _get_owned_artifact(db, context=context, artifact_id=artifact_id)
     artifact.download_count += 1
     await db.flush()
     return await _summary_from_artifact(db, artifact, include_names=True)
 
 
-async def get_library_stats(db: AsyncSession, *, user_id: uuid.UUID) -> ArtifactLibraryStats:
+async def get_library_stats(db: AsyncSession, *, context: OrgContext) -> ArtifactLibraryStats:
+    await require_private_actor(db, context)
     filters = [
-        ConversationArtifact.user_id == user_id,
+        private_artifact_predicate(context),
         ConversationArtifact.status != "deleted",
     ]
     recent_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=7)
@@ -339,13 +351,13 @@ async def get_library_stats(db: AsyncSession, *, user_id: uuid.UUID) -> Artifact
 async def delete_artifact(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     artifact_id: uuid.UUID | str,
     conversation_id: uuid.UUID | None = None,
 ) -> None:
     artifact = await _get_owned_artifact(
         db,
-        user_id=user_id,
+        context=context,
         artifact_id=artifact_id,
         conversation_id=conversation_id,
     )
@@ -356,14 +368,17 @@ async def delete_artifact(
 async def _get_owned_artifact(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     artifact_id: uuid.UUID | str,
     conversation_id: uuid.UUID | None = None,
 ) -> ConversationArtifact:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     artifact_uuid = uuid.UUID(str(artifact_id))
     filters = [
         ConversationArtifact.id == artifact_uuid,
-        ConversationArtifact.user_id == user_id,
+        private_artifact_predicate(context),
         ConversationArtifact.status != "deleted",
     ]
     if conversation_id is not None:
@@ -377,13 +392,13 @@ async def _get_owned_artifact(
 async def _get_owned_artifact_with_version(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     artifact_id: uuid.UUID | str,
     conversation_id: uuid.UUID | None = None,
 ) -> tuple[ConversationArtifact, ArtifactVersion]:
     artifact = await _get_owned_artifact(
         db,
-        user_id=user_id,
+        context=context,
         artifact_id=artifact_id,
         conversation_id=conversation_id,
     )

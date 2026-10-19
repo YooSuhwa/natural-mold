@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from datetime import timedelta
 from typing import Any
 
@@ -14,6 +16,7 @@ from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.run_metrics import RunMetricsSnapshot
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ConversationArtifact
@@ -23,6 +26,12 @@ from app.models.model import Model
 from app.models.user import User
 from app.services import conversation_run_service, trace_storage
 from app.services.conversation_run_metrics_service import persist_run_metrics
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -38,15 +47,26 @@ async def _seed_agent_conversation(
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     agent = Agent(
         user_id=user.id,
         name="Run Router Agent",
         system_prompt="You are helpful.",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
-    conversation = Conversation(agent_id=agent.id, title=title)
+    conversation = Conversation(
+        agent_id=agent.id,
+        title=title,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.flush()
     return agent, conversation
@@ -67,7 +87,7 @@ async def test_active_run_endpoint_returns_active_run(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="active run",
     )
@@ -93,14 +113,22 @@ async def test_run_detail_returns_not_found_for_other_conversation(
     db: AsyncSession,
 ) -> None:
     agent, first = await _seed_agent_conversation(db, title="first")
-    second = Conversation(agent_id=agent.id, title="second")
+    second = Conversation(
+        agent_id=agent.id,
+        title="second",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(second)
     await db.flush()
     run = await conversation_run_service.create_run(
         db,
         conversation_id=first.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="first",
     )
@@ -126,7 +154,7 @@ async def test_run_detail_returns_not_found_for_other_user(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="hidden",
     )
@@ -147,7 +175,7 @@ async def test_owned_run_detail_reloads_persisted_metrics(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="measured",
     )
@@ -196,7 +224,7 @@ async def test_conversation_page_includes_active_run(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="visible in list",
     )
@@ -221,7 +249,7 @@ async def test_messages_envelope_includes_active_run(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="direct refresh",
     )
@@ -251,7 +279,7 @@ async def test_messages_envelope_reports_canceled_latest_run(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="will be canceled",
     )
@@ -279,7 +307,7 @@ async def test_messages_envelope_latest_run_prefers_newest(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="first turn",
     )
@@ -289,7 +317,7 @@ async def test_messages_envelope_latest_run_prefers_newest(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="second turn",
     )
@@ -316,7 +344,7 @@ async def test_conversation_page_includes_latest_interrupted_run_for_action_requ
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="needs action",
     )
@@ -343,7 +371,7 @@ async def test_messages_envelope_includes_interrupted_run_for_action_required(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="needs action",
     )
@@ -369,7 +397,7 @@ async def test_run_stream_endpoint_attaches_live_broker(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="live attach",
     )
@@ -404,7 +432,7 @@ async def test_run_stream_endpoint_replays_terminal_run(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="replay",
     )
@@ -444,7 +472,7 @@ async def test_ag_ui_run_stream_endpoint_attaches_live_broker_with_split_event_r
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="ag ui live attach",
     )
@@ -486,7 +514,7 @@ async def test_run_stream_emits_stale_gap_marker_when_last_event_evicted(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="gap",
     )
@@ -546,7 +574,7 @@ async def test_ag_ui_run_stream_emits_stale_gap_marker_when_source_evicted(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="ag ui gap",
     )
@@ -604,7 +632,7 @@ async def test_ag_ui_run_stream_endpoint_replays_terminal_run_with_split_event_r
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="ag ui replay",
     )
@@ -661,7 +689,7 @@ async def test_ag_ui_run_stream_endpoint_replays_append_only_chunks(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="ag ui chunk replay",
     )
@@ -714,7 +742,7 @@ async def test_run_stream_endpoint_returns_retry_for_fresh_active_run_without_br
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="retry",
     )
@@ -742,7 +770,7 @@ async def test_run_stream_endpoint_marks_old_active_run_stale_without_broker(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="stale",
     )
@@ -774,7 +802,7 @@ async def test_run_stream_endpoint_locks_run_before_stale_transition(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="stale lock",
     )
@@ -811,7 +839,7 @@ async def test_run_stream_endpoint_replays_terminal_stale_run_without_trace(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="stale",
     )
@@ -838,7 +866,7 @@ async def test_cancel_endpoint_returns_existing_canceling_status_without_second_
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="already canceling",
     )
@@ -864,7 +892,7 @@ async def test_cancel_endpoint_waits_for_owner_ack_when_worker_task_is_missing(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="lost worker cancel",
     )
@@ -895,6 +923,8 @@ async def test_cancel_endpoint_waits_for_owner_ack_when_worker_task_is_missing(
             size_bytes=12,
             sha256="a" * 64,
             status="ready",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
     )
     await db.commit()
@@ -934,7 +964,7 @@ async def test_cancel_endpoint_returns_terminal_status_without_restarting_work(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=agent.user_id,
+        context=unit_context(agent.user_id),
         source="chat",
         input_preview="already done",
     )

@@ -11,6 +11,7 @@ definition = CredentialDefinition(
     icon_id="search",
     documentation_url="https://plus.kipris.or.kr/",
     category="api",
+    hosts=("plus.kipris.or.kr",),
     properties=[
         FieldDef(
             name="api_key",

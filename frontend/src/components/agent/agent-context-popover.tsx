@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { agentCan } from '@/lib/authz/permissions'
 import { clearChatRouteReplacement } from '@/lib/chat/chat-route-replacement'
 import type { Agent } from '@/lib/types'
 
@@ -26,6 +27,8 @@ export function AgentContextPopover({ agent, agentId }: AgentContextPopoverProps
   const t = useTranslations('agent.context')
   const toolCount = (agent?.tools?.length ?? 0) + (agent?.mcp_tools?.length ?? 0)
   const skillCount = agent?.skills?.length ?? 0
+  // Plan 13.9: runners (no `can_view_config`) never get the settings entry.
+  const canViewConfig = !!agent && agentCan(agent, 'can_view_config')
 
   return (
     <DropdownMenu>
@@ -77,10 +80,12 @@ export function AgentContextPopover({ agent, agentId }: AgentContextPopoverProps
           <SquarePenIcon />
           {t('newChat')}
         </DropdownMenuItem>
-        <DropdownMenuItem render={<Link href={`/agents/${agentId}/settings`} />}>
-          <Settings2Icon />
-          {t('settings')}
-        </DropdownMenuItem>
+        {canViewConfig ? (
+          <DropdownMenuItem render={<Link href={`/agents/${agentId}/settings`} />}>
+            <Settings2Icon />
+            {t('settings')}
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   )

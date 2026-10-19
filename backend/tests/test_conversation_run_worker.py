@@ -3,10 +3,13 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncGenerator
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
+from app.authz.conversation_scope import require_conversation_agent_id
+from app.authz.worker_conversation_scope import WorkerConversationTarget
+from app.database import SessionTenant
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -17,6 +20,8 @@ from app.services import (
     conversation_run_worker,
     conversation_stream_service,
 )
+from tests.authz.run_fixture_config import run_fixture_config
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 from tests.integration._seed import seed_conversation_with_agent
 
@@ -26,6 +31,7 @@ async def test_publish_error_persists_same_event_ids_as_live_broker() -> None:
     ctx = conversation_stream_service.prepare_stream_context(
         uuid.uuid4(),
         run_id="run-error-id-stability",
+        tenant=SessionTenant(uuid.uuid4()),
     )
     persisted: list[dict[str, Any]] = []
 
@@ -51,8 +57,8 @@ async def test_cancel_before_running_finalizes_run_as_canceled() -> None:
         run = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conv.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conv),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="cancel before start",
         )
@@ -79,7 +85,7 @@ async def test_cancel_before_running_finalizes_run_as_canceled() -> None:
     await conversation_run_worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=cast(Any, SimpleNamespace(secret_values=set())),
+        cfg=await run_fixture_config(run_id, TestSession),
         user=user,
         input_payload={"content": "x"},
         moldy_source="chat",
@@ -110,8 +116,8 @@ async def test_worker_skips_finalization_when_run_already_terminal() -> None:
         run = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conv.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conv),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="already stale",
         )
@@ -140,7 +146,7 @@ async def test_worker_skips_finalization_when_run_already_terminal() -> None:
     await conversation_run_worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=cast(Any, SimpleNamespace(secret_values=set())),
+        cfg=await run_fixture_config(run_id, TestSession),
         user=user,
         input_payload={"content": "x"},
         moldy_source="chat",
@@ -179,6 +185,8 @@ async def test_backfill_turn_attachments_stamps_orphan_rows(
                 size_bytes=3,
                 storage_path=f"/tmp/{upload_id}.png",
                 url=f"/api/uploads/{upload_id}",
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
             )
         )
         await db.commit()
@@ -189,7 +197,9 @@ async def test_backfill_turn_attachments_stamps_orphan_rows(
 
     monkeypatch.setattr(chat_service, "resolve_turn_user_message_id", fake_resolve)
 
-    await conversation_run_worker._backfill_turn_attachments(conversation_id, [upload_id])
+    await conversation_run_worker._backfill_turn_attachments(
+        WorkerConversationTarget(conversation_id, unit_context(TEST_USER_ID)), [upload_id]
+    )
 
     async with TestSession() as db:
         row = await db.get(MessageAttachment, upload_id)
@@ -215,8 +225,8 @@ async def test_backfill_runs_after_branch_activation(
         run = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conv.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conv),
+            context=unit_context(TEST_USER_ID),
             source="regenerate",
             input_preview="edit with attachment",
         )
@@ -250,7 +260,7 @@ async def test_backfill_runs_after_branch_activation(
     await conversation_run_worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=cast(Any, SimpleNamespace(secret_values=set())),
+        cfg=await run_fixture_config(run_id, TestSession),
         user=user,
         input_payload={"content": "x"},
         moldy_source="regenerate",
@@ -282,7 +292,7 @@ async def test_completed_regenerate_run_persists_latest_branch_leaf(
     )
 
     await conversation_run_worker._activate_latest_branch_leaf_if_needed(
-        conversation_id=conversation_id,
+        target=WorkerConversationTarget(conversation_id, unit_context(TEST_USER_ID)),
         moldy_source="regenerate",
         final_status="completed",
     )
@@ -305,7 +315,7 @@ async def test_chat_run_does_not_persist_latest_branch_leaf(
     monkeypatch.setattr(conversation_run_worker, "get_checkpointer", fail_get_checkpointer)
 
     await conversation_run_worker._activate_latest_branch_leaf_if_needed(
-        conversation_id=conversation_id,
+        target=WorkerConversationTarget(conversation_id, unit_context(TEST_USER_ID)),
         moldy_source="chat",
         final_status="completed",
     )
@@ -349,8 +359,8 @@ async def test_interrupted_run_transitions_before_trace_finalization(
         run = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conv.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conv),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="interrupt ordering",
         )
@@ -397,7 +407,7 @@ async def test_interrupted_run_transitions_before_trace_finalization(
     await conversation_run_worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=cast(Any, SimpleNamespace(secret_values=set(), agent_id=None)),
+        cfg=await run_fixture_config(run_id, TestSession),
         user=user,
         input_payload={"content": "x"},
         moldy_source="chat",
@@ -425,8 +435,8 @@ async def test_completed_run_keeps_trace_before_transition_order(
         run = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conv.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conv),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="completed ordering",
         )
@@ -469,7 +479,7 @@ async def test_completed_run_keeps_trace_before_transition_order(
     await conversation_run_worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=cast(Any, SimpleNamespace(secret_values=set(), agent_id=None)),
+        cfg=await run_fixture_config(run_id, TestSession),
         user=user,
         input_payload={"content": "x"},
         moldy_source="chat",

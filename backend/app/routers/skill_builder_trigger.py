@@ -3,11 +3,13 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import ValidationError
+from pydantic import JsonValue, TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.skill_builder.trigger_eval import optimize_trigger_description
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import invalid_skill_package
 from app.routers.skill_builder_support import (
     get_session_or_404,
@@ -16,19 +18,25 @@ from app.routers.skill_builder_support import (
 )
 from app.schemas.skill_builder import SkillBuilderSessionResponse, SkillDraftPackage
 from app.services import skill_builder_service
+from app.services.skill_builder_mutation_scope import (
+    SkillBuilderEvaluation,
+    SkillBuilderMutationTarget,
+)
 
 router = APIRouter(prefix="/api/skill-builder", tags=["skill-builder"])
 
 
 @router.post("/{session_id}/trigger-eval/run", response_model=SkillBuilderSessionResponse)
+@authz_policy(PRIVATE("skill_builder_sessions", param="session_id"))
 async def run_skill_builder_trigger_eval(
     session_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> SkillBuilderSessionResponse:
-    session = await get_session_or_404(db, session_id=session_id, user=user)
+    session = await get_session_or_404(db, session_id=session_id, context=context)
     await require_system_llm(db, user=user, request=request)
     try:
         draft = SkillDraftPackage.model_validate(session.draft_package)
@@ -38,9 +46,11 @@ async def run_skill_builder_trigger_eval(
     optimized, result = optimize_trigger_description(draft=draft, intent=session.user_request)
     await skill_builder_service.save_trigger_eval_result(
         db,
-        session,
-        result=result,
-        draft=optimized.model_dump(mode="json"),
+        SkillBuilderMutationTarget(session.id, context),
+        SkillBuilderEvaluation(
+            TypeAdapter(dict[str, JsonValue]).validate_python(result),
+            optimized.model_dump(mode="json"),
+        ),
     )
     await record_builder_audit(
         db,

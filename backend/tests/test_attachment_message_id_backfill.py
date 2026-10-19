@@ -14,6 +14,7 @@ output is echoed on the correct user bubble.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.offload_storage_types import OffloadKind, logical_offload_id
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message_attachment import MessageAttachment
@@ -33,19 +35,44 @@ from app.services.chat_service import (
     resolve_turn_user_message_id,
 )
 from app.services.thread_branch_service import MessageTree, MessageTreeNode
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
 async def _seed_conversation(db: AsyncSession) -> Conversation:
     if await db.get(User, TEST_USER_ID) is None:
         db.add(User(id=TEST_USER_ID, email="test@test.com", name="Test"))
+    await db.flush()
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="fixture-replay@test.dev", name="Fixture")
+    )
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.flush()
-    agent = Agent(user_id=TEST_USER_ID, name="A", system_prompt="x", model_id=model.id)
+    agent = Agent(
+        user_id=TEST_USER_ID,
+        name="A",
+        system_prompt="x",
+        model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+    )
     db.add(agent)
     await db.flush()
-    conv = Conversation(agent_id=agent.id, title="t")
+    conv = Conversation(
+        agent_id=agent.id,
+        title="t",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=datetime.now(UTC),
+    )
     db.add(conv)
     await db.flush()
     return conv
@@ -74,6 +101,8 @@ def _attachment(conv: Conversation, *, message_id: str | None) -> MessageAttachm
         size_bytes=3,
         storage_path=f"/tmp/{upload_id}.png",
         url=f"/api/uploads/{upload_id}",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
 
 
@@ -104,7 +133,9 @@ async def test_resolver_id_matches_read_path_and_echoes_on_last_user_bubble(
     db.add(att)
     await db.flush()
 
-    responses = await list_messages_from_checkpointer(db, conv, user_id=TEST_USER_ID, tree=tree)
+    responses = await list_messages_from_checkpointer(
+        db, conv, user_id=TEST_USER_ID, tree=tree, context=unit_context(TEST_USER_ID)
+    )
     user_msgs = [r for r in responses if r.role == "user"]
     last_user = user_msgs[-1]
     assert str(last_user.id) == resolved
@@ -128,11 +159,15 @@ async def test_share_view_excludes_attachments(db: AsyncSession) -> None:
     await db.flush()
 
     # Authed view echoes it...
-    authed = await list_messages_from_checkpointer(db, conv, user_id=TEST_USER_ID, tree=tree)
+    authed = await list_messages_from_checkpointer(
+        db, conv, user_id=TEST_USER_ID, tree=tree, context=unit_context(TEST_USER_ID)
+    )
     assert any(r.attachments for r in authed)
 
     # ...the share view (user_id=None) does not.
-    shared = await list_messages_from_checkpointer(db, conv, user_id=None, tree=tree)
+    shared = await list_messages_from_checkpointer(
+        db, conv, user_id=None, tree=tree, context=unit_context(TEST_USER_ID)
+    )
     assert all(r.attachments is None for r in shared)
 
 
@@ -157,7 +192,9 @@ async def test_share_message_read_projects_history_then_masks_configured_secret(
         AsyncMock(return_value={secret}),
     )
 
-    responses = await list_messages_from_checkpointer(db, conv, user_id=None, tree=tree)
+    responses = await list_messages_from_checkpointer(
+        db, conv, user_id=None, tree=tree, context=unit_context(TEST_USER_ID)
+    )
 
     assert responses[0].content == "ordinary message"
     assert responses[1].content == (
@@ -182,7 +219,9 @@ async def test_resolver_matches_read_path_for_idless_human(db: AsyncSession) -> 
     )
 
     resolved = await resolve_turn_user_message_id(db, conv, tree=tree)
-    responses = await list_messages_from_checkpointer(db, conv, user_id=TEST_USER_ID, tree=tree)
+    responses = await list_messages_from_checkpointer(
+        db, conv, user_id=TEST_USER_ID, tree=tree, context=unit_context(TEST_USER_ID)
+    )
     last_user = [r for r in responses if r.role == "user"][-1]
     assert resolved == str(last_user.id)
     # Derived deterministically from (conversation_id, idx=0), not a random uuid.
@@ -205,7 +244,11 @@ async def test_link_attachments_only_stamps_null_rows(db: AsyncSession) -> None:
     await db.flush()
 
     updated = await link_attachments_to_message(
-        db, attachment_ids=[fresh.id, already.id], message_id="this-turn-msg"
+        db,
+        attachment_ids=[fresh.id, already.id],
+        message_id="this-turn-msg",
+        context=unit_context(TEST_USER_ID),
+        conversation_id=conv.id,
     )
     assert updated == 1
 
@@ -220,4 +263,13 @@ async def test_link_attachments_only_stamps_null_rows(db: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_link_attachments_empty_is_noop(db: AsyncSession) -> None:
-    assert await link_attachments_to_message(db, attachment_ids=[], message_id="m") == 0
+    assert (
+        await link_attachments_to_message(
+            db,
+            attachment_ids=[],
+            message_id="m",
+            context=unit_context(TEST_USER_ID),
+            conversation_id=uuid.uuid4(),
+        )
+        == 0
+    )

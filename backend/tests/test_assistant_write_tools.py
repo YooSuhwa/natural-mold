@@ -10,17 +10,26 @@ import json
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -36,6 +45,7 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
     )
     db.add(model)
     await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     agent = Agent(
         user_id=user.id,
         name="Write Test Agent",
@@ -43,6 +53,8 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
         system_prompt="You are a helpful assistant. Use tools wisely.",
         model_id=model.id,
         model_params={"temperature": 0.7},
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
@@ -50,6 +62,9 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
         name="Web Search",
         definition_key="builtin:web_search",
         description="Search the web",
+        is_system=True,
+        org_id=None,
+        tenant_id=None,
     )
     db.add(tool)
     await db.flush()
@@ -61,6 +76,9 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
         name="Web Scraper",
         definition_key="builtin:web_scraper",
         description="Scrape web pages",
+        is_system=True,
+        org_id=None,
+        tenant_id=None,
     )
     db.add(tool2)
     await db.commit()
@@ -103,13 +121,13 @@ def _extract_schedule_id(result: str) -> str:
 def _build_write_tools(db: AsyncSession, agent_id: uuid.UUID):
     from app.agent_runtime.assistant.tools.write_tools import build_write_tools
 
-    return build_write_tools(db, agent_id, TEST_USER_ID)
+    return build_write_tools(db, agent_id, unit_context(TEST_USER_ID))
 
 
 def _build_read_tools(db: AsyncSession, agent_id: uuid.UUID):
     from app.agent_runtime.assistant.tools.read_tools import build_read_tools
 
-    return build_read_tools(db, agent_id, TEST_USER_ID)
+    return build_read_tools(db, agent_id, unit_context(TEST_USER_ID))
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +239,8 @@ async def test_update_agent_identity_mode_rejects_per_user_with_active_schedule(
             schedule_config={"cron_expression": "0 * * * *"},
             input_message="run",
             status="active",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
     )
     await db.commit()
@@ -383,6 +403,8 @@ async def _create_sibling_agent(db: AsyncSession, name: str = "Sibling Agent") -
         description=f"{name} desc",
         system_prompt="sibling prompt",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(sibling)
     await db.commit()
@@ -486,6 +508,8 @@ async def _create_skill(db: AsyncSession, name: str) -> uuid.UUID:
         description=f"{name} desc",
         kind="text",
         storage_path=f"/tmp/skills/{name.lower()}/SKILL.md",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(skill)
     await db.commit()
@@ -817,7 +841,15 @@ async def test_update_cron_schedule_validates_uuid_and_datetime_strings(
     agent_id, _ = await _seed_full(db)
     tools = _build_write_tools(db, agent_id)
 
-    conversation = Conversation(agent_id=agent_id, title="선택 대화")
+    conversation = Conversation(
+        agent_id=agent_id,
+        title="선택 대화",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=TEST_USER_ID,
+        agent_name_snapshot="Fixture agent",
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.commit()
     await db.refresh(conversation)
@@ -1007,6 +1039,8 @@ async def test_enable_cron_schedule_returns_fixed_identity_error(
         schedule_config={"cron_expression": "0 * * * *"},
         input_message="run",
         status="paused",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(trigger)
     await db.commit()

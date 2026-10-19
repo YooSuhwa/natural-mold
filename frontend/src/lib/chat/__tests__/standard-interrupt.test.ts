@@ -126,6 +126,18 @@ describe('standardInterruptToToolCalls', () => {
     })
   })
 
+  it('offers no decisions for an action without a review config (server fails closed)', () => {
+    const payload: StandardInterruptPayload = {
+      interrupt_id: 'intr-noconfig',
+      action_requests: [{ name: 'delete_record', args: { id: 7 } }],
+      review_configs: [],
+    }
+
+    const [call] = standardInterruptToToolCalls(payload)
+
+    expect(call?.args.allowed_decisions).toEqual([])
+  })
+
   it('preserves action order and indexes for multi-action interrupts', () => {
     const payload: StandardInterruptPayload = {
       interrupt_id: 'intr-multi',

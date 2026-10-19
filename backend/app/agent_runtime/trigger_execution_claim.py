@@ -1,0 +1,117 @@
+"""Trigger execution block 1: row lock, authorization revalidation and claim.
+
+A refused claim outside legacy returns the recorded BLOCKED run (F-08, 11.6).
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from dataclasses import dataclass, field
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.broken_links import broken_required, use_runtime_link_view
+from app.authz.execution_lock_cursor import LockClass
+from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import acquire_execution_proof, lock_row
+from app.authz.runtime_access_planner import RuntimeAccessPlan
+from app.authz.trigger_scope import require_trigger_actor
+from app.exceptions import AppError
+from app.models.agent import Agent
+from app.models.agent_trigger import AgentTrigger
+from app.models.agent_trigger_run import AgentTriggerRun
+from app.services import chat_service, trigger_service
+
+logger = logging.getLogger("app.agent_runtime.trigger_executor")
+
+
+@dataclass(slots=True)
+class TriggerClaim:
+    trigger: AgentTrigger
+    context: OrgContext
+    agent: Agent
+    blocked_tools: list[Any]
+    tools_config: list[dict[str, Any]]
+    run: AgentTriggerRun
+    blocked_links: list[dict[str, object]] = field(default_factory=list)  # F-03 (10.6)
+    agent_skills: list[dict[str, Any]] | None = None  # the boundary's allowed skills (F-06)
+    access_plan: RuntimeAccessPlan | None = None
+
+
+async def claim_trigger_run(
+    db: AsyncSession, trigger_id: str, trigger_uuid: uuid.UUID, *, force: bool
+) -> TriggerClaim | AgentTriggerRun | None:
+    # SEC-3 duplicate guard: lock the trigger row so concurrent entries
+    # (scheduled fire vs user run-now, which bypasses APScheduler's
+    # max_instances) serialise, then claim by checking for an in-flight
+    # run before creating ours. FOR UPDATE is a no-op on SQLite (tests
+    # exercise the check itself); on Postgres it closes the
+    # check-then-insert race. The lock remains held through durable run
+    # acceptance, so a contender re-reads only after the envelope is visible.
+    trigger = await db.scalar(select(AgentTrigger).where(AgentTrigger.id == trigger_uuid))
+    if not trigger:
+        logger.info("Trigger %s skipped (not found)", trigger_id)
+        return None
+
+    try:
+        context = await require_trigger_actor(db, trigger)
+        # The unlocked lookup above is only an ID hint: enter the canonical
+        # gateway (parent/member/User prefix + Agent tree) before the trigger lock.
+        proof = await acquire_execution_proof(db, context, root_agent_id=trigger.agent_id)
+        # F-08 (11.1): a run path, so a child of another member reaches the planner
+        target = AgentExecutionTarget(trigger.agent_id, context, run=True)
+        await load_agent_tree_for_execution(db, target)
+        trigger = await lock_row(
+            db,
+            proof.cursor,
+            LockClass.TRIGGER,
+            trigger_uuid,
+            select(AgentTrigger)
+            .where(AgentTrigger.id == trigger_uuid, AgentTrigger.agent_id == trigger.agent_id)
+            .with_for_update(),
+        )
+        if trigger is None:
+            return None
+        use_runtime_link_view(db)  # F-03 (10.6): broken links are never bound to a run
+        agent = await chat_service.get_agent_with_tools(db, trigger.agent_id, context)
+        if agent is None:
+            return None
+        blocked_links = await broken_required(db, agent.id)  # run recorded as failed
+        runtime = await chat_service.prepare_authorized_runtime(
+            agent, path="trigger", context=context, db=db, identity=None
+        )
+        blocked_tools = await chat_service.trigger_blocked_tools_for_agent_tree(
+            agent, context=context, db=db, plan=runtime.plan
+        )
+    except AppError as exc:
+        logger.info("Trigger %s skipped (authorization: %s)", trigger_id, exc.code)
+        return await trigger_service.record_blocked_claim(db, trigger_uuid, exc, force=force)
+
+    in_flight = await trigger_service.find_in_flight_run(db, trigger_uuid)
+    if in_flight is not None:
+        logger.info("Trigger %s skipped (run %s already in flight)", trigger_id, in_flight.id)
+        if force:
+            raise trigger_service.TriggerRunInFlightError(in_flight.id)
+        return None
+
+    run = await trigger_service.start_trigger_run(
+        db,
+        trigger,
+        source="run_now" if force else "scheduled",
+    )
+    tools = runtime.tools_config
+    return TriggerClaim(
+        trigger,
+        context,
+        agent,
+        blocked_tools,
+        tools,
+        run,
+        blocked_links,
+        agent_skills=runtime.agent_skills,
+        access_plan=runtime.plan,
+    )

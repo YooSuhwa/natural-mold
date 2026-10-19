@@ -9,6 +9,7 @@ from typing import Protocol
 
 from app.config import settings
 from app.services.artifact_paths import safe_storage_filename
+from app.storage.paths import check_company_path, tenant_relative
 
 
 @dataclass(frozen=True)
@@ -28,11 +29,10 @@ class ArtifactStorageBackend(Protocol):
         version_number: int,
         display_name: str,
         source_path: Path,
-    ) -> StoredArtifactObject:
-        ...
+        tenant_id: uuid.UUID | None = None,
+    ) -> StoredArtifactObject: ...
 
-    async def local_path(self, *, object_key: str) -> Path:
-        ...
+    async def local_path(self, *, object_key: str, tenant_id: uuid.UUID | None = None) -> Path: ...
 
 
 class ArtifactStorageBackendUnavailableError(RuntimeError):
@@ -65,10 +65,13 @@ class LocalArtifactStorageBackend:
         version_number: int,
         display_name: str,
         source_path: Path,
+        tenant_id: uuid.UUID | None = None,
     ) -> StoredArtifactObject:
+        """Copy into the company folder ``tenants/<tenant_id>/conversations/...`` (I-08)."""
         safe_name = safe_storage_filename(display_name)
-        object_key = (
-            f"conversations/{conversation_id}/{artifact_id}/v{version_number}/{safe_name}"
+        object_key = tenant_relative(
+            tenant_id,
+            f"conversations/{conversation_id}/{artifact_id}/v{version_number}/{safe_name}",
         )
         target = (self.root_dir / object_key).resolve()
         root = self.root_dir.resolve()
@@ -83,10 +86,12 @@ class LocalArtifactStorageBackend:
             path=target,
         )
 
-    async def local_path(self, *, object_key: str) -> Path:
+    async def local_path(self, *, object_key: str, tenant_id: uuid.UUID | None = None) -> Path:
+        """Raises ``ForeignTenantPathError`` (a ``ValueError``) for another company's key."""
         target = (self.root_dir / object_key).resolve()
         if not target.is_relative_to(self.root_dir.resolve()):
             raise ValueError("artifact object key escapes storage root")
+        check_company_path(target, self.root_dir, tenant_id)
         if not target.is_file():
             raise FileNotFoundError(target)
         return target

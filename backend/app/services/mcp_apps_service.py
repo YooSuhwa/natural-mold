@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.agent_runtime.run_secrets import collect_secret_values
+from app.credentials import service as credential_service
+from app.credentials.run_resolution import RunCredentialResolver
+from app.credentials.run_subject import subject_for_caller
 from app.mcp.apps import (
     normalize_resource_ui_meta,
     normalize_tool_ui_meta,
@@ -17,6 +20,7 @@ from app.mcp.apps import (
     sanitize_result_payload,
     tool_allows_visibility,
 )
+from app.mcp.apps_binding_store import require_live_agent_tree
 from app.mcp.auth import ResolvedMcpAuth, resolve_mcp_auth
 from app.mcp.invocation import call_mcp_tool_once, read_mcp_resource_once
 from app.services.mcp_apps_binding_service import (
@@ -35,6 +39,7 @@ MAX_TOOL_ARGUMENT_BYTES: Final = 64 * 1024
 
 
 async def read_bound_resource(db: AsyncSession, context: AuthorizedBinding) -> dict[str, Any]:
+    await require_live_agent_tree(db, context.run.agent_id, context.org_context)
     auth = await _auth_for_context(db, context)
     raw = await read_mcp_resource_once(
         transport=context.server.transport,
@@ -88,15 +93,16 @@ async def call_bound_tool(
     tool_name: str,
     arguments: dict[str, Any],
 ) -> dict[str, Any]:
+    agent_id = await require_live_agent_tree(db, context.run.agent_id, context.org_context)
     if len(json.dumps(arguments, separators=(",", ":")).encode()) > MAX_TOOL_ARGUMENT_BYTES:
         raise McpAppsError("mcp_app_arguments_too_large", "tool arguments are too large", 413)
     tool = await linked_tool(
         db,
-        agent_id=context.run.agent_id,
+        agent_id=agent_id,
         server_id=context.binding.mcp_server_id,
         tool_id=None,
         tool_name=tool_name,
-        owner_user_id=context.binding.credential_subject_user_id,
+        context=context.org_context,
     )
     meta = normalize_tool_ui_meta(tool.metadata_json) if tool is not None else None
     if tool is None or not tool_allows_visibility(meta, "app"):
@@ -128,11 +134,24 @@ async def call_bound_tool(
 
 
 async def _auth_for_context(db: AsyncSession, context: AuthorizedBinding) -> ResolvedMcpAuth:
+    """Re-resolved on every call: shared → the server's credential, per_user → the
+    binding subject's own connection (11.3, F-05)."""
+    server, subject_user_id = context.server, context.binding.credential_subject_user_id
+    credential_id, owner_id = server.credential_id, subject_user_id
+    if server.credential_mode == "per_user":
+        subject = subject_for_caller(context.org_context, subject_user_id)
+        bound = await RunCredentialResolver(db, subject).bound(server, "mcp_server")
+        if bound is None:
+            raise McpAppsError(
+                "credential_binding_required", "connect your own account to this server", 409
+            )
+        credential_id, owner_id = bound.id, bound.user_id
+    elif credential_id is not None:
+        credential = await credential_service.get_for_user(db, credential_id, context.org_context)
+        if credential is None:
+            raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 404)
     auth = await resolve_mcp_auth(
-        db,
-        credential_id=context.server.credential_id,
-        user_id=context.binding.credential_subject_user_id,
-        static_headers=context.server.headers,
+        db, credential_id=credential_id, user_id=owner_id, static_headers=server.headers
     )
     if auth.error:
         raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 403)

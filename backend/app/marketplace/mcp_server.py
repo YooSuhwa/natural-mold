@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
+from app.authz.scoping import private_scope_predicate, private_scoped
 from app.error_codes import (
     marketplace_acl_required,
     marketplace_invalid_package,
@@ -15,7 +18,7 @@ from app.error_codes import (
     marketplace_item_not_found,
     marketplace_manage_forbidden,
 )
-from app.marketplace.access import can_manage_item
+from app.marketplace.access import ItemAuthorizer, can_manage_item, manageable_item
 from app.marketplace.payloads import (
     canonical_json_bytes,
     canonical_json_hash,
@@ -83,13 +86,17 @@ async def _tool_snapshot_for_server(
     db: AsyncSession, *, server_id: uuid.UUID
 ) -> list[dict[str, Any]]:
     tools = (
-        await db.execute(
-            select(McpTool)
-            .where(McpTool.server_id == server_id)
-            .where(McpTool.enabled.is_(True))
-            .order_by(McpTool.name.asc())
+        (
+            await db.execute(
+                select(McpTool)
+                .where(McpTool.server_id == server_id)
+                .where(McpTool.enabled.is_(True))
+                .order_by(McpTool.name.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         {
             "name": tool.name,
@@ -140,9 +147,7 @@ def build_mcp_server_payload(
         "tool_snapshot": _clean_tool_snapshot(tool_snapshot),
         "install_defaults": {
             "discover_on_install": True,
-            "enabled_tool_names": [
-                tool["name"] for tool in _clean_tool_snapshot(tool_snapshot)
-            ],
+            "enabled_tool_names": [tool["name"] for tool in _clean_tool_snapshot(tool_snapshot)],
         },
         "security": {
             "requires_network": server.transport in {"sse", "streamable_http"},
@@ -178,16 +183,21 @@ async def publish_mcp_server(
     *,
     server_id: uuid.UUID,
     user: CurrentUser,
+    context: OrgContext,
     body: PublishMcpServerIn,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceItem:
-    server = await db.get(McpServer, server_id)
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    server = await db.scalar(
+        private_scoped(select(McpServer).where(McpServer.id == server_id), McpServer, context)
+    )
     if server is None or server.user_id != user.id:
         raise marketplace_item_not_found()
 
     if body.visibility not in ("private", "restricted", "public", "unlisted"):
-        raise marketplace_invalid_visibility(
-            f"unsupported publish visibility: {body.visibility}"
-        )
+        raise marketplace_invalid_visibility(f"unsupported publish visibility: {body.visibility}")
     if body.visibility == "restricted" and not body.acl_user_ids:
         raise marketplace_acl_required()
     if server.transport == "stdio" and body.visibility in {"public", "unlisted"}:
@@ -197,11 +207,15 @@ async def publish_mcp_server(
 
     item: MarketplaceItem | None = None
     if body.item_id is not None:
-        item = await db.get(MarketplaceItem, body.item_id)
-        if item is None:
-            raise marketplace_item_not_found()
-        if not can_manage_item(item, user):
-            raise marketplace_manage_forbidden()
+        if authorize is None or not authorize.enforced:
+            item = await db.scalar(
+                private_scoped(
+                    select(MarketplaceItem).where(MarketplaceItem.id == body.item_id),
+                    MarketplaceItem,
+                    context,
+                )
+            )
+        item = await manageable_item(body.item_id, item, user, authorize)
         if item.resource_type != "mcp":
             raise marketplace_invalid_package("marketplace item is not an MCP item")
     else:
@@ -209,7 +223,7 @@ async def publish_mcp_server(
         item = (
             await db.execute(
                 select(MarketplaceItem)
-                .where(MarketplaceItem.owner_user_id == user.id)
+                .where(private_scope_predicate(MarketplaceItem, context))
                 .where(MarketplaceItem.resource_type == "mcp")
                 .where(MarketplaceItem.slug == slug)
                 .limit(1)
@@ -219,7 +233,9 @@ async def publish_mcp_server(
             item = MarketplaceItem(
                 id=uuid.uuid4(),
                 resource_type="mcp",
-                owner_user_id=user.id,
+                owner_user_id=context.user_id,
+                org_id=context.org_id,
+                tenant_id=context.tenant_id,
                 is_system=False,
                 is_listed=False,
                 name=body.name,
@@ -320,17 +336,17 @@ async def publish_mcp_server(
             item.categories = list(body.categories)
 
     if body.visibility == "restricted":
-        await _create_acl(
-            db, item=item, user_ids=list(body.acl_user_ids), permission="install"
-        )
+        await _create_acl(db, item=item, user_ids=list(body.acl_user_ids), permission="install")
     else:
         existing_acl = (
-            await db.execute(
-                select(MarketplaceItemACL).where(
-                    MarketplaceItemACL.item_id == item.id
+            (
+                await db.execute(
+                    select(MarketplaceItemACL).where(MarketplaceItemACL.item_id == item.id)
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for row in existing_acl:
             await db.delete(row)
 

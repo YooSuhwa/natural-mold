@@ -27,11 +27,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.skill import Skill
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
-_VERSIONS_DIR = (
-    Path(__file__).resolve().parent.parent / "alembic" / "versions"
-)
+_VERSIONS_DIR = Path(__file__).resolve().parent.parent / "alembic" / "versions"
 
 
 def _load(name: str):
@@ -113,17 +112,13 @@ class TestMetadataIncludesM41Columns:
             "origin_marketplace_version_id",
             "is_dirty",
         ):
-            assert col in cols, (
-                f"Skill ORM missing m41 column {col!r} — model/migration drift"
-            )
+            assert col in cols, f"Skill ORM missing m41 column {col!r} — model/migration drift"
 
     def test_agent_skills_model_has_config_column(self) -> None:
         from app.models.skill import AgentSkillLink
 
         cols = {c.name for c in AgentSkillLink.__table__.columns}
-        assert "config" in cols, (
-            "AgentSkillLink missing 'config' JSON column — m42 not propagated"
-        )
+        assert "config" in cols, "AgentSkillLink missing 'config' JSON column — m42 not propagated"
 
 
 # ===========================================================================
@@ -146,9 +141,7 @@ class TestM41BackfillSemantics:
     """
 
     @pytest.mark.asyncio
-    async def test_text_skills_backfilled_to_user_and_created_by_me(
-        self, db: AsyncSession
-    ) -> None:
+    async def test_text_skills_backfilled_to_user_and_created_by_me(self, db: AsyncSession) -> None:
         text_skill = Skill(
             id=uuid.uuid4(),
             user_id=TEST_USER_ID,
@@ -165,21 +158,19 @@ class TestM41BackfillSemantics:
             # Simulate pre-m41 snapshot: source_kind NULL.
             source_kind=None,
             origin_kind="created_by_me",  # column default
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(text_skill)
         await db.flush()
 
         await db.execute(
             text(
-                "UPDATE skills SET source_kind = 'user' "
-                "WHERE source_kind IS NULL AND kind = 'text'"
+                "UPDATE skills SET source_kind = 'user' WHERE source_kind IS NULL AND kind = 'text'"
             )
         )
         await db.execute(
-            text(
-                "UPDATE skills SET origin_kind = 'imported_by_me' "
-                "WHERE kind = 'package'"
-            )
+            text("UPDATE skills SET origin_kind = 'imported_by_me' WHERE kind = 'package'")
         )
         await db.commit()
         await db.refresh(text_skill)
@@ -207,6 +198,8 @@ class TestM41BackfillSemantics:
             used_by_count=0,
             source_kind=None,
             origin_kind="created_by_me",  # default before backfill
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(package_skill)
         await db.flush()
@@ -218,10 +211,7 @@ class TestM41BackfillSemantics:
             )
         )
         await db.execute(
-            text(
-                "UPDATE skills SET origin_kind = 'imported_by_me' "
-                "WHERE kind = 'package'"
-            )
+            text("UPDATE skills SET origin_kind = 'imported_by_me' WHERE kind = 'package'")
         )
         await db.commit()
         await db.refresh(package_skill)
@@ -230,9 +220,7 @@ class TestM41BackfillSemantics:
         assert package_skill.origin_kind == "imported_by_me"
 
     @pytest.mark.asyncio
-    async def test_backfill_does_not_overwrite_explicit_source_kind(
-        self, db: AsyncSession
-    ) -> None:
+    async def test_backfill_does_not_overwrite_explicit_source_kind(self, db: AsyncSession) -> None:
         """``WHERE source_kind IS NULL`` clause must protect rows already
         tagged as ``k-skill`` / ``system_seed`` (Spec §15.2 prerequisite)."""
 
@@ -252,6 +240,8 @@ class TestM41BackfillSemantics:
             is_system=True,
             source_kind="k-skill",  # explicit pre-backfill value
             origin_kind="created_by_me",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(kskill)
         await db.flush()
@@ -296,6 +286,8 @@ class TestServerDefaults:
             version=None,
             package_metadata=None,
             used_by_count=0,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(row)
         await db.flush()

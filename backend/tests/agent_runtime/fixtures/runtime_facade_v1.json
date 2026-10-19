@@ -514,6 +514,24 @@
           "name": "secret_values"
         },
         {
+          "annotation": "RuntimeAccessPlan | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "access_plan"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "usage_root_agent_id"
+        },
+        {
+          "annotation": "OrgContext",
+          "default": "required",
+          "kind": "keyword_only",
+          "name": "org_context"
+        },
+        {
           "annotation": "ResolvedRuntimePolicy",
           "default": "value:ResolvedRuntimePolicy",
           "kind": "keyword_only",
@@ -780,7 +798,7 @@
           "name": "cfg"
         },
         {
-          "annotation": "list[dict[str, str]]",
+          "annotation": "Sequence[RuntimeMessage]",
           "default": "required",
           "kind": "keyword_only",
           "name": "messages_history"
@@ -896,7 +914,7 @@
           "name": "cfg"
         },
         {
-          "annotation": "list[dict[str, str]]",
+          "annotation": "Sequence[RuntimeMessage]",
           "default": "required",
           "kind": "keyword_only",
           "name": "messages_history"
@@ -1079,7 +1097,7 @@
           "name": "cfg"
         },
         {
-          "annotation": "list[dict[str, str]]",
+          "annotation": "Sequence[RuntimeMessage]",
           "default": "required",
           "kind": "positional_or_keyword",
           "name": "messages_history"
@@ -1108,7 +1126,7 @@
           "name": "cfg"
         },
         {
-          "annotation": "list[dict[str, str]] | dict[str, Any]",
+          "annotation": "Sequence[RuntimeMessage] | dict[str, Any]",
           "default": "required",
           "kind": "positional_or_keyword",
           "name": "messages_history"
@@ -1166,6 +1184,12 @@
           "default": "none",
           "kind": "keyword_only",
           "name": "langfuse_sink"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_metrics"
         }
       ],
       "return": "AsyncGenerator[str, None]"
@@ -1179,7 +1203,7 @@
           "name": "cfg"
         },
         {
-          "annotation": "list[dict[str, str]] | dict[str, Any]",
+          "annotation": "Sequence[RuntimeMessage] | dict[str, Any]",
           "default": "required",
           "kind": "positional_or_keyword",
           "name": "messages_history"
@@ -1314,6 +1338,12 @@
           "default": "none",
           "kind": "keyword_only",
           "name": "langfuse_sink"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "run_metrics"
         }
       ],
       "return": "AsyncGenerator[str, None]"

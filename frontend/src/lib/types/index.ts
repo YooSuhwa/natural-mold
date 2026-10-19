@@ -73,6 +73,8 @@ export interface MiddlewareConfigEntry {
 
 export interface Agent {
   id: string
+  /** Shadow/enforce only (`AgentAccessResponse`); absent in legacy mode. */
+  my_permissions?: string[]
   runtime_name: string
   identity_mode: AgentIdentityMode
   name: string
@@ -113,10 +115,14 @@ export interface Agent {
   runtime_policy_effective: RuntimePolicyV1
   /** Provenance of the stored/effective agent policy; never include it in writes. */
   runtime_policy_source: 'legacy_compat' | 'stored'
+  /** S29: linked tool / MCP tool / skill / subagent ids whose link is required. */
+  required_link_ids?: string[]
 }
 
 export interface AgentSummary {
   id: string
+  /** Shadow/enforce only (`AgentSummaryAccessResponse`); absent in legacy mode. */
+  my_permissions?: string[]
   name: string
   description: string | null
   status: string
@@ -160,6 +166,8 @@ export interface AgentUpdateRequest {
   mcp_tool_ids?: string[]
   skill_ids?: string[]
   sub_agent_ids?: string[]
+  /** S29: replaces the required marks of every link; omitted leaves them unchanged. */
+  required_link_ids?: string[]
   is_favorite?: boolean
   model_params?: ModelParams
   middleware_configs?: MiddlewareConfigEntry[]
@@ -493,6 +501,7 @@ export type SSEEventType =
   | 'error'
   | 'interrupt'
   | 'stale'
+  | 'moldy.excluded_capabilities'
 
 // ── HiTL — interrupt wire (LangChain HumanInTheLoopMiddleware 표준) ──────
 
@@ -523,9 +532,25 @@ export interface StandardInterruptPayload {
   namespace?: string[]
   action_requests: ActionRequest[]
   review_configs: ReviewConfig[]
+  /** Set only by the native interrupt adapter (F-07 `auth_required`), never by tool args. */
+  native?: 'auth_required'
 }
 
-export type InterruptPayload = StandardInterruptPayload
+/**
+ * F-07 ConnectionGuard interrupt as the non-protocol wires carry it (legacy SSE
+ * `interrupt`, AG-UI `moldy.interrupt`, reconnect synthesis): the raw 11.5 value with its
+ * kind in `type`. Normalized into a `native: 'auth_required'` standard payload (G-05).
+ */
+export interface AuthRequiredInterruptPayload {
+  interrupt_id: string
+  type: 'auth_required'
+  reason?: string
+  items?: unknown[]
+  attempt?: number
+  allowed_decisions?: DecisionType[]
+}
+
+export type InterruptPayload = StandardInterruptPayload | AuthRequiredInterruptPayload
 
 /** Resume 송신용 단일 결정. LangChain `HITLResponse.decisions[i]`와 1:1. */
 export interface Decision {
@@ -544,6 +569,8 @@ export interface Decision {
    * 미들웨어로 내려보낸다 (비표준 decision 필드는 langchain 검증을 깨뜨림).
    */
   scope?: 'session'
+  /** `auth_required` only (G-06): the re-ask being answered; the server refuses a stale one. */
+  attempt?: number
 }
 
 /** POST `/conversations/:id/messages/resume` 표준 body. */
@@ -578,6 +605,7 @@ export type SSEEvent = { id?: string } & (
       data: { tool_call_id?: string; tool_name: string; result: string }
     }
   | { event: 'file_event'; data: import('./artifact').FileEventPayload }
+  | { event: 'moldy.excluded_capabilities'; data: unknown } // F-06 / 13.6 counts, no ids
   | { event: 'memory_proposed'; data: import('./memory').MemoryEventPayload }
   | { event: 'memory_saved'; data: import('./memory').MemoryEventPayload }
   | { event: 'memory_rejected'; data: import('./memory').MemoryEventPayload }

@@ -8,16 +8,19 @@ import os
 import re
 import secrets
 import stat
+import subprocess
 import tempfile
 from pathlib import Path
 
 import psycopg
+from postgres_failure_diagnostics import build_child_failure_diagnostics
 from postgres_manifest_io import (
     RunnerInterrupted,
     cleanup_receipt_succeeded,
     defer_cleanup_signals,
     run_cli,
 )
+from postgres_progress_receipt import ProgressReceiptError, load_progress_receipt
 from postgres_runner_cleanup import CleanupContext, cleanup_scenario_resources
 from postgres_runner_contract import (
     build_lane_dsns,
@@ -40,6 +43,10 @@ from postgres_runner_runtime import (
     run_test_child,
     start_process_scope,
     wait_ready,
+)
+from postgres_task7_receipt import Task7ReceiptError
+from postgres_task7_receipt import (
+    capture_task7_history_receipt as _capture_task7_history_receipt,
 )
 from psycopg import sql
 
@@ -147,7 +154,30 @@ def _run_scenario(
             exit_code, output = (0 if migration_roundtrip else 1), ""
         else:
             migration_roundtrip = None
-            exit_code, output = run_test_child(env, kind)
+            try:
+                exit_code, output = run_test_child(env, kind)
+            except subprocess.TimeoutExpired:
+                try:
+                    progress_receipt = load_progress_receipt(receipt, require_finished=False)
+                    failure_reason = "child_timeout"
+                except ProgressReceiptError as error:
+                    progress_receipt = None
+                    failure_reason = f"child_timeout_{error}"
+                outcome.update(
+                    {
+                        "status": "failed",
+                        "failure_reason": failure_reason,
+                        "child_exit_code": 70,
+                        "server_version_num": server,
+                        "alembic_head": head,
+                        "alembic_current": current,
+                        "schema_fingerprint": fingerprint,
+                        "second_upgrade_idempotent": idempotent,
+                        "test_receipt": progress_receipt,
+                        "tmpfs_storage": tmpfs_owned,
+                    }
+                )
+                return outcome
         warnings = sorted(
             set(
                 re.findall(
@@ -163,10 +193,21 @@ def _run_scenario(
             "stream-resume": 0,
             "run-lifecycle+stream-resume": 0,
             "queue-concurrency": 0,
+            "agent-lifecycle": 0,
+            "company-administration": 0,
             "success": 0,
             "child_failure": 23,
             "sigint": 130,
         }[kind]
+        task7_history_receipt = (
+            _capture_task7_history_receipt(
+                run_root,
+                receipt,
+                child_succeeded=exit_code == expected,
+            )
+            if kind == "agent-lifecycle"
+            else None
+        )
         outcome.update(
             {
                 "status": "passed" if exit_code == expected else "failed",
@@ -179,13 +220,31 @@ def _run_scenario(
                 "second_upgrade_idempotent": idempotent,
                 "warning_hits": warnings,
                 "warning_scan_complete": True,
-                "test_receipt": json.loads(receipt.read_text())
+                "test_receipt": load_progress_receipt(receipt, require_finished=True)
                 if kind
-                in {"all", "stream-resume", "run-lifecycle+stream-resume", "queue-concurrency"}
+                in {
+                    "all",
+                    "stream-resume",
+                    "run-lifecycle+stream-resume",
+                    "queue-concurrency",
+                    "agent-lifecycle",
+                    "company-administration",
+                }
                 else None,
                 "tmpfs_storage": tmpfs_owned,
             }
         )
+        if exit_code != expected and kind in {"agent-lifecycle", "all"}:
+            outcome["child_failure_diagnostics"] = build_child_failure_diagnostics(output)
+        if kind == "agent-lifecycle":
+            graph_receipt = run_root / "lifecycle-graph-receipt.json"
+            if exit_code == expected and not graph_receipt.is_file():
+                raise RuntimeError("lifecycle_graph_receipt_missing")
+            outcome["lifecycle_graph_receipt"] = (
+                json.loads(graph_receipt.read_text()) if graph_receipt.is_file() else None
+            )
+            if task7_history_receipt is not None:
+                outcome["conversation_history_receipt"] = task7_history_receipt
         if migration_roundtrip is not None:
             outcome["migration_roundtrip"] = migration_roundtrip
     except RunnerInterrupted as interrupted:
@@ -196,6 +255,8 @@ def _run_scenario(
                 "child_exit_code": 128 + interrupted.signal_number,
             }
         )
+    except Task7ReceiptError as error:
+        outcome.update({"status": "failed", "failure_reason": str(error)})
     except Exception as error:  # noqa: BLE001 - scenario boundary must emit cleanup receipt
         outcome["failure_reason"] = type(error).__name__
     finally:

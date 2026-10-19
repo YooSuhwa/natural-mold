@@ -125,6 +125,7 @@ async def test_execute_in_skill_kills_subprocess_on_cancellation(tmp_path: Path)
     )
     ctx = SkillToolContext(
         thread_id="thread-cancel",
+        tenant_id=uuid.uuid4(),
         output_dir=tmp_path / "outputs",
         runtime_root=runtime_root,
         descriptors={"sleeper": descriptor},

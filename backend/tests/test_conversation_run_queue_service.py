@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_queue_service
+from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID
 from tests.integration._seed import seed_conversation_with_agent
 
@@ -21,7 +22,7 @@ async def _enqueue(
     return await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id=client_request_id,
         source="chat",
         input_payload={"messages": [{"role": "user", "content": content}]},
@@ -61,14 +62,14 @@ async def test_pending_inputs_support_revisioned_edit_delete_and_reorder(
         db,
         conversation_id=conversation_id,
         input_id=second.id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         expected_revision=1,
         input_payload={"messages": [{"role": "user", "content": "second edited"}]},
     )
     await conversation_run_queue_service.reorder_pending_inputs(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         ordered_input_ids=[second.id, first.id, third.id],
         expected_revisions={second.id: 2, first.id: 1, third.id: 1},
     )
@@ -76,7 +77,7 @@ async def test_pending_inputs_support_revisioned_edit_delete_and_reorder(
         db,
         conversation_id=conversation_id,
         input_id=third.id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         expected_revision=2,
     )
 
@@ -84,7 +85,7 @@ async def test_pending_inputs_support_revisioned_edit_delete_and_reorder(
     pending = await conversation_run_queue_service.list_inputs(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
     assert edited.revision == 3
     assert removed.status == "canceled"
@@ -102,7 +103,7 @@ async def test_claim_allocates_run_only_after_conversation_locked(db: AsyncSessi
     claimed = await conversation_run_queue_service.claim_next_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
 
     # Then claim atomically binds exactly one active run.
@@ -122,7 +123,7 @@ async def test_claimed_input_is_immutable(db: AsyncSession) -> None:
     claimed = await conversation_run_queue_service.claim_next_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
     assert claimed is not None
 
@@ -132,7 +133,7 @@ async def test_claimed_input_is_immutable(db: AsyncSession) -> None:
             db,
             conversation_id=conversation_id,
             input_id=queued.id,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             expected_revision=2,
             input_payload={"messages": [{"role": "user", "content": "changed"}]},
         )

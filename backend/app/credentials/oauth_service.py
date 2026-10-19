@@ -22,22 +22,29 @@ from fastapi import HTTPException
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.credentials import service as credential_service
-from app.credentials.mcp_oauth_client import (
-    build_authorization_url,
-    build_pkce_pair,
-    discover_authorization_server_metadata,
-    discover_protected_resource_metadata,
-    dynamic_client_registration,
-    select_grant_type_and_authentication,
-)
+from app.credentials import tenant_encryption
+from app.credentials.boundary import open_values
+from app.credentials.mcp_oauth_client import build_authorization_url, build_pkce_pair
+from app.credentials.mcp_oauth_prepare import prepare_mcp_oauth_data
+from app.credentials.mcp_oauth_spec import issuer_matches
+from app.credentials.mcp_oauth_step_up import merge_scopes
+from app.credentials.oauth_callback_scope import live_callback_state
 from app.credentials.registry import registry
-from app.dependencies import CurrentUser
 from app.error_codes import credential_forbidden, credential_not_found
 from app.models.credential import Credential
 from app.models.credential_oauth_state import CredentialOAuthState
 
 OAUTH_STATE_TTL_SECONDS = 30 * 60
+
+
+class OAuthResponseRejected(HTTPException):
+    """Rejected authorization response; the state row is already consumed."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=400, detail="invalid authorization response")
 
 
 @dataclass(slots=True)
@@ -60,97 +67,11 @@ def utcnow_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-async def prepare_mcp_oauth_data(
-    data: dict[str, Any],
-    *,
-    redirect_uri: str,
-) -> tuple[dict[str, Any], str | None]:
-    server_url = data.get("server_url")
-    if not server_url:
-        return data, None
-
-    prepared = dict(data)
-    use_dcr = bool(prepared.get("use_dynamic_client_registration", True))
-    scope: str | None = str(prepared["scope"]) if prepared.get("scope") else None
-    protected_resource_scopes: list[str] = []
-
-    if use_dcr:
-        authorization_server_url = str(server_url)
-        try:
-            protected_metadata = await discover_protected_resource_metadata(str(server_url))
-            authorization_server_url = protected_metadata.authorization_servers[0]
-            raw_scopes = protected_metadata.raw.get("scopes_supported")
-            if isinstance(raw_scopes, list):
-                protected_resource_scopes = [str(v) for v in raw_scopes]
-        except Exception:
-            # Some providers expose auth-server metadata directly at server_url.
-            authorization_server_url = str(server_url)
-
-        auth_metadata = await discover_authorization_server_metadata(authorization_server_url)
-        if not scope and auth_metadata.scopes_supported:
-            scope = " ".join(auth_metadata.scopes_supported)
-        if not scope and protected_resource_scopes:
-            scope = " ".join(protected_resource_scopes)
-
-        selection = select_grant_type_and_authentication(
-            grant_types=auth_metadata.grant_types_supported,
-            token_endpoint_auth_methods=auth_metadata.token_endpoint_auth_methods_supported,
-            code_challenge_methods=auth_metadata.code_challenge_methods_supported,
-        )
-        prepared.update(
-            {
-                "auth_url": auth_metadata.authorization_endpoint,
-                "access_token_url": auth_metadata.token_endpoint,
-                "registration_url": auth_metadata.registration_endpoint,
-                "grant_type": selection.grant_type,
-                "authentication": selection.authentication,
-            }
-        )
-        if scope:
-            prepared["scope"] = scope
-
-        if auth_metadata.registration_endpoint and not prepared.get("client_id"):
-            registered = await dynamic_client_registration(
-                registration_endpoint=auth_metadata.registration_endpoint,
-                redirect_uri=redirect_uri,
-                client_name="Moldy",
-                scope=scope,
-                grant_type=selection.grant_type,
-                authentication=selection.authentication,
-            )
-            prepared["client_id"] = registered.client_id
-            if registered.client_secret:
-                prepared["client_secret"] = registered.client_secret
-
-    grant_type = str(prepared.get("grant_type") or "pkce")
-    code_challenge: str | None = None
-    code_verifier: str | None = None
-    if grant_type == "pkce":
-        pair = build_pkce_pair()
-        code_verifier = pair.code_verifier
-        code_challenge = pair.code_challenge
-        prepared["code_challenge"] = code_challenge
-
-    client_id = prepared.get("client_id")
-    auth_url = prepared.get("auth_url") or prepared.get("authorization_url")
-    if not client_id or not auth_url:
-        raise HTTPException(
-            status_code=400,
-            detail="credential must contain client_id and auth_url",
-        )
-
-    prepared["auth_url"] = str(auth_url)
-    return prepared, code_verifier if code_challenge else None
-
-
 async def persist_credential_payload(
     cred: Credential,
     data: dict[str, Any],
 ) -> None:
-    blob, key_id, field_keys = credential_service.encrypt_data(data)
-    cred.data_encrypted = blob
-    cred.key_id = key_id
-    cred.field_keys = field_keys
+    await tenant_encryption.seal(cred, data)
 
 
 async def gc_oauth_states(db: AsyncSession, *, now: datetime) -> None:
@@ -173,19 +94,24 @@ async def gc_oauth_states(db: AsyncSession, *, now: datetime) -> None:
 async def start_oauth(
     db: AsyncSession,
     *,
-    user: CurrentUser,
+    context: OrgContext,
     credential_id: uuid.UUID,
     fallback_redirect_uri: str,
     return_to: str | None,
+    requested_scope: str | None = None,
 ) -> OAuthStartResult:
     """Build an authorization URL and persist the in-flight state token.
+
+    ``requested_scope`` (scope step-up, 11.4.1) widens only this authorization
+    request: the merged scope rides on the state row and replaces the stored
+    scope only when the callback succeeds.
 
     The credential's ``data`` must already contain ``client_id`` and either
     ``authorization_url`` or be a definition that infers one (the API consumer
     is responsible for filling these in before starting the flow).
     """
 
-    cred = await credential_service.get_for_user(db, credential_id, user.id)
+    cred = await credential_service.get_for_user(db, credential_id, context)
     if cred is None:
         raise credential_not_found()
     definition = registry.get(cred.definition_key)
@@ -194,14 +120,20 @@ async def start_oauth(
             status_code=400,
             detail=f"definition '{cred.definition_key}' does not support OAuth2",
         )
-    data = await credential_service.decrypt_with_external(cred.data_encrypted)
+    data = await open_values(cred, "refresh")
     redirect_uri = data.get("redirect_uri") or fallback_redirect_uri
     code_verifier: str | None = None
+    # RFC 9207: the issuer travels with the state/PKCE row (plan 11.4.1).
+    state_metadata: dict[str, Any] = {"definition_key": cred.definition_key}
     if cred.definition_key == "mcp_oauth2":
-        data, code_verifier = await prepare_mcp_oauth_data(
-            data,
-            redirect_uri=redirect_uri,
+        prepared = await prepare_mcp_oauth_data(data, redirect_uri=redirect_uri)
+        data, code_verifier, redirect_uri = (
+            prepared.data,
+            prepared.code_verifier,
+            prepared.redirect_uri,
         )
+        if prepared.issuer:
+            state_metadata.update(issuer=prepared.issuer, iss_required=prepared.iss_required)
     else:
         auth_url = data.get("authorization_url") or data.get("auth_url")
         if str(data.get("grant_type") or "") == "pkce":
@@ -219,6 +151,11 @@ async def start_oauth(
             detail="credential must contain client_id and auth_url",
         )
 
+    auth_scope = str(data["scope"]) if data.get("scope") else None
+    if requested_scope:
+        auth_scope = merge_scopes(auth_scope, requested_scope)
+        state_metadata["requested_scope"] = auth_scope
+
     now = utcnow_naive()
     await gc_oauth_states(db, now=now)
 
@@ -227,12 +164,12 @@ async def start_oauth(
         CredentialOAuthState(
             state_hash=hash_oauth_state(state),
             credential_id=credential_id,
-            user_id=user.id,
+            user_id=context.user_id,
             redirect_uri=str(redirect_uri),
             code_verifier=code_verifier,
             origin="credential",
             return_to=return_to,
-            metadata_json={"definition_key": cred.definition_key},
+            metadata_json=state_metadata,
             expires_at=now + timedelta(seconds=OAUTH_STATE_TTL_SECONDS),
         )
     )
@@ -240,7 +177,7 @@ async def start_oauth(
     await credential_service.write_audit_log(
         db,
         credential_id=cred.id,
-        actor_user_id=user.id,
+        actor_user_id=context.user_id,
         action="update",
         source="api",
         metadata={"data_changed": True, "trigger": "oauth_start"},
@@ -252,10 +189,11 @@ async def start_oauth(
         client_id=str(client_id),
         redirect_uri=str(redirect_uri),
         state=state,
-        scope=str(data["scope"]) if data.get("scope") else None,
+        scope=auth_scope,
         code_challenge=(
             data.get("code_challenge") if isinstance(data.get("code_challenge"), str) else None
         ),
+        resource=str(data["resource"]) if data.get("resource") else None,
     )
     return OAuthStartResult(authorization_url=authorization_url, state=state)
 
@@ -265,23 +203,30 @@ async def handle_callback(
     *,
     code: str,
     state: str,
+    iss: str | None = None,
 ) -> OAuthCallbackResult:
-    """Exchange ``code`` for tokens via the definition's ``pre_authentication``."""
+    """Exchange ``code`` for tokens via the definition's ``pre_authentication``.
+
+    The authorization response ``iss`` is checked against the issuer stored
+    with the state row first; a mismatch never reaches the token endpoint and
+    the error carries no detail (RFC 9207, plan 11.4.1).
+    """
 
     now = utcnow_naive()
-    pending = (
-        await db.execute(
-            select(CredentialOAuthState)
-            .where(
-                CredentialOAuthState.state_hash == hash_oauth_state(state),
-                CredentialOAuthState.consumed_at.is_(None),
-                CredentialOAuthState.expires_at > now,
-            )
-            .with_for_update()
-        )
-    ).scalar_one_or_none()
+    pending = await live_callback_state(db, hash_oauth_state(state), now)
     if pending is None:
         raise HTTPException(status_code=400, detail="invalid or expired state")
+    state_metadata = pending.metadata_json or {}
+    expected_issuer = state_metadata.get("issuer")
+    if not issuer_matches(
+        expected=expected_issuer if isinstance(expected_issuer, str) else None,
+        received=iss,
+        required=state_metadata.get("iss_required") is True,
+    ):
+        # One-shot: the state can't be replayed with another iss (caller commits).
+        pending.consumed_at = now
+        await db.flush()
+        raise OAuthResponseRejected()
     credential_id = pending.credential_id
 
     result = await db.execute(select(Credential).where(Credential.id == credential_id))
@@ -293,6 +238,12 @@ async def handle_callback(
     # complete another user's OAuth flow and update their credential.
     if cred.user_id != pending.user_id:
         raise credential_forbidden()
+    if cred.org_id is None or cred.tenant_id is None:
+        raise credential_not_found()
+    await resolve_private_actor(
+        db,
+        PrivateResourceActor(user_id=pending.user_id, org_id=cred.org_id, tenant_id=cred.tenant_id),
+    )
     definition = registry.get(cred.definition_key)
     if definition is None or definition.pre_authentication is None:
         raise HTTPException(
@@ -300,7 +251,7 @@ async def handle_callback(
             detail=f"definition '{cred.definition_key}' does not support OAuth2",
         )
 
-    data = await credential_service.decrypt_with_external(cred.data_encrypted)
+    data = await open_values(cred, "refresh")
     # Use the authorization-code grant: hand the code off to pre_authentication
     # by stashing it in the data payload; definition implementations switch on
     # presence of ``authorization_code``.
@@ -314,6 +265,9 @@ async def handle_callback(
     data.pop("code_verifier", None)
     data.pop("code_challenge", None)
     data.update(refreshed)
+    requested_scope = state_metadata.get("requested_scope")
+    if isinstance(requested_scope, str) and "scope" not in refreshed:
+        data["scope"] = requested_scope  # step-up applies only on success
     if previous_refresh_token and not data.get("refresh_token"):
         data["refresh_token"] = previous_refresh_token
     data["oauth_connected_at"] = datetime.now(UTC).isoformat()

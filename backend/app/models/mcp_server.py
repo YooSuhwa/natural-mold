@@ -34,15 +34,23 @@ class _Status:
 
 
 from app.database import Base  # noqa: E402  — import after constants for clarity
+from app.models.credential_mode import CredentialModeColumns, credential_mode_check  # noqa: E402
+from app.models.resource_scope import NullableOrgScope, resource_scope_constraints  # noqa: E402
 
 
-class McpServer(Base):
+class McpServer(CredentialModeColumns, NullableOrgScope, Base):
     __tablename__ = "mcp_servers"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        *resource_scope_constraints("mcp_servers", system=True),
+        credential_mode_check("mcp_servers"),
+        {"extend_existing": True},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("users.id", ondelete="RESTRICT", name="fk_mcp_servers_owner_restrict"),
+        nullable=False,
+        index=True,
     )
 
     name: Mapped[str] = mapped_column(String(150), nullable=False)

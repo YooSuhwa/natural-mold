@@ -15,6 +15,8 @@ export interface HiTLContextValue {
     displayText?: string,
     interruptId?: string | null,
   ) => Promise<void>
+  /** The agent the thread runs (auth card connect, G-05); absent → the route's agent. */
+  agentId?: string
 }
 
 export const HiTLContext = createContext<HiTLContextValue | null>(null)

@@ -8,6 +8,8 @@ from typing import assert_never
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.models.conversation import Conversation
 from app.schemas.chat_resource_context import (
     MAX_RESOURCE_CONTEXT_ITEM_BYTES,
@@ -56,6 +58,10 @@ class ChatResourceContextResolver:
         self._dependencies = dependencies or ResourceContextDependencies()
 
     async def resolve(self, request: ChatResourceContextRequest) -> FrozenChatResourceContext:
+        context = self._scope.context
+        await resolve_private_actor(
+            self._db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+        )
         resources: list[FrozenChatResource] = []
         total_bytes = 0
         for reference in request.resources:
@@ -69,6 +75,10 @@ class ChatResourceContextResolver:
     async def reauthorize(self, context: FrozenChatResourceContext) -> FrozenChatResourceContext:
         """Recheck access without refreshing or replacing stored snapshot text."""
 
+        actor = self._scope.context
+        await resolve_private_actor(
+            self._db, PrivateResourceActor(actor.user_id, actor.org_id, actor.tenant_id)
+        )
         for resource in context.resources:
             reference = ChatResourceReference(
                 kind=resource.kind,
@@ -124,8 +134,12 @@ class ChatResourceContextResolver:
             case "conversation":
                 conversation = await owned_conversation(self._db, self._scope, reference.id)
                 if reference.message_id is not None:
-                    return await freeze_message_quote(conversation, reference)
-                transcript = await _conversation_transcript(conversation)
+                    return await freeze_message_quote(
+                        conversation, reference, db=self._db, context=self._scope.context
+                    )
+                transcript = await _conversation_transcript(
+                    conversation, db=self._db, context=self._scope.context
+                )
                 text = _truncate_utf8(transcript.text, MAX_RESOURCE_CONTEXT_ITEM_BYTES)
                 digest = hashlib.sha256(text.encode()).hexdigest()
                 source_version = (
@@ -180,12 +194,14 @@ class ChatResourceContextResolver:
         return self._dependencies.artifact_storage or get_artifact_storage_backend()
 
 
-async def _conversation_transcript(conversation: Conversation) -> ConversationTranscript:
-    from app.agent_runtime.checkpointer import get_checkpointer
+async def _conversation_transcript(
+    conversation: Conversation, *, db: AsyncSession, context: OrgContext
+) -> ConversationTranscript:
+    from app.agent_runtime.conversation_checkpointer import conversation_checkpointer
     from app.services.thread_branch_service import build_message_tree
 
     tree = await build_message_tree(
-        get_checkpointer(),
+        await conversation_checkpointer(str(conversation.id), context, db=db),
         str(conversation.id),
         active_checkpoint_id=conversation.active_branch_checkpoint_id,
     )

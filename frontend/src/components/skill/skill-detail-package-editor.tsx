@@ -17,6 +17,7 @@ import { SkillDetailPackageFooter } from './skill-detail-package-footer'
 import { SkillDetailPackageSidebar } from './skill-detail-package-sidebar'
 import type { SkillDetailTabRender } from './skill-detail-tab-shell'
 import { useSkillFileRemoteCache } from './use-skill-file-remote-cache'
+import { useRegisterUnsavedOrgDraft } from '@/lib/org-scope/unsaved-drafts'
 
 export function PackageSkillEditor({
   children,
@@ -54,6 +55,7 @@ export function PackageSkillEditor({
 
   const loadingFile = !!selectedPath && isTextFile(selectedPath) && !remoteCache.has(selectedPath)
   const dirtyPaths = useMemo(() => new Set(drafts.keys()), [drafts])
+  useRegisterUnsavedOrgDraft(dirtyPaths.size > 0)
   const isDirty = (path: string) => dirtyPaths.has(path)
   const currentContent = selectedPath
     ? (drafts.get(selectedPath) ?? remoteCache.get(selectedPath) ?? '')

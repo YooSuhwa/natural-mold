@@ -3,10 +3,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.resource_scope import RequiredOrgScope, resource_scope_constraints
 
 MEMORY_SCOPES = ("user", "agent")
 MEMORY_ALLOWED_SCOPES = ("user", "agent", "both")
@@ -93,6 +94,10 @@ class AgentMemorySettings(Base):
         server_default="inherit",
         default="inherit",
     )
+    # F-09 (11.8): the agent's shared operating memo is served to runs (enforce only).
+    shared_memo_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), default=False
+    )
     created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         default=_now_naive,
@@ -101,8 +106,9 @@ class AgentMemorySettings(Base):
     )
 
 
-class MemoryRecord(Base):
+class MemoryRecord(RequiredOrgScope, Base):
     __tablename__ = "memory_records"
+    __table_args__ = resource_scope_constraints("memory_records", system=False)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -141,8 +147,15 @@ class MemoryRecord(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
-class MemoryProposal(Base):
+class MemoryProposal(RequiredOrgScope, Base):
     __tablename__ = "memory_proposals"
+    __table_args__ = (
+        *resource_scope_constraints("memory_proposals", system=False),
+        # F-09: ``agent_memo`` = a proposal to the agent's shared memo (11.8).
+        CheckConstraint(
+            "scope in ('user', 'agent', 'agent_memo')", name="ck_memory_proposals_scope"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(

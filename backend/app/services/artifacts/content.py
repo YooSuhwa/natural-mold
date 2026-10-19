@@ -13,6 +13,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.config import settings
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.schemas.artifact import ArtifactTextContent
@@ -24,7 +25,7 @@ from app.services.artifacts.library import _get_owned_artifact_with_version
 async def read_artifact_text_content(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     artifact_id: uuid.UUID | str,
     conversation_id: uuid.UUID | None = None,
     storage: ArtifactStorageBackend | None = None,
@@ -32,12 +33,12 @@ async def read_artifact_text_content(
 ) -> ArtifactTextContent:
     artifact, version = await _get_owned_artifact_with_version(
         db,
-        user_id=user_id,
+        context=context,
         artifact_id=artifact_id,
         conversation_id=conversation_id,
     )
     storage = storage or get_artifact_storage_backend()
-    path = await _storage_local_path(storage, object_key=version.object_key)
+    path = await _storage_local_path(storage, version.object_key, artifact.tenant_id)
     max_bytes = max_bytes or settings.artifact_preview_max_text_bytes
     try:
         data = await asyncio.to_thread(_read_file_prefix, path, max_bytes + 1)
@@ -56,19 +57,19 @@ async def read_artifact_text_content(
 async def get_artifact_download_path(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     artifact_id: uuid.UUID | str,
     conversation_id: uuid.UUID | None = None,
     storage: ArtifactStorageBackend | None = None,
 ) -> tuple[ConversationArtifact, ArtifactVersion, Path]:
     artifact, version = await _get_owned_artifact_with_version(
         db,
-        user_id=user_id,
+        context=context,
         artifact_id=artifact_id,
         conversation_id=conversation_id,
     )
     storage = storage or get_artifact_storage_backend()
-    path = await _storage_local_path(storage, object_key=version.object_key)
+    path = await _storage_local_path(storage, version.object_key, artifact.tenant_id)
     return artifact, version, path
 
 
@@ -77,9 +78,12 @@ def _read_file_prefix(path: Path, byte_count: int) -> bytes:
         return file_obj.read(byte_count)
 
 
-async def _storage_local_path(storage: ArtifactStorageBackend, *, object_key: str) -> Path:
+async def _storage_local_path(
+    storage: ArtifactStorageBackend, object_key: str, tenant_id: uuid.UUID | None
+) -> Path:
+    # ``ValueError`` covers another company's key (I-08 ``ForeignTenantPathError``) → 404.
     try:
-        return await storage.local_path(object_key=object_key)
+        return await storage.local_path(object_key=object_key, tenant_id=tenant_id)
     except (FileNotFoundError, ValueError) as exc:
         raise ArtifactNotFoundError("artifact object not found") from exc
 

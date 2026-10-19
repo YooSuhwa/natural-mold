@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.models.skill_feedback import SkillFeedback
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID, make_user
 
 pytestmark = pytest.mark.asyncio
@@ -20,16 +22,18 @@ pytestmark = pytest.mark.asyncio
 
 async def _create_skill(db: AsyncSession, tmp_path: Path, *, user_id=TEST_USER_ID):
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=user_id,
-            name="Feedback",
-            slug=f"feedback-{uuid.uuid4().hex[:8]}",
-            description="Use when testing feedback.",
-            content=(
-                '---\nname: feedback\ndescription: "Use when testing feedback."\n---\n\nBody.\n'
+            TextSkillCreation(
+                name="Feedback",
+                slug=f"feedback-{uuid.uuid4().hex[:8]}",
+                description="Use when testing feedback.",
+                content=(
+                    '---\nname: feedback\ndescription: "Use when testing feedback."\n---\n\nBody.\n'
+                ),
+                version="1.0.0",
             ),
-            version="1.0.0",
+            unit_context(user_id),
         )
         await db.commit()
         return skill

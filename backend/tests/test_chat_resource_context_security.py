@@ -17,6 +17,7 @@ from app.services.chat_resource_context_errors import (
     ResourceContextLimitError,
     ResourceContextNotFoundError,
 )
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.test_chat_resource_context_support import (
     resource_context_resolver,
     seed_resource_context,
@@ -40,6 +41,8 @@ async def test_foreign_resource_is_indistinguishable_from_missing_resource(
         size_bytes=7,
         storage_path=str(path),
         url="/api/uploads/foreign",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(attachment)
     await db.flush()
@@ -77,6 +80,8 @@ async def test_dispatch_reauthorization_keeps_snapshot_when_content_changed(
         size_bytes=path.stat().st_size,
         storage_path=str(path),
         url="/api/uploads/notes",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(attachment)
     await db.flush()
@@ -107,6 +112,8 @@ async def test_dispatch_reauthorization_fails_after_resource_deleted(
         size_bytes=path.stat().st_size,
         storage_path=str(path),
         url="/api/uploads/notes",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(attachment)
     await db.flush()
@@ -137,6 +144,8 @@ async def test_total_resolved_context_limit_is_enforced(db: AsyncSession, tmp_pa
             size_bytes=path.stat().st_size,
             storage_path=str(path),
             url=f"/api/uploads/{index}",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(attachment)
         await db.flush()
@@ -164,6 +173,8 @@ async def test_each_resolved_item_is_bounded_by_utf8_bytes(
         size_bytes=path.stat().st_size,
         storage_path=str(path),
         url="/api/uploads/multibyte",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(attachment)
     await db.flush()

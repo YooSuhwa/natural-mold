@@ -17,11 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.user import User
 from app.scheduler import rotate_credentials_to_active_key
 from app.security import key_provider
+from tests.authz.unit_scope_fixture import create_test_credential, unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -62,12 +64,12 @@ async def test_rotation_re_encrypts_all_stale_rows() -> None:
     created: list[uuid.UUID] = []
     async with TestSession() as db:
         for idx in range(3):
-            cred = await credential_service.create(
+            cred = await create_test_credential(
                 db,
-                user_id=TEST_USER_ID,
-                definition_key="openai",
-                name=f"rot-{idx}",
-                data={"api_key": f"sk-{idx}"},
+                CredentialCreation(
+                    definition_key="openai", name=f"rot-{idx}", data={"api_key": f"sk-{idx}"}
+                ),
+                unit_context(TEST_USER_ID),
             )
             created.append(cred.id)
         await db.commit()
@@ -112,12 +114,12 @@ async def test_rotation_is_noop_when_already_active() -> None:
     _swap_keys(key_only)
 
     async with TestSession() as db:
-        await credential_service.create(
+        await create_test_credential(
             db,
-            user_id=TEST_USER_ID,
-            definition_key="openai",
-            name="stable",
-            data={"api_key": "sk-stable"},
+            CredentialCreation(
+                definition_key="openai", name="stable", data={"api_key": "sk-stable"}
+            ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
 
@@ -160,12 +162,14 @@ async def test_rotation_wrapper_wires_patched_batch_size_through() -> None:
     created: list[uuid.UUID] = []
     async with TestSession() as db:
         for idx in range(5):
-            cred = await credential_service.create(
+            cred = await create_test_credential(
                 db,
-                user_id=TEST_USER_ID,
-                definition_key="openai",
-                name=f"batch-{idx}",
-                data={"api_key": f"sk-batch-{idx}"},
+                CredentialCreation(
+                    definition_key="openai",
+                    name=f"batch-{idx}",
+                    data={"api_key": f"sk-batch-{idx}"},
+                ),
+                unit_context(TEST_USER_ID),
             )
             created.append(cred.id)
         await db.commit()
@@ -218,12 +222,12 @@ async def test_rotation_terminates_when_rows_keep_failing() -> None:
 
     async with TestSession() as db:
         for idx in range(3):
-            await credential_service.create(
+            await create_test_credential(
                 db,
-                user_id=TEST_USER_ID,
-                definition_key="openai",
-                name=f"fail-{idx}",
-                data={"api_key": f"sk-{idx}"},
+                CredentialCreation(
+                    definition_key="openai", name=f"fail-{idx}", data={"api_key": f"sk-{idx}"}
+                ),
+                unit_context(TEST_USER_ID),
             )
         await db.commit()
 

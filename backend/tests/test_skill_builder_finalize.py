@@ -16,12 +16,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.dependencies import CurrentUser
 from app.models.audit_event import AuditEvent
 from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
 from app.models.skill_revision import SkillRevision
 from app.services import skill_draft_workspace as workspace
 from app.services.skill_builder_finalize import finalize_draft_session
+from app.skills.creation import PackageSkillCreation, TextSkillCreation
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_package_skill,
+    create_test_text_skill,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 from tests.skill_builder_test_helpers import configure_system_llm
 
@@ -48,10 +58,15 @@ def _skill_md(name: str = "notes", body: str = "Use when summarizing meeting not
 async def _make_create_session(
     db: AsyncSession, *, skill_md: str | None = None
 ) -> SkillBuilderSession:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     session = SkillBuilderSession(
         user_id=TEST_USER_ID,
         user_request="회의록 스킬",
         status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(session)
     await db.flush()
@@ -78,7 +93,9 @@ async def test_finalize_create_produces_skill_revision_and_deeplink(
 ) -> None:
     session = await _make_create_session(db)
 
-    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    result = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
 
     assert "error_code" not in result, result
     assert result["slug"] == "notes"
@@ -107,27 +124,34 @@ async def test_finalize_create_produces_skill_revision_and_deeplink(
 async def test_finalize_is_idempotent_after_completion(db: AsyncSession) -> None:
     session = await _make_create_session(db)
 
-    first = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
-    second = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    first = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
+    second = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
 
     assert second["skill_id"] == first["skill_id"]
 
 
 async def test_finalize_create_resolves_slug_conflict(db: AsyncSession) -> None:
-    from app.skills import service as skill_service
 
-    await skill_service.create_text_skill(
+    await create_test_text_skill(
         db,
-        user_id=TEST_USER_ID,
-        name="Notes",
-        slug="notes",
-        description="Use when summarizing notes.",
-        content=_skill_md(),
+        TextSkillCreation(
+            name="Notes",
+            slug="notes",
+            description="Use when summarizing notes.",
+            content=_skill_md(),
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
     session = await _make_create_session(db)
 
-    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    result = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
 
     assert "error_code" not in result, result
     assert result["slug"] != "notes"
@@ -138,7 +162,9 @@ async def test_finalize_blocks_secret_bearing_draft(db: AsyncSession) -> None:
     secret_body = "Use when summarizing meeting notes.\n\nexport AWS_SECRET_ACCESS_KEY=abc123\n"
     session = await _make_create_session(db, skill_md=_skill_md(body=secret_body))
 
-    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    result = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
 
     assert result["error_code"] == "VALIDATION_FAILED"
     codes = {issue["code"] for issue in result["validation_result"]["issues"]}
@@ -164,7 +190,9 @@ async def test_finalize_create_includes_binary_asset(db: AsyncSession) -> None:
     (root / "inputs").mkdir()
     (root / "inputs" / "example.csv").write_text("a,b\n", encoding="utf-8")
 
-    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    result = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
 
     assert "error_code" not in result, result
     skill = await db.get(Skill, uuid.UUID(result["skill_id"]))
@@ -183,7 +211,9 @@ async def test_finalize_blocks_secret_smuggled_in_null_byte_file(db: AsyncSessio
     root = workspace.resolve_workspace_dir(session.draft_workspace_path or "")
     (root / "config.txt").write_bytes(b"\x00export AWS_SECRET_ACCESS_KEY=abc123\n")
 
-    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    result = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
 
     assert result["error_code"] == "VALIDATION_FAILED"
     codes = {issue["code"] for issue in result["validation_result"]["issues"]}
@@ -204,14 +234,18 @@ async def test_finalize_returns_package_invalid_and_releases_claim(
     (root / "assets" / "big.bin").write_bytes(b"\x00" * 4096)
     monkeypatch.setattr(settings, "skill_max_package_bytes", 1024)
 
-    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    result = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
 
     assert result["error_code"] == "PACKAGE_INVALID"
     await db.refresh(session)
     assert session.status == "review"  # CONFIRMING 잠금이 풀려 있어야 한다.
 
     # 재시도는 CONFIRMING 게이트에 막히지 않는다.
-    second = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    second = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
     assert second["error_code"] == "PACKAGE_INVALID"
 
 
@@ -223,16 +257,17 @@ async def test_finalize_returns_package_invalid_and_releases_claim(
 async def _start_improve_session(
     client: AsyncClient, db: AsyncSession
 ) -> tuple[SkillBuilderSession, Skill]:
-    from app.skills import service as skill_service
 
     await configure_system_llm(db)
-    source = await skill_service.create_text_skill(
+    source = await create_test_text_skill(
         db,
-        user_id=TEST_USER_ID,
-        name="Notes",
-        slug="notes",
-        description="Use when summarizing notes.",
-        content=_skill_md(),
+        TextSkillCreation(
+            name="Notes",
+            slug="notes",
+            description="Use when summarizing notes.",
+            content=_skill_md(),
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -260,7 +295,9 @@ async def test_finalize_improve_replaces_storage_and_creates_revision(
         encoding="utf-8",
     )
 
-    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    result = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
 
     assert "error_code" not in result, result
     assert result["skill_id"] == str(source.id)
@@ -291,7 +328,6 @@ async def test_finalize_improve_preserves_seeded_binary_asset(
     import io
     import zipfile
 
-    from app.skills import service as skill_service
     from app.storage.paths import resolve_data_path
 
     await configure_system_llm(db)
@@ -299,8 +335,8 @@ async def test_finalize_improve_preserves_seeded_binary_asset(
     with zipfile.ZipFile(buffer, "w") as zf:
         zf.writestr("notes/SKILL.md", _skill_md())
         zf.writestr("notes/assets/logo.png", PNG_BYTES)
-    source = await skill_service.create_package_skill(
-        db, user_id=TEST_USER_ID, zip_bytes=buffer.getvalue()
+    source = await create_test_package_skill(
+        db, PackageSkillCreation(zip_bytes=buffer.getvalue()), unit_context(TEST_USER_ID)
     )
     await db.commit()
 
@@ -322,7 +358,9 @@ async def test_finalize_improve_preserves_seeded_binary_asset(
         encoding="utf-8",
     )
 
-    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    result = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
 
     assert "error_code" not in result, result
     await db.refresh(source)
@@ -338,7 +376,9 @@ async def test_finalize_improve_conflicts_when_source_changed(
     source.content_hash = "0" * 64
     await db.commit()
 
-    result = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    result = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
 
     assert result["error_code"] == "SOURCE_SKILL_CHANGED"
     assert "skill_builder.apply_conflict" in await _audit_actions(db)
@@ -361,6 +401,7 @@ async def test_finalize_tool_requires_approval_and_never_session_consent() -> No
 
     session_id = uuid.uuid4()
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="openai",
         model_name="gpt-5.4",
         api_key="sk-test",
@@ -368,7 +409,7 @@ async def test_finalize_tool_requires_approval_and_never_session_consent() -> No
         system_prompt="placeholder",
         tools_config=[],
         thread_id="thread-finalize",
-        agent_id="agent-finalize",
+        agent_id=str(uuid.uuid4()),
         user_id=str(TEST_USER_ID),
         runtime_profile="skill_builder",
         skill_builder_session_id=str(session_id),
@@ -409,17 +450,23 @@ async def test_finalize_releases_claim_on_source_skill_not_found(
     assert session.draft_workspace_path is not None
 
     # 세션이 참조하는 원본 스킬을 삭제해 post-claim 실패를 재현.
-    await skill_service.delete_skill(db, source)
+    await skill_service.delete_skill(db, source, context=unit_context(TEST_USER_ID))
+    # SQLite fixtures do not enforce the native source-skill ON DELETE SET NULL.
+    session.source_skill_id = None
     await db.commit()
 
-    first = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    first = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
     assert first["error_code"] == "SOURCE_SKILL_NOT_FOUND"
 
     await db.refresh(session)
     assert session.status == "review"  # CONFIRMING 잠금이 풀려 있어야 한다.
 
     # 재시도는 CONFIRMING 게이트에 막히지 않고 같은 오류를 다시 보고한다(self-heal).
-    second = await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+    second = await finalize_draft_session(
+        db, session_id=session.id, context=unit_context(TEST_USER_ID)
+    )
     assert second["error_code"] == "SOURCE_SKILL_NOT_FOUND"
 
 
@@ -443,7 +490,7 @@ async def test_finalize_releases_claim_when_cancelled(
     monkeypatch.setattr(sbs, "confirm_session", cancelled_confirm)
 
     with pytest.raises(_asyncio.CancelledError):
-        await finalize_draft_session(db, session_id=session.id, user_id=TEST_USER_ID)
+        await finalize_draft_session(db, session_id=session.id, context=unit_context(TEST_USER_ID))
 
     await db.refresh(session)
     assert session.status == "review"  # 잠금이 풀려 재시도 가능해야 한다.

@@ -11,6 +11,7 @@ definition = CredentialDefinition(
     icon_id="document",
     documentation_url="https://opendart.fss.or.kr/",
     category="api",
+    hosts=("opendart.fss.or.kr",),
     properties=[
         FieldDef(
             name="api_key",

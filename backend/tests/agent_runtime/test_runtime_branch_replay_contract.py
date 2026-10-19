@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from typing import Any
 
 import pytest
@@ -13,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.langgraph_streaming import stream_agent_response_langgraph
 from app.agent_runtime.run_secrets import reset_run_secrets, set_run_secrets
+from app.database import SessionTenant
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -30,6 +33,7 @@ from tests.agent_runtime.runtime_contract_helpers import (
     contract_diff_paths,
     load_contract_fixture,
 )
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, unit_context
 from tests.conftest import TEST_USER_ID
 
 _CONVERSATION_ID = uuid.UUID("10000000-0000-0000-0000-000000000008")
@@ -79,6 +83,8 @@ async def _seed_conversation(db: AsyncSession) -> Conversation:
             name="Branch Contract Agent",
             system_prompt="Keep the current contract.",
             model_id=model.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
     )
     await db.flush()
@@ -87,6 +93,11 @@ async def _seed_conversation(db: AsyncSession) -> Conversation:
         id=_CONVERSATION_ID,
         agent_id=agent.id,
         title="Branch Replay Contract",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
     )
     db.add(conversation)
     await db.commit()
@@ -193,7 +204,7 @@ def _redaction_event() -> dict[str, Any]:
 
 
 async def _collect_replay_manifest(db: AsyncSession) -> dict[str, Any]:
-    persist = build_persist_callback(_CONVERSATION_ID, _RUN_ID)
+    persist = build_persist_callback(_CONVERSATION_ID, _RUN_ID, tenant=SessionTenant(uuid.uuid4()))
     token = set_run_secrets({_SECRET})
     try:
         _ = [
@@ -218,7 +229,9 @@ async def _collect_replay_manifest(db: AsyncSession) -> dict[str, Any]:
         )
     ).scalar_one()
     persisted = await trace_storage.load_events(db, record)
-    replay_events = await load_protocol_events(db, _CONVERSATION_ID, secret_values=(_SECRET,))
+    replay_events = await load_protocol_events(
+        db, _CONVERSATION_ID, secret_values=(_SECRET,), context=unit_context(TEST_USER_ID)
+    )
     tail_chunks = [
         chunk
         async for chunk in protocol_replay_generator(

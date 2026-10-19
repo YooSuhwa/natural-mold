@@ -29,6 +29,7 @@ import {
 import { AgentCard } from '@/components/agent/agent-card'
 import { AgentCardSkeleton } from '@/components/agent/agent-card-skeleton'
 import { PublishWizard } from '@/components/marketplace/publish-wizard'
+import { ResourceShareDialog } from '@/components/sharing/resource-share-dialog'
 import { EmptyState } from '@/components/shared/empty-state'
 import { cn } from '@/lib/utils'
 import type { AgentSummary } from '@/lib/types'
@@ -59,6 +60,8 @@ export default function DashboardPage() {
   const [sortBy, setSortBy] = useState<SortKey>('latest')
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
   const [publishAgent, setPublishAgent] = useState<AgentSummary | null>(null)
+  const [shareAgent, setShareAgent] = useState<{ id: string; name: string } | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const greetingKey = pickGreetingKey()
   const userName = displayUserName(user) || t('userFallback')
@@ -207,6 +210,7 @@ export default function DashboardPage() {
                   size="sm"
                   onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
                   aria-pressed={showFavoritesOnly}
+                  aria-label={t('favoritesOnly')}
                   className={cn(
                     'h-9',
                     showFavoritesOnly && 'moldy-status-surface moldy-status-warn hover:opacity-90',
@@ -254,6 +258,10 @@ export default function DashboardPage() {
                     key={agent.id}
                     agent={agent}
                     onPublish={(selected) => setPublishAgent(selected as AgentSummary)}
+                    onShare={({ id, name }) => {
+                      setShareAgent({ id, name })
+                      setShareOpen(true)
+                    }}
                   />
                 ))}
               </div>
@@ -291,6 +299,15 @@ export default function DashboardPage() {
         open={!!publishAgent}
         onOpenChange={(open) => !open && setPublishAgent(null)}
       />
+      {shareAgent ? (
+        <ResourceShareDialog
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+          resourceType="agent"
+          resourceId={shareAgent.id}
+          resourceName={shareAgent.name}
+        />
+      ) : null}
     </div>
   )
 }

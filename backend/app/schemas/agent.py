@@ -125,6 +125,14 @@ class AgentUpdate(BaseModel):
     model_fallback_ids: list[uuid.UUID] | None = None
     identity_mode: str | None = None
     runtime_policy: RuntimePolicyV1 | None = None
+    # D17 (E-06): the caller saw the accounts a shared agent now lends (confirm_required).
+    confirm_delegation: bool = False
+    # F-03 (10.6): kept broken links (tool / MCP tool / skill / subagent ids) the caller
+    # re-attaches under their own delegation; other kept broken links stay broken.
+    reattach_ids: list[uuid.UUID] | None = None
+    # S29 (12.2): ids of the tools / MCP tools / skills / subagents whose link is required;
+    # every other link of the agent becomes optional. Omitted: unchanged.
+    required_link_ids: list[uuid.UUID] | None = None
 
     @field_validator("opener_questions")
     @classmethod
@@ -234,6 +242,8 @@ class AgentResponse(BaseModel):
     # endpoints leave it None and the frontend sidebar falls back to ``updated_at``.
     last_used_at: datetime | None = None
     unread_count: int = 0
+    # S29: linked tool / MCP tool / skill / subagent ids marked required (12.2).
+    required_link_ids: list[uuid.UUID] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

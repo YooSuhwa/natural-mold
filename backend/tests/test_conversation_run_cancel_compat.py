@@ -1,16 +1,25 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.user import User
 from app.services import conversation_run_service
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -20,22 +29,33 @@ async def _seed_running_run(db: AsyncSession) -> tuple[Conversation, uuid.UUID]:
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     agent = Agent(
         user_id=user.id,
         name="Compat Cancel Agent",
         system_prompt="You are helpful.",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
-    conversation = Conversation(agent_id=agent.id, title="Compat cancel")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="Compat cancel",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.flush()
     run = await conversation_run_service.create_run(
         db,
         conversation_id=conversation.id,
         agent_id=agent.id,
-        user_id=user.id,
+        context=unit_context(user.id),
         source="chat",
         input_preview="cancel through sdk path",
     )
@@ -59,7 +79,7 @@ async def test_langgraph_sdk_cancel_path_uses_conversation_run_cancel(
         db,
         conversation_id=conversation.id,
         run_id=run_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
     assert run is not None
     assert run.status == "canceling"

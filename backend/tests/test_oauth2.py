@@ -10,13 +10,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.credentials.domain import CredentialDefinition
 from app.credentials.field import FieldDef, FieldKind
+from app.credentials.mutation_scope import CredentialAuditQuery
 from app.credentials.oauth2_base import (
     is_token_expired,
     refresh_oauth_token,
 )
 from app.models.user import User
+from tests.authz.unit_scope_fixture import create_test_credential, unit_context
 from tests.conftest import TEST_USER_ID
 
 
@@ -40,23 +43,17 @@ def test_is_token_expired_no_expiry_metadata() -> None:
 
 
 def test_is_token_expired_in_the_past() -> None:
-    assert is_token_expired(
-        {"access_token": "tok", "expires_at": time.time() - 100}
-    ) is True
+    assert is_token_expired({"access_token": "tok", "expires_at": time.time() - 100}) is True
 
 
 def test_is_token_expired_within_skew() -> None:
     # Default skew is 60s — anything within that window is treated as expired
     # so the caller refreshes pre-emptively.
-    assert is_token_expired(
-        {"access_token": "tok", "expires_at": time.time() + 30}
-    ) is True
+    assert is_token_expired({"access_token": "tok", "expires_at": time.time() + 30}) is True
 
 
 def test_is_token_expired_far_in_the_future() -> None:
-    assert is_token_expired(
-        {"access_token": "tok", "expires_at": time.time() + 3600}
-    ) is False
+    assert is_token_expired({"access_token": "tok", "expires_at": time.time() + 3600}) is False
 
 
 def test_is_token_expired_iso_format_supported() -> None:
@@ -128,18 +125,20 @@ async def test_refresh_oauth_token_invalid_return_type() -> None:
 async def test_refresh_writes_audit_log(db: AsyncSession) -> None:
     """A successful refresh persists a ``refresh`` audit log entry."""
 
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="google_workspace_oauth2",
-        name="GW",
-        data={
-            "client_id": "cid",
-            "client_secret": "cs",
-            "refresh_token": "rt",
-            "access_token": "old",
-            "expires_at": 0,
-        },
+        CredentialCreation(
+            definition_key="google_workspace_oauth2",
+            name="GW",
+            data={
+                "client_id": "cid",
+                "client_secret": "cs",
+                "refresh_token": "rt",
+                "access_token": "old",
+                "expires_at": 0,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -166,7 +165,9 @@ async def test_refresh_writes_audit_log(db: AsyncSession) -> None:
     )
     await db.commit()
 
-    logs = await credential_service.list_audit_logs(db, credential_id=cred.id)
+    logs = await credential_service.list_audit_logs(
+        db, CredentialAuditQuery(cred.id), unit_context(TEST_USER_ID)
+    )
     actions = [log.action for log in logs]
     assert "refresh" in actions
 

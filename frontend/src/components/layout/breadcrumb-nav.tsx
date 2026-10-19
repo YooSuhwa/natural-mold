@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl'
 import { useAgent } from '@/lib/hooks/use-agents'
 import { useConversationPages } from '@/lib/hooks/use-conversations'
 import { useMarketplaceItem } from '@/lib/hooks/use-marketplace'
+import { usePlatformTenant } from '@/lib/hooks/use-platform-tenants'
 import { useSkill } from '@/lib/hooks/use-skills'
 
 const ROUTE_LABELS: Record<string, string> = {
@@ -20,8 +21,20 @@ const ROUTE_LABELS: Record<string, string> = {
   security: 'nav.security',
   appearance: 'nav.appearance',
   'agent-api': 'nav.agentApi',
+  memory: 'appSettings.nav.memory',
+  audit: 'appSettings.nav.audit',
+  credentials: 'sidebar.nav.credentials',
+  'mcp-servers': 'sidebar.nav.mcpServers',
+  marketplace: 'sidebar.nav.marketplace',
+  moderation: 'sidebar.nav.moderation',
+  company: 'nav.company',
+  organization: 'nav.organization',
+  invite: 'nav.invite',
+  traces: 'nav.traces',
   'marketplace-admin': 'nav.marketplaceAdmin',
   'admin-audit': 'nav.adminAudit',
+  authz: 'nav.authzSync',
+  tenants: 'nav.platformTenants',
   'system-credentials': 'nav.systemCredentials',
   'system-llm': 'nav.systemLlm',
   skills: 'nav.skills',
@@ -37,40 +50,112 @@ const ROUTE_LABELS: Record<string, string> = {
   template: 'nav.template',
 }
 
+// Slugs whose label depends on the parent segment (`members` under company vs organization).
+const SCOPED_LABELS: Record<string, string> = {
+  'company/members': 'appSettings.nav.companyMembers',
+  'company/policies': 'appSettings.nav.companyPolicies',
+  'company/models': 'appSettings.nav.companyModels',
+  'company/sso': 'appSettings.nav.companySso',
+  'organization/members': 'appSettings.nav.organizationMembers',
+  'organization/groups': 'appSettings.nav.organizationGroups',
+  'organization/roles': 'appSettings.nav.organizationRoles',
+  'organization/requests': 'appSettings.nav.organizationRequests',
+  'organization/catalog': 'appSettings.nav.organizationCatalog',
+  'admin/audit': 'nav.adminAudit',
+  'conversations/new': 'nav.newConversation',
+}
+
 // Segments that never have their own page — always skip
-const SKIP_SEGMENTS = new Set(['agents', 'conversations'])
+// `admin` only groups operator pages (/settings/admin/authz); it has no page itself.
+const SKIP_SEGMENTS = new Set(['agents', 'conversations', 'admin'])
 // (no conditional skip — "new" always shown for context)
 
-function AgentName({ id }: { id: string }) {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+/** Id segments resolved to a name; a generic label stands in until (or unless) it loads. */
+type IdKind = 'agent' | 'conversation' | 'marketplaceItem' | 'skill' | 'tenant'
+const ID_PARENTS: Record<string, IdKind> = {
+  agents: 'agent',
+  conversations: 'conversation',
+  marketplace: 'marketplaceItem',
+  skills: 'skill',
+  tenants: 'tenant',
+}
+
+function AgentName({ id, fallback }: { id: string; fallback: string }) {
   const { data: agent } = useAgent(id)
-  return <>{agent?.name ?? id}</>
+  return <>{agent?.name ?? fallback}</>
 }
 
 function ConversationTitle({
   agentId,
   conversationId,
+  fallback,
 }: {
   agentId: string
   conversationId: string
+  fallback: string
 }) {
   const { data: conversationPages } = useConversationPages(agentId, { limit: 30 })
   const conv = conversationPages?.pages
     .flatMap((page) => page.items)
     .find((c) => c.id === conversationId)
-  return <>{conv?.title ?? conversationId}</>
+  return <>{conv?.title ?? fallback}</>
 }
 
-function SkillName({ id }: { id: string }) {
+function SkillName({ id, fallback }: { id: string; fallback: string }) {
+  // A 403/404 (no access) leaves `data` empty — never show the raw id.
   const { data: skill } = useSkill(id)
-  return <>{skill?.name ?? id}</>
+  return <>{skill?.name ?? fallback}</>
 }
 
-function MarketplaceItemName({ id }: { id: string }) {
-  // 404 / 401 시 hook 이 ApiError 를 throw 하므로 breadcrumb 가 빈 ID 로 떨어지면
-  // ``id`` fallback. detail page 에서 동일 query 가 이미 cache 되어 있어 추가
-  // round-trip 없음 (TanStack Query 자동 dedup).
+function MarketplaceItemName({ id, fallback }: { id: string; fallback: string }) {
+  // detail page 에서 동일 query 가 이미 cache 되어 있어 추가 round-trip 없음.
   const { data: item } = useMarketplaceItem(id)
-  return <>{item?.name ?? id}</>
+  return <>{item?.name ?? fallback}</>
+}
+
+function TenantName({ id, fallback }: { id: string; fallback: string }) {
+  const { data: tenant } = usePlatformTenant(id)
+  return <>{tenant?.name ?? fallback}</>
+}
+
+const FALLBACK_LABELS: Record<IdKind, string> = {
+  agent: 'nav.agentDetail',
+  conversation: 'nav.conversations',
+  marketplaceItem: 'nav.marketplaceItem',
+  skill: 'nav.skillDetail',
+  tenant: 'nav.companyDetail',
+}
+
+interface Crumb {
+  label: string
+  href: string
+  isLast: boolean
+  idKind: IdKind | null
+}
+
+function CrumbContent({ crumb, agentId }: { crumb: Crumb; agentId: string | null }) {
+  const t = useTranslations()
+  if (!crumb.idKind) return <>{crumb.label}</>
+  const id = crumb.label
+  const fallback = t(FALLBACK_LABELS[crumb.idKind])
+  switch (crumb.idKind) {
+    case 'agent':
+      return <AgentName id={id} fallback={fallback} />
+    case 'conversation':
+      return agentId ? (
+        <ConversationTitle agentId={agentId} conversationId={id} fallback={fallback} />
+      ) : (
+        <>{fallback}</>
+      )
+    case 'marketplaceItem':
+      return <MarketplaceItemName id={id} fallback={fallback} />
+    case 'skill':
+      return <SkillName id={id} fallback={fallback} />
+    case 'tenant':
+      return <TenantName id={id} fallback={fallback} />
+  }
 }
 
 export function BreadcrumbNav() {
@@ -81,46 +166,31 @@ export function BreadcrumbNav() {
 
   if (segments.length === 0) return null
 
-  // Build crumbs, skipping segments that have no page
-  // Also find agentId for resolving conversation titles
+  // Build crumbs, skipping segments that have no page; remember the agent id for
+  // resolving conversation titles.
   let agentId: string | null = null
-  const crumbs: {
-    label: string
-    href: string
-    isLast: boolean
-    isAgentId: boolean
-    isConvId: boolean
-    isMarketplaceItemId: boolean
-    isSkillId: boolean
-  }[] = []
+  const crumbs: Crumb[] = []
 
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i]
+    const parent = i > 0 ? segments[i - 1] : ''
     const href = '/' + segments.slice(0, i + 1).join('/')
-    const isId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(segment)
+    const isId = UUID_RE.test(segment)
 
-    // Track agentId (first ID after 'agents')
-    if (isId && i > 0 && segments[i - 1] === 'agents') {
-      agentId = segment
-    }
+    if (isId && parent === 'agents') agentId = segment
 
-    // Skip segments without real pages
     if (SKIP_SEGMENTS.has(segment)) continue
     // 빌더 세션 uuid는 자체 라벨이 없다 — '빌더' 크럼(인덱스 링크)까지만 표시.
-    if (isId && i > 0 && segments[i - 1] === 'builder') continue
+    if (isId && parent === 'builder') continue
+    // An invitation token is a secret, not a label.
+    if (parent === 'invite') continue
 
-    const isLast = i === segments.length - 1
-    const isAgentId = isId && i > 0 && segments[i - 1] === 'agents'
-    const isConvId = isId && i > 0 && segments[i - 1] === 'conversations'
-    const isMarketplaceItemId = isId && i > 0 && segments[i - 1] === 'marketplace'
-    const isSkillId = isId && i > 0 && segments[i - 1] === 'skills'
-
-    let label = segment
-    if (!isId && ROUTE_LABELS[segment]) {
-      label = t(ROUTE_LABELS[segment])
-    }
-
-    crumbs.push({ label, href, isLast, isAgentId, isConvId, isMarketplaceItemId, isSkillId })
+    const idKind = isId ? (ID_PARENTS[parent] ?? null) : null
+    const key = SCOPED_LABELS[`${parent}/${segment}`] ?? (isId ? undefined : ROUTE_LABELS[segment])
+    const label = key ? t(key) : segment
+    // `/invite` has no page of its own: its crumb is the current page.
+    const isLast = i === segments.length - 1 || segment === 'invite'
+    crumbs.push({ label, href, isLast, idKind })
   }
 
   return (
@@ -134,17 +204,7 @@ export function BreadcrumbNav() {
       </Link>
 
       {crumbs.map((crumb) => {
-        const crumbContent = crumb.isAgentId ? (
-          <AgentName id={crumb.label} />
-        ) : crumb.isConvId && agentId ? (
-          <ConversationTitle agentId={agentId} conversationId={crumb.label} />
-        ) : crumb.isMarketplaceItemId ? (
-          <MarketplaceItemName id={crumb.label} />
-        ) : crumb.isSkillId ? (
-          <SkillName id={crumb.label} />
-        ) : (
-          crumb.label
-        )
+        const crumbContent = <CrumbContent crumb={crumb} agentId={agentId} />
 
         return (
           <Fragment key={crumb.href}>

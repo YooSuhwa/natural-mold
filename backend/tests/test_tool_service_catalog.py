@@ -12,18 +12,26 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.skill import Skill
 from app.models.tool import Tool
 from app.models.user import User
 from app.services.tool_service import get_tools_catalog
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
 async def _seed_user(db: AsyncSession) -> None:
     db.add(User(id=TEST_USER_ID, email="t@t.com", name="T"))
     await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=TEST_USER_ID, email="t@t.com", name="T"))
 
 
 @pytest.mark.asyncio
@@ -31,13 +39,22 @@ async def test_catalog_includes_tools_mcp_and_skills(db: AsyncSession):
     await _seed_user(db)
 
     db.add(
-        Tool(name="Web Search", definition_key="builtin:web_search", description="d")
+        Tool(
+            name="Web Search",
+            definition_key="builtin:web_search",
+            description="d",
+            is_system=True,
+            org_id=None,
+            tenant_id=None,
+        )
     )
     server = McpServer(
         user_id=TEST_USER_ID,
         name="Hancom",
         transport="sse",
         url="https://example.com/mcp",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(server)
     await db.flush()
@@ -48,11 +65,13 @@ async def test_catalog_includes_tools_mcp_and_skills(db: AsyncSession):
             name="seat_layout_guide",
             slug="seat-layout-guide",
             description="좌석",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
     )
     await db.commit()
 
-    items = await get_tools_catalog(db, TEST_USER_ID)
+    items = await get_tools_catalog(db, unit_context(TEST_USER_ID))
     by_kind: dict[str, list[str]] = {"tool": [], "mcp": [], "skill": []}
     for item in items:
         by_kind.setdefault(item["kind"], []).append(item["name"])
@@ -74,6 +93,8 @@ async def test_catalog_skills_filtered_by_user(db: AsyncSession):
             name="other_skill",
             slug="other-skill",
             description="d",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
     )
     db.add(
@@ -82,10 +103,12 @@ async def test_catalog_skills_filtered_by_user(db: AsyncSession):
             name="my_skill",
             slug="my-skill",
             description="d",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
     )
     await db.commit()
 
-    items = await get_tools_catalog(db, TEST_USER_ID)
+    items = await get_tools_catalog(db, unit_context(TEST_USER_ID))
     skill_names = {it["name"] for it in items if it["kind"] == "skill"}
     assert skill_names == {"my_skill"}

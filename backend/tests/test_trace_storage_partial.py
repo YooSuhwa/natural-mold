@@ -10,6 +10,8 @@ CHECKPOINT.md M2 done-when 일부:
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 
 import pytest
 
@@ -18,6 +20,7 @@ from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.user import User
 from app.services import trace_storage
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -36,10 +39,20 @@ async def _seed_conversation() -> uuid.UUID:
             system_prompt="...",
             model_id=model.id,
             status="active",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(agent)
         await db.flush()
-        conv = Conversation(agent_id=agent.id, title="t1")
+        conv = Conversation(
+            agent_id=agent.id,
+            title="t1",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conv)
         await db.commit()
         return conv.id

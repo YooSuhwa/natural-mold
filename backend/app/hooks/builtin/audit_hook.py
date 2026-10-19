@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from app.database import async_session
+from app.database import SessionTenant, async_session, tenant_session
 from app.hooks.base import CustomHook, HookContext, HookResult
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,8 @@ class AuditHook(CustomHook):
                 metadata.setdefault(f"meta_{key}", value)
 
         try:
-            async with async_session() as db:
+            scope = SessionTenant(ctx.tenant_id, ctx.user_id)
+            async with tenant_session(scope, maker=async_session) as db:
                 await credential_service.write_audit_log(
                     db,
                     credential_id=ctx.credential_id,

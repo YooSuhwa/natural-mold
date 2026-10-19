@@ -8,12 +8,15 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import StoredProtocolEvent
-from app.models.message_event import MessageEvent
 from app.routers.conversation_agent_protocol_replay import (
     load_protocol_events,
     protocol_replay_generator,
 )
 from app.routers.conversation_agent_protocol_runtime import protocol_events_from_broker
+from app.services.agent_purge_history_validation import verify_history_manifest
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
+from tests.conversation_replay_retained_fixture import LegacyReplaySeed, seed_legacy_purged_replay
 
 
 def _event_payloads(chunks: list[str]) -> list[dict[str, object]]:
@@ -43,30 +46,29 @@ async def _collect_replay_chunks(events: list[StoredProtocolEvent]) -> list[str]
 async def test_replay_normalizes_legacy_flat_custom_prefixed_event(db: AsyncSession) -> None:
     conversation_id = uuid.uuid4()
     run_id = "run-flat-custom"
-    db.add(
-        MessageEvent(
+    manifest = await seed_legacy_purged_replay(
+        db,
+        LegacyReplaySeed(
             conversation_id=conversation_id,
-            assistant_msg_id=run_id,
-            events=[
-                {
-                    "id": "usage-flat-1",
-                    "upstream_event_id": "usage-flat-1",
-                    "seq": 7,
-                    "method": "custom:usage",
-                    "namespace": [],
-                    "data": {"prompt_tokens": 3, "completion_tokens": 5},
-                    "run_id": run_id,
-                    "thread_id": str(conversation_id),
-                    "timestamp": "2026-06-14T00:00:00+00:00",
-                }
-            ],
-            last_event_id="usage-flat-1",
-            status="completed",
-        )
+            assistant_message_id=run_id,
+            event={
+                "id": "usage-flat-1",
+                "upstream_event_id": "usage-flat-1",
+                "seq": 7,
+                "method": "custom:usage",
+                "namespace": [],
+                "data": {"prompt_tokens": 3, "completion_tokens": 5},
+                "run_id": run_id,
+                "thread_id": str(conversation_id),
+                "timestamp": "2026-06-14T00:00:00+00:00",
+            },
+        ),
     )
     await db.commit()
 
-    events = await load_protocol_events(db, conversation_id)
+    assert await verify_history_manifest(db, manifest)
+
+    events = await load_protocol_events(db, conversation_id, context=unit_context(TEST_USER_ID))
     chunks = await _collect_replay_chunks(events)
     payloads = _event_payloads(chunks)
 
@@ -86,32 +88,31 @@ async def test_replay_normalizes_legacy_flat_custom_prefixed_event(db: AsyncSess
 async def test_replay_normalizes_legacy_wire_custom_prefixed_event(db: AsyncSession) -> None:
     conversation_id = uuid.uuid4()
     run_id = "run-wire-custom"
-    db.add(
-        MessageEvent(
+    manifest = await seed_legacy_purged_replay(
+        db,
+        LegacyReplaySeed(
             conversation_id=conversation_id,
-            assistant_msg_id=run_id,
-            events=[
-                {
-                    "type": "event",
-                    "method": "custom:usage",
-                    "seq": 11,
-                    "event_id": "usage-wire-1",
-                    "params": {
-                        "namespace": [],
-                        "data": {"prompt_tokens": 8, "completion_tokens": 13},
-                        "timestamp": "2026-06-14T00:00:01+00:00",
-                        "checkpoint_id": "ck-wire",
-                        "checkpoint_ns": "model",
-                    },
-                }
-            ],
-            last_event_id="usage-wire-1",
-            status="completed",
-        )
+            assistant_message_id=run_id,
+            event={
+                "type": "event",
+                "method": "custom:usage",
+                "seq": 11,
+                "event_id": "usage-wire-1",
+                "params": {
+                    "namespace": [],
+                    "data": {"prompt_tokens": 8, "completion_tokens": 13},
+                    "timestamp": "2026-06-14T00:00:01+00:00",
+                    "checkpoint_id": "ck-wire",
+                    "checkpoint_ns": "model",
+                },
+            },
+        ),
     )
     await db.commit()
 
-    events = await load_protocol_events(db, conversation_id)
+    assert await verify_history_manifest(db, manifest)
+
+    events = await load_protocol_events(db, conversation_id, context=unit_context(TEST_USER_ID))
     chunks = await _collect_replay_chunks(events)
     payloads = _event_payloads(chunks)
 

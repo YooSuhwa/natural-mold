@@ -7,12 +7,14 @@ import {
   ArrowLeftIcon,
   BarChart3Icon,
   BrainIcon,
+  BuildingIcon,
   CalendarClockIcon,
   Code2Icon,
   FilesIcon,
   HistoryIcon,
   KeyRoundIcon,
   MonitorCogIcon,
+  RefreshCwIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
   StoreIcon,
@@ -20,6 +22,8 @@ import {
   UserIcon,
 } from 'lucide-react'
 
+import { companyNavItems } from '@/components/layout/company-nav-items'
+import { organizationNavItems } from '@/components/layout/organization-nav-items'
 import { SidebarBrandHeader } from '@/components/layout/sidebar-brand-header'
 import { SidebarNavSection } from '@/components/layout/sidebar-nav-section'
 import type { SidebarNavSectionConfig } from '@/components/layout/sidebar-nav-section'
@@ -36,7 +40,14 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { orgAccess } from '@/features/organizations/lib/access'
 import { useSession } from '@/lib/auth/session'
+import {
+  useActiveOrganization,
+  useOrganizationInfo,
+  useTenantOverview,
+} from '@/lib/hooks/use-organizations'
+import { usePlatformOperatorAccess } from '@/lib/hooks/use-platform-tenants'
 import { useTriggerSummary } from '@/lib/hooks/use-triggers'
 
 export function SettingsSidebar() {
@@ -46,6 +57,12 @@ export function SettingsSidebar() {
   const tSettings = useTranslations('appSettings')
   const { data: user } = useSession()
   const { data: triggerSummary } = useTriggerSummary()
+  const { activeOrganization } = useActiveOrganization()
+  const { data: organizationInfo } = useOrganizationInfo(activeOrganization?.id)
+  const { data: tenantOverview } = useTenantOverview(activeOrganization?.tenant_id)
+  const access = orgAccess(activeOrganization, organizationInfo?.permissions)
+  // S03 is listed only for the SaaS platform operator (plan 13.16), fail closed.
+  const platformOperator = usePlatformOperatorAccess().allowed
 
   const baseSections: SidebarNavSectionConfig[] = [
     {
@@ -83,11 +100,32 @@ export function SettingsSidebar() {
     },
   ]
 
+  const organizationSections: SidebarNavSectionConfig[] = activeOrganization
+    ? [
+        {
+          label: tSettings('nav.organization'),
+          items: [
+            ...organizationNavItems(access, tSettings),
+            ...companyNavItems(tenantOverview?.access, tSettings),
+          ],
+        },
+      ]
+    : []
+
   const adminSections: SidebarNavSectionConfig[] = user?.is_super_user
     ? [
         {
           label: tSettings('nav.admin'),
           items: [
+            ...(platformOperator
+              ? [
+                  {
+                    href: '/settings/admin/tenants',
+                    label: tSettings('nav.platformTenants'),
+                    icon: BuildingIcon,
+                  },
+                ]
+              : []),
             {
               href: '/settings/marketplace-admin',
               label: tSettings('nav.marketplaceAdmin'),
@@ -108,12 +146,17 @@ export function SettingsSidebar() {
               label: tSettings('nav.adminAudit'),
               icon: UsersRoundIcon,
             },
+            {
+              href: '/settings/admin/authz',
+              label: tSettings('nav.authzSync'),
+              icon: RefreshCwIcon,
+            },
           ],
         },
       ]
     : []
 
-  const sections = [...baseSections, ...adminSections]
+  const sections = [...baseSections, ...organizationSections, ...adminSections]
   const activeMenuClass = 'moldy-sidebar-nav-item'
   const isSidebarCollapsed = state === 'collapsed'
 

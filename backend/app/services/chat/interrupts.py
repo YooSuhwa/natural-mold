@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.message_event import MessageEvent
 from app.schemas.conversation import MessageResponse
 from app.services import trace_storage
+from app.services.chat.auth_interrupt_cards import hydrate_auth_cards, is_auth_payload
 
 _HITL_METADATA_KEYS = {
     "approval_id",
@@ -264,7 +265,7 @@ def _latest_interrupt_payload(events: list[dict[str, Any]]) -> dict[str, Any] | 
         if data is None:
             continue
         action_requests = data.get("action_requests")
-        if isinstance(action_requests, list) and action_requests:
+        if (isinstance(action_requests, list) and action_requests) or is_auth_payload(data):
             return data
     return None
 
@@ -404,12 +405,16 @@ async def _hydrate_pending_interrupt_tool_calls(
     if not records:
         return
     events_by_record = await trace_storage.load_events_many(db, records)
+    auth_pending: dict[str, dict[str, Any]] = {}  # G-05: latest record wins (re-asks)
     for record in records:
         linked_ids = record.linked_message_ids or []
         target_responses = [response_by_id[mid] for mid in linked_ids if mid in response_by_id]
         events = events_by_record.get(record.id, [])
         payload = _latest_interrupt_payload(events)
         if payload is None:
+            continue
+        if is_auth_payload(payload):
+            auth_pending.update({mid: payload for mid in linked_ids if mid in response_by_id})
             continue
         for response in target_responses:
             if not _interrupt_payload_targets_tool_calls(payload, response.tool_calls or []):
@@ -421,3 +426,4 @@ async def _hydrate_pending_interrupt_tool_calls(
             ):
                 continue
             response.tool_calls = _merge_interrupt_tool_calls(response.tool_calls or [], payload)
+    hydrate_auth_cards(auth_pending, response_by_id, responses)

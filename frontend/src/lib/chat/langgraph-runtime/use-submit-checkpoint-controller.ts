@@ -2,6 +2,7 @@
 
 import { HumanMessage } from '@langchain/core/messages'
 import { useCallback, useSyncExternalStore } from 'react'
+import { registerOrgScopeReset } from '@/lib/org-scope/org-scope-reset'
 
 export interface PendingNewSubmitState {
   readonly conversationId: string
@@ -16,6 +17,12 @@ const PENDING_SUBMIT_LIMIT = 50
 const pendingSubmitsByConversation = new Map<string, PendingNewSubmitState>()
 const listeners = new Set<() => void>()
 let nextAttemptId = 1
+
+registerOrgScopeReset(() => {
+  if (pendingSubmitsByConversation.size === 0) return
+  pendingSubmitsByConversation.clear()
+  emitChange()
+})
 
 export function useSubmitCheckpointController(conversationId: string) {
   const getSnapshot = useCallback(

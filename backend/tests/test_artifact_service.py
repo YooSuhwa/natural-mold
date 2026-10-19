@@ -12,6 +12,7 @@ from app.models.conversation_artifact import ArtifactVersion, ConversationArtifa
 from app.services.artifact_service import ArtifactDeltaRecorder, ArtifactRuntimeContext
 from app.services.artifact_storage import LocalArtifactStorageBackend
 from tests.artifact_test_helpers import seed_artifact_conversation
+from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID, TestSession, engine
 
 
@@ -25,7 +26,7 @@ async def test_recorder_ingests_deepagents_write_file_outputs(tmp_path: Path) ->
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-write-file",
             output_dir=output_dir,
@@ -67,7 +68,7 @@ async def test_recorder_ingests_same_content_rewrite_for_new_run(tmp_path: Path)
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-same-content",
             output_dir=output_dir,
@@ -129,7 +130,7 @@ async def test_recorder_hashes_only_new_or_changed_files(
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-hash-delta",
             output_dir=output_dir,
@@ -167,7 +168,7 @@ async def test_recorder_detects_same_size_rewrite_with_preserved_mtime(
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-preserved-mtime",
             output_dir=output_dir,
@@ -209,7 +210,7 @@ async def test_recorder_ingests_created_and_updated_file(tmp_path: Path) -> None
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-1",
             output_dir=output_dir,
@@ -260,7 +261,7 @@ async def test_recorder_marks_deleted_file_and_emits_event(tmp_path: Path) -> No
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-delete",
             output_dir=output_dir,
@@ -308,7 +309,7 @@ async def test_recorder_delete_does_not_mark_previous_run_artifact_deleted(
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-previous",
             output_dir=output_dir,
@@ -328,7 +329,7 @@ async def test_recorder_delete_does_not_mark_previous_run_artifact_deleted(
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-current",
             output_dir=output_dir,
@@ -363,7 +364,7 @@ async def test_library_filters_favorite_and_stats(tmp_path: Path) -> None:
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-library-1",
             output_dir=output_dir,
@@ -381,7 +382,7 @@ async def test_library_filters_favorite_and_stats(tmp_path: Path) -> None:
     async with TestSession() as db:
         page = await artifact_service.list_library_artifacts(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             q="chart",
             agent_id=agent_id,
             conversation_id=conv_id,
@@ -395,18 +396,18 @@ async def test_library_filters_favorite_and_stats(tmp_path: Path) -> None:
         assert isinstance(artifact_id, str)
         favorited = await artifact_service.set_artifact_favorite(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             artifact_id=artifact_id,
             is_favorite=True,
         )
         assert favorited.is_favorite is True
         opened = await artifact_service.record_artifact_opened(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             artifact_id=artifact_id,
         )
         assert opened.preview_count == 1
-        stats = await artifact_service.get_library_stats(db, user_id=TEST_USER_ID)
+        stats = await artifact_service.get_library_stats(db, context=unit_context(TEST_USER_ID))
         assert stats.total_count == 1
         assert stats.favorite_count == 1
         assert stats.by_kind[0].kind == "data"
@@ -424,7 +425,7 @@ async def test_download_path_missing_storage_object_raises_not_found(tmp_path: P
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-missing-object",
             output_dir=output_dir,
@@ -447,7 +448,7 @@ async def test_download_path_missing_storage_object_raises_not_found(tmp_path: P
         with pytest.raises(artifact_service.ArtifactNotFoundError):
             await artifact_service.get_artifact_download_path(
                 db,
-                user_id=TEST_USER_ID,
+                context=unit_context(TEST_USER_ID),
                 artifact_id=artifact_id,
                 storage=storage,
             )
@@ -464,7 +465,7 @@ async def test_library_cursor_keeps_same_timestamp_rows(tmp_path: Path) -> None:
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-library-cursor",
             output_dir=output_dir,
@@ -491,7 +492,7 @@ async def test_library_cursor_keeps_same_timestamp_rows(tmp_path: Path) -> None:
     async with TestSession() as db:
         first_page = await artifact_service.list_library_artifacts(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             q=None,
             agent_id=None,
             conversation_id=conv_id,
@@ -505,7 +506,7 @@ async def test_library_cursor_keeps_same_timestamp_rows(tmp_path: Path) -> None:
 
         second_page = await artifact_service.list_library_artifacts(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             q=None,
             agent_id=None,
             conversation_id=conv_id,
@@ -533,7 +534,7 @@ async def test_library_lists_batch_load_summary_metadata(tmp_path: Path) -> None
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-library-batch",
             output_dir=output_dir,
@@ -551,15 +552,20 @@ async def test_library_lists_batch_load_summary_metadata(tmp_path: Path) -> None
     select_statements: list[str] = []
 
     def count_selects(_conn, _cursor, statement, _parameters, _context, _executemany):
-        if statement.lstrip().upper().startswith("SELECT"):
-            select_statements.append(statement)
+        normalized = " ".join(statement.upper().split())
+        if not normalized.startswith("SELECT"):
+            return
+        # Bound artifact batching separately from current account/membership reads.
+        if " FROM USERS " in normalized or " FROM ORGANIZATIONS " in normalized:
+            return
+        select_statements.append(statement)
 
     event.listen(engine.sync_engine, "before_cursor_execute", count_selects)
     try:
         async with TestSession() as db:
             page = await artifact_service.list_library_artifacts(
                 db,
-                user_id=TEST_USER_ID,
+                context=unit_context(TEST_USER_ID),
                 q=None,
                 agent_id=None,
                 conversation_id=conv_id,
@@ -574,7 +580,7 @@ async def test_library_lists_batch_load_summary_metadata(tmp_path: Path) -> None
             select_statements.clear()
             recent = await artifact_service.list_recent_artifacts(
                 db,
-                user_id=TEST_USER_ID,
+                context=unit_context(TEST_USER_ID),
                 limit=8,
             )
             assert len(recent) == 3
@@ -597,7 +603,7 @@ async def test_artifacts_can_be_grouped_by_message_id(tmp_path: Path) -> None:
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-message-link",
             output_dir=output_dir,
@@ -617,13 +623,14 @@ async def test_artifacts_can_be_grouped_by_message_id(tmp_path: Path) -> None:
             conversation_id=conv_id,
             assistant_msg_id="run-message-link",
             linked_message_ids=["message-1"],
+            context=unit_context(TEST_USER_ID),
         )
         await db.commit()
 
     async with TestSession() as db:
         grouped = await artifact_service.list_conversation_artifacts_by_message_id(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             conversation_id=conv_id,
         )
 
@@ -646,7 +653,7 @@ async def test_terminal_incomplete_run_marks_ready_artifacts_failed(
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id=f"run-{run_status}-artifact",
             output_dir=output_dir,
@@ -666,6 +673,7 @@ async def test_terminal_incomplete_run_marks_ready_artifacts_failed(
             conversation_id=conv_id,
             assistant_msg_id=f"run-{run_status}-artifact",
             run_status=run_status,
+            context=unit_context(TEST_USER_ID),
         )
         await db.commit()
         artifact = (
@@ -694,7 +702,7 @@ async def test_read_artifact_text_content_reads_only_preview_window(
         session_factory=TestSession,
         context=ArtifactRuntimeContext(
             conversation_id=conv_id,
-            user_id=TEST_USER_ID,
+            org_context=unit_context(TEST_USER_ID),
             agent_id=agent_id,
             assistant_msg_id="run-preview-window",
             output_dir=output_dir,
@@ -718,7 +726,7 @@ async def test_read_artifact_text_content_reads_only_preview_window(
         assert isinstance(artifact_id, str)
         preview = await artifact_service.read_artifact_text_content(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             artifact_id=artifact_id,
             storage=storage,
             max_bytes=5,

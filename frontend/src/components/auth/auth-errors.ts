@@ -33,6 +33,13 @@ export function mapAuthError(err: unknown, scope: AuthErrorScope): FieldError {
     }
   }
 
+  if (err.code === 'sso_required') {
+    return { field: null, messageKey: 'auth.errors.ssoRequired' }
+  }
+  if (err.code === 'sso_signup_blocked') {
+    return { field: 'email', messageKey: 'auth.errors.ssoSignupBlocked' }
+  }
+
   switch (err.status) {
     case 401:
       return { field: null, messageKey: 'auth.errors.invalidCredentials' }

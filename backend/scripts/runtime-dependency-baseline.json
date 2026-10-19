@@ -15,16 +15,6 @@
     },
     {
       "rule": "routers_to_models",
-      "importer": "app.routers.agent_blueprints",
-      "imported": "app.models.agent_blueprint"
-    },
-    {
-      "rule": "routers_to_models",
-      "importer": "app.routers.agent_blueprints",
-      "imported": "app.models.marketplace"
-    },
-    {
-      "rule": "routers_to_models",
       "importer": "app.routers.agent_runtime_api",
       "imported": "app.models.agent_api"
     },
@@ -42,6 +32,16 @@
       "rule": "routers_to_models",
       "importer": "app.routers.audit",
       "imported": "app.models.audit_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.chat_resume_entries",
+      "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.chat_run_entries",
+      "imported": "app.models.message_event"
     },
     {
       "rule": "routers_to_models",
@@ -70,11 +70,6 @@
     },
     {
       "rule": "routers_to_models",
-      "importer": "app.routers.conversation_agent_protocol_consent",
-      "imported": "app.models.skill_builder_session"
-    },
-    {
-      "rule": "routers_to_models",
       "importer": "app.routers.conversation_agent_protocol_interrupts",
       "imported": "app.models.conversation"
     },
@@ -82,11 +77,6 @@
       "rule": "routers_to_models",
       "importer": "app.routers.conversation_agent_protocol_legacy",
       "imported": "app.models.message_event"
-    },
-    {
-      "rule": "routers_to_models",
-      "importer": "app.routers.conversation_agent_protocol_replay",
-      "imported": "app.models.conversation"
     },
     {
       "rule": "routers_to_models",
@@ -130,6 +120,11 @@
     },
     {
       "rule": "routers_to_models",
+      "importer": "app.routers.conversation_branch_entries",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
       "importer": "app.routers.conversation_branches",
       "imported": "app.models.conversation"
     },
@@ -152,6 +147,31 @@
       "rule": "routers_to_models",
       "importer": "app.routers.conversation_messages",
       "imported": "app.models.message_event"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_protocol_fork",
+      "imported": "app.models.conversation"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_protocol_persistence",
+      "imported": "app.models.conversation_run"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_protocol_persistence",
+      "imported": "app.models.conversation_run_input"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_protocol_response",
+      "imported": "app.models.conversation_run"
+    },
+    {
+      "rule": "routers_to_models",
+      "importer": "app.routers.conversation_protocol_start",
+      "imported": "app.models.conversation"
     },
     {
       "rule": "routers_to_models",
@@ -216,11 +236,6 @@
     {
       "rule": "routers_to_models",
       "importer": "app.routers.health",
-      "imported": "app.models.mcp_server"
-    },
-    {
-      "rule": "routers_to_models",
-      "importer": "app.routers.health",
       "imported": "app.models.model"
     },
     {
@@ -240,18 +255,8 @@
     },
     {
       "rule": "routers_to_models",
-      "importer": "app.routers.models",
-      "imported": "app.models.credential"
-    },
-    {
-      "rule": "routers_to_models",
       "importer": "app.routers.shares",
       "imported": "app.models.conversation"
-    },
-    {
-      "rule": "routers_to_models",
-      "importer": "app.routers.shares",
-      "imported": "app.models.message_event"
     },
     {
       "rule": "routers_to_models",
@@ -302,11 +307,6 @@
       "rule": "routers_to_models",
       "importer": "app.routers.skill_files",
       "imported": "app.models.skill_revision"
-    },
-    {
-      "rule": "routers_to_models",
-      "importer": "app.routers.skill_revisions",
-      "imported": "app.models.skill"
     },
     {
       "rule": "routers_to_models",
@@ -440,6 +440,36 @@
     },
     {
       "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_claim",
+      "imported": "app.services.chat_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_claim",
+      "imported": "app.services.trigger_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_delivery",
+      "imported": "app.services.trigger_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_invoke",
+      "imported": "app.services.trigger_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_materialization",
+      "imported": "app.services.chat_service"
+    },
+    {
+      "rule": "runtime_to_services",
+      "importer": "app.agent_runtime.trigger_execution_materialization",
+      "imported": "app.services.trigger_service"
+    },
+    {
+      "rule": "runtime_to_services",
       "importer": "app.agent_runtime.trigger_executor",
       "imported": "app.services.chat_service"
     },
@@ -464,6 +494,70 @@
       "imported": "app.agent_runtime.ag_ui_adapter"
     },
     {
+      "importer": "app.agent_runtime.agent_invoke_runner",
+      "imported": "app.agent_runtime.agent_stream_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.agent_stream_execution",
+      "imported": "app.agent_runtime.agent_stream_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.agent_stream_facade_bindings",
+      "imported": "app.agent_runtime.agent_stream_runner"
+    },
+    {
+      "importer": "app.agent_runtime.agent_stream_facade_bindings",
+      "imported": "app.agent_runtime.langgraph_agent_stream_runner"
+    },
+    {
+      "importer": "app.agent_runtime.agent_stream_runner",
+      "imported": "app.agent_runtime.agent_invoke_runner"
+    },
+    {
+      "importer": "app.agent_runtime.agent_stream_runner",
+      "imported": "app.agent_runtime.agent_stream_execution"
+    },
+    {
+      "importer": "app.agent_runtime.langgraph_agent_stream_runner",
+      "imported": "app.agent_runtime.agent_stream_runner"
+    },
+    {
+      "importer": "app.agent_runtime.langgraph_agent_stream_runner",
+      "imported": "app.agent_runtime.langgraph_prepared_stream"
+    },
+    {
+      "importer": "app.agent_runtime.langgraph_agent_stream_runner",
+      "imported": "app.agent_runtime.langgraph_stream_execution"
+    },
+    {
+      "importer": "app.agent_runtime.langgraph_prepared_stream",
+      "imported": "app.agent_runtime.langgraph_stream_execution"
+    },
+    {
+      "importer": "app.agent_runtime.langgraph_stream_execution",
+      "imported": "app.agent_runtime.agent_stream_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.model_facade_bindings",
+      "imported": "app.agent_runtime.model_factory"
+    },
+    {
+      "importer": "app.agent_runtime.model_factory",
+      "imported": "app.agent_runtime.model_fallback_factory"
+    },
+    {
+      "importer": "app.agent_runtime.model_factory",
+      "imported": "app.agent_runtime.model_provider_builders"
+    },
+    {
+      "importer": "app.agent_runtime.model_fallback_factory",
+      "imported": "app.agent_runtime.model_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.model_provider_builders",
+      "imported": "app.agent_runtime.model_facade_bindings"
+    },
+    {
       "importer": "app.agent_runtime.runtime.models",
       "imported": "app.agent_runtime.runtime_component_builder"
     },
@@ -472,12 +566,60 @@
       "imported": "app.agent_runtime.runtime.models"
     },
     {
+      "importer": "app.agent_runtime.runtime_agent_builder",
+      "imported": "app.agent_runtime.runtime_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_agent_builder",
+      "imported": "app.agent_runtime.runtime_subagent_normalization"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_agent_preparation",
+      "imported": "app.agent_runtime.runtime_facade_bindings"
+    },
+    {
       "importer": "app.agent_runtime.runtime_component_builder",
       "imported": "app.agent_runtime.runtime.models"
     },
     {
       "importer": "app.agent_runtime.runtime_component_builder",
       "imported": "app.agent_runtime.runtime.reliability"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_component_builder",
+      "imported": "app.agent_runtime.runtime_agent_builder"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_component_builder",
+      "imported": "app.agent_runtime.runtime_agent_preparation"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_component_builder",
+      "imported": "app.agent_runtime.runtime_preparation_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_component_builder",
+      "imported": "app.agent_runtime.runtime_subagent_normalization"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_facade_bindings",
+      "imported": "app.agent_runtime.runtime_component_builder"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_preparation_bindings",
+      "imported": "app.agent_runtime.runtime_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.runtime_subagent_normalization",
+      "imported": "app.agent_runtime.runtime_facade_bindings"
+    },
+    {
+      "importer": "app.agent_runtime.trigger_execution_invoke",
+      "imported": "app.agent_runtime.trigger_executor"
+    },
+    {
+      "importer": "app.agent_runtime.trigger_executor",
+      "imported": "app.agent_runtime.trigger_execution_invoke"
     }
   ],
   "dynamic_import_exceptions": [

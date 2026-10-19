@@ -1,0 +1,5 @@
+PATCH /api/e2e/conversations/{conversation_id}/activity
+PATCH /api/e2e/conversations/{conversation_id}/runs/{run_id}/heartbeat
+POST /api/e2e/conversations/{conversation_id}/mcp-apps/fixture
+POST /api/e2e/conversations/{conversation_id}/runs
+POST /api/e2e/conversations/{conversation_id}/runs/stale-sweep

@@ -18,9 +18,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from app.authz.platform_scope import PlatformScope
 from app.config import settings
-from app.database import async_session, engine
+from app.database import async_session, engine, platform_session, platform_sessions
 from app.scheduler_job_ids import LeaderSchedulerJobId
+from app.schemas.conversation_scope import DraftConversationCleanup
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +379,7 @@ async def rotate_credentials_to_active_key() -> int:
     from app.credentials import rotation as credential_rotation
 
     return await credential_rotation.rotate_credentials_to_active_key(
-        session_factory=async_session,
+        session_factory=platform_sessions("scheduler.credential_rotation", maker=async_session),
         batch_size=_ROTATION_BATCH,
     )
 
@@ -506,10 +508,10 @@ async def health_check_all_active() -> dict[str, int]:
 
     from app.services import health_check as health_check_service
 
-    async with async_session() as db:
+    async with platform_session("scheduler.health_check", maker=async_session) as db:
         return await health_check_service.check_all_active(
             db,
-            session_factory=async_session,
+            session_factory=platform_sessions("scheduler.health_check", maker=async_session),
         )
 
 
@@ -534,7 +536,7 @@ async def refresh_token_gc_run() -> int:
 
     from app.services.refresh_token_gc import gc_expired_refresh_tokens
 
-    async with async_session() as db:
+    async with platform_session("scheduler.retention_gc", maker=async_session) as db:
         try:
             return await gc_expired_refresh_tokens(
                 db, retention_days=settings.refresh_token_gc_retention_days
@@ -573,10 +575,13 @@ async def draft_conversation_gc_run() -> int:
 
     from app.services import chat_service
 
-    async with async_session() as db:
+    async with platform_session("scheduler.retention_gc", maker=async_session) as db:
         try:
             return await chat_service.gc_orphan_draft_conversations(
-                db, retention_hours=settings.draft_conversation_gc_retention_hours
+                db,
+                DraftConversationCleanup(
+                    PlatformScope(), settings.draft_conversation_gc_retention_hours
+                ),
             )
         except Exception:  # noqa: BLE001 — keep cron alive
             logger.exception("draft conversation GC failed; will retry next run")
@@ -611,7 +616,7 @@ async def skill_draft_gc_run() -> int:
 
     from app.services import skill_draft_workspace
 
-    async with async_session() as db:
+    async with platform_session("scheduler.retention_gc", maker=async_session) as db:
         try:
             return await skill_draft_workspace.gc_stale_draft_workspaces(
                 db, retention_hours=settings.skill_draft_gc_retention_hours
@@ -645,7 +650,7 @@ async def orphan_attachment_gc_run() -> int:
 
     from app.services import chat_service
 
-    async with async_session() as db:
+    async with platform_session("scheduler.retention_gc", maker=async_session) as db:
         try:
             return await chat_service.gc_orphan_attachments(
                 db, retention_hours=settings.orphan_attachment_gc_retention_hours
@@ -682,9 +687,13 @@ async def poll_mcp_servers_health() -> dict[str, int]:
     본문은 ``app.services.mcp_service``로 이관 (BE-S9).
     """
 
-    from app.services import mcp_service
+    from app.database import SessionTenant, tenant_sessions
+    from app.services.mcp_health_poll import poll_mcp_health_by_company
 
-    return await mcp_service.poll_mcp_servers_health(session_factory=async_session)
+    return await poll_mcp_health_by_company(  # I-06: each company in its own session
+        platform=platform_sessions("scheduler.mcp_health", maker=async_session),
+        company_sessions=lambda tenant: tenant_sessions(SessionTenant(tenant), maker=async_session),
+    )
 
 
 def register_mcp_health_job() -> None:
@@ -752,7 +761,9 @@ async def sweep_stale_conversation_runs() -> None:
     """
     from app.services import conversation_run_service
 
-    await conversation_run_service.sweep_stale_conversation_runs(session_factory=async_session)
+    await conversation_run_service.sweep_stale_conversation_runs(
+        session_factory=platform_sessions("scheduler.run_sweep", maker=async_session)
+    )
 
 
 def evict_expired_brokers() -> None:
@@ -873,4 +884,73 @@ def register_broker_eviction_job() -> None:
         "Scheduled EventBroker eviction: every %ds (TTL=%ds)",
         _BROKER_EVICTION_INTERVAL_SECONDS,
         _BROKER_EVICTION_TTL_SECONDS,
+    )
+
+
+# ---------------------------------------------------------------------------
+# C-05 authorization sync (plan 8.6): bodies in ``app.authz.jobs``
+# ---------------------------------------------------------------------------
+
+
+async def authz_job_run(job_id: LeaderSchedulerJobId) -> None:
+    """Outbox drain / reconcile / expiry cleanup / backlog alert; no-op in legacy mode."""
+
+    from app.authz import jobs
+
+    await jobs.run_job(job_id, settings)
+
+
+def register_authz_jobs() -> None:
+    """Register the authz leader jobs; drop persisted ones the mode no longer schedules."""
+
+    from app.authz import jobs
+
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        return
+    planned = jobs.schedule(settings)
+    for job_id in set(jobs.JOBS) - {job_id for job_id, _ in planned}:
+        if scheduler.get_job(job_id) is not None:
+            scheduler.remove_job(job_id)
+    for job_id, trigger in planned:
+        scheduler.add_job(
+            _leader_job_runner(),
+            trigger,
+            id=job_id,
+            args=[job_id],
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+    logger.info("Scheduled authz jobs: %s", ", ".join(job_id for job_id, _ in planned) or "none")
+
+
+# ---------------------------------------------------------------------------
+# E-08 retention sweep (plan 6.2, 10.7): body in ``app.services.retention.job``
+# ---------------------------------------------------------------------------
+
+
+async def retention_sweep_run() -> None:
+    """Daily per-company retention; only scheduled with ``retention_sweep_enabled``."""
+
+    from app.services.retention import job
+
+    try:
+        await job.run_retention_sweep(still_leader=scheduler_leader_is_healthy)
+    except Exception:  # noqa: BLE001 — keep cron alive
+        logger.exception("retention sweep failed; will retry next run")
+
+
+def register_retention_sweep_job() -> None:
+    scheduler = get_scheduler()
+    job_id = LeaderSchedulerJobId.RETENTION_SWEEP
+    if not settings.retention_sweep_enabled:
+        if scheduler.running and scheduler.get_job(job_id) is not None:
+            scheduler.remove_job(job_id)
+        return
+    _register_cron_job(
+        job_id=job_id,
+        cron_expr=settings.retention_sweep_cron,
+        cron_setting_name="retention_sweep_cron",
+        log_label="retention sweep",
     )

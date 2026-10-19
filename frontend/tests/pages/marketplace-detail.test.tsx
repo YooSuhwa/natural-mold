@@ -55,7 +55,8 @@ vi.mock('@/lib/hooks/use-marketplace', () => ({
   useDisableItem: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useEnableItem: () => ({ mutateAsync: vi.fn(), isPending: false }),
   usePatchMarketplaceItem: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useRemoveItemACL: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useReplaceItemACL: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRemoveItemACLEntry: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
 const versions: MarketplaceVersionSummary[] = [

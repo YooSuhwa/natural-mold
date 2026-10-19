@@ -9,6 +9,8 @@ from app.agent_runtime.langgraph_streaming import stream_agent_response_langgrap
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from tests.agent_runtime.langgraph_streaming_fixtures import ProtocolAgent, sse_payload
 from tests.agent_runtime.test_run_metrics import FakeMonotonicClock
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 
 class ScriptedErrorCallbackAgent:
@@ -118,6 +120,7 @@ async def test_runner_callback_preserves_partial_metrics_when_producer_is_cancel
     canceled_type = anyio.get_cancelled_exc_class()
     agent = ScriptedErrorCallbackAgent(clock, canceled_type("scripted cancel"))
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="fake",
         model_name="scripted",
         api_key=None,
@@ -162,6 +165,7 @@ async def test_runner_callback_preserves_partial_metrics_when_producer_fails(
     metrics = RunMetricsAccumulator(started_at=0.0, monotonic=clock)
     agent = ScriptedErrorCallbackAgent(clock, RuntimeError("scripted failure"))
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="fake",
         model_name="scripted",
         api_key=None,

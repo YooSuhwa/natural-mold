@@ -9,6 +9,8 @@ from app.agent_runtime.run_secrets import (
     reset_run_secrets,
     set_run_secrets,
 )
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 # --- collect_secret_values: flattening + min-length + Bearer body ----------
 
@@ -162,6 +164,7 @@ def test_add_skill_secrets_unions_into_cfg_secret_values() -> None:
         system_prompt="",
         tools_config=[],
         thread_id="test-thread",
+        org_context=unit_context(TEST_USER_ID),
     )
     skill_ctx = SimpleNamespace(
         descriptors={

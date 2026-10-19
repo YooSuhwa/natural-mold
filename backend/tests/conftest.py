@@ -6,10 +6,18 @@ import uuid
 from collections.abc import AsyncGenerator
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from passlib.context import CryptContext
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
+
+pytest_plugins = ["tests.agent_lifecycle_sqlite_lock_adapter"]
+
+# Never read a developer's ``backend/.env`` in unit tests (the isolated runner
+# sets the same flag): its E2E/Langfuse/runtime values change runtime behaviour
+# and made the plain ``pytest tests/`` pre-push run fail where isolated runs pass.
+os.environ.setdefault("MOLDY_DISABLE_ENV_FILE", "true")
+os.environ.setdefault("PYTHON_DOTENV_DISABLED", "1")
 
 # Cipher V2 / new credential domain require ``ENCRYPTION_KEYS`` to be set
 # before ``app.config.settings`` is evaluated. Set it at import time so any
@@ -23,6 +31,7 @@ os.environ.setdefault("ENCRYPTION_KEYS", secrets.token_hex(32))
 os.environ["SKILL_EVALUATION_ENABLED"] = "true"
 
 from app.auth import password as password_module  # noqa: E402
+from app.authz.org_context import OrgContext  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.dependencies import (  # noqa: E402
@@ -30,12 +39,14 @@ from app.dependencies import (  # noqa: E402
     get_current_user,
     get_current_user_optional,
     get_db,
+    get_org_context,
     verify_csrf,
 )
 from app.main import create_app  # noqa: E402
 from app.rate_limit import limiter  # noqa: E402
 from app.security import key_provider  # noqa: E402
 from app.services import share_cache  # noqa: E402
+from tests.sqlite_test_engine import TestSession, engine  # noqa: E402
 
 # Rate limiting is meaningful in production but not in unit tests — keeping
 # it on would couple assertions to slowapi's internal counters.
@@ -60,8 +71,6 @@ key_provider.reset_cache()
 
 TEST_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
-engine = create_async_engine("sqlite+aiosqlite://", echo=False)
-TestSession = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 _schema_ready = False
 
 
@@ -103,7 +112,7 @@ def _stub_llm_credential_resolution(monkeypatch):
     (``monkeypatch.undo()`` or per-test re-patch).
     """
 
-    async def _fake_resolve(_db, _agent, **_kwargs):
+    async def _fake_resolve(_db, _agent, _access):
         return "test-api-key"
 
     monkeypatch.setattr(
@@ -139,6 +148,7 @@ def _patch_conversation_run_worker_session(monkeypatch):
     """Detached chat run workers must use the same in-memory DB as router tests."""
 
     monkeypatch.setattr("app.services.conversation_run_worker.async_session", TestSession)
+    monkeypatch.setattr("app.services.agent_execution_runtime.async_session", TestSession)
     monkeypatch.setattr("app.services.conversation_run_queue_worker.async_session", TestSession)
     monkeypatch.setattr("app.services.conversation_stream_service.async_session", TestSession)
     monkeypatch.setattr("app.services.skill_builder_finalize.async_session", TestSession)
@@ -172,6 +182,14 @@ async def _bypass_verify_csrf() -> None:
     return
 
 
+async def override_get_org_context(
+    user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> OrgContext:
+    from tests.authz.unit_scope_fixture import ensure_unit_scope
+
+    return await ensure_unit_scope(db, user)
+
+
 @pytest.fixture(scope="session")
 def test_app() -> FastAPI:
     app = create_app()
@@ -179,6 +197,7 @@ def test_app() -> FastAPI:
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_current_user_optional] = override_get_current_user
     app.dependency_overrides[verify_csrf] = _bypass_verify_csrf
+    app.dependency_overrides[get_org_context] = override_get_org_context
     return app
 
 
@@ -205,6 +224,10 @@ async def raw_client(raw_test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]
     Used by /api/auth tests and the multi-user isolation matrix.
     """
 
+    from tests.authz.registration_fixture import seed_registration_default
+
+    async with TestSession() as db:
+        await seed_registration_default(db)
     transport = ASGITransport(app=raw_test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
@@ -328,6 +351,10 @@ def make_agent(
     """Persist a minimal ``Agent`` row and flush. Returns the row."""
 
     from app.models.agent import Agent
+    from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
+
+    kwargs.setdefault("org_id", TEST_ORG_ID)
+    kwargs.setdefault("tenant_id", TEST_TENANT_ID)
 
     agent = Agent(
         user_id=user_id,
@@ -370,6 +397,12 @@ async def seed_agent(
             email, user_name = f"u-{uuid.uuid4().hex[:8]}@test.com", "Test User"
         user = User(id=user_id, email=email, name=user_name)
         db.add(user)
+    from tests.authz.unit_scope_fixture import ensure_unit_scope
+
+    await ensure_unit_scope(
+        db,
+        CurrentUser(id=user.id, email=user.email, name=user.name, is_super_user=user.is_super_user),
+    )
     model = await make_model(db)
     agent = await make_agent(
         db,

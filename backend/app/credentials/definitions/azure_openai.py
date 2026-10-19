@@ -12,6 +12,7 @@ definition = CredentialDefinition(
     icon_id="azure",
     documentation_url="https://learn.microsoft.com/azure/ai-services/openai/reference",
     category="llm",
+    hosts=("*.openai.azure.com",),
     properties=[
         FieldDef(
             name="api_key",

@@ -15,11 +15,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.policies import SUPER, authz_policy
 from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
 from app.dependencies import (
     CurrentUser,
     get_db,
-    require_super_user,
+    require_platform_operator,
     verify_csrf,
 )
 from app.models.system_llm_setting import SYSTEM_LLM_ROLES, SystemLlmSetting
@@ -35,21 +37,15 @@ router = APIRouter(prefix="/api/system-llm-settings", tags=["system-llm-settings
 
 # Credential definition_keys that are valid LLM providers for a system slot.
 # (ADR-019 — openai / anthropic / openrouter / litellm-style openai_compatible)
-_LLM_DEFINITION_KEYS = frozenset(
-    {"openai", "anthropic", "openrouter", "openai_compatible"}
-)
+_LLM_DEFINITION_KEYS = frozenset({"openai", "anthropic", "openrouter", "openai_compatible"})
 
 # Unified message for any invalid credential selection. Distinguishing
 # "missing" from "wrong type" only in the server log avoids leaking which
 # system credentials exist (enumeration oracle, security.md).
-_INVALID_CREDENTIAL_DETAIL = (
-    "credential_id must reference an existing system LLM credential"
-)
+_INVALID_CREDENTIAL_DETAIL = "credential_id must reference an existing system LLM credential"
 
 
-async def _build_out(
-    db: AsyncSession, setting: SystemLlmSetting
-) -> SystemLlmSettingOut:
+async def _build_out(db: AsyncSession, setting: SystemLlmSetting) -> SystemLlmSettingOut:
     """Materialize a settings row into the API shape.
 
     ``provider`` comes from ``credential.definition_key`` (no decrypt).
@@ -68,15 +64,11 @@ async def _build_out(
             credential_name = cred.name
             provider = cred.definition_key
             try:
-                payload = await credential_service.decrypt_with_external(
-                    cred.data_encrypted
-                )
+                payload = await open_values(cred, "system")
                 raw = payload.get("base_url")
                 base_url = str(raw) if raw else None
             except Exception:  # noqa: BLE001
-                logger.exception(
-                    "System LLM credential %s decryption failed", cred.id
-                )
+                logger.exception("System LLM credential %s decryption failed", cred.id)
 
     configured = setting.credential_id is not None and bool(setting.model_name)
     return SystemLlmSettingOut(
@@ -92,12 +84,14 @@ async def _build_out(
 
 
 @router.get("", response_model=list[SystemLlmSettingOut])
+@authz_policy(SUPER)
 async def list_system_llm_settings(
     db: AsyncSession = Depends(get_db),
-    _user: CurrentUser = Depends(require_super_user),
+    _user: CurrentUser = Depends(require_platform_operator),
 ) -> list[SystemLlmSettingOut]:
     """All role slots (text_primary / text_fallback / image). Super_user only."""
-    result = await db.execute(select(SystemLlmSetting))
+    # Platform defaults only; company overrides live under /api/tenants/{id}/llm-settings.
+    result = await db.execute(select(SystemLlmSetting).where(SystemLlmSetting.tenant_id.is_(None)))
     by_role = {s.role: s for s in result.scalars().all()}
     out: list[SystemLlmSettingOut] = []
     for role in SYSTEM_LLM_ROLES:
@@ -112,12 +106,13 @@ async def list_system_llm_settings(
 
 
 @router.put("/{role}", response_model=SystemLlmSettingOut)
+@authz_policy(SUPER)
 async def update_system_llm_setting(
     role: str,
     payload: SystemLlmSettingUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ) -> SystemLlmSettingOut:
     """Select (or clear) the credential/model for a role. Super_user only."""
@@ -141,7 +136,9 @@ async def update_system_llm_setting(
             raise HTTPException(status_code=422, detail=_INVALID_CREDENTIAL_DETAIL)
 
     result = await db.execute(
-        select(SystemLlmSetting).where(SystemLlmSetting.role == role)
+        select(SystemLlmSetting).where(
+            SystemLlmSetting.role == role, SystemLlmSetting.tenant_id.is_(None)
+        )
     )
     setting = result.scalar_one_or_none()
     if setting is None:

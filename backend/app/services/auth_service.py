@@ -26,13 +26,14 @@ from app.auth.jwt import (
     hash_refresh_token,
 )
 from app.auth.password import hash_password, verify_password
+from app.auth.sso.session_gate import refresh_session_gate
 from app.config import settings
 from app.database import is_postgres
 from app.exceptions import AppError
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.schemas.auth import RegisterRequest
-from app.services import user_service
+from app.services import registration_service, user_service
 
 logger = logging.getLogger(__name__)
 
@@ -68,28 +69,8 @@ def user_agent(request: Request) -> str | None:
 
 
 async def register(db: AsyncSession, payload: RegisterRequest, request: Request) -> User:
-    """Create a new user + auto-promote the first signup to super_user."""
-
-    if await user_service.email_exists(db, payload.email):
-        raise AppError(
-            code="email_already_exists",
-            message="이미 가입된 이메일입니다",
-            status=409,
-        )
-    promote = settings.allow_first_user_as_admin and await user_service.is_first_user(db)
-    user = await user_service.create_user(
-        db,
-        email=payload.email,
-        # bcrypt cost-12 (~250ms) would freeze every coroutine on the event
-        # loop — offload to a worker thread. Same for the verify calls below.
-        password_hash=await asyncio.to_thread(hash_password, payload.password),
-        name=payload.profile_display_name,
-        display_name=payload.profile_display_name,
-        is_super_user=promote,
-    )
-    if promote:
-        logger.info("First user signup auto-promoted to super_user: %s", user.email)
-    return user
+    """Apply registration policy and atomically prepare account/scope membership."""
+    return await registration_service.register_user(db, payload, request)
 
 
 # ---------------------------------------------------------------------------
@@ -147,18 +128,23 @@ async def authenticate(db: AsyncSession, *, email: str, password: str) -> User:
 # ---------------------------------------------------------------------------
 
 
-async def issue_tokens(db: AsyncSession, user: User, request: Request) -> tuple[str, str, str]:
+async def issue_tokens(
+    db: AsyncSession, user: User, request: Request, auth_method: str | None = None
+) -> tuple[str, str, str]:
     """Mint access/refresh/csrf and persist the refresh hash.
 
-    Returns ``(access, refresh, csrf)`` for the cookie helper.
+    Returns ``(access, refresh, csrf)`` for the cookie helper. ``auth_method`` (H-08)
+    rides on the refresh row and every rotation of it.
     """
 
-    access, _refresh_row, refresh, csrf = await _issue_tokens_with_row(db, user, request)
+    access, _refresh_row, refresh, csrf = await _issue_tokens_with_row(
+        db, user, request, auth_method
+    )
     return access, refresh, csrf
 
 
 async def _issue_tokens_with_row(
-    db: AsyncSession, user: User, request: Request
+    db: AsyncSession, user: User, request: Request, auth_method: str | None = None
 ) -> tuple[str, RefreshToken, str, str]:
     """Like :func:`issue_tokens` but also returns the new ``RefreshToken``.
 
@@ -177,6 +163,7 @@ async def _issue_tokens_with_row(
         expires_at=expires_at,
         user_agent=user_agent(request),
         ip=client_ip(request),
+        auth_method=auth_method,
     )
     db.add(row)
     await db.flush()
@@ -191,6 +178,12 @@ async def _revoke_all_active(db: AsyncSession, user_id: uuid.UUID) -> None:
         .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
         .values(revoked_at=datetime.now(UTC))
     )
+
+
+async def revoke_all_refresh_tokens(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Public force-logout seam for company membership lifecycle (plan 8.1)."""
+
+    await _revoke_all_active(db, user_id)
 
 
 def _aware(dt: datetime) -> datetime:
@@ -265,20 +258,23 @@ async def _perform_rotation(
     (see :func:`rotate_refresh` chain-walk loop).
     """
 
-    access, new_row, new_refresh, csrf = await _issue_tokens_with_row(db, user, request)
+    await refresh_session_gate(db, user, old_row.auth_method)  # H-08 SSO required
+    access, new_row, new_refresh, csrf = await _issue_tokens_with_row(
+        db, user, request, old_row.auth_method
+    )
     old_row.revoked_at = now
     old_row.replaced_by_id = new_row.id
     return access, new_refresh, csrf
 
 
-def _lock_select(stmt, db: AsyncSession):
-    """Apply ``SELECT ... FOR UPDATE`` on Postgres, plain SELECT on SQLite.
+def _lock_select(stmt, db: AsyncSession, *, read: bool = False):
+    """Apply ``SELECT ... FOR UPDATE`` (``FOR SHARE`` if ``read``) on Postgres only.
 
     SQLite (test path) ignores row locks safely because the test runner
     never executes concurrent writers against the same session.
     """
 
-    return stmt.with_for_update() if is_postgres(db) else stmt
+    return stmt.with_for_update(read=read) if is_postgres(db) else stmt
 
 
 # Maximum forward jumps through the chain when a tab race forces us to
@@ -309,6 +305,11 @@ async def rotate_refresh(
     of a race observes the winner's revocation and follows the chain
     instead of producing an orphaned leg (HANDOFF #2b).
 
+    The user row is share-locked *before* the token row. Company exit holds the
+    user row FOR UPDATE before revoking (B-15), so both sides lock user -> token:
+    a rotation racing a last-company removal either commits first (and its new
+    leg is revoked by the exit) or waits and then observes the revocation.
+
     Returns ``(access, refresh, csrf, user)`` so the router can set
     cookies and respond with the latest user projection.
     """
@@ -317,6 +318,11 @@ async def rotate_refresh(
         payload = decode_token(refresh_token, expected_type="refresh")
     except InvalidTokenError as exc:
         raise _invalid_refresh() from exc
+    try:
+        user_id = uuid.UUID(payload.sub)
+    except ValueError as exc:
+        raise _invalid_refresh() from exc
+    await db.execute(_lock_select(select(User.id).where(User.id == user_id), db, read=True))
 
     digest = hash_refresh_token(refresh_token)
     # First fetch already holds the lock — saves one round-trip in the
@@ -330,7 +336,6 @@ async def rotate_refresh(
         # Hash unknown — token forged or already GC'd.
         raise _invalid_refresh()
 
-    user_id = uuid.UUID(payload.sub)
     last_user_id = locked.user_id
 
     for _ in range(_MAX_CHAIN_FOLLOW):

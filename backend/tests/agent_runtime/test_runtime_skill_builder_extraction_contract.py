@@ -10,6 +10,8 @@ import pytest
 
 from app.agent_runtime import runtime_component_builder as builder
 from app.agent_runtime.runtime_config import AgentConfig
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 
 def _config(**overrides: Any) -> AgentConfig:
@@ -27,7 +29,7 @@ def _config(**overrides: Any) -> AgentConfig:
         "skill_builder_consented_tools": ["test_skill_draft"],
     }
     values.update(overrides)
-    return AgentConfig(**values)
+    return AgentConfig(org_context=unit_context(TEST_USER_ID), **values)
 
 
 def _tool(name: str) -> MagicMock:

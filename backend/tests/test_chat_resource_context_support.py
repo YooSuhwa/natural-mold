@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message_attachment import MessageAttachment
@@ -17,6 +19,12 @@ from app.services.chat_resource_context import (
     ChatResourceContextResolver,
     ResourceContextDependencies,
     ResourceContextScope,
+)
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
 )
 from tests.conftest import TEST_USER_ID
 
@@ -33,10 +41,26 @@ async def seed_resource_context(db: AsyncSession) -> SeededResourceContext:
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add_all([user, model])
     await db.flush()
-    agent = Agent(user_id=user.id, name="Agent", system_prompt="system", model_id=model.id)
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
+    agent = Agent(
+        user_id=user.id,
+        name="Agent",
+        system_prompt="system",
+        model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+    )
     db.add(agent)
     await db.flush()
-    conversation = Conversation(agent_id=agent.id, title="Current")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="Current",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=datetime.now(UTC),
+    )
     db.add(conversation)
     await db.flush()
     return SeededResourceContext(user=user, agent=agent, conversation=conversation)
@@ -50,7 +74,7 @@ def resource_context_resolver(
     return ChatResourceContextResolver(
         db,
         ResourceContextScope(
-            user_id=seeded.user.id,
+            context=unit_context(seeded.user.id),
             agent_id=seeded.agent.id,
             conversation_id=seeded.conversation.id,
         ),
@@ -76,6 +100,8 @@ async def seed_context_attachment(
         size_bytes=stored.stat().st_size,
         storage_path=str(stored),
         url="/api/uploads/context",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(attachment)
     await db.flush()

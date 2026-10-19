@@ -15,12 +15,15 @@ from app.agent_runtime.langgraph_lifecycle_events import lifecycle_protocol_even
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import PersistCallback
+from app.authz.conversation_scope import require_conversation_agent_id
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent, MessageEventChunk
 from app.services import conversation_run_queue_worker, conversation_run_service
 from app.services import conversation_run_worker as worker
+from tests.authz.run_fixture_config import run_fixture_config
+from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 from tests.integration._seed import seed_conversation_with_agent
 
@@ -61,8 +64,8 @@ async def test_owner_decision_precedes_protocol_terminal_delivery(
         run = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conversation.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conversation),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="delivery boundary",
         )
@@ -73,7 +76,9 @@ async def test_owner_decision_precedes_protocol_terminal_delivery(
     executor_exhausted = anyio.Event()
     finalizer_released = anyio.Event()
 
-    async def hold_finalizer(_run_id: uuid.UUID, _registry: worker.RunTaskRegistry) -> None:
+    async def hold_finalizer(
+        _run_id: uuid.UUID, _registry: worker.RunTaskRegistry, _tenant: object
+    ) -> None:
         heartbeat_started.set()
         try:
             await anyio.sleep_forever()
@@ -141,15 +146,7 @@ async def test_owner_decision_precedes_protocol_terminal_delivery(
     ctx = await worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=AgentConfig(
-            provider="test",
-            model_name="delivery-model",
-            api_key=None,
-            base_url=None,
-            system_prompt="",
-            tools_config=[],
-            thread_id=str(conversation_id),
-        ),
+        cfg=await run_fixture_config(run_id, TestSession, model_name="delivery-model"),
         user=CurrentUser(id=TEST_USER_ID, email="owner@test", name="Owner"),
         input_payload={"messages": [{"role": "user", "content": "finish"}]},
         moldy_source="chat",

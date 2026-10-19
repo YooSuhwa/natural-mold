@@ -15,6 +15,7 @@ import {
 } from '@/components/shared/resource-layout'
 import { useTools, useToolTypes } from '@/lib/hooks/use-tools'
 import { useCredentials } from '@/lib/hooks/use-credentials'
+import { useCapability } from '@/lib/hooks/use-resource-permissions'
 import type { ToolDefinition } from '@/lib/types/tool'
 import { InstalledToolCatalog, ToolCatalog } from './tool-catalog'
 import { ToolCreateDialog } from './tool-create-dialog'
@@ -29,7 +30,10 @@ export function ToolsPageClient() {
   const { data: tools, isLoading: isToolsLoading } = useTools()
   const { data: definitions, isLoading: isDefinitionsLoading } = useToolTypes()
   const { data: credentials } = useCredentials()
-  const [activeTab, setActiveTab] = useState<string>(ALL_TAB)
+  // Plan 13.9: the definition catalog (= creating a tool) needs cap_create_tool.
+  const canCreate = useCapability('cap_create_tool')
+  const [selectedTab, setActiveTab] = useState<string>(ALL_TAB)
+  const activeTab = canCreate ? selectedTab : INSTALLED_TAB
   const [search, setSearch] = useState('')
   const [pickedDefinition, setPickedDefinition] = useState<ToolDefinition | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -37,8 +41,8 @@ export function ToolsPageClient() {
   const categories = useMemo(() => {
     const set = new Set<string>()
     definitions?.forEach((d) => set.add(d.category || 'general'))
-    return [ALL_TAB, ...Array.from(set).sort(), INSTALLED_TAB]
-  }, [definitions])
+    return canCreate ? [ALL_TAB, ...Array.from(set).sort(), INSTALLED_TAB] : [INSTALLED_TAB]
+  }, [canCreate, definitions])
 
   const definitionLabels = useMemo(() => {
     const m = new Map<string, ToolDefinition>()
@@ -139,7 +143,7 @@ export function ToolsPageClient() {
                 description={hasInstalledTools ? undefined : t('empty.description')}
                 className="bg-card/50"
                 action={
-                  hasInstalledTools ? undefined : (
+                  hasInstalledTools || !canCreate ? undefined : (
                     <Button onClick={() => setActiveTab(ALL_TAB)}>
                       <Plus className="size-4" />
                       {t('empty.action')}

@@ -51,6 +51,11 @@ def _optional_frontend_controls(project: Project) -> dict[str, str]:
         if project != "scripted-capture" or capture_tour != "1":
             raise E2eContractError("invalid_capture_tour")
         controls["E2E_CAPTURE_TOUR"] = capture_tour
+    org_authz = os.environ.get("E2E_ORG_AUTHZ")
+    if org_authz is not None:
+        if project != "scripted-full" or org_authz != "1":
+            raise E2eContractError("invalid_org_authz")
+        controls["E2E_ORG_AUTHZ"] = org_authz
     return controls
 
 

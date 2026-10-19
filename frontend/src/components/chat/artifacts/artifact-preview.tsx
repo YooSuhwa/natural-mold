@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
+import { ApiErrorState } from '@/components/shared/api-error-state'
 import { artifactKeys, getArtifactTextContent } from '@/lib/api/artifacts'
 import type { ArtifactSummary, ArtifactTextContent } from '@/lib/types'
 import { ArtifactCodeBlock } from './artifact-code-block'
@@ -45,6 +46,11 @@ export function ArtifactPreview({
         {t('emptySelection')}
       </div>
     )
+  }
+
+  if (textQuery.isError) {
+    // A foreign/deleted artifact id (other organization) is a plain not-found (13.9).
+    return <ApiErrorState error={textQuery.error} onRetry={() => void textQuery.refetch()} />
   }
 
   if (previewMode === 'code') {

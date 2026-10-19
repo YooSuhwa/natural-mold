@@ -41,6 +41,12 @@ class HookContext:
     model_id: uuid.UUID | None = None
     credential_id: uuid.UUID | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    # B-13: derived audit writes open this company; producers without one skip hooks.
+    tenant_id: uuid.UUID = field(kw_only=True)
+    # F-14 (11.10, Q8): the run's organization and billed user (requester: chat caller,
+    # trigger owner, Agent API key owner). Unset outside agent runs.
+    org_id: uuid.UUID | None = field(default=None, kw_only=True)
+    billing_user_id: uuid.UUID | None = field(default=None, kw_only=True)
 
 
 @dataclass

@@ -17,13 +17,16 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, String, Text, or_
+from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.agent_link_delegation import AgentLinkDelegation
+from app.models.credential_mode import CredentialModeColumns, credential_mode_check
+from app.models.resource_scope import NullableOrgScope, resource_scope_constraints
 
 
-class AgentToolLink(Base):
+class AgentToolLink(AgentLinkDelegation, Base):
     """Association object: agent <-> tool."""
 
     __tablename__ = "agent_tools"
@@ -41,31 +44,30 @@ class AgentToolLink(Base):
     tool: Mapped[Tool] = relationship(lazy="joined")
 
 
-class Tool(Base):
+class Tool(CredentialModeColumns, NullableOrgScope, Base):
     __tablename__ = "tools"
     # ``is_system=True`` MUST imply ``user_id IS NULL`` (ADR-016 §4.4).
     # Enforced at the DB layer so a code bug cannot create a system tool that
     # leaks the operator's user_id into shared resources.
     __table_args__ = (
+        *resource_scope_constraints("tools", system=True),
         CheckConstraint(
             "(is_system = false) OR (user_id IS NULL)",
             name="ck_tools_system_user_null",
         ),
+        credential_mode_check("tools"),
         {"extend_existing": True},
     )
 
-    @classmethod
-    def visible_to(cls, user_id: uuid.UUID):
-        """System (user_id IS NULL) or owned rows — the single policy point
-        for tool visibility (BE-D4). Was copy-pasted as an or_() predicate in
-        7+ call sites, where one drifted edit would fork the policy."""
-        return or_(cls.user_id == user_id, cls.user_id.is_(None))
+    # Visibility is not a model concern: owner/platform candidates come from
+    # ``app.authz.scoping.resource_candidates`` and decisions from
+    # ``app.authz.resource_gate`` (tool#can_use/can_view, plan 9.5).
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
 
     # NULL = system-owned tool (visible to all users). Otherwise per-user instance.
     user_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("users.id", ondelete="RESTRICT", name="fk_tools_owner_restrict"), nullable=True
     )
 
     # Operator-managed tool (e.g. seeded prebuilt tools). Hidden from regular

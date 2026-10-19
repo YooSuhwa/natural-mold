@@ -10,8 +10,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  authz-model:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install checksum-verified OpenFGA CLI 0.8.1
+        run: |
+          curl --fail --silent --show-error --location \
+            https://github.com/openfga/cli/releases/download/v0.8.1/fga_0.8.1_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/fga.tar.gz"
+          printf '%s  %s\n' \
+            e0414ad70850f8070540ad1be7a1e2e861edd6d6e73f6ed2b959c3277f98a54c \
+            "$RUNNER_TEMP/fga.tar.gz" | sha256sum --check
+          tar --extract --gzip --file "$RUNNER_TEMP/fga.tar.gz" --directory "$RUNNER_TEMP"
+          sudo install "$RUNNER_TEMP/fga" /usr/local/bin/fga
+      - name: Verify organization permission model
+        run: fga model test --tests backend/app/authz/model.fga.yaml
+      - name: Verify SDK model matches the canonical DSL
+        run: |
+          fga model transform --file backend/app/authz/model.fga > "$RUNNER_TEMP/model.json"
+          diff backend/app/authz/model.json "$RUNNER_TEMP/model.json"
+
   backend:
     runs-on: ubuntu-latest
+    # Lint, ratchets and one parallel coverage-measured suite; the PostgreSQL lane
+    # runs in backend-postgres. Stop a hung run instead of using the 6 h default.
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: backend
@@ -36,6 +60,8 @@ jobs:
       # not in the default dev dependency-group.
       - run: uv sync --frozen --all-extras
       - run: uv run ruff check .
+      - name: Authorization ownership predicate ratchet
+        run: uv run python ../scripts/check_authz_predicates.py
       - name: Resolve changed-file base
         env:
           QUALITY_EVENT_NAME: "${{ github.event_name }}"
@@ -56,8 +82,8 @@ jobs:
       # Test suite runs on aiosqlite in-memory — no Postgres service needed.
       # tests/integration/ drives background run workers via asyncio timing;
       # under xdist -n 4 on a 2-core runner those tasks starve and the poll
-      # times out (flaky). Run the parallel suite without them, then the
-      # integration ones serially. tests/integration/conftest.py auto-applies
+      # times out (flaky). Run the parallel suite without them; backend-postgres
+      # runs them serially. tests/integration/conftest.py auto-applies
       # the `integration` marker to the whole directory, so the serial step
       # must select it explicitly — the trailing `-m` overrides the addopts
       # `-m 'not integration'` filter. Without it everything is deselected
@@ -65,13 +91,34 @@ jobs:
       # the *silent* variant is a full-suite `pytest tests/` run, where
       # passing sibling tests mask the deselection with exit 0. Both
       # contracts are pinned by tests/test_integration_marker_hook.py.
-      # The canonical serial lane provisions PostgreSQL 16, migrates twice,
-      # forces INTEGRATION_DATABASE_URL, verifies exact node execution, and
-      # proves owned-resource cleanup from its immutable manifest.
-      - run: bash scripts/run-isolated-command.sh --cwd backend -- uv run pytest -q -n 4 --ignore=tests/integration
+      # The coverage gate runs that parallel suite itself, once, under pytest-cov:
+      # the JSON report is written inside the wrapper-owned isolated root by this
+      # run and checked against the reviewed floor, so nothing re-runs the suite.
+      - name: Run backend suite and enforce reviewed coverage floor
         working-directory: .
-      - name: Enforce reviewed backend coverage floor
-        run: uv run python ../scripts/run_coverage_gate.py backend
+        run: |
+          bash scripts/run-isolated-command.sh --cwd backend -- \
+            uv run python ../scripts/run_coverage_gate.py backend --workers 4
+
+  # The canonical serial lane provisions PostgreSQL 16, migrates twice,
+  # forces INTEGRATION_DATABASE_URL, verifies exact node execution, and
+  # proves owned-resource cleanup from its immutable manifest. It runs in
+  # parallel with the backend job and needs only the backend environment.
+  backend-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --frozen --all-extras
       - name: Run disposable PostgreSQL integration lane
         id: postgres_lane
         working-directory: .
@@ -90,6 +137,28 @@ jobs:
         run: |
           uv run python ../scripts/check-isolation-cleanup.py \
             --discover ../.omo/evidence/project-restart-consolidated-roadmap
+      # A red lane names its failed nodes; only strings shaped like pytest node ids print.
+      - name: List failed PostgreSQL lane nodes
+        if: ${{ failure() && steps.postgres_lane.outcome == 'failure' }}
+        working-directory: .
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re
+          path = pathlib.Path(".omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json")
+          node = re.compile(r"tests/[A-Za-z0-9_/]+\.py::[A-Za-z0-9_\[\]\-.]+")
+          where = re.compile(r"[A-Za-z0-9_/.\-]+\.py:[0-9]+(: in [A-Za-z0-9_]+|:[A-Za-z]*Error)?")
+          error = re.compile(r"[A-Za-z_.]*(Error|Exception|Timeout)")
+          data = json.loads(path.read_text()) if path.is_file() else {}
+          for scenario in data.get("scenarios", []):
+              receipt = scenario.get("test_receipt") or {}
+              for item in receipt.get("failed_node_ids", []):
+                  if isinstance(item, str) and node.fullmatch(item):
+                      print(f"failed node: {item}")
+              records = (scenario.get("child_failure_diagnostics") or {}).get("records", [])
+              for item in records:
+                  if isinstance(item, str) and (where.fullmatch(item) or error.fullmatch(item)):
+                      print(f"failure record: {item}")
+          PY
 
   # Project-wide Pyright is a blocking basic-mode gate. Keep standard-mode
   # promotion as a separate decision so the zero-error baseline stays stable.

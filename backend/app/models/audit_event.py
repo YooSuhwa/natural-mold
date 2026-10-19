@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, ForeignKey, ForeignKeyConstraint, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -21,10 +21,25 @@ class AuditEvent(Base):
         Index("ix_audit_events_request_id", "request_id"),
         Index("ix_audit_events_trace_id", "trace_id"),
         Index("ix_audit_events_run_id", "run_id"),
+        # F-14 (m89 row, 14.1): organization audit; H-03 adds the cursor ``id``.
+        Index("ix_audit_events_org_created", "org_id", "created_at", "id"),
+        Index("ix_audit_events_tenant_created", "tenant_id", "created_at", "id"),
+        ForeignKeyConstraint(
+            ["org_id", "tenant_id"],
+            ["organizations.id", "organizations.tenant_id"],
+            name="fk_audit_events_org_tenant",
+            ondelete="RESTRICT",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     actor_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    # m81 added the column (TENANT_ONLY); E-08 maps it for company audit retention.
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tenants.id", name="fk_audit_events_tenant", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    org_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -50,9 +65,7 @@ class AuditEvent(Base):
     run_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    event_metadata: Mapped[dict[str, Any] | None] = mapped_column(
-        "metadata", JSON, nullable=True
-    )
+    event_metadata: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,

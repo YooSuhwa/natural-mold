@@ -7,10 +7,12 @@ from sqlalchemy import JSON, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.resource_scope import RequiredOrgScope, resource_scope_constraints
 
 
-class AgentTrigger(Base):
+class AgentTrigger(RequiredOrgScope, Base):
     __tablename__ = "agent_triggers"
+    __table_args__ = resource_scope_constraints("agent_triggers", system=False)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(

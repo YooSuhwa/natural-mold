@@ -11,6 +11,7 @@ definition = CredentialDefinition(
     icon_id="route",
     documentation_url="https://lab.odsay.com/",
     category="api",
+    hosts=("api.odsay.com",),
     properties=[
         FieldDef(
             name="api_key",

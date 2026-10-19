@@ -7,8 +7,8 @@ from typing import Any
 
 from langgraph.types import Command
 
-from app.agent_runtime import event_names, langgraph_stream_ingestion
 from app.agent_runtime import langgraph_event_projection as projection
+from app.agent_runtime import langgraph_stream_ingestion
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.langgraph_event_delivery import ProtocolEventDelivery
 from app.agent_runtime.langgraph_lifecycle_events import (
@@ -27,6 +27,7 @@ from app.agent_runtime.protocol_side_effects import (
 )
 from app.agent_runtime.protocol_usage import collect_protocol_usage_event
 from app.agent_runtime.run_metrics import RunMetricsAccumulator, event_has_model_content
+from app.agent_runtime.run_start_events import head_event_specs
 from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.agent_runtime.streaming import (
     ArtifactEventRecorder,
@@ -61,6 +62,7 @@ async def stream_agent_response_langgraph(
     subagent_display_names: dict[str, str] | None = None,
     recalled_memories: list[dict[str, Any]] | None = None,
     skill_draft_brief: dict[str, Any] | None = None,
+    excluded_capabilities: list[dict[str, str]] | None = None,
     session_consent_tools: list[str] | None = None,
     run_metrics: RunMetricsAccumulator | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -111,24 +113,13 @@ async def stream_agent_response_langgraph(
                 event="running",
             )
         )
-        if subagent_display_names:
-            yield await emit_head_event(
-                event_names.SUBAGENT_NAMES,
-                {"names": dict(subagent_display_names)},
-                "subagent_names",
-            )
-        if recalled_memories:
-            yield await emit_head_event(
-                event_names.MEMORY_RECALLED,
-                {"memories": recalled_memories},
-                "memory_recalled",
-            )
-        if skill_draft_brief:
-            yield await emit_head_event(
-                event_names.SKILL_DRAFT,
-                skill_draft_brief,
-                "skill_draft",
-            )
+        for name, payload, suffix in head_event_specs(
+            subagent_display_names=subagent_display_names,
+            recalled_memories=recalled_memories,
+            skill_draft_brief=skill_draft_brief,
+            excluded_capabilities=excluded_capabilities,
+        ):
+            yield await emit_head_event(name, payload, suffix)
 
         async for ingested in langgraph_stream_ingestion.iter_ingested_protocol_events(
             agent,

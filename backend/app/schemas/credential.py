@@ -6,8 +6,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
+from app.credentials.personal import is_personal_definition
 from app.schemas.markers import check_reserved_marker
 
 # ---- Catalog ---------------------------------------------------------------
@@ -32,6 +33,7 @@ class CredentialDefinitionSchema(BaseModel):
     icon_id: str | None = None
     documentation_url: str | None = None
     category: str = "general"
+    personal: bool = False  # 10.4 personal account type: never shared or transferred
     extends: list[str] = Field(default_factory=list)
     properties: list[CredentialFieldSchema] = Field(default_factory=list)
     has_test: bool = False
@@ -89,6 +91,12 @@ class CredentialResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def personal(self) -> bool:
+        """10.4 personal account type (from the definition): sharing is disabled."""
+        return is_personal_definition(self.definition_key)
+
 
 # ---- Test ------------------------------------------------------------------
 
@@ -122,6 +130,12 @@ class CredentialAuditLogResponse(BaseModel):
 
 
 # ---- OAuth2 helpers --------------------------------------------------------
+
+
+class OAuth2AuthStartRequest(BaseModel):
+    """Optional body: ``scope`` widens this authorization only (F-15 step-up)."""
+
+    scope: str | None = Field(default=None, max_length=2000)
 
 
 class OAuth2AuthStartResponse(BaseModel):

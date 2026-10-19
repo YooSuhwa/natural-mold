@@ -23,7 +23,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
 from app.models.credential import Credential
 from app.models.model import Model
 from app.services.model_filtering import (
@@ -100,14 +100,10 @@ class DiscoveredModel:
             "context_window": self.context_window,
             "max_output_tokens": self.max_output_tokens,
             "cost_per_input_token": (
-                str(self.cost_per_input_token)
-                if self.cost_per_input_token is not None
-                else None
+                str(self.cost_per_input_token) if self.cost_per_input_token is not None else None
             ),
             "cost_per_output_token": (
-                str(self.cost_per_output_token)
-                if self.cost_per_output_token is not None
-                else None
+                str(self.cost_per_output_token) if self.cost_per_output_token is not None else None
             ),
             "input_modalities": self.input_modalities,
             "output_modalities": self.output_modalities,
@@ -146,7 +142,7 @@ async def discover_from_credential(
     Credential's definition is not a known LLM provider.
     """
 
-    data = await credential_service.decrypt_with_external(credential.data_encrypted)
+    data = await open_values(credential, "probe")
     entry = _DISPATCH.get(credential.definition_key)
     if entry is None:
         raise ValueError(
@@ -217,9 +213,7 @@ async def _discover_anthropic(data: dict[str, Any]) -> list[DiscoveredModel]:
 
 async def _discover_google(data: dict[str, Any]) -> list[DiscoveredModel]:
     api_key = data.get("api_key")
-    base_url = (
-        data.get("base_url") or "https://generativelanguage.googleapis.com/v1beta"
-    )
+    base_url = data.get("base_url") or "https://generativelanguage.googleapis.com/v1beta"
     url = f"{base_url.rstrip('/')}/models"
     params: dict[str, str] = {}
     if api_key:
@@ -361,10 +355,7 @@ async def _discover_openai_compatible(data: dict[str, Any]) -> list[DiscoveredMo
             fallback_url = f"{stripped}/api/tags"
             response = await client.get(fallback_url, headers=headers)
             response.raise_for_status()
-            items = [
-                {"id": m.get("name") or ""}
-                for m in (response.json().get("models", []) or [])
-            ]
+            items = [{"id": m.get("name") or ""} for m in (response.json().get("models", []) or [])]
 
     out: list[DiscoveredModel] = []
     for item in items:
@@ -423,9 +414,7 @@ def _from_enriched(
 ) -> DiscoveredModel:
     cost_in = _to_decimal(enriched.get("cost_per_input_token"))
     cost_out = _to_decimal(enriched.get("cost_per_output_token"))
-    source: PricingSource = (
-        "litellm" if (cost_in is not None or cost_out is not None) else "manual"
-    )
+    source: PricingSource = "litellm" if (cost_in is not None or cost_out is not None) else "manual"
     return DiscoveredModel(
         model_name=model_id,
         display_name=enriched.get("display_name") or model_id,
@@ -458,9 +447,7 @@ async def _mark_already_registered(
         return
     names = [m.model_name for m in discovered]
     result = await db.execute(
-        select(Model.model_name).where(
-            Model.provider == provider, Model.model_name.in_(names)
-        )
+        select(Model.model_name).where(Model.provider == provider, Model.model_name.in_(names))
     )
     seen = {row[0] for row in result.all()}
     for model in discovered:

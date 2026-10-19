@@ -7,7 +7,20 @@ from fastapi.responses import JSONResponse
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.agent_runtime.protocol_events import SubscribeParams
-from app.schemas.conversation_refs import JsonValue, conversation_ref
+from app.schemas.conversation_history_protocol import (
+    HistoryRequest as HistoryRequest,
+)
+from app.schemas.conversation_history_protocol import (
+    RunMetadata,
+    ThreadCheckpoint,
+    ThreadStateResponse,
+    ThreadStateResponseInput,
+    build_state_response,
+)
+from app.schemas.conversation_history_protocol import (
+    ThreadHistoryCursor as ThreadHistoryCursor,
+)
+from app.schemas.conversation_refs import ConversationRefSource, JsonValue, conversation_ref
 
 LANGGRAPH_PROTOCOL_HEADER = "langgraph_v3"
 SUPPORTED_COMMAND_METHODS = {"run.start", "input.respond"}
@@ -23,22 +36,6 @@ class CommandSuccessResult(TypedDict):
     input_status: NotRequired[str | None]
     revision: NotRequired[int | None]
     position: NotRequired[int | None]
-
-
-class ThreadCheckpoint(BaseModel):
-    model_config = ConfigDict(extra="allow", frozen=True)
-
-    thread_id: str | None = None
-    checkpoint_id: str | None = None
-    checkpoint_ns: str | None = None
-
-
-class ThreadHistoryCursor(BaseModel):
-    model_config = ConfigDict(extra="allow", frozen=True)
-
-    checkpoint_id: str | None = None
-    checkpoint_ns: str | None = None
-    configurable: ThreadCheckpoint | None = None
 
 
 class InputRespondEntry(BaseModel):
@@ -111,15 +108,6 @@ class UpdateStateRequest(BaseModel):
     task_id: str | None = None
 
 
-class HistoryRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    limit: int = Field(default=10, ge=1, le=100)
-    before: ThreadHistoryCursor | None = None
-    metadata: dict[str, Any] | None = None
-    checkpoint: ThreadCheckpoint | None = None
-
-
 def protocol_headers(*, mode: str | None = None, run_id: str | None = None) -> dict[str, str]:
     headers = {"X-Stream-Protocol": LANGGRAPH_PROTOCOL_HEADER}
     if mode is not None:
@@ -130,7 +118,7 @@ def protocol_headers(*, mode: str | None = None, run_id: str | None = None) -> d
 
 
 def state_response(
-    conversation: object,
+    conversation: ConversationRefSource,
     *,
     values: dict[str, Any] | None = None,
     next_nodes: list[str] | None = None,
@@ -144,47 +132,24 @@ def state_response(
     metadata_source: str = "moldy_bff_fallback",
     created_at: str | None = None,
     parent_checkpoint: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    conversation = conversation_ref(conversation)
-    state_values = dict(values or {})
-    state_values.setdefault("messages", [])
-    runtime_state: dict[str, Any] = {}
-    if active_run is not None:
-        runtime_state["active_run"] = dict(active_run)
-    if latest_run is not None:
-        runtime_state["latest_run"] = dict(latest_run)
-    if runtime_state:
-        state_values["__moldy_runtime"] = runtime_state
-    resolved_checkpoint_id = checkpoint_id or conversation.active_branch_checkpoint_id
-    checkpoint = (
-        {
-            "thread_id": str(conversation.id),
-            "checkpoint_id": resolved_checkpoint_id,
-            "checkpoint_ns": checkpoint_ns,
-        }
-        if resolved_checkpoint_id
-        else None
+) -> ThreadStateResponse:
+    return build_state_response(
+        conversation,
+        ThreadStateResponseInput(
+            values=values,
+            next_nodes=next_nodes,
+            tasks=tasks,
+            checkpoint_id=checkpoint_id,
+            checkpoint_ns=checkpoint_ns,
+            checkpoint_by_message_id=checkpoint_by_message_id,
+            parent_checkpoint_by_message_id=parent_checkpoint_by_message_id,
+            active_run=RunMetadata(**active_run) if active_run is not None else None,
+            latest_run=RunMetadata(**latest_run) if latest_run is not None else None,
+            metadata_source=metadata_source,
+            created_at=created_at,
+            parent_checkpoint=parent_checkpoint,
+        ),
     )
-    metadata: dict[str, Any] = {
-        "conversation_id": str(conversation.id),
-        "agent_id": str(conversation.agent_id),
-        "source": metadata_source,
-        "checkpoint_by_message_id": dict(checkpoint_by_message_id or {}),
-        "parent_checkpoint_by_message_id": dict(parent_checkpoint_by_message_id or {}),
-    }
-    if active_run is not None:
-        metadata["active_run"] = dict(active_run)
-    if latest_run is not None:
-        metadata["latest_run"] = dict(latest_run)
-    return {
-        "values": state_values,
-        "next": next_nodes or [],
-        "tasks": tasks or [],
-        "checkpoint": checkpoint,
-        "metadata": metadata,
-        "created_at": created_at or conversation.updated_at.isoformat(),
-        "parent_checkpoint": parent_checkpoint,
-    }
 
 
 def command_error(
@@ -208,7 +173,7 @@ def command_error(
 def command_success(
     command: AgentCommandRequest,
     *,
-    conversation: object,
+    conversation: ConversationRefSource,
     thread_id: str,
     run_id: str | None = None,
     input_id: str | None = None,

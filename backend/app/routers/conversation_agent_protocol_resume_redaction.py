@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.authz.org_context import OrgContext
 from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_interrupts import ThreadInterrupt
 from app.routers.conversation_agent_protocol_resume import ResumePayload
@@ -20,11 +23,15 @@ async def restore_redacted_resume_payload(
     conversation: Conversation,
     resume: ResumePayload,
     pending_interrupts: list[ThreadInterrupt],
+    db: AsyncSession,
+    context: OrgContext,
 ) -> Any:
     if not _resume_contains_edit(resume.input_payload):
         return resume.input_payload
 
-    raw_actions = await _raw_pending_actions_by_interrupt(conversation, pending_interrupts)
+    raw_actions = await _raw_pending_actions_by_interrupt(
+        conversation, pending_interrupts, db=db, context=context
+    )
     restored_by_interrupt: dict[str, Any] = {}
     for submitted in resume.submitted:
         restored_by_interrupt[submitted.interrupt_id] = _restore_redacted_response(
@@ -61,8 +68,11 @@ def _resume_contains_edit(value: Any) -> bool:
 async def _raw_pending_actions_by_interrupt(
     conversation: Conversation,
     pending_interrupts: list[ThreadInterrupt],
+    *,
+    db: AsyncSession,
+    context: OrgContext,
 ) -> dict[str, list[dict[str, Any]]]:
-    raw_tool_calls = await _raw_latest_tool_calls(conversation)
+    raw_tool_calls = await _raw_latest_tool_calls(conversation, db=db, context=context)
     by_interrupt: dict[str, list[dict[str, Any]]] = {}
     cursor = 0
     for interrupt in pending_interrupts:
@@ -83,13 +93,23 @@ async def _raw_pending_actions_by_interrupt(
     return by_interrupt
 
 
-async def _raw_latest_tool_calls(conversation: Conversation) -> list[dict[str, Any]]:
-    from app.agent_runtime.checkpointer import get_checkpointer
+async def _raw_latest_tool_calls(
+    conversation: Conversation, *, db: AsyncSession, context: OrgContext
+) -> list[dict[str, Any]]:
+    from app.agent_runtime.conversation_checkpointer import (
+        conversation_checkpointer,
+        deferred_saver,
+    )
     from app.services.thread_branch_service import build_message_tree
 
+    # Gate outside the try (a foreign thread is a 404, not a failed restore); the
+    # saver itself still fails inside it, as before.
+    saver = await conversation_checkpointer(
+        str(conversation.id), context, db=db, saver=deferred_saver
+    )
     try:
         tree = await build_message_tree(
-            get_checkpointer(),
+            saver(),
             str(conversation.id),
             active_checkpoint_id=conversation.active_branch_checkpoint_id,
         )

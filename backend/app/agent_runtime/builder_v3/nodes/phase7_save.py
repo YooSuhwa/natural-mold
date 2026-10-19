@@ -7,19 +7,18 @@ DraftConfigCard ToolMessage emit + Phase 8로 자동 진행.
 from __future__ import annotations
 
 import logging
-import uuid
 from typing import Any
-
-from sqlalchemy import select
 
 from app.agent_runtime.builder_v3.nodes._helpers import (
     build_phase_complete,
     ensure_todos,
     make_tool_card,
 )
+from app.agent_runtime.builder_v3.session_scope import require_execution_session, state_tenant
 from app.agent_runtime.builder_v3.state import BuilderState
 from app.database import async_session as async_session_factory
-from app.models.builder_session import BuilderSession
+from app.database import tenant_session
+from app.exceptions import AppError
 from app.schemas.builder import (
     AgentCreationIntent,
     BuilderStatus,
@@ -51,39 +50,27 @@ def _build_draft(state: BuilderState) -> DraftAgentConfig:
 
 
 async def _persist_session(
-    session_id: str,
+    state: BuilderState,
     draft: DraftAgentConfig,
-    image_url: str | None,
-    current_phase: int,
-    tools: list[dict[str, Any]],
-    middlewares: list[dict[str, Any]],
 ) -> None:
     """builder_session에 phase 결과를 저장하고 status=PREVIEW로 전환."""
-    if not session_id:
-        return
     try:
-        sid = uuid.UUID(session_id)
-    except (TypeError, ValueError):
-        return
-
-    try:
-        async with async_session_factory() as db:
-            stmt = select(BuilderSession).where(BuilderSession.id == sid)
-            row = (await db.execute(stmt)).scalar_one_or_none()
-            if not row:
-                return
+        async with tenant_session(state_tenant(state), maker=async_session_factory) as db:
+            row = await require_execution_session(db, state)
             payload: dict[str, Any] = draft.model_dump(mode="json")
             # image_url은 항상 명시적으로 set — None은 사용자가 phase6에서 skip한 의미.
-            payload["image_url"] = image_url
+            payload["image_url"] = state.get("image_url")
             row.draft_config = payload
             row.system_prompt = draft.system_prompt
             # ToolRecommendation/MiddlewareRecommendation 전체 객체 저장
             # (BuilderSessionResponse 스키마가 description/reason 필수)
-            row.tools_result = list(tools)
-            row.middlewares_result = list(middlewares)
-            row.current_phase = current_phase
+            row.tools_result = list(state.get("tools") or [])
+            row.middlewares_result = list(state.get("middlewares") or [])
+            row.current_phase = 7
             row.status = BuilderStatus.PREVIEW
             await db.commit()
+    except AppError:
+        raise
     except Exception:  # pragma: no cover
         logger.warning("Phase 7 persist failed", exc_info=True)
 
@@ -94,14 +81,7 @@ async def phase7_save(state: BuilderState) -> dict:
     # image_url은 항상 명시적으로 set — None이면 사용자가 phase6에서 skip한 의미.
     draft_dict["image_url"] = state.get("image_url")
 
-    await _persist_session(
-        state.get("session_id", ""),
-        draft,
-        state.get("image_url"),
-        7,
-        list(state.get("tools") or []),
-        list(state.get("middlewares") or []),
-    )
+    await _persist_session(state, draft)
 
     msgs, _ = make_tool_card(
         "draft_config_card",

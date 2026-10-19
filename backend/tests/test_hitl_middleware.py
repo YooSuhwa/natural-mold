@@ -18,6 +18,8 @@ from langchain.agents.middleware import HumanInTheLoopMiddleware
 
 from app.agent_runtime.runtime_config import AgentConfig
 from app.tools.risk import ToolRiskLevel, default_deepagents_interrupt_policy, risk_metadata_dict
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 
 def _cfg(**overrides) -> AgentConfig:
@@ -31,7 +33,7 @@ def _cfg(**overrides) -> AgentConfig:
         "thread_id": "t-1",
     }
     defaults.update(overrides)
-    return AgentConfig(**defaults)  # type: ignore[arg-type]
+    return AgentConfig(org_context=unit_context(TEST_USER_ID), **defaults)  # type: ignore[arg-type]
 
 
 def _hitl_instances(middleware: list | None) -> list[HumanInTheLoopMiddleware]:

@@ -47,6 +47,8 @@ from app.marketplace.skill_runtime import (
     cleanup_stale_runtime_roots,
 )
 from app.models.marketplace import MarketplaceItem, MarketplaceItemACL
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, unit_context
+from tests.conftest import TEST_USER_ID
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,11 +75,11 @@ def _item(
         visibility=visibility,
         status=status,
         moderation_status="approved",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     item.acl_entries = [
-        MarketplaceItemACL(
-            item_id=item.id, user_id=u, permission="install"
-        )
+        MarketplaceItemACL(item_id=item.id, user_id=u, permission="install")
         for u in (acl_users or [])
     ]
     return item
@@ -86,9 +88,7 @@ def _item(
 def _cu(uid: uuid.UUID, *, is_super: bool = False):
     from app.dependencies import CurrentUser
 
-    return CurrentUser(
-        id=uid, email=f"{uid.hex[:8]}@t", name="U", is_super_user=is_super
-    )
+    return CurrentUser(id=uid, email=f"{uid.hex[:8]}@t", name="U", is_super_user=is_super)
 
 
 # ===========================================================================
@@ -113,20 +113,13 @@ class TestGate1AccessControl:
         # Each row: (visibility, status, expected view dict by actor).
         # Actors: O=owner, A=acl, U=unrelated, S=super.
         cases = [
-            ("private", "draft",
-             {"O": True, "A": False, "U": False, "S": True}),
-            ("restricted", "published",
-             {"O": True, "A": True, "U": False, "S": True}),
-            ("public", "published",
-             {"O": True, "A": True, "U": True, "S": True}),
-            ("public", "draft",
-             {"O": True, "A": False, "U": False, "S": True}),
-            ("unlisted", "published",
-             {"O": True, "A": True, "U": True, "S": True}),
-            ("system", "published",
-             {"O": True, "A": True, "U": True, "S": True}),
-            ("public", "disabled",
-             {"O": True, "A": False, "U": False, "S": True}),
+            ("private", "draft", {"O": True, "A": False, "U": False, "S": True}),
+            ("restricted", "published", {"O": True, "A": True, "U": False, "S": True}),
+            ("public", "published", {"O": True, "A": True, "U": True, "S": True}),
+            ("public", "draft", {"O": True, "A": False, "U": False, "S": True}),
+            ("unlisted", "published", {"O": True, "A": True, "U": True, "S": True}),
+            ("system", "published", {"O": True, "A": True, "U": True, "S": True}),
+            ("public", "disabled", {"O": True, "A": False, "U": False, "S": True}),
         ]
         actors = {
             "O": (_cu(owner), True),
@@ -229,6 +222,7 @@ class TestGate3RuntimeIsolation:
         from app.agent_runtime.runtime_config import AgentConfig
 
         cfg = AgentConfig(
+            org_context=unit_context(TEST_USER_ID),
             provider="anthropic",
             model_name="x",
             api_key=None,
@@ -239,9 +233,9 @@ class TestGate3RuntimeIsolation:
             agent_skills=None,
         )
         ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
-        assert str(ctx.runtime_root).endswith(
-            "/runtime/gate-thread/skills"
-        ), f"layout drift: {ctx.runtime_root}"
+        assert str(ctx.runtime_root).endswith("/runtime/gate-thread/skills"), (
+            f"layout drift: {ctx.runtime_root}"
+        )
 
     def test_cleanup_no_runtime_dir_is_safe(self, tmp_path: Path) -> None:
         # Empty data dir → 0 removed, no exception.
@@ -283,8 +277,7 @@ class TestGate4CredentialRuntime:
             "k_skill_proxy",
         ):
             assert required in keys, (
-                f"k-skill credential definition {required!r} missing — "
-                f"Spec §6 regression"
+                f"k-skill credential definition {required!r} missing — Spec §6 regression"
             )
 
 
@@ -371,6 +364,8 @@ class TestGate6BackwardCompatibility:
             size_bytes=0,
             package_metadata=None,
             used_by_count=0,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         rd = skill_service.to_runtime_dict(skill)
         # Legacy six — deepagents Filesystem backend depends on this.
@@ -440,7 +435,8 @@ class TestGate8AuthCsrf:
         import re
 
         mutation_re = re.compile(
-            r"@router\.(post|patch|delete)\([^\)]*\)\s*(?:async )?def \w+\("
+            r"@router\.(post|patch|delete)\([^\)]*\)\s*(?:@authz_policy\(.*\)\s*)?"
+            r"(?:async )?def \w+\("
             r"[\s\S]+?(?=@router\.|\Z)",
             re.MULTILINE,
         )
@@ -448,12 +444,8 @@ class TestGate8AuthCsrf:
         for block in mutation_re.finditer(src):
             seen += 1
             chunk = block.group(0)
-            assert "verify_csrf" in chunk, (
-                f"mutation route missing verify_csrf: {chunk[:120]}…"
-            )
-        assert seen >= 5, (
-            f"expected ≥5 mutation routes on marketplace router, found {seen}"
-        )
+            assert "verify_csrf" in chunk, f"mutation route missing verify_csrf: {chunk[:120]}…"
+        assert seen >= 5, f"expected ≥5 mutation routes on marketplace router, found {seen}"
 
     def test_get_current_user_dependency_on_all_routes(self) -> None:
         from app.routers import marketplace as router_mod
@@ -466,12 +458,9 @@ class TestGate8AuthCsrf:
         assert "require_super_user" in src
 
     @pytest.mark.asyncio
-    async def test_admin_endpoint_requires_super_user(
-        self, db: AsyncSession
-    ) -> None:
+    async def test_admin_endpoint_requires_super_user(self, db: AsyncSession) -> None:
         """Phase 1 admin endpoint (k-skill sync status) must reject a
         non-super-user. Exercises the dependency wiring end-to-end."""
-
 
         from httpx import ASGITransport, AsyncClient
 
@@ -503,13 +492,10 @@ class TestGate8AuthCsrf:
         app.dependency_overrides[verify_csrf] = _no_csrf
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             r = await client.post("/api/marketplace/admin/k-skill/sync")
         assert r.status_code == 403, (
-            f"non-super-user admin call must 403, got {r.status_code} "
-            f"({r.text[:120]})"
+            f"non-super-user admin call must 403, got {r.status_code} ({r.text[:120]})"
         )
 
 
@@ -524,11 +510,5 @@ def test_phase1_gate_classes_present() -> None:
     import sys
 
     mod = sys.modules[__name__]
-    gate_classes = [
-        name
-        for name in dir(mod)
-        if name.startswith("TestGate")
-    ]
-    assert len(gate_classes) == 8, (
-        f"Phase 1 출시 게이트 클래스 누락 — found {gate_classes}"
-    )
+    gate_classes = [name for name in dir(mod) if name.startswith("TestGate")]
+    assert len(gate_classes) == 8, f"Phase 1 출시 게이트 클래스 누락 — found {gate_classes}"

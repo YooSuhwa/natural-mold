@@ -11,18 +11,28 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, Request
-from sqlalchemy import or_, select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
-from app.credentials.validation import require_user_credential
+from app.authz.candidates import candidate_predicate
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.resource_gate import MCP_SERVER, gate_list, gate_row
+from app.authz.scoping import PrivateParent, private_parent_scoped, private_scoped
+from app.authz.service import AuthzService
+from app.credentials.allowed_hosts import remember_server_host, require_credentialed_url
+from app.credentials.validation import require_credential_use
 from app.dependencies import CurrentUser
 from app.error_codes import mcp_server_not_found
-from app.mcp import discovery as mcp_discovery
+from app.mcp import discovery as mcp_discovery  # noqa: F401 - patch surface (tests)
 from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
@@ -34,28 +44,79 @@ from app.schemas.mcp import (
     McpServerUpdate,
 )
 from app.services import audit_service
+from app.services.mcp_health_poll import poll_mcp_servers_health as poll_mcp_servers_health
 
 logger = logging.getLogger(__name__)
+
+
+def server_candidates(context: OrgContext) -> ColumnElement[bool]:
+    """Enforced candidates include system servers; the E-03 catalog fanout decides them."""
+    return candidate_predicate(McpServer, "mcp_server", context, platform=True)
+
 
 # -- Queries -------------------------------------------------------------------
 
 
-async def load_owned(db: AsyncSession, server_id: uuid.UUID, user_id: uuid.UUID) -> McpServer:
-    row = (
-        await db.execute(
-            select(McpServer).where(McpServer.id == server_id, McpServer.user_id == user_id)
+async def load_owned(
+    db: AsyncSession,
+    server_id: uuid.UUID,
+    context: OrgContext,
+    *,
+    authz: AuthzService | None = None,
+    permission: str = "can_view",
+) -> McpServer:
+    """Owner-scoped row (legacy answer); with ``authz`` also ``mcp_server#permission``."""
+
+    async def legacy() -> McpServer:
+        await resolve_private_actor(
+            db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
         )
-    ).scalar_one_or_none()
+        row = await db.scalar(
+            private_scoped(select(McpServer), McpServer, context).where(McpServer.id == server_id)
+        )
+        if row is None:
+            raise mcp_server_not_found()
+        return row
+
+    if authz is None:
+        return await legacy()
+    return await gate_row(authz, db, context, MCP_SERVER, server_id, permission, legacy)
+
+
+async def _reload(
+    db: AsyncSession, server_id: uuid.UUID, context: OrgContext, authz: AuthzService | None
+) -> McpServer:
+    """Legacy/shadow keep the owner reload; enforced callers were gated by the router."""
+    if authz is None or not authz.enforces("mcp_server"):
+        return await load_owned(db, server_id, context)
+    row = await db.get(McpServer, server_id)
     if row is None:
         raise mcp_server_not_found()
     return row
 
 
-async def load_tools_for(db: AsyncSession, server_id: uuid.UUID) -> list[McpTool]:
+async def load_tools_for(
+    db: AsyncSession,
+    server_id: uuid.UUID,
+    context: OrgContext,
+    *,
+    authz: AuthzService | None = None,
+) -> list[McpTool]:
+    """Tools of a server; an enforced caller already passed the server's check."""
+    if authz is not None and authz.enforces("mcp_server"):
+        stmt = select(McpTool).where(McpTool.server_id == server_id).order_by(McpTool.name)
+        return list((await db.execute(stmt)).scalars().all())
+    await require_private_actor(db, context)
     rows = (
         (
             await db.execute(
-                select(McpTool).where(McpTool.server_id == server_id).order_by(McpTool.name)
+                private_parent_scoped(
+                    select(McpTool),
+                    PrivateParent(model=McpServer, on=McpTool.server_id == McpServer.id),
+                    context,
+                )
+                .where(McpTool.server_id == server_id)
+                .order_by(McpTool.name)
             )
         )
         .scalars()
@@ -66,34 +127,71 @@ async def load_tools_for(db: AsyncSession, server_id: uuid.UUID) -> list[McpTool
 
 async def list_servers(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    context: OrgContext,
     *,
     order_by_name: bool = False,
+    authz: AuthzService | None = None,
+    permission: str = "can_use",
 ) -> list[McpServer]:
+    await require_private_actor(db, context)
     order = McpServer.name if order_by_name else McpServer.created_at.desc()
-    rows = (
-        (await db.execute(select(McpServer).where(McpServer.user_id == user_id).order_by(order)))
-        .scalars()
-        .all()
+
+    async def page(stmt: Select[tuple[McpServer]]) -> list[McpServer]:
+        return list((await db.execute(stmt.order_by(order))).scalars().all())
+
+    enforced = authz is not None and authz.enforces("mcp_server")
+    rows = [] if enforced else await page(private_scoped(select(McpServer), McpServer, context))
+    if authz is None:
+        return rows
+    candidates = select(McpServer).where(server_candidates(context))
+    return await gate_list(
+        authz,
+        context,
+        "mcp_server",
+        permission,
+        rows,
+        lambda server: server.id,
+        candidates=lambda: page(candidates),
     )
-    return list(rows)
 
 
 async def list_all_tools(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    context: OrgContext,
+    *,
+    authz: AuthzService | None = None,
 ) -> list[tuple[McpTool, str]]:
-    """Every MCP tool across the user's servers, paired with the server name."""
+    """Every MCP tool across the user's servers, paired with the server name.
 
-    rows = (
-        await db.execute(
-            select(McpTool, McpServer.name)
-            .join(McpServer, McpTool.server_id == McpServer.id)
-            .where(McpServer.user_id == user_id)
-            .order_by(McpServer.name, McpTool.name)
+    With ``authz``: server candidates, then server ``can_use`` and tool
+    ``can_invoke`` per row (plan 9.5).
+    """
+
+    await require_private_actor(db, context)
+    enforced = authz is not None and authz.enforces("mcp_server")
+    stmt = (
+        select(McpTool, McpServer.name)
+        .join(McpServer, McpTool.server_id == McpServer.id)
+        .where(server_candidates(context))
+        if enforced
+        else private_parent_scoped(
+            select(McpTool, McpServer.name),
+            PrivateParent(model=McpServer, on=McpTool.server_id == McpServer.id),
+            context,
         )
-    ).all()
-    return [(tool, server_name) for tool, server_name in rows]
+    )
+    rows = [
+        (tool, server_name)
+        for tool, server_name in (
+            await db.execute(stmt.order_by(McpServer.name, McpTool.name))
+        ).all()
+    ]
+    if authz is None:
+        return rows
+    rows = await gate_list(
+        authz, context, "mcp_server", "can_use", rows, lambda row: row[0].server_id
+    )
+    return await gate_list(authz, context, "mcp_tool", "can_invoke", rows, lambda row: row[0].id)
 
 
 # -- Validation ------------------------------------------------------------------
@@ -103,7 +201,10 @@ def validate_payload_consistency(
     transport: str | None,
     url: str | None,
     command: str | None,
+    credential_id: uuid.UUID | None = None,
 ) -> None:
+    if credential_id is not None and url:
+        require_credentialed_url(url)  # 11.9: checked at registration and at run time
     if transport in {"sse", "streamable_http"} and not url:
         raise HTTPException(
             status_code=422,
@@ -122,14 +223,22 @@ def validate_payload_consistency(
 async def create_server(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     data: McpServerCreate,
+    authz: AuthzService | None = None,
 ) -> McpServer:
-    validate_payload_consistency(data.transport, data.url, data.command)
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    validate_payload_consistency(data.transport, data.url, data.command, data.credential_id)
     if data.credential_id is not None:
-        await require_user_credential(db, credential_id=data.credential_id, user_id=user_id)
+        await require_credential_use(
+            db, credential_id=data.credential_id, context=context, authz=authz
+        )
     server = McpServer(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=data.name,
         description=data.description,
         transport=data.transport,
@@ -142,6 +251,7 @@ async def create_server(
         status="unknown",
     )
     db.add(server)
+    await remember_server_host(db, server.credential_id, server.url, context.user_id)
     await db.flush()
     return server
 
@@ -149,23 +259,29 @@ async def create_server(
 async def create_server_from_registry_entry(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     name: str,
     credential_id: uuid.UUID | None,
     entry: dict[str, Any],
+    authz: AuthzService | None = None,
 ) -> McpServer:
     """Create a server from a resolved catalog entry (registry lookup is the
     router's concern — unknown keys are an HTTP 400 there)."""
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
 
     transport = entry.get("transport")
     url = entry.get("url")
     command = entry.get("command")
-    validate_payload_consistency(transport, url, command)
+    validate_payload_consistency(transport, url, command, credential_id)
     if credential_id is not None:
-        await require_user_credential(db, credential_id=credential_id, user_id=user_id)
+        await require_credential_use(db, credential_id=credential_id, context=context, authz=authz)
 
     server = McpServer(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=name,
         description=entry.get("description"),
         transport=transport,
@@ -178,6 +294,7 @@ async def create_server_from_registry_entry(
         status="unknown",
     )
     db.add(server)
+    await remember_server_host(db, server.credential_id, server.url, context.user_id)
     await db.flush()
     return server
 
@@ -186,10 +303,12 @@ async def update_server(
     db: AsyncSession,
     *,
     server: McpServer,
-    user_id: uuid.UUID,
+    context: OrgContext,
     data: McpServerUpdate,
+    authz: AuthzService | None = None,
 ) -> McpServer:
     fields_set = data.model_fields_set
+    server = await _reload(db, server.id, context, authz)
 
     if "name" in fields_set and data.name is not None:
         server.name = data.name
@@ -209,19 +328,27 @@ async def update_server(
         server.headers = dict(data.headers)
     if "credential_id" in fields_set:
         if data.credential_id is not None:
-            await require_user_credential(db, credential_id=data.credential_id, user_id=user_id)
+            await require_credential_use(
+                db, credential_id=data.credential_id, context=context, authz=authz
+            )
         server.credential_id = data.credential_id
     if "status" in fields_set and data.status is not None:
         server.status = data.status
 
-    validate_payload_consistency(server.transport, server.url, server.command)
+    # 11.9: re-check https only when the URL or credential changes (other PATCHes pass).
+    changed = server.credential_id if {"url", "credential_id"} & fields_set else None
+    validate_payload_consistency(server.transport, server.url, server.command, changed)
+    await remember_server_host(db, server.credential_id, server.url, context.user_id)
     await db.flush()
     return server
 
 
-async def delete_server(db: AsyncSession, *, server: McpServer) -> None:
+async def delete_server(
+    db: AsyncSession, *, server: McpServer, context: OrgContext, authz: AuthzService | None = None
+) -> None:
     # Manual cascade for SQLite tests where ondelete=CASCADE isn't enforced.
-    for row in await load_tools_for(db, server.id):
+    server = await _reload(db, server.id, context, authz)
+    for row in await load_tools_for(db, server.id, context, authz=authz):
         await db.delete(row)
     await db.delete(server)
     await db.flush()
@@ -230,16 +357,24 @@ async def delete_server(db: AsyncSession, *, server: McpServer) -> None:
 async def import_servers(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     data: McpImportRequest,
+    created: list[McpServer] | None = None,
 ) -> McpImportResult:
-    """Bulk import MCP server definitions (see router docstring for shape)."""
+    """Bulk import MCP server definitions (see router docstring for shape).
+
+    New rows are appended to ``created`` so the router can queue their tuples.
+    """
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
 
     result = McpImportResult()
+    user_id = context.user_id
 
     # Pre-load existing servers by name so we don't re-query inside the loop.
     existing_rows = (
-        (await db.execute(select(McpServer).where(McpServer.user_id == user_id))).scalars().all()
+        (await db.execute(private_scoped(select(McpServer), McpServer, context))).scalars().all()
     )
     by_name: dict[str, McpServer] = {row.name: row for row in existing_rows}
 
@@ -253,8 +388,7 @@ async def import_servers(
         owned = (
             (
                 await db.execute(
-                    select(Credential.id).where(
-                        Credential.user_id == user_id,
+                    private_scoped(select(Credential.id), Credential, context).where(
                         Credential.id.in_(referenced_creds),
                     )
                 )
@@ -315,6 +449,8 @@ async def import_servers(
             if existing is None:
                 server = McpServer(
                     user_id=user_id,
+                    org_id=context.org_id,
+                    tenant_id=context.tenant_id,
                     name=name,
                     description=entry.description,
                     transport=transport,
@@ -329,6 +465,8 @@ async def import_servers(
                 db.add(server)
                 by_name[name] = server
                 result.created += 1
+                if created is not None:
+                    created.append(server)
             else:
                 existing.description = entry.description
                 existing.transport = transport
@@ -466,65 +604,3 @@ async def record_import_audit(
             "overwrite": overwrite,
         },
     )
-
-
-# -- Health polling (BE-S9 — 본문은 app.scheduler에서 이관) ----------------------
-
-
-async def poll_mcp_servers_health(
-    *,
-    session_factory: Callable[[], AsyncSession],
-) -> dict[str, int]:
-    """Run a quick connectivity probe against every enabled MCP server.
-
-    Distinct from ``health_check_all_active`` (which writes a persistent
-    history row): this job only refreshes the lightweight
-    ``health_status`` / ``health_polled_at`` / ``health_message`` columns
-    so the list view can show a fresh dot without paying for a full sweep.
-    """
-
-    counters = {"checked": 0, "ok": 0, "error": 0}
-    polled_at = datetime.now(UTC).replace(tzinfo=None)
-
-    async with session_factory() as db:
-        rows = (
-            (
-                await db.execute(
-                    select(McpServer).where(
-                        or_(
-                            McpServer.is_system.is_(True),
-                            McpServer.status != "disabled",
-                        )
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-
-        for server in rows:
-            counters["checked"] += 1
-            try:
-                probe = await mcp_discovery.test_server(db, server)
-            except Exception as exc:  # noqa: BLE001 — keep the sweep alive
-                logger.exception("mcp health poll failed for server %s", server.id)
-                server.health_status = "error"
-                server.health_polled_at = polled_at
-                server.health_message = str(exc)
-                counters["error"] += 1
-                continue
-
-            server.health_polled_at = polled_at
-            if probe.get("success"):
-                server.health_status = "ok"
-                server.health_message = None
-                counters["ok"] += 1
-            else:
-                server.health_status = "error"
-                server.health_message = probe.get("error")
-                counters["error"] += 1
-
-        await db.commit()
-
-    logger.info("mcp health poll finished: %s", counters)
-    return counters

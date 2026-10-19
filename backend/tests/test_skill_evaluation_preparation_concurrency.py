@@ -12,6 +12,7 @@ from app.models.skill import Skill
 from app.schemas.skill_builder import JsonValue
 from app.services.skill_evaluation_set_preparation import prepare_skill_evaluation_set
 from app.storage.paths import ensure_relative
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -106,6 +107,8 @@ async def _package_skill(
         size_bytes=1,
         version="1.0.0",
         package_metadata={"name": "imported"},
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(skill)
     await db.flush()

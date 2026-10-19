@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.skill_builder_session import SkillBuilderSession
 from app.services import skill_draft_workspace as workspace
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -46,6 +47,8 @@ async def _make_session(
         # 실제 v2 플로우는 start에서 대화를 attach한다 — conversation 없는 오래된
         # 세션은 dead로 간주되어 abandoned 전이 대상 (R2). aiosqlite는 FK 미강제.
         conversation_id=uuid.uuid4() if with_conversation else None,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(session)
     await db.flush()
@@ -80,7 +83,7 @@ async def test_seed_from_text_skill_creates_skill_md(tmp_path: Path) -> None:
     src.mkdir(parents=True)
     (src / "SKILL.md").write_text("# original\n")
     # text-kind: storage_path가 단일 파일을 가리키는 형태.
-    skill = SimpleNamespace(slug="notes", storage_path="skills/notes/SKILL.md")
+    skill = SimpleNamespace(slug="notes", storage_path="skills/notes/SKILL.md", tenant_id=None)
     session_id = uuid.uuid4()
 
     path = workspace.seed_workspace_from_skill(skill, session_id)  # type: ignore[arg-type]
@@ -96,7 +99,7 @@ async def test_seed_from_package_skill_copies_tree_and_wipes_existing(
     (src / "references").mkdir(parents=True)
     (src / "SKILL.md").write_text("# pack\n")
     (src / "references" / "guide.md").write_text("guide\n")
-    skill = SimpleNamespace(slug="pack", storage_path="skills/pack")
+    skill = SimpleNamespace(slug="pack", storage_path="skills/pack", tenant_id=None)
     session_id = uuid.uuid4()
 
     # 기존 워크스페이스 내용은 시드 시 wipe (멱등 재시드).
@@ -118,7 +121,7 @@ async def test_seed_from_package_skill_copies_tree_and_wipes_existing(
 async def test_seed_with_missing_source_yields_empty_workspace(
     tmp_path: Path,
 ) -> None:
-    skill = SimpleNamespace(slug="ghost", storage_path="skills/ghost")
+    skill = SimpleNamespace(slug="ghost", storage_path="skills/ghost", tenant_id=None)
     session_id = uuid.uuid4()
 
     path = workspace.seed_workspace_from_skill(skill, session_id)  # type: ignore[arg-type]
@@ -141,6 +144,7 @@ def _attachment(tmp_path: Path, *, filename: str, body: bytes = b"data") -> Simp
         id=uuid.uuid4(),
         filename=filename,
         storage_path=f"uploads/{blob.name}",
+        tenant_id=None,
     )
 
 
@@ -168,7 +172,7 @@ async def test_copy_attachments_skips_missing_blob(tmp_path: Path) -> None:
     session_id = uuid.uuid4()
     path = workspace.create_workspace(session_id)
     ghost = SimpleNamespace(
-        id=uuid.uuid4(), filename="ghost.txt", storage_path="uploads/missing.bin"
+        id=uuid.uuid4(), filename="ghost.txt", storage_path="uploads/missing.bin", tenant_id=None
     )
 
     copied = workspace.copy_attachments_to_inputs(path, [ghost])  # type: ignore[arg-type]

@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.identity import (
     AgentRunIdentity,
@@ -18,6 +19,9 @@ from app.agent_runtime.runtime_component_builder import (
     _prepare_runtime_components,
 )
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.error_codes import agent_not_found
 from app.models.agent import Agent
 from app.services import chat_service
 
@@ -81,8 +85,26 @@ async def build_subagents_config(
     parent_cfg: AgentConfig,
     is_trigger_mode: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
-    """Convert one-hop linked child agents into Deep Agents SubAgent specs."""
+    """Convert one-hop linked child agents into Deep Agents SubAgent specs.
 
+    Legacy (unleased) path only: a prepared lease runs the children I15
+    compiled before the marker, so reaching this after the marker (child
+    hydration) fails closed with ``post_marker_hydration_denied``.
+    """
+
+    assert_pre_marker("build_subagents_config")
+    await load_agent_tree_for_execution(
+        db,
+        AgentExecutionTarget(parent_agent.id, parent_cfg.org_context, run=True),
+    )
+    # The tree lock re-reads the Agent rows with populate_existing, which resets the
+    # children's lazy relationships (model, links, skills): re-hydrate the tree with the
+    # runtime eager loads before the loop reads them (F-08; MissingGreenlet otherwise).
+    if (
+        await chat_service.get_run_agent_with_tools(db, parent_agent.id, parent_cfg.org_context)
+        is None
+    ):
+        raise agent_not_found()
     parent_identity = _parent_identity_from_config(
         parent_cfg,
         is_trigger_mode=is_trigger_mode,
@@ -90,10 +112,18 @@ async def build_subagents_config(
     subagents: list[dict[str, Any]] = []
     display_names: dict[str, str] = {}
 
-    for link in parent_agent.sub_agent_links:
+    plan = parent_cfg.access_plan  # F-06: the links the parent's run may bind
+    for link in plan.sub_agent_links if plan is not None else parent_agent.sub_agent_links:
         child = link.sub_agent
         if child is None:
             continue
+        context = parent_cfg.org_context
+        if plan is None and (child.user_id, child.org_id, child.tenant_id) != (
+            context.user_id,
+            context.org_id,
+            context.tenant_id,
+        ):
+            raise agent_not_found()
         if child.model is None:
             raise ValueError(f"linked subagent {child.id} has no model bound")
 
@@ -101,26 +131,31 @@ async def build_subagents_config(
         child_api_key = await resolve_llm_api_key_for_agent(
             db,
             child,
-            identity=child_identity,
+            AgentCredentialAccess(parent_cfg.org_context, child_identity),
         )
-        child_tools_config = await chat_service.build_tools_config(
+        child_runtime = await chat_service.prepare_authorized_runtime(
             child,
+            path="subagent",
+            context=parent_cfg.org_context,
             db=db,
-            conversation_id=parent_cfg.thread_id,
             identity=child_identity,
+            conversation_id=parent_cfg.thread_id,
+            root=False,
         )
         child_cfg = AgentConfig(
+            org_context=parent_cfg.org_context,
             provider=child.model.provider,
             model_name=child.model.model_name,
             api_key=child_api_key,
             base_url=child.model.base_url,
             system_prompt=_subagent_system_prompt(child),
-            tools_config=child_tools_config,
+            tools_config=child_runtime.tools_config,
+            access_plan=child_runtime.plan,
             thread_id=parent_cfg.thread_id,
             runtime_policy=parent_cfg.runtime_policy,
             model_params=child.model_params,
             middleware_configs=child.middleware_configs,
-            agent_skills=chat_service.build_agent_skills(child) or None,
+            agent_skills=child_runtime.agent_skills or None,
             agent_id=str(child.id),
             agent_name=child.name,
             provider_api_keys={child.model.provider: child_api_key} if child_api_key else None,
@@ -135,6 +170,7 @@ async def build_subagents_config(
             credential_subject_user_id=str(child_identity.credential_subject_user_id),
             identity_mode=child_identity.identity_mode,
             agent_runtime_name=child_identity.runtime_name,
+            usage_root_agent_id=parent_cfg.usage_root_agent_id or parent_cfg.agent_id,
         )
         # ADR-021 H1 — fold the child's eager secrets (LLM key, tool/MCP creds,
         # base_url userinfo) into the PARENT run set so a subagent's injected

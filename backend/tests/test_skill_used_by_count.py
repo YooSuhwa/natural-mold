@@ -17,6 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER, Agent
 from app.models.skill import AgentSkillLink, Skill
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_text_skill,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -46,18 +53,22 @@ def _agent(user_id: uuid.UUID, *, runtime_profile: str | None = None) -> Agent:
         system_prompt="",
         model_id=uuid.uuid4(),
         **kwargs,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
 
 
 async def _make_skill(db: AsyncSession, tmp_path: Path) -> Skill:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        return await skill_service.create_text_skill(
+        return await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Notes",
-            slug="notes",
-            description="Use when summarizing notes.",
-            content=_skill_content(),
+            TextSkillCreation(
+                name="Notes",
+                slug="notes",
+                description="Use when summarizing notes.",
+                content=_skill_content(),
+            ),
+            unit_context(TEST_USER_ID),
         )
 
 

@@ -8,24 +8,47 @@ result.
 
 from __future__ import annotations
 
-import os
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, cast
 
-from sqlalchemy import and_, func, select, update
-from sqlalchemy.engine import CursorResult
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.authz.artifact_scope import validated_artifact_conversation
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
+from app.error_codes import conversation_not_found
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
-from app.services.artifact_paths import (
-    ArtifactPathError,
-    NormalizedArtifactPath,
-    normalize_output_path,
-)
 from app.services.artifact_storage import ArtifactStorageBackend, get_artifact_storage_backend
+from app.services.artifacts.run_links import (
+    finalize_artifacts_for_run as finalize_artifacts_for_run,
+)
+from app.services.artifacts.run_links import (
+    link_artifacts_to_messages as link_artifacts_to_messages,
+)
+from app.services.artifacts.snapshots import (
+    ArtifactDelta as ArtifactDelta,
+)
+from app.services.artifacts.snapshots import (
+    ArtifactFileState as ArtifactFileState,
+)
+from app.services.artifacts.snapshots import (
+    ArtifactSnapshot as ArtifactSnapshot,
+)
+from app.services.artifacts.snapshots import (
+    _state_matches_stat as _state_matches_stat,
+)
+from app.services.artifacts.snapshots import (
+    _states_have_same_metadata as _states_have_same_metadata,
+)
+from app.services.artifacts.snapshots import (
+    diff_snapshots as diff_snapshots,
+)
+from app.services.artifacts.snapshots import (
+    snapshot_output_dir as snapshot_output_dir,
+)
 from app.services.artifacts.summary import (
     FileEventOperation,
     _file_event_payload,
@@ -36,31 +59,9 @@ ARTIFACT_SOURCE_TOOL_NAMES = frozenset({"execute_in_skill", "write_file", "edit_
 
 
 @dataclass(frozen=True)
-class ArtifactFileState:
-    path: Path
-    normalized: NormalizedArtifactPath
-    size_bytes: int
-    mtime_ns: int
-    ctime_ns: int
-    inode: int
-    sha256: str | None
-
-
-@dataclass(frozen=True)
-class ArtifactSnapshot:
-    files: dict[str, ArtifactFileState]
-
-
-@dataclass(frozen=True)
-class ArtifactDelta:
-    op: FileEventOperation
-    state: ArtifactFileState
-
-
-@dataclass(frozen=True)
 class ArtifactRuntimeContext:
     conversation_id: uuid.UUID
-    user_id: uuid.UUID
+    org_context: OrgContext
     agent_id: uuid.UUID
     assistant_msg_id: str
     output_dir: Path
@@ -73,7 +74,7 @@ class ArtifactDeltaRecorder:
     def __init__(
         self,
         *,
-        session_factory: async_sessionmaker[AsyncSession],
+        session_factory: Callable[[], AsyncSession],
         context: ArtifactRuntimeContext,
         storage: ArtifactStorageBackend | None = None,
     ) -> None:
@@ -83,6 +84,10 @@ class ArtifactDeltaRecorder:
         self._snapshot = ArtifactSnapshot(files={})
 
     async def prepare(self) -> None:
+        async with self.session_factory() as db:
+            await validated_artifact_conversation(
+                db, self.context.conversation_id, self.context.org_context
+            )
         self._snapshot = await snapshot_output_dir(self.context.output_dir, hash_files=False)
 
     async def collect_after_tool_result(
@@ -97,6 +102,10 @@ class ArtifactDeltaRecorder:
         ):
             return []
 
+        async with self.session_factory() as db:
+            await validated_artifact_conversation(
+                db, self.context.conversation_id, self.context.org_context
+            )
         after = await snapshot_output_dir(self.context.output_dir, previous=self._snapshot)
         deltas = diff_snapshots(self._snapshot, after)
         self._snapshot = after
@@ -115,89 +124,6 @@ class ArtifactDeltaRecorder:
             return events
 
 
-async def snapshot_output_dir(
-    base_dir: Path,
-    *,
-    previous: ArtifactSnapshot | None = None,
-    hash_files: bool = True,
-) -> ArtifactSnapshot:
-    # Call-time facade lookup: tests monkeypatch artifact_service._sha256_file
-    # to observe hashing; a top-level import of the concrete module would
-    # early-bind and silently bypass that patch.
-    from app.services.artifact_service import _sha256_file
-
-    base_dir = Path(base_dir)
-    if not base_dir.exists():
-        return ArtifactSnapshot(files={})
-
-    files: dict[str, ArtifactFileState] = {}
-    for path in sorted(base_dir.rglob("*")):
-        try:
-            normalized = normalize_output_path(base_dir, path)
-        except ArtifactPathError:
-            continue
-
-        stat = path.stat()
-        if stat.st_size > settings.artifact_max_bytes:
-            continue
-        previous_state = previous.files.get(normalized.logical_path) if previous else None
-        if previous_state is not None and _state_matches_stat(previous_state, stat):
-            sha256 = previous_state.sha256
-        elif hash_files:
-            sha256 = await _sha256_file(path)
-        else:
-            sha256 = None
-
-        files[normalized.logical_path] = ArtifactFileState(
-            path=path,
-            normalized=normalized,
-            size_bytes=stat.st_size,
-            mtime_ns=stat.st_mtime_ns,
-            ctime_ns=stat.st_ctime_ns,
-            inode=int(getattr(stat, "st_ino", 0)),
-            sha256=sha256,
-        )
-
-    return ArtifactSnapshot(files=files)
-
-
-def _state_matches_stat(state: ArtifactFileState, stat: os.stat_result) -> bool:
-    return (
-        state.size_bytes == stat.st_size
-        and state.mtime_ns == stat.st_mtime_ns
-        and state.ctime_ns == stat.st_ctime_ns
-        and state.inode == int(getattr(stat, "st_ino", 0))
-    )
-
-
-def _states_have_same_metadata(left: ArtifactFileState, right: ArtifactFileState) -> bool:
-    return (
-        left.size_bytes == right.size_bytes
-        and left.mtime_ns == right.mtime_ns
-        and left.ctime_ns == right.ctime_ns
-        and left.inode == right.inode
-    )
-
-
-def diff_snapshots(before: ArtifactSnapshot, after: ArtifactSnapshot) -> list[ArtifactDelta]:
-    deltas: list[ArtifactDelta] = []
-    for logical_path, after_state in after.files.items():
-        before_state = before.files.get(logical_path)
-        if before_state is None:
-            deltas.append(ArtifactDelta(op="created", state=after_state))
-            continue
-        if not _states_have_same_metadata(before_state, after_state) or (
-            before_state.sha256 is not None
-            and after_state.sha256 is not None
-            and before_state.sha256 != after_state.sha256
-        ):
-            deltas.append(ArtifactDelta(op="updated", state=after_state))
-    for logical_path, before_state in before.files.items():
-        if logical_path not in after.files:
-            deltas.append(ArtifactDelta(op="deleted", state=before_state))
-    return deltas[: settings.artifact_max_files_per_run]
-
-
 async def ingest_changed_files(
     db: AsyncSession,
     *,
@@ -209,6 +135,11 @@ async def ingest_changed_files(
     # Call-time facade lookup: see snapshot_output_dir.
     from app.services.artifact_service import _sha256_file
 
+    conversation = await validated_artifact_conversation(
+        db, context.conversation_id, context.org_context
+    )
+    if conversation.agent_id != context.agent_id:
+        raise conversation_not_found()
     events: list[dict[str, object]] = []
     for delta in deltas:
         state = delta.state
@@ -220,7 +151,7 @@ async def ingest_changed_files(
                         select(ConversationArtifact)
                         .where(
                             ConversationArtifact.conversation_id == context.conversation_id,
-                            ConversationArtifact.user_id == context.user_id,
+                            private_scope_predicate(ConversationArtifact, context.org_context),
                             ConversationArtifact.assistant_msg_id == context.assistant_msg_id,
                             ConversationArtifact.logical_path == normalized.logical_path,
                             ConversationArtifact.status != "deleted",
@@ -249,6 +180,7 @@ async def ingest_changed_files(
             await db.execute(
                 select(ConversationArtifact).where(
                     and_(
+                        private_scope_predicate(ConversationArtifact, context.org_context),
                         ConversationArtifact.conversation_id == context.conversation_id,
                         ConversationArtifact.assistant_msg_id == context.assistant_msg_id,
                         ConversationArtifact.logical_path == normalized.logical_path,
@@ -273,7 +205,9 @@ async def ingest_changed_files(
 
         artifact = existing or ConversationArtifact(
             id=uuid.uuid4(),
-            user_id=context.user_id,
+            user_id=context.org_context.user_id,
+            org_id=context.org_context.org_id,
+            tenant_id=context.org_context.tenant_id,
             agent_id=context.agent_id,
             conversation_id=context.conversation_id,
             assistant_msg_id=context.assistant_msg_id,
@@ -301,6 +235,7 @@ async def ingest_changed_files(
             version_number=version_number,
             display_name=normalized.display_name,
             source_path=state.path,
+            tenant_id=context.org_context.tenant_id,
         )
         version = ArtifactVersion(
             id=uuid.uuid4(),
@@ -334,57 +269,3 @@ async def ingest_changed_files(
         events.append(_file_event_payload(op, summary).model_dump(mode="json"))
 
     return events
-
-
-async def link_artifacts_to_messages(
-    db: AsyncSession,
-    *,
-    conversation_id: uuid.UUID,
-    assistant_msg_id: str,
-    linked_message_ids: list[str],
-) -> None:
-    if not linked_message_ids:
-        return
-
-    await db.execute(
-        update(ConversationArtifact)
-        .where(
-            ConversationArtifact.conversation_id == conversation_id,
-            ConversationArtifact.assistant_msg_id == assistant_msg_id,
-            ConversationArtifact.status != "deleted",
-        )
-        .values(linked_message_ids=linked_message_ids)
-    )
-
-
-async def finalize_artifacts_for_run(
-    db: AsyncSession,
-    *,
-    conversation_id: uuid.UUID,
-    assistant_msg_id: str,
-    run_status: str,
-) -> int:
-    """Close artifact state for a terminal run.
-
-    Artifacts are discovered after individual tool results and are therefore
-    optimistically marked ``ready`` while the assistant turn is still running.
-    If the run later ends as canceled/stale/failed, those optimistic ready
-    rows should not render as healthy completed outputs.
-    """
-
-    if run_status not in {"canceled", "stale", "failed"}:
-        return 0
-
-    result = cast(
-        CursorResult[Any],
-        await db.execute(
-            update(ConversationArtifact)
-            .where(
-                ConversationArtifact.conversation_id == conversation_id,
-                ConversationArtifact.assistant_msg_id == assistant_msg_id,
-                ConversationArtifact.status.in_(("writing", "ready")),
-            )
-            .values(status="failed")
-        ),
-    )
-    return int(result.rowcount or 0)

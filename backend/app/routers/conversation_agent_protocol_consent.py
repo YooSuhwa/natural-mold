@@ -16,29 +16,25 @@
 from __future__ import annotations
 
 import logging
-import uuid
 from collections.abc import Mapping
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.skill_builder.tools import SESSION_CONSENT_ELIGIBLE_TOOLS
-from app.models.skill_builder_session import SkillBuilderSession
-from app.routers.conversation_agent_protocol_interrupts import ThreadInterrupt
-from app.routers.conversation_agent_protocol_resume import ResumePayload
 from app.routers.conversation_agent_protocol_resume_redaction import _action_requests
+from app.routers.session_consent_scope import SessionConsentPayload, SessionConsentTarget
 from app.services import skill_builder_service, skill_draft_workspace
+from app.services.skill_builder_mutation_scope import (
+    SkillBuilderMutationTarget,
+    load_conversation_session,
+)
+from app.storage.skill_draft_paths import skill_draft_storage_path
 
 logger = logging.getLogger(__name__)
 
 
 async def apply_session_consent_decisions(
-    db: AsyncSession,
-    *,
-    conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
-    resume: ResumePayload,
-    pending_interrupts: list[ThreadInterrupt],
+    db: AsyncSession, target: SessionConsentTarget, payload: SessionConsentPayload
 ) -> list[str]:
     """``scope:"session"`` 동의를 기록하고 decision에서 scope 키를 벗겨낸다.
 
@@ -47,9 +43,11 @@ async def apply_session_consent_decisions(
     (동의 불가 조건이면 빈 목록 — 이번 승인은 표준 approve로 1회 진행).
     """
 
+    context = target.context
+    resume = payload.resume
     actions_by_interrupt = {
         interrupt["id"]: _action_requests(interrupt.get("value"))
-        for interrupt in pending_interrupts
+        for interrupt in payload.pending_interrupts
     }
     requested: list[str] = []
     for submitted in resume.submitted:
@@ -75,20 +73,13 @@ async def apply_session_consent_decisions(
     if not requested:
         return []
 
-    result = await db.execute(
-        select(SkillBuilderSession)
-        .where(
-            SkillBuilderSession.conversation_id == conversation_id,
-            SkillBuilderSession.user_id == user_id,
-        )
-        # 세션↔대화 1:1은 DB 제약이 아니라 관례다 — 방어적으로 최신 1건만
-        # 취해 MultipleResultsFound 500을 차단한다 (R2).
-        .order_by(SkillBuilderSession.created_at.desc())
-        .limit(1)
-    )
-    session = result.scalar_one_or_none()
+    session = await load_conversation_session(db, target.conversation_id, context)
     if session is None:
         # 빌더 대화가 아니면 동의는 무의미 — scope 제거만으로 충분.
+        return []
+    if session.draft_workspace_path and session.draft_workspace_path != skill_draft_storage_path(
+        session.id
+    ):
         return []
     if session.draft_workspace_path and skill_draft_workspace.draft_requires_network(
         session.draft_workspace_path
@@ -97,7 +88,9 @@ async def apply_session_consent_decisions(
         return []
 
     tool_names = sorted(set(requested))
-    await skill_builder_service.record_tool_consents(db, session, tool_names=tool_names)
+    await skill_builder_service.record_tool_consents(
+        db, SkillBuilderMutationTarget(session.id, context), tool_names
+    )
     return tool_names
 
 

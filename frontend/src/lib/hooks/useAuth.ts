@@ -10,12 +10,12 @@ import { SESSION_QUERY_KEY } from '@/lib/auth/session'
 import { resetAuthOneShotFlags } from '@/lib/auth/session-flags'
 import type { AuthResponse } from '@/lib/types/user'
 
-function isSafeCallback(url: string | null | undefined): url is string {
+export function isSafeCallback(url: string | null | undefined): url is string {
   if (!url) return false
   return url.startsWith('/') && !url.startsWith('//')
 }
 
-function persistAuth(res: AuthResponse, queryClient: ReturnType<typeof useQueryClient>) {
+export function persistAuth(res: AuthResponse, queryClient: ReturnType<typeof useQueryClient>) {
   csrfStore.set(res.csrf_token)
   // New session — re-arm the refresh + session-expired gates so the next
   // expiry can fire toast/redirect normally.

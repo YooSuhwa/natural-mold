@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import AnyUrl
 
 from app.mcp.client import build_headers
+from app.outbound.client import credentialed_mcp_options
 
 
 def _jsonable(value: Any) -> Any:
@@ -50,7 +51,9 @@ async def call_mcp_tool_once(
     merged_headers = build_headers(headers, credentials)
 
     try:
-        async with _open_http_session(transport, url, merged_headers) as session:
+        async with _open_http_session(
+            transport, url, merged_headers, credentials is not None
+        ) as session:
             await session.initialize()
             result = await session.call_tool(tool_name, arguments=arguments)
             structured = getattr(result, "structuredContent", None)
@@ -86,7 +89,9 @@ async def read_mcp_resource_once(
 
     merged_headers = build_headers(headers, credentials)
     try:
-        async with _open_http_session(transport, url, merged_headers) as session:
+        async with _open_http_session(
+            transport, url, merged_headers, credentials is not None
+        ) as session:
             await session.initialize()
             result = await session.read_resource(resource_uri)
             return {
@@ -102,14 +107,17 @@ async def _open_http_session(
     transport: str,
     url: str,
     headers: dict[str, Any],
+    credentialed: bool = False,
 ) -> AsyncIterator[Any]:
     from mcp.client.session import ClientSession
+
+    options = credentialed_mcp_options(credentialed)  # 11.9: https only, same-host redirects
 
     if transport == "sse":
         from mcp.client.sse import sse_client
 
         async with (
-            sse_client(url, headers=headers or None) as (read, write),
+            sse_client(url, headers=headers or None, **options) as (read, write),
             ClientSession(read, write) as session,
         ):
             yield session
@@ -118,7 +126,7 @@ async def _open_http_session(
     from mcp.client.streamable_http import streamablehttp_client
 
     async with (
-        streamablehttp_client(url, headers=headers or None) as (read, write, _),
+        streamablehttp_client(url, headers=headers or None, **options) as (read, write, _),
         ClientSession(read, write) as session,
     ):
         yield session

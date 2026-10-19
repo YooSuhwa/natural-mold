@@ -3,7 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.agent_runtime.message_utils import parse_msg_id
+from app.authz.org_context import OrgContext
 from app.models.conversation import Conversation
 from app.schemas.chat_resource_context import (
     MAX_RESOURCE_CONTEXT_ITEM_BYTES,
@@ -19,6 +22,9 @@ from app.services.chat_resource_context_errors import (
 async def freeze_message_quote(
     conversation: Conversation,
     reference: ChatResourceReference,
+    *,
+    db: AsyncSession,
+    context: OrgContext,
 ) -> FrozenChatResource:
     """Bind a user-selected excerpt to an owned, visible message at acceptance.
 
@@ -26,11 +32,11 @@ async def freeze_message_quote(
     The selection is explicitly user-supplied reference data, never a verified
     verbatim quotation or trusted instruction. Message identity is server checked.
     """
-    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.conversation_checkpointer import conversation_checkpointer
     from app.services.thread_branch_service import build_message_tree
 
     tree = await build_message_tree(
-        get_checkpointer(),
+        await conversation_checkpointer(str(conversation.id), context, db=db),
         str(conversation.id),
         active_checkpoint_id=conversation.active_branch_checkpoint_id,
     )

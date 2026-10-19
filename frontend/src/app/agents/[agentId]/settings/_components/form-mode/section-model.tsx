@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { CpuIcon, SettingsIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useAgentAccess } from '@/components/agent/agent-access-context'
 import { useModels } from '@/lib/hooks/use-models'
 import { ModelDialog } from '../dialogs/model-dialog'
 
@@ -24,6 +25,7 @@ interface SectionModelProps {
 export function SectionModel(props: SectionModelProps) {
   const t = useTranslations('agent.settings')
   const [open, setOpen] = useState(false)
+  const { canEdit } = useAgentAccess()
   const { data: models } = useModels()
 
   const current = models?.find((m) => m.id === props.modelId)
@@ -46,14 +48,16 @@ export function SectionModel(props: SectionModelProps) {
             </span>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => setOpen(true)}
-          aria-label={t('modelConfig')}
-        >
-          <SettingsIcon className="size-4" />
-        </Button>
+        {canEdit ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setOpen(true)}
+            aria-label={t('modelConfig')}
+          >
+            <SettingsIcon className="size-4" />
+          </Button>
+        ) : null}
       </div>
       <ModelDialog open={open} onOpenChange={setOpen} {...props} />
     </>

@@ -63,8 +63,12 @@ logger = logging.getLogger(__name__)
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.authz.ops_health import fga_health
+from app.authz.policies import PUBLIC, authz_policy, register_legacy_policies
+from app.authz.reconcile_launch import close_stale_at_startup
+from app.authz.runtime import open_authz_runtime
 from app.config import settings
-from app.database import async_session
+from app.database import platform_session
 from app.hooks import register_default_hooks
 from app.models.model import Model
 from app.models.template import Template
@@ -73,6 +77,7 @@ from app.runtime_lifecycle import lifespan_cleanup_boundary, shutdown_runtime_re
 from app.scheduler import sweep_stale_conversation_runs
 from app.scheduler_runtime import scheduler_leadership_runtime
 from app.security.production_check import enforce_production_safety
+from app.security.rls_role_check import enforce_rls_role_safety
 from app.seed.bootstrap_from_env import bootstrap_system_credentials
 from app.seed.default_marketplace_skills import seed_default_marketplace_skills
 from app.seed.default_models import (
@@ -103,9 +108,11 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     # CORS origins, encryption keys — all the things that are safe
     # locally but catastrophic if shipped with their defaults.
     enforce_production_safety(settings)
+    # I-06: with DB_RLS_ENABLED the app role must not own tables or bypass RLS.
+    await enforce_rls_role_safety(settings)
 
     # Startup: seed default data.
-    async with async_session() as db:
+    async with platform_session("seed.startup") as db:
         # Seed default models (insert if table empty).
         result = await db.execute(select(Model).limit(1))
         if not result.scalar_one_or_none():
@@ -203,7 +210,7 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     await recover_conversation_queue()
 
     if settings.skill_evaluation_enabled:
-        await skill_evaluation_worker.start(async_session, reconcile_stale=True)
+        await skill_evaluation_worker.start(reconcile_stale=True)
 
     # Spend writer — drain queue in the background so spend rows accumulate
     # without blocking agent runs. Must start before any hook is invoked.
@@ -212,6 +219,10 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     # One backend owns shared jobs at a time. Every process keeps checking the
     # PostgreSQL advisory lock so leadership fails over and DB-authored trigger
     # changes are reconciled even when they came through a non-leader worktree.
+    # The AuthzService (P3-0) is closed by shutdown_runtime_resources after the
+    # scheduler stops and background runs drain, before the database is disposed.
+    await open_authz_runtime(app)
+    await close_stale_at_startup()  # H-04: free reconcile runs a dead process left live
     async with scheduler_leadership_runtime():
         yield
 
@@ -259,14 +270,21 @@ def create_app() -> FastAPI:
         return response
 
     from app.router_registry import include_app_routers
+    from app.routers import conversation_history
 
     include_app_routers(app)
+    app.include_router(conversation_history.router)
     register_exception_handlers(app)
 
     @app.get("/api/health")
+    @authz_policy(PUBLIC)
     async def health_check():
-        return {"status": "ok"}
+        if settings.authz_mode == "legacy":  # legacy never consults OpenFGA
+            return {"status": "ok"}
+        authz = (await fga_health(settings)).status  # 14.3: ok|degraded|down (H-04)
+        return {"status": "ok", "authz": authz}
 
+    register_legacy_policies(app)
     return app
 
 

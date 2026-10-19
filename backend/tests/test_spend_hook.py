@@ -25,6 +25,7 @@ def _ctx(kind: HookKind = "agent_invoke") -> HookContext:
         started_at=datetime.now(UTC),
         agent_id=uuid.uuid4(),
         model_id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
     )
 
 

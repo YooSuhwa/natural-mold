@@ -8,6 +8,9 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_scope import lock_private_conversation, require_private_conversation
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
 from app.models.conversation import Conversation
 from app.models.conversation_pinned_summary import ConversationPinnedSummary
 from app.schemas.conversation_pinned_summary import (
@@ -25,6 +28,14 @@ class SummarySource:
     role: MessageRole
     text: str
     branch_checkpoint_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class PinSummaryTarget:
+    conversation_id: uuid.UUID
+    context: OrgContext
+    message_id: str
+    active_sources: tuple[SummarySource, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,13 +71,12 @@ def resolve_source_status(
 
 async def pin_summary(
     db: AsyncSession,
-    conversation_id: uuid.UUID,
-    message_id: str,
-    active_sources: tuple[SummarySource, ...],
+    target: PinSummaryTarget,
 ) -> ConversationPinnedSummary:
     """Persist a bounded snapshot of an assistant message on the active branch."""
 
-    source = _find_source(active_sources, message_id)
+    await lock_private_conversation(db, target.conversation_id, target.context)
+    source = _find_source(target.active_sources, target.message_id)
     if source is None:
         raise InvalidPinnedSummarySourceError("missing")
     if source.role != "assistant":
@@ -75,10 +85,9 @@ async def pin_summary(
     if not normalized_text:
         raise InvalidPinnedSummarySourceError("empty")
 
-    await _lock_conversation(db, conversation_id)
-    row = await db.get(ConversationPinnedSummary, conversation_id)
+    row = await db.get(ConversationPinnedSummary, target.conversation_id)
     if row is None:
-        row = ConversationPinnedSummary(conversation_id=conversation_id)
+        row = ConversationPinnedSummary(conversation_id=target.conversation_id)
         db.add(row)
     row.source_message_id = source.message_id
     row.source_branch_checkpoint_id = source.branch_checkpoint_id
@@ -91,25 +100,24 @@ async def pin_summary(
 async def get_summary(
     db: AsyncSession,
     conversation_id: uuid.UUID,
+    context: OrgContext,
 ) -> ConversationPinnedSummary | None:
-    return await db.get(ConversationPinnedSummary, conversation_id)
+    await require_private_conversation(db, conversation_id, context)
+    return await db.scalar(
+        select(ConversationPinnedSummary)
+        .join(Conversation, Conversation.id == ConversationPinnedSummary.conversation_id)
+        .where(
+            ConversationPinnedSummary.conversation_id == conversation_id,
+            private_scope_predicate(Conversation, context),
+        )
+    )
 
 
-async def unpin_summary(db: AsyncSession, conversation_id: uuid.UUID) -> None:
-    await _lock_conversation(db, conversation_id)
+async def unpin_summary(db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext) -> None:
+    await lock_private_conversation(db, conversation_id, context)
     row = await db.get(ConversationPinnedSummary, conversation_id)
     if row is not None:
         await db.delete(row)
-
-
-async def _lock_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> None:
-    """Serialize summary mutations, including the no-summary-row insert case."""
-
-    await db.scalar(
-        select(Conversation.id)
-        .where(Conversation.id == conversation_id)
-        .with_for_update(of=Conversation)
-    )
 
 
 def serialize_summary(

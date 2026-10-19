@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.skill_evaluation import SkillEvaluationRun
 from app.services import skill_evaluation_service
-from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 
@@ -20,14 +21,16 @@ def _skill_content() -> str:
 
 
 async def _create_skill(db: AsyncSession):
-    skill = await skill_service.create_text_skill(
+    skill = await create_test_text_skill(
         db,
-        user_id=TEST_USER_ID,
-        name="Evaluator",
-        slug="evaluator",
-        description="Use when testing skill evaluation behavior.",
-        content=_skill_content(),
-        version="1.0.0",
+        TextSkillCreation(
+            name="Evaluator",
+            slug="evaluator",
+            description="Use when testing skill evaluation behavior.",
+            content=_skill_content(),
+            version="1.0.0",
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.flush()
     return skill

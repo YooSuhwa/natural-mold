@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.runtime.shared_memo import memo_governed
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
 
@@ -32,8 +33,8 @@ async def prepare_skill_builder_components_impl(
             bindings.build_skill_builder_tools(
                 session_id=cfg.skill_builder_session_id,
                 workspace_path=workspace_path,
-                session_factory=bindings.runtime_db_session_factory,
-                user_id=cfg.user_id,
+                session_factory=lambda: bindings.runtime_db_session_factory(cfg.org_context),
+                context=cfg.org_context,
                 agent_id=cfg.agent_id,
                 credential_subject_user_id=cfg.credential_subject_user_id,
                 include_runtime_tools=True,
@@ -60,6 +61,7 @@ async def prepare_skill_builder_components_impl(
         selected_skill_slugs=[],
         agent_runtime_name=cfg.agent_runtime_name,
         draft_workspace_path=workspace_path or None,
+        agent_memory_file=not memo_governed(),  # F-09: no run writes AGENTS.md (11.8)
     )
 
     if include_ask_user and not is_trigger_mode:

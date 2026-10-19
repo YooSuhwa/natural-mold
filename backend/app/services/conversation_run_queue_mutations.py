@@ -6,10 +6,17 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent import Agent
+from app.authz.conversation_input_scope import owned_input_predicate
+from app.authz.execution_lock_cursor import LockClass
+from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import held_conversation, lock_many, lock_query
+from app.authz.private_actor import require_private_actor
+from app.authz.scoping import private_scope_predicate
+from app.exceptions import AppError
 from app.models.conversation import Conversation
 from app.models.conversation_run import utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
+from app.services.chat.conversations import require_executable_conversation
 from app.services.conversation_run_queue_payload import JsonValue, validate_queue_input_payload
 
 
@@ -21,17 +28,35 @@ def _conflict(message: str) -> HTTPException:
     return HTTPException(status_code=409, detail=message)
 
 
+async def require_queue_executable(
+    db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext
+) -> uuid.UUID:
+    try:
+        return await require_executable_conversation(db, conversation_id, context)
+    except AppError as exc:
+        if exc.code == "AGENT_ARCHIVED":
+            raise
+        raise queue_input_not_found() from exc
+
+
 async def lock_owned_conversation(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> Conversation:
+    held = held_conversation(db, conversation_id)
+    if held is not None:
+        return held
+    try:
+        await require_private_actor(db, context)
+    except AppError as exc:
+        raise queue_input_not_found() from exc
     result = await db.execute(
         select(Conversation)
-        .join(Agent, Agent.id == Conversation.agent_id)
-        .where(Conversation.id == conversation_id, Agent.user_id == user_id)
+        .where(Conversation.id == conversation_id, private_scope_predicate(Conversation, context))
         .with_for_update(of=Conversation)
+        .execution_options(populate_existing=True, autoflush=False)
     )
     conversation = result.scalar_one_or_none()
     if conversation is None:
@@ -43,12 +68,12 @@ async def list_inputs(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> list[ConversationRunInput]:
     await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
     result = await db.execute(
         select(ConversationRunInput)
@@ -67,22 +92,25 @@ async def _pending_input_for_update(
     *,
     conversation_id: uuid.UUID,
     input_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     expected_revision: int,
 ) -> ConversationRunInput:
+    await require_queue_executable(db, conversation_id, context)
     await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
-    queued = await db.scalar(
+    queued = await lock_query(
+        db,
+        LockClass.INPUT,
         select(ConversationRunInput)
         .where(
             ConversationRunInput.id == input_id,
             ConversationRunInput.conversation_id == conversation_id,
-            ConversationRunInput.user_id == user_id,
+            owned_input_predicate(context),
         )
-        .with_for_update()
+        .with_for_update(),
     )
     if queued is None:
         raise queue_input_not_found()
@@ -98,7 +126,7 @@ async def edit_pending_input(
     *,
     conversation_id: uuid.UUID,
     input_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     expected_revision: int,
     input_payload: dict[str, JsonValue],
 ) -> ConversationRunInput:
@@ -109,7 +137,7 @@ async def edit_pending_input(
         db,
         conversation_id=conversation_id,
         input_id=input_id,
-        user_id=user_id,
+        context=context,
         expected_revision=expected_revision,
     )
     queued.input_payload = input_payload
@@ -123,14 +151,14 @@ async def delete_pending_input(
     *,
     conversation_id: uuid.UUID,
     input_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     expected_revision: int,
 ) -> ConversationRunInput:
     queued = await _pending_input_for_update(
         db,
         conversation_id=conversation_id,
         input_id=input_id,
-        user_id=user_id,
+        context=context,
         expected_revision=expected_revision,
     )
     queued.status = "canceled"
@@ -143,25 +171,27 @@ async def reorder_pending_inputs(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     ordered_input_ids: list[uuid.UUID],
     expected_revisions: dict[uuid.UUID, int],
 ) -> list[ConversationRunInput]:
+    await require_queue_executable(db, conversation_id, context)
     await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
-    result = await db.execute(
+    pending = await lock_many(
+        db,
+        LockClass.INPUT,
         select(ConversationRunInput)
         .where(
             ConversationRunInput.conversation_id == conversation_id,
-            ConversationRunInput.user_id == user_id,
+            owned_input_predicate(context),
             ConversationRunInput.status == "pending",
         )
-        .with_for_update()
+        .with_for_update(),
     )
-    pending = list(result.scalars().all())
     by_id = {item.id: item for item in pending}
     if len(ordered_input_ids) != len(set(ordered_input_ids)) or set(ordered_input_ids) != set(
         by_id
@@ -181,12 +211,13 @@ async def pause_queue(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> Conversation:
+    await require_queue_executable(db, conversation_id, context)
     conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
     conversation.queue_paused = True
     conversation.queue_paused_at = conversation.queue_paused_at or utc_now_naive()
@@ -198,12 +229,13 @@ async def resume_queue(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> Conversation:
+    await require_queue_executable(db, conversation_id, context)
     conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
-        user_id=user_id,
+        context=context,
     )
     conversation.queue_paused = False
     conversation.queue_paused_at = None
@@ -218,6 +250,7 @@ __all__ = [
     "lock_owned_conversation",
     "pause_queue",
     "queue_input_not_found",
+    "require_queue_executable",
     "reorder_pending_inputs",
     "resume_queue",
 ]

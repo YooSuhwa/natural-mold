@@ -51,6 +51,7 @@ def test_skill_payload_previews_attached_runtime_file(tmp_path: Path) -> None:
     )
     runtime_context = SkillToolContext(
         thread_id="preview-run",
+        tenant_id=uuid.uuid4(),
         output_dir=tmp_path / "outputs",
         runtime_root=runtime_root,
         descriptors={descriptor.slug: descriptor},
@@ -103,6 +104,7 @@ def test_skill_payload_falls_back_to_original_single_file_under_hidden_ancestor(
     )
     runtime_context = SkillToolContext(
         thread_id="single-file-run",
+        tenant_id=uuid.uuid4(),
         output_dir=tmp_path / "outputs",
         runtime_root=skill_file.parent,
         descriptors={descriptor.slug: descriptor},
@@ -154,6 +156,7 @@ def test_skill_payload_rejects_symlinked_skill_root(
     )
     runtime_context = SkillToolContext(
         thread_id="linked-root-run",
+        tenant_id=uuid.uuid4(),
         output_dir=tmp_path / "outputs",
         runtime_root=skill_root.parent,
         descriptors={descriptor.slug: descriptor},
@@ -195,6 +198,7 @@ def test_skill_payload_stops_after_total_preview_budget(
     )
     runtime_context = SkillToolContext(
         thread_id="budget-run",
+        tenant_id=uuid.uuid4(),
         output_dir=tmp_path / "outputs",
         runtime_root=tmp_path,
         descriptors={descriptor.slug: descriptor},

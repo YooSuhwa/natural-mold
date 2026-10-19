@@ -17,6 +17,7 @@ from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model
 from app.models.user import User
 from app.scheduler_job_ids import LeaderSchedulerJobId
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -142,6 +143,8 @@ async def test_scheduler_activation_reconciles_persisted_jobs_before_resume(
         "register_skill_draft_gc_job",
         "cleanup_skill_runtime_roots",
         "register_skill_runtime_cleanup_job",
+        "register_authz_jobs",
+        "register_retention_sweep_job",
     ):
         monkeypatch.setattr(runtime, registration_name, lambda: None)
 
@@ -207,6 +210,8 @@ async def _seed_trigger(db: AsyncSession, *, status: str) -> AgentTrigger:
         name="Scheduler Agent",
         system_prompt="Test",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
@@ -218,6 +223,8 @@ async def _seed_trigger(db: AsyncSession, *, status: str) -> AgentTrigger:
         schedule_config={"interval_minutes": 10},
         input_message="Test",
         status=status,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(trigger)
     await db.commit()

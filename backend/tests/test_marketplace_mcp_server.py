@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.identity import make_agent_runtime_name
-from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.exceptions import AppError
 from app.marketplace.mcp_server import build_mcp_server_payload
 from app.models.agent import Agent
@@ -24,6 +24,12 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.model import Model
 from app.models.user import User
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_credential,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -44,7 +50,7 @@ def _server(**overrides) -> McpServer:
         "last_tool_count": 1,
     }
     data.update(overrides)
-    return McpServer(**data)
+    return McpServer(**data, org_id=TEST_ORG_ID, tenant_id=TEST_TENANT_ID)
 
 
 def test_build_mcp_server_payload_strips_runtime_and_credential_fields() -> None:
@@ -62,9 +68,7 @@ def test_build_mcp_server_payload_strips_runtime_and_credential_fields() -> None
 
     assert payload["resource"] == "mcp_server"
     assert payload["transport"] == "streamable_http"
-    assert payload["headers"] == {
-        "Authorization": "=Bearer {{ $credentials.access_token }}"
-    }
+    assert payload["headers"] == {"Authorization": "=Bearer {{ $credentials.access_token }}"}
     assert payload["credential_definition_key"] == "mcp_oauth2"
     assert payload["tool_snapshot"][0]["name"] == "search_jira"
     assert "credential_id" not in payload
@@ -119,16 +123,18 @@ async def test_publish_mcp_server_creates_item_version_and_publication_link(
     db: AsyncSession,
 ) -> None:
     await _ensure_test_user(db)
-    credential = await credential_service.create(
+    credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Atlassian OAuth",
-        data={
-            "access_token": "token",
-            "refresh_token": "refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Atlassian OAuth",
+            data={
+                "access_token": "token",
+                "refresh_token": "refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     server = _server(credential_id=credential.id)
     db.add(server)
@@ -178,9 +184,7 @@ async def test_publish_mcp_server_creates_item_version_and_publication_link(
 
     link = (
         await db.execute(
-            select(MarketplacePublicationLink).where(
-                MarketplacePublicationLink.item_id == item.id
-            )
+            select(MarketplacePublicationLink).where(MarketplacePublicationLink.item_id == item.id)
         )
     ).scalar_one_or_none()
     assert link is not None
@@ -274,16 +278,18 @@ async def test_install_mcp_marketplace_item_creates_mcp_server_needing_setup(
     db: AsyncSession,
 ) -> None:
     await _ensure_test_user(db)
-    credential = await credential_service.create(
+    credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Atlassian OAuth",
-        data={
-            "access_token": "token",
-            "refresh_token": "refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Atlassian OAuth",
+            data={
+                "access_token": "token",
+                "refresh_token": "refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     source = _server(credential_id=credential.id)
     db.add(source)
@@ -313,9 +319,7 @@ async def test_install_mcp_marketplace_item_creates_mcp_server_needing_setup(
     assert installed.user_id == TEST_USER_ID
     assert installed.name == "Atlassian MCP"
     assert installed.credential_id is None
-    assert installed.headers == {
-        "Authorization": "=Bearer {{ $credentials.access_token }}"
-    }
+    assert installed.headers == {"Authorization": "=Bearer {{ $credentials.access_token }}"}
 
 
 @pytest.mark.asyncio
@@ -324,27 +328,31 @@ async def test_install_mcp_marketplace_item_with_binding_is_active(
     db: AsyncSession,
 ) -> None:
     await _ensure_test_user(db)
-    source_credential = await credential_service.create(
+    source_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Source OAuth",
-        data={
-            "access_token": "source-token",
-            "refresh_token": "source-refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Source OAuth",
+            data={
+                "access_token": "source-token",
+                "refresh_token": "source-refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
-    install_credential = await credential_service.create(
+    install_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Install OAuth",
-        data={
-            "access_token": "install-token",
-            "refresh_token": "install-refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Install OAuth",
+            data={
+                "access_token": "install-token",
+                "refresh_token": "install-refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     source = _server(credential_id=source_credential.id)
     db.add(source)
@@ -380,27 +388,31 @@ async def test_mcp_installation_summary_recomputes_missing_credential(
     db: AsyncSession,
 ) -> None:
     await _ensure_test_user(db)
-    source_credential = await credential_service.create(
+    source_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Source OAuth",
-        data={
-            "access_token": "source-token",
-            "refresh_token": "source-refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Source OAuth",
+            data={
+                "access_token": "source-token",
+                "refresh_token": "source-refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
-    install_credential = await credential_service.create(
+    install_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Install OAuth",
-        data={
-            "access_token": "install-token",
-            "refresh_token": "install-refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Install OAuth",
+            data={
+                "access_token": "install-token",
+                "refresh_token": "install-refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     source = _server(credential_id=source_credential.id)
     db.add(source)
@@ -447,27 +459,31 @@ async def test_install_mcp_marketplace_item_materializes_tool_snapshot(
     db: AsyncSession,
 ) -> None:
     await _ensure_test_user(db)
-    source_credential = await credential_service.create(
+    source_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Source OAuth",
-        data={
-            "access_token": "source-token",
-            "refresh_token": "source-refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Source OAuth",
+            data={
+                "access_token": "source-token",
+                "refresh_token": "source-refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
-    install_credential = await credential_service.create(
+    install_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Install OAuth",
-        data={
-            "access_token": "install-token",
-            "refresh_token": "install-refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Install OAuth",
+            data={
+                "access_token": "install-token",
+                "refresh_token": "install-refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     source = _server(credential_id=source_credential.id)
     source_tool = McpTool(
@@ -499,10 +515,10 @@ async def test_install_mcp_marketplace_item_materializes_tool_snapshot(
     assert install_response.status_code == 201, install_response.text
     installed_server_id = uuid.UUID(install_response.json()["installed_mcp_server_id"])
     installed_tools = (
-        await db.execute(
-            select(McpTool).where(McpTool.server_id == installed_server_id)
-        )
-    ).scalars().all()
+        (await db.execute(select(McpTool).where(McpTool.server_id == installed_server_id)))
+        .scalars()
+        .all()
+    )
     assert [(tool.name, tool.description) for tool in installed_tools] == [
         ("search_jira", "Search Jira issues")
     ]
@@ -574,12 +590,16 @@ async def test_update_mcp_installation_reconciles_removed_tool_snapshot(
     assert installed is not None
     assert installed.last_tool_count == 1
     installed_tools = (
-        await db.execute(
-            select(McpTool)
-            .where(McpTool.server_id == installed_server_id)
-            .order_by(McpTool.name.asc())
+        (
+            await db.execute(
+                select(McpTool)
+                .where(McpTool.server_id == installed_server_id)
+                .order_by(McpTool.name.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     # The snapshot is authoritative — the renamed-away ``search_jira`` row is
     # deleted (not left as a disabled dangling row), so the total tool count
     # matches the snapshot.
@@ -594,27 +614,31 @@ async def test_install_mcp_reuse_or_update_applies_credential_binding(
     db: AsyncSession,
 ) -> None:
     await _ensure_test_user(db)
-    source_credential = await credential_service.create(
+    source_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Source OAuth",
-        data={
-            "access_token": "source-token",
-            "refresh_token": "source-refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Source OAuth",
+            data={
+                "access_token": "source-token",
+                "refresh_token": "source-refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
-    install_credential = await credential_service.create(
+    install_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Install OAuth",
-        data={
-            "access_token": "install-token",
-            "refresh_token": "install-refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Install OAuth",
+            data={
+                "access_token": "install-token",
+                "refresh_token": "install-refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     source = _server(credential_id=source_credential.id)
     db.add(source)
@@ -661,27 +685,31 @@ async def test_install_mcp_reuse_or_update_preserves_manual_tool_toggle(
     """Credential-only ``reuse_or_update`` must not reset user tool toggles."""
 
     await _ensure_test_user(db)
-    source_credential = await credential_service.create(
+    source_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Source OAuth",
-        data={
-            "access_token": "source-token",
-            "refresh_token": "source-refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Source OAuth",
+            data={
+                "access_token": "source-token",
+                "refresh_token": "source-refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
-    install_credential = await credential_service.create(
+    install_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Install OAuth",
-        data={
-            "access_token": "install-token",
-            "refresh_token": "install-refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Install OAuth",
+            data={
+                "access_token": "install-token",
+                "refresh_token": "install-refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     source = _server(credential_id=source_credential.id)
     db.add_all(
@@ -727,9 +755,7 @@ async def test_install_mcp_reuse_or_update_preserves_manual_tool_toggle(
     # The user manually disables one of the installed tools.
     toggled = (
         await db.execute(
-            select(McpTool).where(
-                McpTool.server_id == server_id, McpTool.name == "create_issue"
-            )
+            select(McpTool).where(McpTool.server_id == server_id, McpTool.name == "create_issue")
         )
     ).scalar_one()
     toggled.enabled = False
@@ -745,8 +771,8 @@ async def test_install_mcp_reuse_or_update_preserves_manual_tool_toggle(
     assert retry_response.status_code == 201, retry_response.text
 
     tools = (
-        await db.execute(select(McpTool).where(McpTool.server_id == server_id))
-    ).scalars().all()
+        (await db.execute(select(McpTool).where(McpTool.server_id == server_id))).scalars().all()
+    )
     enabled_by_name = {tool.name: tool.enabled for tool in tools}
     assert enabled_by_name == {"search_jira": True, "create_issue": False}
 
@@ -770,6 +796,8 @@ async def test_publish_mcp_version_rejects_non_mcp_marketplace_item(
         status="published",
         moderation_status="approved",
         source_kind="user",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([server, agent_item])
     await db.commit()
@@ -868,6 +896,7 @@ async def test_delete_mcp_installation_with_resource_removes_server(
     assert await db.get(McpServer, installed_server_id) is None
     assert await db.get(MarketplaceInstallation, installation_id) is None
 
+
 @pytest.mark.asyncio
 async def test_install_mcp_item_honors_enabled_tool_names_install_default(
     client: AsyncClient,
@@ -928,12 +957,16 @@ async def test_install_mcp_item_honors_enabled_tool_names_install_default(
     assert install_response.status_code == 201, install_response.text
     installed_server_id = uuid.UUID(install_response.json()["installed_mcp_server_id"])
     installed_tools = (
-        await db.execute(
-            select(McpTool)
-            .where(McpTool.server_id == installed_server_id)
-            .order_by(McpTool.name.asc())
+        (
+            await db.execute(
+                select(McpTool)
+                .where(McpTool.server_id == installed_server_id)
+                .order_by(McpTool.name.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert [(tool.name, tool.enabled) for tool in installed_tools] == [
         ("search_confluence", False),
         ("search_jira", True),
@@ -994,10 +1027,10 @@ async def test_install_mcp_item_without_install_defaults_enables_all_snapshot_to
     assert install_response.status_code == 201, install_response.text
     installed_server_id = uuid.UUID(install_response.json()["installed_mcp_server_id"])
     installed_tools = (
-        await db.execute(
-            select(McpTool).where(McpTool.server_id == installed_server_id)
-        )
-    ).scalars().all()
+        (await db.execute(select(McpTool).where(McpTool.server_id == installed_server_id)))
+        .scalars()
+        .all()
+    )
     assert sorted((tool.name, tool.enabled) for tool in installed_tools) == [
         ("search_confluence", True),
         ("search_jira", True),
@@ -1013,16 +1046,18 @@ async def test_install_mcp_reuse_or_update_rejects_foreign_server(
     ``credential_id`` (collapsed to 404 per the enumeration convention)."""
 
     await _ensure_test_user(db)
-    binding_credential = await credential_service.create(
+    binding_credential = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Binding OAuth",
-        data={
-            "access_token": "binding-token",
-            "refresh_token": "binding-refresh",
-            "expires_at": 9999999999,
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Binding OAuth",
+            data={
+                "access_token": "binding-token",
+                "refresh_token": "binding-refresh",
+                "expires_at": 9999999999,
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     source = _server(credential_id=None, headers={})
     db.add(source)
@@ -1116,9 +1151,7 @@ async def test_update_mcp_installation_deletes_renamed_tool_and_agent_link(
 
     installed_fetch = (
         await db.execute(
-            select(McpTool).where(
-                McpTool.server_id == installed_server_id, McpTool.name == "fetch"
-            )
+            select(McpTool).where(McpTool.server_id == installed_server_id, McpTool.name == "fetch")
         )
     ).scalar_one()
     old_tool_id = installed_fetch.id
@@ -1142,6 +1175,8 @@ async def test_update_mcp_installation_deletes_renamed_tool_and_agent_link(
         identity_mode="per_user",
         model_id=model.id,
         status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([model, agent])
     await db.flush()
@@ -1151,9 +1186,7 @@ async def test_update_mcp_installation_deletes_renamed_tool_and_agent_link(
     # Publisher renames ``fetch`` -> ``fetch_v2`` and cuts a new version.
     renamed = (
         await db.execute(
-            select(McpTool).where(
-                McpTool.server_id == source.id, McpTool.name == "fetch"
-            )
+            select(McpTool).where(McpTool.server_id == source.id, McpTool.name == "fetch")
         )
     ).scalar_one()
     renamed.name = "fetch_v2"
@@ -1175,8 +1208,10 @@ async def test_update_mcp_installation_deletes_renamed_tool_and_agent_link(
     # so the assertions read committed rows, not stale cached objects.
     db.expire_all()
     installed_tools = (
-        await db.execute(select(McpTool).where(McpTool.server_id == installed_server_id))
-    ).scalars().all()
+        (await db.execute(select(McpTool).where(McpTool.server_id == installed_server_id)))
+        .scalars()
+        .all()
+    )
     assert [tool.name for tool in installed_tools] == ["fetch_v2"]
     installed_server = await db.get(McpServer, installed_server_id)
     assert installed_server is not None

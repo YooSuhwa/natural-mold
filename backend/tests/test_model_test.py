@@ -20,7 +20,7 @@ from langchain_core.messages import AIMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.model import Model
 from app.models.user import User
@@ -33,6 +33,7 @@ from app.services.model_test import (
     _reconstruct_request,
     run_model_test,
 )
+from tests.authz.unit_scope_fixture import create_test_credential, unit_context
 from tests.conftest import TEST_USER_ID
 
 # ---------------------------------------------------------------------------
@@ -315,12 +316,14 @@ async def test_run_model_test_timeout(monkeypatch) -> None:
 async def _create_credential(
     db: AsyncSession, *, definition_key: str = "openai", data: dict | None = None
 ) -> uuid.UUID:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key=definition_key,
-        name=f"{definition_key}-test",
-        data=data or {"api_key": "sk-stored"},
+        CredentialCreation(
+            definition_key=definition_key,
+            name=f"{definition_key}-test",
+            data=data or {"api_key": "sk-stored"},
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
     return cred.id
@@ -347,9 +350,7 @@ async def _create_model(
 
 
 @pytest.mark.asyncio
-async def test_router_test_registered_model_success(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_router_test_registered_model_success(client: AsyncClient, db: AsyncSession) -> None:
     cred_id = await _create_credential(db)
     model_id = await _create_model(db)
 
@@ -375,15 +376,17 @@ async def test_router_test_registered_model_writes_audit_log(
     model_id = await _create_model(db)
 
     with _stub_ainvoke("pong"):
-        await client.post(
-            f"/api/models/{model_id}/test", params={"credential_id": str(cred_id)}
-        )
+        await client.post(f"/api/models/{model_id}/test", params={"credential_id": str(cred_id)})
 
     rows = (
-        await db.execute(
-            select(CredentialAuditLog).where(CredentialAuditLog.credential_id == cred_id)
+        (
+            await db.execute(
+                select(CredentialAuditLog).where(CredentialAuditLog.credential_id == cred_id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     test_events = [r for r in rows if r.action == "test"]
     assert test_events, "expected a 'test' audit log entry"
     assert test_events[-1].log_metadata is not None
@@ -428,9 +431,7 @@ async def test_router_test_registered_model_404_for_unknown_credential(
 
 
 @pytest.mark.asyncio
-async def test_router_test_preview_success(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_router_test_preview_success(client: AsyncClient, db: AsyncSession) -> None:
     cred_id = await _create_credential(db)
 
     with _stub_ainvoke("pong", tokens_in=3, tokens_out=1):
@@ -496,9 +497,7 @@ async def test_router_test_preview_404_for_unknown_credential(
 
 
 @pytest.mark.asyncio
-async def test_router_curl_never_contains_real_key(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_router_curl_never_contains_real_key(client: AsyncClient, db: AsyncSession) -> None:
     cred_id = await _create_credential(db, data={"api_key": "sk-LEAK-DETECTOR"})
     model_id = await _create_model(db)
 

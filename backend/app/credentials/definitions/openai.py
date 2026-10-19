@@ -12,6 +12,7 @@ definition = CredentialDefinition(
     icon_id="openai",
     documentation_url="https://platform.openai.com/docs/api-reference/authentication",
     category="llm",
+    hosts=("api.openai.com",),
     properties=[
         FieldDef(
             name="api_key",

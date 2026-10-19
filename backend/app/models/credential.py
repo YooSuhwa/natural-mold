@@ -13,14 +13,17 @@ from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.resource_scope import NullableOrgScope, resource_scope_constraints
 
 
-class Credential(Base):
+class Credential(NullableOrgScope, Base):
     __tablename__ = "credentials"
     # ``is_system=True`` rows have ``user_id IS NULL`` (ADR-016 §4.4) so a
     # system credential is never silently scoped to an operator account. A
     # CHECK constraint enforces the invariant at the DB layer.
     __table_args__ = (
+        *resource_scope_constraints("credentials", system=True),
+        CheckConstraint("scope IN ('personal','tenant','platform')", name="ck_credentials_scope"),
         CheckConstraint(
             "(is_system = false) OR (user_id IS NULL)",
             name="ck_credentials_system_user_null",
@@ -35,8 +38,10 @@ class Credential(Base):
     # Nullable so ``is_system=True`` rows can detach from any specific user
     # (m18 originally enforced NOT NULL — m36 relaxes this).
     user_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("users.id", ondelete="RESTRICT", name="fk_credentials_owner_restrict"),
+        nullable=True,
     )
+    scope: Mapped[str] = mapped_column(String(20), nullable=False, server_default="personal")
     definition_key: Mapped[str] = mapped_column(String(80), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
 
@@ -56,6 +61,8 @@ class Credential(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    # D18 host patterns the credential may be sent to (m87; enforced by F-11).
+    allowed_hosts: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
     last_tested_at: Mapped[datetime | None] = mapped_column(nullable=True)

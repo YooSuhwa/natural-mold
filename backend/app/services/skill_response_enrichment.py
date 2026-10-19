@@ -7,9 +7,12 @@ from typing import cast
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate, private_scoped
+from app.authz.skill_binding_scope import private_skill_child_predicate
 from app.marketplace import credential_requirements
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
+from app.models.credential import Credential
 from app.models.marketplace import SkillCredentialBinding
 from app.models.skill import AgentSkillLink, Skill
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
@@ -30,12 +33,20 @@ class SkillQualitySummary:
 async def build_skill_quality_map(
     db: AsyncSession,
     *,
-    user: CurrentUser,
+    context: OrgContext,
     skills: list[Skill],
 ) -> dict[uuid.UUID, SkillQualitySummary]:
-    latest_runs = await _latest_runs_by_skill(db, user_id=user.id, skill_ids=[s.id for s in skills])
-    latest_sets = await _latest_sets_by_skill(db, user_id=user.id, skill_ids=[s.id for s in skills])
-    missing_keys = await _missing_required_keys_by_skill(db, user=user, skills=skills)
+    visible_ids = set(
+        await db.scalars(
+            private_scoped(
+                select(Skill.id).where(Skill.id.in_([skill.id for skill in skills])), Skill, context
+            )
+        )
+    )
+    skills = [skill for skill in skills if skill.id in visible_ids]
+    latest_runs = await _latest_runs_by_skill(db, context=context, skill_ids=[s.id for s in skills])
+    latest_sets = await _latest_sets_by_skill(db, context=context, skill_ids=[s.id for s in skills])
+    missing_keys = await _missing_required_keys_by_skill(db, context=context, skills=skills)
     summaries: dict[uuid.UUID, SkillQualitySummary] = {}
     for skill in skills:
         latest_run = latest_runs.get(skill.id)
@@ -57,7 +68,7 @@ async def build_skill_quality_map(
 async def agent_link_counts_by_skill(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     skill_ids: list[uuid.UUID],
 ) -> dict[uuid.UUID, int]:
     """스킬별 연결 에이전트 수 — 단일 GROUP BY 역집계.
@@ -72,8 +83,10 @@ async def agent_link_counts_by_skill(
     result = await db.execute(
         select(AgentSkillLink.skill_id, func.count())
         .join(Agent, Agent.id == AgentSkillLink.agent_id)
+        .join(Skill, Skill.id == AgentSkillLink.skill_id)
         .where(
-            Agent.user_id == user_id,
+            private_scope_predicate(Agent, context),
+            private_scope_predicate(Skill, context),
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
             AgentSkillLink.skill_id.in_(skill_ids),
         )
@@ -85,7 +98,7 @@ async def agent_link_counts_by_skill(
 async def _missing_required_keys_by_skill(
     db: AsyncSession,
     *,
-    user: CurrentUser,
+    context: OrgContext,
     skills: list[Skill],
 ) -> dict[uuid.UUID, list[str]]:
     skill_ids = [skill.id for skill in skills]
@@ -101,15 +114,28 @@ async def _missing_required_keys_by_skill(
     if not lookup_ids:
         return {skill_id: [] for skill_id in skill_ids}
     result = await db.execute(
-        select(SkillCredentialBinding).where(
+        select(SkillCredentialBinding, Credential.definition_key)
+        .join(Credential, Credential.id == SkillCredentialBinding.credential_id)
+        .where(
             SkillCredentialBinding.skill_id.in_(lookup_ids),
-            SkillCredentialBinding.user_id == user.id,
+            private_skill_child_predicate(SkillCredentialBinding, context),
+            private_scope_predicate(Credential, context),
+            Credential.is_system.is_(False),
+            Credential.status == "active",
             SkillCredentialBinding.scope == "skill",
         )
     )
     bound_by_skill: dict[uuid.UUID, set[str]] = {}
-    for binding in result.scalars():
-        bound_by_skill.setdefault(binding.skill_id, set()).add(binding.requirement_key)
+    definitions_by_skill = {
+        skill.id: {
+            requirement.key: requirement.definition_key
+            for requirement in credential_requirements.parse_requirements(skill)
+        }
+        for skill in skills
+    }
+    for binding, definition_key in result:
+        if definitions_by_skill[binding.skill_id].get(binding.requirement_key) == definition_key:
+            bound_by_skill.setdefault(binding.skill_id, set()).add(binding.requirement_key)
     return {
         skill_id: [key for key in keys if key not in bound_by_skill.get(skill_id, set())]
         for skill_id, keys in required_by_skill.items()
@@ -119,14 +145,17 @@ async def _missing_required_keys_by_skill(
 async def _latest_runs_by_skill(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     skill_ids: list[uuid.UUID],
 ) -> dict[uuid.UUID, SkillEvaluationRun]:
     if not skill_ids:
         return {}
     result = await db.execute(
         select(SkillEvaluationRun)
-        .where(SkillEvaluationRun.user_id == user_id, SkillEvaluationRun.skill_id.in_(skill_ids))
+        .where(
+            private_skill_child_predicate(SkillEvaluationRun, context),
+            SkillEvaluationRun.skill_id.in_(skill_ids),
+        )
         .order_by(SkillEvaluationRun.skill_id, desc(SkillEvaluationRun.created_at))
     )
     latest: dict[uuid.UUID, SkillEvaluationRun] = {}
@@ -138,14 +167,17 @@ async def _latest_runs_by_skill(
 async def _latest_sets_by_skill(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     skill_ids: list[uuid.UUID],
 ) -> dict[uuid.UUID, SkillEvaluationSet]:
     if not skill_ids:
         return {}
     result = await db.execute(
         select(SkillEvaluationSet)
-        .where(SkillEvaluationSet.user_id == user_id, SkillEvaluationSet.skill_id.in_(skill_ids))
+        .where(
+            private_skill_child_predicate(SkillEvaluationSet, context),
+            SkillEvaluationSet.skill_id.in_(skill_ids),
+        )
         .order_by(SkillEvaluationSet.skill_id, desc(SkillEvaluationSet.updated_at))
     )
     latest: dict[uuid.UUID, SkillEvaluationSet] = {}

@@ -59,11 +59,18 @@ MEMORY_RECALLED: Final = "moldy.memory_recalled"
 # ``moldy.skill_validation`` — ``validate_skill``/``finalize_skill`` 도구 결과
 # projection (memory_event_projection 패턴), 기존 validation_result 스키마 그대로.
 SKILL_DRAFT: Final = "moldy.skill_draft"
+# F-06 / plan 13.6 — optional capabilities the run's access plan left out. Emitted once at
+# stream head (v3: stable id ``<run_id>:excluded_capabilities``; legacy SSE: right after
+# ``message_start``) only when non-empty, as ``{items: [{type, reason, count}], total}`` —
+# per-type counts with reason ``broken|denied``, never resource ids. Not a memory event.
+EXCLUDED_CAPABILITIES: Final = "moldy.excluded_capabilities"
 SKILL_VALIDATION: Final = "moldy.skill_validation"
 MEMORY_PROPOSED: Final = "memory_proposed"
 MEMORY_SAVED: Final = "memory_saved"
 MEMORY_REJECTED: Final = "memory_rejected"
 MEMORY_DELETED: Final = "memory_deleted"
+# F-09 (11.8): a proposal to the shared memo; content is redacted like the memory events.
+AGENT_MEMO_PROPOSED: Final = "agent_memo_proposed"
 
 # Resume-only — W3-out M3 GET endpoint 가 broker 가 죽은 채로 streaming
 # row 만 남은 경우 발행. client 는 이 이벤트를 받으면 자동 재시도를 멈춘다.

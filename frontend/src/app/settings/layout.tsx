@@ -8,6 +8,7 @@ const SETTINGS_MESSAGE_NAMESPACES = [
   'credentials',
   'marketplace',
   'model',
+  'orgAdmin',
   'scheduleCenter',
   'shared',
   'systemCredentials',

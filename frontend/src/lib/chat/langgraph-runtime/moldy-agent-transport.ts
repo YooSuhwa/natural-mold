@@ -6,6 +6,16 @@ import type { AgentServerAdapter } from '@langchain/react'
 import type { AppendMessage } from '@assistant-ui/react'
 import { API_BASE, fireSessionExpired } from '@/lib/api/client'
 import { csrfStore } from '@/lib/auth/csrf'
+import {
+  announceIfAgentNotReady,
+  type AgentNotReadyOrigin,
+} from '@/lib/chat/agent-not-ready-signal'
+import {
+  currentOrgScope,
+  isOrgScopeCurrent,
+  signalForOrgScope,
+  type OrgScopeToken,
+} from '@/lib/org-scope/org-scope-signal'
 import { queuedInputFromMessage } from '@/lib/chat/message-queue/queue-message-projection'
 import type { QueueRunStartAcceptance } from '@/lib/chat/message-queue/server-message-queue-contract'
 import { withResourceContextRunInput } from '@/lib/chat/context/resource-context-payload'
@@ -65,7 +75,11 @@ function langGraphThreadPath(conversationId: string, threadId: string, suffix: s
   return `/api/conversations/${conversation}/langgraph/threads/${thread}${suffix}`
 }
 
-function withMoldyAuth(baseFetch: typeof fetch): typeof fetch {
+function withMoldyAuth(
+  baseFetch: typeof fetch,
+  orgScope: OrgScopeToken,
+  origin: AgentNotReadyOrigin,
+): typeof fetch {
   return async (input, init) => {
     const method = (init?.method ?? 'GET').toUpperCase()
     const headers = new Headers(init?.headers)
@@ -79,10 +93,22 @@ function withMoldyAuth(baseFetch: typeof fetch): typeof fetch {
       method,
       credentials: 'include',
       headers,
+      signal: signalForOrgScope(
+        orgScope,
+        requestUrl(input),
+        init?.signal ?? (input instanceof Request ? input.signal : undefined),
+      ),
     })
     if (response.status === 401) fireSessionExpired()
+    await announceIfAgentNotReady(response, origin) // G-04: the SDK only throws a plain Error
     return response
   }
+}
+
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input
+  if (input instanceof URL) return input.toString()
+  return input.url
 }
 
 type ProtocolCommand = Parameters<ProtocolSseTransportAdapter['send']>[0]
@@ -211,6 +237,7 @@ function registerLangGraphClientDefaults(apiUrl: string, fetchImpl: typeof fetch
 
 class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
   readonly #agentId: string
+  readonly #orgScope: OrgScopeToken
   readonly #delegate: ProtocolSseTransportAdapter
   #onState: MoldyAgentTransportOptions['onState']
   #onRunStartAccepted: MoldyAgentTransportOptions['onRunStartAccepted']
@@ -226,8 +253,10 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
     onState?: MoldyAgentTransportOptions['onState'],
     onRunStartAccepted?: MoldyAgentTransportOptions['onRunStartAccepted'],
     onReconnectStateChange?: MoldyAgentTransportOptions['onReconnectStateChange'],
+    orgScope: OrgScopeToken = currentOrgScope(),
   ) {
     this.#agentId = agentId
+    this.#orgScope = orgScope
     this.#delegate = new ProtocolSseTransportAdapter({
       ...options,
       maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
@@ -325,6 +354,9 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
 
   openEventStream(params: EventStreamParams): EventStreamHandle {
     this.#setReconnectState('idle')
+    // A transport created for a previous organization never (re)opens its
+    // stream — not during the switch window and not under the new org.
+    if (!isOrgScopeCurrent(this.#orgScope)) return closedEventStream()
     const handle = this.#delegate.openEventStream(params)
     const settleReconnect = (): void => this.#setReconnectState('idle')
     return {
@@ -355,12 +387,25 @@ class MoldyHttpAgentServerAdapter implements MoldyAgentServerAdapter {
   }
 }
 
+function closedEventStream(): EventStreamHandle {
+  return {
+    ready: Promise.resolve(),
+    events: {
+      async *[Symbol.asyncIterator]() {
+        // no events: the organization changed
+      },
+    },
+    close: () => undefined,
+  }
+}
+
 export function createMoldyAgentTransport(
   conversationId: string,
   agentId: string,
   options: MoldyAgentTransportOptions = {},
 ): MoldyAgentServerAdapter {
-  const authedFetch = withMoldyAuth(options.fetch ?? fetch)
+  const orgScope = currentOrgScope()
+  const authedFetch = withMoldyAuth(options.fetch ?? fetch, orgScope, { agentId, conversationId })
   registerLangGraphClientDefaults(options.apiBase ?? API_BASE, authedFetch)
   return new MoldyHttpAgentServerAdapter(
     agentId,
@@ -378,5 +423,6 @@ export function createMoldyAgentTransport(
     options.onState,
     options.onRunStartAccepted,
     options.onReconnectStateChange,
+    orgScope,
   )
 }

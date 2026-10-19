@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Final
 
 from cleanup_docker import probe_docker
+from postgres_company_suite import company_selection_gaps
 from postgres_manifest_io import (
     ManifestPathError,
     read_manifest_bytes,
@@ -210,6 +211,8 @@ def validate_payload(payload: dict[str, object]) -> None:
             | "stream-resume"
             | "run-lifecycle+stream-resume"
             | "queue-concurrency"
+            | "agent-lifecycle"
+            | "company-administration"
         ) as mode:
             _require(payload.get("concurrent_pair") is False, "concurrent_pair")
             if mode == "all":
@@ -220,6 +223,10 @@ def validate_payload(payload: dict[str, object]) -> None:
                 scenario_reason = "stream_resume_scenarios"
             elif mode == "queue-concurrency":
                 scenario_reason = "queue_concurrency_scenarios"
+            elif mode == "agent-lifecycle":
+                scenario_reason = "agent_lifecycle_scenarios"
+            elif mode == "company-administration":
+                scenario_reason = "company_administration_scenarios"
             else:
                 scenario_reason = "run_lifecycle_stream_resume_scenarios"
             _require(
@@ -231,6 +238,23 @@ def validate_payload(payload: dict[str, object]) -> None:
                     _validate_scenario(
                         scenarios[0], require_test_receipt=mode != "migration-roundtrip"
                     )
+                    if mode == "company-administration":
+                        receipt = _mapping(scenarios[0].get("test_receipt"), "test_receipt")
+                        selected = _string_list(receipt.get("selected_node_ids"), "selected_nodes")
+                        _require(company_selection_gaps(selected) == [], "company_selection")
+                    if mode == "agent-lifecycle":
+                        graph = _mapping(
+                            scenarios[0].get("lifecycle_graph_receipt"),
+                            "lifecycle_graph_receipt",
+                        )
+                        rows = _mapping(graph.get("row_counts"), "lifecycle_graph_rows")
+                        _require(rows.get("conversation_run_agents") == 9, "graph_participants")
+                        _require(rows.get("artifact_versions") == 2, "graph_versions")
+                        _require(
+                            _integer(graph.get("attachment_bytes"), "graph_bytes") > 0,
+                            "graph_bytes",
+                        )
+                        _require(graph.get("provider_invocations") == 0, "provider_invocations")
                     if mode == "migration-roundtrip":
                         _require(
                             scenarios[0].get("child_exit_code") == 0,

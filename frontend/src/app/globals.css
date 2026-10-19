@@ -42,6 +42,7 @@
   --color-primary: var(--primary);
   --color-primary-strong: var(--primary-strong);
   --color-primary-strong-foreground: var(--primary-strong-foreground);
+  --color-primary-strong-text: var(--primary-strong-text);
   --color-status-success: var(--status-success);
   --color-status-info: var(--status-info);
   --color-status-warn: var(--status-warn);
@@ -171,17 +172,19 @@
   --primary-foreground: oklch(0.262 0.051 172.552);
   --primary-strong: oklch(0.596 0.145 163.225);
   --primary-strong-foreground: oklch(0.145 0 0);
+  /* Text on light surfaces: the fill above is 3.7:1 on white, below WCAG AA. */
+  --primary-strong-text: oklch(0.51 0.12 163.225);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.51 0 0); /* ≥4.5:1 on --muted and tinted cards */
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: oklch(0.53 0.235 27.325); /* ≥4.5:1 as text on its 10% tint */
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.596 0.145 163.225 / 0.4);
-  --status-success: oklch(0.596 0.145 163.225);
+  --status-success: oklch(0.51 0.12 163.225); /* ≥4.5:1 as text on its 10% tint */
   --status-info: oklch(0.685 0.169 237.323);
   --status-warn: oklch(0.769 0.188 70.08);
   --status-danger: oklch(0.577 0.245 27.325);
@@ -294,6 +297,7 @@
   --primary-foreground: oklch(0.95 0.052 163.051);
   --primary-strong: oklch(0.765 0.177 163.223);
   --primary-strong-foreground: oklch(0.145 0 0);
+  --primary-strong-text: var(--primary-strong);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -1283,7 +1287,7 @@
   .moldy-status-surface {
     border: 1px solid color-mix(in oklch, var(--moldy-status-color) 34%, var(--border));
     background: color-mix(in oklch, var(--moldy-status-color) 12%, var(--card));
-    color: color-mix(in oklch, var(--moldy-status-color) 72%, var(--foreground));
+    color: color-mix(in oklch, var(--moldy-status-color) 60%, var(--foreground));
   }
 
   .moldy-status-card {

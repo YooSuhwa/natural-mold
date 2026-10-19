@@ -4,9 +4,18 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
+from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.model import Model
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -217,10 +226,13 @@ async def test_global_trigger_runs_history(client: AsyncClient):
     trigger_id = resp.json()["id"]
 
     async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, uuid.UUID(trigger_id))
+        assert trigger is not None
         db.add(
             AgentTriggerRun(
                 trigger_id=uuid.UUID(trigger_id),
                 agent_id=uuid.UUID(agent_id),
+                trigger_name_snapshot=trigger.name,
                 user_id=TEST_USER_ID,
                 status="success",
                 input_message="상태 확인",
@@ -362,13 +374,18 @@ async def test_list_tools_includes_user_and_system(client: AsyncClient):
         db.add(
             Tool(
                 name="System Tool",
+                is_system=True,
                 definition_key="builtin:web_search",
                 description="sys",
+                org_id=None,
+                tenant_id=None,
             )
         )
         db.add(
             Tool(
                 name="User Tool",
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
                 definition_key="http_request",
                 user_id=TEST_USER_ID,
                 description="usr",
@@ -384,7 +401,9 @@ async def test_list_tools_includes_user_and_system(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_create_trigger_rejects_hidden_runtime_agent(client: AsyncClient, db):
+async def test_create_trigger_rejects_hidden_runtime_agent(
+    client: AsyncClient, db: AsyncSession
+) -> None:
     """R2 회귀: 히든 런타임 에이전트(skill builder)는 트리거 대상이 될 수 없다 —
     트리거 실행은 빌더 분기·System LLM 재해석을 우회해 placeholder 프롬프트를
     표준 에이전트로 스케줄 실행하게 된다. 세션 응답에 agent_id가 노출되므로
@@ -395,7 +414,10 @@ async def test_create_trigger_rejects_hidden_runtime_agent(client: AsyncClient, 
     from tests.skill_builder_test_helpers import configure_system_llm
 
     await configure_system_llm(db)
-    agent = await get_or_create_skill_builder_agent(db, user_id=TEST_USER_ID)
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@example.com", name="Test User")
+    )
+    agent = await get_or_create_skill_builder_agent(db, context=unit_context(TEST_USER_ID))
     await db.commit()
 
     trigger_resp = await client.post(

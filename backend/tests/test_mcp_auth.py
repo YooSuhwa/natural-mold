@@ -8,9 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.credentials.registry import registry
 from app.mcp.auth import resolve_mcp_auth
 from app.models.user import User
+from tests.authz.unit_scope_fixture import create_test_credential, unit_context
 from tests.conftest import TEST_USER_ID
 
 
@@ -24,12 +26,10 @@ async def _ensure_test_user(db: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_mcp_auth_injects_http_bearer_header(db: AsyncSession) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="http_bearer",
-        name="Bearer",
-        data={"token": "T-123"},
+        CredentialCreation(definition_key="http_bearer", name="Bearer", data={"token": "T-123"}),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -44,19 +44,21 @@ async def test_resolve_mcp_auth_refreshes_expired_oauth_and_persists(
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="mcp_oauth2",
-        name="Atlassian",
-        data={
-            "access_token": "old",
-            "refresh_token": "refresh",
-            "expires_at": time.time() - 100,
-            "access_token_url": "https://issuer.example/token",
-            "client_id": "cid",
-            "authentication": "none",
-        },
+        CredentialCreation(
+            definition_key="mcp_oauth2",
+            name="Atlassian",
+            data={
+                "access_token": "old",
+                "refresh_token": "refresh",
+                "expires_at": time.time() - 100,
+                "access_token_url": "https://issuer.example/token",
+                "client_id": "cid",
+                "authentication": "none",
+            },
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 

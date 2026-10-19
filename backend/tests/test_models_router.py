@@ -10,7 +10,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.authz.platform_scope import PlatformScope
+from app.credentials.creation import CredentialCreation
 from app.dependencies import (
     CurrentUser,
     get_current_user,
@@ -22,6 +23,7 @@ from app.main import create_app
 from app.models.agent import Agent
 from app.models.model import Model
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, create_test_credential
 from tests.conftest import (
     TEST_USER_ID,
     _bypass_verify_csrf,
@@ -137,6 +139,8 @@ async def test_list_models_returns_agent_count(client: AsyncClient, db: AsyncSes
             name="A",
             system_prompt="hi",
             model_id=model.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
     )
     await db.commit()
@@ -206,6 +210,8 @@ async def test_delete_in_use_model_409(client: AsyncClient, db: AsyncSession) ->
             name="A",
             system_prompt="hi",
             model_id=model.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
     )
     await db.commit()
@@ -420,13 +426,10 @@ async def test_discover_models_endpoint_system_credential_as_super_user(
     for super_users.
     """
 
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=None,
-        definition_key="anthropic",
-        name="sys-anth",
-        data={"api_key": "k"},
-        is_system=True,
+        CredentialCreation(definition_key="anthropic", name="sys-anth", data={"api_key": "k"}),
+        PlatformScope(),
     )
     await db.commit()
     response = await client.post(f"/api/credentials/{cred.id}/discover-models")

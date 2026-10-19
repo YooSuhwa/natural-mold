@@ -5,8 +5,10 @@ Single endpoint:
 - GET  /api/uploads/{id} → serves the file inline so the frontend can render
   previews via ``<img src=…>`` / ``<a href=…>``.
 
-Files are stored on local disk under ``settings.upload_dir`` keyed by UUID;
-S3 migration would only swap the storage backend, not the API shape.
+Files are stored on local disk under ``settings.upload_dir`` keyed by UUID, in
+the uploader's company folder ``tenants/<tenant_id>/`` (I-08); a row whose path
+names another company reads as 404. S3 migration would only swap the storage
+backend, not the API shape.
 """
 
 from __future__ import annotations
@@ -21,12 +23,17 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.attachment_scope import private_attachment_predicate
+from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.dependencies import get_db, get_org_context, verify_csrf
 from app.error_codes import file_not_found
 from app.models.message_attachment import MessageAttachment
 from app.schemas.artifact import ArtifactTextContent
 from app.schemas.upload import UploadResponse
+from app.storage.paths import TENANTS_DIR, ForeignTenantPathError, upload_file_path
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +72,8 @@ def _is_textual_mime(mime: str) -> bool:
     return base.startswith("text/") or base == "application/json"
 
 
-def _ensure_dir() -> Path:
-    base = Path(settings.upload_dir)
+def _ensure_dir(tenant_id: uuid.UUID) -> Path:
+    base = Path(settings.upload_dir) / TENANTS_DIR / str(tenant_id)
     base.mkdir(parents=True, exist_ok=True)
     return base
 
@@ -91,28 +98,45 @@ def _read_file_prefix(path: Path, n: int) -> bytes:
 
 
 async def _get_owned_attachment(
-    db: AsyncSession, upload_id: uuid.UUID, user: CurrentUser
+    db: AsyncSession, upload_id: uuid.UUID, context: OrgContext
 ) -> MessageAttachment:
     """Fetch an upload the caller owns, else 404.
 
     Missing row and foreign-owned row collapse to the same 404 so the endpoint
     can't probe which upload ids exist (enumeration-oracle uniformity).
     """
-
-    result = await db.execute(select(MessageAttachment).where(MessageAttachment.id == upload_id))
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    result = await db.execute(
+        select(MessageAttachment)
+        .where(MessageAttachment.id == upload_id, private_attachment_predicate(context))
+        .execution_options(populate_existing=True, autoflush=False)
+    )
     row = result.scalar_one_or_none()
-    if row is None or row.user_id != user.id:
+    if row is None:
         raise file_not_found()
     return row
 
 
+def _attachment_path(row: MessageAttachment) -> Path:
+    try:
+        return upload_file_path(row.storage_path, row.tenant_id)
+    except ForeignTenantPathError:
+        raise file_not_found() from None
+
+
 @router.post("/api/uploads", response_model=UploadResponse, status_code=201)
+@authz_policy(PRIVATE("message_attachments"))
 async def create_upload(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MessageAttachment:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     mime = file.content_type or "application/octet-stream"
     if not _is_allowed(mime):
         raise HTTPException(
@@ -130,14 +154,16 @@ async def create_upload(
         )
 
     upload_id = uuid.uuid4()
-    base = await asyncio.to_thread(_ensure_dir)
+    base = await asyncio.to_thread(_ensure_dir, context.tenant_id)
     ext = _safe_extension(file.filename or "")
     storage_path = base / f"{upload_id}{ext}"
     await asyncio.to_thread(_write_upload_file, storage_path, contents)
 
     row = MessageAttachment(
         id=upload_id,
-        user_id=user.id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         filename=file.filename or storage_path.name,
         mime_type=mime,
         size_bytes=len(contents),
@@ -151,10 +177,11 @@ async def create_upload(
 
 
 @router.get("/api/uploads/{upload_id}")
+@authz_policy(PRIVATE("message_attachments", param="upload_id"))
 async def get_upload(
     upload_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> FileResponse:
     """Serve the stored file inline — used by the frontend preview cards.
 
@@ -166,8 +193,8 @@ async def get_upload(
     project conventions on 404/403 parity).
     """
 
-    row = await _get_owned_attachment(db, upload_id, user)
-    path = Path(row.storage_path)
+    row = await _get_owned_attachment(db, upload_id, context)
+    path = _attachment_path(row)
     exists = await asyncio.to_thread(path.is_file)
     if not exists:
         raise file_not_found()
@@ -193,11 +220,12 @@ async def get_upload(
 
 
 @router.get("/api/uploads/{upload_id}/content", response_model=ArtifactTextContent)
+@authz_policy(PRIVATE("message_attachments", param="upload_id"))
 async def get_upload_content(
     upload_id: uuid.UUID,
     response: Response,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> ArtifactTextContent:
     """Text body of a text-ish upload, for in-place previews.
 
@@ -207,10 +235,10 @@ async def get_upload_content(
     empty. Non-text uploads (images/pdf preview from the URL directly) 404 here.
     """
 
-    row = await _get_owned_attachment(db, upload_id, user)
+    row = await _get_owned_attachment(db, upload_id, context)
     if not _is_textual_mime(row.mime_type):
         raise file_not_found()
-    path = Path(row.storage_path)
+    path = _attachment_path(row)
     if not await asyncio.to_thread(path.is_file):
         raise file_not_found()
 

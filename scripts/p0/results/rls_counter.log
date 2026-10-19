@@ -1,0 +1,2 @@
+A nullif 없이 ''::uuid -> Error (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.InvalidTextRepre
+B is_local=false 후 다음 연결 사용자가 보는 행 수: 3

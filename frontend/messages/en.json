@@ -89,7 +89,21 @@
       "sessionExpiredDesc": "Please log in again.",
       "invalidEmail": "Enter a valid email address.",
       "passwordRequired": "Enter your password.",
-      "nameRequired": "Enter a display name."
+      "nameRequired": "Enter a display name.",
+      "ssoRequired": "This company requires its company account (SSO). Use the company sign-in below.",
+      "ssoSignupBlocked": "This domain signs in with its company account (SSO). Continue with the company account on the sign-in page."
+    },
+    "sso": {
+      "required": "This company requires company account (SSO) sign-in.",
+      "continueWith": "Continue with {name}",
+      "ldapTitle": "Sign in with your {name} account",
+      "ldapFailed": "The user name or password is incorrect.",
+      "username": "User name",
+      "password": "Password",
+      "ldapSubmit": "Sign in with company account",
+      "failed": "Company sign-in failed. Try again or contact your administrator.",
+      "divider": "or sign in with your company account",
+      "linkPending": "This account already exists. Sign in once with its password to link the company account."
     },
     "onboarding": {
       "title": "Welcome to Moldy",
@@ -116,9 +130,92 @@
       "avatarLabel": "{name} profile icon",
       "avatarFallback": "User",
       "profileComingSoon": "Profile settings are coming soon."
+    },
+    "invite": {
+      "title": "You're invited",
+      "loggedOut": "Sign up or log in to join the organization that invited you. Use the email address the invitation was sent to.",
+      "register": "Sign up and join",
+      "login": "Already have an account? Log in to accept",
+      "signedInAs": "You'll join as {email}.",
+      "join": "Join",
+      "joined": "You've joined. Taking you home.",
+      "switchAccount": "Log in with another account",
+      "home": "Go home",
+      "failure": {
+        "mismatch": {
+          "title": "You're signed in with a different account",
+          "description": "This invitation isn't for {email}. Log out, log in with the invited email and open the link again."
+        },
+        "expired": {
+          "title": "This invitation link has expired",
+          "description": "Ask the admin who invited you to send the invitation again."
+        },
+        "used": {
+          "title": "This invitation link was already used",
+          "description": "If you already joined, the organization is ready on your home screen. Otherwise ask an admin for a new invitation."
+        },
+        "invalid": {
+          "title": "This invitation link can't be used",
+          "description": "The invitation was revoked or replaced by a newer link. Ask an admin to send it again."
+        },
+        "blocked": {
+          "title": "You can't join this organization",
+          "description": "Your account is suspended in or was removed from this organization. Contact an admin."
+        },
+        "unavailable": {
+          "title": "You can't join right now",
+          "description": "The inviting organization or company is not available right now. Contact an admin."
+        }
+      }
     }
   },
   "common": {
+    "apiError": {
+      "unauthenticated": {
+        "title": "Please sign in again",
+        "description": "Your session has expired."
+      },
+      "permissionRequired": {
+        "title": "Permission required",
+        "description": "You don't have permission to do this. Ask the owner or an administrator for access."
+      },
+      "capabilityRequired": {
+        "title": "Organization permission required",
+        "description": "Only members allowed by an organization administrator can use this feature."
+      },
+      "orgAccessDenied": {
+        "title": "You can't access this organization",
+        "description": "Choose another organization in the sidebar."
+      },
+      "tenantSuspended": {
+        "title": "Company account suspended",
+        "description": "Contact your company administrator."
+      },
+      "notFound": {
+        "title": "Not found",
+        "description": "It was deleted or you can't see it."
+      },
+      "agentNotReady": {
+        "title": "This agent can't run yet",
+        "description": "Check the items that need a connection, then try again.",
+        "check": "Check"
+      },
+      "quotaExceeded": {
+        "title": "Usage limit reached",
+        "description": "Try again later or ask an administrator about the limit."
+      },
+      "authzUnavailable": {
+        "title": "Couldn't check permissions",
+        "description": "The permission service is temporarily unavailable. Try again shortly."
+      },
+      "unknown": {
+        "title": "Something went wrong",
+        "description": "Please try again shortly."
+      },
+      "login": "Sign in",
+      "retry": "Try again"
+    },
+    "readOnly": "View only. You need edit permission to make changes.",
     "save": "Save",
     "create": "Create",
     "cancel": "Cancel",
@@ -175,7 +272,13 @@
       "unknown": "Unknown",
       "healthy": "Healthy",
       "degraded": "Degraded",
-      "unhealthy": "Unhealthy"
+      "unhealthy": "Unhealthy",
+      "needs_connection": "Needs connection",
+      "limited": "Limited",
+      "blocked": "Blocked",
+      "no_permission": "No permission",
+      "archived": "Archived",
+      "suspended": "Suspended"
     },
     "comingSoon": {
       "default": "This feature is coming soon.",
@@ -202,8 +305,935 @@
       "skipToMain": "Skip to main content"
     }
   },
+  "orgAdmin": {
+    "requests": {
+      "title": "Access requests",
+      "description": "Decide requests for resources you manage and track the requests you sent.",
+      "tabs": {
+        "inbox": "Received",
+        "outbox": "Sent",
+        "handled": "Handled"
+      },
+      "empty": {
+        "inbox": "No requests received",
+        "outbox": "You haven't sent any requests",
+        "handled": "No handled requests"
+      },
+      "row": "{requester} → {resource} · {level}",
+      "unknownResource": "Unnamed resource",
+      "unknownUser": "Unknown user",
+      "expiresIn": "Expires in {days} days",
+      "status": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "denied": "Denied",
+        "cancelled": "Cancelled",
+        "expired": "Expired"
+      },
+      "approve": "Approve",
+      "deny": "Deny",
+      "cancelRequest": "Cancel request",
+      "toast": {
+        "approved": "Request approved",
+        "denied": "Request denied",
+        "cancelled": "Request cancelled"
+      },
+      "errors": {
+        "access_request_closed": "This request was already handled. The list was refreshed.",
+        "confirm_required": "This agent lends delegated accounts. Confirm them in the share dialog and share from there.",
+        "generic": "Couldn't process the request. Try again later."
+      }
+    },
+    "common": {
+      "noOrganization": "No organization selected",
+      "noOrganizationDescription": "Pick an organization in the sidebar or accept an organization invitation.",
+      "previous": "Previous",
+      "next": "Next",
+      "cancel": "Cancel",
+      "save": "Save",
+      "close": "Close"
+    },
+    "errors": {
+      "invalid_cursor": "The list position is invalid. Please reload from the start.",
+      "stale_version": "Someone else changed this first. The latest data was reloaded; please try again.",
+      "organization_archive_name_mismatch": "The organization name does not match.",
+      "organization_restore_expired": "The restore window for this organization has expired.",
+      "default_organization_archive_forbidden": "The default organization cannot be archived.",
+      "last_admin": "The last administrator cannot be removed or demoted.",
+      "last_organization": "The company's last organization cannot be archived.",
+      "permission_required": "You do not have permission to do this.",
+      "policy_locked": "This is locked by company policy.",
+      "conflict": "This conflicts with the current state.",
+      "not_found": "The target could not be found.",
+      "forbidden": "Access denied.",
+      "generic": "The request could not be completed. Please try again later.",
+      "last_tenant_admin": "The last company admin cannot be removed or demoted.",
+      "catalog_policy_locked": "This item is blocked at a higher tier and cannot be turned on.",
+      "validation_error": "Please check the input.",
+      "invitation_membership_blocked": "This user is already in the company or cannot be invited.",
+      "invitation_used": "This invitation was already accepted.",
+      "limit_exceeds_parent": "The value cannot exceed the higher limit."
+    },
+    "picker": {
+      "placeholder": "Search by name or email",
+      "hint": "Type at least two characters.",
+      "searching": "Searching...",
+      "empty": "No results.",
+      "type": {
+        "user": "User",
+        "group": "Group",
+        "org": "Whole organization"
+      }
+    },
+    "settings": {
+      "title": "Organization settings",
+      "description": "Manage this organization's name, join and sharing policy, retention periods and usage limits.",
+      "readOnly": "Only organization administrators can change this.",
+      "rename": {
+        "title": "Organization name",
+        "description": "The name members see.",
+        "label": "Name",
+        "slug": "Identifier: {slug}",
+        "submit": "Save name",
+        "saved": "Organization name saved."
+      },
+      "lifecycle": {
+        "title": "Archive",
+        "description": "Archived organizations can be restored from the company organization list within the restore window."
+      },
+      "archive": {
+        "description": "Archiving stops members from using this organization.",
+        "open": "Archive organization",
+        "title": "Archive this organization?",
+        "confirmDescription": "Type the organization name exactly to confirm.",
+        "confirmLabel": "Type the organization name: {name}",
+        "submit": "Archive",
+        "done": "Organization archived."
+      },
+      "restore": {
+        "description": "This organization is archived.",
+        "submit": "Restore organization",
+        "done": "Organization restored."
+      },
+      "policy": {
+        "title": "Join and sharing policy",
+        "description": "Set the default role for new members, how people join, and whether public links are allowed.",
+        "defaultRole": "Default role for new members",
+        "defaultRoleHint": "You can change it when inviting.",
+        "role": {
+          "member": "Member",
+          "builder": "Builder"
+        },
+        "registration": "How people join",
+        "registrationHint": "A stricter company policy takes precedence.",
+        "registrationOption": {
+          "inherit": "Follow company policy",
+          "invite_only": "Invited people only",
+          "default_org": "Anyone who joins the company",
+          "closed": "Closed"
+        },
+        "publicLinks": "Allow public conversation links",
+        "publicLinksHint": "Turning this off also stops existing public links immediately.",
+        "submit": "Save policy",
+        "saved": "Policy saved.",
+        "readOnly": "Only organization admins can change this."
+      },
+      "retention": {
+        "title": "Retention",
+        "description": "How long conversations, the agent trash and removed members' data are kept.",
+        "conversation_days": {
+          "label": "Conversation retention (days)"
+        },
+        "agent_trash_days": {
+          "label": "Agent trash period (days)"
+        },
+        "removed_member_days": {
+          "label": "Removed member data retention (days)"
+        },
+        "unlimited": "Keep conversations indefinitely",
+        "range": "{min}–{max} days",
+        "outOfRange": "Out of the allowed range.",
+        "submit": "Save retention",
+        "saved": "Retention saved.",
+        "readOnly": "Only organization admins can change this.",
+        "confirm": {
+          "title": "Shorten retention?",
+          "description": "After saving, the next cleanup deletes {conversations} conversations, {agents} agents, and {removed_member_conversations} conversations and {removed_member_memories} memories of removed members.",
+          "submit": "Shorten and save"
+        }
+      },
+      "limits": {
+        "title": "Usage limits",
+        "description": "This month's organization usage against the company-set limit (read-only), and the default monthly limit for members.",
+        "usage": "Used this month {used} / limit {limit}",
+        "noLimit": "none",
+        "resets": "Resets on {date}.",
+        "memberDefault": "Default monthly limit per member (USD)",
+        "memberDefaultHint": "Leave empty for no member default.",
+        "memberDefaultCap": "Can be at most the organization limit of {cap}.",
+        "placeholder": "e.g. 50",
+        "overCap": "Cannot exceed the organization limit.",
+        "invalid": "Enter an amount of 0 or more.",
+        "submit": "Save default limit",
+        "saved": "Member default limit saved."
+      }
+    },
+    "members": {
+      "title": "Members",
+      "description": "View and manage organization members.",
+      "add": {
+        "title": "Add member",
+        "description": "Search company users and add them to this organization.",
+        "submit": "Add",
+        "done": "Member added."
+      },
+      "list": {
+        "title": "Members",
+        "empty": "No members.",
+        "name": "Name",
+        "status": "Status",
+        "joined": "Joined",
+        "actions": "Actions"
+      },
+      "status": {
+        "active": "Active",
+        "suspended": "Suspended",
+        "removed": "Removed"
+      },
+      "actions": {
+        "suspend": "Suspend",
+        "reactivate": "Reactivate",
+        "remove": "Remove",
+        "limit": "Monthly limit",
+        "grants": "Capabilities"
+      },
+      "role": {
+        "member": "Member",
+        "builder": "Builder",
+        "admin": "Admin",
+        "auditor": "Auditor"
+      },
+      "invite": {
+        "open": "Invite members",
+        "title": "Invite members",
+        "description": "Invitation links are valid for 7 days and can be used once.",
+        "emails": "Emails",
+        "emailsHint": "Separate several addresses with commas or line breaks.",
+        "invalid": "Invalid email address: {emails}",
+        "role": "Role",
+        "group": "Group (optional)",
+        "noGroup": "No group",
+        "submit": "Send invitations ({count})",
+        "linkOnce": "Invitation links can only be copied here. Send them to each recipient yourself.",
+        "created": "Invitation link created.",
+        "existing": "An invitation is already pending. Resend it if a new link is needed.",
+        "copy": "Copy link",
+        "copyFor": "Copy invitation link for {email}",
+        "copied": "Invitation link copied.",
+        "copyFailed": "Could not copy the invitation link."
+      },
+      "invitations": {
+        "title": "Pending invitations",
+        "description": "Invitations that have not been accepted yet. Resending makes the previous link unusable.",
+        "empty": "No pending invitations.",
+        "expiresIn": "Expires in {days} days",
+        "status": {
+          "pending": "Pending",
+          "accepted": "Accepted",
+          "revoked": "Revoked",
+          "expired": "Expired"
+        },
+        "resend": "Resend",
+        "resentTitle": "New invitation link",
+        "revoke": "Revoke invitation",
+        "revokeTitle": "Revoke this invitation?",
+        "revokeDescription": "The invitation link sent to {email} will stop working.",
+        "revoked": "Invitation revoked."
+      },
+      "limit": {
+        "title": "Monthly limit for {name}",
+        "description": "The monthly spend limit within this organization. Leave empty to use the organization default.",
+        "usage": "Used this month {used} / applied limit {limit}",
+        "noLimit": "none",
+        "label": "Monthly limit (USD)",
+        "hint": "Leave empty to use the organization default.",
+        "cap": "Can be at most {cap}.",
+        "placeholder": "Organization default",
+        "overCap": "Cannot exceed the higher limit.",
+        "invalid": "Enter an amount of 0 or more.",
+        "saved": "Monthly limit saved."
+      }
+    },
+    "memberRemoval": {
+      "title": "Remove {name} from {org}",
+      "description": "Their resources must be settled before they can be removed.",
+      "cancel": "Cancel",
+      "back": "Back",
+      "next": "Next",
+      "submit": "Remove",
+      "done": "Removed {name} from the organization.",
+      "lastAdmin": "The last organization admin can't be removed. A company admin must appoint another admin first.",
+      "blockedNotice": "Some resources must be cleaned up before this member can be removed. Resolve the items below, then reopen.",
+      "steps": {
+        "label": "Removal steps",
+        "item": "{number} {label}",
+        "s1": "Owned resources",
+        "s2": "Shares and triggers",
+        "s3": "Confirm"
+      },
+      "resources": {
+        "empty": "This member owns no resources.",
+        "applyAll": "New owner for every transfer",
+        "resource": "Resource",
+        "handling": "Handling",
+        "type": {
+          "agent": "Agent",
+          "skill": "Skill",
+          "tool": "Tool",
+          "mcp_server": "MCP server",
+          "credential": "Credential",
+          "marketplace_item": "Marketplace item",
+          "other": "Other"
+        },
+        "archived": "Archived · stays with the owner",
+        "unsupported": "Can't be transferred here. Unpublish or delete it first.",
+        "blocked": "Clean up first to transfer",
+        "actionFor": "Handling for {name}",
+        "action": {
+          "transfer": "Transfer",
+          "delete": "Delete"
+        },
+        "deleteNote": "This credential is deleted with the removal.",
+        "personalDelete": "Personal-account credentials can't be transferred and are deleted. Connections using it will break.",
+        "newOwner": "New owner: {name}",
+        "change": "Change",
+        "changeOwner": "Change the new owner of {name}",
+        "ownerFor": "New owner of {name}",
+        "transferNow": "Transfer now",
+        "transferNowFor": "Transfer {name} now",
+        "transferNowUnavailable": "Transferring right away needs permission to manage this resource. It moves to the chosen new owner when the removal completes."
+      },
+      "blocker": {
+        "triggers": "{count} active schedules owned by others",
+        "deployments": "{count} active API deployments",
+        "api_keys": "{count} unrevoked API keys",
+        "credentials": "{count} connections to the previous owner's credentials",
+        "skill_bindings": "{count} skill connections using this credential",
+        "other": "{count} connections to clean up"
+      },
+      "effects": {
+        "description": "Removing this member revokes or stops the following.",
+        "grants": "Shares given to this person",
+        "groups": "Group memberships",
+        "roles": "Roles",
+        "triggers": "Owned schedules (paused)",
+        "deployments": "API deployments (disabled)",
+        "apiKeys": "API keys (revoked)",
+        "count": "{count}",
+        "delegation": "Connections this person delegated are re-checked after removal; agent admins are notified of broken ones."
+      },
+      "confirm": {
+        "transfers": "{count} ownership transfers",
+        "deletes": "{count} deletions",
+        "account": "{name}'s user account is not deleted.",
+        "retention": "Their conversations are kept under the organization's retention policy.",
+        "reason": "Reason for removal (required, recorded in the activity log)"
+      },
+      "errors": {
+        "stale_version": "Someone changed this first. The latest data was loaded; please review again.",
+        "last_admin": "The last organization admin can't be removed.",
+        "resource_transfer_required": "Some owned resources are still unsettled. The list was reloaded.",
+        "transfer_blocked": "A connection blocks the transfer. Please review the list again.",
+        "conflict": "The state changed while processing. The list was reloaded.",
+        "grantInvalid": {
+          "not_owned": "A resource this person doesn't own was included.",
+          "delete_unsupported": "Only credentials can be deleted.",
+          "principal": "The new owner must be an active member of this organization.",
+          "self_transfer": "You can't transfer to yourself.",
+          "default": "This handling isn't allowed."
+        },
+        "generic": "Couldn't remove the member. Please try again later."
+      }
+    },
+    "archiveDialog": {
+      "open": "Archive",
+      "openFor": "Archive {name}",
+      "title": "Archive the {name} organization?",
+      "description": "While archived, nobody can access this organization.",
+      "members": "{count} members lose access to the organization",
+      "runs": "Runs in progress are stopped",
+      "schedules": "Active schedules are paused and stay paused after a restore",
+      "restore": "You can restore it within 30 days",
+      "confirmLabel": "Type the organization name \"{name}\" to confirm",
+      "cancel": "Cancel",
+      "submit": "Archive",
+      "done": "Archived the {name} organization."
+    },
+    "groups": {
+      "title": "Groups",
+      "description": "Manage organization groups and their members.",
+      "list": {
+        "title": "Groups",
+        "empty": "No groups."
+      },
+      "source": {
+        "manual": "Manual",
+        "idp": "Identity provider"
+      },
+      "create": {
+        "open": "Create group",
+        "title": "New group"
+      },
+      "edit": {
+        "open": "Edit",
+        "title": "Edit group"
+      },
+      "delete": {
+        "open": "Delete",
+        "title": "Delete this group?",
+        "description": "The {name} group and the roles granted to it will be deleted."
+      },
+      "form": {
+        "name": "Group name",
+        "description": "Description"
+      },
+      "members": {
+        "toggle": "Members",
+        "empty": "No group members.",
+        "add": "Add to group",
+        "remove": "Remove"
+      }
+    },
+    "roles": {
+      "title": "Roles & capabilities",
+      "description": "Grant organization roles and capabilities to users and groups.",
+      "rowLegend": "Grants for {name} ({type})",
+      "saveFor": "Save {name}",
+      "loadFailed": "Could not load the full grant set.",
+      "noAccess": "Only organization administrators can view this.",
+      "pick": "Select",
+      "empty": "Nothing granted yet.",
+      "saved": "Changes saved.",
+      "roleSection": {
+        "title": "Roles",
+        "description": "Grant the administrator, builder and auditor roles."
+      },
+      "capabilitySection": {
+        "title": "Capabilities",
+        "description": "Grant individual capabilities such as creating agents or tools."
+      },
+      "role": {
+        "admin": "Administrator",
+        "builder": "Builder",
+        "auditor": "Auditor"
+      },
+      "capability": {
+        "cap_create_agent": "Create agents",
+        "cap_create_skill": "Create skills",
+        "cap_create_tool": "Create tools",
+        "cap_register_mcp": "Register MCP servers",
+        "cap_connect_database": "Connect databases",
+        "cap_share_org_wide": "Share org-wide",
+        "cap_publish_marketplace": "Publish to marketplace"
+      },
+      "principal": {
+        "user": "User",
+        "group": "Group",
+        "organization": "Whole organization"
+      },
+      "defaults": {
+        "title": "Default capabilities by role",
+        "description": "What each role has by default. Defaults are fixed; you can grant extra capabilities to people and groups below.",
+        "feature": "Capability",
+        "role": {
+          "admin": "Admin",
+          "builder": "Builder",
+          "member": "Member",
+          "auditor": "Auditor"
+        },
+        "viewActivity": "View activity and usage",
+        "granted": "Included by default",
+        "notGranted": "Not included by default",
+        "privacyNote": "Admins cannot read other people's conversations or knowledge content. They can only stop agents, transfer ownership and revoke shares."
+      }
+    },
+    "company": {
+      "title": "Company organizations",
+      "description": "View the company's organizations and create new ones.",
+      "list": {
+        "title": "Organizations in {company}",
+        "adminView": "Company administrator view",
+        "auditorView": "Company auditor view (summary only)",
+        "empty": "No organizations.",
+        "name": "Name",
+        "status": "Status",
+        "members": "Members",
+        "actions": "Actions",
+        "default": "Default"
+      },
+      "status": {
+        "active": "Active",
+        "suspended": "Suspended",
+        "archived": "Archived"
+      },
+      "restore": "Restore",
+      "restoreDone": "Organization restored.",
+      "create": {
+        "open": "Create organization",
+        "title": "New organization",
+        "description": "Create a new organization in this company.",
+        "name": "Organization name",
+        "defaultRole": "Default member role",
+        "role": {
+          "member": "Member",
+          "builder": "Builder"
+        },
+        "adminEmail": "Administrator email (optional)",
+        "adminEmailHint": "An invitation is created if they are not a company user yet.",
+        "submit": "Create"
+      },
+      "created": {
+        "title": "Organization created",
+        "description": "{name} was created.",
+        "noAdministrator": "No administrator was assigned.",
+        "memberAdministrator": "An existing company user was made administrator.",
+        "invitationSent": "An administrator invitation was created for {email}.",
+        "invitationExpires": "Invitation expires: {date}",
+        "tokenOnce": "The invitation code can be copied only now. Share it through a secure channel.",
+        "copyToken": "Copy invitation code",
+        "tokenCopied": "Invitation code copied.",
+        "tokenCopyFailed": "Could not copy the invitation code.",
+        "tokenUnavailable": "The response did not include an invitation code."
+      }
+    },
+    "sso": {
+      "title": "SSO & domains",
+      "description": "Let members sign in with the company IdP and decide how domain users join.",
+      "adminOnly": "Company administrators only",
+      "adminOnlyDescription": "SSO and domain settings require company management permission.",
+      "errors": {
+        "generic": "The request could not be completed.",
+        "domain_invalid": "The domain is not valid.",
+        "domain_taken": "This domain is already registered elsewhere.",
+        "domain_not_verified": "The verification value was not found in the DNS TXT records.",
+        "ldap_plaintext_refused": "LDAP requires ldaps:// or StartTLS.",
+        "sso_config_invalid": "The connection settings are not valid.",
+        "sso_connection_not_tested": "Only a connection that passed a test login can be activated.",
+        "sso_policy_incomplete": "SSO required needs an active connection, a verified domain and 1–2 break-glass administrators.",
+        "sso_issuer_mismatch": "The IdP issuer does not match the connection settings.",
+        "sso_discovery_failed": "The IdP discovery document could not be loaded.",
+        "sso_token_invalid": "The IdP token could not be verified.",
+        "sso_idp_error": "The IdP refused the sign-in.",
+        "invalid_credentials": "The user name or password is incorrect.",
+        "sso_email_unverified": "The IdP did not confirm the email, so it cannot be linked to an existing account.",
+        "ldap_unavailable": "The directory server is unreachable."
+      },
+      "domains": {
+        "title": "Domains",
+        "description": "Add a DNS TXT record to prove the domain is yours. A verified domain belongs to one company only.",
+        "label": "Domain",
+        "placeholder": "example.com",
+        "add": "Add domain",
+        "empty": "No domains yet.",
+        "verify": "Verify",
+        "verified": "Domain verified.",
+        "remove": "Remove",
+        "status": {
+          "pending": "Pending",
+          "verified": "Verified",
+          "disabled": "Disabled"
+        }
+      },
+      "connections": {
+        "title": "Connections",
+        "description": "Create an OIDC or LDAP/AD connection and activate it after a passed test login.",
+        "add": "Add connection",
+        "empty": "No connections yet.",
+        "oidc": "OIDC",
+        "ldap": "LDAP/AD",
+        "redirectUri": "Redirect URI (register in your IdP)",
+        "testUsername": "Test user name",
+        "testPassword": "Test password",
+        "test": "Test login",
+        "testPassed": "Test login passed.",
+        "activate": "Activate",
+        "activateHint": "Pass a test login before activating.",
+        "remove": "Remove",
+        "status": {
+          "draft": "Draft",
+          "tested": "Tested",
+          "active": "Active",
+          "disabled": "Disabled"
+        }
+      },
+      "form": {
+        "protocol": "Connection type",
+        "protocols": {
+          "oidc": "OIDC",
+          "ldap": "LDAP/AD"
+        },
+        "samlHint": "For SAML-only SSO, put Keycloak in between and connect it with OIDC.",
+        "fields": {
+          "issuer": "Issuer (discovery URL)",
+          "client_id": "Client ID",
+          "client_secret": "Client secret",
+          "server_url": "Server URL (ldaps:// or StartTLS)",
+          "bind_dn": "Bind DN",
+          "bind_password": "Bind password",
+          "user_base_dn": "User base DN",
+          "user_filter": "User filter"
+        },
+        "startTls": "Use StartTLS (required for ldap:// URLs)",
+        "jit": "Create members on first sign-in (JIT)",
+        "trustEmail": "Trust the email even without an email_verified claim (links existing accounts)",
+        "save": "Save as draft",
+        "saved": "Connection saved as a draft.",
+        "cancel": "Cancel"
+      },
+      "policy": {
+        "title": "SSO required",
+        "description": "When required, members except break-glass administrators cannot sign in with a password.",
+        "mode": "Sign-in policy",
+        "modes": {
+          "off": "Off",
+          "optional": "Optional",
+          "required": "Required"
+        },
+        "breakGlass": "Break-glass administrator user IDs (up to 2)",
+        "breakGlassHint": "Comma-separated. Only company administrators can be listed.",
+        "requiredNotice": "{count} members who signed in with a password will use the IdP from their next sign-in.",
+        "save": "Save",
+        "saved": "SSO policy saved."
+      }
+    },
+    "companySettings": {
+      "adminOnly": "Company admins only",
+      "adminOnlyDescription": "This page needs company administrator permission. Ask a company admin if you need access.",
+      "profile": {
+        "title": "Company overview",
+        "description": "Manage the organizations, members and shared settings of the company. Organization conversations and resource contents are not visible here.",
+        "access": {
+          "admin": "Company admin",
+          "auditor": "Company auditor (read-only)",
+          "member": "Company member"
+        },
+        "status": {
+          "active": "Active",
+          "suspended": "Suspended",
+          "deletion_scheduled": "Deletion scheduled"
+        },
+        "organizations": "Organizations",
+        "members": "Members",
+        "admins": "Company admins",
+        "slug": "Company identifier: {slug}",
+        "name": "Company name",
+        "save": "Save name",
+        "saved": "Company name updated."
+      },
+      "policies": {
+        "title": "Company policies",
+        "description": "Set company-wide publication and audit log retention.",
+        "sectionTitle": "Policies",
+        "sectionDescription": "Only company admins can change these.",
+        "readOnly": "Company members can view the policies. Company admins change them.",
+        "publish": {
+          "label": "Company-wide publication",
+          "description": "How marketplace items are published to the whole company.",
+          "disabled": "Not allowed",
+          "open": "Open",
+          "approval": "Approval"
+        },
+        "retention": {
+          "label": "Audit log retention (days)",
+          "description": "Between {min} and {max} days. The default is 365 days.",
+          "invalid": "Enter a whole number between {min} and {max}."
+        },
+        "save": "Save policies",
+        "saved": "Company policies saved.",
+        "confirmTitle": "Shorten the retention period?",
+        "confirmDescription": "{count} audit records older than the new period will be deleted at the next cleanup.",
+        "confirm": "Shorten and save"
+      },
+      "publications": {
+        "title": "Publication approvals",
+        "description": "Items waiting for company-wide publication. Their contents cannot be opened.",
+        "empty": "No items are waiting for approval.",
+        "origin": "Organization {organization} · Publisher {publisher}",
+        "unknownPublisher": "Unknown",
+        "credentialTypes": "Required credential types: {types}",
+        "noCredentials": "None",
+        "approve": "Approve",
+        "reject": "Reject",
+        "approveItem": "Approve {name}",
+        "rejectItem": "Reject {name}",
+        "approved": "Company-wide publication approved.",
+        "rejected": "Company-wide publication rejected.",
+        "rejectTitle": "Reject publication request",
+        "rejectDescription": "Give a reason for rejecting {name}. The requester will see it.",
+        "note": "Reason",
+        "submitReject": "Reject"
+      },
+      "members": {
+        "title": "Company members",
+        "description": "Manage the people in the company and company admins and auditors. Organization membership is set in each organization.",
+        "listTitle": "Members",
+        "listDescription": "Company admins can manage every organization without joining it, but must be organization members to use its resources.",
+        "empty": "No company members.",
+        "name": "Name",
+        "roles": "Company role",
+        "status": "Status",
+        "actions": "Actions",
+        "role": {
+          "admin": "Company admin",
+          "auditor": "Company auditor",
+          "member": "Member"
+        },
+        "memberStatus": {
+          "active": "Active",
+          "suspended": "Suspended",
+          "removed": "Removed"
+        },
+        "grant": {
+          "admin": "Make {name} a company admin",
+          "auditor": "Make {name} a company auditor"
+        },
+        "revoke": {
+          "admin": "Remove company admin from {name}",
+          "auditor": "Remove company auditor from {name}"
+        },
+        "grantShort": {
+          "admin": "Make admin",
+          "auditor": "Make auditor"
+        },
+        "revokeShort": {
+          "admin": "Remove admin",
+          "auditor": "Remove auditor"
+        },
+        "suspend": "Suspend {name}",
+        "reactivate": "Reactivate {name}",
+        "suspendShort": "Suspend",
+        "reactivateShort": "Reactivate",
+        "remove": "Remove {name} from the company",
+        "removeShort": "Remove",
+        "removeTitle": "Remove from the company?",
+        "removeDescription": "{name} will be removed from the company and every organization.",
+        "updated": "Member updated."
+      },
+      "invitations": {
+        "title": "Company invitations",
+        "description": "Create an invitation link and hand it over yourself. No email is sent; a link works once for 7 days.",
+        "empty": "No invitations.",
+        "invite": "Invite to company",
+        "expires": "Expires: {date}",
+        "role": {
+          "none": "Member",
+          "admin": "Company admin",
+          "auditor": "Company auditor"
+        },
+        "status": {
+          "pending": "Pending",
+          "accepted": "Accepted",
+          "revoked": "Revoked",
+          "expired": "Expired"
+        },
+        "resend": "Recreate",
+        "resendFor": "Recreate the invitation for {email}",
+        "revoke": "Revoke",
+        "revokeFor": "Revoke the invitation for {email}",
+        "revoked": "Invitation revoked.",
+        "inviteTitle": "Invite to company",
+        "inviteDescription": "The invitee signs up or signs in with the link to join the company.",
+        "email": "Email",
+        "roleLabel": "Company role",
+        "submit": "Create invitation",
+        "createdTitle": "Invitation created",
+        "createdDescription": "Invitation code for {email}.",
+        "tokenOnce": "You can copy the invitation code only now. Share it only over a safe channel.",
+        "copyToken": "Copy invitation code",
+        "tokenCopied": "Invitation code copied.",
+        "tokenCopyFailed": "Could not copy the invitation code.",
+        "tokenUnavailable": "The response did not include an invitation code."
+      },
+      "orgSelect": {
+        "all": "All organizations",
+        "none": "None",
+        "unknown": "Unknown organization",
+        "loading": "Loading organizations.",
+        "empty": "No organizations to choose from."
+      },
+      "catalogPage": {
+        "title": "Models and LLM settings",
+        "description": "Choose the models and keys the company uses. Each organization can narrow its models in its catalog policy.",
+        "tabsLabel": "Company settings sections",
+        "tabs": {
+          "models": "Models",
+          "credentials": "Shared credentials",
+          "llm": "Service LLM",
+          "catalog": "Company catalog"
+        }
+      },
+      "models": {
+        "title": "Models",
+        "description": "Platform models only take allowed organizations; company models are registered and edited here.",
+        "platformDisabled": "This company cannot use platform keys. Platform models need a company key to be turned on.",
+        "add": "Add model",
+        "empty": "No models.",
+        "name": "Model",
+        "source": "Source",
+        "keyColumn": "Key",
+        "orgs": "Allowed organizations",
+        "actions": "Actions",
+        "sourceLabel": {
+          "platform": "Platform",
+          "company": "Company"
+        },
+        "companyDisabled": "Off for the company",
+        "key": {
+          "platform": "Platform key",
+          "none": "No key",
+          "companyRequired": "Company key required"
+        },
+        "edit": "Edit",
+        "delete": "Delete",
+        "editFor": "Edit {name}",
+        "deleteFor": "Delete {name}",
+        "deleteTitle": "Delete this company model?",
+        "deleteDescription": "After deleting {name}, organizations that used it can no longer use it.",
+        "deleted": "Model deleted.",
+        "dialog": {
+          "createTitle": "Add company model",
+          "editTitle": "Edit {name}",
+          "companyDescription": "Company models are usable only in the organizations you choose.",
+          "platformDescription": "For platform models the company only chooses the allowed organizations.",
+          "provider": "Provider",
+          "modelName": "Model ID",
+          "displayName": "Display name",
+          "baseUrl": "Base URL (optional)",
+          "baseUrlHint": "For OpenAI-compatible endpoints such as an in-house vLLM.",
+          "credential": "Default credential",
+          "noCredential": "None",
+          "orgs": "Allowed organizations",
+          "save": "Save",
+          "saved": "Model saved."
+        }
+      },
+      "credentials": {
+        "title": "Shared credentials",
+        "description": "Company shared credentials. Values are never shown; you only choose which organizations may use them.",
+        "add": "Create credential",
+        "empty": "No shared credentials.",
+        "name": "Name",
+        "fields": "Fields",
+        "orgs": "Usable by",
+        "actions": "Actions",
+        "disabled": "Off",
+        "edit": "Edit",
+        "delete": "Delete",
+        "editFor": "Edit {name}",
+        "deleteFor": "Delete {name}",
+        "deleteTitle": "Delete this shared credential?",
+        "deleteDescription": "Models and agents that use {name} may stop working.",
+        "deleted": "Shared credential deleted.",
+        "dialog": {
+          "createTitle": "Create shared credential",
+          "editTitle": "Edit {name}",
+          "description": "Saved values are never shown again. Personal account types cannot be shared.",
+          "type": "Type",
+          "typePlaceholder": "Choose a type",
+          "name": "Name",
+          "active": "Enabled",
+          "replace": "Replace values",
+          "orgs": "Usable by",
+          "save": "Save",
+          "saved": "Shared credential saved."
+        }
+      },
+      "llm": {
+        "title": "Service LLM",
+        "description": "Models used by service features such as the builder, assistant and images. Follow the platform default or override it for the company.",
+        "platformDisabled": "This company cannot use the platform defaults. Set a company value for each role.",
+        "role": {
+          "text_primary": "Primary text model",
+          "text_fallback": "Fallback text model",
+          "image": "Image model"
+        },
+        "inherits": "Follows the platform default.",
+        "override": "Company value: {credential} / {model}",
+        "configured": "Ready",
+        "notConfigured": "Needs setup",
+        "edit": "Set company value",
+        "editFor": "Set the company value for {role}",
+        "inherit": "Use default",
+        "inheritFor": "Use the platform default for {role}",
+        "dialogDescription": "Choose a company shared credential and a model ID.",
+        "credential": "Credential",
+        "pickCredential": "Choose a credential",
+        "model": "Model ID",
+        "save": "Save",
+        "saved": "Service LLM settings saved."
+      },
+      "catalog": {
+        "title": "Company catalog",
+        "description": "Turn models, tools, skills and MCP servers on or off for the company. Organizations can only narrow within what is on here.",
+        "platformDisabled": "This company cannot use platform models. Items the platform hid cannot be turned on.",
+        "empty": "No catalog items.",
+        "save": "Save catalog",
+        "saved": "Company catalog saved.",
+        "kind": {
+          "model": "Models",
+          "tool": "Tools",
+          "skill": "Skills",
+          "mcp_server": "MCP servers"
+        },
+        "source": {
+          "platform": "Platform",
+          "company": "Company"
+        },
+        "platformHidden": "Hidden by the platform",
+        "toggle": "Use {name}"
+      }
+    },
+    "catalog": {
+      "title": "Catalog policy",
+      "description": "Choose which models and system tools, skills and MCP servers this organization can use. Items turned off are also excluded at run time from agents that already use them.",
+      "noAccess": "Only organization admins can view this.",
+      "listTitle": "Catalog items",
+      "listDescription": "Items the company turned off cannot be turned on here.",
+      "kind": {
+        "model": "Models",
+        "tool": "System tools",
+        "skill": "System skills",
+        "mcp_server": "System MCP"
+      },
+      "source": {
+        "platform": "Platform",
+        "company": "Company"
+      },
+      "companyDisabled": "Turned off by company",
+      "empty": "No items of this kind.",
+      "enabled": "Turned on {name}.",
+      "disabled": "Turned off {name}.",
+      "disable": {
+        "title": "Turn off {name}?",
+        "description": "Agents in this organization will run without this item.",
+        "affected": "{count} agents will lose this item.",
+        "required": "{count} agents that require it will no longer run.",
+        "submit": "Turn off"
+      }
+    }
+  },
   "sidebar": {
     "brand": "Moldy",
+    "orgSwitcher": {
+      "label": "Switch organization",
+      "trigger": "Current organization: {name} (switch)",
+      "current": "Current organization",
+      "unavailable": "Company unavailable",
+      "switchFailed": "Could not switch organization. Please try again.",
+      "choose": "Choose organization",
+      "switching": "Switching organization…",
+      "discardDraftsConfirm": "You have unsaved changes. Switching organization discards them. Switch anyway?"
+    },
     "nav": {
       "home": "Home",
       "connectors": "Connectors",
@@ -390,6 +1420,7 @@
     },
     "myAgents": "My Agents",
     "searchPlaceholder": "Search agents...",
+    "favoritesOnly": "Show favorites only",
     "sort": {
       "latest": "Newest",
       "name": "Name",
@@ -409,6 +1440,20 @@
     "tip": "Tip: Templates help you get started faster."
   },
   "agent": {
+    "triggerStopReason": {
+      "label": "Stopped: {reason}",
+      "reasons": {
+        "permission_revoked": "permission to run was revoked",
+        "owner_left": "the schedule's owner left the organization",
+        "org_archived": "the organization was archived",
+        "tenant_suspended": "the company account is suspended",
+        "agent_archived": "the agent was archived",
+        "delegation_broken": "a delegated connection can't be used",
+        "required_unavailable": "a required connection can't be used",
+        "auth_required": "a connection needs authentication",
+        "authz_unavailable": "skipped because permissions couldn't be checked"
+      }
+    },
     "context": {
       "trigger": "Agent information",
       "loading": "Agent",
@@ -623,6 +1668,8 @@
       "visualSettings": "Visual Settings",
       "settings": "Settings",
       "publish": "Publish to marketplace",
+      "share": "Share {name}",
+      "sharedWithMe": "Shared with me",
       "modelLabel": "Model:",
       "createdAt": "Created {date}",
       "lastUsed": "Used {time}",
@@ -1149,6 +2196,11 @@
         "sat": "Sat",
         "sun": "Sun"
       }
+    },
+    "linkRequired": {
+      "label": "Required",
+      "toggle": "{name} required",
+      "help": "If a required item can't be used, the chat won't start and shows how to connect it instead. Optional items are left out of the run."
     }
   },
   "scheduleCenter": {
@@ -1240,7 +2292,190 @@
       "exported": "Conversation exported"
     }
   },
+  "sharing": {
+    "request": {
+      "open": "Request access",
+      "title": "Request access",
+      "titleNamed": "{name} · Request access",
+      "description": "Your request goes to the managers of this resource.",
+      "level": "Access to request",
+      "reason": "Why you need it (optional)",
+      "reasonPlaceholder": "e.g. I need to update the quarterly report template.",
+      "submit": "Send request",
+      "sending": "Sending…",
+      "cancel": "Cancel",
+      "sent": "Request sent. You can use it as soon as it is approved.",
+      "pending": "Your earlier request is still pending.",
+      "alreadyGranted": "You already have this access. Try refreshing.",
+      "rateLimited": "Too many requests. Try again later.",
+      "failed": "Couldn't send the request. Try again later.",
+      "stateTitle": "You need more access",
+      "stateDescription": "You need a higher access level to open this page. You can ask its managers for access.",
+      "stateNoRequest": "You don't have access to this page. Ask the owner."
+    },
+    "title": "Share {name}",
+    "description": "Share with people, groups, or the whole organization at the level you choose.",
+    "loading": "Loading access",
+    "retry": "Try again",
+    "readOnly": "You can see who has access but cannot share.",
+    "share": "Share",
+    "open": "Open sharing for {name}",
+    "sharedWithMe": "Shared with me",
+    "picker": {
+      "placeholder": "Search names, emails or groups",
+      "hint": "Type at least two characters.",
+      "searching": "Searching…",
+      "error": "Search failed. Try again shortly.",
+      "empty": "No matches.",
+      "count": "{count, plural, one {# result} other {# results}}. Use the up and down arrows and press Enter to choose.",
+      "noOrganization": "Choose an organization before sharing.",
+      "groupMembers": "Group · {count, plural, one {# member} other {# members}}",
+      "type": {
+        "user": "User",
+        "group": "Group",
+        "org": "Whole organization"
+      }
+    },
+    "form": {
+      "title": "Add people",
+      "recipient": "Person or group to share with",
+      "clearRecipient": "Clear {name}",
+      "level": "Access level",
+      "levelHint": "Changing the level for the same recipient replaces the existing share.",
+      "expiry": "Expires on (optional)",
+      "expiryHint": "Only run shares can expire. Leave empty for no expiry.",
+      "submit": "Share",
+      "sharing": "Sharing…"
+    },
+    "principalType": {
+      "user": "User",
+      "group": "Group",
+      "organization": "Whole organization"
+    },
+    "level": {
+      "consumer": "Use",
+      "consumerAgent": "Run",
+      "viewer": "View",
+      "editor": "Edit",
+      "manager": "Manage",
+      "owner": "Owner",
+      "governor": "Administrator",
+      "install": "Install"
+    },
+    "levelHelp": {
+      "consumer": "Can only run or use it.",
+      "viewer": "Can view its settings.",
+      "editor": "Can change its settings.",
+      "manager": "Can edit and share it with others.",
+      "install": "Can view and install it from the marketplace."
+    },
+    "notice": {
+      "sharedAccount": "This resource calls out with its owner's credential. Recipients will call with the owner's account too.",
+      "sharedAccountAck": "I understand recipients call with the owner's account",
+      "credential": "Recipients can connect this credential to their own tools. Nobody can see the secret values.",
+      "marketplace": "Users who can view and install this restricted item. You can only revoke here for now; add recipients in the publish wizard. The last recipient can only be removed after changing the visibility."
+    },
+    "personal": {
+      "title": "A personal account is attached, so this can't be shared",
+      "hint": "Switch to per-user connections or remove the personal account, then share again."
+    },
+    "delegation": {
+      "saveTitle": "Connect accounts to a shared agent",
+      "saveDescription": "Once saved, people this agent is shared with also run it with the accounts below.",
+      "confirmSave": "Confirm and save",
+      "account": "{credential} · {owner}'s account",
+      "companyAccount": "{credential} · company account",
+      "previewTitle": "Accounts this agent uses",
+      "previewDescription": "Recipients run this agent with the accounts below. You will confirm them before sharing.",
+      "title": "Review the delegated accounts",
+      "description": "This agent runs with the account resources below. When recipients run it, these accounts are used.",
+      "type": {
+        "credential": "Credential",
+        "tool": "Tool",
+        "mcp_server": "MCP server",
+        "agent": "Agent",
+        "skill": "Skill",
+        "other": "Resource"
+      },
+      "cancel": "Cancel",
+      "confirm": "Confirm and share"
+    },
+    "access": {
+      "title": "Who has access",
+      "empty": "Not shared with anyone yet.",
+      "you": "(you)",
+      "groupMembers": "Group · {count, plural, one {# member} other {# members}}",
+      "expires": "Until {date}",
+      "revoke": "Revoke",
+      "revokeLabel": "Revoke access for {name}"
+    },
+    "source": {
+      "governance": "Organization or company admin"
+    },
+    "revoke": {
+      "title": "Revoke access for {name}?",
+      "description": "They lose access and ongoing conversations become read-only. Share again to undo.",
+      "groupDescription": "{count, plural, one {# group member loses} other {# group members lose}} access and ongoing conversations become read-only. Share again to undo."
+    },
+    "toast": {
+      "shared": "Shared with {name}.",
+      "revoked": "Revoked access for {name}."
+    },
+    "transfer": {
+      "toggle": "Transfer ownership",
+      "description": "The new owner gets every permission on this resource. Only active members of this organization can receive it.",
+      "change": "Change",
+      "newOwner": "New owner",
+      "reasonOptional": "Reason (optional)",
+      "reasonRequired": "Reason (required)",
+      "keepManager": "Keep manage access for me after the transfer",
+      "blockedTitle": "Clean these up first",
+      "blocker": {
+        "personal_account": "Personal account credentials cannot be transferred.",
+        "triggers": "{count, plural, one {# active schedule} other {# active schedules}}",
+        "deployments": "{count, plural, one {# active API deployment} other {# active API deployments}}",
+        "api_keys": "{count, plural, one {# unrevoked API key} other {# unrevoked API keys}}",
+        "credentials": "{count, plural, one {# credential of the previous owner} other {# credentials of the previous owner}}"
+      },
+      "submit": "Transfer ownership",
+      "confirmTitle": "Transfer {resource} to {name}?",
+      "confirmDescription": "To undo, the new owner has to transfer it back.",
+      "done": "Transferred ownership to {name}."
+    },
+    "transferDialog": {
+      "title": "Transfer ownership",
+      "cancel": "Cancel",
+      "noPermission": "You don't have permission to transfer ownership of this resource.",
+      "delegations": "{count} delegated connections stay tied to the person who connected them. If that person loses access, the connection breaks."
+    },
+    "errors": {
+      "generic": "Could not complete the request. Try again.",
+      "not_found": "Not found.",
+      "permission_required": "You don't have permission.",
+      "capability_required": "You can't share with the whole organization.",
+      "transfer_name_conflict": "The new owner already has a resource with this name.",
+      "stale_version": "Someone changed this first. Try again.",
+      "conflict": "Someone changed this first. Try again.",
+      "authz_unavailable": "Try again in a moment.",
+      "marketplace_acl_required": "A restricted item needs at least one recipient. Change the visibility first.",
+      "transferBlocked": "Ownership can't be transferred yet.",
+      "personal_account_shared": "Resources that carry a personal account credential can't be shared. Switch a tool or MCP server to per-user connections to share it.",
+      "grantInvalid": {
+        "default": "This recipient can't get this access.",
+        "archived": "Archived agents can't be shared or transferred.",
+        "expired": "The expiry date must be in the future.",
+        "expires_at": "Only run shares can have an expiry date.",
+        "level": "This resource doesn't support that access level.",
+        "owner": "The owner already has every permission.",
+        "principal": "Choose an active member or group of this organization.",
+        "reason_required": "Administrators must give a reason to transfer.",
+        "self_grant": "You can only lower your own access.",
+        "self_transfer": "Administrators can't transfer to themselves."
+      }
+    }
+  },
   "share": {
+    "publicLinksDisabled": "This organization doesn't allow public share links. Ask an organization administrator.",
     "title": "Share conversation",
     "description": "Anyone with the link can view this conversation read-only.",
     "loading": "Loading…",
@@ -1435,7 +2670,25 @@
       "invalidFieldValue": "Invalid value format",
       "pendingCount": "{count} pending approvals",
       "approveAll": "Approve all",
-      "allowForSession": "Allow for the rest of this session"
+      "allowForSession": "Allow for the rest of this session",
+      "noReviewConfig": "This action can't be answered here because its review settings are missing."
+    },
+    "authRequired": {
+      "title": "Connection required",
+      "reasonAuthNeeded": "This step needs the connections below. Connect them, then try again.",
+      "reasonExpired": "The connections below have expired. Reconnect them, then try again.",
+      "reasonScopeUpgrade": "The connections below need additional permission. Grant it, then try again.",
+      "ownerNotified": "Only the owner can fix this connection; the owner was notified.",
+      "retry": "Try again",
+      "skip": "Skip",
+      "cancel": "Cancel run",
+      "sent": "Response sent.",
+      "resumeFailed": "Could not send your response. Try again.",
+      "stillNotConnected": "Still not connected. Connect it, then try again.",
+      "connectOAuth": "Connect {name}",
+      "oauthWaiting": "Finish in the popup and we'll try again",
+      "oauthPopupBlocked": "The popup was blocked. Allow popups and try again.",
+      "oauthStartFailed": "Couldn't start the connection"
     },
     "userInput": {
       "placeholder": "Placeholder",
@@ -1863,6 +3116,25 @@
       "scopeUser": "User",
       "scopeAgent": "Agent",
       "hiddenContent": "Content hidden"
+    },
+    "excludedCapabilities": {
+      "title": "Some capabilities were left out of this run",
+      "listLabel": "Excluded capabilities",
+      "group": "{type} ×{count} · {reason}",
+      "type": {
+        "tool": "Tool",
+        "mcp_tool": "MCP tool",
+        "skill": "Skill",
+        "agent": "Subagent",
+        "llm_model": "Model",
+        "other": "Other"
+      },
+      "reason": {
+        "broken": "broken link",
+        "denied": "no permission"
+      },
+      "requestAccessHint": "If you need a capability you lack permission for, ask its owner or an admin for access.",
+      "dismiss": "Dismiss notice"
     },
     "followup": {
       "hint": "→ to fill",
@@ -3155,11 +4427,6 @@
     "detail": {
       "back": "Back to marketplace",
       "saving": "Saving…",
-      "error": {
-        "notFound": "Item not found",
-        "loadFailed": "Failed to load the item",
-        "description": "The marketplace item could not be loaded."
-      },
       "versions": {
         "title": "Versions",
         "emptyTitle": "No published versions yet",
@@ -3220,9 +4487,8 @@
       },
       "acl": {
         "title": "Shared with (restricted)",
-        "empty": "No users have been shared yet. Adding users currently requires calling the ACL endpoint directly (a wizard is planned for a later slice).",
-        "revoke": "Revoke",
-        "lastTargetHint": "To remove the last target, change the visibility to another value first."
+        "summary": "{count, plural, =0 {Not shared with anyone yet.} one {Shared with # user.} other {Shared with # users.}}",
+        "manage": "Manage recipients"
       },
       "toast": {
         "requestFailed": "Request failed.",
@@ -3233,9 +4499,6 @@
         "alreadyPrivate": "The item is already private.",
         "unpublished": "Unpublished — hidden from the catalog. Already-installed copies are not affected.",
         "unpublishFailed": "Failed to unpublish the item.",
-        "aclRevoked": "Sharing revoked",
-        "aclRevokeFailed": "Failed to revoke sharing.",
-        "lastAclRequired": "A restricted item cannot drop its last ACL target. Change the visibility first.",
         "visibilityFailed": "Failed to change visibility.",
         "aclRequired": "Switching to restricted requires at least one shared user. Add a target and try again."
       },
@@ -3890,6 +5153,278 @@
     }
   },
   "appSettings": {
+    "platformTenants": {
+      "gate": {
+        "loading": "Checking access…",
+        "deniedTitle": "This page could not be found",
+        "deniedDescription": "Platform operation screens are only for the SaaS operator.",
+        "back": "Back to settings"
+      },
+      "status": {
+        "active": "Active",
+        "suspended": "Suspended",
+        "deletion_scheduled": "Deletion scheduled",
+        "deletionScheduledDue": "Deletion scheduled (D-{days})"
+      },
+      "errors": {
+        "stale_version": "Another operator changed this first. Reload the latest data and try again.",
+        "duplicate_tenant_slug": "This slug is already in use. Enter another slug.",
+        "tenant_namespace_collision": "A company can't be created with this slug. Enter another slug.",
+        "tenant_deletion_slug_mismatch": "The slug you entered doesn't match the company slug.",
+        "tenant_export_in_progress": "An export is already running. Try again when it finishes.",
+        "tenant_status_conflict": "This action isn't possible in the current state. Refresh and try again.",
+        "generic": "The request couldn't be completed. Try again shortly."
+      },
+      "list": {
+        "title": "Companies",
+        "description": "Create the customer companies on this instance and manage their status and limits. Company conversations and resources are not visible here.",
+        "create": "Create company",
+        "sectionTitle": "Companies",
+        "filterLabel": "Filter by status",
+        "all": "All",
+        "searchLabel": "Search companies",
+        "searchPlaceholder": "Search by company name or slug",
+        "empty": "No companies match.",
+        "company": "Company",
+        "organizations": "Organizations",
+        "members": "Members / limit",
+        "spendLimit": "Monthly spend limit",
+        "status": "Status",
+        "actions": "Menu",
+        "noLimit": "No limit",
+        "ofLimit": "{used} / {limit}"
+      },
+      "actions": {
+        "menu": "{name} menu",
+        "detail": "Details",
+        "suspend": "Suspend",
+        "resume": "Resume",
+        "export": "Export data",
+        "cancelDeletion": "Cancel deletion",
+        "scheduleDeletion": "Schedule deletion",
+        "resumeDone": "{name} was resumed.",
+        "cancelDeletionDone": "Deletion of {name} was cancelled. The company stays suspended.",
+        "exportStarted": "Started exporting {name} data."
+      },
+      "risky": {
+        "impact": {
+          "members": "{count} members are affected.",
+          "runs": "{count} active runs stop at their next step.",
+          "runsUnknown": "The number of active runs couldn't be loaded."
+        },
+        "slugLabel": "Type the company slug {slug} to confirm",
+        "suspend": {
+          "title": "Suspend {name}?",
+          "effect": "No user of the company can sign in to it. You can undo this with Resume.",
+          "confirm": "Suspend",
+          "done": "{name} was suspended."
+        },
+        "scheduleDeletion": {
+          "title": "Schedule deletion of {name}?",
+          "effect": "Every company user loses access now, and after a 30-day grace period all company data is permanently deleted. After the purge nothing can be restored; only the tenant.deleted audit record remains. During the grace period you can undo this with Cancel deletion.",
+          "confirm": "Schedule deletion",
+          "done": "Deletion of {name} was scheduled."
+        }
+      },
+      "create": {
+        "title": "Create company",
+        "description": "An invitation for the first company admin is created.",
+        "defaultOrganization": "Default organization",
+        "done": "Created {name}.",
+        "name": "Company name",
+        "slug": "Slug",
+        "slugHint": "3-40 lowercase letters, digits and hyphens",
+        "slugInvalid": "Use 3-40 lowercase letters, digits and hyphens, not starting or ending with a hyphen.",
+        "adminEmail": "First company admin email",
+        "emailInvalid": "Enter a valid email address.",
+        "organization": "First organization name",
+        "systemModels": "Use system models",
+        "systemModelsHint": "Allow platform models and system LLM keys for this company.",
+        "cancel": "Cancel",
+        "submit": "Create and invite",
+        "created": "Created {name} and its first organization.",
+        "invitationFor": "A company admin invitation was created for {email}.",
+        "invitationExpires": "Invitation expires: {date} (single use)",
+        "noMail": "No email is sent. Copy the invitation code and share it yourself. It can't be shown again after you close this dialog.",
+        "tokenCopied": "Invitation code copied.",
+        "tokenCopyFailed": "The invitation code couldn't be copied.",
+        "copyToken": "Copy invitation code",
+        "tokenUnavailable": "No invitation code was returned. A new company admin invitation is needed.",
+        "close": "Close"
+      },
+      "limitField": {
+        "members": "Member limit",
+        "spend": "Monthly spend limit (USD)",
+        "runs": "Concurrent run limit",
+        "hint": "Empty means no limit; 0 blocks use",
+        "invalid": "Enter a number of 0 or more. Member and run limits must be whole numbers."
+      },
+      "detail": {
+        "back": "Companies",
+        "description": "Slug {slug} · Company conversations and resources are not visible here.",
+        "noLimit": "No limit",
+        "overview": "Overview",
+        "overviewHint": "Status and this month's usage.",
+        "status": "Status",
+        "createdAt": "Created",
+        "organizations": "Organizations",
+        "members": "Members / limit",
+        "ofLimit": "{used} / {limit}",
+        "spend": "This month's spend / limit",
+        "usageUnavailable": "Unavailable",
+        "usageLoading": "Loading…",
+        "resetsAt": "Resets {date}",
+        "activeRuns": "Active runs / concurrent limit"
+      },
+      "limits": {
+        "title": "Limits",
+        "description": "Change the company name and usage limits.",
+        "name": "Company name",
+        "systemModels": "Use system models",
+        "systemModelsHint": "Allow platform models and system LLM keys for this company.",
+        "save": "Save",
+        "saved": "Limits saved."
+      },
+      "data": {
+        "title": "Data",
+        "description": "Company data exports and the deletion schedule.",
+        "exports": "Exports",
+        "startExport": "Start export",
+        "exportsLoading": "Loading exports…",
+        "noExports": "No exports yet.",
+        "deletion": "Deletion schedule",
+        "scheduledUntil": "Permanently deleted on {date} (D-{days}).",
+        "scheduled": "Deletion is scheduled.",
+        "scheduledHint": "Cancelling the schedule returns the company to suspended.",
+        "cancelDeletion": "Cancel deletion",
+        "deletionHint": "Scheduling deletion blocks every company user, and the company data is permanently deleted after 30 days.",
+        "scheduleDeletion": "Schedule deletion",
+        "createdAt": "Requested",
+        "status": "Status",
+        "expiresAt": "Download expires",
+        "download": "Download",
+        "jobRunning": "Running {progress}%",
+        "jobFailed": "Failed ({code})",
+        "job": {
+          "queued": "Queued",
+          "running": "Running",
+          "succeeded": "Completed",
+          "failed": "Failed"
+        },
+        "downloadFailed": "The export file couldn't be downloaded."
+      }
+    },
+    "authzOps": {
+      "title": "Authorization sync",
+      "description": "Check that authorization rows in Postgres are reflected in OpenFGA.",
+      "loading": "Loading…",
+      "loadError": "Couldn't load the status. Try again in a moment.",
+      "reconcile": {
+        "button": "Run reconcile",
+        "running": "Reconcile running",
+        "confirmTitle": "Run an authorization reconcile?",
+        "confirmDescription": "Compares every company's authorization rows with OpenFGA and repairs differences. It can take a few minutes depending on the number of companies; writes are not affected while it runs.",
+        "confirm": "Run",
+        "cancel": "Cancel",
+        "started": "Reconcile started",
+        "progress": "Checking company {done}/{total}",
+        "disabledHint": "Unavailable in legacy mode or without a pinned OpenFGA store and model"
+      },
+      "banner": {
+        "downTitle": "Can't connect to OpenFGA",
+        "lastSuccess": "Last success: {time}",
+        "neverSucceeded": "No successful connection yet",
+        "degraded": "OpenFGA is responding slowly ({latency} ms)",
+        "legacy": "Legacy mode is active, so OpenFGA is not used. Values below come from Postgres."
+      },
+      "stats": {
+        "outboxPending": "Outbox pending",
+        "outboxOldest": "Oldest item {seconds}s",
+        "failed": "Failed",
+        "failedHint": "10+ attempts · {retrying} retrying",
+        "lastReconcile": "Last reconcile",
+        "lastReconcileHint": "{diff} differences · {repaired} repaired · {deferred} pending",
+        "noReconcile": "No runs yet",
+        "revocations": "Pending revocations",
+        "revocationsHint": "{stuck} older than 10 minutes"
+      },
+      "failures": {
+        "title": "Failed items",
+        "description": "Only company and resource IDs are shown.",
+        "empty": "No failed items",
+        "company": "Company",
+        "resource": "Resource",
+        "op": "Operation",
+        "attempts": "Attempts",
+        "error": "Error",
+        "action": "Action",
+        "retry": "Retry",
+        "retryLabel": "Retry {resource}",
+        "retried": "Scheduled for retry",
+        "platform": "Platform",
+        "ops": {
+          "write": "Write",
+          "delete": "Delete"
+        },
+        "errorTypes": {
+          "AuthzUnavailable": "OpenFGA unavailable",
+          "TimeoutError": "OpenFGA timed out",
+          "other": "Processing failed"
+        }
+      },
+      "shadow": {
+        "title": "Shadow mismatches",
+        "description": "Decisions where legacy and OpenFGA disagree, by resource type.",
+        "empty": "No mismatches",
+        "type": "Resource type",
+        "legacyOnly": "Legacy only allows",
+        "fgaOnly": "OpenFGA only allows"
+      },
+      "delegations": {
+        "title": "Delegation checks",
+        "brokenLinks": "Broken links",
+        "brokenRecent": "Broken in the last 24 hours"
+      },
+      "retention": {
+        "title": "Retention sweep",
+        "state": "State",
+        "enabled": "On",
+        "disabled": "Off",
+        "schedule": "Schedule",
+        "lastRun": "Last run",
+        "purgesRecent": "Purge records in the last 24 hours",
+        "never": "Never"
+      },
+      "jobs": {
+        "title": "Scheduled jobs",
+        "name": "Job",
+        "state": "State",
+        "schedule": "Schedule",
+        "scheduled": "Scheduled",
+        "notScheduled": "Off",
+        "names": {
+          "authz_outbox_drain": "Outbox drain",
+          "authz_reconcile": "Daily reconcile",
+          "authz_expiry_cleanup": "Expiry cleanup",
+          "authz_backlog_alert": "Backlog alert",
+          "authz_delegation_validate": "Delegation check",
+          "retention_sweep": "Retention sweep"
+        }
+      },
+      "runStatus": {
+        "queued": "Queued",
+        "running": "Running",
+        "succeeded": "Done",
+        "failed": "Failed",
+        "skipped": "Skipped"
+      },
+      "errors": {
+        "authz_reconcile_running": "A reconcile is already running",
+        "authz_sync_disabled": "Authorization sync is off, so this can't run",
+        "not_found": "This item was already processed",
+        "generic": "Couldn't complete the request"
+      }
+    },
     "title": "App Settings",
     "description": "Manage your account and Moldy preferences.",
     "navLabel": "Settings menu",
@@ -3913,7 +5448,21 @@
       "marketplaceAdmin": "Marketplace Admin",
       "systemCredentials": "System Credentials",
       "systemLlm": "System LLM Settings",
-      "adminAudit": "All Activity"
+      "authzSync": "Authorization Sync",
+      "adminAudit": "All Activity",
+      "organization": "Organization",
+      "organizationSettings": "Organization settings",
+      "organizationMembers": "Members",
+      "organizationGroups": "Groups",
+      "organizationRoles": "Roles & capabilities",
+      "organizationRequests": "Access requests",
+      "companyOrganizations": "Company organizations",
+      "companySso": "SSO & domains",
+      "companyMembers": "Company members",
+      "companyPolicies": "Company policies",
+      "companyModels": "Models and LLM settings",
+      "platformTenants": "Companies",
+      "organizationCatalog": "Catalog policy"
     },
     "profile": {
       "title": "Profile",
@@ -4210,6 +5759,8 @@
     "appearance": "Appearance & Language",
     "agentApi": "Agent API",
     "marketplaceAdmin": "Marketplace Admin",
+    "authzSync": "Authorization Sync",
+    "platformTenants": "Companies",
     "adminAudit": "All Activity",
     "systemCredentials": "System Credentials",
     "systemLlm": "System LLM Settings",
@@ -4224,7 +5775,16 @@
     "skillEvaluation": "Evaluation",
     "skillVersions": "Versions",
     "skillSource": "Source",
-    "skillBuilder": "Builder"
+    "skillBuilder": "Builder",
+    "company": "Company",
+    "organization": "Organization",
+    "invite": "Invitation",
+    "newConversation": "New conversation",
+    "agentDetail": "Agent",
+    "skillDetail": "Skill details",
+    "companyDetail": "Company details",
+    "marketplaceItem": "Marketplace item",
+    "traces": "Traces"
   },
   "connections": {
     "pageTitle": "Page title",
@@ -4369,6 +5929,10 @@
     }
   },
   "credentials": {
+    "personalAccount": {
+      "badge": "Personal account",
+      "hint": "Personal account credentials can't be shared with others or transferred to another owner."
+    },
     "page": {
       "title": "Credentials",
       "description": "Manage API keys and OAuth grants used by tools and MCP servers.",
@@ -4449,7 +6013,9 @@
     "create": {
       "toast": {
         "saved": "Saved successfully.",
-        "saveFailed": "Operation failed."
+        "saveFailed": "Operation failed.",
+        "oauthPopupBlocked": "The popup was blocked, so the account wasn't connected. Reconnect it from Credentials.",
+        "oauthStartFailed": "Couldn't start the account connection"
       },
       "title": "Create",
       "titleWithType": "New {type} credential",
@@ -4465,6 +6031,7 @@
       "save": "Save"
     },
     "detail": {
+      "sharedMetadataOnly": "Shared with you. You can only view its details.",
       "toast": {
         "statusChanged": "Credential status changed to {status}.",
         "updateFailed": "Operation failed.",
@@ -4581,6 +6148,141 @@
       "savedToast": "Fallback models saved.",
       "saveFailedToast": "Failed to save fallback models.",
       "badge": "Fallback +{count}"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "bell": "Notifications",
+    "bellUnread": "Notifications, {count} unread",
+    "markAllRead": "Mark all as read",
+    "empty": "No new notifications",
+    "loading": "Loading notifications…",
+    "loadFailed": "Couldn't load notifications",
+    "hidden": "An item you can't access",
+    "unnamed": "Untitled",
+    "someone": "Someone",
+    "unreadMark": "Unread",
+    "levels": {
+      "consumer": "run",
+      "viewer": "view",
+      "editor": "edit",
+      "manager": "manage",
+      "other": "access"
+    },
+    "reasons": {
+      "permission_revoked": "permission revoked",
+      "owner_left": "owner left the organization",
+      "auth_required": "sign-in needed",
+      "delegation_broken": "delegation broken",
+      "required_unavailable": "required item unavailable",
+      "delegator_lost_access": "the person who connected it lost access",
+      "resource_unavailable": "resource unavailable",
+      "other": "check the reason"
+    },
+    "kinds": {
+      "accessRequestCreated": "{actor} requested {level} access to {target}",
+      "accessRequestCreatedNoActor": "New request for {level} access to {target}",
+      "accessRequestApproved": "Your request for {level} access to {target} was approved",
+      "accessRequestDenied": "Your request for access to {target} was declined",
+      "grantReceived": "{actor} shared {target} with you ({level})",
+      "grantReceivedNoActor": "{target} was shared with you ({level})",
+      "grantReceivedHidden": "Something was shared with you, but you can't open it right now",
+      "triggerBlocked": "The {trigger} schedule stopped ({reason})",
+      "ownerNeeded": "Someone asked you to reconnect {target}",
+      "delegationBroken": "A connection of {target} broke ({reason})",
+      "ownershipNew": "You are now the owner of {target}",
+      "ownershipPrevious": "Ownership of {target} was transferred",
+      "generic": "You have a new notification"
+    }
+  },
+  "readiness": {
+    "badge": {
+      "needsConnection": "Needs connection {count}",
+      "limited": "{count} excluded",
+      "blocked": "Unavailable · {reason}",
+      "reason": {
+        "no_permission": "permission needed",
+        "owner_must_connect": "owner must connect",
+        "unavailable": "needs a check"
+      }
+    },
+    "panel": {
+      "title": "Before you start {name}",
+      "titleUnnamed": "Connection check before you start",
+      "summary": {
+        "ready": "Everything is ready to use",
+        "needs_connection": "Connect {count} required item(s) to start right away",
+        "limited": "Some optional items will be left out of this run",
+        "blocked": "A required item can't be used, so the chat can't start"
+      },
+      "required": "Required",
+      "optional": "Optional",
+      "kind": {
+        "llm_model": "Model",
+        "tool": "Tool",
+        "mcp_server": "MCP server",
+        "skill": "Skill",
+        "sub_agent": "Sub-agent"
+      },
+      "counted": "{count} {kind}",
+      "result": {
+        "ready": "Ready",
+        "connect_by_me": "Your account needs to be connected",
+        "connect_by_me_expired": "Your connection has expired",
+        "owner_must_connect": "The owner's account needs to be connected",
+        "no_permission": "Left out of this run: no permission",
+        "no_permission_required": "Can't run: no permission",
+        "unavailable": "Waiting for an administrator check"
+      },
+      "chip": {
+        "ready": "Ready",
+        "connect_by_me": "Needs connection",
+        "owner_must_connect": "Owner must connect",
+        "no_permission": "No permission",
+        "unavailable": "Unavailable"
+      },
+      "connect": "Connect",
+      "openCredentials": "Open credentials",
+      "notifyOwner": "Notify owner",
+      "notified": "Notified",
+      "notifySent": "The owner has been notified",
+      "notifyFailed": "Couldn't send the notification. Try again shortly.",
+      "requestAccess": "Request access",
+      "close": "Close",
+      "loading": "Checking connections",
+      "loadFailed": "Couldn't load the check result",
+      "retry": "Try again",
+      "notReadyToast": "The chat couldn't start because required connections are missing",
+      "collapsed": {
+        "needs_connection": "{count} required item(s) need a connection",
+        "limited": "Some items will be left out of this run",
+        "blocked": "This agent can't be used right now"
+      },
+      "open": "View check",
+      "confirm": "OK",
+      "notifyNone": "Couldn't notify the owner: the owner's account couldn't be found."
+    },
+    "binding": {
+      "title": "Connect {name}",
+      "description": "Used with your account in {agent}",
+      "descriptionGeneric": "Use this service with your account",
+      "mine": "My credentials",
+      "empty": "You have no credential that can be connected",
+      "use": "Connect this account",
+      "useNamed": "Connect {name}",
+      "create": "Connect new",
+      "createHelp": "Create a new credential and connect it right away",
+      "connected": "Connected",
+      "failed": "Couldn't connect",
+      "typeMismatch": "This credential type can't be connected to this service",
+      "notPerUser": "This service isn't connected per user",
+      "close": "Close",
+      "oauthWaiting": "Finish connecting your account in the popup. It connects automatically when done."
+    },
+    "authCard": {
+      "connect": "Connect",
+      "reconnectNote": "Reconnect this on the credentials screen, then try again.",
+      "openCredentials": "Open credentials"
     }
   }
 }

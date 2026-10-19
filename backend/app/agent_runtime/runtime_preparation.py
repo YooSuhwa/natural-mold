@@ -11,7 +11,11 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.runtime.connection_guard import with_connection_guard
+from app.agent_runtime.runtime.shared_memo import load_shared_memo, memo_governed
+from app.agent_runtime.runtime.usage_guard import with_usage_guard
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
+from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.agent_runtime.runtime_policy_capabilities import STORED_RESERVED_TOOL_NAMES
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
 
@@ -45,6 +49,7 @@ async def prepare_runtime_components_impl(
     bindings: RuntimePreparationBindings,
 ) -> RuntimeComponents:
     """Build standard or trigger components before Deep Agents graph creation."""
+    assert_pre_marker("prepare_runtime_components_impl")
 
     last_mark = bindings.perf_counter()
 
@@ -96,15 +101,27 @@ async def prepare_runtime_components_impl(
         is_trigger_mode=is_trigger_mode,
     )
     memory_tools_enabled = cfg.user_id is not None and memory_write_policy != "off"
+    # F-09 (11.8): under ``agent`` enforcement no run writes or mounts AGENTS.md (the
+    # memo reaches the prompt framed as reference); a runner of someone else's agent may
+    # propose to it when it is switched on. Legacy: unchanged.
+    governed = memo_governed()
+    shared_run = bool(cfg.agent_owner_user_id) and cfg.agent_owner_user_id != cfg.user_id
+    memo_proposals = (
+        governed
+        and shared_run
+        and memory_tools_enabled
+        and (await load_shared_memo(cfg, None)).enabled
+    )
     if memory_tools_enabled:
         memory_user_id = cfg.user_id
         assert memory_user_id is not None  # noqa: S101 - narrowed by memory_tools_enabled
         langchain_tools.extend(
             bindings.build_memory_tools(
-                user_id=memory_user_id,
+                context=cfg.org_context,
                 agent_id=cfg.agent_id,
                 conversation_id=cfg.thread_id,
                 is_trigger_mode=is_trigger_mode,
+                agent_memo_proposals=memo_proposals,
             )
         )
     mark_timing("tools_ms")
@@ -143,7 +160,7 @@ async def prepare_runtime_components_impl(
             output_root=bindings.conversation_output_dir,
         )
         if cfg.user_id and not stored_policy:
-            async with bindings.runtime_db_session_factory() as runtime_db:
+            async with bindings.runtime_db_session_factory(cfg.org_context) as runtime_db:
                 await bindings.resolve_runtime_credentials(skill_ctx, db=runtime_db, cfg=cfg)
             bindings.add_skill_secrets_to_run(skill_ctx, cfg)
         skills_virtual_prefix = (
@@ -182,7 +199,7 @@ async def prepare_runtime_components_impl(
             system_prompt += "\n" + skills_block
 
     memory_sources: list[str] | None = None
-    if include_agent_memory_file and cfg.agent_id:
+    if include_agent_memory_file and cfg.agent_id and not governed:
         (bindings.data_dir / "agents" / cfg.agent_id).mkdir(parents=True, exist_ok=True)
         memory_sources = [f"/agents/{cfg.agent_id}/AGENTS.md"]
 
@@ -203,7 +220,7 @@ async def prepare_runtime_components_impl(
             user_id=cfg.user_id,
             selected_skill_slugs=bindings.selected_skill_slugs(cfg.agent_skills),
             agent_runtime_name=cfg.agent_runtime_name,
-            include_agent_memory_file=include_agent_memory_file,
+            include_agent_memory_file=include_agent_memory_file and not governed,
             mode=filesystem_mode,
         )
         langchain_tools = [
@@ -216,6 +233,7 @@ async def prepare_runtime_components_impl(
             user_id=cfg.user_id,
             selected_skill_slugs=bindings.selected_skill_slugs(cfg.agent_skills),
             agent_runtime_name=cfg.agent_runtime_name,
+            agent_memory_file=not governed,
         )
 
     if include_ask_user and not is_trigger_mode:
@@ -231,6 +249,12 @@ async def prepare_runtime_components_impl(
         interrupt_on = _without_stored_filesystem_interrupts(interrupt_on)
     mark_timing("skills_filesystem_ms")
 
+    # F-07 (11.4): root runs interrupt (triggers/invoke API raise); children only refuse.
+    mode = (
+        "refuse" if not include_agent_memory_file else ("raise" if is_trigger_mode else "interrupt")
+    )
+    middleware = with_connection_guard(middleware, cfg, langchain_tools, mode=mode)
+    middleware = await with_usage_guard(middleware, cfg)
     return RuntimeComponents(
         model_candidates=model_candidates,
         model=model,

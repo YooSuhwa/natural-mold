@@ -1,5 +1,6 @@
 import { csrfStore } from '@/lib/auth/csrf'
 import { authGate } from '@/lib/auth/session-gate'
+import { withOrgScopeSignal } from '@/lib/org-scope/org-scope-signal'
 
 import { ApiError, throwApiError } from './errors'
 
@@ -150,33 +151,66 @@ async function withAuthRetry(path: string, send: () => Promise<Response>): Promi
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const method = (options?.method ?? 'GET').toUpperCase()
+  // Computed once: a 401 → refresh → retry stays on the issuing org generation.
+  const signal = withOrgScopeSignal(path, options?.signal)
   const send = (): Promise<Response> =>
     fetch(`${API_BASE}${path}`, {
       ...options,
       method,
       credentials: 'include',
       headers: buildHeaders(method, path, options?.headers),
+      signal,
     })
 
   const response = await withAuthRetry(path, send)
   if (!response.ok) await throwApiError(response, 'UNKNOWN_ERROR')
   if (response.status === 204) return undefined as T
+  // A body-less 202 (e.g. an access request on a hidden resource, plan 8.4) has no JSON.
+  if (response.status === 202) {
+    const text = await response.text()
+    return (text ? JSON.parse(text) : undefined) as T
+  }
   return response.json()
 }
 
 export async function apiFetchText(path: string, options?: RequestInit): Promise<string> {
   const method = (options?.method ?? 'GET').toUpperCase()
+  // Computed once: a 401 → refresh → retry stays on the issuing org generation.
+  const signal = withOrgScopeSignal(path, options?.signal)
   const send = (): Promise<Response> =>
     fetch(`${API_BASE}${path}`, {
       ...options,
       method,
       credentials: 'include',
       headers: buildHeaders(method, path, options?.headers),
+      signal,
     })
 
   const response = await withAuthRetry(path, send)
   if (!response.ok) await throwApiError(response, 'UNKNOWN_ERROR')
   return response.text()
+}
+
+/**
+ * Fetch a binary body (artifact bytes, downloads) with cookie auth, the same
+ * 401 → refresh → retry semantics and structured error parsing as
+ * ``apiFetch``, linked to the active organization's abort signal (plan 13.10).
+ * Accepts an API path or an absolute URL on ``API_BASE``.
+ */
+export async function apiFetchBinary(pathOrUrl: string, signal?: AbortSignal): Promise<Blob> {
+  const url = pathOrUrl.startsWith('/') ? `${API_BASE}${pathOrUrl}` : pathOrUrl
+  const path = pathOrUrl.startsWith(API_BASE) ? pathOrUrl.slice(API_BASE.length) : pathOrUrl
+  const scopedSignal = withOrgScopeSignal(path, signal)
+  const send = (): Promise<Response> =>
+    fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      signal: scopedSignal,
+    })
+
+  const response = await withAuthRetry(path, send)
+  if (!response.ok) await throwApiError(response, 'UNKNOWN_ERROR')
+  return response.blob()
 }
 
 /**
@@ -192,6 +226,7 @@ export async function apiUpload<T>(
   formData: FormData,
   signal?: AbortSignal,
 ): Promise<T> {
+  const scopedSignal = withOrgScopeSignal(path, signal)
   const send = (): Promise<Response> => {
     const headers: Record<string, string> = {}
     const csrf = csrfStore.get()
@@ -201,7 +236,7 @@ export async function apiUpload<T>(
       credentials: 'include',
       headers,
       body: formData,
-      signal,
+      signal: scopedSignal,
     })
   }
 
@@ -212,3 +247,5 @@ export async function apiUpload<T>(
 }
 
 export { API_BASE, ApiError }
+// Screen-facing error mapping (plan 13.1) through the one allowed API entry point.
+export { isNotFoundError, mapApiErrorToUiState, type ApiErrorUiKind } from './error-ui'

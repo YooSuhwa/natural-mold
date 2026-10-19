@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-AuditScope = Literal["mine", "all"]
+AuditScope = Literal["mine", "org", "all"]
 
 
 class AuditEventResponse(BaseModel):

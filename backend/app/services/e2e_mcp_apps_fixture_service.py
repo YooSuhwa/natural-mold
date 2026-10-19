@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.models.conversation_run import ConversationRun
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
@@ -33,14 +34,16 @@ async def create_fixture_records(
     *,
     conversation_id: uuid.UUID,
     agent_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     server_url: str,
     descriptors: Mapping[str, Mapping[str, Any]],
 ) -> E2EMcpAppsFixtureRecords:
     """Create the disposable MCP server, linked tools, and owning run."""
 
     server = McpServer(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=f"MCP Apps E2E {uuid.uuid4().hex[:8]}",
         transport="streamable_http",
         url=server_url,
@@ -68,7 +71,7 @@ async def create_fixture_records(
         db,
         conversation_id=conversation_id,
         agent_id=agent_id,
-        user_id=user_id,
+        context=context,
         source="chat",
         input_preview="Show the weather app.",
     )

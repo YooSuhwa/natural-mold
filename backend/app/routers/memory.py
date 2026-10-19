@@ -6,7 +6,13 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app import dependencies
+from app.authz.memory_agent_access import agent_edit_context
+from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, RES, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import agent_not_found, memory_not_found, memory_proposal_not_found
 from app.schemas.memory import (
     AgentMemorySettingsOut,
@@ -27,8 +33,9 @@ router = APIRouter(tags=["memory"])
 
 
 @router.get("/api/me/memory-settings", response_model=UserMemorySettingsOut)
+@authz_policy(PRIVATE("user_memory_settings"))
 async def get_user_memory_settings(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(dependencies.get_company_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> UserMemorySettingsOut:
     settings = await memory_service.get_user_settings(db, user.id)
@@ -36,26 +43,28 @@ async def get_user_memory_settings(
 
 
 @router.patch("/api/me/memory-settings", response_model=UserMemorySettingsOut)
+@authz_policy(PRIVATE("user_memory_settings"))
 async def update_user_memory_settings(
     payload: UserMemorySettingsUpdate,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    db: AsyncSession = Depends(dependencies.get_company_db),
+    user: CurrentUser = Depends(get_current_user),
 ) -> UserMemorySettingsOut:
     settings = await memory_service.update_user_settings(db, user.id, payload)
     return UserMemorySettingsOut.model_validate(settings)
 
 
-@router.get(
-    "/api/agents/{agent_id}/memory-settings",
-    response_model=AgentMemorySettingsOut,
-)
+@router.get("/api/agents/{agent_id}/memory-settings", response_model=AgentMemorySettingsOut)
+@authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
 async def get_agent_memory_settings(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> AgentMemorySettingsOut:
-    settings = await memory_service.get_agent_settings(db, agent_id, user.id)
+    scope = await agent_edit_context(db, authz, context, agent_id)  # F-09: can_edit holders
+    settings = await memory_service.get_agent_settings(db, agent_id, scope)
     if settings is None:
         raise agent_not_found()
     return AgentMemorySettingsOut.model_validate(settings)
@@ -65,30 +74,37 @@ async def get_agent_memory_settings(
     "/api/agents/{agent_id}/memory-settings",
     response_model=AgentMemorySettingsOut,
 )
+@authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
 async def update_agent_memory_settings(
     agent_id: uuid.UUID,
     payload: AgentMemorySettingsUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> AgentMemorySettingsOut:
-    settings = await memory_service.update_agent_settings(db, agent_id, user.id, payload)
+    owner = await agent_edit_context(db, authz, context, agent_id)  # F-09: editors too
+    update = memory_service.update_agent_settings
+    settings = await update(db, agent_id, owner, payload, actor=context)
     if settings is None:
         raise agent_not_found()
     return AgentMemorySettingsOut.model_validate(settings)
 
 
 @router.get("/api/memories", response_model=list[MemoryRecordOut])
+@authz_policy(PRIVATE("memory_records"))
 async def list_memories(
     scope: Literal["all", "user", "agent"] = Query("all"),
     agent_id: uuid.UUID | None = None,
     q: str | None = None,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[MemoryRecordOut]:
     records = await memory_service.list_memory_records(
         db,
-        user_id=user.id,
+        context=context,
         scope=None if scope == "all" else scope,
         agent_id=agent_id,
         q=q,
@@ -97,30 +113,34 @@ async def list_memories(
 
 
 @router.post("/api/memories", response_model=MemoryRecordOut, status_code=201)
+@authz_policy(PRIVATE("memory_records"))
 async def create_memory(
     payload: MemoryRecordCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryRecordOut:
-    record = await memory_service.create_memory_record(db, user_id=user.id, payload=payload)
+    record = await memory_service.create_memory_record(db, context=context, payload=payload)
     if record is None:
         raise agent_not_found()
     return MemoryRecordOut.model_validate(record)
 
 
 @router.patch("/api/memories/{memory_id}", response_model=MemoryRecordOut)
+@authz_policy(PRIVATE("memory_records", param="memory_id"))
 async def update_memory(
     memory_id: uuid.UUID,
     payload: MemoryRecordUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryRecordOut:
     record = await memory_service.update_memory_record(
         db,
         memory_id=memory_id,
-        user_id=user.id,
+        context=context,
         payload=payload,
     )
     if record is None:
@@ -129,16 +149,18 @@ async def update_memory(
 
 
 @router.delete("/api/memories/{memory_id}", status_code=204)
+@authz_policy(PRIVATE("memory_records", param="memory_id"))
 async def delete_memory(
     memory_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> Response:
     deleted = await memory_service.delete_memory_record(
         db,
         memory_id=memory_id,
-        user_id=user.id,
+        context=context,
     )
     if not deleted:
         raise memory_not_found()
@@ -146,15 +168,17 @@ async def delete_memory(
 
 
 @router.post("/api/memory-proposals", response_model=MemoryProposalOut, status_code=201)
+@authz_policy(PRIVATE("memory_proposals"))
 async def create_memory_proposal(
     payload: MemoryProposalCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryProposalOut:
     proposal = await memory_service.create_memory_proposal(
         db,
-        user_id=user.id,
+        context=context,
         payload=payload,
     )
     if proposal is None:
@@ -163,15 +187,17 @@ async def create_memory_proposal(
 
 
 @router.get("/api/memory-proposals/{proposal_id}", response_model=MemoryProposalOut)
+@authz_policy(PRIVATE("memory_proposals", param="proposal_id"))
 async def get_memory_proposal(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> MemoryProposalOut:
     proposal = await memory_service.get_memory_proposal(
         db,
         proposal_id=proposal_id,
-        user_id=user.id,
+        context=context,
     )
     if proposal is None:
         raise memory_proposal_not_found()
@@ -182,16 +208,18 @@ async def get_memory_proposal(
     "/api/memory-proposals/{proposal_id}/approve",
     response_model=MemoryProposalApprovalOut,
 )
+@authz_policy(PRIVATE("memory_proposals", param="proposal_id"))
 async def approve_memory_proposal(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryProposalApprovalOut:
     approved = await memory_service.approve_memory_proposal(
         db,
         proposal_id=proposal_id,
-        user_id=user.id,
+        context=context,
     )
     if approved is None:
         raise memory_proposal_not_found()
@@ -206,17 +234,19 @@ async def approve_memory_proposal(
     "/api/memory-proposals/{proposal_id}/edit-and-approve",
     response_model=MemoryProposalApprovalOut,
 )
+@authz_policy(PRIVATE("memory_proposals", param="proposal_id"))
 async def edit_and_approve_memory_proposal(
     proposal_id: uuid.UUID,
     payload: MemoryProposalEditApprove,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryProposalApprovalOut:
     approved = await memory_service.approve_memory_proposal(
         db,
         proposal_id=proposal_id,
-        user_id=user.id,
+        context=context,
         content=payload.content,
         reason=payload.reason,
     )
@@ -230,16 +260,18 @@ async def edit_and_approve_memory_proposal(
 
 
 @router.post("/api/memory-proposals/{proposal_id}/reject", response_model=MemoryProposalOut)
+@authz_policy(PRIVATE("memory_proposals", param="proposal_id"))
 async def reject_memory_proposal(
     proposal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryProposalOut:
     proposal = await memory_service.reject_memory_proposal(
         db,
         proposal_id=proposal_id,
-        user_id=user.id,
+        context=context,
     )
     if proposal is None:
         raise memory_proposal_not_found()

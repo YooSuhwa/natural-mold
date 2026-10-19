@@ -16,11 +16,27 @@ from app.agent_runtime.runtime_policy import (
     runtime_policy_to_json,
     validate_runtime_policy_snapshot,
 )
+from app.authz.execution_lock_cursor import LockClass
+from app.authz.organization_execution_gateway import (
+    acquire_execution_proof,
+    extend_proof_conversation,
+)
+from app.authz.organization_execution_proof import (
+    ExecutionTransactionProof,
+    execution_scope,
+    live_proof,
+)
+from app.authz.private_actor import require_private_actor
+from app.authz.run_agent_loader import require_shared_run_agent, run_agent_scope_predicate
+from app.authz.scoping import private_scope_predicate
+from app.error_codes import agent_not_found, conversation_not_found
+from app.exceptions import AppError
 from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER, Agent
 from app.models.agent_api import AgentApiRun
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.schemas.conversation_scope import ConversationPolicyTarget
 
 
 def snapshot_from_conversation(conversation: Conversation) -> ResolvedRuntimePolicy | None:
@@ -58,41 +74,85 @@ async def _has_prior_execution(
     return False
 
 
-async def ensure_conversation_runtime_policy(
+async def ensure_conversation_runtime_policy_from_locked_proof(
     db: AsyncSession,
-    conversation_id: uuid.UUID,
-    *,
-    current_trigger_run_id: uuid.UUID | None = None,
+    proof: ExecutionTransactionProof,
+    target: ConversationPolicyTarget,
 ) -> tuple[Conversation, Agent, ResolvedRuntimePolicy]:
-    """Lock and initialize one conversation snapshot using first-writer-wins semantics."""
+    """Initialize one scoped snapshot using rows the execution proof already locked.
+
+    The Conversation is the proof's locked row and the Agent is serialized by the
+    proof's Agent lifecycle lock, so no earlier lock class is reacquired.
+    """
+    proof.require_live(db)
+    proof.require_scope(execution_scope(target.context))
+    conversation = proof.cursor.held_row(LockClass.CONVERSATION, target.conversation_id)
+    if not isinstance(conversation, Conversation):
+        raise conversation_not_found()
+    if conversation.agent_id not in proof.agent_ids:
+        raise agent_not_found()
     result = await db.execute(
-        select(Conversation, Agent)
-        .join(Agent, Agent.id == Conversation.agent_id)
-        .where(Conversation.id == conversation_id)
-        .with_for_update(of=(Conversation, Agent))
+        select(Agent, Agent.runtime_profile, Agent.runtime_policy).where(
+            Agent.id == conversation.agent_id, run_agent_scope_predicate(target.context)
+        )
     )
     row = result.one_or_none()
     if row is None:
-        raise LookupError("conversation runtime policy owner not found")
-    conversation, agent = row
+        raise agent_not_found()
+    agent, runtime_profile, agent_policy = row
+    await require_shared_run_agent(agent, target.context)  # F-06: memoized can_run
     existing = snapshot_from_conversation(conversation)
     if existing is not None:
         return conversation, agent, existing
 
-    prior_execution = await _has_prior_execution(db, conversation.id, current_trigger_run_id)
-    if agent.runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER:
+    prior_execution = await _has_prior_execution(db, conversation.id, target.current_trigger_run_id)
+    if runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER:
         resolved = SKILL_BUILDER_RUNTIME_POLICY
     elif prior_execution:
         resolved = LEGACY_RUNTIME_POLICY
     else:
         try:
-            resolved = resolve_runtime_policy(agent.runtime_policy)
+            resolved = resolve_runtime_policy(agent_policy)
         except PydanticValidationError:
             from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 
             raise RuntimePolicySnapshotError from None
     _persist_snapshot(conversation, resolved)
     return conversation, agent, resolved
+
+
+async def ensure_conversation_runtime_policy(
+    db: AsyncSession, target: ConversationPolicyTarget
+) -> tuple[Conversation, Agent, ResolvedRuntimePolicy]:
+    """Compatibility gateway: reuse this transaction's proof or acquire the canonical prefix."""
+    proof = live_proof(db)
+    try:
+        await require_private_actor(db, target.context)
+        if proof is not None and not proof.covers_conversation(target.conversation_id):
+            await extend_proof_conversation(db, proof, target.context, target.conversation_id)
+        if proof is None:
+            agent_id = await db.scalar(
+                select(Conversation.agent_id)
+                .where(
+                    Conversation.id == target.conversation_id,
+                    private_scope_predicate(Conversation, target.context),
+                )
+                .execution_options(autoflush=False)
+            )
+            if agent_id is None:
+                raise conversation_not_found()
+            proof = await acquire_execution_proof(
+                db,
+                target.context,
+                root_agent_id=agent_id,
+                conversation_ids=(target.conversation_id,),
+            )
+    except AppError as exc:
+        # Same opaque denial as the former ``lock_private_conversation`` path.
+        if exc.code in {"AGENT_ARCHIVED", "AGENT_NOT_FOUND"}:
+            raise
+        raise conversation_not_found() from None
+    return await ensure_conversation_runtime_policy_from_locked_proof(db, proof, target)
 
 
 def copy_snapshot_to_run(

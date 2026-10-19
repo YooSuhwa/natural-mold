@@ -14,6 +14,7 @@ from app.marketplace.install_locks import lock_marketplace_item_install
 from app.models.marketplace import MarketplaceInstallation
 from app.models.skill import Skill
 from app.skills import service as skill_service
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 from tests.test_marketplace_install import _ensure_test_user, _make_published_skill_item
 
@@ -87,6 +88,8 @@ async def test_install_rechecks_existing_installation_after_item_lock(
                 origin_marketplace_version_id=version.id,
                 is_dirty=False,
                 last_modified_at=_now(),
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
             )
             installation = MarketplaceInstallation(
                 id=existing_installation_id,
@@ -98,6 +101,8 @@ async def test_install_rechecks_existing_installation_after_item_lock(
                 install_status="active",
                 is_dirty=False,
                 installed_at=_now(),
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
             )
             lock_db.add_all([skill, installation])
             await lock_db.flush()

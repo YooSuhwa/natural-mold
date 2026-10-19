@@ -10,15 +10,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.agent_publication_scope import require_agent_publication_scope
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
+from app.authz.scoping import private_scope_predicate, private_scoped
 from app.error_codes import (
     agent_not_found,
     marketplace_acl_required,
     marketplace_invalid_package,
     marketplace_invalid_visibility,
-    marketplace_item_not_found,
     marketplace_manage_forbidden,
 )
-from app.marketplace.access import can_manage_item
+from app.marketplace.access import ItemAuthorizer, can_manage_item, manageable_item
 from app.marketplace.payloads import canonical_json_bytes, canonical_json_hash
 from app.marketplace.publish_common import (
     clean_mapping as _clean_mapping,
@@ -353,27 +357,30 @@ def _execution_profile(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _load_agent(db: AsyncSession, *, agent_id: uuid.UUID, user_id: uuid.UUID) -> Agent:
-    result = await db.execute(
-        select(Agent)
-        .where(Agent.id == agent_id, Agent.user_id == user_id)
-        .options(
-            selectinload(Agent.model),
-            selectinload(Agent.llm_credential),
-            selectinload(Agent.tool_links)
-            .selectinload(AgentToolLink.tool)
-            .selectinload(Tool.credential),
-            selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
-            selectinload(Agent.mcp_tool_links)
-            .selectinload(AgentMcpToolLink.mcp_tool)
-            .selectinload(McpTool.server)
-            .selectinload(McpServer.credential),
-            selectinload(Agent.sub_agent_links),
+async def _load_agent(db: AsyncSession, *, agent_id: uuid.UUID, context: OrgContext) -> Agent:
+    with db.no_autoflush:
+        result = await db.execute(
+            select(Agent)
+            .where(Agent.id == agent_id, private_scope_predicate(Agent, context))
+            .options(
+                selectinload(Agent.model),
+                selectinload(Agent.llm_credential),
+                selectinload(Agent.tool_links)
+                .selectinload(AgentToolLink.tool)
+                .selectinload(Tool.credential),
+                selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
+                selectinload(Agent.mcp_tool_links)
+                .selectinload(AgentMcpToolLink.mcp_tool)
+                .selectinload(McpTool.server)
+                .selectinload(McpServer.credential),
+                selectinload(Agent.sub_agent_links),
+            )
+            .execution_options(autoflush=False, populate_existing=True)
         )
-    )
     agent = result.scalar_one_or_none()
     if agent is None:
         raise agent_not_found()
+    require_agent_publication_scope(agent, context)
     return agent
 
 
@@ -381,7 +388,17 @@ async def _load_fallback_models(db: AsyncSession, *, agent: Agent) -> list[Model
     fallback_ids = _fallback_model_ids(agent)
     if not fallback_ids:
         return []
-    rows = (await db.execute(select(Model).where(Model.id.in_(fallback_ids)))).scalars().all()
+    rows = (
+        (
+            await db.execute(
+                select(Model)
+                .where(Model.id.in_(fallback_ids))
+                .execution_options(autoflush=False, populate_existing=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
     by_id = {model.id: model for model in rows}
     return [by_id[model_id] for model_id in fallback_ids if model_id in by_id]
 
@@ -483,9 +500,39 @@ async def publish_agent(
     *,
     agent_id: uuid.UUID,
     user: CurrentUser,
+    context: OrgContext,
     body: PublishAgentIn,
+    authorize: ItemAuthorizer | None = None,
 ) -> MarketplaceItem:
-    agent = await _load_agent(db, agent_id=agent_id, user_id=user.id)
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    with db.no_autoflush:
+        scoped_agent_id = await db.scalar(
+            select(Agent.id)
+            .where(Agent.id == agent_id, private_scope_predicate(Agent, context))
+            .execution_options(autoflush=False, populate_existing=True)
+        )
+    if scoped_agent_id is None:
+        raise agent_not_found()
+
+    item: MarketplaceItem | None = None
+    if body.item_id is not None:
+        if authorize is None or not authorize.enforced:
+            with db.no_autoflush:
+                item = await db.scalar(
+                    private_scoped(
+                        select(MarketplaceItem).where(MarketplaceItem.id == body.item_id),
+                        MarketplaceItem,
+                        context,
+                    ).execution_options(autoflush=False, populate_existing=True)
+                )
+        item = await manageable_item(body.item_id, item, user, authorize)
+        if item.resource_type != "agent":
+            raise marketplace_invalid_package("marketplace item is not an Agent item")
+
+    await load_agent_tree_for_execution(db, AgentExecutionTarget(agent_id, context))
+    agent = await _load_agent(db, agent_id=agent_id, context=context)
 
     if body.visibility not in ("private", "restricted", "public", "unlisted"):
         raise marketplace_invalid_visibility(f"unsupported publish visibility: {body.visibility}")
@@ -499,21 +546,12 @@ async def publish_agent(
     fallback_models = await _load_fallback_models(db, agent=agent)
     _reject_model_base_url_secrets(agent, fallback_models)
 
-    item: MarketplaceItem | None = None
-    if body.item_id is not None:
-        item = await db.get(MarketplaceItem, body.item_id)
-        if item is None:
-            raise marketplace_item_not_found()
-        if not can_manage_item(item, user):
-            raise marketplace_manage_forbidden()
-        if item.resource_type != "agent":
-            raise marketplace_invalid_package("marketplace item is not an Agent item")
-    else:
+    if item is None:
         slug = _slugify(body.name)
         item = (
             await db.execute(
                 select(MarketplaceItem)
-                .where(MarketplaceItem.owner_user_id == user.id)
+                .where(private_scope_predicate(MarketplaceItem, context))
                 .where(MarketplaceItem.resource_type == "agent")
                 .where(MarketplaceItem.slug == slug)
                 .limit(1)
@@ -523,7 +561,9 @@ async def publish_agent(
             item = MarketplaceItem(
                 id=uuid.uuid4(),
                 resource_type="agent",
-                owner_user_id=user.id,
+                owner_user_id=context.user_id,
+                org_id=context.org_id,
+                tenant_id=context.tenant_id,
                 is_system=False,
                 is_listed=False,
                 name=body.name,

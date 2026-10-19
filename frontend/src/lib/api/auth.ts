@@ -10,6 +10,8 @@ export interface RegisterPayload {
   email: string
   password: string
   display_name: string
+  /** S12: joins the inviting company/organization on sign-up (B-05). */
+  invitation_token?: string
 }
 
 export interface ProfileUpdatePayload {

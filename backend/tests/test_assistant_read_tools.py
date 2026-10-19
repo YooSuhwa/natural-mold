@@ -13,10 +13,17 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -32,6 +39,7 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
     )
     db.add(model)
     await db.flush()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     agent = Agent(
         user_id=user.id,
         name="Read Test Agent",
@@ -40,6 +48,8 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
         model_id=model.id,
         model_params={"temperature": 0.7, "recursion_limit": 30},
         opener_questions=["안녕하세요"],
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
@@ -47,6 +57,9 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
         name="Web Search",
         definition_key="builtin:web_search",
         description="Search the web",
+        is_system=True,
+        org_id=None,
+        tenant_id=None,
     )
     db.add(tool)
     await db.flush()
@@ -77,7 +90,7 @@ def _build_tools(db: AsyncSession, agent_id: uuid.UUID):
     """Build read tools."""
     from app.agent_runtime.assistant.tools.read_tools import build_read_tools
 
-    return build_read_tools(db, agent_id, TEST_USER_ID)
+    return build_read_tools(db, agent_id, unit_context(TEST_USER_ID))
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +266,8 @@ async def test_list_available_skills_returns_user_skills(db: AsyncSession, patch
         description="A helper skill",
         kind="text",
         storage_path="/tmp/skills/myhelper/SKILL.md",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(skill)
     await db.commit()
@@ -299,6 +314,8 @@ async def test_list_available_subagents_with_other_agent(db: AsyncSession, patch
         description="Another agent",
         system_prompt="system",
         model_id=model_id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(other_agent)
     await db.commit()
@@ -341,6 +358,9 @@ async def test_get_agent_required_secrets_with_naver_tool(db: AsyncSession, patc
         name="Naver Search",
         definition_key="naver_search_blog",
         description="Naver search",
+        is_system=True,
+        org_id=None,
+        tenant_id=None,
     )
     db.add(naver_tool)
     await db.flush()
@@ -450,6 +470,8 @@ async def test_list_cron_schedules_with_trigger(db: AsyncSession, patch_read_ses
         trigger_type="cron",
         schedule_config={"type": "cron", "expression": "0 * * * *"},
         input_message="테스트 메시지",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(trigger)
     await db.commit()
@@ -487,6 +509,8 @@ async def test_get_cron_schedule(db: AsyncSession, patch_read_session):
         trigger_type="cron",
         schedule_config={"type": "cron", "expression": "30 * * * *"},
         input_message="상세 조회 테스트",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(trigger)
     await db.commit()

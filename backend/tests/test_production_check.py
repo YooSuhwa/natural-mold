@@ -25,6 +25,15 @@ _PROD_OVERRIDES = {
     "allow_first_user_as_admin": False,
     "cors_allowed_origins": "https://app.example.com",
     "encryption_keys": "00" * 32,
+    # I-09: internal hops use verified TLS (see tests/authz/test_i09_internal_tls_check.py).
+    "database_url": "postgresql+asyncpg://moldy:moldy@db.internal:5432/moldy?ssl=verify-full",
+    "database_url_sync": "postgresql://moldy:moldy@db.internal:5432/moldy?sslmode=verify-full",
+    "openfga_api_url": "https://openfga.internal:8080",
+    "internal_plaintext_hosts": "",
+    "migration_database_url": "",
+    "vault_url": "",
+    "openfga_ca_cert": "",
+    "vault_ca_cert": "",
 }
 
 

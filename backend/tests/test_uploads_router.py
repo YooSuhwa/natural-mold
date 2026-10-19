@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.message_attachment import MessageAttachment
 from app.models.user import User
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID  # noqa: F401  — import side effects
 
 
@@ -120,6 +121,8 @@ async def test_get_upload_other_user_is_404(client: AsyncClient, db: AsyncSessio
             size_bytes=12,
             storage_path=str(storage_path),
             url=f"/api/uploads/{upload_id}",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
     )
     await db.commit()

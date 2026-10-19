@@ -19,14 +19,22 @@ Assistant, and other service flows use ``system_credential_resolver`` instead.
 from __future__ import annotations
 
 import logging
-import uuid
+from dataclasses import replace
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.identity import AgentRunIdentity
+from app.agent_runtime.credential_access import AgentCredentialAccess
+from app.authz.error_codes import authorization_error
+from app.authz.org_context import OrgContext
+from app.authz.run_decisions import require_decided
+from app.authz.runtime import runtime_authz
+from app.authz.scoping import private_scoped
+from app.authz.service_types import Verdict
 from app.config import settings
 from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
+from app.credentials.run_subject import subject_for_agent
 from app.credentials.service import PROVIDER_TO_DEFINITION_KEY
 from app.exceptions import AppError
 from app.models.agent import Agent
@@ -61,8 +69,7 @@ class LLMCredentialRequiredError(AppError):
 async def resolve_llm_api_key_for_agent(
     db: AsyncSession,
     agent: Agent,
-    *,
-    identity: AgentRunIdentity | None = None,
+    access: AgentCredentialAccess,
 ) -> str | None:
     """Decrypt the best available credential for ``agent`` and return its key.
 
@@ -73,7 +80,8 @@ async def resolve_llm_api_key_for_agent(
     backend stdout 로 진단 가능 (silent fail 회귀 방지).
     """
 
-    subject_user_id = identity.credential_subject_user_id if identity is not None else agent.user_id
+    subject = replace(access.context, user_id=access.identity.credential_subject_user_id)
+    subject_user_id = subject.user_id
     model = getattr(agent, "model", None)
     if _allows_keyless_dev_model(model):
         logger.info(
@@ -85,7 +93,9 @@ async def resolve_llm_api_key_for_agent(
 
     cred = getattr(agent, "llm_credential", None)
     if cred is not None:
-        if _credential_owned_by_subject(cred, subject_user_id):
+        if _credential_owned_by_subject(cred, subject) or await llm_credential_delegated(
+            cred, agent, access
+        ):
             key = await _decrypt_api_key(cred)
             if key is not None:
                 logger.info(
@@ -110,7 +120,7 @@ async def resolve_llm_api_key_for_agent(
 
     if model is not None and model.default_credential_id is not None:
         fallback_cred = await credential_service.get_for_user(
-            db, model.default_credential_id, subject_user_id
+            db, model.default_credential_id, subject
         )
         if fallback_cred is not None:
             key = await _decrypt_api_key(fallback_cred)
@@ -145,9 +155,8 @@ async def resolve_llm_api_key_for_agent(
         definition_key = PROVIDER_TO_DEFINITION_KEY[model.provider]
         matches = (
             await db.execute(
-                select(Credential)
+                private_scoped(select(Credential), Credential, subject)
                 .where(
-                    Credential.user_id == subject_user_id,
                     Credential.is_system.is_(False),
                     Credential.definition_key == definition_key,
                     Credential.status == "active",
@@ -192,19 +201,53 @@ def _allows_keyless_dev_model(model: object | None) -> bool:
     )
 
 
-def _credential_owned_by_subject(cred: Credential, subject_user_id: uuid.UUID) -> bool:
+def _credential_owned_by_subject(cred: Credential, subject: OrgContext) -> bool:
     return (
-        cred.user_id == subject_user_id
+        cred.user_id == subject.user_id
+        and cred.org_id == subject.org_id
+        and cred.tenant_id == subject.tenant_id
         and bool(getattr(cred, "is_system", False)) is False
         and getattr(cred, "status", "active") == "active"
     )
+
+
+async def llm_credential_delegated(
+    cred: Credential, agent: Agent, access: AgentCredentialAccess
+) -> bool:
+    """Tier 1 delegation (11.3): a credential the run does not own is usable when the
+    11.1 decision subject (``agent:A`` for fixed runs, ``user:caller`` for caller-identity
+    runs) has ``credential#can_use``. Legacy keeps the owner-only answer."""
+    context = access.context
+    if (
+        bool(getattr(cred, "is_system", False))
+        or (cred.org_id, cred.tenant_id) != (context.org_id, context.tenant_id)
+        or getattr(cred, "status", "active") != "active"
+    ):
+        return False
+    subject = subject_for_agent(agent, context, access.identity)
+    try:
+        await require_decided(  # F-06: memoized, so a lease decides it before its locks
+            runtime_authz(),
+            subject.principal,
+            "can_use",
+            f"credential:{cred.id}",
+            min_visible="can_use",
+            resource_org_id=cred.org_id,
+            legacy=Verdict.NOT_FOUND,
+            not_found=authorization_error("not_found"),
+        )
+    except AppError as denied:
+        if denied.status in (403, 404):
+            return False
+        raise
+    return True
 
 
 async def _decrypt_api_key(cred: Credential) -> str | None:
     """Decrypt and pluck out the conventional ``api_key`` / ``token`` field."""
 
     try:
-        payload = await credential_service.decrypt_with_external(cred.data_encrypted)
+        payload = await open_values(cred, "run")
     except Exception:  # noqa: BLE001 — surface as missing key
         logger.exception("LLM credential %s decryption failed", cred.id)
         return None

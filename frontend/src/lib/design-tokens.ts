@@ -7,6 +7,8 @@ export const DIALOG_SIZE = {
 } as const
 
 export const DIALOG_HEIGHT = {
+  // Short confirm/form dialogs: size to the content, capped by the viewport.
+  compact: 'h-auto max-h-[calc(100vh-4rem)]',
   auto: 'h-[480px] max-h-[calc(100vh-4rem)]',
   fixed: 'h-[640px] max-h-[calc(100vh-4rem)]',
   tall: 'h-[760px] max-h-[calc(100vh-4rem)]',

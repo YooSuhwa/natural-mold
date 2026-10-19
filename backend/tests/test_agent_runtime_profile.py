@@ -9,28 +9,54 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.models.agent import (
     AGENT_RUNTIME_PROFILE_SKILL_BUILDER,
     AGENT_RUNTIME_PROFILE_STANDARD,
     Agent,
 )
 from app.models.conversation import Conversation
-from app.models.daily_spend_agent import DailySpendAgent
 from app.models.model import Model
+from app.models.token_usage import TokenUsage
 from app.services.usage_aggregate import get_daily_spend
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
 
 
+def _own_usage(agent: Agent, day: date, tokens_in: int, tokens_out: int) -> TokenUsage:
+    """The user's own billed usage (agent breakdowns read ``token_usages``, F-14)."""
+    return TokenUsage(
+        conversation_id=uuid.uuid4(),
+        agent_id=agent.id,
+        caller_user_id=TEST_USER_ID,
+        model_name="m",
+        prompt_tokens=tokens_in,
+        completion_tokens=tokens_out,
+        total_tokens=tokens_in + tokens_out,
+        created_at=datetime.combine(day, datetime.min.time()).replace(hour=12),
+    )
+
+
 async def _seed_agents(db: AsyncSession) -> tuple[Agent, Agent]:
     """표준 에이전트 1 + 히든(skill_builder) 에이전트 1을 만든다."""
 
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.flush()
@@ -40,6 +66,8 @@ async def _seed_agents(db: AsyncSession) -> tuple[Agent, Agent]:
         name="Visible Agent",
         system_prompt="You are visible.",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     hidden = Agent(
         user_id=TEST_USER_ID,
@@ -47,6 +75,8 @@ async def _seed_agents(db: AsyncSession) -> tuple[Agent, Agent]:
         system_prompt="You are hidden.",
         model_id=model.id,
         runtime_profile=AGENT_RUNTIME_PROFILE_SKILL_BUILDER,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([standard, hidden])
     await db.commit()
@@ -116,8 +146,26 @@ async def test_navigator_excludes_hidden_agent_conversations(
     standard, hidden = await _seed_agents(db)
     db.add_all(
         [
-            Conversation(agent_id=standard.id, title="visible talk", source="ui"),
-            Conversation(agent_id=hidden.id, title="builder talk", source="ui"),
+            Conversation(
+                agent_id=standard.id,
+                title="visible talk",
+                source="ui",
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
+                user_id=standard.user_id,
+                agent_name_snapshot=standard.name,
+                last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+            ),
+            Conversation(
+                agent_id=hidden.id,
+                title="builder talk",
+                source="ui",
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
+                user_id=hidden.user_id,
+                agent_name_snapshot=hidden.name,
+                last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+            ),
         ]
     )
     await db.commit()
@@ -134,16 +182,7 @@ async def test_usage_summary_by_agent_excludes_hidden(
 ) -> None:
     standard, hidden = await _seed_agents(db)
     today = datetime.now(UTC).date()
-    db.add_all(
-        [
-            DailySpendAgent(
-                date=today, agent_id=standard.id, total_tokens_in=10, total_tokens_out=5
-            ),
-            DailySpendAgent(
-                date=today, agent_id=hidden.id, total_tokens_in=100, total_tokens_out=50
-            ),
-        ]
-    )
+    db.add_all([_own_usage(standard, today, 10, 5), _own_usage(hidden, today, 100, 50)])
     await db.commit()
 
     summary = await client.get("/api/usage/summary")
@@ -156,12 +195,7 @@ async def test_usage_summary_by_agent_excludes_hidden(
 async def test_daily_spend_agent_axis_excludes_hidden(db: AsyncSession) -> None:
     standard, hidden = await _seed_agents(db)
     day = date(2026, 7, 1)
-    db.add_all(
-        [
-            DailySpendAgent(date=day, agent_id=standard.id, total_tokens_in=10, total_tokens_out=5),
-            DailySpendAgent(date=day, agent_id=hidden.id, total_tokens_in=100, total_tokens_out=50),
-        ]
-    )
+    db.add_all([_own_usage(standard, day, 10, 5), _own_usage(hidden, day, 100, 50)])
     await db.commit()
 
     rows = await get_daily_spend(
@@ -225,6 +259,8 @@ async def test_hidden_agent_absent_from_assistant_subagent_listing(
         name="Other Standard",
         system_prompt="visible candidate",
         model_id=standard.model_id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(other)
     await db.commit()
@@ -233,7 +269,7 @@ async def test_hidden_agent_absent_from_assistant_subagent_listing(
         "app.agent_runtime.assistant.tools.read_tools.async_session_factory",
         TestSession,
     ):
-        tools = build_read_tools(db, standard.id, TEST_USER_ID)
+        tools = build_read_tools(db, standard.id, unit_context(TEST_USER_ID))
         tool = next(t for t in tools if t.name == "list_available_subagents")
         items = json.loads(await tool.ainvoke({}))
 
@@ -273,7 +309,7 @@ async def test_hidden_agent_excluded_from_blueprint_name_resolution(
         await _resolve_sub_agent_ids(
             db,
             capabilities={"subagents": [{"name": hidden.name, "position": 0}]},
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
         )
 
     # 같은 이름의 표준 에이전트가 있으면 그쪽이 선택된다.
@@ -282,12 +318,14 @@ async def test_hidden_agent_excluded_from_blueprint_name_resolution(
         name=hidden.name,
         system_prompt="standard twin",
         model_id=standard.model_id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(twin)
     await db.commit()
     resolved_twin = await _resolve_sub_agent_ids(
         db,
         capabilities={"subagents": [{"name": hidden.name, "position": 0}]},
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
     assert resolved_twin == [twin.id]

@@ -73,3 +73,9 @@ class ConversationRunResponse(BaseModel):
     metrics: ConversationRunMetricsResponse | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ConversationRunHistoryResponse(ConversationRunResponse):
+    """Read-only Run projection whose Agent may have been purged."""
+
+    agent_id: uuid.UUID | None

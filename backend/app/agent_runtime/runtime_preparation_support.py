@@ -22,6 +22,8 @@ from app.agent_runtime.offload_storage import (
     ScopedOffloadStorage,
 )
 from app.agent_runtime.runtime_config import AgentConfig
+from app.authz.org_context import OrgContext
+from app.database import TenantScoped
 from app.marketplace.skill_runtime import SkillToolContext
 
 
@@ -32,7 +34,7 @@ class BuildSkillBuilderTools(Protocol):
         session_id: str,
         workspace_path: str,
         session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]],
-        user_id: str | None,
+        context: OrgContext,
         agent_id: str | None,
         credential_subject_user_id: str | None,
         include_runtime_tools: bool,
@@ -59,10 +61,11 @@ class BuildMemoryTools(Protocol):
     def __call__(
         self,
         *,
-        user_id: str,
+        context: OrgContext,
         agent_id: str | None,
         conversation_id: str,
         is_trigger_mode: bool,
+        agent_memo_proposals: bool = False,
     ) -> list[BaseTool]: ...
 
 
@@ -109,6 +112,7 @@ class BuildFilesystemPermissions(Protocol):
         selected_skill_slugs: list[str],
         agent_runtime_name: str | None,
         draft_workspace_path: str | None = None,
+        agent_memory_file: bool = True,
     ) -> list[FilesystemPermission]: ...
 
 
@@ -166,7 +170,7 @@ class RuntimePreparationBindings:
     get_provider_middleware: Callable[[str], list[AgentMiddleware]]
     scoped_runtime_backend: ScopedBackendFactory
     build_skill_runtime_context: BuildSkillRuntimeContext
-    runtime_db_session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]]
+    runtime_db_session_factory: Callable[[TenantScoped], AbstractAsyncContextManager[AsyncSession]]
     resolve_runtime_credentials: ResolveRuntimeCredentials
     add_skill_secrets_to_run: Callable[[SkillToolContext, AgentConfig], None]
     create_skill_execute_tool: Callable[[SkillToolContext], BaseTool]
@@ -183,12 +187,12 @@ class RuntimePreparationBindings:
     session_consent_eligible_tools: frozenset[str]
 
 
-def runtime_db_session_factory() -> AbstractAsyncContextManager[AsyncSession]:
+def runtime_db_session_factory(scope: TenantScoped) -> AbstractAsyncContextManager[AsyncSession]:
     """Resolve the owning database session factory at operation time."""
 
-    from app.database import async_session
+    from app.database import async_session, tenant_session
 
-    return async_session()
+    return tenant_session(scope, maker=async_session)
 
 
 def build_runtime_skills_prompt(agent_skills: list[dict[str, Any]]) -> str:

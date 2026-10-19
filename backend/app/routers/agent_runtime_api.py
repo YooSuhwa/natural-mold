@@ -16,7 +16,9 @@ from app.agent_api.sse_adapter import (
     adapt_internal_stream_to_openai,
     format_openai_data_sse,
 )
-from app.agent_runtime.agent_stream_runner import execute_agent_invoke, execute_agent_stream
+from app.authz.agent_api_access import bind_agent_api_authz, deployable_agent_ids
+from app.authz.agent_api_scope import private_deployment_predicate
+from app.authz.policies import KEY, PUBLIC, authz_policy
 from app.dependencies import get_db
 from app.exceptions import AppError
 from app.models.agent_api import AgentDeployment
@@ -29,7 +31,10 @@ from app.schemas.agent_api import (
 )
 from app.services import audit_service
 
-router = APIRouter(prefix="/v1", tags=["agent-runtime-api"])
+# KEY routes re-check the key owner's agent#can_deploy in the runtime services (D-06).
+router = APIRouter(
+    prefix="/v1", tags=["agent-runtime-api"], dependencies=[Depends(bind_agent_api_authz)]
+)
 
 _SSE_HEADERS = {
     "Cache-Control": "no-cache",
@@ -174,33 +179,36 @@ async def _mark_stream_run_failed_and_raise(
 
 
 @router.get("/health")
+@authz_policy(PUBLIC)
 async def public_health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @router.get("/agents")
+@authz_policy(KEY())
 async def list_public_agents(
     db: AsyncSession = Depends(get_db),
     principal: ApiKeyPrincipal = Depends(get_api_key_principal),
 ) -> dict[str, list[dict[str, object]]]:
     principal.require_scope("read")
-    if principal.key.allow_all_deployments:
-        result = await db.execute(
-            select(AgentDeployment)
-            .where(
-                AgentDeployment.user_id == principal.user_id,
-                AgentDeployment.status == "active",
-            )
-            .options(selectinload(AgentDeployment.agent))
-            .order_by(AgentDeployment.created_at.desc())
+    statement = (
+        select(AgentDeployment)
+        .where(
+            private_deployment_predicate(principal.context),
+            AgentDeployment.status == "active",
         )
-        deployments = list(result.scalars().all())
-    else:
-        deployments = [
-            link.deployment
-            for link in principal.key.deployment_links
-            if link.deployment is not None and link.deployment.status == "active"
-        ]
+        .options(selectinload(AgentDeployment.agent))
+        .execution_options(populate_existing=True, autoflush=False)
+        .order_by(AgentDeployment.created_at.desc())
+    )
+    if not principal.key.allow_all_deployments:
+        statement = statement.where(
+            AgentDeployment.id.in_([link.deployment_id for link in principal.key.deployment_links])
+        )
+    result = await db.execute(statement)
+    deployments = list(result.scalars().all())
+    deployable = await deployable_agent_ids(principal.context, [d.agent_id for d in deployments])
+    deployments = [deployment for deployment in deployments if deployment.agent_id in deployable]
 
     data: list[dict[str, object]] = []
     for deployment in deployments:
@@ -216,14 +224,8 @@ async def list_public_agents(
                     scope
                     for scope in ("invoke", "stream", "background")
                     if scope in set(principal.key.scopes or [])
-                    and (
-                        scope != "stream"
-                        or deployment.allow_streaming
-                    )
-                    and (
-                        scope != "background"
-                        or deployment.allow_background
-                    )
+                    and (scope != "stream" or deployment.allow_streaming)
+                    and (scope != "background" or deployment.allow_background)
                 ],
             }
         )
@@ -231,6 +233,7 @@ async def list_public_agents(
 
 
 @router.post("/threads", response_model=AgentThreadResponse, status_code=201)
+@authz_policy(KEY())
 async def create_thread(
     request: AgentThreadCreateRequest,
     db: AsyncSession = Depends(get_db),
@@ -261,6 +264,7 @@ async def create_thread(
 
 
 @router.get("/threads/{thread_id}", response_model=AgentThreadResponse)
+@authz_policy(KEY())
 async def get_thread(
     thread_id: str,
     db: AsyncSession = Depends(get_db),
@@ -276,6 +280,7 @@ async def get_thread(
 
 
 @router.post("/runs/wait", response_model=AgentRunResponse)
+@authz_policy(KEY())
 async def run_wait(
     request: AgentRunRequest,
     db: AsyncSession = Depends(get_db),
@@ -291,7 +296,16 @@ async def run_wait(
     conversation = await runtime_service.create_api_conversation(
         db,
         deployment,
+        principal=principal,
         title="API run",
+    )
+    cfg = await runtime_service.build_config_for_run(
+        db,
+        principal=principal,
+        deployment=deployment,
+        conversation=conversation,
+        external_user=request.user,
+        required_scope="invoke",
     )
     run = await runtime_service.create_run_row(
         db,
@@ -303,20 +317,20 @@ async def run_wait(
         input_payload={"messages": messages},
         metadata=request.metadata,
     )
+    await db.refresh(run)
+    if run.conversation_run_id is None or run.conversation_id is None:
+        raise RuntimeError("accepted API run is missing durable ownership")
+    owned_execution = runtime_service.ApiOwnedExecution(
+        conversation_run_id=run.conversation_run_id,
+        conversation_id=run.conversation_id,
+        root_agent_id=deployment.agent_id,
+        context=principal.context,
+        public_run_id=run.public_id,
+        config=cfg,
+        messages=messages,
+    )
     try:
-        cfg = await runtime_service.build_config_for_run(
-            db,
-            principal=principal,
-            deployment=deployment,
-            conversation=conversation,
-            external_user=request.user,
-        )
-        answer = await execute_agent_invoke(
-            cfg,
-            messages,
-            run_id=run.public_id,
-            moldy_source="api",
-        )
+        answer = await runtime_service.execute_owned_wait(owned_execution)
         run = await runtime_service.mark_run_succeeded(
             db,
             run,
@@ -341,9 +355,7 @@ async def run_wait(
             run=run,
             action="agent_api.run_wait",
             outcome="failure",
-            reason_code=(
-                exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"
-            ),
+            reason_code=(exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"),
             reason_message=getattr(exc, "message", str(exc)),
         )
         await db.commit()
@@ -394,11 +406,21 @@ async def _run_stream_response(
         conversation = await runtime_service.create_api_conversation(
             db,
             deployment,
+            principal=principal,
             title="API stream",
         )
         api_thread_id = None
         public_thread_id = None
         external_user = request.user
+
+    cfg = await runtime_service.build_config_for_run(
+        db,
+        principal=principal,
+        deployment=deployment,
+        conversation=conversation,
+        external_user=external_user,
+        required_scope="stream",
+    )
 
     run = await runtime_service.create_run_row(
         db,
@@ -410,34 +432,18 @@ async def _run_stream_response(
         input_payload={"messages": messages},
         metadata=request.metadata,
     )
-    try:
-        cfg = await runtime_service.build_config_for_run(
-            db,
-            principal=principal,
-            deployment=deployment,
-            conversation=conversation,
-            external_user=external_user,
-        )
-    except Exception as exc:
-        await _record_agent_api_run_audit(
-            db,
-            principal=principal,
-            deployment=deployment,
-            request=request,
-            run=run,
-            action=(
-                "agent_api.thread_run_stream"
-                if thread_id is not None
-                else "agent_api.run_stream"
-            ),
-            outcome="failure",
-            reason_code=(
-                exc.code if isinstance(exc, AppError) else "AGENT_API_STREAM_FAILED"
-            ),
-            reason_message=getattr(exc, "message", str(exc)),
-        )
-        await db.commit()
-        await _mark_stream_run_failed_and_raise(db, run, exc)
+    await db.refresh(run)
+    if run.conversation_run_id is None or run.conversation_id is None:
+        raise RuntimeError("accepted API run is missing durable ownership")
+    owned_execution = runtime_service.ApiOwnedExecution(
+        conversation_run_id=run.conversation_run_id,
+        conversation_id=run.conversation_id,
+        root_agent_id=deployment.agent_id,
+        context=principal.context,
+        public_run_id=run.public_id,
+        config=cfg,
+        messages=messages,
+    )
 
     await _record_agent_api_run_audit(
         db,
@@ -445,30 +451,22 @@ async def _run_stream_response(
         deployment=deployment,
         request=request,
         run=run,
-        action=(
-            "agent_api.thread_run_stream"
-            if thread_id is not None
-            else "agent_api.run_stream"
-        ),
+        action=("agent_api.thread_run_stream" if thread_id is not None else "agent_api.run_stream"),
         outcome="success",
         metadata={"accepted": True},
     )
     await db.commit()
 
     async def generator() -> AsyncGenerator[str, None]:
+        internal = runtime_service.stream_owned_run(owned_execution)
+        adapted = adapt_internal_stream(
+            internal,
+            run_id=run.public_id,
+            thread_id=public_thread_id,
+            agent_id=deployment.public_id,
+        )
         try:
-            internal = execute_agent_stream(
-                cfg,
-                messages,
-                run_id=run.public_id,
-                moldy_source="api",
-            )
-            async for chunk in adapt_internal_stream(
-                internal,
-                run_id=run.public_id,
-                thread_id=public_thread_id,
-                agent_id=deployment.public_id,
-            ):
+            async for chunk in adapted:
                 yield chunk
             await runtime_service.mark_run_succeeded(db, run, output={})
         except Exception as exc:  # noqa: BLE001 - stream errors must be visible to clients
@@ -481,6 +479,9 @@ async def _run_stream_response(
             from app.agent_runtime.streaming import format_sse
 
             yield format_sse("error", {"message": str(exc)})
+        finally:
+            await adapted.aclose()
+            await internal.aclose()
 
     return StreamingResponse(
         generator(),
@@ -506,7 +507,16 @@ async def _run_openai_stream_response(
     conversation = await runtime_service.create_api_conversation(
         db,
         deployment,
+        principal=principal,
         title="OpenAI-compatible stream",
+    )
+    cfg = await runtime_service.build_config_for_run(
+        db,
+        principal=principal,
+        deployment=deployment,
+        conversation=conversation,
+        external_user=request.user,
+        required_scope="stream",
     )
     run = await runtime_service.create_run_row(
         db,
@@ -518,31 +528,29 @@ async def _run_openai_stream_response(
         input_payload={"messages": messages},
         metadata=request.metadata,
     )
-    try:
-        cfg = await runtime_service.build_config_for_run(
-            db,
-            principal=principal,
-            deployment=deployment,
-            conversation=conversation,
-            external_user=request.user,
-        )
-    except Exception as exc:
-        await _mark_stream_run_failed_and_raise(db, run, exc)
+    await db.refresh(run)
+    if run.conversation_run_id is None or run.conversation_id is None:
+        raise RuntimeError("accepted API run is missing durable ownership")
+    owned_execution = runtime_service.ApiOwnedExecution(
+        conversation_run_id=run.conversation_run_id,
+        conversation_id=run.conversation_id,
+        root_agent_id=deployment.agent_id,
+        context=principal.context,
+        public_run_id=run.public_id,
+        config=cfg,
+        messages=messages,
+    )
 
     async def generator() -> AsyncGenerator[str, None]:
+        internal = runtime_service.stream_owned_run(owned_execution)
+        adapted = adapt_internal_stream_to_openai(
+            internal,
+            run_id=run.public_id,
+            model=model,
+            created_at=run.created_at,
+        )
         try:
-            internal = execute_agent_stream(
-                cfg,
-                messages,
-                run_id=run.public_id,
-                moldy_source="api",
-            )
-            async for chunk in adapt_internal_stream_to_openai(
-                internal,
-                run_id=run.public_id,
-                model=model,
-                created_at=run.created_at,
-            ):
+            async for chunk in adapted:
                 yield chunk
             await runtime_service.mark_run_succeeded(db, run, output={})
         except Exception as exc:  # noqa: BLE001 - stream errors must be visible to clients
@@ -554,6 +562,9 @@ async def _run_openai_stream_response(
             )
             yield format_openai_data_sse({"error": {"message": str(exc)}})
             yield format_openai_data_sse("[DONE]")
+        finally:
+            await adapted.aclose()
+            await internal.aclose()
 
     return StreamingResponse(
         generator(),
@@ -563,6 +574,7 @@ async def _run_openai_stream_response(
 
 
 @router.post("/runs/stream")
+@authz_policy(KEY())
 async def run_stream(
     request: AgentRunRequest,
     db: AsyncSession = Depends(get_db),
@@ -577,6 +589,7 @@ async def run_stream(
 
 
 @router.post("/threads/{thread_id}/runs/wait", response_model=AgentRunResponse)
+@authz_policy(KEY())
 async def thread_run_wait(
     thread_id: str,
     request: AgentRunRequest,
@@ -601,6 +614,14 @@ async def thread_run_wait(
             status=409,
         )
     messages = runtime_service.validate_messages(request)
+    cfg = await runtime_service.build_config_for_run(
+        db,
+        principal=principal,
+        deployment=deployment,
+        conversation=thread.conversation,
+        external_user=thread.external_user or request.user,
+        required_scope="invoke",
+    )
     run = await runtime_service.create_run_row(
         db,
         principal=principal,
@@ -611,20 +632,20 @@ async def thread_run_wait(
         input_payload={"messages": messages},
         metadata=request.metadata,
     )
+    await db.refresh(run)
+    if run.conversation_run_id is None or run.conversation_id is None:
+        raise RuntimeError("accepted API run is missing durable ownership")
+    owned_execution = runtime_service.ApiOwnedExecution(
+        conversation_run_id=run.conversation_run_id,
+        conversation_id=run.conversation_id,
+        root_agent_id=deployment.agent_id,
+        context=principal.context,
+        public_run_id=run.public_id,
+        config=cfg,
+        messages=messages,
+    )
     try:
-        cfg = await runtime_service.build_config_for_run(
-            db,
-            principal=principal,
-            deployment=deployment,
-            conversation=thread.conversation,
-            external_user=thread.external_user or request.user,
-        )
-        answer = await execute_agent_invoke(
-            cfg,
-            messages,
-            run_id=run.public_id,
-            moldy_source="api",
-        )
+        answer = await runtime_service.execute_owned_wait(owned_execution)
         run = await runtime_service.mark_run_succeeded(db, run, output={"answer": answer})
         await _record_agent_api_run_audit(
             db,
@@ -645,9 +666,7 @@ async def thread_run_wait(
             run=run,
             action="agent_api.thread_run_wait",
             outcome="failure",
-            reason_code=(
-                exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"
-            ),
+            reason_code=(exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"),
             reason_message=getattr(exc, "message", str(exc)),
         )
         await db.commit()
@@ -664,6 +683,7 @@ async def thread_run_wait(
 
 
 @router.post("/threads/{thread_id}/runs/stream")
+@authz_policy(KEY())
 async def thread_run_stream(
     thread_id: str,
     request: AgentRunRequest,
@@ -679,6 +699,7 @@ async def thread_run_stream(
 
 
 @router.post("/agents/{public_id}/chat-messages", response_model=None)
+@authz_policy(KEY())
 async def dify_chat_messages(
     public_id: str,
     payload: dict[str, Any],
@@ -728,6 +749,7 @@ async def dify_chat_messages(
 
 
 @router.post("/workflows/run", response_model=None)
+@authz_policy(KEY())
 async def dify_workflow_run(
     payload: dict[str, Any],
     db: AsyncSession = Depends(get_db),
@@ -758,6 +780,7 @@ async def dify_workflow_run(
 
 
 @router.post("/chat/completions", response_model=None)
+@authz_policy(KEY())
 async def openai_chat_completions(
     payload: dict[str, Any],
     db: AsyncSession = Depends(get_db),

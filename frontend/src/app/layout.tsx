@@ -8,6 +8,7 @@ import { Toaster } from 'sonner'
 import './globals.css'
 import '@/components/agent-prism/theme/theme.css'
 import { AppLayout } from '@/components/layout/app-layout'
+import { DelegationConfirmHost } from '@/components/sharing/delegation-confirm-host'
 import { ROOT_MESSAGE_NAMESPACES, getScopedMessages } from '@/i18n/scoped-messages'
 import { readSidebarWidthCookie, SIDEBAR_WIDTH_COOKIE_NAME } from '@/lib/stores/sidebar-store'
 
@@ -56,6 +57,7 @@ export default async function RootLayout({
             disableTransitionOnChange
           >
             <AppLayout initialSidebarWidth={initialSidebarWidth}>{children}</AppLayout>
+            <DelegationConfirmHost />
             <Toaster
               position="top-center"
               richColors

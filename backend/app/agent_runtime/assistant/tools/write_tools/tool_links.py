@@ -5,10 +5,16 @@ from __future__ import annotations
 from langchain_core.tools import StructuredTool
 from sqlalchemy import func, select
 
+from app.agent_runtime.assistant.tools.write_tools.attach_guard import (
+    commit_links,
+    commit_relinked,
+)
 from app.agent_runtime.assistant.tools.write_tools.context import (
     WriteToolContext,
     get_agent_with_session,
 )
+from app.authz.assistant_scope import keep_linkable
+from app.authz.scoping import private_scope_predicate, resource_candidates
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.tool import AgentToolLink, Tool
@@ -36,18 +42,21 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                 return "모든 도구가 이미 추가되어 있습니다."
 
             result = await session.execute(
-                select(Tool).where(
-                    Tool.visible_to(ctx.user_id),
-                    func.lower(Tool.name).in_(lower_names),
+                resource_candidates(
+                    select(Tool).where(func.lower(Tool.name).in_(lower_names)),
+                    Tool,
+                    ctx.org_context,
                 )
             )
-            found_tools = list(result.scalars().all())
+            found_tools = await keep_linkable(ctx.org_context, "tool", result.scalars().all())
             if not found_tools:
                 return f"도구를 찾을 수 없습니다: {', '.join(tool_names)}"
 
             for t in found_tools:
                 agent.tool_links.append(AgentToolLink(tool_id=t.id))
-            await session.commit()
+            ids = [t.id for t in found_tools]
+            if refused := await commit_links(session, ctx.org_context, agent.id, tool_ids=ids):
+                return refused
 
             added = [t.name for t in found_tools]
             return f"도구 추가 완료: {', '.join(added)}"
@@ -74,7 +83,7 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             if not removed:
                 return f"해당 도구가 에이전트에 없습니다: {', '.join(tool_names)}"
 
-            await session.commit()
+            await commit_relinked(session, ctx.org_context, agent.id)
             return f"도구 제거 완료: {', '.join(removed)}"
 
     # ------ 2-1. add_mcp_tool_to_agent ------
@@ -100,17 +109,19 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
                 select(McpTool)
                 .join(McpServer, McpServer.id == McpTool.server_id)
                 .where(
-                    McpServer.user_id == ctx.user_id,
+                    private_scope_predicate(McpServer, ctx.org_context),
                     func.lower(McpTool.name).in_(lower_names),
                 )
             )
-            found = list(result.scalars().all())
+            found = await keep_linkable(ctx.org_context, "mcp_tool", result.scalars().all())
             if not found:
                 return f"MCP 도구를 찾을 수 없습니다: {', '.join(mcp_tool_names)}"
 
             for mt in found:
                 agent.mcp_tool_links.append(AgentMcpToolLink(mcp_tool_id=mt.id))
-            await session.commit()
+            ids = [mt.id for mt in found]
+            if refused := await commit_links(session, ctx.org_context, agent.id, mcp_tool_ids=ids):
+                return refused
 
             added = [mt.name for mt in found]
             return f"MCP 도구 추가 완료: {', '.join(added)}"
@@ -137,7 +148,7 @@ def build_tool_link_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             if not removed:
                 return f"해당 MCP 도구가 에이전트에 없습니다: {', '.join(mcp_tool_names)}"
 
-            await session.commit()
+            await commit_relinked(session, ctx.org_context, agent.id)
             return f"MCP 도구 제거 완료: {', '.join(removed)}"
 
     return [

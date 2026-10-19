@@ -8,6 +8,7 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.identity import (
     AGENT_IDENTITY_FIXED,
@@ -23,13 +24,16 @@ from app.agent_runtime.runtime_policy import (
     RuntimePolicySnapshotError,
 )
 from app.agent_runtime.subagents import build_subagents_config
+from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import ConflictError, ValidationError
 from app.models.agent import Agent
 from app.models.model import Model
 from app.services import chat_service
+from app.services.authorized_runtime import prepare_authorized_runtime
 from app.services.conversation_runtime_policy import snapshot_from_conversation
+from app.services.runtime_links import runnable_agent
 
 InvocationSource = Literal["chat", "trigger", "api"]
 
@@ -126,10 +130,15 @@ async def build_agent_config_for_conversation(
     conversation_id: uuid.UUID,
     user: CurrentUser,
     *,
+    context: OrgContext,
     checkpoint_id: str | None = None,
 ) -> AgentConfig:
-    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, user.id)
-    if not conv:
+    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, context)
+    if not conv or (conv.user_id, conv.org_id, conv.tenant_id) != (
+        context.user_id,
+        context.org_id,
+        context.tenant_id,
+    ):
         raise conversation_not_found()
     if conv.agent is None:
         raise agent_not_found()
@@ -149,6 +158,7 @@ async def build_agent_config_for_conversation(
         principal=AgentInvocationPrincipal.chat_user(user),
         source="chat",
         current_user=user,
+        context=context,
         checkpoint_id=checkpoint_id,
         runtime_policy=runtime_policy,
     )
@@ -158,13 +168,17 @@ async def build_agent_config_for_loaded_agent(
     db: AsyncSession,
     agent: Agent,
     *,
+    context: OrgContext,
     thread_id: str,
     principal: AgentInvocationPrincipal,
     source: InvocationSource,
     current_user: CurrentUser | None = None,
     checkpoint_id: str | None = None,
     runtime_policy: ResolvedRuntimePolicy = LEGACY_RUNTIME_POLICY,
+    include_subagents: bool = True,
 ) -> AgentConfig:
+    """``include_subagents=False`` (prepared-lease adapters) skips legacy child compilation."""
+    agent = await runnable_agent(db, agent, context)  # F-03: no broken links (10.6)
     if agent.model is None:
         raise ValidationError("AGENT_MODEL_REQUIRED", "agent has no model bound")
     if source == "api" and agent.identity_mode != AGENT_IDENTITY_FIXED:
@@ -181,12 +195,11 @@ async def build_agent_config_for_loaded_agent(
         source=_source_to_agent_run_source(source),
         caller_user_id=principal.caller_user_id,
     )
-    api_key = await resolve_llm_api_key_for_agent(db, agent, identity=identity)
-    tools_config = await chat_service.build_tools_config(
-        agent,
-        db=db,
-        conversation_id=thread_id,
-        identity=identity,
+    api_key = await resolve_llm_api_key_for_agent(
+        db, agent, AgentCredentialAccess(context, identity)
+    )
+    runtime = await prepare_authorized_runtime(
+        agent, path="api", context=context, db=db, identity=identity, conversation_id=thread_id
     )
     fallback_chain = await resolve_fallback_chain(db, agent.model_fallback_list)
     effective_prompt = _with_user_display_name_context(
@@ -195,17 +208,19 @@ async def build_agent_config_for_loaded_agent(
     )
 
     cfg = AgentConfig(
+        org_context=context,
         provider=agent.model.provider,
         model_name=agent.model.model_name,
         api_key=api_key,
         base_url=agent.model.base_url,
         system_prompt=effective_prompt,
-        tools_config=tools_config,
+        tools_config=runtime.tools_config,
+        access_plan=runtime.plan,
         thread_id=thread_id,
         runtime_policy=runtime_policy,
         model_params=agent.model_params,
         middleware_configs=agent.middleware_configs,
-        agent_skills=chat_service.build_agent_skills(agent) or None,
+        agent_skills=runtime.agent_skills or None,
         agent_id=str(agent.id),
         agent_name=agent.name,
         provider_api_keys={agent.model.provider: api_key} if api_key else None,
@@ -229,12 +244,13 @@ async def build_agent_config_for_loaded_agent(
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
     )
-    cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
-        agent,
-        db=db,
-        parent_cfg=cfg,
-        is_trigger_mode=source == "trigger",
-    )
+    if include_subagents:
+        cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
+            agent,
+            db=db,
+            parent_cfg=cfg,
+            is_trigger_mode=source == "trigger",
+        )
     # ADR-021 H1 — populate the eager secret set so value-based redaction works
     # for Agent API / non-chat entrypoints (Agent API stream already installs
     # the ContextVar via execute_agent_stream, so this set becomes effective).

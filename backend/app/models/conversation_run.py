@@ -4,10 +4,21 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.resource_scope import NullableOrgScope, resource_scope_constraints
 
 if TYPE_CHECKING:
     from app.models.conversation_run_metrics import ConversationRunMetrics
@@ -17,14 +28,25 @@ RUN_TERMINAL_STATUSES = ("completed", "failed", "interrupted", "canceled", "stal
 RUN_STATUS_VALUES = RUN_ACTIVE_STATUSES + RUN_TERMINAL_STATUSES
 RUN_EVENT_ID_MAX_LENGTH = 255
 
+_RUNTIME_MATERIALIZATION_HEX_CHECK = (
+    "runtime_materialization_sha256 IS NULL OR ("
+    "length(runtime_materialization_sha256) = 64 AND "
+    "replace(replace(replace(replace(replace(replace(replace(replace("
+    "replace(replace(replace(replace(replace(replace(replace(replace("
+    "runtime_materialization_sha256,'0',''),'1',''),'2',''),'3',''),'4',''),'5',''),"
+    "'6',''),'7',''),'8',''),'9',''),'a',''),'b',''),'c',''),'d',''),'e',''),'f','') = '')"
+)
+
 
 def utc_now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-class ConversationRun(Base):
+class ConversationRun(NullableOrgScope, Base):
     __tablename__ = "conversation_runs"
     __table_args__ = (
+        *resource_scope_constraints("conversation_runs", system=False),
+        Index("ix_conversation_runs_org_created", "org_id", "created_at"),
         Index(
             "ix_conversation_runs_conversation_created",
             "conversation_id",
@@ -40,14 +62,24 @@ class ConversationRun(Base):
             sqlite_where=text("is_active = 1"),
             postgresql_where=text("is_active = true"),
         ),
+        CheckConstraint(
+            "(runtime_materialized_at IS NULL AND runtime_materialization_sha256 IS NULL) OR "
+            "(runtime_materialized_at IS NOT NULL "
+            "AND runtime_materialization_sha256 IS NOT NULL)",
+            name="ck_conversation_runs_runtime_materialization_pair",
+        ),
+        CheckConstraint(
+            _RUNTIME_MATERIALIZATION_HEX_CHECK,
+            name="ck_conversation_runs_runtime_materialization_sha256",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
     )
-    agent_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
@@ -86,12 +118,45 @@ class ConversationRun(Base):
         nullable=False,
     )
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # F-14 (11.10): user_id is the requester/billed user; these record the rest.
+    run_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    invoker_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    resource_owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    on_behalf_of_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    credential_subject_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     runtime_policy_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     runtime_policy_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     runtime_policy_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    runtime_materialized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    runtime_materialization_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     metrics: Mapped[ConversationRunMetrics | None] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
         lazy="selectin",
         uselist=False,
     )
+
+
+# F-14: columns audit writers read back from ``load_only`` run rows (``tenancy.attribution``).
+RUN_ATTRIBUTION_COLUMNS = (
+    "org_id",
+    "tenant_id",
+    "run_source",
+    "invoker_type",
+    "resource_owner_user_id",
+    "on_behalf_of_user_id",
+    "credential_subject_user_id",
+)
+
+
+def run_attribution_attrs() -> tuple[Any, ...]:
+    """The attribution attributes, for ``load_only(...)`` lists."""
+    return tuple(getattr(ConversationRun, name) for name in RUN_ATTRIBUTION_COLUMNS)

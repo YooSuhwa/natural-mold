@@ -8,37 +8,45 @@ from __future__ import annotations
 import asyncio
 import shutil
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from app.config import settings
 from app.error_codes import marketplace_invalid_package
 from app.marketplace.install.common import _payload_skill_kind
 from app.models.marketplace import MarketplaceVersion
 from app.models.skill import Skill
-from app.storage.paths import resolve_data_path
+from app.storage.paths import resolve_data_path, run_data_path_or_none, skill_storage_dir
 
 
-def _skill_storage_root() -> Path:
-    """Mirrors ``app.skills.service._skill_root`` without importing the
-    module (file-boundary rule for Slice B — install_service must not
-    modify skill service.py). ADR-018 — derived from ``data_root``."""
+def _skill_dir(skill_id: uuid.UUID, tenant_id: uuid.UUID | None) -> str:
+    """Relative directory for a new install: the company folder (I-08, ADR-018)."""
 
-    return (Path(settings.data_root) / "skills").resolve()
+    return skill_storage_dir(skill_id, tenant_id)
 
 
-def _target_for(skill_id: uuid.UUID) -> Path:
-    return _skill_storage_root() / str(skill_id)
+def _existing_skill_dir(skill: Skill) -> str:
+    """Keep an installed skill where it is (legacy rows are not moved, I-08)."""
+
+    if not skill.storage_path:
+        return _skill_dir(skill.id, skill.tenant_id)
+    if skill.kind == "text":
+        return str(PurePosixPath(skill.storage_path).parent)
+    return skill.storage_path
 
 
-def _rel_install_storage(skill_id: uuid.UUID, version: MarketplaceVersion) -> str:
-    """text-kind → ``skills/<id>/SKILL.md`` (file); package-kind →
-    ``skills/<id>`` (dir). Relative to ``settings.data_root`` per ADR-018."""
+def _target_for(skill_dir: str) -> Path:
+    return resolve_data_path(skill_dir)
+
+
+def _rel_install_storage(skill_dir: str, version: MarketplaceVersion) -> str:
+    """text-kind → ``<dir>/SKILL.md`` (file); package-kind → ``<dir>``."""
 
     suffix = "/SKILL.md" if _payload_skill_kind(version) == "text" else ""
-    return f"skills/{skill_id}{suffix}"
+    return f"{skill_dir}{suffix}"
 
 
-async def _copy_snapshot(version: MarketplaceVersion, target: Path) -> None:
+async def _copy_snapshot(
+    version: MarketplaceVersion, target: Path, tenant_id: uuid.UUID | None
+) -> None:
     """Copy the version's on-disk snapshot to ``target``.
 
     Raises ``marketplace_invalid_package`` when the snapshot is missing
@@ -49,7 +57,10 @@ async def _copy_snapshot(version: MarketplaceVersion, target: Path) -> None:
     if not version.storage_path:
         raise marketplace_invalid_package("version has no storage snapshot")
 
-    src = resolve_data_path(version.storage_path)
+    # I-08: a company snapshot must be the installing company's (platform: unprefixed).
+    src = run_data_path_or_none(version.storage_path, tenant_id)
+    if src is None:
+        raise marketplace_invalid_package("version snapshot belongs to another company")
     # ``ASYNC240`` — filesystem checks happen off the event loop. We
     # also return the is_file decision from the same probe so the copy
     # picks the correct branch without a second stat.
@@ -98,12 +109,12 @@ def _copy_text_snapshot(src: Path, target: Path) -> None:
 async def _replace_skill_snapshot(version: MarketplaceVersion, skill: Skill) -> None:
     """Replace an installed skill's on-disk bytes while preserving its id."""
 
-    target = _target_for(skill.id)
+    target = _target_for(_existing_skill_dir(skill))
     tmp = target.with_suffix(".update.tmp")
     if tmp.exists():
         await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
 
-    await _copy_snapshot(version, tmp)
+    await _copy_snapshot(version, tmp, skill.tenant_id)
     try:
         if target.exists():
             await asyncio.to_thread(shutil.rmtree, target, ignore_errors=True)

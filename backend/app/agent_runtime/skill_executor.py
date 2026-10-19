@@ -200,6 +200,7 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
                 user_id=ctx.user_id,
                 thread_id=ctx.thread_id,
                 agent_id=ctx.agent_id,
+                tenant_id=ctx.tenant_id,
             )
 
         # IMAGE: 절대경로 → API URL 자동 변환

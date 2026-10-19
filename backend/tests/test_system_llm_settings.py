@@ -8,12 +8,16 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.authz.platform_scope import PlatformScope
+from app.credentials.creation import CredentialCreation
+from app.dependencies import CurrentUser
 from app.models.system_llm_setting import SystemLlmSetting
 from app.services.system_credential_resolver import (
     SystemModelNotConfiguredError,
     resolve_system_model,
 )
+from tests.authz.unit_scope_fixture import create_test_credential, ensure_unit_scope, unit_context
+from tests.conftest import TEST_USER_ID, seed_agent
 
 pytestmark = pytest.mark.asyncio
 
@@ -27,13 +31,8 @@ async def _make_system_credential(
     data: dict,
     name: str = "sys-cred",
 ) -> uuid.UUID:
-    cred = await credential_service.create(
-        db,
-        user_id=None,
-        definition_key=definition_key,
-        name=name,
-        data=data,
-        is_system=True,
+    cred = await create_test_credential(
+        db, CredentialCreation(definition_key=definition_key, name=name, data=data), PlatformScope()
     )
     await db.commit()
     return cred.id
@@ -152,14 +151,14 @@ async def test_put_non_llm_credential_422(client: AsyncClient, db: AsyncSession)
 
 
 async def test_put_user_credential_rejected(client: AsyncClient, db: AsyncSession) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     # A non-system (user) credential must not be selectable as a system slot.
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-        definition_key="openai",
-        name="user-key",
-        data={"api_key": "sk-user"},
-        is_system=False,
+        CredentialCreation(definition_key="openai", name="user-key", data={"api_key": "sk-user"}),
+        unit_context(uuid.UUID("00000000-0000-0000-0000-000000000001")),
     )
     await db.commit()
     resp = await client.put(
@@ -268,12 +267,14 @@ async def test_image_base_url_raises_for_unknown_provider_without_base_url() -> 
 async def test_assistant_stream_surfaces_unconfigured(db: AsyncSession) -> None:
     from app.services.assistant_service import stream_assistant_message
 
+    _, _, authorized_agent = await seed_agent(db)
+    await db.commit()
     chunks = [
         chunk
         async for chunk in stream_assistant_message(
             db=db,
-            agent_id=uuid.uuid4(),
-            user_id=uuid.uuid4(),
+            agent_id=authorized_agent.id,
+            context=unit_context(authorized_agent.user_id),
             thread_id="assistant_test",
             user_message="hi",
         )
@@ -401,13 +402,12 @@ async def test_credential_delete_sets_slot_null() -> None:
 
         session_factory = async_sessionmaker(eng, expire_on_commit=False)
         async with session_factory() as db:
-            cred = await credential_service.create(
+            cred = await create_test_credential(
                 db,
-                user_id=None,
-                definition_key="openai",
-                name="sys-openai",
-                data={"api_key": "sk-x"},
-                is_system=True,
+                CredentialCreation(
+                    definition_key="openai", name="sys-openai", data={"api_key": "sk-x"}
+                ),
+                PlatformScope(),
             )
             await db.commit()
             cred_id = cred.id

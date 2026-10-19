@@ -9,7 +9,10 @@ import {
   SaveIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { API_BASE } from '@/lib/api/client'
+import { openExternalUrl } from '@/lib/browser/window-open'
 import type { DeepAgentFile } from '@/lib/chat/langgraph-runtime/deepagents-state'
+import { downloadApiFile } from '@/lib/hooks/use-api-object-url'
 
 type FilePreviewKind = 'markdown' | 'code' | 'plainText' | 'file'
 
@@ -23,6 +26,25 @@ export interface DeepAgentsStateFileActions {
 
 interface FilesBodyProps extends DeepAgentsStateFileActions {
   readonly files: readonly DeepAgentFile[]
+}
+
+/**
+ * API downloads go through apiFetchBinary (refresh retry, org-scoped abort —
+ * plan 13.10); any other URL opens directly.
+ */
+async function downloadFile(file: DeepAgentFile): Promise<void> {
+  const url = file.downloadUrl
+  if (!url) return
+  const apiUrl = url.startsWith('/api/') ? `${API_BASE}${url}` : url
+  if (!apiUrl.startsWith(`${API_BASE}/`)) {
+    openExternalUrl(apiUrl)
+    return
+  }
+  try {
+    await downloadApiFile(apiUrl, file.name)
+  } catch {
+    // The file list has no error surface; a failed download is a no-op.
+  }
 }
 
 const FILE_ACTION_CLASS =
@@ -108,15 +130,17 @@ function FileRow({
           </button>
         ) : null}
         {file.downloadUrl ? (
-          <a
+          <button
+            type="button"
             className={FILE_ACTION_CLASS}
-            href={file.downloadUrl}
-            rel="noopener noreferrer"
             aria-label={t('actions.download', { name: file.name })}
-            onClick={() => onDownloadFile?.(file)}
+            onClick={() => {
+              onDownloadFile?.(file)
+              void downloadFile(file)
+            }}
           >
             <DownloadIcon className="size-3.5" />
-          </a>
+          </button>
         ) : null}
         <button
           type="button"

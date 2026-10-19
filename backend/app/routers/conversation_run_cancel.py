@@ -7,6 +7,7 @@ import anyio
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.error_codes import conversation_not_found, resume_not_found
 from app.models.conversation_run import ConversationRun
@@ -29,22 +30,23 @@ async def cancel_owned_conversation_run(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
     user: CurrentUser,
+    context: OrgContext,
     request: Request,
 ) -> ConversationRunCancelResult:
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
+    conv = await chat_service.get_owned_conversation(db, conversation_id, context)
     if conv is None:
         raise conversation_not_found()
 
     queue_conversation = await conversation_run_queue_service.lock_owned_conversation(
         db,
         conversation_id=conversation_id,
-        user_id=user.id,
+        context=context,
     )
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,
         run_id=run_id,
-        user_id=user.id,
+        context=context,
         for_update=True,
     )
     if run is None:

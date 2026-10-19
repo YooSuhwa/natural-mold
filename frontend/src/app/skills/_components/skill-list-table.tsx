@@ -1,35 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
-import { Download, MoreHorizontal, Trash2, UploadCloud } from 'lucide-react'
+import type { RowSelectionState } from '@tanstack/react-table'
+import { Trash2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
-import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
-import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DataTable } from '@/components/ui/data-table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { SkillEvaluationSummaryBadge } from '@/components/skill/skill-evaluation-summary-badge'
-import { SkillHealthBadge } from '@/components/skill/skill-health-badge'
 import { useAgents } from '@/lib/hooks/use-agents'
-import { getSkillExportUrl, isSkillNotFoundError, useDeleteSkill } from '@/lib/hooks/use-skills'
-import { formatDisplayDate } from '@/lib/utils/display-format'
+import { isSkillNotFoundError, useDeleteSkill } from '@/lib/hooks/use-skills'
 import type { Skill } from '@/lib/types/skill'
 
-/** 구 SkillCard와 동일한 게시 가드 — 이미 게시된 스킬에는 게시 진입점을 숨긴다. */
-function canPublishSkill(skill: Skill): boolean {
-  return !skill.publication_summary?.state || skill.publication_summary.state === 'not_published'
-}
+import { buildSkillColumns } from './skill-list-columns'
+import {
+  SkillRowActions,
+  SkillRowActionsContext,
+  type SkillPermissionCheck,
+} from './skill-row-actions'
 
 /** 확인 다이얼로그 이름 열거 상한 — 무제한 열거는 max-w-xs 다이얼로그에서
  * 수백 줄로 자라 확인/취소 버튼이 화면 밖으로 잘린다 (R5). */
@@ -51,6 +41,7 @@ export function SkillListTable({
   skills,
   isLoading,
   emptyTitle,
+  can,
   onImprove,
   improvePending,
   onPublish,
@@ -59,6 +50,8 @@ export function SkillListTable({
   readonly skills: Skill[]
   readonly isLoading: boolean
   readonly emptyTitle: string
+  /** Per-row permission gate (plan 13.9; `useResourceAccess('skill', …)`). */
+  readonly can: SkillPermissionCheck
   readonly onImprove: (skillId: string) => void
   /** 빌더 세션 시작 중 — 행 "수정" 이중 클릭이 세션을 중복 생성하지 않게 막는다. */
   readonly improvePending: boolean
@@ -151,87 +144,23 @@ export function SkillListTable({
           .map((agent) => agent.name)
       : []
 
-  const columns: ColumnDef<Skill, unknown>[] = [
-    {
-      accessorKey: 'name',
-      header: t('columns.skill'),
-      cell: ({ row }) => (
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{row.original.name}</p>
-          <p className="moldy-ui-micro truncate font-mono text-muted-foreground">
-            {row.original.slug}
-            {row.original.version ? ` · v${row.original.version}` : ''}
-          </p>
-        </div>
-      ),
-    },
-    {
-      accessorKey: 'kind',
-      header: t('columns.kind'),
-      cell: ({ row }) => (
-        <Badge variant="secondary" className="moldy-ui-micro">
-          {t(`typeFilter.${row.original.kind}`)}
-        </Badge>
-      ),
-    },
-    {
-      id: 'status',
-      header: t('columns.status'),
-      enableSorting: false,
-      cell: ({ row }) => (
-        // 게시/출처 배지는 구 카드에서 이관 — 목록에서 게시 상태를 잃지 않는다.
-        <div className="flex flex-wrap items-center gap-1">
-          <SkillHealthBadge health={row.original.health} />
-          <OriginBadge summary={row.original.origin_summary} />
-          <PublicationBadge summary={row.original.publication_summary} />
-        </div>
-      ),
-    },
-    {
-      id: 'evaluation',
-      header: t('columns.evaluation'),
-      // 목업 계약(통과율 정렬) — 요약 pass_rate 기준, 미평가는 최하단.
-      accessorFn: (skill) => skill.latest_evaluation_summary?.pass_rate ?? -1,
-      cell: ({ row }) => (
-        <SkillEvaluationSummaryBadge summary={row.original.latest_evaluation_summary} />
-      ),
-    },
-    {
-      accessorKey: 'used_by_count',
-      header: t('columns.agents'),
-      cell: ({ row }) => (
-        <span className="text-sm tabular-nums">
-          {t('agentsCount', { count: row.original.used_by_count })}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'updated_at',
-      header: t('columns.updatedAt'),
-      cell: ({ row }) => (
-        <span className="moldy-ui-micro text-muted-foreground">
-          {formatDisplayDate(row.original.updated_at, { fallback: '' })}
-        </span>
-      ),
-    },
-    {
-      id: 'actions',
-      header: '',
-      enableSorting: false,
-      cell: ({ row }) => (
-        <SkillRowActions
-          skill={row.original}
-          onImprove={onImprove}
-          improvePending={improvePending}
-          onPublish={onPublish}
-          onDelete={(skill) => setPendingDeleteIds([skill.id])}
-        />
-      ),
-    },
-  ]
+  const columns = useMemo(
+    () => buildSkillColumns({ t, actions: (skill) => <SkillRowActions skill={skill} /> }),
+    [t],
+  )
+  const handlers = useMemo(
+    () => ({
+      can,
+      onImprove,
+      improvePending,
+      onPublish,
+      onDelete: (target: Skill) => setPendingDeleteIds([target.id]),
+    }),
+    [can, onImprove, improvePending, onPublish],
+  )
 
   return (
-    <>
+    <SkillRowActionsContext.Provider value={handlers}>
       <DataTable
         columns={columns}
         data={skills}
@@ -253,7 +182,12 @@ export function SkillListTable({
                 type="button"
                 variant="destructive"
                 size="sm"
-                onClick={() => setPendingDeleteIds(selected.map((skill) => skill.id))}
+                disabled={!selected.some((skill) => can(skill, 'can_delete'))}
+                onClick={() =>
+                  setPendingDeleteIds(
+                    selected.filter((skill) => can(skill, 'can_delete')).map((skill) => skill.id),
+                  )
+                }
               >
                 <Trash2 className="size-3.5" />
                 {list('deleteSelected')}
@@ -302,100 +236,6 @@ export function SkillListTable({
         isPending={deleting}
         onConfirm={() => void executeDelete()}
       />
-    </>
-  )
-}
-
-function SkillRowActions({
-  skill,
-  onImprove,
-  improvePending,
-  onPublish,
-  onDelete,
-}: {
-  readonly skill: Skill
-  readonly onImprove: (skillId: string) => void
-  readonly improvePending: boolean
-  readonly onPublish: (skill: Skill) => void
-  readonly onDelete: (skill: Skill) => void
-}) {
-  const t = useTranslations('skill')
-  const list = useTranslations('skill.studio.list')
-  const router = useRouter()
-
-  // 행 클릭(소스 이동)과 겹치지 않게 각 인터랙티브 요소에서 전파를 끊는다
-  // (DataTable 체크박스 컬럼과 동일 선례 — 정적 wrapper 핸들러는 a11y 위반).
-  return (
-    <div className="flex items-center justify-end gap-1">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={improvePending}
-        onClick={(event) => {
-          event.stopPropagation()
-          onImprove(skill.id)
-        }}
-        aria-label={list('rowImproveAria', { name: skill.name })}
-      >
-        {list('rowImprove')}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={(event) => {
-          event.stopPropagation()
-          router.push(`/skills/${skill.id}/evaluation`)
-        }}
-      >
-        {list('rowEvaluation')}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={(event) => {
-          event.stopPropagation()
-          router.push(`/skills/${skill.id}/versions`)
-        }}
-      >
-        {list('rowVersions')}
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          aria-label={list('rowMenuAria', { name: skill.name })}
-          className="inline-flex size-8 items-center justify-center rounded-md hover:bg-muted"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <MoreHorizontal className="size-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => router.push(`/skills/${skill.id}/source`)}>
-            {list('rowViewSource')}
-          </DropdownMenuItem>
-          {canPublishSkill(skill) ? (
-            <DropdownMenuItem onClick={() => onPublish(skill)}>
-              <UploadCloud className="size-4" />
-              {t('actions.publish')}
-            </DropdownMenuItem>
-          ) : null}
-          {skill.kind === 'package' ? (
-            <DropdownMenuItem
-              render={
-                <a href={getSkillExportUrl(skill.id)} download aria-label={list('rowExport')} />
-              }
-            >
-              <Download className="size-4" />
-              {list('rowExport')}
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem variant="destructive" onClick={() => onDelete(skill)}>
-            <Trash2 className="size-4" />
-            {list('rowDelete')}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    </SkillRowActionsContext.Provider>
   )
 }

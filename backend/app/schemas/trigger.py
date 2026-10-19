@@ -66,14 +66,17 @@ class TriggerResponse(BaseModel):
 
 class TriggerRunResponse(BaseModel):
     id: uuid.UUID
-    trigger_id: uuid.UUID
-    agent_id: uuid.UUID
+    trigger_id: uuid.UUID | None
+    agent_id: uuid.UUID | None
+    trigger_name_snapshot: str
+    conversation_run_id: uuid.UUID | None
     user_id: uuid.UUID
     conversation_id: uuid.UUID | None
     status: str
     source: str
     input_message: str
     error_message: str | None
+    reason_code: str | None = None
     output_preview: str | None
     duration_ms: int | None
     thread_id: str | None

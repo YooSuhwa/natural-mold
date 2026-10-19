@@ -27,6 +27,9 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => mockSearchParams.value,
 }))
 
+// The owner sees test/health actions (plan 13.9; legacy owner rule).
+vi.mock('@/lib/auth/session', () => ({ useSession: () => ({ data: { id: 'user-1' } }) }))
+
 vi.mock('@/lib/hooks/use-mcp-servers', () => ({
   useMcpServers: () => mockUseMcpServers(),
   useExportMcpServers: () => mockUseExportMcpServers(),

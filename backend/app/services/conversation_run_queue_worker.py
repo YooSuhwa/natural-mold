@@ -4,19 +4,23 @@ import logging
 import uuid
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import Select, select
 
 from app.agent_runtime.executor import execute_agent_stream_langgraph
 from app.agent_runtime.runtime_config import AgentConfig
+from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.conversation_input_scope import conversation_input_parent
+from app.authz.conversation_scope import resolve_conversation_actor
+from app.authz.scoping import private_parent_scoped
+from app.database import SessionTenant, platform_session, platform_sessions, tenant_session
 from app.database import async_session as database_session
-from app.dependencies import CurrentUser
-from app.exceptions import ConflictError
-from app.models.agent import Agent
+from app.exceptions import AppError
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.user import User
 from app.services import conversation_run_queue_service, conversation_run_service
+from app.services import conversation_run_queue_worker_metadata as metadata
 from app.services.chat_resource_context_integration import (
     reauthorize_resource_context_payload,
 )
@@ -24,6 +28,8 @@ from app.services.chat_resource_context_sources import ResourceContextScope
 from app.services.conversation_run_cancellation_recovery import (
     finalize_workerless_cancel_before_start,
 )
+from app.services.conversation_run_queue_launch import _fail_claimed_input, launch_claimed_input
+from app.services.conversation_run_queue_recovery import recover_conversation_queue
 from app.services.conversation_run_worker import (
     RunTaskAlreadyRegisteredError,
     get_run_task_registry,
@@ -36,149 +42,61 @@ logger = logging.getLogger(__name__)
 
 
 def _session_factory():
-    return async_session or database_session
+    """Platform by design: the restart recovery sweep lists every company's queue rows."""
+    return platform_sessions("conversation_run.queue", maker=async_session or database_session)
 
 
-def _current_user(user: User) -> CurrentUser:
-    return CurrentUser(
-        id=user.id,
-        email=user.email,
-        name=user.name,
-        display_name=user.display_name,
-        avatar_mode=user.avatar_mode,
-        avatar_initials=user.avatar_initials,
-        avatar_color=user.avatar_color,
-        avatar_image_url=user.avatar_image_url,
-        is_super_user=user.is_super_user,
+async def _company_of(query: Select[tuple[uuid.UUID, uuid.UUID]]) -> SessionTenant | None:
+    """I-06: one platform read of a queue row's (company, owner) before its tenant session."""
+    async with platform_session(
+        "conversation_run.queue", maker=async_session or database_session
+    ) as db:
+        owner = (await db.execute(query)).one_or_none()
+    return None if owner is None else SessionTenant(owner.tenant_id, owner.user_id)
+
+
+async def _input_company(input_id: uuid.UUID) -> SessionTenant | None:
+    return await _company_of(
+        select(Conversation.tenant_id, Conversation.user_id)
+        .join(ConversationRunInput, ConversationRunInput.conversation_id == Conversation.id)
+        .where(ConversationRunInput.id == input_id)
     )
 
 
-async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
-    """Rehydrate and launch one claimed input without request-scoped state."""
-    registry = get_run_task_registry()
-    cfg: AgentConfig | None = None
-    current_user: CurrentUser | None = None
-    error_code: str | None = None
-    async with _session_factory()() as db:
-        queued = await db.get(ConversationRunInput, input_id)
-        if queued is None or queued.run_id is None or queued.status != "claimed":
-            return None
-        run = await db.get(ConversationRun, queued.run_id)
-        user = await db.get(User, queued.user_id)
-        input_payload = queued.input_payload
-        if run is None:
-            return None
-        if user is None or not user.is_active:
-            error_code = "queue_user_unavailable"
-        else:
-            local_task = registry.get(run.id)
-            if local_task is not None and not local_task.done():
-                return run
-            current_user = _current_user(user)
-            try:
-                cfg = await resolve_agent_context(
-                    db,
-                    queued.conversation_id,
-                    current_user,
-                    checkpoint_id=queued.checkpoint_id,
-                )
-            except (ConflictError, HTTPException, ValueError):
-                logger.warning(
-                    "queued input rehydration failed input_id=%s",
-                    input_id,
-                    exc_info=True,
-                )
-                error_code = "queue_rehydrate_failed"
-            if error_code is None:
-                try:
-                    input_payload = await reauthorize_resource_context_payload(
-                        db,
-                        ResourceContextScope(
-                            user_id=queued.user_id,
-                            agent_id=queued.agent_id,
-                            conversation_id=queued.conversation_id,
-                        ),
-                        input_payload,
-                    )
-                except HTTPException:
-                    logger.warning(
-                        "queued resource context unavailable input_id=%s",
-                        input_id,
-                        exc_info=True,
-                    )
-                    error_code = "queue_resource_context_unavailable"
-        attachment_ids = [uuid.UUID(value) for value in queued.attachment_ids]
-        conversation_id = queued.conversation_id
-        run_id = run.id
-        source = queued.source
-
-    if error_code is not None:
-        await _fail_claimed_input(input_id, error_code=error_code)
-        return run
-    if cfg is None or current_user is None:
-        await _fail_claimed_input(input_id, error_code="queue_rehydrate_failed")
-        return run
-
-    local_task = registry.get(run_id)
-    if local_task is not None and not local_task.done():
-        return run
-    try:
-        await start_conversation_run(
-            run_id=run_id,
-            conversation_id=conversation_id,
-            cfg=cfg,
-            user=current_user,
-            input_payload=input_payload,
-            moldy_source=source,
-            executor_fn=execute_agent_stream_langgraph,
-            registry=registry,
-            attachment_ids=attachment_ids,
-        )
-    except RunTaskAlreadyRegisteredError:
-        local_task = registry.get(run_id)
-        if local_task is None or local_task.done():
-            raise
-    return run
-
-
-async def _fail_claimed_input(input_id: uuid.UUID, *, error_code: str) -> None:
-    async with _session_factory()() as db:
-        queued = await db.get(ConversationRunInput, input_id)
-        if queued is None or queued.run_id is None:
-            return
-        conversation = await db.get(Conversation, queued.conversation_id, with_for_update=True)
-        run = await db.get(ConversationRun, queued.run_id, with_for_update=True)
-        if conversation is None or run is None or run.status != "queued":
-            return
-        queued.status = "failed"
-        queued.revision += 1
-        await conversation_run_service.transition_run(
-            db,
-            run,
-            "failed",
-            error_code=error_code,
-            error_message="Queued input could not be reconstructed.",
-        )
-        await db.commit()
+def _company_session(scope: SessionTenant):
+    return tenant_session(scope, maker=async_session or database_session)
 
 
 async def dispatch_next_for_conversation(
     conversation_id: uuid.UUID,
 ) -> ConversationRunInput | None:
     """Claim, commit, then launch the next input for one conversation."""
-    async with _session_factory()() as db:
-        owner_id = await db.scalar(
-            select(Agent.user_id)
-            .join(Conversation, Conversation.agent_id == Agent.id)
-            .where(Conversation.id == conversation_id)
+    scope = await _company_of(
+        select(Conversation.tenant_id, Conversation.user_id).where(
+            Conversation.id == conversation_id
         )
-        if owner_id is None:
+    )
+    if scope is None:
+        return None
+    owner_id = scope.user_id
+    assert owner_id is not None  # noqa: S101 - conversations always have an owner
+    async with _company_session(scope) as db:
+        try:
+            context = await resolve_conversation_actor(db, conversation_id, owner_id)
+        except AppError:
             return None
-        claimed = await conversation_run_queue_service.claim_next_input(
-            db,
-            conversation_id=conversation_id,
-            user_id=owner_id,
-        )
+        try:
+            claimed = await conversation_run_queue_service.claim_next_input(
+                db,
+                conversation_id=conversation_id,
+                context=context,
+            )
+        except HTTPException as exc:
+            # The conversation stopped being executable (e.g. its organization was archived
+            # while the previous run finished): nothing to dispatch, not a teardown error.
+            if exc.status_code != 404:
+                raise
+            return None
         if claimed is None:
             return None
         input_id = claimed.input.id
@@ -187,44 +105,11 @@ async def dispatch_next_for_conversation(
     return claimed.input
 
 
-async def recover_conversation_queue() -> int:
-    """Recover claim-before-launch gaps and dispatch idle persisted queues."""
-    registry = get_run_task_registry()
-    await finalize_workerless_cancel_before_start(
-        session_factory=_session_factory(),
-        protected_run_ids=tuple(registry.active_run_ids()),
-    )
-    async with _session_factory()() as db:
-        claimed_result = await db.execute(
-            select(ConversationRunInput)
-            .join(ConversationRun, ConversationRun.id == ConversationRunInput.run_id)
-            .where(
-                ConversationRunInput.status == "claimed",
-                ConversationRun.status == "queued",
-                ConversationRun.worker_instance_id.is_(None),
-            )
-        )
-        claimed_ids = [
-            item.id
-            for item in claimed_result.scalars().all()
-            if item.run_id not in registry.active_run_ids()
-        ]
-        pending_result = await db.execute(
-            select(ConversationRunInput.conversation_id)
-            .join(Conversation, Conversation.id == ConversationRunInput.conversation_id)
-            .where(
-                ConversationRunInput.status == "pending",
-                Conversation.queue_paused.is_(False),
-            )
-            .distinct()
-        )
-        pending_conversation_ids = list(pending_result.scalars().all())
-
-    launched = 0
-    for input_id in claimed_ids:
-        if await launch_claimed_input(input_id) is not None:
-            launched += 1
-    for conversation_id in pending_conversation_ids:
-        if await dispatch_next_for_conversation(conversation_id) is not None:
-            launched += 1
-    return launched
+__all__ = ["dispatch_next_for_conversation", "launch_claimed_input", "recover_conversation_queue"]
+__all__ += ["AgentConfig", "AgentExecutionTarget", "AppError", "ConversationRun", "HTTPException"]
+__all__ += ["ConversationRunInput", "ResourceContextScope", "RunTaskAlreadyRegisteredError", "User"]
+__all__ += ["_fail_claimed_input", "conversation_input_parent", "conversation_run_service"]
+__all__ += ["execute_agent_stream_langgraph", "finalize_workerless_cancel_before_start"]
+__all__ += ["get_run_task_registry", "load_agent_tree_for_execution", "metadata"]
+__all__ += ["private_parent_scoped", "reauthorize_resource_context_payload"]
+__all__ += ["resolve_agent_context", "start_conversation_run"]

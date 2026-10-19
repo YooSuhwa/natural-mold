@@ -5,7 +5,12 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.org_context import OrgContext
+from app.authz.policies import RES, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.authz.skill_access import SKILL_MIN_VISIBLE, authorize_skill
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     marketplace_credential_required,
     skill_evaluation_queue_full,
@@ -17,7 +22,6 @@ from app.marketplace import credential_requirements
 from app.models.skill_evaluation import SkillEvaluationRun, SkillEvaluationSet
 from app.routers.skill_evaluations_support import (
     load_evaluation_set_or_404,
-    load_skill_or_404,
     record_evaluation_audit,
     require_evaluation_system_llm,
 )
@@ -45,12 +49,15 @@ router = APIRouter(prefix="/api/skills/{skill_id}/evaluations", tags=["skill-eva
 
 
 @router.get("", response_model=list[SkillEvaluationSetResponse])
+@authz_policy(RES("skill", "can_view", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def list_skill_evaluations(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[SkillEvaluationSetResponse]:
-    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_view")
     rows = await skill_evaluation_service.list_evaluation_sets(db, skill=skill, user_id=user.id)
     latest_runs = await skill_evaluation_service.latest_runs_by_evaluation_set(
         db,
@@ -62,14 +69,17 @@ async def list_skill_evaluations(
 
 
 @router.post("", response_model=SkillEvaluationSetResponse, status_code=201)
+@authz_policy(RES("skill", "can_edit", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def create_skill_evaluation(
     skill_id: uuid.UUID,
     data: SkillEvaluationSetCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillEvaluationSetResponse:
-    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_edit")
     row = await skill_evaluation_service.create_evaluation_set(
         db,
         user_id=user.id,
@@ -87,12 +97,15 @@ async def create_skill_evaluation(
 # NOTE: literal route registered before /{evaluation_set_id} so the path
 # segment "version-stats" never reaches the UUID parser.
 @router.get("/version-stats", response_model=list[SkillEvaluationVersionStatsResponse])
+@authz_policy(RES("skill", "can_view", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def get_skill_evaluation_version_stats(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[SkillEvaluationVersionStatsResponse]:
-    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_view")
     stats = await skill_evaluation_service.version_stats(db, skill=skill, user_id=user.id)
     return [
         SkillEvaluationVersionStatsResponse(
@@ -111,13 +124,16 @@ async def get_skill_evaluation_version_stats(
 
 
 @router.get("/{evaluation_set_id}", response_model=SkillEvaluationSetResponse)
+@authz_policy(RES("skill", "can_view", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def get_skill_evaluation(
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillEvaluationSetResponse:
-    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_view")
     row = await load_evaluation_set_or_404(
         db,
         skill=skill,
@@ -134,6 +150,7 @@ async def get_skill_evaluation(
 
 
 @router.post("/{evaluation_set_id}/estimate", response_model=SkillEvaluationRunEstimate)
+@authz_policy(RES("skill", "can_edit", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def estimate_skill_evaluation_run(
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
@@ -142,9 +159,11 @@ async def estimate_skill_evaluation_run(
     data: SkillEvaluationRunCreateRequest | None = None,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillEvaluationRunEstimate:
-    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_edit")
     evaluation_set = await load_evaluation_set_or_404(
         db,
         skill=skill,
@@ -159,13 +178,16 @@ async def estimate_skill_evaluation_run(
 
 
 @router.get("/{evaluation_set_id}/runs", response_model=list[SkillEvaluationRunResponse])
+@authz_policy(RES("skill", "can_view", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def list_skill_evaluation_runs(
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[SkillEvaluationRunResponse]:
-    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_view")
     evaluation_set = await load_evaluation_set_or_404(
         db,
         skill=skill,
@@ -186,6 +208,7 @@ async def list_skill_evaluation_runs(
     response_model=SkillEvaluationRunResponse,
     status_code=201,
 )
+@authz_policy(RES("skill", "can_edit", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def create_skill_evaluation_run(
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
@@ -193,16 +216,18 @@ async def create_skill_evaluation_run(
     data: SkillEvaluationRunCreateRequest | None = None,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillEvaluationRunResponse:
-    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_edit")
     evaluation_set = await load_evaluation_set_or_404(
         db,
         skill=skill,
         user=user,
         evaluation_set_id=evaluation_set_id,
     )
-    missing = await credential_requirements.missing_required_keys(db, skill=skill, user=user)
+    missing = await credential_requirements.missing_required_keys(db, skill=skill, context=context)
     if missing:
         missing_requirement_keys: list[JsonValue] = list(missing)
         await record_evaluation_audit(
@@ -254,7 +279,9 @@ async def create_skill_evaluation_run(
         )
         await db.commit()
         await db.refresh(run)
-        skill_evaluation_worker.enqueue(run.id, reserved=True)
+        skill_evaluation_worker.enqueue(
+            run.id, tenant_id=skill.tenant_id, user_id=user.id, reserved=True
+        )
         reserved_slot = False
         return SkillEvaluationRunResponse.model_validate(run)
     finally:
@@ -266,6 +293,7 @@ async def create_skill_evaluation_run(
     "/{evaluation_set_id}/runs/{run_id}/cancel",
     response_model=SkillEvaluationRunResponse,
 )
+@authz_policy(RES("skill", "can_edit", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def cancel_skill_evaluation_run(
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
@@ -274,9 +302,11 @@ async def cancel_skill_evaluation_run(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillEvaluationRunResponse:
-    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, "can_edit")
     evaluation_set = await load_evaluation_set_or_404(
         db,
         skill=skill,
@@ -314,19 +344,25 @@ async def cancel_skill_evaluation_run(
     "/{evaluation_set_id}/runs/{run_id}/case-feedback",
     response_model=list[SkillCaseFeedbackResponse],
 )
+@authz_policy(RES("skill", "can_view", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def list_skill_evaluation_case_feedback(
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
     run_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[SkillCaseFeedbackResponse]:
     run = await _load_run_or_404(
         db,
+        authz,
+        permission="can_view",
         skill_id=skill_id,
         evaluation_set_id=evaluation_set_id,
         run_id=run_id,
         user=user,
+        context=context,
     )
     rows = await skill_feedback_service.list_case_feedback(db, run_id=run.id, user_id=user.id)
     return [SkillCaseFeedbackResponse.model_validate(row) for row in rows]
@@ -336,6 +372,7 @@ async def list_skill_evaluation_case_feedback(
     "/{evaluation_set_id}/runs/{run_id}/case-feedback",
     response_model=SkillCaseFeedbackResponse,
 )
+@authz_policy(RES("skill", "can_edit", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def upsert_skill_evaluation_case_feedback(
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
@@ -343,14 +380,19 @@ async def upsert_skill_evaluation_case_feedback(
     data: SkillCaseFeedbackUpsertRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> SkillCaseFeedbackResponse:
     run = await _load_run_or_404(
         db,
+        authz,
+        permission="can_edit",
         skill_id=skill_id,
         evaluation_set_id=evaluation_set_id,
         run_id=run_id,
         user=user,
+        context=context,
     )
     try:
         row = await skill_feedback_service.upsert_case_feedback(
@@ -372,6 +414,7 @@ async def upsert_skill_evaluation_case_feedback(
     "/{evaluation_set_id}/runs/{run_id}/case-feedback/{case_index}",
     status_code=204,
 )
+@authz_policy(RES("skill", "can_edit", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
 async def delete_skill_evaluation_case_feedback(
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
@@ -379,14 +422,19 @@ async def delete_skill_evaluation_case_feedback(
     case_index: int,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> None:
     run = await _load_run_or_404(
         db,
+        authz,
+        permission="can_edit",
         skill_id=skill_id,
         evaluation_set_id=evaluation_set_id,
         run_id=run_id,
         user=user,
+        context=context,
     )
     # Idempotent — deleting absent feedback is not an error.
     await skill_feedback_service.delete_case_feedback(
@@ -400,13 +448,16 @@ async def delete_skill_evaluation_case_feedback(
 
 async def _load_run_or_404(
     db: AsyncSession,
+    authz: AuthzService,
     *,
+    permission: str,
     skill_id: uuid.UUID,
     evaluation_set_id: uuid.UUID,
     run_id: uuid.UUID,
     user: CurrentUser,
+    context: OrgContext,
 ) -> SkillEvaluationRun:
-    skill = await load_skill_or_404(db, skill_id=skill_id, user=user)
+    skill = await authorize_skill(db, authz, context, skill_id, permission)
     evaluation_set = await load_evaluation_set_or_404(
         db,
         skill=skill,

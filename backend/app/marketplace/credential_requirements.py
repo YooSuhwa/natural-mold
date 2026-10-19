@@ -30,24 +30,23 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate, private_scoped
+from app.authz.skill_binding_scope import require_private_skill, skill_binding_scope_predicate
+from app.credentials.boundary import open_values
 from app.error_codes import (
     credential_not_found,
     marketplace_credential_mismatch,
     marketplace_credential_required,
-    skill_not_found,
 )
 from app.models.credential import Credential
 from app.models.marketplace import SkillCredentialBinding
 from app.models.skill import Skill
-
-if TYPE_CHECKING:
-    from app.dependencies import CurrentUser
-
 
 # ---------------------------------------------------------------------------
 # Typed requirement view
@@ -67,14 +66,6 @@ class ResolvedCredentialEntry:
     definition_key: str
     env_map: dict[str, str]
     decrypted: dict[str, str]
-
-
-@dataclass(frozen=True)
-class _LightUser:
-    """Tiny adapter so ``list_bindings`` (which takes a ``CurrentUser``)
-    works when only a user_id is in scope (executor / runtime path)."""
-
-    id: uuid.UUID
 
 
 @dataclass(frozen=True)
@@ -138,14 +129,21 @@ def parse_requirements(skill: Skill) -> list[CredentialRequirement]:
 
 
 async def list_bindings(
-    db: AsyncSession, *, skill: Skill, user: CurrentUser
+    db: AsyncSession, *, skill: Skill, context: OrgContext
 ) -> list[SkillCredentialBinding]:
     """Bindings owned by ``user`` for the given skill (``scope='skill'``)."""
 
-    stmt = select(SkillCredentialBinding).where(
-        SkillCredentialBinding.skill_id == skill.id,
-        SkillCredentialBinding.user_id == user.id,
-        SkillCredentialBinding.scope == "skill",
+    await require_private_skill(db, skill, context)
+    stmt = (
+        select(SkillCredentialBinding)
+        .join(Credential, Credential.id == SkillCredentialBinding.credential_id)
+        .where(
+            SkillCredentialBinding.skill_id == skill.id,
+            skill_binding_scope_predicate(context),
+            SkillCredentialBinding.scope == "skill",
+            private_scope_predicate(Credential, context),
+            Credential.is_system.is_(False),
+        )
     )
     return list((await db.execute(stmt)).scalars().all())
 
@@ -154,7 +152,7 @@ async def validate_binding(
     db: AsyncSession,
     *,
     skill: Skill,
-    user: CurrentUser,
+    context: OrgContext,
     requirement_key: str,
     credential_id: uuid.UUID,
 ) -> tuple[CredentialRequirement, Credential]:
@@ -176,29 +174,25 @@ async def validate_binding(
        definition. Mismatch → ``marketplace_credential_mismatch`` (400).
     """
 
-    if skill.user_id != user.id:
-        # Ownership check first — enumeration-safe 404.
-        raise skill_not_found()
+    await require_private_skill(db, skill, context)
 
     requirements = {r.key: r for r in parse_requirements(skill)}
     requirement = requirements.get(requirement_key)
     if requirement is None:
-        raise marketplace_credential_mismatch(
-            f"unknown requirement_key '{requirement_key}'"
-        )
+        raise marketplace_credential_mismatch(f"unknown requirement_key '{requirement_key}'")
 
-    credential = await db.get(Credential, credential_id)
-    if credential is None or credential.user_id != user.id or credential.is_system:
-        # ``credential_not_found`` and "not yours" collapse — same as
-        # other resource endpoints (rules/security.md).
-        if credential is not None and credential.is_system:
-            # Differentiate the operator-misuse case in logs but not in
-            # the response. Caller may raise mismatch instead so the
-            # client gets a hint that the credential exists but isn't
-            # bindable.
-            raise marketplace_credential_mismatch(
-                "system credentials cannot be bound to user skills"
-            )
+    credential = await db.scalar(
+        private_scoped(
+            select(Credential).where(
+                Credential.id == credential_id,
+                Credential.is_system.is_(False),
+                Credential.status == "active",
+            ),
+            Credential,
+            context,
+        )
+    )
+    if credential is None:
         raise credential_not_found()
 
     if credential.definition_key != requirement.definition_key:
@@ -214,7 +208,7 @@ async def upsert_binding(
     db: AsyncSession,
     *,
     skill: Skill,
-    user: CurrentUser,
+    context: OrgContext,
     requirement_key: str,
     credential_id: uuid.UUID,
 ) -> SkillCredentialBinding:
@@ -223,14 +217,14 @@ async def upsert_binding(
     await validate_binding(
         db,
         skill=skill,
-        user=user,
+        context=context,
         requirement_key=requirement_key,
         credential_id=credential_id,
     )
 
     stmt = select(SkillCredentialBinding).where(
         SkillCredentialBinding.skill_id == skill.id,
-        SkillCredentialBinding.user_id == user.id,
+        skill_binding_scope_predicate(context),
         SkillCredentialBinding.requirement_key == requirement_key,
         SkillCredentialBinding.scope == "skill",
     )
@@ -241,7 +235,7 @@ async def upsert_binding(
 
     row = SkillCredentialBinding(
         skill_id=skill.id,
-        user_id=user.id,
+        user_id=context.user_id,
         requirement_key=requirement_key,
         credential_id=credential_id,
         scope="skill",
@@ -255,16 +249,15 @@ async def delete_binding(
     db: AsyncSession,
     *,
     skill: Skill,
-    user: CurrentUser,
+    context: OrgContext,
     requirement_key: str,
 ) -> bool:
     """Remove a binding. Returns True if a row was deleted."""
 
-    if skill.user_id != user.id:
-        raise skill_not_found()
+    await require_private_skill(db, skill, context)
     stmt = select(SkillCredentialBinding).where(
         SkillCredentialBinding.skill_id == skill.id,
-        SkillCredentialBinding.user_id == user.id,
+        skill_binding_scope_predicate(context),
         SkillCredentialBinding.requirement_key == requirement_key,
         SkillCredentialBinding.scope == "skill",
     )
@@ -281,7 +274,7 @@ async def delete_binding(
 
 
 async def missing_required_keys(
-    db: AsyncSession, *, skill: Skill, user: CurrentUser
+    db: AsyncSession, *, skill: Skill, context: OrgContext
 ) -> list[str]:
     """Requirement keys with ``required=True`` and no user binding.
 
@@ -289,15 +282,28 @@ async def missing_required_keys(
     as missing — the operator/user handles them out-of-band.
     """
 
+    await require_private_skill(db, skill, context)
     requirements = parse_requirements(skill)
-    user_required = [
-        r for r in requirements if r.required and r.scope == "user"
-    ]
+    user_required = [r for r in requirements if r.required and r.scope == "user"]
     if not user_required:
         return []
-    bindings = await list_bindings(db, skill=skill, user=user)
-    bound_keys = {b.requirement_key for b in bindings}
-    return [r.key for r in user_required if r.key not in bound_keys]
+    bindings = await list_bindings(db, skill=skill, context=context)
+    credentials = await db.scalars(
+        private_scoped(
+            select(Credential).where(
+                Credential.id.in_([binding.credential_id for binding in bindings]),
+                Credential.status == "active",
+                Credential.is_system.is_(False),
+            ),
+            Credential,
+            context,
+        )
+    )
+    definitions = {credential.id: credential.definition_key for credential in credentials}
+    bound_keys = {
+        binding.requirement_key: definitions.get(binding.credential_id) for binding in bindings
+    }
+    return [r.key for r in user_required if bound_keys.get(r.key) != r.definition_key]
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +315,7 @@ async def resolve_credential_bindings(
     db: AsyncSession,
     *,
     skill: Skill,
-    user_id: uuid.UUID,
+    context: OrgContext,
     agent_skill_config: dict[str, Any] | None = None,
 ) -> tuple[dict[str, ResolvedCredentialEntry], list[str]]:
     """Slice E §8.2 — resolve each ``credential_requirements`` entry into
@@ -325,29 +331,28 @@ async def resolve_credential_bindings(
     3. Otherwise — counted as missing if the requirement is
        ``required=True`` and ``scope='user'``.
 
-    Decryption uses ``credential_service.decrypt_with_external`` which
+    Decryption uses ``credentials.boundary.open_values`` which
     is Cipher V2 + ``__external__`` ref expansion (same path as the
     rest of the codebase). The decrypted dict is held in memory only —
     callers are responsible for not logging the returned object.
     """
 
+    await require_private_skill(db, skill, context)
     requirements = parse_requirements(skill)
     if not requirements:
         return {}, []
 
     bindings = await list_bindings(
-        db, skill=skill, user=_LightUser(user_id)  # type: ignore[arg-type]
+        db,
+        skill=skill,
+        context=context,
     )
-    binding_by_key: dict[str, SkillCredentialBinding] = {
-        b.requirement_key: b for b in bindings
-    }
+    binding_by_key: dict[str, SkillCredentialBinding] = {b.requirement_key: b for b in bindings}
     override_raw = (agent_skill_config or {}).get("credential_bindings") or {}
     override: dict[str, uuid.UUID] = {}
     for key, raw in override_raw.items():
         try:
-            override[key] = (
-                raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw))
-            )
+            override[key] = raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw))
         except (TypeError, ValueError):
             continue
 
@@ -368,8 +373,12 @@ async def resolve_credential_bindings(
                 missing.append(req.key)
             continue
 
-        credential = await db.get(Credential, credential_id)
-        if credential is None or credential.user_id != user_id:
+        credential = await db.scalar(
+            private_scoped(
+                select(Credential).where(Credential.id == credential_id), Credential, context
+            )
+        )
+        if credential is None or credential.is_system or credential.status != "active":
             # Ownership lost (deleted / reassigned). Treat as missing —
             # the caller surfaces ``marketplace_credential_required``.
             if req.required:
@@ -384,12 +393,9 @@ async def resolve_credential_bindings(
 
         # Lazy import — keeps credential_requirements importable from
         # unit tests that don't need the cipher path.
-        from app.credentials import service as credential_service
 
         try:
-            decrypted = await credential_service.decrypt_with_external(
-                credential.data_encrypted
-            )
+            decrypted = await open_values(credential, "install")
         except Exception:
             if req.required:
                 missing.append(req.key)
@@ -413,7 +419,7 @@ async def build_runtime_env(
     db: AsyncSession,
     *,
     skill: Skill,
-    user: CurrentUser,
+    context: OrgContext,
     agent_skill_config: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Plan the env vars to inject into the skill subprocess.
@@ -433,7 +439,7 @@ async def build_runtime_env(
     resolved, missing = await resolve_credential_bindings(
         db,
         skill=skill,
-        user_id=user.id,
+        context=context,
         agent_skill_config=agent_skill_config,
     )
     if missing:

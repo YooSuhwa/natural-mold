@@ -40,7 +40,7 @@
       "category": "manual-capture",
       "owner": "frontend-quality",
       "expires": "2027-03-31",
-      "expected_count": 23
+      "expected_count": 24
     },
     {
       "id": "legacy-runtime",
@@ -99,6 +99,56 @@
       "reason": "Set MANUAL_ATLASSIAN_E2E=1 to run the headed Atlassian OAuth flow.",
       "category": "credentialed-live",
       "owner": "mcp-integrations",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "org-authz-access-request",
+      "path_glob": "e2e/access-request-approval.spec.ts",
+      "condition": "process.env.E2E_ORG_AUTHZ !== '1'",
+      "reason": "Org-authz role fixtures (plan 16.5) pending",
+      "category": "infrastructure",
+      "owner": "org-authz",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "org-authz-readiness-connect-start",
+      "path_glob": "e2e/readiness-connect-start.spec.ts",
+      "condition": "process.env.E2E_ORG_AUTHZ !== '1'",
+      "reason": "Org-authz role fixtures (plan 16.5) pending",
+      "category": "infrastructure",
+      "owner": "org-authz",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "org-authz-readiness-auth-card",
+      "path_glob": "e2e/readiness-auth-card-connect.spec.ts",
+      "condition": "process.env.E2E_ORG_AUTHZ !== '1'",
+      "reason": "Org-authz role fixtures (plan 16.5) pending",
+      "category": "infrastructure",
+      "owner": "org-authz",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "org-authz-auth-card-oauth",
+      "path_glob": "e2e/org-authz-auth-card-oauth.spec.ts",
+      "condition": "process.env.E2E_ORG_AUTHZ !== '1'",
+      "reason": "Org-authz role fixtures (plan 16.5) pending",
+      "category": "infrastructure",
+      "owner": "org-authz",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "org-authz-axe",
+      "path_glob": "e2e/a11y/org-authz-axe.spec.ts",
+      "condition": "process.env.E2E_ORG_AUTHZ !== '1'",
+      "reason": "Set E2E_ORG_AUTHZ=1 to run the org-authz axe scan",
+      "category": "infrastructure",
+      "owner": "org-authz",
       "expires": "2027-03-31",
       "expected_count": 1
     }

@@ -12,10 +12,11 @@ import uuid
 from collections.abc import Sequence
 from typing import Literal, cast
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent import Agent
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.schemas.artifact import (
@@ -32,7 +33,7 @@ FileEventOperation = Literal["created", "updated", "deleted", "failed"]
 async def get_conversation_artifact_summary(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     conversation_id: uuid.UUID,
     artifact_id: uuid.UUID | str,
 ) -> ArtifactSummary:
@@ -42,7 +43,7 @@ async def get_conversation_artifact_summary(
 
     artifact = await _get_owned_artifact(
         db,
-        user_id=user_id,
+        context=context,
         artifact_id=artifact_id,
         conversation_id=conversation_id,
     )
@@ -52,13 +53,13 @@ async def get_conversation_artifact_summary(
 async def get_artifact_summary(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     artifact_id: uuid.UUID | str,
 ) -> ArtifactSummary:
     # Deferred import: see get_conversation_artifact_summary.
     from app.services.artifacts.library import _get_owned_artifact
 
-    artifact = await _get_owned_artifact(db, user_id=user_id, artifact_id=artifact_id)
+    artifact = await _get_owned_artifact(db, context=context, artifact_id=artifact_id)
     return await _summary_from_artifact(db, artifact, include_names=True)
 
 
@@ -72,23 +73,30 @@ async def _summaries_from_artifacts(
         return []
 
     versions_by_artifact_id = await _current_versions_for_artifacts(db, artifacts)
-    agent_names: dict[uuid.UUID, str | None] = {}
-    conversation_titles: dict[uuid.UUID, str | None] = {}
+    conversation_names: dict[uuid.UUID, tuple[str | None, str]] = {}
     if include_names:
-        agent_ids = {artifact.agent_id for artifact in artifacts}
         conversation_ids = {artifact.conversation_id for artifact in artifacts}
-        if agent_ids:
-            agent_rows = await db.execute(
-                select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids))
-            )
-            agent_names = dict(agent_rows.tuples().all())
         if conversation_ids:
             conversation_rows = await db.execute(
-                select(Conversation.id, Conversation.title).where(
-                    Conversation.id.in_(conversation_ids)
+                select(
+                    Conversation.id,
+                    Conversation.title,
+                    Conversation.agent_name_snapshot,
+                ).where(
+                    tuple_(
+                        Conversation.id,
+                        Conversation.org_id,
+                        Conversation.tenant_id,
+                        Conversation.user_id,
+                    ).in_(
+                        [(a.conversation_id, a.org_id, a.tenant_id, a.user_id) for a in artifacts]
+                    )
                 )
             )
-            conversation_titles = dict(conversation_rows.tuples().all())
+            conversation_names = {
+                conversation_id: (title, agent_name_snapshot)
+                for conversation_id, title, agent_name_snapshot in conversation_rows.tuples().all()
+            }
 
     summaries: list[ArtifactSummary] = []
     for artifact in artifacts:
@@ -99,8 +107,8 @@ async def _summaries_from_artifacts(
             _summary_from_artifact_with_version(
                 artifact,
                 version,
-                agent_name=agent_names.get(artifact.agent_id),
-                conversation_title=conversation_titles.get(artifact.conversation_id),
+                agent_name=conversation_names.get(artifact.conversation_id, (None, ""))[1],
+                conversation_title=conversation_names.get(artifact.conversation_id, (None, ""))[0],
             )
         )
     return summaries
@@ -160,14 +168,24 @@ async def _summary_from_artifact(
     agent_name: str | None = None
     conversation_title: str | None = None
     if include_names:
-        agent_name = (
-            await db.execute(select(Agent.name).where(Agent.id == artifact.agent_id))
-        ).scalar_one_or_none()
-        conversation_title = (
+        conversation_row = (
             await db.execute(
-                select(Conversation.title).where(Conversation.id == artifact.conversation_id)
+                select(Conversation.title, Conversation.agent_name_snapshot).where(
+                    Conversation.id == artifact.conversation_id,
+                    private_scope_predicate(
+                        Conversation,
+                        OrgContext(
+                            user_id=artifact.user_id,
+                            org_id=artifact.org_id,
+                            tenant_id=artifact.tenant_id,
+                        ),
+                    ),
+                )
             )
-        ).scalar_one_or_none()
+        ).one_or_none()
+        if conversation_row is not None:
+            conversation_title = conversation_row.title
+            agent_name = conversation_row.agent_name_snapshot
 
     return _summary_from_artifact_with_version(
         artifact,
@@ -220,7 +238,14 @@ def _summary_from_artifact_with_version(
 async def _current_version(db: AsyncSession, artifact: ConversationArtifact) -> ArtifactVersion:
     version: ArtifactVersion | None = None
     if artifact.current_version_id is not None:
-        version = await db.get(ArtifactVersion, artifact.current_version_id)
+        version = await db.scalar(
+            select(ArtifactVersion).where(
+                ArtifactVersion.id == artifact.current_version_id,
+                ArtifactVersion.artifact_id == artifact.id,
+            )
+        )
+        if version is None:
+            raise ArtifactNotFoundError("artifact version not found")
     if version is None:
         version = (
             await db.execute(

@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import uuid
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, NoReturn
 
 from deepagents.middleware.filesystem import FilesystemPermission
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
 from app.agent_runtime.runtime_policy import LEGACY_RUNTIME_POLICY, ResolvedRuntimePolicy
+from app.authz.org_context import OrgContext
 from app.config import settings
+
+if TYPE_CHECKING:
+    from app.authz.runtime_access_planner import RuntimeAccessPlan
 
 _configured_data_root = Path(settings.data_root)
 _DATA_DIR = (
@@ -48,6 +54,7 @@ class AgentConfig:
     system_prompt: str
     tools_config: list[dict[str, Any]]
     thread_id: str
+    org_context: OrgContext = field(kw_only=True)
     # Additive public-facade field. Keep it keyword-only so legacy callers that
     # pass ``model_params`` (and later fields) positionally retain their exact
     # argument mapping.
@@ -129,6 +136,11 @@ class AgentConfig:
     # ``default_factory=set`` keeps it per-instance mutable (never shared) and
     # DB-free unit tests get an empty set with unchanged behaviour.
     secret_values: set[str] = field(default_factory=set)
+    # F-06 — the run's ``RuntimeAccessPlan`` (allowed links, ``excluded_capabilities``;
+    # no secret values). Children prepare from ``access_plan.sub_agent_links``.
+    access_plan: RuntimeAccessPlan | None = None
+    # H-06 (8.7): the root run's agent, whose spend tier a subagent's model calls use.
+    usage_root_agent_id: str | None = None
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,
@@ -155,3 +167,60 @@ class RuntimeComponents:
     memory_sources: list[str] | None
     permissions: list[FilesystemPermission]
     interrupt_on: dict[str, Any] | None
+
+
+ToolAccessClass = Literal[
+    "snapshot_safe",
+    "resolved_external",
+    "run_output",
+    "live_application_resource",
+]
+TOOL_ACCESS_CLASSES: frozenset[str] = frozenset(
+    ("snapshot_safe", "resolved_external", "run_output", "live_application_resource")
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedRunBinding:
+    """Exact run/conversation/user/org/tenant identity a prepared lease is bound to."""
+
+    tenant_id: uuid.UUID
+    org_id: uuid.UUID
+    user_id: uuid.UUID
+    agent_id: uuid.UUID
+    conversation_id: uuid.UUID
+    run_id: uuid.UUID
+    thread_id: str
+    participant_paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, eq=False, slots=True)
+class PreparedRunLease:
+    """Process-local, fully prepared run (parent Task 10).
+
+    Holds the compiled root/child runtimes, converted messages, LangGraph
+    config, lease-bound checkpointer and seed, immutable snapshots, tool access
+    classes and resolved secret values. Only ``digest`` (non-secret) is ever
+    persisted; the lease itself refuses pickling/copying so it cannot be
+    reconstructed from durable rows.
+    """
+
+    binding: PreparedRunBinding
+    token: str = field(repr=False)
+    digest: str
+    runnable: Any = field(repr=False)
+    child_runnables: Mapping[str, Any] = field(repr=False)
+    messages: tuple[Any, ...] = field(repr=False)
+    config: Mapping[str, Any] = field(repr=False)
+    checkpointer: Any = field(repr=False)
+    checkpoint_seed: Any = field(repr=False)
+    snapshots: Mapping[str, Any] = field(repr=False)
+    tool_access: Mapping[str, ToolAccessClass]
+    secret_values: frozenset[str] = field(repr=False)
+    close: Callable[[], Awaitable[None]] | None = field(default=None, repr=False)
+    # Frozen union of every participant's effective capability descriptor IDs
+    # (``lease_descriptor_ids``); leaf guards dispatch only IDs in this set.
+    descriptor_ids: frozenset[str] = frozenset()
+
+    def __reduce_ex__(self, protocol: object) -> NoReturn:
+        raise TypeError("PreparedRunLease is process-local and cannot be serialized or copied")

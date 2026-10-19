@@ -6,7 +6,10 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_api import service
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.agent_api_access import bind_agent_api_authz, deployable_agent_ids
+from app.authz.org_context import OrgContext
+from app.authz.policies import CANDIDATES, PRIVATE, authz_policy
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.models.agent_api import AgentApiKey, AgentDeployment
 from app.schemas.agent_api import (
     AgentApiKeyCreate,
@@ -19,7 +22,12 @@ from app.schemas.agent_api import (
 )
 from app.services import audit_service
 
-router = APIRouter(prefix="/api/agent-api", tags=["agent-api"])
+# Deployment/key create and update re-check agent#can_deploy in the service (D-06).
+router = APIRouter(
+    prefix="/api/agent-api", tags=["agent-api"], dependencies=[Depends(bind_agent_api_authz)]
+)
+DEPLOYMENTS = PRIVATE("agent_deployments")
+KEYS = PRIVATE("agent_api_keys")
 
 
 async def _record_deployment_audit(
@@ -103,31 +111,39 @@ def _key_list_response(row) -> AgentApiKeyListResponse:
 
 
 @router.get("/deployment-candidates", response_model=list[AgentDeploymentCandidateResponse])
+@authz_policy(CANDIDATES("agent", "can_deploy"))
 async def list_deployment_candidates(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    return await service.list_deployment_candidates(db, user.id)
+    rows = await service.list_deployment_candidates(db, context)
+    deployable = await deployable_agent_ids(context, [row.agent_id for row in rows])
+    return [row for row in rows if row.agent_id in deployable]
 
 
 @router.get("/deployments", response_model=list[AgentDeploymentResponse])
+@authz_policy(DEPLOYMENTS)
 async def list_deployments(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    rows = await service.list_deployments(db, user.id)
+    rows = await service.list_deployments(db, context)
     return [service.deployment_to_response(row) for row in rows]
 
 
 @router.post("/deployments", response_model=AgentDeploymentResponse, status_code=201)
+@authz_policy(DEPLOYMENTS)
 async def create_deployment(
     data: AgentDeploymentCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    row = await service.create_deployment(db, user.id, data)
+    row = await service.create_deployment(db, context, data)
     await _record_deployment_audit(
         db,
         user=user,
@@ -140,15 +156,17 @@ async def create_deployment(
 
 
 @router.patch("/deployments/{deployment_id}", response_model=AgentDeploymentResponse)
+@authz_policy(PRIVATE("agent_deployments", param="deployment_id"))
 async def update_deployment(
     deployment_id: uuid.UUID,
     data: AgentDeploymentUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    row = await service.update_deployment(db, user.id, deployment_id, data)
+    row = await service.update_deployment(db, context, deployment_id, data)
     await _record_deployment_audit(
         db,
         user=user,
@@ -162,23 +180,27 @@ async def update_deployment(
 
 
 @router.get("/keys", response_model=list[AgentApiKeyListResponse])
+@authz_policy(KEYS)
 async def list_api_keys(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
-    rows = await service.list_api_keys(db, user.id)
+    rows = await service.list_api_keys(db, context)
     return [_key_list_response(row) for row in rows]
 
 
 @router.post("/keys", response_model=AgentApiKeyCreatedResponse, status_code=201)
+@authz_policy(KEYS)
 async def create_api_key(
     data: AgentApiKeyCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    row, cleartext = await service.create_api_key(db, user.id, data)
+    row, cleartext = await service.create_api_key(db, context, data)
     await _record_api_key_audit(
         db,
         user=user,
@@ -203,14 +225,16 @@ async def create_api_key(
 
 
 @router.post("/keys/{api_key_id}/revoke", response_model=AgentApiKeyListResponse)
+@authz_policy(PRIVATE("agent_api_keys", param="api_key_id"))
 async def revoke_api_key(
     api_key_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    row = await service.revoke_api_key(db, user.id, api_key_id)
+    row = await service.revoke_api_key(db, context, api_key_id)
     await _record_api_key_audit(
         db,
         user=user,

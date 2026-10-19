@@ -17,23 +17,29 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.authz.catalog_item_fanout import commit_item_change
+from app.authz.model_access import require_visible_model
+from app.authz.org_context import OrgContext
+from app.authz.policies import CANDIDATES, RES, SELF, SUPER, authz_policy
+from app.authz.resource_gate import gate_list, org_context_when_consulted
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.dependencies import (
     CurrentUser,
+    get_company_db,
     get_current_user,
     get_db,
-    require_super_user,
+    get_org_context,
+    require_platform_operator,
     verify_csrf,
 )
 from app.error_codes import (
-    credential_not_found,
     model_not_found,
     super_user_required,
 )
-from app.models.credential import Credential
 from app.schemas.model import (
     ModelCreate,
     ModelTestPreviewRequest,
@@ -41,9 +47,9 @@ from app.schemas.model import (
     ModelUpdate,
 )
 from app.services import model_service
-from app.services.credential_resolver import resolve_credential_for_model
 from app.services.model_service import serialize_model
-from app.services.model_test import run_model_test
+from app.services.model_test_audit import record_model_test
+from app.services.model_test_run import probe_preview_model, probe_registered_model
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -55,6 +61,7 @@ router = APIRouter(prefix="/api/models", tags=["models"])
 
 
 @router.get("")
+@authz_policy(CANDIDATES("llm_model", "can_use"))
 async def list_models(
     include_hidden: bool = Query(
         False,
@@ -63,32 +70,39 @@ async def list_models(
             "Drives the operator-facing ``/models`` admin page."
         ),
     ),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext | None = Depends(org_context_when_consulted),
+    authz: AuthzService = Depends(get_authz),
 ):
     if include_hidden and not user.is_super_user:
         raise super_user_required()
-    return await model_service.list_models(db, include_hidden=include_hidden)
+    rows = await model_service.list_models(db, include_hidden=include_hidden, context=context)
+    if context is None or include_hidden:  # legacy, or the operator catalog page
+        return rows
+    return await gate_list(authz, context, "llm_model", "can_use", rows, lambda row: row["id"])
 
 
 @router.get("/{model_id}")
+@authz_policy(RES("llm_model", "can_use", param="model_id", min_visible="can_use"))
 async def get_model(
     model_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext | None = Depends(org_context_when_consulted),
+    authz: AuthzService = Depends(get_authz),
 ):
-    model = await model_service.get_model(db, model_id)
-    if not model:
-        raise model_not_found()
-    return serialize_model(model)
+    model = await model_service.load_model(db, model_id, context, authz)
+    return serialize_model(require_visible_model(model, user))
 
 
 @router.post("", status_code=201)
+@authz_policy(SUPER)
 async def create_model(
     payload: ModelCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ):
     """Register a new model row.
@@ -109,17 +123,18 @@ async def create_model(
         action="model.create",
         model=model,
     )
-    await db.commit()
+    await commit_item_change(db, request, user.id, "model", model.id)  # E-03 fanout
     return serialize_model(model)
 
 
 @router.patch("/{model_id}")
+@authz_policy(SUPER)
 async def update_model(
     model_id: uuid.UUID,
     payload: ModelUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ):
     model = await model_service.get_model(db, model_id)
@@ -137,16 +152,17 @@ async def update_model(
         model=model,
         metadata={"changed_fields": changed_fields},
     )
-    await db.commit()
+    await commit_item_change(db, request, user.id, "model", model_id)  # E-03 fanout
     return serialize_model(model)
 
 
 @router.delete("/{model_id}", status_code=204)
+@authz_policy(SUPER)
 async def delete_model(
     model_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ):
     model = await model_service.get_model(db, model_id)
@@ -162,28 +178,15 @@ async def delete_model(
         model=model,
     )
     await model_service.delete_model(db, model=model)
-    await db.commit()
+    await commit_item_change(db, request, user.id, "model", model_id)  # E-03 fanout
     return
 
 
 # -- Test surface ------------------------------------------------------------
 
 
-async def _load_owned_credential(
-    db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
-) -> Credential:
-    cred = await credential_service.get_for_user(db, credential_id, user_id)
-    if cred is None:
-        raise credential_not_found()
-    return cred
-
-
-def _request_meta(request: Request) -> tuple[str | None, str | None]:
-    client = request.client.host if request.client else None
-    return client, request.headers.get("user-agent")
-
-
 @router.post("/{model_id}/test", response_model=ModelTestResponse)
+@authz_policy(RES("llm_model", "can_use", param="model_id", min_visible="can_use"))
 async def test_registered_model(
     model_id: uuid.UUID,
     request: Request,
@@ -197,7 +200,9 @@ async def test_registered_model(
     ),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> ModelTestResponse:
     """Probe a registered ``Model`` row using a Credential.
 
@@ -206,66 +211,31 @@ async def test_registered_model(
     credential for this model).
     """
 
-    model = await model_service.get_model(db, model_id)
-    if model is None:
-        raise model_not_found()
-
-    cred = await resolve_credential_for_model(db, model, credential_id, user.id)
-    if cred is None:
-        # Disambiguate so existing 404-on-invalid-credential clients keep
-        # working while still giving a useful 422 when the user simply has
-        # no default bound.
-        if credential_id is not None:
-            raise credential_not_found()
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "no usable credential — pass credential_id or set the model's "
-                "default_credential_id."
-            ),
-        )
-    data = await credential_service.decrypt_with_external(cred.data_encrypted)
-
-    result = await run_model_test(
-        provider=model.provider,
-        model_name=model.model_name,
-        base_url=model.base_url,
-        credential_data=data,
-        cost_per_input_token=model.cost_per_input_token,
-        cost_per_output_token=model.cost_per_output_token,
+    probe = await probe_registered_model(
+        db, model_id, credential_id, user=user, context=context, authz=authz
     )
-
-    payload = result.to_dict()
-    ip, user_agent = _request_meta(request)
-    await credential_service.write_audit_log(
+    await record_model_test(
         db,
-        credential_id=cred.id,
+        request,
+        credential_id=probe.credential_id,
         actor_user_id=user.id,
-        action="test",
-        source="api",
-        ip=ip,
-        user_agent=user_agent,
-        metadata={
-            "model_id": str(model.id),
-            "provider": model.provider,
-            "model_name": model.model_name,
-            "success": payload["success"],
-        },
-        error=None
-        if payload["success"]
-        else (payload["error"]["message"] if payload.get("error") else None),
+        payload=probe.payload,
+        metadata=probe.metadata,
     )
     await db.commit()
-    return ModelTestResponse(**payload)
+    return ModelTestResponse(**probe.payload)
 
 
 @router.post("/test-preview", response_model=ModelTestResponse)
+@authz_policy(SELF)
 async def test_preview_model(
     payload: ModelTestPreviewRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> ModelTestResponse:
     """Probe an unregistered ``provider:model_name`` combo (Custom ID flow).
 
@@ -274,35 +244,14 @@ async def test_preview_model(
     pasted-in ID before committing it to the table.
     """
 
-    cred = await _load_owned_credential(db, payload.credential_id, user.id)
-    data = await credential_service.decrypt_with_external(cred.data_encrypted)
-
-    result = await run_model_test(
-        provider=payload.provider,
-        model_name=payload.model_name,
-        base_url=payload.base_url,
-        credential_data=data,
-    )
-
-    body = result.to_dict()
-    ip, user_agent = _request_meta(request)
-    await credential_service.write_audit_log(
+    probe = await probe_preview_model(db, payload, context=context, authz=authz)
+    await record_model_test(
         db,
-        credential_id=cred.id,
+        request,
+        credential_id=probe.credential_id,
         actor_user_id=user.id,
-        action="test",
-        source="api",
-        ip=ip,
-        user_agent=user_agent,
-        metadata={
-            "preview": True,
-            "provider": payload.provider,
-            "model_name": payload.model_name,
-            "success": body["success"],
-        },
-        error=None
-        if body["success"]
-        else (body["error"]["message"] if body.get("error") else None),
+        payload=probe.payload,
+        metadata=probe.metadata,
     )
     await db.commit()
-    return ModelTestResponse(**body)
+    return ModelTestResponse(**probe.payload)

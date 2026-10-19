@@ -50,6 +50,7 @@ async def _runner(ctx: ToolRunContext) -> dict[str, Any]:
         request_opts["json"] = json_body
 
     if ctx.credentials is not None:
+        _reject_auth_headers(headers)
         # Look up the credential's definition only to find its GenericAuth.
         # The runner does not know the definition_key directly — derive it
         # from the parameter convention: tool authors store their selected
@@ -79,6 +80,22 @@ async def _runner(ctx: ToolRunContext) -> dict[str, Any]:
         "headers": dict(response.headers),
         "body": body_parsed,
     }
+
+
+# 11.9: with a credential attached, auth-like headers from the model or the user are
+# refused rather than overwritten (destination checks run in the outbound transport).
+_AUTH_HEADERS = frozenset(
+    {"authorization", "proxy-authorization", "cookie", "x-api-key", "api-key", "x-auth-token"}
+)
+
+
+def _reject_auth_headers(headers: dict[str, Any]) -> None:
+    supplied = sorted(k for k in headers if str(k).strip().lower() in _AUTH_HEADERS)
+    if supplied:
+        raise ValueError(
+            f"headers {supplied} are not allowed when a credential is attached; "
+            "the credential supplies authentication"
+        )
 
 
 def _coerce_dict(value: Any, field: str) -> dict[str, Any]:

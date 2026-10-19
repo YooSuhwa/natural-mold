@@ -14,6 +14,7 @@ from langchain_core.tools import StructuredTool
 from langgraph.prebuilt import ToolNode
 
 from app.mcp.domain import McpAppRuntimeContext
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, unit_context
 
 
 def _tool(name: str):
@@ -145,6 +146,7 @@ async def test_mcp_app_timeout_does_not_repeat_accepted_side_effect() -> None:
     )
     ids = [uuid.uuid4() for _ in range(6)]
     context = McpAppRuntimeContext(
+        org_context=unit_context(ids[1]),
         conversation_id=ids[0],
         user_id=ids[1],
         agent_id=ids[2],
@@ -175,6 +177,7 @@ async def test_mcp_app_binding_is_minted_from_actual_toolnode_call() -> None:
 
     ids = [uuid.uuid4() for _ in range(6)]
     context = McpAppRuntimeContext(
+        org_context=unit_context(ids[1]),
         conversation_id=ids[0],
         user_id=ids[1],
         agent_id=ids[2],
@@ -350,6 +353,8 @@ async def test_build_mcp_tools_uses_live_apps_metadata_and_hides_app_only_tool(
         "definition_key": "mcp",
         "mcp_server_url": "https://mcp.example.test/rpc",
         "conversation_id": ids[0],
+        "org_id": str(TEST_ORG_ID),
+        "tenant_id": str(TEST_TENANT_ID),
         "user_id": ids[1],
         "agent_id": ids[2],
         "credential_subject_user_id": ids[3],
@@ -369,6 +374,7 @@ async def test_build_mcp_tools_uses_live_apps_metadata_and_hides_app_only_tool(
 
     assert [tool.name for tool in tools] == ["weather"]
     assert tools[0]._mcp_app_context == McpAppRuntimeContext(  # type: ignore[attr-defined]
+        org_context=unit_context(uuid.UUID(ids[1])),
         conversation_id=uuid.UUID(ids[0]),
         user_id=uuid.UUID(ids[1]),
         agent_id=uuid.UUID(ids[2]),

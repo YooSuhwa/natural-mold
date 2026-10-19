@@ -63,6 +63,8 @@ export interface CredentialDefinition {
   properties: FieldDef[]
   has_test: boolean
   has_oauth: boolean
+  // Plan 10.4: personal account type — never shared or transferred.
+  personal?: boolean
 }
 
 export type CredentialStatus = 'active' | 'auth_needed' | 'expired' | 'disabled' | 'unknown'
@@ -74,6 +76,8 @@ export interface Credential {
   name: string
   field_keys: string[]
   is_shared: boolean
+  /** E-05 (10.4): personal account type — never shared or transferred. */
+  personal?: boolean
   // True for operator-managed system credentials (Fix Agent / builder /
   // image generation). User-facing pickers MUST hide these.
   is_system?: boolean

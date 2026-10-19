@@ -12,16 +12,36 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, assert_never
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.candidates import candidate_predicate
+from app.authz.org_context import OrgContext
+from app.authz.platform_scope import PlatformScope
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.scoping import private_scoped
+from app.credentials import tenant_encryption
+from app.credentials.allowed_hosts import default_allowed_hosts
+from app.credentials.creation import CredentialCreation
 from app.credentials.external_secrets import resolve_external_refs
+from app.credentials.mutation_scope import (
+    CredentialAuditQuery,
+    CredentialPatch,
+    CredentialTestRecord,
+    load_scoped_credential,
+)
+from app.error_codes import credential_not_found
 from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
 from app.security import cipher
 from app.security.key_provider import get_active_key, get_keys
+from app.security.tenant_keys import TenantDataKey
 from app.services import audit_service
 
 logger = logging.getLogger(__name__)
@@ -51,6 +71,7 @@ OAUTH_IDENTITY_FIELDS = {
     "access_token_url",
     "token_url",
     "registration_url",
+    "authorization_server_url",
     "client_id",
 }
 
@@ -78,8 +99,9 @@ def encrypt_data(data: dict[str, Any]) -> tuple[str, str, list[str]]:
 
 
 def decrypt_data(blob: str) -> dict[str, Any]:
-    """Decrypt ``blob`` to a dict."""
+    """Decrypt an instance-key (0x01) ``blob`` to a dict; 0x02 needs its row."""
 
+    tenant_encryption.require_row_context(blob)
     plaintext = cipher.decrypt(blob, get_keys())
     parsed = json.loads(plaintext)
     if not isinstance(parsed, dict):
@@ -87,44 +109,61 @@ def decrypt_data(blob: str) -> dict[str, Any]:
     return parsed
 
 
-async def decrypt_with_external(blob: str) -> dict[str, Any]:
-    """Decrypt and resolve any ``__external__`` references in the payload."""
+async def decrypt_with_external(source: Credential | str) -> dict[str, Any]:
+    """Decrypt and resolve any ``__external__`` references in the payload.
 
-    raw = decrypt_data(blob)
+    Pass the ``Credential`` row so company-key (0x02) ciphertext can be bound
+    to its company/table/row AAD; a bare blob only decrypts format 0x01.
+    """
+
+    if isinstance(source, Credential):
+        raw = await tenant_encryption.open_payload(source)
+    else:
+        raw = decrypt_data(source)
     return await resolve_external_refs(raw)
 
 
 # -- Queries -----------------------------------------------------------------
 
 
-async def list_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[Credential]:
+async def list_for_user(db: AsyncSession, context: OrgContext) -> list[Credential]:
     """Return user-facing credentials only — system rows are hidden.
 
     Pickers (model Health, agent settings, MCP wizard) call this so a
     misclick doesn't bind an operator key to a user agent.
     """
 
+    await require_private_actor(db, context)
+    result = await db.execute(
+        private_scoped(select(Credential), Credential, context)
+        .where(Credential.is_system.is_(False))
+        .order_by(Credential.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def list_candidates(db: AsyncSession, context: OrgContext) -> list[Credential]:
+    """Enforced list page: own and granted non-system rows, confirmed by BatchCheck (8.10)."""
+
+    await require_private_actor(db, context)
     result = await db.execute(
         select(Credential)
-        .where(
-            Credential.user_id == user_id,
-            Credential.is_system.is_(False),
-        )
+        .where(candidate_predicate(Credential, "credential", context))
         .order_by(Credential.created_at.desc())
     )
     return list(result.scalars().all())
 
 
 async def get_for_user(
-    db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, credential_id: uuid.UUID, context: OrgContext
 ) -> Credential | None:
     """Look up a user-facing credential. System rows return None here so
     user-facing endpoints can't accidentally read them."""
 
+    await require_private_actor(db, context)
     result = await db.execute(
-        select(Credential).where(
+        private_scoped(select(Credential), Credential, context).where(
             Credential.id == credential_id,
-            Credential.user_id == user_id,
             Credential.is_system.is_(False),
         )
     )
@@ -132,11 +171,11 @@ async def get_for_user(
 
 
 async def list_system(db: AsyncSession) -> list[Credential]:
-    """Return operator-managed system credentials regardless of owner."""
+    """Platform credentials only: company shared ones are ``is_system`` too (E-07)."""
 
     result = await db.execute(
         select(Credential)
-        .where(Credential.is_system.is_(True))
+        .where(Credential.is_system.is_(True), Credential.tenant_id.is_(None))
         .order_by(Credential.created_at.desc())
     )
     return list(result.scalars().all())
@@ -149,6 +188,7 @@ async def get_system(db: AsyncSession, credential_id: uuid.UUID) -> Credential |
         select(Credential).where(
             Credential.id == credential_id,
             Credential.is_system.is_(True),
+            Credential.tenant_id.is_(None),
         )
     )
     return result.scalar_one_or_none()
@@ -163,6 +203,7 @@ async def find_system_by_definition(db: AsyncSession, definition_key: str) -> Cr
         select(Credential)
         .where(
             Credential.is_system.is_(True),
+            Credential.tenant_id.is_(None),
             Credential.definition_key == definition_key,
             Credential.status == "active",
         )
@@ -230,6 +271,7 @@ async def get_provider_keys(
         .where(
             Credential.definition_key.in_(LLM_DEFINITION_TO_ENV_KEY.keys()),
             Credential.status == "active",
+            Credential.scope != "tenant",  # a company key never becomes a global fallback
         )
         .order_by(Credential.is_system.desc(), Credential.created_at.desc())
     )
@@ -247,7 +289,7 @@ async def get_provider_keys(
             # env_key already represents the highest-priority credential.
             continue
         try:
-            payload = await decrypt_with_external(cred.data_encrypted)
+            payload = await decrypt_with_external(cred)
         except Exception:  # noqa: BLE001 — bad cipher / missing key shouldn't crash startup
             logger.exception(
                 "get_provider_keys: failed to decrypt credential %s (%s)",
@@ -310,41 +352,37 @@ async def write_audit_log(
 
 async def create(
     db: AsyncSession,
-    *,
-    user_id: uuid.UUID | None,
-    definition_key: str,
-    name: str,
-    data: dict[str, Any],
-    is_shared: bool = False,
-    is_system: bool = False,
-    source: str = "api",
+    creation: CredentialCreation,
+    context: OrgContext | PlatformScope,
 ) -> Credential:
-    """Create a credential row.
+    """Persist personal scope or an explicitly requested platform credential."""
+    match context:
+        case OrgContext():
+            await resolve_private_actor(
+                db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+            )
+            user_id, org_id, tenant_id = context.user_id, context.org_id, context.tenant_id
+            scope, is_system = "personal", False
+        case PlatformScope():
+            user_id, org_id, tenant_id = None, None, None
+            scope, is_system = "platform", True
+        case unreachable:
+            assert_never(unreachable)
 
-    ``is_system=True`` rows MUST be created with ``user_id=None`` — system
-    credentials belong to the operator, not to any single user, so the FK is
-    intentionally NULL (the m36 migration relaxed the constraint and added a
-    CHECK enforcing this invariant). User-owned credentials must always
-    supply a non-null ``user_id``.
-    """
-
-    if is_system and user_id is not None:
-        raise ValueError("system credentials must have user_id=None")
-    if not is_system and user_id is None:
-        raise ValueError("user credentials require user_id")
-
-    blob, key_id, field_keys = encrypt_data(data)
     cred = Credential(
+        id=uuid.uuid4(),
         user_id=user_id,
-        definition_key=definition_key,
-        name=name,
-        data_encrypted=blob,
-        key_id=key_id,
-        field_keys=field_keys,
-        is_shared=is_shared,
+        org_id=org_id,
+        tenant_id=tenant_id,
+        scope=scope,
+        definition_key=creation.definition_key,
+        allowed_hosts=default_allowed_hosts(creation.definition_key),
+        name=creation.name,
+        is_shared=creation.is_shared,
         is_system=is_system,
         status="active",
     )
+    await tenant_encryption.seal(cred, dict(creation.data), db=db)
     db.add(cred)
     await db.flush()
     await write_audit_log(
@@ -352,76 +390,70 @@ async def create(
         credential_id=cred.id,
         actor_user_id=user_id,
         action="create",
-        source=source,
-        metadata={"definition_key": definition_key},
+        source=creation.source,
+        metadata={"definition_key": creation.definition_key},
     )
     return cred
 
 
 async def update(
-    db: AsyncSession,
-    *,
-    credential: Credential,
-    actor_user_id: uuid.UUID | None,
-    name: str | None = None,
-    data: dict[str, Any] | None = None,
-    is_shared: bool | None = None,
-    status: str | None = None,
-    source: str = "api",
+    db: AsyncSession, patch: CredentialPatch, context: OrgContext | PlatformScope
 ) -> Credential:
+    if isinstance(context, OrgContext) and patch.actor_user_id != context.user_id:
+        raise credential_not_found()
+    credential = await load_scoped_credential(db, patch.credential_id, context)
     metadata: dict[str, Any] = {}
-    if name is not None and name != credential.name:
-        credential.name = name
+    if patch.name is not None and patch.name != credential.name:
+        credential.name = patch.name
         metadata["name_changed"] = True
-    if data is not None:
-        payload = dict(data)
+    if patch.data is not None:
+        payload = dict(patch.data)
         if credential.definition_key in OAUTH_DEFINITIONS:
-            existing = decrypt_data(credential.data_encrypted)
+            existing = await tenant_encryption.open_payload(credential, db=db)
             if not _oauth_identity_changed(existing, payload):
                 for key in OAUTH_PRESERVED_FIELDS:
                     if key in existing and key not in payload:
                         payload[key] = existing[key]
-        blob, key_id, field_keys = encrypt_data(payload)
-        credential.data_encrypted = blob
-        credential.key_id = key_id
-        credential.field_keys = field_keys
+        await tenant_encryption.seal(credential, payload, db=db)
         metadata["data_changed"] = True
-    if is_shared is not None:
-        credential.is_shared = is_shared
-    if status is not None:
-        credential.status = status
-        metadata["status"] = status
+    if patch.is_shared is not None:
+        credential.is_shared = patch.is_shared
+    if patch.status is not None:
+        credential.status = patch.status
+        metadata["status"] = patch.status
     if metadata:
         await write_audit_log(
             db,
             credential_id=credential.id,
-            actor_user_id=actor_user_id,
+            actor_user_id=patch.actor_user_id,
             action="update",
-            source=source,
+            source=patch.source,
             metadata=metadata,
         )
+    await db.flush([credential])
     return credential
 
 
 async def record_test(
-    db: AsyncSession,
-    *,
-    credential: Credential,
-    actor_user_id: uuid.UUID | None,
-    result: dict[str, Any],
-    source: str = "api",
+    db: AsyncSession, record: CredentialTestRecord, context: OrgContext | PlatformScope
 ) -> None:
+    if isinstance(context, OrgContext) and record.actor_user_id != context.user_id:
+        raise credential_not_found()
+    credential = await load_scoped_credential(db, record.credential_id, context)
+    result = dict(record.result)
+    message = result.get("message")
     credential.last_tested_at = datetime.now(UTC).replace(tzinfo=None)
     credential.last_test_result = result
     await write_audit_log(
         db,
         credential_id=credential.id,
-        actor_user_id=actor_user_id,
+        actor_user_id=record.actor_user_id,
         action="test",
-        source=source,
+        source=record.source,
         metadata={"success": bool(result.get("success"))},
-        error=None if result.get("success") else result.get("message"),
+        error=message if not result.get("success") and isinstance(message, str) else None,
     )
+    await db.flush([credential])
 
 
 async def re_encrypt_with_active_key(
@@ -430,21 +462,25 @@ async def re_encrypt_with_active_key(
     *,
     actor_user_id: uuid.UUID | None = None,
     source: str = "rotation",
+    key: TenantDataKey | None = None,
 ) -> Credential:
     """Re-encrypt ``credential.data_encrypted`` with the active key.
 
     The blob is decrypted with whichever key it was originally written under
-    (``cipher.decrypt`` walks all configured keys), then re-encrypted with the
-    current active key. ``key_id`` is updated and a ``rotate`` audit log is
-    written. Caller commits.
+    (instance keys for 0x01, the company key named in a 0x02 blob), then
+    re-encrypted with the current active key — the company's active data key
+    for company-scoped rows when ``TENANT_DATA_KEYS_ENABLED`` is on, else the
+    active instance key. ``key_id`` is updated and a ``rotate`` audit log is
+    written. ``key`` pins a specific company key (company key rotation).
+    Caller commits.
     """
 
-    plaintext = decrypt_data(credential.data_encrypted)
-    new_blob, new_key_id, _ = encrypt_data(plaintext)
-    if new_key_id == credential.key_id and new_blob == credential.data_encrypted:
+    previous_blob = credential.data_encrypted
+    plaintext = await tenant_encryption.open_payload(credential, db=db)
+    await tenant_encryption.seal(credential, plaintext, db=db, key=key)
+    new_key_id = credential.key_id
+    if credential.data_encrypted == previous_blob:
         return credential
-    credential.data_encrypted = new_blob
-    credential.key_id = new_key_id
     await write_audit_log(
         db,
         credential_id=credential.id,
@@ -457,16 +493,14 @@ async def re_encrypt_with_active_key(
 
 
 async def list_audit_logs(
-    db: AsyncSession,
-    *,
-    credential_id: uuid.UUID,
-    limit: int = 50,
+    db: AsyncSession, target: CredentialAuditQuery, context: OrgContext
 ) -> list[CredentialAuditLog]:
+    await load_scoped_credential(db, target.credential_id, context)
     result = await db.execute(
         select(CredentialAuditLog)
-        .where(CredentialAuditLog.credential_id == credential_id)
+        .where(CredentialAuditLog.credential_id == target.credential_id)
         .order_by(CredentialAuditLog.created_at.desc())
-        .limit(limit)
+        .limit(target.limit)
     )
     return list(result.scalars().all())
 

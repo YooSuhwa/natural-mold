@@ -1,16 +1,8 @@
 'use client'
 
-import { useState, useMemo, type ReactNode } from 'react'
+import { useState, useMemo } from 'react'
 import { useTranslations } from 'next-intl'
-import {
-  PlusIcon,
-  Trash2Icon,
-  WrenchIcon,
-  LayersIcon,
-  ServerIcon,
-  SparklesIcon,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { WrenchIcon, LayersIcon, ServerIcon, SparklesIcon } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTools } from '@/lib/hooks/use-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
@@ -18,6 +10,7 @@ import { useAllMcpTools } from '@/lib/hooks/use-mcp-servers'
 import { useMiddlewares } from '@/lib/hooks/use-middlewares'
 import { ToolsSkillsDialog } from '../dialogs/tools-skills-dialog'
 import { MiddlewaresDialog } from '../dialogs/add-middleware-modal'
+import { EditOnlyAddButton, Row } from './grid-controls'
 
 interface ToolsMiddlewaresGridProps {
   selectedToolIds: Set<string>
@@ -144,10 +137,7 @@ function ToolsSkillsBox({
             </span>
           )}
         </div>
-        <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
-          <PlusIcon className="size-3.5" />
-          {t('addLabel')}
-        </Button>
+        <EditOnlyAddButton label={t('addLabel')} onClick={() => setOpen(true)} />
       </div>
       {isLoading ? (
         <div className="p-3">
@@ -213,10 +203,7 @@ function MiddlewaresBox({
           <LayersIcon className="size-4 text-muted-foreground" />
           <span className="text-sm font-medium">{t('middlewares')}</span>
         </div>
-        <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
-          <PlusIcon className="size-3.5" />
-          {tc('add')}
-        </Button>
+        <EditOnlyAddButton label={tc('add')} onClick={() => setOpen(true)} />
       </div>
       {!middlewares ? (
         <div className="p-3">
@@ -244,34 +231,6 @@ function MiddlewaresBox({
         selectedTypes={selectedMiddlewareTypes}
         onToggleMiddleware={onToggleMiddleware}
       />
-    </div>
-  )
-}
-
-interface RowProps {
-  icon: ReactNode
-  name: string
-  onRemove: () => void
-}
-
-function Row({ icon, name, onRemove }: RowProps) {
-  const tc = useTranslations('common')
-  return (
-    <div className="flex items-center justify-between px-4 py-2">
-      <div className="flex min-w-0 items-center gap-2">
-        {icon}
-        <span className="truncate text-sm">{name}</span>
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onRemove}
-          aria-label={`${tc('remove')} ${name}`}
-        >
-          <Trash2Icon className="size-3.5" />
-        </Button>
-      </div>
     </div>
   )
 }

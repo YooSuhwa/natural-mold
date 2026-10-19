@@ -5,11 +5,18 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.dependencies import CurrentUser
 from app.models.marketplace import SkillCredentialBinding
 from app.models.skill import Skill
 from app.services import skill_response_enrichment
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_credential,
+    ensure_unit_scope,
+    unit_context,
+)
 
 
 def _skill(*, user_id: uuid.UUID, slug: str, requirement_key: str = "openai") -> Skill:
@@ -32,6 +39,8 @@ def _skill(*, user_id: uuid.UUID, slug: str, requirement_key: str = "openai") ->
                 "scope": "user",
             }
         ],
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
 
 
@@ -41,15 +50,14 @@ async def test_build_skill_quality_map_batches_required_credential_bindings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user = CurrentUser(id=uuid.uuid4(), email="test@example.com", name="Test User")
+    await ensure_unit_scope(db, user)
     missing_skill = _skill(user_id=user.id, slug="missing")
     bound_skill = _skill(user_id=user.id, slug="bound")
     db.add_all([missing_skill, bound_skill])
-    credential = await credential_service.create(
+    credential = await create_test_credential(
         db,
-        user_id=user.id,
-        definition_key="openai",
-        name="OpenAI",
-        data={"api_key": "sk-test"},
+        CredentialCreation(definition_key="openai", name="OpenAI", data={"api_key": "sk-test"}),
+        unit_context(user.id),
     )
     db.add(
         SkillCredentialBinding(
@@ -73,7 +81,7 @@ async def test_build_skill_quality_map_batches_required_credential_bindings(
 
     summaries = await skill_response_enrichment.build_skill_quality_map(
         db,
-        user=user,
+        context=unit_context(user.id),
         skills=[missing_skill, bound_skill],
     )
 

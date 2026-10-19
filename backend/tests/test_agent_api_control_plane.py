@@ -4,6 +4,12 @@ import uuid
 
 import pytest
 
+from app.dependencies import CurrentUser
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+)
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.anyio
@@ -40,8 +46,12 @@ async def _seed_agent(db, *, name: str = "Support Agent", identity_mode: str = "
         identity_mode=identity_mode,
         model_id=model.id,
         model=model,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([user, model, agent])
+    await db.commit()
+    await ensure_unit_scope(db, CurrentUser(id=user.id, email=user.email, name=user.name))
     await db.commit()
     return agent
 

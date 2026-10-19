@@ -10,7 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from app.models.agent import Agent
+from app.authz.artifact_scope import private_artifact_predicate
+from app.authz.org_context import OrgContext
+from app.authz.resource_context_scope import authorize_context_skill
+from app.authz.scoping import private_scope_predicate
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.models.message_attachment import MessageAttachment
@@ -18,16 +21,20 @@ from app.models.skill import AgentSkillLink, Skill
 from app.schemas.chat_resource_context import ChatResourceReference
 from app.services.artifact_storage import ArtifactStorageBackend
 from app.services.chat_resource_context_errors import ResourceContextNotFoundError
-from app.storage.paths import resolve_data_path
+from app.storage.paths import ForeignTenantPathError, resolve_company_data_path, upload_file_path
 
 _TEXTUAL_MIME_EXACT: Final = {"application/json", "application/xml"}
 
 
 @dataclass(frozen=True, slots=True)
 class ResourceContextScope:
-    user_id: uuid.UUID
+    context: OrgContext
     agent_id: uuid.UUID
     conversation_id: uuid.UUID
+
+    @property
+    def user_id(self) -> uuid.UUID:
+        return self.context.user_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,16 +67,19 @@ async def load_file_source(
     attachment = await db.scalar(
         select(MessageAttachment)
         .join(Conversation, Conversation.id == MessageAttachment.conversation_id)
-        .join(Agent, Agent.id == Conversation.agent_id)
         .where(
             MessageAttachment.id == reference.id,
-            MessageAttachment.user_id == scope.user_id,
-            Agent.user_id == scope.user_id,
+            private_scope_predicate(MessageAttachment, scope.context),
+            private_scope_predicate(Conversation, scope.context),
         )
+        .execution_options(autoflush=False, populate_existing=True)
     )
     if attachment is None:
         raise ResourceContextNotFoundError()
-    path = Path(attachment.storage_path)
+    try:
+        path = upload_file_path(attachment.storage_path, attachment.tenant_id)
+    except ForeignTenantPathError:
+        raise ResourceContextNotFoundError() from None
     if not await run_in_threadpool(path.is_file):
         raise ResourceContextNotFoundError()
     digest = await run_in_threadpool(_sha256_path, path)
@@ -91,17 +101,21 @@ async def load_artifact_source(
 ) -> LoadedResource:
     reference = request.reference
     artifact = await db.scalar(
-        select(ConversationArtifact).where(
+        select(ConversationArtifact)
+        .where(
             ConversationArtifact.id == reference.id,
-            ConversationArtifact.user_id == scope.user_id,
+            private_artifact_predicate(scope.context),
             ConversationArtifact.status == "ready",
         )
+        .execution_options(populate_existing=True, autoflush=False)
     )
     if artifact is None:
         raise ResourceContextNotFoundError()
     version = await _artifact_version(db, artifact, reference.version_id)
     try:
-        path = await request.storage.local_path(object_key=version.object_key)
+        path = await request.storage.local_path(
+            object_key=version.object_key, tenant_id=artifact.tenant_id
+        )
     except (FileNotFoundError, ValueError) as exc:
         raise ResourceContextNotFoundError() from exc
     exact_reference = reference.model_copy(update={"version_id": version.id})
@@ -126,9 +140,13 @@ async def load_skill_source(
         .join(AgentSkillLink, AgentSkillLink.skill_id == Skill.id)
         .where(
             Skill.id == reference.id,
-            Skill.user_id == scope.user_id,
+            private_scope_predicate(Skill, scope.context),
             AgentSkillLink.agent_id == scope.agent_id,
         )
+        .execution_options(autoflush=False, populate_existing=True)
+    )
+    skill = await authorize_context_skill(
+        db, scope.context, scope.agent_id, reference.id, legacy=skill
     )
     path = _skill_entry_path(skill)
     if skill is None or path is None or not await run_in_threadpool(path.is_file):
@@ -156,8 +174,10 @@ async def owned_conversation(
 ) -> Conversation:
     conversation = await db.scalar(
         select(Conversation)
-        .join(Agent, Agent.id == Conversation.agent_id)
-        .where(Conversation.id == conversation_id, Agent.user_id == scope.user_id)
+        .where(
+            Conversation.id == conversation_id, private_scope_predicate(Conversation, scope.context)
+        )
+        .execution_options(autoflush=False, populate_existing=True)
     )
     if conversation is None:
         raise ResourceContextNotFoundError()
@@ -170,13 +190,22 @@ async def _artifact_version(
     requested_version_id: uuid.UUID | None,
 ) -> ArtifactVersion:
     version_id = requested_version_id or artifact.current_version_id
-    version = await db.get(ArtifactVersion, version_id) if version_id is not None else None
+    version = (
+        await db.scalar(
+            select(ArtifactVersion)
+            .where(ArtifactVersion.id == version_id, ArtifactVersion.artifact_id == artifact.id)
+            .execution_options(populate_existing=True, autoflush=False)
+        )
+        if version_id is not None
+        else None
+    )
     if version is None and requested_version_id is None:
         version = await db.scalar(
             select(ArtifactVersion)
             .where(ArtifactVersion.artifact_id == artifact.id)
             .order_by(ArtifactVersion.version_number.desc())
             .limit(1)
+            .execution_options(autoflush=False, populate_existing=True)
         )
     if version is None or version.artifact_id != artifact.id:
         raise ResourceContextNotFoundError()
@@ -186,7 +215,10 @@ async def _artifact_version(
 def _skill_entry_path(skill: Skill | None) -> Path | None:
     if skill is None or skill.storage_path is None:
         return None
-    root = resolve_data_path(skill.storage_path)
+    try:
+        root = resolve_company_data_path(skill.storage_path, skill.tenant_id)
+    except ForeignTenantPathError:
+        return None
     return root / "SKILL.md" if skill.kind == "package" else root
 
 

@@ -117,6 +117,7 @@ def _ctx(
     )
     return SkillToolContext(
         thread_id="thread-sandbox",
+        tenant_id=uuid.uuid4(),
         output_dir=tmp_path / "outputs",
         runtime_root=runtime_root,
         descriptors={slug: descriptor},

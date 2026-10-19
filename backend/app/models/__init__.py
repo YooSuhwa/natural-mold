@@ -1,6 +1,7 @@
 # Greenfield credentials/tools/skills/mcp models — registered first so other
 # modules picking them up via ``Base.metadata`` see the new schema.
 # Existing domain models.
+from app.models.access_request import AccessRequest
 from app.models.agent import Agent
 from app.models.agent_api import (
     AgentApiKey,
@@ -10,13 +11,23 @@ from app.models.agent_api import (
     AgentDeployment,
 )
 from app.models.agent_blueprint import AgentBlueprint
+from app.models.agent_lifecycle import ConversationRunAgent
+from app.models.agent_purge import AgentPurgeCleanupItem, AgentPurgeReceipt
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
+from app.models.agent_user_preference import AgentUserPreference
 from app.models.audit_event import AuditEvent
+from app.models.authz import AuthzOutbox, AuthzRevocation, AuthzShadowDiff, ResourceGrant
+from app.models.authz_reconcile_run import AuthzReconcileRun
 from app.models.builder_session import BuilderSession
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
+from app.models.conversation_history import (
+    ConversationHistoryCheckpoint,
+    ConversationHistoryEvent,
+    ConversationHistoryManifest,
+)
 from app.models.conversation_pinned_summary import ConversationPinnedSummary
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
@@ -50,7 +61,19 @@ from app.models.message_attachment import MessageAttachment
 from app.models.message_event import MessageEvent, MessageEventChunk
 from app.models.message_feedback import MessageFeedback
 from app.models.model import Model
+from app.models.notification import Notification
+from app.models.organization import (
+    Organization,
+    OrganizationMember,
+    OrganizationRoleGrant,
+    Tenant,
+    TenantMember,
+    TenantRoleGrant,
+)
+from app.models.organization_group import Group, GroupMember, OrgCapabilityGrant, OrgInvitation
+from app.models.organization_identity import SsoConnection, TenantDomain, UserIdentity
 from app.models.refresh_token import RefreshToken
+from app.models.resource_credential_binding import ResourceCredentialBinding
 from app.models.share_link import ShareLink
 from app.models.skill import AgentSkillLink, Skill
 from app.models.skill_builder_session import SkillBuilderSession
@@ -64,17 +87,35 @@ from app.models.skill_revision import SkillRevision
 from app.models.skill_usage_event import SkillUsageEvent
 from app.models.system_llm_setting import SystemLlmSetting
 from app.models.template import Template
+from app.models.tenant_export import TenantExport
+from app.models.tenant_invitation import TenantInvitation
+from app.models.tenant_purge import TenantPurge
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
 
 __all__ = [
+    "Organization",
+    "OrganizationMember",
+    "OrganizationRoleGrant",
+    "Tenant",
+    "TenantMember",
+    "TenantRoleGrant",
+    "Group",
+    "GroupMember",
+    "OrgCapabilityGrant",
+    "OrgInvitation",
+    "SsoConnection",
+    "TenantDomain",
+    "UserIdentity",
     "Agent",
     "AgentApiKey",
     "AgentApiKeyDeployment",
     "AgentApiRun",
     "AgentApiThread",
     "AgentBlueprint",
+    "AgentPurgeCleanupItem",
+    "AgentPurgeReceipt",
     "AgentDeployment",
     "AgentMcpToolLink",
     "AgentSkillLink",
@@ -82,12 +123,21 @@ __all__ = [
     "AgentToolLink",
     "AgentTrigger",
     "AgentTriggerRun",
+    "AgentUserPreference",
+    "AccessRequest",
     "AuditEvent",
+    "AuthzOutbox",
+    "AuthzRevocation",
+    "AuthzShadowDiff",
     "BuilderSession",
     "Conversation",
     "ConversationArtifact",
+    "ConversationHistoryCheckpoint",
+    "ConversationHistoryEvent",
+    "ConversationHistoryManifest",
     "ConversationPinnedSummary",
     "ConversationRun",
+    "ConversationRunAgent",
     "ConversationRunInput",
     "ConversationRunMetrics",
     "Credential",
@@ -115,7 +165,11 @@ __all__ = [
     "MessageEventChunk",
     "MessageFeedback",
     "Model",
+    "Notification",
+    "AuthzReconcileRun",
     "RefreshToken",
+    "ResourceCredentialBinding",
+    "ResourceGrant",
     "ShareLink",
     "Skill",
     "SkillBuilderSession",
@@ -128,6 +182,9 @@ __all__ = [
     "SkillUsageEvent",
     "SystemLlmSetting",
     "Template",
+    "TenantExport",
+    "TenantInvitation",
+    "TenantPurge",
     "TokenUsage",
     "Tool",
     "UserMemorySettings",

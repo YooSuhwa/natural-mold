@@ -10,7 +10,14 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.agent_delegations import commit_and_apply
+from app.authz.org_context import OrgContext
+from app.authz.organization_execution_prefix import mark_org_writer
+from app.authz.policies import CAP, PRIVATE, authz_policy
+from app.authz.resource_lifecycle import on_resource_created
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import (
     agent_creation_failed,
     image_not_found,
@@ -20,7 +27,7 @@ from app.error_codes import (
     session_not_preview,
 )
 from app.exceptions import ValidationError
-from app.routers.agents import _agent_to_response
+from app.routers.agents import _scoped_agent_response
 from app.schemas.agent import AgentResponse
 from app.schemas.builder import BuilderSessionResponse, BuilderStartRequest, BuilderStatus
 from app.schemas.conversation import Decision
@@ -61,24 +68,30 @@ router = APIRouter(prefix="/api/builder", tags=["builder"])
 
 
 @router.post("", response_model=BuilderSessionResponse, status_code=201)
+@authz_policy(CAP("cap_create_agent"))
 async def start_build(
     data: BuilderStartRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     """빌드 세션을 시작한다."""
-    return await builder_service.create_session(db, user.id, data.user_request)
+    await authz.require_cap(context, "cap_create_agent", legacy=True)
+    return await builder_service.create_session(db, context, data.user_request)
 
 
 @router.get("/{session_id}", response_model=BuilderSessionResponse)
+@authz_policy(PRIVATE("builder_sessions", param="session_id"))
 async def get_build_session(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
     """빌드 세션 상태를 조회한다."""
-    session = await builder_service.get_session(db, session_id, user.id)
+    session = await builder_service.get_session(db, session_id, context)
     if not session:
         raise session_not_found()
     return session
@@ -89,11 +102,15 @@ async def get_build_session(
     response_model=AgentResponse,
     status_code=201,
 )
+# PRIVATE session + CAP(cap_create_agent) inside (plan 9.1).
+@authz_policy(PRIVATE("builder_sessions", param="session_id"))
 async def confirm_build(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ):
     """빌드를 확인하고 실제 에이전트를 생성한다.
 
@@ -102,15 +119,16 @@ async def confirm_build(
     - CONFIRMING → 409 (다른 요청이 처리 중)
     - PREVIEW → CONFIRMING 원자적 전환 후 Agent 생성
     """
-    session = await builder_service.get_session(db, session_id, user.id)
+    session = await builder_service.get_session(db, session_id, context)
     if not session:
         raise session_not_found()
+    await authz.require_cap(context, "cap_create_agent", legacy=True)
 
     # 멱등: 이미 완료된 세션이면 기존 Agent 반환
     if session.status == BuilderStatus.COMPLETED and session.agent_id:
-        existing_agent = await builder_service.get_agent_by_id(db, session.agent_id)
+        existing_agent = await builder_service.get_agent_by_id(db, session.agent_id, context)
         if existing_agent:
-            return _agent_to_response(existing_agent)
+            return await _scoped_agent_response(db, existing_agent.id, context)
 
     # 동시 요청 방지: 이미 CONFIRMING이면 409
     if session.status == BuilderStatus.CONFIRMING:
@@ -122,17 +140,18 @@ async def confirm_build(
         raise no_draft_config()
 
     # 원자적 PREVIEW → CONFIRMING 전환
-    claimed = await builder_service.claim_for_confirming(db, session_id, user.id)
+    mark_org_writer(db)  # F-02: confirm writes delegations; prefix takes the org row FOR UPDATE
+    claimed = await builder_service.claim_for_confirming(db, session_id, context)
     if not claimed:
         raise session_confirming()
 
     # 세션을 다시 로드 (상태 전환 후 fresh 상태)
-    session = await builder_service.get_session(db, session_id, user.id)
+    session = await builder_service.get_session(db, session_id, context)
     if not session:
         raise session_not_found()
 
     try:
-        agent = await builder_service.confirm_build(db, session)
+        agent = await builder_service.confirm_build(db, session, context)
     except ValueError as exc:
         raise ValidationError("MODEL_NOT_FOUND", str(exc)) from exc
     except Exception as exc:
@@ -144,7 +163,10 @@ async def confirm_build(
 
     if not agent:
         raise agent_creation_failed("에이전트를 생성할 수 없습니다")
-    return _agent_to_response(agent)
+    if authz.mode != "legacy":  # confirm_build committed; tuples follow in their own tx
+        created = await on_resource_created(db, agent, mode=authz.mode)
+        await commit_and_apply(db, authz, created)  # with confirm_build's delegations
+    return await _scoped_agent_response(db, agent.id, context)
 
 
 # ---------------------------------------------------------------------------
@@ -159,11 +181,13 @@ _SSE_HEADERS = {
 
 
 @router.post("/{session_id}/messages")
+@authz_policy(PRIVATE("builder_sessions", param="session_id"))
 async def post_message(
     session_id: uuid.UUID,
     payload: BuilderMessageRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
     """Builder v3 — 사용자 메시지를 전송하고 SSE 스트림을 받는다.
@@ -171,7 +195,7 @@ async def post_message(
     첫 메시지: 그래프를 처음부터 실행 (Phase 1부터).
     후속 메시지: 그래프가 진행 중이면 messages만 추가.
     """
-    session = await builder_service.get_session(db, session_id, user.id)
+    session = await builder_service.get_session(db, session_id, context)
     if not session:
         raise session_not_found()
 
@@ -180,6 +204,7 @@ async def post_message(
             session_id=session.id,
             user_id=session.user_id,
             content=payload.content,
+            tenant_id=session.tenant_id,
         ),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
@@ -187,15 +212,17 @@ async def post_message(
 
 
 @router.post("/{session_id}/messages/resume")
+@authz_policy(PRIVATE("builder_sessions", param="session_id"))
 async def resume_message(
     session_id: uuid.UUID,
     payload: BuilderResumeRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
     """Builder v3 — interrupt 응답을 전달하고 그래프를 재개한다."""
-    session = await builder_service.get_session(db, session_id, user.id)
+    session = await builder_service.get_session(db, session_id, context)
     if not session:
         raise session_not_found()
 
@@ -206,6 +233,7 @@ async def resume_message(
             user_id=session.user_id,
             response=response,
             interrupt_id=payload.interrupt_id,
+            tenant_id=session.tenant_id,
         ),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
@@ -213,11 +241,13 @@ async def resume_message(
 
 
 @router.get("/{session_id}/image/{filename}")
+@authz_policy(PRIVATE("builder_sessions", param="session_id"))
 async def serve_builder_image(
     session_id: uuid.UUID,
     filename: str,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ):
     """Phase 6에서 생성한 임시 이미지 미리보기를 서빙한다.
 
@@ -225,7 +255,7 @@ async def serve_builder_image(
     """
     from app.agent_runtime.builder_v3.image_gen import resolve_local_path
 
-    session = await builder_service.get_session(db, session_id, user.id)
+    session = await builder_service.get_session(db, session_id, context)
     if not session:
         raise session_not_found()
 

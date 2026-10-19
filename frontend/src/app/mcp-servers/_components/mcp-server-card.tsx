@@ -1,8 +1,10 @@
 'use client'
 
+import { useCanPublishMarketplace } from '@/components/marketplace/use-marketplace-publish'
 import { Activity, ChevronRight, Server } from 'lucide-react'
 
 import { StatusChip } from '@/components/shared/status-chip'
+import { ResourceShareButton, SharedWithMeBadge } from '@/components/sharing/resource-share-button'
 import { Button } from '@/components/ui/button'
 import {
   ResourceBadge,
@@ -32,6 +34,11 @@ type McpServerCardProps = {
   readonly onPublish: (server: McpServer) => void
   readonly onCheckNow: (id: string) => void
   readonly checking: boolean
+  /** Server `can_edit`: health check (a test) is hidden from runners (plan 13.9). */
+  readonly canEdit: boolean
+  /** Server `can_share`: marketplace publication. */
+  readonly canShare: boolean
+  readonly myPermissions?: readonly string[]
 }
 
 export function McpServerCard({
@@ -49,7 +56,11 @@ export function McpServerCard({
   onPublish,
   onCheckNow,
   checking,
+  canEdit,
+  canShare,
+  myPermissions,
 }: McpServerCardProps) {
+  const canPublish = useCanPublishMarketplace()
   const tone = getResourceTone(server.transport)
   const recencyLabel = checkedAtLabel || lastResponseLabel
 
@@ -81,32 +92,45 @@ export function McpServerCard({
       <ResourceListCard.MetaRow>
         <ResourceCardMeta>{toolCountLabel}</ResourceCardMeta>
         {recencyLabel ? <ResourceCardMeta>{recencyLabel}</ResourceCardMeta> : null}
+        <SharedWithMeBadge ownerId={server.user_id} />
       </ResourceListCard.MetaRow>
 
       <ResourceListCard.Footer className="justify-between">
         <div className="flex min-w-0 items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label={checkNowAriaLabel}
-            data-testid={`check-now-${server.id}`}
-            className="h-7 px-2 text-xs"
-            onClick={() => onCheckNow(server.id)}
-            disabled={checking}
-          >
-            <Activity className="size-3.5" />
-            {checkNowLabel}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={() => onPublish(server)}
-          >
-            {publishLabel}
-          </Button>
+          {canEdit ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={checkNowAriaLabel}
+              data-testid={`check-now-${server.id}`}
+              className="h-7 px-2 text-xs"
+              onClick={() => onCheckNow(server.id)}
+              disabled={checking}
+            >
+              <Activity className="size-3.5" />
+              {checkNowLabel}
+            </Button>
+          ) : null}
+          {canShare && canPublish ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => onPublish(server)}
+            >
+              {publishLabel}
+            </Button>
+          ) : null}
+          <ResourceShareButton
+            resourceType="mcp_server"
+            resourceId={server.id}
+            resourceName={server.name}
+            ownerId={server.user_id}
+            myPermissions={myPermissions}
+            sharedAccount={!!server.credential_id}
+          />
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => onOpen(server.id)}>
           {manageLabel}

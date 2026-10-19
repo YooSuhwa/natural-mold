@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services import skill_revision_service
 from app.services.skill_revision_storage import write_skill_revision_snapshot
 from app.skills import service as skill_service
+from app.skills.creation import PackageSkillCreation
+from tests.authz.unit_scope_fixture import create_test_package_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 
@@ -68,18 +70,20 @@ async def test_revision_snapshot_excludes_non_hashable_package_files(
     tmp_path: Path,
 ) -> None:
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_bytes(
-                {
-                    "SKILL.md": _skill_content(),
-                    "scripts/run.py": "print('ok')\n",
-                    "references/a/b/c/d/e/f/g/guide.md": "deep reference",
-                    ".DS_Store": "desktop metadata",
-                    ".moldy-output/result.txt": "generated output",
-                }
+            PackageSkillCreation(
+                zip_bytes=_zip_bytes(
+                    {
+                        "SKILL.md": _skill_content(),
+                        "scripts/run.py": "print('ok')\n",
+                        "references/a/b/c/d/e/f/g/guide.md": "deep reference",
+                        ".DS_Store": "desktop metadata",
+                        ".moldy-output/result.txt": "generated output",
+                    }
+                )
             ),
+            unit_context(TEST_USER_ID),
         )
 
         snapshot = await write_skill_revision_snapshot(skill, revision_number=1)
@@ -112,15 +116,17 @@ async def test_package_rollback_rehydrates_moldy_credentials_and_execution_profi
         requires_network=False,
     )
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_bytes(
-                {
-                    "SKILL.md": _skill_content(),
-                    "agents/moldy.yaml": initial_metadata,
-                }
+            PackageSkillCreation(
+                zip_bytes=_zip_bytes(
+                    {
+                        "SKILL.md": _skill_content(),
+                        "agents/moldy.yaml": initial_metadata,
+                    }
+                )
             ),
+            unit_context(TEST_USER_ID),
         )
         first = await skill_revision_service.create_revision_for_skill(
             db,
@@ -157,6 +163,7 @@ async def test_package_rollback_rehydrates_moldy_credentials_and_execution_profi
             skill=skill,
             user_id=TEST_USER_ID,
             revision=first,
+            context=unit_context(TEST_USER_ID),
         )
 
     assert skill.credential_requirements == [

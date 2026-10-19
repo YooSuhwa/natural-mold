@@ -1,0 +1,16 @@
+PASS 1 컨텍스트 없음 조회 0행 []
+PASS 1b 컨텍스트 없음 쓰기 거부 ProgrammingError
+PASS 2 회사 A는 A 행만 ['a1', 'a2']
+PASS 3 커밋 후 두 번째 트랜잭션도 적용 ['a1', 'a2']
+PASS 3b 세 번째 트랜잭션 쓰기·조회 ['a1', 'a2', 'a3']
+PASS 4 다른 회사 행 쓰기 거부(WITH CHECK) ProgrammingError
+PASS 5 롤백 후 새 트랜잭션도 적용 ['a1', 'a2', 'a3']
+PASS 6 begin_nested 안에서도 적용 ['a1', 'a2', 'a3']
+PASS 7 다른 회사 행 수정 0건 rowcount=0
+PASS 8 연결 재사용 시 이전 값 미잔류 setting='' rows=[]
+PASS 8b 같은 연결, 회사 B ['b1']
+PASS 9 플랫폼 범위 전체 조회 ['a1', 'a2', 'a3', 'b1']
+PASS 10 engine.connect() 직접 조회 0행 []
+PASS 11 동시 8개 작업 x 100회 교차 오염 0건 bad=0
+PASS 12 트랜잭션당 추가 지연 없음 0.895ms, 적용 1.137ms, 차이 0.242ms
+SUMMARY 15 / 15

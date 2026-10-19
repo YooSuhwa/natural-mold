@@ -9,11 +9,13 @@ from sqlalchemy import JSON, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.resource_scope import RequiredOrgScope, resource_scope_constraints
 from app.schemas.builder import BuilderStatus
 
 
-class BuilderSession(Base):
+class BuilderSession(RequiredOrgScope, Base):
     __tablename__ = "builder_sessions"
+    __table_args__ = resource_scope_constraints("builder_sessions", system=False)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(

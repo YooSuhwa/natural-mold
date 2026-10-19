@@ -23,6 +23,8 @@ from tests.agent_runtime.runtime_contract_helpers import (
     contract_diff_paths,
     load_contract_fixture,
 )
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 _FIXTURE = "runtime_profiles_v1.json"
 _BUILDER_SESSION_ID = "00000000-0000-4000-8000-000000000008"
@@ -184,13 +186,13 @@ async def _collect_component_profiles(
         "user_id": "profile-user",
     }
     standard = await rcb._prepare_runtime_components(
-        AgentConfig(**common),
+        AgentConfig(**common, org_context=unit_context(TEST_USER_ID)),
         is_trigger_mode=False,
         include_ask_user=True,
         include_agent_memory_file=True,
     )
     trigger = await rcb._prepare_runtime_components(
-        AgentConfig(**common),
+        AgentConfig(**common, org_context=unit_context(TEST_USER_ID)),
         is_trigger_mode=True,
         include_ask_user=False,
         include_agent_memory_file=True,
@@ -201,6 +203,7 @@ async def _collect_component_profiles(
             runtime_profile="skill_builder",
             skill_builder_session_id=_BUILDER_SESSION_ID,
             draft_workspace_path=f"skill-drafts/{_BUILDER_SESSION_ID}",
+            org_context=unit_context(TEST_USER_ID),
         ),
         is_trigger_mode=False,
         include_ask_user=True,

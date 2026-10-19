@@ -28,9 +28,7 @@ class RefreshToken(Base):
     )
     # SHA-256 hex digest of the refresh JWT — 64 chars. Stored hashed so a DB
     # leak does not yield usable tokens (defense in depth alongside HttpOnly).
-    token_hash: Mapped[str] = mapped_column(
-        String(64), nullable=False, unique=True, index=True
-    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     issued_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -42,9 +40,7 @@ class RefreshToken(Base):
     )
     # NULL = active. Rotated/revoked rows are kept so a replay attempt is
     # detectable (hash exists but ``revoked_at IS NOT NULL``).
-    revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Forward-link to the rotation that superseded this row. Used to
     # distinguish "two tabs raced /refresh with the same cookie" (replay
     # within a short grace window, replaced_by is active, UA matches) from
@@ -54,6 +50,8 @@ class RefreshToken(Base):
         nullable=True,
     )
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # H-08: ``password`` / ``sso:<tenant id>``; NULL (older rows) = password-origin.
+    auth_method: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

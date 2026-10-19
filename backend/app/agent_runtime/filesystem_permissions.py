@@ -129,6 +129,7 @@ def build_filesystem_permissions(
     selected_skill_slugs: list[str],
     agent_runtime_name: str | None = None,
     draft_workspace_path: str | None = None,
+    agent_memory_file: bool = True,
 ) -> list[FilesystemPermission]:
     """Build ordered DeepAgents filesystem rules for one runtime invocation.
 
@@ -141,6 +142,10 @@ def build_filesystem_permissions(
     (ADR-018 상대경로, 예: ``skill-drafts/<session_id>``). allow 규칙이
     ``/skill-drafts/**`` deny **앞에** 와야 한다 — first-match-wins라 순서가
     곧 보안이다 (스펙 AD-2/§6-1).
+
+    ``agent_memory_file=False`` (F-09, 11.8: ``agent`` enforced) drops the
+    ``AGENTS.md`` allow rule, so the ``/agents`` deny covers it: the memo reaches the run
+    only as prompt reference, and changes go through editors or memo proposals.
     """
 
     if agent_id and not user_id:
@@ -182,7 +187,7 @@ def build_filesystem_permissions(
             )
         )
 
-    if agent_id:
+    if agent_id and agent_memory_file:
         permissions.append(
             FilesystemPermission(
                 operations=["read", "write"],

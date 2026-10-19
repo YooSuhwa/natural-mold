@@ -12,6 +12,8 @@ from deepagents.middleware.filesystem import FilesystemMiddleware
 from langchain_core.messages import ToolCall
 
 from app.agent_runtime.runtime_config import AgentConfig
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 from tests.tool_helpers import tool_coroutine
 
 
@@ -28,7 +30,7 @@ def _cfg(**overrides: object) -> AgentConfig:
         "user_id": "00000000-0000-0000-0000-000000000001",
     }
     defaults.update(overrides)
-    return AgentConfig(**defaults)  # type: ignore[arg-type]
+    return AgentConfig(org_context=unit_context(TEST_USER_ID), **defaults)  # type: ignore[arg-type]
 
 
 def _tool_by_name(middleware: FilesystemMiddleware, name: str):

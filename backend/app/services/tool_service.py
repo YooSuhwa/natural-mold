@@ -11,14 +11,27 @@ Transaction policy: the service ``flush``es, the calling router ``commit``s.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, Request
+from pydantic import JsonValue
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
-from app.credentials.validation import require_user_credential
+from app.authz.candidates import candidate_predicate
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.resource_gate import TOOL, gate_list, gate_row
+from app.authz.scoping import private_scope_predicate, resource_candidates
+from app.authz.service import AuthzService
+from app.credentials.validation import require_credential_use
 from app.dependencies import CurrentUser
 from app.error_codes import tool_not_found
 from app.models.mcp_server import McpServer
@@ -27,22 +40,46 @@ from app.models.skill import Skill
 from app.models.tool import Tool
 from app.schemas.tool import ToolCreate, ToolPatch
 from app.services import audit_service
+from app.tools.execution_scope import ToolRunOptions, ToolRunTarget
 from app.tools.registry import registry as tool_registry
 from app.tools.runner import ToolRunResult, run_tool
 
 # -- Queries -------------------------------------------------------------------
 
 
-async def load_owned(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) -> Tool:
-    row = (
-        await db.execute(
-            select(Tool).where(
-                Tool.id == tool_id,
-                # Either owned by the current user or a system-owned (NULL) tool.
-                Tool.visible_to(user_id),
-            )
+async def load_owned(
+    db: AsyncSession,
+    tool_id: uuid.UUID,
+    context: OrgContext,
+    *,
+    authz: AuthzService | None = None,
+    permission: str = "can_view",
+) -> Tool:
+    """Owner/platform candidate (legacy answer); with ``authz`` also ``tool#permission``."""
+
+    async def legacy() -> Tool:
+        await resolve_private_actor(
+            db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
         )
-    ).scalar_one_or_none()
+        row = await db.scalar(
+            resource_candidates(select(Tool), Tool, context).where(Tool.id == tool_id)
+        )
+        if row is None:
+            raise tool_not_found()
+        return row
+
+    if authz is None:
+        return await legacy()
+    return await gate_row(authz, db, context, TOOL, tool_id, permission, legacy)
+
+
+async def _reload(
+    db: AsyncSession, tool_id: uuid.UUID, context: OrgContext, authz: AuthzService | None
+) -> Tool:
+    # Legacy/shadow keep the owner reload; enforced callers were gated by the router.
+    if authz is None or not authz.enforces("tool"):
+        return await load_owned(db, tool_id, context)
+    row = await db.get(Tool, tool_id)
     if row is None:
         raise tool_not_found()
     return row
@@ -50,30 +87,52 @@ async def load_owned(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) -
 
 async def list_tools(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    context: OrgContext,
     *,
     definition_key: str | None = None,
     enabled: bool | None = None,
+    authz: AuthzService | None = None,
 ) -> list[Tool]:
-    stmt = select(Tool).where(Tool.visible_to(user_id))
-    if definition_key is not None:
-        stmt = stmt.where(Tool.definition_key == definition_key)
-    if enabled is not None:
-        stmt = stmt.where(Tool.enabled == enabled)
-    rows = (await db.execute(stmt.order_by(Tool.created_at.desc()))).scalars().all()
-    return list(rows)
+    await require_private_actor(db, context)
+
+    async def page(where: ColumnElement[bool] | None = None) -> list[Tool]:
+        stmt = (
+            resource_candidates(select(Tool), Tool, context)
+            if where is None
+            else select(Tool).where(where).execution_options(autoflush=False)
+        )
+        if definition_key is not None:
+            stmt = stmt.where(Tool.definition_key == definition_key)
+        if enabled is not None:
+            stmt = stmt.where(Tool.enabled == enabled)
+        return list((await db.execute(stmt.order_by(Tool.created_at.desc()))).scalars().all())
+
+    rows = [] if authz is not None and authz.enforces("tool") else await page()
+    if authz is None:
+        return rows
+    pool = candidate_predicate(Tool, "tool", context, platform=True)
+    return await gate_list(
+        authz, context, "tool", "can_use", rows, lambda t: t.id, candidates=lambda: page(pool)
+    )
 
 
 # -- Mutations -------------------------------------------------------------------
 
 
-async def create_tool(db: AsyncSession, *, user_id: uuid.UUID, data: ToolCreate) -> Tool:
+async def create_tool(
+    db: AsyncSession, *, context: OrgContext, data: ToolCreate, authz: AuthzService | None = None
+) -> Tool:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     if tool_registry.get(data.definition_key) is None:
         raise HTTPException(status_code=400, detail=f"unknown definition '{data.definition_key}'")
-    await require_user_credential(db, credential_id=data.credential_id, user_id=user_id)
+    await require_credential_use(db, credential_id=data.credential_id, context=context, authz=authz)
 
     tool = Tool(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         definition_key=data.definition_key,
         name=data.name,
         description=data.description,
@@ -90,9 +149,11 @@ async def update_tool(
     db: AsyncSession,
     *,
     tool: Tool,
-    user_id: uuid.UUID,
+    context: OrgContext,
     data: ToolPatch,
+    authz: AuthzService | None = None,
 ) -> Tool:
+    tool = await _reload(db, tool.id, context, authz)
     if data.name is not None:
         tool.name = data.name
     if data.description is not None:
@@ -100,7 +161,9 @@ async def update_tool(
     if data.parameters is not None:
         tool.parameters = data.parameters
     if data.credential_id is not None or "credential_id" in data.model_fields_set:
-        await require_user_credential(db, credential_id=data.credential_id, user_id=user_id)
+        await require_credential_use(
+            db, credential_id=data.credential_id, context=context, authz=authz
+        )
         tool.credential_id = data.credential_id
     if data.enabled is not None:
         tool.enabled = data.enabled
@@ -108,25 +171,23 @@ async def update_tool(
     return tool
 
 
-async def delete_tool(db: AsyncSession, *, tool: Tool) -> None:
+async def delete_tool(
+    db: AsyncSession, *, tool: Tool, context: OrgContext, authz: AuthzService | None = None
+) -> None:
+    tool = await _reload(db, tool.id, context, authz)
     await db.delete(tool)
     await db.flush()
 
 
 async def run_tool_instance(
     db: AsyncSession,
-    *,
-    tool: Tool,
-    runtime_args: dict[str, Any] | None,
+    target: ToolRunTarget,
+    runtime_args: Mapping[str, JsonValue] | None,
+    authz: AuthzService | None = None,
 ) -> ToolRunResult:
-    """Execute the tool once and stamp ``last_used_at`` on success."""
-
-    result = await run_tool(
-        db=db,
-        tool=tool,
-        registry=tool_registry,
-        runtime_args=runtime_args,
-    )
+    """Execute an exact-scope tool and stamp its last use only on success."""
+    tool = await _reload(db, target.tool_id, target.context, authz)
+    result = await run_tool(db, target, ToolRunOptions(tool_registry, runtime_args))
     if result.success:
         tool.last_used_at = datetime.now(UTC).replace(tzinfo=None)
     return result
@@ -165,7 +226,7 @@ async def record_tool_audit(
 # -- Assistant/builder catalog ---------------------------------------------------
 
 
-async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[str, Any]]:
+async def get_tools_catalog(db: AsyncSession, context: OrgContext) -> list[dict[str, Any]]:
     """Return the user's available items: ``Tool`` + ``McpTool`` + ``Skill``.
 
     Each item carries a ``kind`` field (``"tool" | "mcp" | "skill"``) so the
@@ -173,9 +234,10 @@ async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[s
     confirm 이 종류별로 적절한 link 테이블에 매칭한다.
     """
 
+    await require_private_actor(db, context)
     tool_rows = await db.execute(
-        select(Tool.id, Tool.name, Tool.description, Tool.definition_key).where(
-            Tool.visible_to(user_id)
+        resource_candidates(
+            select(Tool.id, Tool.name, Tool.description, Tool.definition_key), Tool, context
         )
     )
     items: list[dict[str, Any]] = [
@@ -199,7 +261,7 @@ async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[s
             McpServer.name.label("server_name"),
         )
         .join(McpServer, McpServer.id == McpTool.server_id)
-        .where(McpServer.user_id == user_id)
+        .where(private_scope_predicate(McpServer, context))
     )
     items.extend(
         {
@@ -215,7 +277,9 @@ async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[s
     )
 
     skill_rows = await db.execute(
-        select(Skill.id, Skill.name, Skill.description, Skill.slug).where(Skill.user_id == user_id)
+        select(Skill.id, Skill.name, Skill.description, Skill.slug).where(
+            private_scope_predicate(Skill, context)
+        )
     )
     items.extend(
         {

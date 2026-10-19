@@ -8,8 +8,12 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.catalog_scope import load_private_installation
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scoped
 from app.error_codes import (
     marketplace_credential_required,
     marketplace_invalid_package,
@@ -21,7 +25,12 @@ from app.marketplace.install.bindings import (
     _required_credential_keys,
     _validate_version_credential_bindings,
 )
-from app.marketplace.install.common import _derive_origin, _existing_installation, _now
+from app.marketplace.install.common import (
+    _derive_origin,
+    _existing_installation,
+    _now,
+    _resolve_version,
+)
 from app.marketplace.payloads import canonical_json_hash
 from app.marketplace.schemas import InstallMarketplaceItemIn
 from app.models.agent_blueprint import AgentBlueprint
@@ -42,30 +51,36 @@ async def _install_agent_blueprint_item(
     item: MarketplaceItem,
     version: MarketplaceVersion,
     user: CurrentUser,
+    context: OrgContext,
     body: InstallMarketplaceItemIn,
 ) -> MarketplaceInstallation:
     if version.payload_kind != "agent_spec":
         raise marketplace_invalid_package("version is not an Agent spec")
 
-    existing = await _existing_installation(db, item=item, user=user)
+    existing = await _existing_installation(db, item=item, user=user, context=context)
     if existing is not None and body.install_mode == "reuse_or_update":
         if not body.credential_bindings:
             return existing
         blueprint_id = existing.installed_agent_blueprint_id
         if blueprint_id is None:
             raise marketplace_invalid_package("installed Agent Blueprint is missing")
-        blueprint = await db.get(AgentBlueprint, blueprint_id)
+        blueprint = await db.scalar(
+            private_scoped(
+                select(AgentBlueprint).where(AgentBlueprint.id == blueprint_id),
+                AgentBlueprint,
+                context,
+            )
+        )
         # Re-validate ownership before mutating (mirror
         # ``_overwrite_agent_blueprint_installation``) — collapse to 404
         # per the enumeration-safety convention.
         if blueprint is None or blueprint.user_id != user.id:
             raise marketplace_item_not_found()
-        installed_version = await db.get(MarketplaceVersion, existing.version_id)
-        binding_version = installed_version or version
+        binding_version = await _resolve_version(db, item=item, version_id=existing.version_id)
         credential_bindings = await _validate_version_credential_bindings(
             db,
             version=binding_version,
-            user=user,
+            context=context,
             bindings=body.credential_bindings,
         )
         merged_bindings = {
@@ -92,7 +107,7 @@ async def _install_agent_blueprint_item(
     credential_bindings = await _validate_version_credential_bindings(
         db,
         version=version,
-        user=user,
+        context=context,
         bindings=body.credential_bindings,
     )
     required = _required_credential_keys(version)
@@ -113,7 +128,15 @@ async def _install_agent_blueprint_item(
         and body.install_mode == "overwrite_existing"
         and existing.installed_agent_blueprint_id is not None
     ):
-        blueprint = await db.get(AgentBlueprint, existing.installed_agent_blueprint_id)
+        blueprint = await db.scalar(
+            private_scoped(
+                select(AgentBlueprint).where(
+                    AgentBlueprint.id == existing.installed_agent_blueprint_id
+                ),
+                AgentBlueprint,
+                context,
+            )
+        )
         # Re-validate ownership before mutating (mirror
         # ``_overwrite_agent_blueprint_installation``) — collapse to 404
         # per the enumeration-safety convention.
@@ -139,7 +162,9 @@ async def _install_agent_blueprint_item(
 
     blueprint = AgentBlueprint(
         id=uuid.uuid4(),
-        user_id=user.id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=str(name),
         description=item.description,
         icon_id=item.icon_id,
@@ -161,7 +186,9 @@ async def _install_agent_blueprint_item(
 
     installation = MarketplaceInstallation(
         id=uuid.uuid4(),
-        user_id=user.id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         item_id=item.id,
         version_id=version.id,
         resource_type="agent",
@@ -179,7 +206,7 @@ async def _agent_blueprint_status_from_bindings(
     db: AsyncSession,
     *,
     version: MarketplaceVersion,
-    user: CurrentUser,
+    context: OrgContext,
     stored_bindings: dict[str, Any] | None,
 ) -> tuple[str, dict[str, str]]:
     requirement_by_key = _credential_requirements_by_key(version)
@@ -192,11 +219,16 @@ async def _agent_blueprint_status_from_bindings(
             credential_id = uuid.UUID(str(raw_id))
         except (TypeError, ValueError):
             continue
-        credential = await db.get(Credential, credential_id)
+        credential = await db.scalar(
+            private_scoped(
+                select(Credential).where(Credential.id == credential_id), Credential, context
+            )
+        )
         expected_definition = requirement.get("definition_key")
         if (
             credential is None
-            or credential.user_id != user.id
+            or credential.is_system
+            or credential.status != "active"
             or (expected_definition and credential.definition_key != expected_definition)
         ):
             continue
@@ -239,13 +271,26 @@ async def _overwrite_agent_blueprint_installation(
     item: MarketplaceItem,
     latest: MarketplaceVersion,
     user: CurrentUser,
+    context: OrgContext,
 ) -> MarketplaceInstallation:
+    scoped_installation = await load_private_installation(db, installation.id, context)
+    if scoped_installation is None:
+        raise marketplace_item_not_found()
+    installation = scoped_installation
     if latest.payload_kind != "agent_spec":
         raise marketplace_invalid_package("latest version is not an Agent spec")
     if installation.installed_agent_blueprint_id is None:
         raise marketplace_item_not_found()
 
-    blueprint = await db.get(AgentBlueprint, installation.installed_agent_blueprint_id)
+    blueprint = await db.scalar(
+        private_scoped(
+            select(AgentBlueprint).where(
+                AgentBlueprint.id == installation.installed_agent_blueprint_id
+            ),
+            AgentBlueprint,
+            context,
+        )
+    )
     if blueprint is None or blueprint.user_id != user.id:
         raise marketplace_item_not_found()
 
@@ -256,7 +301,7 @@ async def _overwrite_agent_blueprint_installation(
     install_status, credential_bindings = await _agent_blueprint_status_from_bindings(
         db,
         version=latest,
-        user=user,
+        context=context,
         stored_bindings=blueprint.credential_bindings,
     )
     _apply_agent_payload_to_blueprint(

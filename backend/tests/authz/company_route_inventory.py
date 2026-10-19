@@ -1,0 +1,287 @@
+"""Reviewed B11/B12 route inventory and its assembled-application violation scan."""
+
+from __future__ import annotations
+
+import re
+from collections import Counter
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final
+
+from fastapi.dependencies.models import Dependant
+from fastapi.routing import APIRoute
+from pydantic import JsonValue
+
+from app.authz.policies import policy_kind
+from app.dependencies import (
+    get_org_context,
+    get_tenant_context,
+    owned_conversation,
+    require_saas_platform_operator,
+    require_super_user,
+    verify_csrf,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CompanyRoute:
+    policy: str
+    status: int
+    if_match: bool
+    saas_only: bool = True  # SUPER: SaaS operator gate; False = super user in both modes
+
+
+_T: Final = "/api/tenants/{tenant_id}"
+_A: Final = "/api/admin/tenants"
+_R: Final = "/api/orgs/{org_id}/retention"
+_Z: Final = "/api/admin/authz"
+_L: Final = "/api/orgs/{org_id}/limits"
+_U: Final = "/api/usage-limits"
+_MU: Final = "/api/me/usage-limits"
+_SSO_PUBLIC: Final = ("/api/auth/sso/", "/api/auth/ldap/", "/auth/callback/")
+COMPANY_PREFIXES: Final = ("/api/tenants/", "/api/admin/tenants", _R, _L, _U, _MU, *_SSO_PUBLIC, _Z)
+B11_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_T}": CompanyRoute("SELF", 200, False),
+    f"PATCH {_T}": CompanyRoute("SELF", 200, True),
+    f"GET {_T}/organizations": CompanyRoute("SELF", 200, False),
+    f"POST {_T}/organizations": CompanyRoute("SELF", 201, False),
+    f"PATCH {_T}/organizations/{{org_id}}": CompanyRoute("SELF", 200, True),
+    f"POST {_T}/organizations/{{org_id}}/archive": CompanyRoute("SELF", 200, True),
+    f"POST {_T}/organizations/{{org_id}}/restore": CompanyRoute("SELF", 200, True),
+    f"GET {_T}/members": CompanyRoute("SELF", 200, False),
+    f"POST {_T}/members": CompanyRoute("SELF", 201, True),
+    f"PATCH {_T}/members/{{user_id}}": CompanyRoute("SELF", 200, True),
+    f"DELETE {_T}/members/{{user_id}}": CompanyRoute("SELF", 204, True),
+    f"GET {_T}/roles": CompanyRoute("SELF", 200, False),
+    f"PUT {_T}/roles/{{user_id}}": CompanyRoute("SELF", 200, True),
+    f"GET {_T}/invitations": CompanyRoute("SELF", 200, False),
+    f"POST {_T}/invitations": CompanyRoute("SELF", 201, True),
+    f"POST {_T}/invitations/{{invitation_id}}/resend": CompanyRoute("SELF", 201, True),
+    f"DELETE {_T}/invitations/{{invitation_id}}": CompanyRoute("SELF", 204, True),
+}
+# B12 reads If-Match from the request inside platform_mutation, so OpenAPI has no header.
+B12_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_A}": CompanyRoute("SUPER", 200, False),
+    f"POST {_A}": CompanyRoute("SUPER", 201, False),
+    f"GET {_A}/{{tenant_id}}": CompanyRoute("SUPER", 200, False),
+    f"PATCH {_A}/{{tenant_id}}": CompanyRoute("SUPER", 200, False),
+    f"POST {_A}/{{tenant_id}}/suspend": CompanyRoute("SUPER", 200, False),
+    f"POST {_A}/{{tenant_id}}/resume": CompanyRoute("SUPER", 200, False),
+}
+# E-09 company publication policy and approval queue (9.7, S05).
+E09_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_T}/policies": CompanyRoute("SELF", 200, False),
+    f"PUT {_T}/policies": CompanyRoute("GOVERNANCE", 200, True),
+    f"GET {_T}/publication-requests": CompanyRoute("GOVERNANCE", 200, False),
+    f"POST {_T}/publication-requests/{{item_id}}/approve": CompanyRoute("GOVERNANCE", 200, False),
+    f"POST {_T}/publication-requests/{{item_id}}/reject": CompanyRoute("GOVERNANCE", 200, False),
+}
+# E-07 company settings tier: models, shared credentials, catalog policy, service LLM.
+_G: Final = "GOVERNANCE"
+E07_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_T}/catalog-policy": CompanyRoute(_G, 200, False),
+    f"PUT {_T}/catalog-policy": CompanyRoute(_G, 200, True),
+    f"GET {_T}/llm-settings": CompanyRoute(_G, 200, False),
+    f"PUT {_T}/llm-settings": CompanyRoute(_G, 200, False),
+    f"GET {_T}/models": CompanyRoute(_G, 200, False),
+    f"POST {_T}/models": CompanyRoute(_G, 201, False),
+    f"PATCH {_T}/models/{{model_id}}": CompanyRoute(_G, 200, False),
+    f"DELETE {_T}/models/{{model_id}}": CompanyRoute(_G, 204, False),
+    f"GET {_T}/credentials": CompanyRoute(_G, 200, False),
+    f"POST {_T}/credentials": CompanyRoute(_G, 201, False),
+    f"PATCH {_T}/credentials/{{credential_id}}": CompanyRoute(_G, 200, False),
+    f"DELETE {_T}/credentials/{{credential_id}}": CompanyRoute(_G, 204, False),
+}
+# E-08 organization retention policy (9.7, S08); audit retention rides E-09 /policies.
+E08_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_R}": CompanyRoute("SELF", 200, False),
+    f"PUT {_R}": CompanyRoute("GOVERNANCE", 200, True),
+}
+# H-03 company activity (9.7, 14.1, S26); daily export stays later work.
+H03_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_T}/audit-events": CompanyRoute("SELF", 200, False),
+}
+# H-06 usage limits and company usage (8.7, 9.7, S08·S10·S26).
+H06_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_T}/usage": CompanyRoute("SELF", 200, False),
+    f"GET {_T}/limits": CompanyRoute("SELF", 200, False),
+    f"GET {_U}": CompanyRoute("SELF", 200, False),
+    f"PUT {_U}": CompanyRoute("GOVERNANCE", 200, True),
+    f"GET {_MU}": CompanyRoute("SELF", 200, False),
+    f"GET {_L}": CompanyRoute("SELF", 200, False),
+    f"PUT {_L}": CompanyRoute("GOVERNANCE", 200, True),
+}
+# H-08 company SSO (9.7, 10.10, S30): admin settings and the PUBLIC email-first login.
+_D: Final = f"{_T}/domains"
+_C: Final = f"{_T}/sso-connections"
+H08_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_D}": CompanyRoute(_G, 200, False),
+    f"POST {_D}": CompanyRoute(_G, 201, False),
+    f"POST {_D}/{{domain_id}}/verify": CompanyRoute(_G, 200, False),
+    f"DELETE {_D}/{{domain_id}}": CompanyRoute(_G, 204, False),
+    f"GET {_T}/sso-policy": CompanyRoute(_G, 200, False),
+    f"PUT {_T}/sso-policy": CompanyRoute(_G, 200, False),
+    f"GET {_C}": CompanyRoute(_G, 200, False),
+    f"POST {_C}": CompanyRoute(_G, 201, False),
+    f"GET {_C}/{{connection_id}}": CompanyRoute(_G, 200, False),
+    f"PATCH {_C}/{{connection_id}}": CompanyRoute(_G, 200, False),
+    f"DELETE {_C}/{{connection_id}}": CompanyRoute(_G, 204, False),
+    f"POST {_C}/{{connection_id}}/test": CompanyRoute(_G, 200, False),
+    f"POST {_C}/{{connection_id}}/activate": CompanyRoute(_G, 200, False),
+    "POST /api/auth/sso/discover": CompanyRoute("PUBLIC", 200, False),
+    "GET /api/auth/sso/{connection_id}/start": CompanyRoute("PUBLIC", 302, False),
+    "GET /auth/callback/{connection_id}": CompanyRoute("PUBLIC", 302, False),
+    "POST /api/auth/ldap/{connection_id}/login": CompanyRoute("PUBLIC", 200, False),
+}
+# H-04 operator authorization sync (14.3, S27): super user in both deployment modes.
+H04_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_Z}/status": CompanyRoute("SUPER", 200, False, saas_only=False),
+    f"GET {_Z}/failures": CompanyRoute("SUPER", 200, False, saas_only=False),
+    f"POST {_Z}/failures/{{outbox_id}}/retry": CompanyRoute("SUPER", 200, False, saas_only=False),
+    f"POST {_Z}/reconcile": CompanyRoute("SUPER", 202, False, saas_only=False),
+    f"GET {_Z}/reconcile/{{job_id}}": CompanyRoute("SUPER", 200, False, saas_only=False),
+}
+# I-07 company export, deletion schedule and download (9.7, S04).
+I07_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"POST {_A}/{{tenant_id}}/export": CompanyRoute("SUPER", 202, False),
+    f"GET {_A}/{{tenant_id}}/exports": CompanyRoute("SUPER", 200, False),
+    f"GET {_A}/{{tenant_id}}/exports/{{export_id}}/download": CompanyRoute("SUPER", 200, False),
+    f"POST {_A}/{{tenant_id}}/schedule-deletion": CompanyRoute("SUPER", 200, False),
+    f"POST {_A}/{{tenant_id}}/cancel-deletion": CompanyRoute("SUPER", 200, False),
+}
+# U-01 operator company limits and deletion state reads (S03/S04).
+U01_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_A}/{{tenant_id}}/limits": CompanyRoute("SUPER", 200, False),
+    f"GET {_A}/{{tenant_id}}/deletion": CompanyRoute("SUPER", 200, False),
+}
+# File downloads stream the archive and have no JSON response model.
+FILE_ROUTES: Final = frozenset({f"GET {_A}/{{tenant_id}}/exports/{{export_id}}/download"})
+COMPANY_ROUTES: Final = {
+    **B11_ROUTES,
+    **B12_ROUTES,
+    **E09_ROUTES,
+    **E07_ROUTES,
+    **E08_ROUTES,
+    **H03_ROUTES,
+    **H06_ROUTES,
+    **H08_ROUTES,
+    **H04_ROUTES,
+    **I07_ROUTES,
+    **U01_ROUTES,
+}
+# Later-task paths from the contract's route-level crosswalk (rows 7-8, 24-35, 38-57),
+# owned by C05/E07/E08/E09/H03. Matched app-wide by path, with parameter
+# names erased, at the path itself or below it (CRUD collection/item routes).
+# None left: H-04 and I-07 moved their paths to reviewed routes; the tests patch in a
+# placeholder to keep the deferral scan itself covered.
+DEFERRED_PATHS: Final[frozenset[str]] = frozenset()
+_PARAM: Final = re.compile(r"\{[^}]*\}")
+_OPERATOR_CONTENT: Final[frozenset[Callable[..., object]]] = frozenset(
+    {get_org_context, get_tenant_context, owned_conversation}
+)
+_TENANT_SLUG: Final[dict[str, JsonValue]] = {
+    "maxLength": 40,
+    "minLength": 3,
+    "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$",
+    "title": "Slug",
+    "type": "string",
+}
+_TENANT_SLUG_SCHEMAS: Final = ("PlatformTenantCreate", "TenantOverview", "TenantAdminOverview")
+_ORGANIZATION_SLUG_SCHEMAS: Final = ("TenantOrganizationSummary",)
+
+
+def _calls(dependant: Dependant) -> Iterable[Callable[..., object]]:
+    for child in dependant.dependencies:
+        if child.call is not None:
+            yield child.call
+        yield from _calls(child)
+
+
+def _headers(dependant: Dependant) -> set[str]:
+    found = {param.alias for param in dependant.header_params}
+    for child in dependant.dependencies:
+        found |= _headers(child)
+    return found
+
+
+def _legacy_identities() -> frozenset[str]:
+    baseline = Path(__file__).resolve().parents[2] / "app/authz/legacy_routes.txt"
+    return frozenset(baseline.read_text().splitlines())
+
+
+def _route_violations(identity: str, route: APIRoute, expected: CompanyRoute) -> list[str]:
+    method = identity.split(" ", 1)[0]
+    calls = set(_calls(route.dependant))
+    found: list[str] = []
+    if policy_kind(route.endpoint) != expected.policy:
+        found.append(f"policy:{identity}")
+    if (route.status_code or 200) != expected.status:
+        found.append(f"status:{identity}")
+    if (
+        expected.status not in (204, 302)
+        and route.response_model is None
+        and identity not in FILE_ROUTES
+    ):
+        found.append(f"response_model:{identity}")
+    # PUBLIC login routes carry a login CSRF token / OIDC state instead (9.7).
+    if method != "GET" and expected.policy != "PUBLIC" and verify_csrf not in calls:
+        found.append(f"csrf:{identity}")
+    if expected.if_match and "If-Match" not in _headers(route.dependant):
+        found.append(f"if_match:{identity}")
+    gate = require_saas_platform_operator if expected.saas_only else require_super_user
+    if expected.policy == "SUPER" and (gate not in calls or calls & _OPERATOR_CONTENT):
+        found.append(f"operator_content:{identity}")
+    return found
+
+
+def is_deferred(path: str) -> bool:
+    """A later-task path (or a route below it), whatever its parameter names."""
+    shape = _PARAM.sub("{}", path)
+    return any(shape == item or shape.startswith(f"{item}/") for item in DEFERRED_PATHS)
+
+
+def company_route_violations(routes: Iterable[object]) -> list[str]:
+    """Return every inventory, policy, CSRF, schema and deferral violation."""
+    legacy = _legacy_identities()
+    seen: Counter[str] = Counter()
+    found: list[str] = []
+    for route in routes:
+        path = getattr(route, "path", None)
+        deferred = isinstance(path, str) and is_deferred(path)
+        if deferred and not isinstance(route, APIRoute):
+            found.append(f"deferred:{type(route).__name__} {path}")
+        if not isinstance(route, APIRoute) or not (
+            deferred or route.path.startswith(COMPANY_PREFIXES)
+        ):
+            continue
+        for method in sorted(route.methods):
+            identity = f"{method} {route.path}"
+            seen[identity] += 1
+            if identity in legacy or policy_kind(route.endpoint) == "LEGACY":
+                found.append(f"legacy:{identity}")
+            if deferred:
+                found.append(f"deferred:{identity}")
+            elif identity not in COMPANY_ROUTES:
+                found.append(f"unclassified:{identity}")
+            else:
+                found.extend(_route_violations(identity, route, COMPANY_ROUTES[identity]))
+    found.extend(f"missing:{identity}" for identity in COMPANY_ROUTES if seen[identity] == 0)
+    found.extend(f"duplicate:{identity}" for identity, count in seen.items() if count > 1)
+    return sorted(found)
+
+
+def slug_schema_violations(schemas: dict[str, JsonValue]) -> list[str]:
+    """Tenant slugs keep the public 3-40 contract; organization slugs stay separate."""
+    found: list[str] = []
+    for name in _TENANT_SLUG_SCHEMAS + _ORGANIZATION_SLUG_SCHEMAS:
+        schema = schemas.get(name)
+        properties = schema.get("properties") if isinstance(schema, dict) else None
+        slug = properties.get("slug") if isinstance(properties, dict) else None
+        if name in _TENANT_SLUG_SCHEMAS and slug != _TENANT_SLUG:
+            found.append(f"tenant_slug:{name}")
+        if name in _ORGANIZATION_SLUG_SCHEMAS and (
+            not isinstance(slug, dict) or "maxLength" in slug or "pattern" in slug
+        ):
+            found.append(f"organization_slug:{name}")
+    return found

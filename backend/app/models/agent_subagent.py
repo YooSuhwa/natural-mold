@@ -8,12 +8,13 @@ from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.agent_link_delegation import AgentLinkDelegation
 
 if TYPE_CHECKING:
     from app.models.agent import Agent
 
 
-class AgentSubAgentLink(Base):
+class AgentSubAgentLink(AgentLinkDelegation, Base):
     """Association: agent <-> agent (self-referential, parent → sub).
 
     parent_agent_id 가 sub_agent_id 를 호출(위임) 가능. PK는 (parent, sub) 복합키

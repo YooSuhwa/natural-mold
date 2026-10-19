@@ -10,6 +10,20 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.memory_agent_access import (
+    memory_agent,
+    row_shared_memory_agent_ids,
+    shared_ids,
+    shared_memory_agent_ids,
+)
+from app.authz.memory_scope import (
+    private_memory_proposal_predicate,
+    private_memory_record_predicate,
+    private_memory_source_conversation_predicate,
+)
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
+from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import ValidationError
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -31,8 +45,10 @@ from app.services.agent_memory_settings import (
 from app.services.agent_memory_settings import (
     update_agent_settings as update_agent_settings,
 )
+from app.services.memory_settings_reads import peek_user_settings
 
 MemoryScope = Literal["user", "agent"]
+AGENT_MEMO_SCOPE = "agent_memo"  # F-09: a proposal to the agent's shared memo (11.8)
 AllowedScopes = Literal["user", "agent", "both"]
 WritePolicy = Literal["off", "ask", "auto"]
 TriggerWritePolicy = Literal["off", "auto"]
@@ -78,6 +94,9 @@ def _validate_memory_content(content: str) -> None:
     _validate_memory_text(content)
 
 
+validate_memory_text = _validate_memory_text  # F-09: the shared memo uses the same rule
+
+
 def _truncate_runtime_memory_content(content: str) -> str:
     if len(content) <= RUNTIME_MEMORY_ITEM_MAX_CHARS:
         return content
@@ -88,17 +107,17 @@ def _truncate_runtime_memory_content(content: str) -> str:
 async def _get_owned_agent(
     db: AsyncSession,
     agent_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> Agent | None:
-    result = await db.execute(select(Agent).where(Agent.id == agent_id, Agent.user_id == user_id))
-    return result.scalar_one_or_none()
+    """My agent, or (F-09, ``agent`` enforced) a shared agent I may run (11.8)."""
+    return await memory_agent(db, agent_id, context)
 
 
 async def _ensure_agent_owned(
     db: AsyncSession,
     *,
     agent_id: uuid.UUID | None,
-    user_id: uuid.UUID,
+    context: OrgContext,
     required: bool,
 ) -> Agent | None:
     if agent_id is None:
@@ -108,7 +127,7 @@ async def _ensure_agent_owned(
                 "agent scope 메모리는 agent_id가 필요합니다",
             )
         return None
-    agent = await _get_owned_agent(db, agent_id, user_id)
+    agent = await _get_owned_agent(db, agent_id, context)
     if agent is None:
         return None
     return agent
@@ -117,30 +136,36 @@ async def _ensure_agent_owned(
 async def _is_owned_conversation(
     db: AsyncSession,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
+    shared: frozenset = frozenset(),
 ) -> bool:
-    result = await db.execute(
-        select(Conversation.id)
-        .join(Agent, Conversation.agent_id == Agent.id)
-        .where(Conversation.id == conversation_id, Agent.user_id == user_id)
-        .limit(1)
+    return (
+        await db.scalar(
+            select(Conversation.id)
+            .where(
+                Conversation.id == conversation_id,
+                private_memory_source_conversation_predicate(context, shared),
+            )
+            .execution_options(autoflush=False)
+        )
+        is not None
     )
-    return result.scalar_one_or_none() is not None
 
 
 async def _validate_source_conversation(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID | None,
-    user_id: uuid.UUID,
+    context: OrgContext,
+    shared: frozenset = frozenset(),
 ) -> None:
     if conversation_id is None:
         return
-    if not await _is_owned_conversation(db, conversation_id, user_id):
-        raise ValidationError(
-            "MEMORY_SOURCE_CONVERSATION_INVALID",
-            "source_conversation_id가 올바르지 않습니다",
-        )
+    if not await _is_owned_conversation(db, conversation_id, context, shared):
+        raise conversation_not_found()
+
+
+validate_source_conversation = _validate_source_conversation  # F-09 memo proposals
 
 
 async def get_user_settings(db: AsyncSession, user_id: uuid.UUID) -> UserMemorySettings:
@@ -206,10 +231,21 @@ def _scope_intersection(user_allowed: AllowedScopes, agent_override: str) -> All
 async def resolve_effective_policy(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     agent_id: uuid.UUID | None = None,
+    persist_defaults: bool = True,
 ) -> EffectiveMemoryPolicy:
-    user_settings = await get_user_settings(db, user_id)
+    """``persist_defaults=False`` never inserts/commits (keeps a caller's locks)."""
+    await resolve_private_actor(
+        db,
+        PrivateResourceActor(
+            user_id=context.user_id, org_id=context.org_id, tenant_id=context.tenant_id
+        ),
+    )
+    if agent_id is not None and await _get_owned_agent(db, agent_id, context) is None:
+        raise agent_not_found()
+    load = get_user_settings if persist_defaults else peek_user_settings
+    user_settings = await load(db, context.user_id)
     read_enabled = bool(user_settings.memory_enabled and user_settings.memory_read_enabled)
     write_policy: WritePolicy = (
         user_settings.memory_write_policy if user_settings.memory_enabled else "off"
@@ -261,15 +297,21 @@ async def resolve_effective_policy(
 async def create_memory_record(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     payload: MemoryRecordCreate,
 ) -> MemoryRecord | None:
+    await resolve_private_actor(
+        db,
+        PrivateResourceActor(
+            user_id=context.user_id, org_id=context.org_id, tenant_id=context.tenant_id
+        ),
+    )
     _validate_memory_content(payload.content)
     _validate_memory_text(payload.reason)
     agent = await _ensure_agent_owned(
         db,
         agent_id=payload.agent_id,
-        user_id=user_id,
+        context=context,
         required=payload.scope == "agent",
     )
     if payload.agent_id is not None and agent is None:
@@ -277,10 +319,13 @@ async def create_memory_record(
     await _validate_source_conversation(
         db,
         conversation_id=payload.source_conversation_id,
-        user_id=user_id,
+        context=context,
+        shared=shared_ids(agent, context),
     )
     record = MemoryRecord(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         agent_id=payload.agent_id if payload.scope == "agent" else None,
         scope=payload.scope,
         content=payload.content,
@@ -299,18 +344,24 @@ async def create_memory_record(
 async def list_memory_records(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     scope: str | None = None,
     agent_id: uuid.UUID | None = None,
     q: str | None = None,
 ) -> list[MemoryRecord]:
-    filters = [MemoryRecord.user_id == user_id, MemoryRecord.status == "active"]
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    shared: frozenset = frozenset()
+    if agent_id is not None:
+        agent = await _get_owned_agent(db, agent_id, context)
+        if agent is None:
+            return []
+        shared = shared_ids(agent, context)
+    filters = [private_memory_record_predicate(context, shared), MemoryRecord.status == "active"]
     if scope in {"user", "agent"}:
         filters.append(MemoryRecord.scope == scope)
     if agent_id is not None:
-        agent = await _get_owned_agent(db, agent_id, user_id)
-        if agent is None:
-            return []
         filters.append(MemoryRecord.agent_id == agent_id)
     search = (q or "").strip()
     if search:
@@ -325,6 +376,7 @@ async def list_memory_records(
         select(MemoryRecord)
         .where(*filters)
         .order_by(MemoryRecord.updated_at.desc(), MemoryRecord.created_at.desc())
+        .execution_options(populate_existing=True, autoflush=False)
     )
     return list(result.scalars().all())
 
@@ -332,10 +384,13 @@ async def list_memory_records(
 async def list_runtime_memory_records(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     agent_id: uuid.UUID | None,
     allowed_scopes: str,
 ) -> list[MemoryRecord]:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
     scope_filters = []
     if allowed_scopes in {"user", "both"}:
         scope_filters.append(MemoryRecord.scope == "user")
@@ -343,15 +398,17 @@ async def list_runtime_memory_records(
         scope_filters.append((MemoryRecord.scope == "agent") & (MemoryRecord.agent_id == agent_id))
     if not scope_filters:
         return []
+    shared = await shared_memory_agent_ids(db, agent_id, context)
     result = await db.execute(
         select(MemoryRecord)
         .where(
-            MemoryRecord.user_id == user_id,
+            private_memory_record_predicate(context, shared),
             MemoryRecord.status == "active",
             or_(*scope_filters),
         )
         .order_by(MemoryRecord.created_at.desc())
         .limit(RUNTIME_MEMORY_MAX_RECORDS)
+        .execution_options(populate_existing=True, autoflush=False)
     )
     records = list(result.scalars().all())
     records.reverse()
@@ -362,14 +419,20 @@ async def get_memory_record(
     db: AsyncSession,
     *,
     memory_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> MemoryRecord | None:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    shared = await row_shared_memory_agent_ids(db, MemoryRecord, memory_id, context)
     result = await db.execute(
-        select(MemoryRecord).where(
+        select(MemoryRecord)
+        .where(
             MemoryRecord.id == memory_id,
-            MemoryRecord.user_id == user_id,
+            private_memory_record_predicate(context, shared),
             MemoryRecord.status == "active",
         )
+        .execution_options(populate_existing=True, autoflush=False)
     )
     return result.scalar_one_or_none()
 
@@ -378,10 +441,10 @@ async def update_memory_record(
     db: AsyncSession,
     *,
     memory_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     payload: MemoryRecordUpdate,
 ) -> MemoryRecord | None:
-    record = await get_memory_record(db, memory_id=memory_id, user_id=user_id)
+    record = await get_memory_record(db, memory_id=memory_id, context=context)
     if record is None:
         return None
     updates = payload.model_dump(exclude_unset=True)
@@ -401,9 +464,9 @@ async def delete_memory_record(
     db: AsyncSession,
     *,
     memory_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> bool:
-    record = await get_memory_record(db, memory_id=memory_id, user_id=user_id)
+    record = await get_memory_record(db, memory_id=memory_id, context=context)
     if record is None:
         return False
     record.status = "deleted"
@@ -417,15 +480,21 @@ async def delete_memory_record(
 async def create_memory_proposal(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     payload: MemoryProposalCreate,
 ) -> MemoryProposal | None:
+    await resolve_private_actor(
+        db,
+        PrivateResourceActor(
+            user_id=context.user_id, org_id=context.org_id, tenant_id=context.tenant_id
+        ),
+    )
     _validate_memory_content(payload.content)
     _validate_memory_text(payload.reason)
     agent = await _ensure_agent_owned(
         db,
         agent_id=payload.agent_id,
-        user_id=user_id,
+        context=context,
         required=payload.scope == "agent",
     )
     if payload.agent_id is not None and agent is None:
@@ -433,10 +502,13 @@ async def create_memory_proposal(
     await _validate_source_conversation(
         db,
         conversation_id=payload.conversation_id,
-        user_id=user_id,
+        context=context,
+        shared=shared_ids(agent, context),
     )
     proposal = MemoryProposal(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         agent_id=payload.agent_id,
         conversation_id=payload.conversation_id,
         source_run_id=payload.source_run_id,
@@ -450,42 +522,94 @@ async def create_memory_proposal(
     return proposal
 
 
+async def create_agent_memo_proposal(
+    db: AsyncSession,
+    *,
+    context: OrgContext,
+    agent_id: uuid.UUID,
+    content: str,
+    reason: str | None,
+    conversation_id: uuid.UUID | None,
+) -> MemoryProposal | None:
+    """F-09 (11.8): propose to the agent's shared memo; its editors decide."""
+    from app.services import agent_memo_service  # it imports this module
+
+    agent = await _get_owned_agent(db, agent_id, context)
+    if agent is None:
+        return None
+    return await agent_memo_service.create_memo_proposal(
+        db,
+        context=context,
+        agent=agent,
+        content=content,
+        reason=reason,
+        conversation_id=conversation_id,
+    )
+
+
 async def get_memory_proposal(
     db: AsyncSession,
     *,
     proposal_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> MemoryProposal | None:
-    result = await db.execute(
-        select(MemoryProposal).where(
-            MemoryProposal.id == proposal_id,
-            MemoryProposal.user_id == user_id,
-        )
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
-    return result.scalar_one_or_none()
+    shared = await row_shared_memory_agent_ids(db, MemoryProposal, proposal_id, context)
+    result = await db.execute(
+        select(MemoryProposal)
+        .where(
+            MemoryProposal.id == proposal_id,
+            private_memory_proposal_predicate(context, shared),
+        )
+        .execution_options(populate_existing=True, autoflush=False)
+    )
+    proposal = result.scalar_one_or_none()
+    # F-09: shared-memo proposals are decided by the agent's editors (agent_memo routes).
+    return None if proposal is not None and proposal.scope == AGENT_MEMO_SCOPE else proposal
 
 
 async def approve_memory_proposal(
     db: AsyncSession,
     *,
     proposal_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
     content: str | None = None,
     reason: str | None = None,
 ) -> tuple[MemoryProposal, MemoryRecord] | None:
     proposal = await get_memory_proposal(
         db,
         proposal_id=proposal_id,
-        user_id=user_id,
+        context=context,
     )
     if proposal is None or proposal.status != "pending":
         return None
+    agent = None
+    if proposal.agent_id is not None:
+        agent = await _get_owned_agent(db, proposal.agent_id, context)
+    await _validate_source_conversation(
+        db,
+        conversation_id=proposal.conversation_id,
+        context=context,
+        shared=shared_ids(agent, context),
+    )
+    if proposal.agent_id is not None and agent is None:
+        return None
+    await resolve_private_actor(
+        db,
+        PrivateResourceActor(
+            user_id=context.user_id, org_id=context.org_id, tenant_id=context.tenant_id
+        ),
+    )
     final_content = content if content is not None else proposal.content
     final_reason = reason if reason is not None else proposal.reason
     _validate_memory_content(final_content)
     _validate_memory_text(final_reason)
     record = MemoryRecord(
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         agent_id=proposal.agent_id if proposal.scope == "agent" else None,
         scope=proposal.scope,
         content=final_content,
@@ -509,12 +633,12 @@ async def reject_memory_proposal(
     db: AsyncSession,
     *,
     proposal_id: uuid.UUID,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> MemoryProposal | None:
     proposal = await get_memory_proposal(
         db,
         proposal_id=proposal_id,
-        user_id=user_id,
+        context=context,
     )
     if proposal is None or proposal.status != "pending":
         return None

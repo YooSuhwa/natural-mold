@@ -4,7 +4,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from datetime import timedelta
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import anyio
 import pytest
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.runtime_config import AgentConfig
+from app.authz.conversation_scope import require_conversation_agent_id
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -27,6 +28,8 @@ from app.services import (
     conversation_run_service,
     conversation_run_worker,
 )
+from tests.authz.run_fixture_config import run_fixture_config
+from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 from tests.integration._seed import seed_conversation_with_agent
 
@@ -36,6 +39,22 @@ async def test_worker_metrics_baseline_excludes_pre_input_checkpoint_usage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation_id = await seed_conversation_with_agent()
+    async with TestSession() as db:
+        conversation = await db.get(Conversation, conversation_id)
+        assert conversation is not None
+        cfg = AgentConfig(
+            provider="openai",
+            model_name="fixture",
+            api_key=None,
+            base_url=None,
+            system_prompt="Fixture",
+            tools_config=[],
+            thread_id=str(conversation_id),
+            agent_id=str(require_conversation_agent_id(conversation)),
+            user_id=str(TEST_USER_ID),
+            org_context=unit_context(TEST_USER_ID),
+            checkpoint_id="checkpoint-before-input",
+        )
     checkpoint = object()
     captured: dict[str, object] = {}
 
@@ -73,7 +92,7 @@ async def test_worker_metrics_baseline_excludes_pre_input_checkpoint_usage(
     )
     metrics = await conversation_run_worker._prepare_run_metrics(
         conversation_id=conversation_id,
-        cfg=cast(AgentConfig, SimpleNamespace(checkpoint_id="checkpoint-before-input")),
+        cfg=cfg,
         started_at=0.0,
     )
     metrics.observe(
@@ -130,8 +149,8 @@ async def test_owner_worker_polls_durable_steer_and_acknowledges_terminal(
         run = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conversation.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conversation),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="active",
         )
@@ -178,7 +197,7 @@ async def test_owner_worker_polls_durable_steer_and_acknowledges_terminal(
     await conversation_run_worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=cast(AgentConfig, SimpleNamespace(secret_values=set(), agent_id=None)),
+        cfg=await run_fixture_config(run_id, TestSession),
         user=CurrentUser(id=TEST_USER_ID, email="owner@test", name="Owner"),
         input_payload={"messages": [{"role": "user", "content": "active"}]},
         moldy_source="chat",
@@ -226,8 +245,8 @@ async def test_failed_worker_persists_partial_usage_once(
         run = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conversation.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conversation),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="fails after usage",
         )
@@ -271,15 +290,7 @@ async def test_failed_worker_persists_partial_usage_once(
     await conversation_run_worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=cast(
-            AgentConfig,
-            SimpleNamespace(
-                secret_values=set(),
-                agent_id=None,
-                model_name="scripted-model",
-                checkpoint_id=None,
-            ),
-        ),
+        cfg=await run_fixture_config(run_id, TestSession, model_name="scripted-model"),
         user=CurrentUser(id=TEST_USER_ID, email="owner@test", name="Owner"),
         input_payload={"messages": [{"role": "user", "content": "active"}]},
         moldy_source="chat",
@@ -316,8 +327,8 @@ async def test_duplicate_nonowner_does_not_acknowledge_owned_canceling_run() -> 
         run = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conversation.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conversation),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="owned",
         )
@@ -342,7 +353,7 @@ async def test_duplicate_nonowner_does_not_acknowledge_owned_canceling_run() -> 
     await conversation_run_worker.start_conversation_run(
         run_id=run_id,
         conversation_id=conversation_id,
-        cfg=cast(AgentConfig, SimpleNamespace(secret_values=set(), agent_id=None)),
+        cfg=await run_fixture_config(run_id, TestSession),
         user=CurrentUser(id=TEST_USER_ID, email="owner@test", name="Owner"),
         input_payload={"messages": []},
         moldy_source="chat",
@@ -371,8 +382,8 @@ async def test_repeated_steer_inputs_dispatch_in_persisted_order(db: AsyncSessio
     active = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=conversation.agent_id,
-        user_id=TEST_USER_ID,
+        agent_id=require_conversation_agent_id(conversation),
+        context=unit_context(TEST_USER_ID),
         source="chat",
         input_preview="active",
     )
@@ -385,7 +396,7 @@ async def test_repeated_steer_inputs_dispatch_in_persisted_order(db: AsyncSessio
     first = await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="steer-1",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "first correction"}]},
@@ -396,7 +407,7 @@ async def test_repeated_steer_inputs_dispatch_in_persisted_order(db: AsyncSessio
     second = await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="steer-2",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "second correction"}]},
@@ -407,7 +418,7 @@ async def test_repeated_steer_inputs_dispatch_in_persisted_order(db: AsyncSessio
     await conversation_run_service.request_cancel_run(db, active, reason="steer")
     assert (
         await conversation_run_queue_service.claim_next_input(
-            db, conversation_id=conversation_id, user_id=TEST_USER_ID
+            db, conversation_id=conversation_id, context=unit_context(TEST_USER_ID)
         )
         is None
     )
@@ -420,12 +431,12 @@ async def test_repeated_steer_inputs_dispatch_in_persisted_order(db: AsyncSessio
         cancellation_ack_worker_id="steer-owner",
     )
     first_claim = await conversation_run_queue_service.claim_next_input(
-        db, conversation_id=conversation_id, user_id=TEST_USER_ID
+        db, conversation_id=conversation_id, context=unit_context(TEST_USER_ID)
     )
     assert first_claim is not None
     await conversation_run_service.transition_run(db, first_claim.run, "failed")
     second_claim = await conversation_run_queue_service.claim_next_input(
-        db, conversation_id=conversation_id, user_id=TEST_USER_ID
+        db, conversation_id=conversation_id, context=unit_context(TEST_USER_ID)
     )
 
     # Then no correction overlaps and persisted FIFO breaks ties between steers.
@@ -444,7 +455,7 @@ async def test_recovery_launches_claim_committed_before_task_start(
     queued = await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="recover-claim",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "recover"}]},
@@ -454,7 +465,7 @@ async def test_recovery_launches_claim_committed_before_task_start(
     )
     await db.commit()
     claimed = await conversation_run_queue_service.claim_next_input(
-        db, conversation_id=conversation_id, user_id=TEST_USER_ID
+        db, conversation_id=conversation_id, context=unit_context(TEST_USER_ID)
     )
     assert claimed is not None
     await db.commit()
@@ -481,7 +492,7 @@ async def test_recovery_terminalizes_claim_for_inactive_user(db: AsyncSession) -
     queued = await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="inactive-owner",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "must not run"}]},
@@ -491,7 +502,7 @@ async def test_recovery_terminalizes_claim_for_inactive_user(db: AsyncSession) -
     )
     await db.commit()
     claimed = await conversation_run_queue_service.claim_next_input(
-        db, conversation_id=conversation_id, user_id=TEST_USER_ID
+        db, conversation_id=conversation_id, context=unit_context(TEST_USER_ID)
     )
     assert claimed is not None
     user = await db.get(User, TEST_USER_ID)
@@ -525,8 +536,8 @@ async def test_stale_sweep_does_not_ack_or_dispatch_over_live_remote_owner(
     active = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=conversation.agent_id,
-        user_id=TEST_USER_ID,
+        agent_id=require_conversation_agent_id(conversation),
+        context=unit_context(TEST_USER_ID),
         source="chat",
         input_preview="remote active",
     )
@@ -537,10 +548,11 @@ async def test_stale_sweep_does_not_ack_or_dispatch_over_live_remote_owner(
         worker_instance_id="remote-owner",
     )
     active.heartbeat_at = active.created_at - timedelta(hours=1)
+    await db.commit()
     await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="remote-steer",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "correction"}]},
@@ -577,7 +589,7 @@ async def test_stale_sweep_does_not_ack_or_dispatch_over_live_remote_owner(
             await conversation_run_queue_service.resume_queue(
                 recovery_db,
                 conversation_id=conversation_id,
-                user_id=TEST_USER_ID,
+                context=unit_context(TEST_USER_ID),
             )
             await recovery_db.commit()
         second_recovery = await conversation_run_queue_worker.recover_conversation_queue()
@@ -607,7 +619,7 @@ async def test_startup_sweep_then_recovery_finishes_workerless_cancel_before_sta
     first = await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="workerless-predecessor",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "first"}]},
@@ -619,16 +631,17 @@ async def test_startup_sweep_then_recovery_finishes_workerless_cancel_before_sta
     claimed = await conversation_run_queue_service.claim_next_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
     assert claimed is not None
     await conversation_run_service.request_cancel_run(db, claimed.run, reason="steer")
     assert claimed.run.cancel_requested_at is not None
     claimed.run.created_at = claimed.run.cancel_requested_at - timedelta(hours=1)
+    await db.commit()
     await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="workerless-successor",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "second"}]},
@@ -700,8 +713,8 @@ async def test_stale_remote_owner_with_ordinary_queue_pauses_automatic_dispatch(
     active = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=conversation.agent_id,
-        user_id=TEST_USER_ID,
+        agent_id=require_conversation_agent_id(conversation),
+        context=unit_context(TEST_USER_ID),
         source="chat",
         input_preview="remote ordinary",
     )
@@ -712,10 +725,11 @@ async def test_stale_remote_owner_with_ordinary_queue_pauses_automatic_dispatch(
         worker_instance_id="remote-owner",
     )
     active.heartbeat_at = active.created_at - timedelta(hours=1)
+    await db.commit()
     await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="ordinary-after-remote",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "later"}]},
@@ -761,18 +775,19 @@ async def test_startup_recovers_workerless_direct_cancel_then_dispatches_once(
     direct = await conversation_run_service.create_run(
         db,
         conversation_id=conversation_id,
-        agent_id=conversation.agent_id,
-        user_id=TEST_USER_ID,
+        agent_id=require_conversation_agent_id(conversation),
+        context=unit_context(TEST_USER_ID),
         source="chat",
         input_preview="direct before crash",
     )
     await conversation_run_service.request_cancel_run(db, direct, reason="stop")
     assert direct.cancel_requested_at is not None
     direct.created_at = direct.cancel_requested_at - timedelta(hours=1)
+    await db.commit()
     await conversation_run_queue_service.enqueue_input(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         client_request_id="after-direct-cancel",
         source="chat",
         input_payload={"messages": [{"role": "user", "content": "continue"}]},
@@ -783,7 +798,7 @@ async def test_startup_recovers_workerless_direct_cancel_then_dispatches_once(
     await conversation_run_queue_service.pause_queue(
         db,
         conversation_id=conversation_id,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
     await db.commit()
     successor_completed = anyio.Event()
@@ -816,7 +831,7 @@ async def test_startup_recovers_workerless_direct_cancel_then_dispatches_once(
         await conversation_run_queue_service.resume_queue(
             recovery_db,
             conversation_id=conversation_id,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
         )
         await recovery_db.commit()
     second_recovery = await conversation_run_queue_worker.recover_conversation_queue()

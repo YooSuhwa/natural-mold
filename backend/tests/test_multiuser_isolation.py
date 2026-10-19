@@ -12,13 +12,20 @@ filter path.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.models.agent import Agent
+from app.models.audit_event import AuditEvent
+from app.models.conversation import Conversation
+from app.models.conversation_run import ConversationRun
 from app.models.model import Model
-from tests.conftest import AuthSession, TestSession, register_session
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
+from tests.conftest import TEST_USER_ID, AuthSession, TestSession, register_session
 
 # ---------------------------------------------------------------------------
 # Test infrastructure
@@ -112,6 +119,31 @@ async def test_user_b_cannot_modify_user_a_agent(raw_client: AsyncClient):
     a = await _register(raw_client, email="a@test.com")
     b = await _register(raw_client, email="b@test.com")
     agent_id = await _make_agent(raw_client, a, model_id)
+    async with TestSession() as db:
+        agent = await db.get(Agent, uuid.UUID(agent_id))
+        assert agent is not None
+        conversation = Conversation(
+            agent_id=agent.id,
+            user_id=agent.user_id,
+            org_id=agent.org_id,
+            tenant_id=agent.tenant_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
+        db.add(conversation)
+        await db.flush()
+        run = ConversationRun(
+            conversation_id=conversation.id,
+            agent_id=agent.id,
+            user_id=agent.user_id,
+            source="chat",
+            status="queued",
+            is_active=True,
+        )
+        db.add(run)
+        await db.commit()
+        conversation_id = conversation.id
+        run_id = run.id
 
     _apply(raw_client, b)
     upd = await raw_client.put(
@@ -122,7 +154,30 @@ async def test_user_b_cannot_modify_user_a_agent(raw_client: AsyncClient):
     assert upd.status_code == 404
 
     delete = await raw_client.delete(f"/api/agents/{agent_id}", headers=b.headers())
-    assert delete.status_code == 404
+    missing = await raw_client.delete(f"/api/agents/{uuid.uuid4()}", headers=b.headers())
+    assert delete.status_code == missing.status_code == 404
+    assert delete.json() == missing.json()
+
+    async with TestSession() as db:
+        agent = await db.get(Agent, uuid.UUID(agent_id))
+        conversation = await db.get(Conversation, conversation_id)
+        run = await db.get(ConversationRun, run_id)
+        audits = tuple(
+            await db.scalars(
+                select(AuditEvent.id).where(
+                    AuditEvent.action == "agent.archive",
+                    AuditEvent.target_id == agent_id,
+                )
+            )
+        )
+        assert agent is not None and conversation is not None and run is not None
+        assert (agent.archived_at, conversation.queue_paused, run.status, run.cancel_reason) == (
+            None,
+            False,
+            "queued",
+            None,
+        )
+        assert audits == ()
 
 
 @pytest.mark.asyncio
@@ -299,7 +354,16 @@ async def test_user_b_cannot_modify_user_a_conversation(raw_client: AsyncClient)
     agent_id = await _make_agent(raw_client, a, model_id)
 
     async with TestSession() as db:
-        conv = Conversation(id=uuid.uuid4(), agent_id=uuid.UUID(agent_id), title="t")
+        conv = Conversation(
+            id=uuid.uuid4(),
+            agent_id=uuid.UUID(agent_id),
+            title="t",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=TEST_USER_ID,
+            agent_name_snapshot="Fixture agent",
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conv)
         await db.commit()
         conv_id = str(conv.id)
@@ -332,7 +396,18 @@ async def test_user_b_cannot_touch_user_a_conversation_surfaces(raw_client: Asyn
     agent_id = await _make_agent(raw_client, a, model_id)
 
     async with TestSession() as db:
-        conv = Conversation(id=uuid.uuid4(), agent_id=uuid.UUID(agent_id), title="t")
+        owner_agent = await db.get(Agent, uuid.UUID(agent_id))
+        assert owner_agent is not None
+        conv = Conversation(
+            id=uuid.uuid4(),
+            agent_id=uuid.UUID(agent_id),
+            title="t",
+            org_id=owner_agent.org_id,
+            tenant_id=owner_agent.tenant_id,
+            user_id=owner_agent.user_id,
+            agent_name_snapshot="Fixture agent",
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conv)
         await db.commit()
         conv_id = str(conv.id)

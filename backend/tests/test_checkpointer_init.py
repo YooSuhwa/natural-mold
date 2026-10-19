@@ -28,6 +28,8 @@ def _install_fake_checkpointer_modules(monkeypatch, pool_cls: type, saver_cls: t
     aio_module.AsyncPostgresSaver = saver_cls
     monkeypatch.setitem(sys.modules, "psycopg_pool", psycopg_pool_module)
     monkeypatch.setitem(sys.modules, "langgraph.checkpoint.postgres.aio", aio_module)
+    # Fake pools have no connections; I-06's migration-version probe is covered elsewhere.
+    monkeypatch.setattr(mod, "_needs_setup", AsyncMock(return_value=True))
 
 
 @pytest.mark.asyncio

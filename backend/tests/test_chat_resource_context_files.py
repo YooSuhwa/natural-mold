@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.models.message_attachment import MessageAttachment
 from app.schemas.chat_resource_context import ChatResourceContextRequest, ChatResourceReference
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.test_chat_resource_context_support import (
     resource_context_resolver,
     seed_resource_context,
@@ -33,6 +34,8 @@ async def test_resolve_text_file_uses_owned_attachment_and_bounded_snapshot(
         size_bytes=path.stat().st_size,
         storage_path=str(path),
         url="/api/uploads/notes",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(attachment)
     await db.flush()
@@ -65,6 +68,8 @@ async def test_resolve_binary_file_uses_metadata_descriptor_not_raw_bytes(
         size_bytes=len(raw),
         storage_path=str(path),
         url="/api/uploads/image",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(attachment)
     await db.flush()
@@ -96,6 +101,8 @@ async def test_resolve_artifact_freezes_exact_version_and_does_not_substitute_la
         size_bytes=3,
         sha256="old-hash",
         status="ready",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(artifact)
     await db.flush()

@@ -10,8 +10,7 @@ Endpoints:
 - ``POST   /api/credentials/{id}/test``             run test recipe on stored data
 - ``POST   /api/credentials/preview-test``          run test on raw form data
 - ``GET    /api/credentials/{id}/audit-logs``       recent audit log entries
-- ``POST   /api/oauth2-credential/auth/{id}``       start OAuth2 authorize flow
-- ``GET    /api/oauth2-credential/callback``        OAuth2 callback handler
+- OAuth2 routes live in ``credential_oauth`` and are mounted here.
 """
 
 from __future__ import annotations
@@ -19,19 +18,32 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.model_factory import sync_env_fallback_from_credentials
-from app.credentials import oauth_service
+from app.authz.org_context import OrgContext
+from app.authz.platform_scope import PlatformScope
+from app.authz.policies import CANDIDATES, CATALOG, RES, SELF, SUPER, authz_policy
+from app.authz.resource_gate import CREDENTIAL, gate_list, gate_row
+from app.authz.resource_lifecycle import apply_lifecycle, on_resource_created, on_resource_deleted
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
 from app.credentials import service as credential_service
+from app.credentials.boundary import open_values
+from app.credentials.creation import CredentialCreation
+from app.credentials.mutation_scope import (
+    CredentialAuditQuery,
+    CredentialPatch,
+    CredentialTestRecord,
+)
 from app.credentials.registry import registry
 from app.credentials.tester import CredentialTester
 from app.dependencies import (
     CurrentUser,
     get_current_user,
     get_db,
-    require_super_user,
+    get_org_context,
+    require_platform_operator,
     verify_csrf,
 )
 from app.error_codes import (
@@ -39,7 +51,9 @@ from app.error_codes import (
     system_credential_not_found,
     unknown_credential_definition,
 )
+from app.exceptions import AppError
 from app.models.credential import Credential
+from app.routers import credential_oauth
 from app.schemas.credential import (
     CredentialAuditLogResponse,
     CredentialCreate,
@@ -47,7 +61,6 @@ from app.schemas.credential import (
     CredentialResponse,
     CredentialTestResponse,
     CredentialUpdate,
-    OAuth2AuthStartResponse,
     PreviewTestRequest,
 )
 from app.schemas.model import DiscoveredModelSchema
@@ -63,7 +76,6 @@ system_router = APIRouter(prefix="/api/system-credentials", tags=["credentials"]
 # Catalog mounts at /api/credential-types; CRUD lives under /api/credentials.
 catalog_router = APIRouter(prefix="/api/credential-types", tags=["credentials"])
 crud_router = APIRouter(prefix="/api/credentials", tags=["credentials"])
-oauth_router = APIRouter(prefix="/api/oauth2-credential", tags=["credentials"])
 
 
 # -- Helpers -----------------------------------------------------------------
@@ -93,11 +105,22 @@ def _request_meta(request: Request) -> tuple[str | None, str | None]:
     return client, request.headers.get("user-agent")
 
 
-async def _load_owned(db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID) -> Credential:
-    cred = await credential_service.get_for_user(db, credential_id, user_id)
-    if cred is None:
-        raise credential_not_found()
-    return cred
+async def _load_owned(
+    db: AsyncSession,
+    credential_id: uuid.UUID,
+    context: OrgContext,
+    authz: AuthzService,
+    permission: str = "can_use",
+) -> Credential:
+    """Owner lookup is the legacy answer; ``credential#permission`` decides when enforced."""
+
+    async def legacy() -> Credential:
+        cred = await credential_service.get_for_user(db, credential_id, context)
+        if cred is None:
+            raise credential_not_found()
+        return cred
+
+    return await gate_row(authz, db, context, CREDENTIAL, credential_id, permission, legacy)
 
 
 async def _maybe_sync_env_fallback(db: AsyncSession, definition_key: str) -> None:
@@ -117,11 +140,13 @@ async def _maybe_sync_env_fallback(db: AsyncSession, definition_key: str) -> Non
 
 
 @catalog_router.get("", response_model=list[CredentialDefinitionSchema])
+@authz_policy(CATALOG)
 async def list_credential_types() -> list[CredentialDefinitionSchema]:
     return [CredentialDefinitionSchema(**d.serialize()) for d in registry.all()]
 
 
 @catalog_router.get("/{key}", response_model=CredentialDefinitionSchema)
+@authz_policy(CATALOG)
 async def get_credential_type(key: str) -> CredentialDefinitionSchema:
     definition = registry.get(key)
     if definition is None:
@@ -133,20 +158,34 @@ async def get_credential_type(key: str) -> CredentialDefinitionSchema:
 
 
 @crud_router.get("", response_model=list[CredentialResponse])
+@authz_policy(CANDIDATES("credential", "can_use"))
 async def list_credentials(
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[CredentialResponse]:
-    creds = await credential_service.list_for_user(db, user.id)
+    creds = await credential_service.list_for_user(db, context)
+    creds = await gate_list(
+        authz,
+        context,
+        "credential",
+        "can_use",
+        creds,
+        lambda cred: cred.id,
+        candidates=lambda: credential_service.list_candidates(db, context),
+    )
     return [_to_response(c) for c in creds]
 
 
 @crud_router.post("", response_model=CredentialResponse, status_code=201)
+@authz_policy(SELF)
 async def create_credential(
     payload: CredentialCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> CredentialResponse:
     if registry.get(payload.definition_key) is None:
         raise HTTPException(
@@ -156,37 +195,46 @@ async def create_credential(
     name = payload.normalized_name()
     cred = await credential_service.create(
         db,
-        user_id=user.id,
-        definition_key=payload.definition_key,
-        name=name,
-        data=payload.data,
-        is_shared=payload.is_shared,
+        CredentialCreation(
+            definition_key=payload.definition_key,
+            name=name,
+            data=payload.data,
+            is_shared=payload.is_shared,
+        ),
+        context,
     )
+    change = await on_resource_created(db, cred, mode=authz.mode)
     await db.commit()
     await db.refresh(cred)
+    await apply_lifecycle(change, authz)  # read-your-writes before responding (8.6)
     await _maybe_sync_env_fallback(db, payload.definition_key)
     return _to_response(cred)
 
 
 @crud_router.get("/{credential_id}", response_model=CredentialResponse)
+@authz_policy(RES("credential", "can_use", param="credential_id", min_visible="can_use"))
 async def get_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> CredentialResponse:
-    cred = await _load_owned(db, credential_id, user.id)
+    cred = await _load_owned(db, credential_id, context, authz)
     return _to_response(cred)
 
 
 @crud_router.patch("/{credential_id}", response_model=CredentialResponse)
+@authz_policy(RES("credential", "can_edit", param="credential_id", min_visible="can_use"))
 async def update_credential(
     credential_id: uuid.UUID,
     payload: CredentialUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> CredentialResponse:
-    cred = await _load_owned(db, credential_id, user.id)
+    cred = await _load_owned(db, credential_id, context, authz, "can_edit")
     if payload.name is not None:
         # Preserve marker reservation enforced by markers.check_reserved_marker
         from app.schemas.markers import check_reserved_marker
@@ -194,12 +242,15 @@ async def update_credential(
         check_reserved_marker(payload.name, "name")
     await credential_service.update(
         db,
-        credential=cred,
-        actor_user_id=user.id,
-        name=payload.name,
-        data=payload.data,
-        is_shared=payload.is_shared,
-        status=payload.status,
+        CredentialPatch(
+            credential_id=cred.id,
+            actor_user_id=user.id,
+            name=payload.name,
+            data=payload.data,
+            is_shared=payload.is_shared,
+            status=payload.status,
+        ),
+        context,
     )
     await db.commit()
     await db.refresh(cred)
@@ -208,13 +259,16 @@ async def update_credential(
 
 
 @crud_router.delete("/{credential_id}", status_code=204)
+@authz_policy(RES("credential", "can_delete", param="credential_id", min_visible="can_use"))
 async def delete_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> None:
-    cred = await _load_owned(db, credential_id, user.id)
+    cred = await _load_owned(db, credential_id, context, authz, "can_delete")
     definition_key = cred.definition_key
     await credential_service.write_audit_log(
         db,
@@ -222,8 +276,10 @@ async def delete_credential(
         actor_user_id=user.id,
         action="delete",
     )
+    change = await on_resource_deleted(db, cred, mode=authz.mode)
     await db.delete(cred)
     await db.commit()
+    await apply_lifecycle(change, authz)
     await _maybe_sync_env_fallback(db, definition_key)
 
 
@@ -238,9 +294,10 @@ async def _load_system(db: AsyncSession, credential_id: uuid.UUID) -> Credential
 
 
 @system_router.get("", response_model=list[CredentialResponse])
+@authz_policy(SUPER)
 async def list_system_credentials(
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
 ) -> list[CredentialResponse]:
     """List all operator-managed system credentials. Super_user only."""
 
@@ -249,10 +306,11 @@ async def list_system_credentials(
 
 
 @system_router.post("", response_model=CredentialResponse, status_code=201)
+@authz_policy(SUPER)
 async def create_system_credential(
     payload: CredentialCreate,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ) -> CredentialResponse:
     if registry.get(payload.definition_key) is None:
@@ -265,12 +323,10 @@ async def create_system_credential(
     # picker queries (``list_for_user`` filters ``is_system=False``).
     cred = await credential_service.create(
         db,
-        user_id=None,
-        definition_key=payload.definition_key,
-        name=payload.normalized_name(),
-        data=payload.data,
-        is_shared=False,
-        is_system=True,
+        CredentialCreation(
+            definition_key=payload.definition_key, name=payload.normalized_name(), data=payload.data
+        ),
+        PlatformScope(),
     )
     await db.commit()
     await db.refresh(cred)
@@ -279,20 +335,22 @@ async def create_system_credential(
 
 
 @system_router.get("/{credential_id}", response_model=CredentialResponse)
+@authz_policy(SUPER)
 async def get_system_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
 ) -> CredentialResponse:
     return _to_response(await _load_system(db, credential_id))
 
 
 @system_router.patch("/{credential_id}", response_model=CredentialResponse)
+@authz_policy(SUPER)
 async def update_system_credential(
     credential_id: uuid.UUID,
     payload: CredentialUpdate,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ) -> CredentialResponse:
     cred = await _load_system(db, credential_id)
@@ -302,11 +360,14 @@ async def update_system_credential(
         check_reserved_marker(payload.name, "name")
     await credential_service.update(
         db,
-        credential=cred,
-        actor_user_id=user.id,
-        name=payload.name,
-        data=payload.data,
-        status=payload.status,
+        CredentialPatch(
+            credential_id=cred.id,
+            actor_user_id=user.id,
+            name=payload.name,
+            data=payload.data,
+            status=payload.status,
+        ),
+        PlatformScope(),
     )
     await db.commit()
     await db.refresh(cred)
@@ -315,10 +376,11 @@ async def update_system_credential(
 
 
 @system_router.delete("/{credential_id}", status_code=204)
+@authz_policy(SUPER)
 async def delete_system_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_platform_operator),
     _csrf: None = Depends(verify_csrf),
 ) -> None:
     cred = await _load_system(db, credential_id)
@@ -338,33 +400,34 @@ async def delete_system_credential(
 
 
 @crud_router.post("/{credential_id}/test", response_model=CredentialTestResponse)
+@authz_policy(RES("credential", "can_edit", param="credential_id", min_visible="can_use"))
 async def test_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> CredentialTestResponse:
-    cred = await _load_owned(db, credential_id, user.id)
+    cred = await _load_owned(db, credential_id, context, authz, "can_edit")
     definition = registry.get(cred.definition_key)
     if definition is None:
         raise HTTPException(
             status_code=400,
             detail=f"definition '{cred.definition_key}' is not registered",
         )
-    data = await credential_service.decrypt_with_external(cred.data_encrypted)
+    data = await open_values(cred, "probe")
     result = await CredentialTester().run(definition, data)
     payload = result.to_dict()
     await credential_service.record_test(
-        db,
-        credential=cred,
-        actor_user_id=user.id,
-        result=payload,
+        db, CredentialTestRecord(cred.id, user.id, payload), context
     )
     await db.commit()
     return CredentialTestResponse(**payload)
 
 
 @crud_router.post("/preview-test", response_model=CredentialTestResponse)
+@authz_policy(SELF)
 async def preview_test(
     payload: PreviewTestRequest,
     user: CurrentUser = Depends(get_current_user),
@@ -387,12 +450,15 @@ async def preview_test(
     "/{credential_id}/discover-models",
     response_model=list[DiscoveredModelSchema],
 )
+@authz_policy(RES("credential", "can_use", param="credential_id", min_visible="can_use"))
 async def discover_models(
     credential_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[DiscoveredModelSchema]:
     """List models reachable through this Credential.
 
@@ -401,8 +467,11 @@ async def discover_models(
     canonical 'is this key valid' surface, not this endpoint.
     """
 
-    cred = await credential_service.get_for_user(db, credential_id, user.id)
-    if cred is None and user.is_super_user:
+    try:
+        cred: Credential | None = await _load_owned(db, credential_id, context, authz)
+    except AppError as missing:
+        if missing.status != 404 or not user.is_super_user:
+            raise
         # System LLM settings (ADR-019) discovers models from is_system
         # credentials, which _load_owned (user-scoped) can't see. super_user
         # owns system credentials, so allow discovery against them here.
@@ -441,14 +510,18 @@ async def discover_models(
     "/{credential_id}/audit-logs",
     response_model=list[CredentialAuditLogResponse],
 )
+@authz_policy(RES("credential", "can_edit", param="credential_id", min_visible="can_use"))
 async def list_audit_logs(
     credential_id: uuid.UUID,
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
 ) -> list[CredentialAuditLogResponse]:
-    await _load_owned(db, credential_id, user.id)
-    logs = await credential_service.list_audit_logs(db, credential_id=credential_id, limit=limit)
+    await _load_owned(db, credential_id, context, authz, "can_edit")
+    logs = await credential_service.list_audit_logs(
+        db, CredentialAuditQuery(credential_id, limit), context
+    )
     return [
         CredentialAuditLogResponse(
             id=log.id,
@@ -466,71 +539,10 @@ async def list_audit_logs(
     ]
 
 
-# -- OAuth2 ------------------------------------------------------------------
-
-
-def _oauth_callback_html(credential_id: uuid.UUID, target_origin: str | None) -> HTMLResponse:
-    safe_target = target_origin or "*"
-    body = f"""<!doctype html>
-<html>
-  <head><meta charset="utf-8"><title>Moldy OAuth Complete</title></head>
-  <body>
-    <p>OAuth authorization completed. You can close this window.</p>
-    <script>
-      if (window.opener) {{
-        window.opener.postMessage(
-          {{ type: 'moldy.oauth.completed', credentialId: '{credential_id}' }},
-          {safe_target!r}
-        );
-      }}
-      window.close();
-    </script>
-  </body>
-</html>"""
-    return HTMLResponse(content=body)
-
-
-@oauth_router.post("/auth/{credential_id}", response_model=OAuth2AuthStartResponse)
-async def oauth2_auth_start(
-    credential_id: uuid.UUID,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
-    _csrf: None = Depends(verify_csrf),
-) -> OAuth2AuthStartResponse:
-    """Start the OAuth2 authorize flow (orchestration in ``oauth_service``)."""
-
-    result = await oauth_service.start_oauth(
-        db,
-        user=user,
-        credential_id=credential_id,
-        fallback_redirect_uri=str(request.url_for("oauth2_callback")),
-        return_to=request.headers.get("origin"),
-    )
-    await db.commit()
-    return OAuth2AuthStartResponse(
-        authorization_url=result.authorization_url,
-        state=result.state,
-    )
-
-
-@oauth_router.get("/callback", name="oauth2_callback")
-async def oauth2_callback(
-    request: Request,
-    code: str = Query(...),
-    state: str = Query(...),
-    db: AsyncSession = Depends(get_db),
-) -> HTMLResponse:
-    """Exchange ``code`` for tokens (orchestration in ``oauth_service``)."""
-
-    result = await oauth_service.handle_callback(db, code=code, state=state)
-    await db.commit()
-    return _oauth_callback_html(result.credential_id, result.return_to)
-
-
 # -- Composition -------------------------------------------------------------
 
 router.include_router(catalog_router)
 router.include_router(crud_router)
-router.include_router(oauth_router)
+router.include_router(credential_oauth.oauth_router)
+router.include_router(credential_oauth.well_known_router)
 router.include_router(system_router)

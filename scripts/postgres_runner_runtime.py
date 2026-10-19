@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Final, Literal
 
 import psycopg
+from postgres_company_suite import company_administration_argv
 from postgres_runner_contract import LaneDsns, parse_lane_dsns
 from postgres_runner_process import process_groups_stopped as process_groups_stopped
 from postgres_runner_process import process_identity_sha256 as process_identity_sha256
@@ -30,6 +31,8 @@ ExternalScenarioKind = Literal[
     "stream-resume",
     "run-lifecycle+stream-resume",
     "queue-concurrency",
+    "agent-lifecycle",
+    "company-administration",
 ]
 ScenarioKind = Literal[
     "all",
@@ -37,6 +40,8 @@ ScenarioKind = Literal[
     "stream-resume",
     "run-lifecycle+stream-resume",
     "queue-concurrency",
+    "agent-lifecycle",
+    "company-administration",
     "success",
     "child_failure",
     "sigint",
@@ -315,6 +320,35 @@ def run_test_child(env: dict[str, str], kind: ScenarioKind) -> tuple[int, str]:
             "-m",
             "integration",
         ],
+        "agent-lifecycle": [
+            str(BACKEND_ROOT / ".venv/bin/pytest"),
+            "-q",
+            "-p",
+            "tests.postgres_execution_plugin",
+            "tests/authz/test_agent_lifecycle_fixture.py",
+            "tests/integration/test_agent_lifecycle_locking.py",
+            "tests/integration/test_agent_lifecycle_migration.py",
+            "tests/authz/test_agent_lifecycle_migration_integration.py",
+            "tests/authz/test_agent_lifecycle_retention_constraints_integration.py",
+            "tests/integration/test_agent_lifecycle_run_ownership.py",
+            "tests/integration/test_agent_lifecycle_archive.py",
+            "tests/integration/test_agent_deletion_lifecycle.py",
+            "tests/integration/test_conversation_history_snapshot.py",
+            "tests/integration/test_agent_lifecycle_secondary_fences.py",
+            "tests/integration/test_agent_lifecycle_chat_races.py",
+            "tests/integration/test_agent_lifecycle_api_races.py",
+            "tests/integration/test_agent_lifecycle_trigger_races.py",
+            "tests/authz/test_agentless_history_integration.py",
+            "tests/authz/test_agent_purge_http_integration.py",
+            "tests/integration/test_agent_purge_retention.py",
+            "tests/integration/test_agent_purge_races.py",
+            "tests/integration/test_agent_lifecycle_end_to_end.py",
+            "-m",
+            "integration",
+        ],
+        "company-administration": company_administration_argv(
+            str(BACKEND_ROOT / ".venv/bin/pytest")
+        ),
         "success": [sys.executable, "-c", "raise SystemExit(0)"],
         "child_failure": [sys.executable, "-c", "raise SystemExit(23)"],
         "sigint": [
@@ -323,7 +357,10 @@ def run_test_child(env: dict[str, str], kind: ScenarioKind) -> tuple[int, str]:
             "import os,signal;os.kill(os.getpid(),signal.SIGINT)",
         ],
     }
-    result = run_command(commands[kind], env=env, timeout=600)
+    # company-administration keeps the 600s named-lane budget; it is unmeasured and should be
+    # revisited after the first native run of that lane.
+    # The full lane (372 nodes) takes about 15 minutes on a CI runner.
+    result = run_command(commands[kind], env=env, timeout=1800 if kind == "all" else 600)
     target = parse_lane_dsns(
         LaneDsns(
             env["DATABASE_URL"],

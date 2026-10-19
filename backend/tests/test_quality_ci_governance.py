@@ -21,6 +21,20 @@ def _workflow_steps(workflow: str) -> tuple[str, ...]:
     )
 
 
+def _job(name: str) -> str:
+    """Return one top-level ci.yml job block, from its key to the next job key."""
+    workflow = _workflow("ci.yml")
+    lines = workflow.splitlines(keepends=True)
+    starts = [
+        index
+        for index, line in enumerate(lines)
+        if line.startswith("  ") and not line.startswith("   ") and line.rstrip().endswith(":")
+    ]
+    start = next(index for index in starts if lines[index] == f"  {name}:\n")
+    end = next((index for index in starts if index > start), len(lines))
+    return "".join(lines[start:end])
+
+
 def _named_step(steps: tuple[str, ...], name: str) -> str:
     """Return one named step or fail the structural contract."""
     matching = tuple(step for step in steps if f"- name: {name}" in step.splitlines()[0])
@@ -154,7 +168,7 @@ def test_all_deterministic_profiles_forbid_retries() -> None:
 def test_ci_runs_both_provenance_bound_coverage_gates_with_full_history() -> None:
     workflow = _workflow("ci.yml")
 
-    assert "uv run python ../scripts/run_coverage_gate.py backend" in workflow
+    assert "uv run python ../scripts/run_coverage_gate.py backend --workers 4" in workflow
     assert "python3 ../scripts/run_coverage_gate.py frontend" in workflow
     frontend = workflow[workflow.index("  frontend:") : workflow.index("  pr-scripted-smoke:")]
     assert "fetch-depth: 0" in frontend
@@ -185,10 +199,7 @@ def test_backend_ci_provisions_frontend_dependencies_before_isolated_pytest() ->
             "        working-directory: .",
         )
     )
-    isolated_pytest = (
-        "bash scripts/run-isolated-command.sh --cwd backend -- "
-        "uv run pytest -q -n 4 --ignore=tests/integration"
-    )
+    isolated_pytest = "bash scripts/run-isolated-command.sh --cwd backend -- \\"
 
     assert "- uses: pnpm/action-setup@v4" in backend
     assert "- uses: actions/setup-node@v4" in backend
@@ -197,8 +208,42 @@ def test_backend_ci_provisions_frontend_dependencies_before_isolated_pytest() ->
     assert backend.index(workspace_install) < backend.index(isolated_pytest)
 
 
+def test_backend_suite_is_measured_once_by_the_isolated_coverage_gate() -> None:
+    backend = _job("backend")
+    gate = _named_step(
+        _workflow_steps(backend), "Run backend suite and enforce reviewed coverage floor"
+    )
+
+    assert _run_body(gate).splitlines() == [
+        "bash scripts/run-isolated-command.sh --cwd backend -- \\",
+        "  uv run python ../scripts/run_coverage_gate.py backend --workers 4",
+    ]
+    other_commands = tuple(
+        line
+        for step in _workflow_steps(backend)
+        if step != gate
+        for line in step.splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    assert not any("pytest" in line or "run_coverage_gate" in line for line in other_commands)
+    assert "timeout-minutes: 45" in backend
+
+
+def test_postgres_lane_runs_in_its_own_parallel_job() -> None:
+    backend = _job("backend")
+    postgres = _job("backend-postgres")
+
+    assert "run-isolated-postgres-tests.sh" not in backend
+    assert "check-isolation-cleanup.py" not in backend
+    assert "run-isolated-postgres-tests.sh all" in postgres
+    assert "needs:" not in postgres
+    assert "timeout-minutes: 45" in postgres
+    assert "fetch-depth: 0" in postgres
+    assert "- run: uv sync --frozen --all-extras" in postgres
+
+
 def test_backend_ci_validates_postgres_receipt_and_cleanup_after_lane_failure() -> None:
-    steps = _workflow_steps(_workflow("ci.yml"))
+    steps = _workflow_steps(_job("backend-postgres"))
     execution = _named_step(steps, "Run disposable PostgreSQL integration lane")
     receipt = _named_step(steps, "Validate PostgreSQL integration receipt")
     cleanup = _named_step(steps, "Verify PostgreSQL integration cleanup")

@@ -19,6 +19,8 @@ from app.services.skill_evaluation_usage import (
     ModelPricing,
     resolve_model_pricing,
 )
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -124,14 +126,16 @@ async def test_create_run_threads_baseline_into_persisted_estimate(
     from app.skills import service as skill_service
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Baseline",
-            slug="baseline-estimate",
-            description="Use when testing baseline estimate threading.",
-            content='---\nname: baseline\ndescription: "Use when testing."\n---\n\nBody.\n',
-            version="1.0.0",
+            TextSkillCreation(
+                name="Baseline",
+                slug="baseline-estimate",
+                description="Use when testing baseline estimate threading.",
+                content='---\nname: baseline\ndescription: "Use when testing."\n---\n\nBody.\n',
+                version="1.0.0",
+            ),
+            unit_context(TEST_USER_ID),
         )
     eval_set = SkillEvaluationSet(
         user_id=TEST_USER_ID,

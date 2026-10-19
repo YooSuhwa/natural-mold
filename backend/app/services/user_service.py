@@ -9,15 +9,24 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent import Agent
-from app.models.conversation import Conversation
+from app.authz.account_erasure import (
+    lock_account_history,
+    lock_account_scopes,
+    require_account_resources_released,
+    require_no_account_grants,
+    revoke_account_grants,
+)
 from app.models.conversation_run import ConversationRun
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
+
+if TYPE_CHECKING:
+    from app.authz.resource_lifecycle import LifecycleChange
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +149,7 @@ async def cleanup_user_resources(db: AsyncSession, user_id: uuid.UUID) -> None:
 
     Currently:
     1. LangGraph checkpoints — every conversation owned (transitively via
-       Agent.user_id) by this user.
+       Conversation.user_id) by this user.
     2. Internal compaction history and large-result spill files for those
        same trusted owner/conversation pairs.
     3. Active refresh tokens — revoked so any leaked browser session stops
@@ -159,22 +168,10 @@ async def cleanup_user_resources(db: AsyncSession, user_id: uuid.UUID) -> None:
     if locked_user_id is None:
         return
 
-    # 1. Conversations owned by the user (joined via Agent.user_id). The
+    # 1. Histories directly owned by the account, including agentless history. The
     # deterministic row-lock order matches run creation's User -> Conversation
     # order and keeps the active-run check valid until the caller commits.
-    conv_rows = (
-        (
-            await db.execute(
-                select(Conversation.id)
-                .join(Agent, Agent.id == Conversation.agent_id)
-                .where(Agent.user_id == user_id)
-                .order_by(Conversation.id)
-                .with_for_update(of=Conversation)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    conv_rows = await lock_account_history(db, user_id)
 
     if conv_rows:
         active_run_id = await db.scalar(
@@ -234,18 +231,38 @@ async def cleanup_user_resources(db: AsyncSession, user_id: uuid.UUID) -> None:
     )
 
 
-async def delete_user(db: AsyncSession, user_id: uuid.UUID) -> None:
-    """Hard-delete a user.
+async def delete_user(
+    db: AsyncSession, user_id: uuid.UUID, *, operator_id: uuid.UUID | None = None
+) -> LifecycleChange:
+    """Hard-delete a user (10.7 "사용자 삭제", E-02).
 
     Caller is responsible for calling ``commit`` after — we keep the
     transaction open so the audit/logging layer at the router level can
-    decide whether to roll back on a failure mid-way.
+    decide whether to roll back on a failure mid-way — and then for
+    ``apply_lifecycle`` on the returned grant revocations.
+
+    Owned resources refuse first (409 ``resource_transfer_required`` with the list).
+    The account's company/organization/member rows are locked, its grants revoked
+    with ``operator_id`` (default: the account itself, self-service deletion) as the
+    actor, then the User row is locked and both checks repeat; a grant that slipped in
+    answers 409 ``conflict``. No route calls this yet (E-02 follow-up).
     """
+    from app.authz.membership_capture import capture_account  # call-time: import cycle
+    from app.authz.resource_lifecycle import LifecycleChange  # call-time: import cycle
 
-    user = await get_by_id(db, user_id)
+    if await db.scalar(select(User.id).where(User.id == user_id)) is None:
+        return LifecycleChange()
+    await require_account_resources_released(db, user_id)
+    await lock_account_scopes(db, user_id)
+    change = await revoke_account_grants(db, user_id, operator_id or user_id)
+    user = await db.scalar(select(User).where(User.id == user_id).with_for_update())
     if user is None:
-        return
-
+        return change
+    await require_account_resources_released(db, user_id)
+    await require_no_account_grants(db, user_id)
+    syncs = await capture_account(db, user_id)
     await cleanup_user_resources(db, user_id)
     await db.delete(user)
     await db.flush()
+    queued = [i for sync in syncs for i in await sync.queue(db)]  # membership rows cascade
+    return LifecycleChange((*change.outbox_ids, *queued))

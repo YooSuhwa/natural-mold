@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncGenerator
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import anyio
 import pytest
@@ -17,7 +16,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
-from app.agent_runtime.runtime_config import AgentConfig
+from app.authz.conversation_scope import require_conversation_agent_id
 from app.dependencies import CurrentUser
 from app.models.audit_event import AuditEvent
 from app.models.conversation import Conversation
@@ -31,6 +30,8 @@ from app.services import (
     conversation_run_service,
     conversation_run_worker,
 )
+from tests.authz.run_fixture_config import run_fixture_config
+from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 from tests.integration import _seed as seed_helpers
 
@@ -69,15 +70,15 @@ async def test_owner_finalizer_honors_remote_cancel_after_executor_exhaustion(
         predecessor = await conversation_run_service.create_run(
             db,
             conversation_id=conversation_id,
-            agent_id=conversation.agent_id,
-            user_id=TEST_USER_ID,
+            agent_id=require_conversation_agent_id(conversation),
+            context=unit_context(TEST_USER_ID),
             source="chat",
             input_preview="natural completion at cancellation boundary",
         )
         successor = await conversation_run_queue_service.enqueue_input(
             db,
             conversation_id=conversation_id,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             client_request_id="late-cancel-successor",
             source="chat",
             input_payload={"messages": [{"role": "user", "content": "correct it"}]},
@@ -103,6 +104,7 @@ async def test_owner_finalizer_honors_remote_cancel_after_executor_exhaustion(
     async def hold_owner_after_executor_exhaustion(
         _run_id: object,
         _registry: object,
+        _tenant: object,
     ) -> None:
         heartbeat_started.set()
         try:
@@ -129,15 +131,7 @@ async def test_owner_finalizer_honors_remote_cancel_after_executor_exhaustion(
     ctx = await conversation_run_worker.start_conversation_run(
         run_id=predecessor_id,
         conversation_id=conversation_id,
-        cfg=cast(
-            AgentConfig,
-            SimpleNamespace(
-                secret_values=set(),
-                agent_id=None,
-                model_name="boundary-model",
-                checkpoint_id=None,
-            ),
-        ),
+        cfg=await run_fixture_config(predecessor_id, session_factory, model_name="boundary-model"),
         user=CurrentUser(id=TEST_USER_ID, email="owner@test", name="Owner"),
         input_payload={"messages": [{"role": "user", "content": "finish"}]},
         moldy_source="chat",

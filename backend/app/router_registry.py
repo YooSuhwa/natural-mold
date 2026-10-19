@@ -7,24 +7,55 @@ from app.config import settings
 
 def include_app_routers(app: FastAPI) -> None:
     from app.routers import (
+        access_requests,
+        admin_authz,
         agent_api,
         agent_blueprints,
+        agent_memo,
+        agent_readiness,
         agent_runtime_api,
         agents,
         artifacts,
         assistant,
         audit,
         auth,
+        auth_sso,
         builder,
         conversations,
+        credential_bindings,
         credentials,
         feedback,
         health,
+        invitation_accept,
         marketplace,
+        marketplace_acl,
+        marketplace_tenant_publication,
         mcp,
         mcp_apps,
+        me_installation,
+        me_orgs,
         memory,
         models,
+        notifications,
+        org_assignments,
+        org_audit,
+        org_catalog,
+        org_group_members,
+        org_groups,
+        org_invitations,
+        org_limits,
+        org_members,
+        org_retention,
+        org_search,
+        org_usage,
+        orgs,
+        platform_tenant_creation,
+        platform_tenant_data,
+        platform_tenant_directory,
+        platform_tenant_lifecycle,
+        platform_tenant_usage,
+        resource_permissions,
+        resource_shares,
         shares,
         skill_builder,
         skill_builder_trigger,
@@ -37,17 +68,34 @@ def include_app_routers(app: FastAPI) -> None:
         skills,
         system_llm_settings,
         templates,
+        tenant_audit,
+        tenant_catalog,
+        tenant_credentials,
+        tenant_invitations,
+        tenant_members,
+        tenant_models,
+        tenant_organization_lifecycle,
+        tenant_organizations,
+        tenant_overview,
+        tenant_policies,
+        tenant_publication_requests,
+        tenant_sso,
+        tenant_sso_connections,
+        tenant_usage,
         tools,
         triggers,
         uploads,
         usage,
+        usage_limits,
     )
 
     app.include_router(audit.router)
     app.include_router(auth.router)
+    app.include_router(auth_sso.router)
     app.include_router(agent_blueprints.router)
     app.include_router(agent_api.router)
     app.include_router(agent_runtime_api.router)
+    app.include_router(agent_readiness.router)
     app.include_router(agents.router)
     app.include_router(agents.middleware_router)
     app.include_router(artifacts.router)
@@ -56,13 +104,58 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(conversations.router)
     app.include_router(credentials.router)
     app.include_router(health.router)
+    app.include_router(invitation_accept.router)
     app.include_router(marketplace.router)
+    app.include_router(marketplace_acl.router)
+    app.include_router(marketplace_tenant_publication.router)
     app.include_router(memory.router)
+    app.include_router(agent_memo.router)
+    app.include_router(me_installation.router)
+    app.include_router(me_orgs.router)
     app.include_router(mcp.router)
     app.include_router(mcp.catalog_router)
     app.include_router(mcp_apps.router)
     app.include_router(models.router)
+    app.include_router(orgs.router)
+    app.include_router(org_catalog.router)
+    app.include_router(org_retention.router)
+    app.include_router(org_search.router)
+    app.include_router(org_usage.router)
+    app.include_router(org_limits.router)
+    app.include_router(org_audit.router)
+    app.include_router(org_members.router)
+    app.include_router(org_invitations.router)
+    app.include_router(org_groups.router)
+    app.include_router(org_group_members.router)
+    app.include_router(org_assignments.router)
+    app.include_router(tenant_overview.router)
+    app.include_router(tenant_policies.router)
+    app.include_router(tenant_sso.router)
+    app.include_router(tenant_sso_connections.router)
+    app.include_router(tenant_catalog.router)
+    app.include_router(tenant_audit.router)
+    app.include_router(tenant_usage.router)
+    app.include_router(usage_limits.router)
+    app.include_router(tenant_models.router)
+    app.include_router(tenant_credentials.router)
+    app.include_router(tenant_publication_requests.router)
+    app.include_router(tenant_organizations.router)
+    app.include_router(tenant_organization_lifecycle.router)
+    app.include_router(tenant_members.router)
+    app.include_router(tenant_invitations.router)
+    app.include_router(platform_tenant_directory.router)
+    app.include_router(platform_tenant_creation.router)
+    app.include_router(platform_tenant_lifecycle.router)
+    app.include_router(admin_authz.router)
+    app.include_router(platform_tenant_data.router)
+    app.include_router(platform_tenant_usage.router)
     app.include_router(shares.router)
+    app.include_router(resource_shares.router)
+    app.include_router(resource_permissions.router)
+    app.include_router(access_requests.router)
+    app.include_router(notifications.router)
+    app.include_router(credential_bindings.router)
+    app.include_router(credential_bindings.mode_router)
     app.include_router(templates.router)
     app.include_router(skill_builder.router)
     app.include_router(skill_builder_trigger.router)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import time
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 
 import pytest
 from httpx import AsyncClient
@@ -18,6 +20,7 @@ from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from app.services import conversation_run_queue_worker, conversation_run_service
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
 
@@ -36,11 +39,21 @@ async def _seed_protocol_conversation(db: AsyncSession) -> Conversation:
         name="Protocol Agent",
         system_prompt="You are helpful.",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
 
-    conversation = Conversation(agent_id=agent.id, title="Protocol Conversation")
+    conversation = Conversation(
+        agent_id=agent.id,
+        title="Protocol Conversation",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=agent.user_id,
+        agent_name_snapshot=agent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conversation)
     await db.commit()
     return conversation
@@ -307,7 +320,7 @@ async def test_input_respond_command_restores_redacted_edit_placeholders(
     await db.commit()
     started = {}
 
-    async def fake_raw_pending_actions_by_interrupt(_conversation, _pending_interrupts):
+    async def fake_raw_pending_actions_by_interrupt(_conversation, _pending_interrupts, **_scope):
         return {
             "intr-secret": [
                 {

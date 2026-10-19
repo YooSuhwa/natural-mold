@@ -54,6 +54,19 @@ def test_capture_tour_rejects_noncanonical_true(
         _environment(tmp_path, "scripted-capture")
 
 
+def test_org_authz_opt_in_is_limited_to_scripted_full(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("E2E_ORG_AUTHZ", "1")
+
+    assert _environment(tmp_path, "scripted-full")["E2E_ORG_AUTHZ"] == "1"
+    with pytest.raises(E2eContractError, match="invalid_org_authz"):
+        _environment(tmp_path, "scripted-smoke")
+    monkeypatch.setenv("E2E_ORG_AUTHZ", "true")
+    with pytest.raises(E2eContractError, match="invalid_org_authz"):
+        _environment(tmp_path, "scripted-full")
+
+
 def test_lane_environment_uses_only_the_fixed_runner_interpreter(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

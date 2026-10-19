@@ -486,6 +486,8 @@ async def import_skill(
             id=uuid.uuid4(),
             resource_type="skill",
             owner_user_id=None,
+            org_id=None,
+            tenant_id=None,
             is_system=True,
             is_listed=True,  # System imports list immediately.
             name=str(metadata.get("display_name") or upstream_name),

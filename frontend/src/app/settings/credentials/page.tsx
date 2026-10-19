@@ -6,6 +6,7 @@ import { KeyRound, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { StatusChip } from '@/components/shared/status-chip'
+import { SharedWithMeBadge } from '@/components/sharing/resource-share-button'
 import { DomainIcon } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
 import { SearchInput } from '@/components/shared/search-input'
@@ -25,6 +26,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { CredentialCreateModal } from '@/components/credential/credential-create-modal'
 import { CredentialDetailDialog } from '@/components/credential/credential-detail-dialog'
+import { PersonalAccountBadge } from '@/components/credential/personal-account-badge'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { getResourceTone, resourceStatusChipClassName } from '@/lib/resource-tones'
 import { formatDisplayDate } from '@/lib/utils/display-format'
@@ -318,6 +320,7 @@ function CredentialCard({
           />
         </span>
         <ResourceBadge tone={tone}>{providerLabel}</ResourceBadge>
+        <PersonalAccountBadge personal={credential.personal ?? definition?.personal} />
       </ResourceListCard.Header>
 
       <ResourceCardTitle>{credential.name}</ResourceCardTitle>
@@ -325,6 +328,7 @@ function CredentialCard({
 
       <ResourceListCard.StatusRow>
         <StatusChip variant={credential.status} className={resourceStatusChipClassName} />
+        <SharedWithMeBadge ownerId={credential.user_id} />
       </ResourceListCard.StatusRow>
 
       <ResourceListCard.MetaRow>

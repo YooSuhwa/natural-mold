@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
+from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.config import settings
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     from psycopg_pool import AsyncConnectionPool
+
+    from app.agent_runtime.lease_checkpoint_saver import LeaseCheckpointSaver
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +33,25 @@ def _pool_size_kwargs(
         settings.checkpointer_pool_max_size if max_size is None else max_size,
     )
     return {"min_size": pool_min_size, "max_size": pool_max_size}
+
+
+async def _needs_setup(pool: AsyncConnectionPool) -> bool:
+    """I-06: skip ``setup()`` (it issues CREATE) once every LangGraph migration is recorded.
+
+    With role separation m92 pre-creates the tables and the app role has no
+    CREATE privilege on the schema; ``setup()`` would fail even as a no-op.
+    """
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+    from psycopg import errors
+
+    try:
+        async with pool.connection() as connection:
+            cursor = await connection.execute("SELECT max(v) FROM checkpoint_migrations")
+            row = await cursor.fetchone()
+    except errors.UndefinedTable:
+        return True
+    latest = len(AsyncPostgresSaver.MIGRATIONS) - 1
+    return row is None or row[0] is None or row[0] < latest
 
 
 async def init_checkpointer(
@@ -58,7 +81,8 @@ async def init_checkpointer(
         candidate_checkpointer = AsyncPostgresSaver(
             conn=candidate_pool  # type: ignore[arg-type]  # Pool도 Conn 인터페이스 호환
         )
-        await candidate_checkpointer.setup()
+        if await _needs_setup(candidate_pool):
+            await candidate_checkpointer.setup()
     except BaseException:  # noqa: BLE001 - ownership boundary must close on cancellation too
         try:
             await candidate_pool.close()
@@ -87,9 +111,40 @@ async def shutdown_checkpointer() -> None:
 
 def get_checkpointer() -> AsyncPostgresSaver:
     """checkpointer 싱글턴 반환. 초기화 전 호출 시 RuntimeError."""
+    assert_pre_marker("get_checkpointer")
     if _checkpointer is None:
         raise RuntimeError("Checkpointer not initialized. Call init_checkpointer() first.")
     return _checkpointer
+
+
+async def create_lease_checkpointer(
+    *,
+    thread_id: str,
+    checkpoint_id: str | None,
+    run_id: str,
+    child_node_names: Iterable[str],
+    delta_channels: Sequence[str],
+) -> LeaseCheckpointSaver:
+    """Capture the run's seed once (caller holds the canonical locks) and bind a saver."""
+    from app.agent_runtime.checkpoint_seed import capture_checkpoint_seed
+    from app.agent_runtime.lease_checkpoint_namespace import LeaseNamespaceAuthority
+    from app.agent_runtime.lease_checkpoint_saver import LeaseCheckpointSaver
+
+    upstream = get_checkpointer()
+    names = tuple(child_node_names)
+    seed = await capture_checkpoint_seed(
+        upstream,
+        thread_id=thread_id,
+        checkpoint_id=checkpoint_id,
+        delta_channels=delta_channels,
+        child_node_names=names,
+    )
+    return LeaseCheckpointSaver(
+        upstream,
+        seed=seed,
+        run_id=run_id,
+        namespaces=LeaseNamespaceAuthority(names),
+    )
 
 
 async def delete_thread(thread_id: str) -> None:

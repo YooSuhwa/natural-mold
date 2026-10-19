@@ -12,6 +12,7 @@ definition = CredentialDefinition(
     icon_id="google",
     documentation_url="https://developers.google.com/custom-search/v1/overview",
     category="search",
+    hosts=("www.googleapis.com",),
     properties=[
         FieldDef(
             name="api_key",

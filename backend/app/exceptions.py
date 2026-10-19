@@ -1,13 +1,22 @@
 """Custom exception hierarchy for standardized error handling."""
 
+from collections.abc import Mapping
+
 
 class AppError(Exception):
     """Base application error."""
 
-    def __init__(self, code: str, message: str, status: int = 400):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        status: int = 400,
+        details: Mapping[str, object] | None = None,
+    ):
         self.code = code
         self.message = message
         self.status = status
+        self.details = details
         super().__init__(message)
 
 

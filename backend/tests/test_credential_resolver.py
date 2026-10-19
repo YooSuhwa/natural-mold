@@ -14,7 +14,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
+from app.dependencies import CurrentUser
 from app.models.credential import Credential
 from app.models.model import Model
 from app.models.user import User
@@ -22,15 +23,25 @@ from app.services.credential_resolver import (
     pick_default_for_provider,
     resolve_credential_for_model,
 )
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_credential,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
 @pytest.fixture(autouse=True)
-async def _ensure_test_user(db: AsyncSession):
+async def _ensure_test_user(db: AsyncSession) -> None:
     existing = await db.execute(select(User).where(User.id == TEST_USER_ID))
     if existing.scalar_one_or_none() is None:
         db.add(User(id=TEST_USER_ID, email="test@test.com", name="Test User"))
         await db.commit()
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
 
 
 async def _make_credential(
@@ -40,12 +51,12 @@ async def _make_credential(
     name: str,
     definition_key: str = "openai",
 ) -> Credential:
-    return await credential_service.create(
+    return await create_test_credential(
         db,
-        user_id=user_id,
-        definition_key=definition_key,
-        name=name,
-        data={"api_key": f"sk-{name}"},
+        CredentialCreation(
+            definition_key=definition_key, name=name, data={"api_key": f"sk-{name}"}
+        ),
+        unit_context(user_id),
     )
 
 
@@ -67,7 +78,7 @@ async def test_resolver_explicit_credential_wins(db: AsyncSession) -> None:
     default_cred = await _make_credential(db, TEST_USER_ID, name="default")
     model = _make_model(default_credential_id=default_cred.id)
 
-    result = await resolve_credential_for_model(db, model, explicit.id, TEST_USER_ID)
+    result = await resolve_credential_for_model(db, model, explicit.id, unit_context(TEST_USER_ID))
     assert result is not None
     assert result.id == explicit.id
 
@@ -79,7 +90,7 @@ async def test_resolver_falls_back_to_model_default(db: AsyncSession) -> None:
     default_cred = await _make_credential(db, TEST_USER_ID, name="default")
     model = _make_model(default_credential_id=default_cred.id)
 
-    result = await resolve_credential_for_model(db, model, None, TEST_USER_ID)
+    result = await resolve_credential_for_model(db, model, None, unit_context(TEST_USER_ID))
     assert result is not None
     assert result.id == default_cred.id
 
@@ -89,7 +100,7 @@ async def test_resolver_returns_none_when_neither(db: AsyncSession) -> None:
     """No explicit, no default → None (caller decides what to do)."""
 
     model = _make_model()
-    result = await resolve_credential_for_model(db, model, None, TEST_USER_ID)
+    result = await resolve_credential_for_model(db, model, None, unit_context(TEST_USER_ID))
     assert result is None
 
 
@@ -105,7 +116,9 @@ async def test_resolver_rejects_other_users_explicit(db: AsyncSession) -> None:
     default_cred = await _make_credential(db, TEST_USER_ID, name="my-default")
     model = _make_model(default_credential_id=default_cred.id)
 
-    result = await resolve_credential_for_model(db, model, other_cred.id, TEST_USER_ID)
+    result = await resolve_credential_for_model(
+        db, model, other_cred.id, unit_context(TEST_USER_ID)
+    )
     # Explicit-but-invalid does NOT silently fall through to default — the
     # mismatch usually indicates stale UI state and we want it surfaced.
     assert result is None
@@ -122,7 +135,7 @@ async def test_resolver_skips_default_owned_by_someone_else(db: AsyncSession) ->
     other_cred = await _make_credential(db, other_user_id, name="other-default")
     model = _make_model(default_credential_id=other_cred.id)
 
-    result = await resolve_credential_for_model(db, model, None, TEST_USER_ID)
+    result = await resolve_credential_for_model(db, model, None, unit_context(TEST_USER_ID))
     assert result is None
 
 
@@ -137,6 +150,8 @@ def test_pick_default_for_provider_exact_match() -> None:
             field_keys=[],
             is_shared=False,
             status="active",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         ),
         Credential(
             id=uuid.uuid4(),
@@ -147,6 +162,8 @@ def test_pick_default_for_provider_exact_match() -> None:
             field_keys=[],
             is_shared=False,
             status="active",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         ),
     ]
     chosen = pick_default_for_provider(creds, "openai")
@@ -165,6 +182,8 @@ def test_pick_default_for_provider_falls_back_to_first() -> None:
             field_keys=[],
             is_shared=False,
             status="active",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         ),
     ]
     chosen = pick_default_for_provider(creds, "openai")

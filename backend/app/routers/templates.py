@@ -5,7 +5,8 @@ import uuid
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.authz.policies import CATALOG, authz_policy
+from app.dependencies import CurrentUser, get_company_db, get_current_user
 from app.error_codes import template_not_found
 from app.schemas.template import TemplateResponse
 from app.services import template_service
@@ -19,18 +20,20 @@ router = APIRouter(prefix="/api/templates", tags=["templates"])
 
 
 @router.get("", response_model=list[TemplateResponse])
+@authz_policy(CATALOG)
 async def list_templates(
     category: str | None = None,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     _: CurrentUser = Depends(get_current_user),
 ):
     return await template_service.list_templates(db, category)
 
 
 @router.get("/{template_id}", response_model=TemplateResponse)
+@authz_policy(CATALOG)
 async def get_template(
     template_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     _: CurrentUser = Depends(get_current_user),
 ):
     template = await template_service.get_template(db, template_id)

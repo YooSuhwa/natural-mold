@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
@@ -24,6 +25,8 @@ from app.agent_runtime.runtime_policy import (
 from app.agent_runtime.streaming import StreamErrorRecord
 from app.marketplace.skill_runtime import SkillToolContext
 from app.tools.risk import default_deepagents_interrupt_policy
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 from tests.tool_helpers import tool_coroutine
 
 TEMPORAL_TOOL_NAMES = {"current_datetime", "resolve_relative_date"}
@@ -72,7 +75,7 @@ def _cfg(**overrides) -> AgentConfig:
         "thread_id": "t-1",
     }
     defaults.update(overrides)
-    return AgentConfig(**defaults)  # type: ignore[arg-type]
+    return AgentConfig(org_context=unit_context(TEST_USER_ID), **defaults)  # type: ignore[arg-type]
 
 
 def _stored_policy(mode: str, *, todo_enabled: bool = True):
@@ -101,6 +104,7 @@ def _stub_skill_context(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
         "app.agent_runtime.runtime_component_builder.build_skill_runtime_context",
         lambda *_args, **_kwargs: SkillToolContext(
             thread_id="t-1",
+            tenant_id=uuid.uuid4(),
             output_dir=tmp_path / "outputs",
             runtime_root=tmp_path / "runtime",
             descriptors={},
@@ -1781,6 +1785,7 @@ async def test_prepare_stored_filesystem_profile_omits_skill_execution_capabilit
         "build_skill_runtime_context",
         lambda *_args, **_kwargs: SkillToolContext(
             thread_id="t-1",
+            tenant_id=uuid.uuid4(),
             output_dir=tmp_path / "outputs",
             runtime_root=tmp_path / "runtime",
             descriptors={},

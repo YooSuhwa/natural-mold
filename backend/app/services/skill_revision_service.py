@@ -14,11 +14,12 @@ from anyio.to_thread import run_sync
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
+from app.authz.skill_revision_scope import RevisionRollbackTarget, load_private_rollback_target
 from app.config import settings
 from app.models.skill import Skill
 from app.models.skill_builder_session import JsonValue
 from app.models.skill_revision import SkillRevision
-from app.services.skill_locks import lock_skill_for_mutation
 from app.services.skill_revision_storage import write_skill_revision_snapshot
 from app.skills import service as skill_service
 from app.skills.display_limits import DISPLAY_TEXT_SNIFF_BYTES, MAX_DISPLAY_TEXT_BYTES
@@ -30,7 +31,7 @@ from app.skills.moldy_metadata import (
 )
 from app.skills.package_metadata import refresh_package_metadata, sync_frontmatter
 from app.skills.packager import PackageError, extract_package
-from app.storage.paths import resolve_data_path
+from app.storage.paths import company_storage_value, resolve_data_path
 
 # 리비전 파일 path 상한 — content 엔드포인트 Query 바운드와 목록 필터가 공유한다
 # (zip 엔트리 이름은 65,535바이트까지 가능; 비대칭이면 목록엔 있는데 못 여는
@@ -96,12 +97,15 @@ async def list_revisions(
     ``limit=None``은 전수 열거 — retention prune처럼 의미상 무제한 순회가
     필요한 소비자용이다. 기본 100 창만 보면 창 밖(>100번째) 리비전이 영구히
     prune 대상에서 빠져 스냅샷 디스크가 새는 잠복 계약 파손이 된다 (R5).
+
+    Revisions belong to the skill: the caller has already authorized ``skill``
+    (``app.authz.skill_access.authorize_skill``), so ``user_id`` no longer narrows
+    the history (plan 9.4, D-03; owner-only in legacy because only owners load it).
     """
-    if skill.user_id != user_id:
-        return []
+    del user_id  # kept for call compatibility; authorization happens upstream
     stmt = (
         select(SkillRevision)
-        .where(SkillRevision.skill_id == skill.id, SkillRevision.user_id == user_id)
+        .where(SkillRevision.skill_id == skill.id)
         .order_by(desc(SkillRevision.revision_number))
     )
     if limit is not None:
@@ -117,14 +121,11 @@ async def get_revision(
     user_id: uuid.UUID,
     revision_id: uuid.UUID,
 ) -> SkillRevision | None:
-    if skill.user_id != user_id:
-        return None
+    del user_id  # the caller authorized ``skill`` (see ``list_revisions``)
     result = await db.execute(
-        select(SkillRevision).where(
-            SkillRevision.id == revision_id,
-            SkillRevision.skill_id == skill.id,
-            SkillRevision.user_id == user_id,
-        )
+        select(SkillRevision)
+        .where(SkillRevision.id == revision_id, SkillRevision.skill_id == skill.id)
+        .execution_options(autoflush=False, populate_existing=True)
     )
     return result.scalar_one_or_none()
 
@@ -134,17 +135,22 @@ async def rollback_to_revision(
     *,
     skill: Skill,
     user_id: uuid.UUID,
+    context: OrgContext,
     revision: SkillRevision,
     changelog_summary: str | None = None,
 ) -> SkillRevision:
-    if skill.user_id != user_id or revision.skill_id != skill.id:
+    if context.user_id != user_id:
         raise SkillRevisionNotFound("revision not found")
+    skill, revision = await load_private_rollback_target(
+        db, RevisionRollbackTarget(skill.id, revision.id, context)
+    )
     if snapshot_pruned(revision):
         raise SkillRevisionRollbackUnsupported("revision snapshot was pruned")
-    skill = await lock_skill_for_mutation(db, skill=skill)
     parent_revision_id = skill.current_revision_id
     try:
-        zip_bytes = await run_sync(_read_revision_bytes, revision.object_key)
+        zip_bytes = await run_sync(
+            _read_revision_bytes, company_storage_value(revision.object_key, skill.tenant_id)
+        )
     except FileNotFoundError as exc:
         raise SkillRevisionSnapshotMissing("revision snapshot file is missing") from exc
     if skill.kind == "text":
@@ -164,7 +170,7 @@ async def rollback_to_revision(
             parse_skill_md(content, require_metadata=True)
         except (ValueError, yaml.YAMLError) as exc:
             raise SkillRevisionSnapshotMissing("revision snapshot SKILL.md is invalid") from exc
-        await skill_service.update_text_content(db, skill=skill, content=content)
+        await skill_service.update_text_content(db, skill=skill, content=content, context=context)
     else:
         if not skill.storage_path:
             raise SkillRevisionRollbackUnsupported("package skill has no storage path")
@@ -173,7 +179,11 @@ async def rollback_to_revision(
         # 롤백되는 발산이 남으므로, "스냅샷 불가" 부류는 전부 여기서 걸러
         # 무변경 409로 끝낸다 (R5).
         await run_sync(_validate_package_snapshot, zip_bytes)
-        await run_sync(_replace_package_files, skill.storage_path, zip_bytes)
+        await run_sync(
+            _replace_package_files,
+            company_storage_value(skill.storage_path, skill.tenant_id),
+            zip_bytes,
+        )
         refresh_package_metadata(skill)
         sync_frontmatter(skill, skill_service.get_file_bytes(skill, "SKILL.md"))
         _sync_moldy_runtime_columns(skill)

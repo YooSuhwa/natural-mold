@@ -5,20 +5,25 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.agent_runtime.protocol_events import stored_protocol_event
-from app.database import async_session
+from app.config import settings
+from app.database import ShieldedAsyncSession
+from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from app.services import trace_storage
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, ensure_unit_scope
 from tests.conftest import TEST_USER_ID, TestSession
 
 SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
@@ -42,10 +47,20 @@ async def _seed_conversation(
             system_prompt="...",
             model_id=model.id,
             status="active",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(agent)
         await db.flush()
-        conv = Conversation(agent_id=agent.id, title="t1")
+        conv = Conversation(
+            agent_id=agent.id,
+            title="t1",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conv)
         await db.commit()
         return conv.id
@@ -452,29 +467,49 @@ async def test_message_event_cascade_delete_with_conversation() -> None:
     ``ondelete='CASCADE'``가 무시된다. 마이그레이션에 선언된 cascade가 실제로
     동작하는지 검증하려면 라이브 PG가 필요하므로 integration 마커를 단다.
     """
-    conv_id = await _seed_conversation(session_factory=async_session)
-    async with async_session() as db:
-        await trace_storage.record_turn(
-            db, conversation_id=conv_id, events=_events_for_msg("msg-x")
-        )
-        await db.commit()
+    owned_engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True)
+    owned_sessions = async_sessionmaker(
+        owned_engine,
+        class_=ShieldedAsyncSession,
+        expire_on_commit=False,
+    )
+    try:
+        async with owned_sessions() as db:
+            await ensure_unit_scope(
+                db,
+                CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User"),
+            )
+            await db.commit()
 
-    async with async_session() as db:
-        # 직접 SQL로 conversation 삭제
-        from sqlalchemy import select
+        conv_id = await _seed_conversation(session_factory=owned_sessions)
+        async with owned_sessions() as db:
+            await trace_storage.record_turn(
+                db, conversation_id=conv_id, events=_events_for_msg("msg-x")
+            )
+            await db.commit()
 
-        conv = (
-            await db.execute(select(Conversation).where(Conversation.id == conv_id))
-        ).scalar_one()
-        await db.delete(conv)
-        await db.commit()
+        async with owned_sessions() as db:
+            # 직접 SQL로 conversation 삭제
+            from sqlalchemy import select
 
-    async with async_session() as db:
-        from sqlalchemy import select
+            conv = (
+                await db.execute(select(Conversation).where(Conversation.id == conv_id))
+            ).scalar_one()
+            await db.delete(conv)
+            await db.commit()
 
-        rows = (
-            (await db.execute(select(MessageEvent).where(MessageEvent.conversation_id == conv_id)))
-            .scalars()
-            .all()
-        )
-        assert list(rows) == []
+        async with owned_sessions() as db:
+            from sqlalchemy import select
+
+            rows = (
+                (
+                    await db.execute(
+                        select(MessageEvent).where(MessageEvent.conversation_id == conv_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert list(rows) == []
+    finally:
+        await owned_engine.dispose()

@@ -4,6 +4,7 @@ import { SectionInstructions } from './section-instructions'
 import { SectionSubAgents } from './section-sub-agents'
 import { SectionModel } from './section-model'
 import { ToolsMiddlewaresGrid } from './tools-middlewares-grid'
+import { AgentLinkRequiredProvider } from '@/components/agent/link-required-context'
 import { RuntimePolicySettings } from '@/components/agent/runtime-policy-settings'
 import type { RuntimePolicyV1 } from '@/lib/types'
 
@@ -41,7 +42,12 @@ interface FormModeProps {
   runtimePolicy?: RuntimePolicyV1 | null
   onRuntimePolicyChange?: (value: RuntimePolicyV1 | null) => void
   modelContextWindow?: number | null
+  /** S29 "필수" marks; the agent editor only (creation has no links yet). */
+  requiredLinkIds?: ReadonlySet<string>
+  onToggleRequired?: (id: string) => void
 }
+
+const NO_REQUIRED: ReadonlySet<string> = new Set()
 
 export function FormMode({
   systemPrompt,
@@ -71,8 +77,10 @@ export function FormMode({
   runtimePolicy,
   onRuntimePolicyChange,
   modelContextWindow,
+  requiredLinkIds,
+  onToggleRequired,
 }: FormModeProps) {
-  return (
+  const content = (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden p-4">
       <SectionInstructions
         systemPrompt={systemPrompt}
@@ -116,5 +124,14 @@ export function FormMode({
         onToggleMiddleware={onToggleMiddleware}
       />
     </div>
+  )
+  if (!onToggleRequired) return content
+  return (
+    <AgentLinkRequiredProvider
+      required={requiredLinkIds ?? NO_REQUIRED}
+      onToggle={onToggleRequired}
+    >
+      {content}
+    </AgentLinkRequiredProvider>
   )
 }

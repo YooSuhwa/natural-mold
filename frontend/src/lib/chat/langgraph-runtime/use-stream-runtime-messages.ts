@@ -7,6 +7,7 @@ import type { UseStreamReturn } from '@langchain/react'
 import { useLangGraphArtifactEffects } from './artifact-events'
 import { useLangGraphCompactionEffects } from './compaction-events'
 import { useLangGraphDataUIEffects } from './data-ui-events'
+import { useLangGraphExcludedCapabilitiesEffects } from './excluded-capabilities-events'
 import { useLangGraphMemoryEffects } from './memory-events'
 import { useLangGraphMemoryRecallEffects } from './memory-recall-events'
 import { useLangGraphSkillBuilderEffects } from './skill-builder-events'
@@ -96,6 +97,7 @@ export function useStreamRuntimeMessages<StateType extends { messages?: readonly
   useLangGraphMemoryEffects({ stream })
   useLangGraphSubagentNamesEffects({ stream, conversationId })
   useLangGraphMemoryRecallEffects({ stream, conversationId })
+  useLangGraphExcludedCapabilitiesEffects({ stream, conversationId })
   useLangGraphSkillBuilderEffects({ stream, conversationId })
   const isRunning =
     (stream.isLoading || claimedQueueRunInFlight || threadRunNotice?.status === 'canceling') &&

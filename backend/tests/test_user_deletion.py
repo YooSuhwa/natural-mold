@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.credential import Credential
 from app.models.refresh_token import RefreshToken
@@ -18,18 +19,20 @@ from tests.test_user_cleanup import _make_agent, _make_refresh_token, _make_user
 
 
 @pytest.mark.asyncio
-async def test_delete_user_cascades_to_agent(db: AsyncSession) -> None:
+async def test_delete_user_requires_resource_transfer_before_cleanup(db: AsyncSession) -> None:
     user = await _make_user(db)
     agent = await _make_agent(db, user.id)
-
-    with patch("app.agent_runtime.checkpointer.delete_thread", AsyncMock()):
+    checkpoint = AsyncMock()
+    with (
+        patch("app.agent_runtime.checkpointer.delete_thread", checkpoint),
+        pytest.raises(AppError) as captured,
+    ):
         await delete_user(db, user.id)
-    await db.commit()
-
-    assert (await db.execute(select(User).where(User.id == user.id))).scalar_one_or_none() is None
-    assert (
-        await db.execute(select(Agent).where(Agent.id == agent.id))
-    ).scalar_one_or_none() is None
+    assert captured.value.code == "resource_transfer_required"
+    assert captured.value.status == 409
+    assert await db.get(User, user.id) is not None
+    assert await db.get(Agent, agent.id) is not None
+    checkpoint.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -49,6 +52,8 @@ async def test_delete_user_does_not_remove_system_credentials(db: AsyncSession) 
         data_encrypted="opaque",
         key_id="kv1",
         is_system=True,
+        org_id=None,
+        tenant_id=None,
     )
     db.add(system_credential)
     await db.flush()

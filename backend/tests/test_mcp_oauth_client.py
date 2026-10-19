@@ -91,6 +91,7 @@ async def test_discover_authorization_server_metadata_falls_back_to_origin_regis
             return httpx.Response(
                 200,
                 json={
+                    "issuer": "https://issuer.example/resource-id",
                     "authorization_endpoint": "https://issuer.example/authorize",
                     "token_endpoint": "https://issuer.example/token",
                     "code_challenge_methods_supported": ["S256"],
@@ -100,6 +101,7 @@ async def test_discover_authorization_server_metadata_falls_back_to_origin_regis
             return httpx.Response(
                 200,
                 json={
+                    "issuer": "https://issuer.example/resource-id",
                     "authorization_endpoint": "https://issuer.example/authorize",
                     "token_endpoint": "https://issuer.example/token",
                     "registration_endpoint": "https://issuer.example/register",
@@ -131,6 +133,7 @@ async def test_discover_authorization_server_metadata_supports_suffix_well_known
             return httpx.Response(
                 200,
                 json={
+                    "issuer": "https://issuer.example/resource-id",
                     "authorization_endpoint": "https://issuer.example/authorize",
                     "token_endpoint": "https://issuer.example/token",
                     "registration_endpoint": "https://issuer.example/resource-id/dcr/register",

@@ -25,7 +25,7 @@ FileEventOperation = Literal["created", "updated", "deleted", "failed"]
 
 class ArtifactSummary(BaseModel):
     id: uuid.UUID
-    agent_id: uuid.UUID
+    agent_id: uuid.UUID | None
     conversation_id: uuid.UUID
     assistant_msg_id: str
     run_id: str

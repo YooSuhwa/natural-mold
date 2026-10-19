@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -41,6 +43,7 @@ from app.routers.conversation_agent_protocol_resume_redaction import (
 )
 from app.routers.conversation_messages import _is_pending_interrupt
 from app.schemas.conversation import Decision, ResumeRequest
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -125,10 +128,20 @@ async def _seed_user_agent_conv() -> uuid.UUID:
             name="HiTL Agent",
             system_prompt="Hi",
             model_id=model.id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
         )
         db.add(agent)
         await db.flush()
-        conv = Conversation(agent_id=agent.id, title="Resume Test")
+        conv = Conversation(
+            agent_id=agent.id,
+            title="Resume Test",
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=agent.user_id,
+            agent_name_snapshot=agent.name,
+            last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+        )
         db.add(conv)
         await db.commit()
         return conv.id
@@ -275,6 +288,7 @@ class TestResumeRouterPayload:
 
 def _make_intr(ns: str, value: Any) -> MagicMock:
     intr = MagicMock()
+    intr.id = None  # pre-1.x shape: only ``ns`` (fallback path)
     intr.ns = ns
     intr.value = value
     return intr
@@ -678,6 +692,8 @@ class TestRestoreResumePayloadEditGate:
                 conversation=MagicMock(),
                 resume=resume,
                 pending_interrupts=[],
+                db=MagicMock(),
+                context=MagicMock(),
             )
 
         decision = restored["intr-1"]["decisions"][0]
@@ -703,6 +719,8 @@ class TestRestoreResumePayloadEditGate:
                 conversation=MagicMock(),
                 resume=resume,
                 pending_interrupts=[],
+                db=MagicMock(),
+                context=MagicMock(),
             )
 
         assert restored == {"intr-1": response}

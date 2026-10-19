@@ -24,14 +24,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from fastapi import Depends
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.dependencies import (
     CurrentUser,
     get_current_user,
     get_current_user_optional,
     get_db,
+    get_org_context,
     verify_csrf,
 )
 from app.main import create_app
@@ -42,6 +45,14 @@ from app.models.marketplace import (
 from app.models.skill import Skill
 from app.models.user import User
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    create_test_text_skill,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TestSession, override_get_db
 
 # ---------------------------------------------------------------------------
@@ -71,6 +82,11 @@ async def _client_for(user: CurrentUser) -> AsyncClient:
 
     app.dependency_overrides[get_current_user] = _override
     app.dependency_overrides[get_current_user_optional] = _override
+
+    async def scope_fixture(db: AsyncSession = Depends(get_db)) -> OrgContext:
+        return await ensure_unit_scope(db, user)
+
+    app.dependency_overrides[get_org_context] = scope_fixture
 
     async def _no_csrf() -> None:
         return None
@@ -154,6 +170,8 @@ async def _seed_published_item(
         moderation_status="approved",
         source_kind=source_kind,
         published_at=_now(),
+        org_id=None if is_system else TEST_ORG_ID,
+        tenant_id=None if is_system else TEST_TENANT_ID,
     )
     db.add(item)
     await db.flush()
@@ -321,13 +339,15 @@ class TestScenario_10_3_PublishThenInstallByPeer:
 
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             # User A creates a text skill + publishes it.
-            skill = await skill_service.create_text_skill(
+            skill = await create_test_text_skill(
                 db_session,
-                user_id=user_a,
-                name="Shared Skill",
-                slug=None,
-                description="from user A",
-                content=_skill_md("shared-skill"),
+                TextSkillCreation(
+                    name="Shared Skill",
+                    slug=None,
+                    description="from user A",
+                    content=_skill_md("shared-skill"),
+                ),
+                unit_context(user_a),
             )
             await db_session.commit()
 
@@ -520,13 +540,12 @@ class TestScenario_10_6_PublicationStatusBadge:
         await _seed_user(db_session, user_id)
 
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-            skill = await skill_service.create_text_skill(
+            skill = await create_test_text_skill(
                 db_session,
-                user_id=user_id,
-                name="Pub Probe",
-                slug=None,
-                description="probe",
-                content=_skill_md("pub-probe"),
+                TextSkillCreation(
+                    name="Pub Probe", slug=None, description="probe", content=_skill_md("pub-probe")
+                ),
+                unit_context(user_id),
             )
             await db_session.commit()
 

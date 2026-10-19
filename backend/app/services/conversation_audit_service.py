@@ -11,6 +11,7 @@ from app.dependencies import CurrentUser
 from app.models.conversation_run import ConversationRun
 from app.models.user import User
 from app.services import audit_service
+from app.tenancy.attribution import loaded, run_attribution_metadata
 
 
 async def record_conversation_audit(
@@ -72,11 +73,14 @@ async def record_conversation_run_audit(
         outcome="success",
         request=request,
         run_id=run.id,
+        org_id=loaded(run, "org_id"),
+        tenant_id=loaded(run, "tenant_id"),
         metadata={
             "run_id": str(run.id),
             "conversation_id": str(run.conversation_id),
             "agent_id": str(run.agent_id),
             "source": run.source,
             "status": status or run.status,
+            **run_attribution_metadata(run),
         },
     )

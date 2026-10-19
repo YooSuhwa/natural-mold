@@ -9,6 +9,7 @@ import pytest
 
 from app.schemas.conversation import Decision
 from app.services.assistant_service import stream_assistant_message, stream_assistant_resume
+from tests.authz.unit_scope_fixture import unit_context
 
 
 @pytest.mark.asyncio
@@ -44,7 +45,7 @@ async def test_stream_assistant_message():
         async for chunk in stream_assistant_message(
             db=mock_db,
             agent_id=agent_id,
-            user_id=user_id,
+            context=unit_context(user_id),
             thread_id=thread_id,
             user_message="시스템 프롬프트 수정해줘",
         ):
@@ -56,7 +57,7 @@ async def test_stream_assistant_message():
     assert "message_end" in collected[2]
 
     # Verify build_assistant_agent was called with correct args
-    mock_build.assert_called_once_with(mock_db, agent_id, user_id, thread_id)
+    mock_build.assert_called_once_with(mock_db, agent_id, unit_context(user_id), thread_id)
 
 
 @pytest.mark.asyncio
@@ -89,14 +90,18 @@ async def test_stream_assistant_resume_sends_standard_hitl_decisions():
             async for chunk in stream_assistant_resume(
                 db=mock_db,
                 agent_id=agent_id,
-                user_id=user_id,
+                context=unit_context(user_id),
                 thread_id=thread_id,
                 decisions=[Decision(type="approve")],
             )
         ]
 
     assert collected == ['event: message_end\ndata: {"content": "resumed", "usage": {}}\n\n']
-    mock_build.assert_called_once_with(mock_db, agent_id, user_id, thread_id)
+    mock_build.assert_called_once_with(mock_db, agent_id, unit_context(user_id), thread_id)
     assert captured["agent"] is mock_agent
     assert captured["stream_input"].resume == {"decisions": [{"type": "approve"}]}
-    assert captured["config"] == {"configurable": {"thread_id": thread_id}}
+    # I-06: the run's company is recorded in checkpoint metadata.
+    tenant = str(unit_context(user_id).tenant_id)
+    assert captured["config"] == {
+        "configurable": {"thread_id": thread_id, "moldy_tenant_id": tenant}
+    }

@@ -14,10 +14,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
-from app.database import async_session
+from app.database import async_session, platform_session
 from app.models.agent_trigger import AgentTrigger
 from app.scheduler import (
     add_trigger_job,
+    authz_job_run,
     build_trigger_schedule_fingerprint,
     cleanup_skill_runtime_roots,
     draft_conversation_gc_run,
@@ -30,6 +31,7 @@ from app.scheduler import (
     poll_mcp_servers_health,
     recover_conversation_queue,
     refresh_token_gc_run,
+    register_authz_jobs,
     register_broker_eviction_job,
     register_catalog_update_job,
     register_conversation_queue_recovery_job,
@@ -40,9 +42,11 @@ from app.scheduler import (
     register_mcp_health_job,
     register_orphan_attachment_gc_job,
     register_refresh_token_gc_job,
+    register_retention_sweep_job,
     register_skill_draft_gc_job,
     register_skill_runtime_cleanup_job,
     release_scheduler_leader,
+    retention_sweep_run,
     rotate_credentials_to_active_key,
     scheduler_leader_is_healthy,
     skill_draft_gc_run,
@@ -52,6 +56,12 @@ from app.scheduler import (
     update_model_catalog,
 )
 from app.scheduler_job_ids import LeaderSchedulerJobId
+from app.scheduler_tenant_purge import (
+    register_tenant_export_gc_job,
+    register_tenant_purge_job,
+    tenant_export_gc_run,
+    tenant_purge_run,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +97,20 @@ async def run_leader_scheduler_job(job_id: LeaderSchedulerJobId) -> None:
             cleanup_skill_runtime_roots()
         case LeaderSchedulerJobId.BROKER_EVICTION:
             evict_expired_brokers()
+        case (
+            LeaderSchedulerJobId.AUTHZ_OUTBOX_DRAIN
+            | LeaderSchedulerJobId.AUTHZ_RECONCILE
+            | LeaderSchedulerJobId.AUTHZ_EXPIRY
+            | LeaderSchedulerJobId.AUTHZ_ALERT
+            | LeaderSchedulerJobId.AUTHZ_DELEGATION_VALIDATE
+        ):
+            await authz_job_run(job_id)
+        case LeaderSchedulerJobId.RETENTION_SWEEP:
+            await retention_sweep_run()
+        case LeaderSchedulerJobId.TENANT_PURGE:
+            await tenant_purge_run()
+        case LeaderSchedulerJobId.TENANT_EXPORT_GC:
+            await tenant_export_gc_run()
         case unreachable:
             assert_never(unreachable)
 
@@ -109,7 +133,7 @@ async def reconcile_trigger_jobs() -> int:
     scheduler = get_scheduler()
     if not scheduler.running:
         return 0
-    async with async_session() as db:
+    async with platform_session("scheduler.trigger_reconcile", maker=async_session) as db:
         result = await db.execute(select(AgentTrigger))
         triggers = list(result.scalars().all())
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -167,6 +191,10 @@ async def activate_scheduler() -> None:
     register_skill_draft_gc_job()
     cleanup_skill_runtime_roots()
     register_skill_runtime_cleanup_job()
+    register_authz_jobs()
+    register_retention_sweep_job()
+    register_tenant_purge_job()
+    register_tenant_export_gc_job()
     trigger_count = await reconcile_trigger_jobs()
     if scheduler_was_started:
         scheduler.resume()

@@ -19,7 +19,8 @@ from app.services.skill_evaluation_worker_types import (
     SkillEvaluationExecutionError,
     SkillEvaluationResult,
 )
-from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -45,14 +46,16 @@ def _skill_content() -> str:
 
 
 async def _create_run(db: AsyncSession) -> SkillEvaluationRun:
-    skill = await skill_service.create_text_skill(
+    skill = await create_test_text_skill(
         db,
-        user_id=TEST_USER_ID,
-        name="Evaluator",
-        slug=f"evaluator-{uuid.uuid4().hex[:8]}",
-        description="Use when testing skill evaluation audit metadata.",
-        content=_skill_content(),
-        version="1.0.0",
+        TextSkillCreation(
+            name="Evaluator",
+            slug=f"evaluator-{uuid.uuid4().hex[:8]}",
+            description="Use when testing skill evaluation audit metadata.",
+            content=_skill_content(),
+            version="1.0.0",
+        ),
+        unit_context(TEST_USER_ID),
     )
     evaluation_set = await skill_evaluation_service.create_evaluation_set(
         db,

@@ -10,7 +10,15 @@ import logging
 import uuid as _uuid
 from typing import Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.agent_runtime.runtime.shared_memo import (
+    load_shared_memo,
+    memory_session,
+    render_shared_memo_prompt,
+)
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 
 logger = logging.getLogger(__name__)
 
@@ -51,26 +59,48 @@ async def _load_memory_context(cfg: AgentConfig) -> tuple[str, list[dict[str, An
     Returns ``(prompt, briefs)`` — ``briefs`` feed the ``moldy.memory_recalled``
     stream-head event so the chat can show which memories informed this run.
     """
+    assert_pre_marker("_load_memory_context")
+    return await load_memory_context_in(cfg, None)
+
+
+async def load_memory_context_in(
+    cfg: AgentConfig, db: AsyncSession | None
+) -> tuple[str, list[dict[str, Any]]]:
+    """``_load_memory_context`` reading through ``db`` (the prepared adapter's
+    locked transaction); ``None`` is the legacy fresh-session read. Governed runs
+    (F-09) also get the agent's shared memo, framed as reference material."""
+    prompt, briefs = await _user_memory_context_in(cfg, db)
+    memo = render_shared_memo_prompt(await load_shared_memo(cfg, db))
+    if memo:
+        prompt = f"{prompt}\n\n{memo}" if prompt else memo
+    return prompt, briefs
+
+
+async def _user_memory_context_in(
+    cfg: AgentConfig, db: AsyncSession | None
+) -> tuple[str, list[dict[str, Any]]]:
+    assert_pre_marker("_load_memory_context")
 
     user_uuid = _parse_uuid(cfg.user_id)
     if user_uuid is None:
         return "", []
     agent_uuid = _parse_uuid(cfg.agent_id)
     try:
-        from app.database import async_session as _async_session_factory
         from app.services import memory_service
 
-        async with _async_session_factory() as db:
+        async with memory_session(db, cfg) as session:
             policy = await memory_service.resolve_effective_policy(
-                db,
-                user_id=user_uuid,
+                session,
+                context=cfg.org_context,
                 agent_id=agent_uuid,
+                # A caller-owned (prepared, locked) session must never commit.
+                persist_defaults=db is None,
             )
             if not policy.read_enabled:
                 return "", []
             records = await memory_service.list_runtime_memory_records(
-                db,
-                user_id=user_uuid,
+                session,
+                context=cfg.org_context,
                 agent_id=agent_uuid,
                 allowed_scopes=policy.allowed_scopes,
             )
@@ -82,19 +112,28 @@ async def _load_memory_context(cfg: AgentConfig) -> tuple[str, list[dict[str, An
 
 
 async def _memory_write_policy_for_run(cfg: AgentConfig, *, is_trigger_mode: bool) -> str:
+    return await memory_write_policy_in(cfg, None, is_trigger_mode=is_trigger_mode)
+
+
+async def memory_write_policy_in(
+    cfg: AgentConfig, db: AsyncSession | None, *, is_trigger_mode: bool
+) -> str:
+    """``_memory_write_policy_for_run`` reading through ``db`` (``None`` = own session)."""
+    assert_pre_marker("_memory_write_policy_for_run")
     user_uuid = _parse_uuid(cfg.user_id)
     if user_uuid is None:
         return "off"
     agent_uuid = _parse_uuid(cfg.agent_id)
     try:
-        from app.database import async_session as _async_session_factory
         from app.services import memory_service
 
-        async with _async_session_factory() as db:
+        async with memory_session(db, cfg) as session:
             policy = await memory_service.resolve_effective_policy(
-                db,
-                user_id=user_uuid,
+                session,
+                context=cfg.org_context,
                 agent_id=agent_uuid,
+                # A caller-owned (prepared, locked) session must never commit.
+                persist_defaults=db is None,
             )
             return policy.trigger_write_policy if is_trigger_mode else policy.write_policy
     except Exception:  # noqa: BLE001 — memory writes are optional runtime affordances

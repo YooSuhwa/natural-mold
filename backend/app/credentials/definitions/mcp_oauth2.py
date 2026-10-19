@@ -13,6 +13,7 @@ from app.credentials.mcp_oauth_client import (
     fetch_client_credentials_token,
     refresh_access_token,
 )
+from app.credentials.mcp_oauth_spec import canonical_resource_uri
 
 
 def _token_endpoint(credentials: dict[str, Any]) -> str:
@@ -47,12 +48,22 @@ def _authentication(credentials: dict[str, Any]) -> AuthenticationMethod:
     raise RuntimeError(f"mcp_oauth2: unsupported authentication method '{raw}'")
 
 
+def _resource(credentials: dict[str, Any]) -> str | None:
+    """RFC 8707 ``resource`` for every token request (plan 11.4.1)."""
+
+    server_url = credentials.get("server_url")
+    if server_url:  # derived, so a server_url change can never send a stale resource
+        return canonical_resource_uri(str(server_url))
+    return str(credentials["resource"]) if credentials.get("resource") else None
+
+
 async def _refresh(credentials: dict[str, Any]) -> dict[str, Any]:
     token_endpoint = _token_endpoint(credentials)
     client_id = _client_id(credentials)
     client_secret = credentials.get("client_secret")
     authentication = _authentication(credentials)
     scope = credentials.get("scope")
+    resource = _resource(credentials)
 
     authorization_code = credentials.get("authorization_code")
     if authorization_code:
@@ -72,6 +83,7 @@ async def _refresh(credentials: dict[str, Any]) -> dict[str, Any]:
             previous_refresh_token=(
                 str(credentials["refresh_token"]) if credentials.get("refresh_token") else None
             ),
+            resource=resource,
         )
 
     refresh_token = credentials.get("refresh_token")
@@ -83,6 +95,7 @@ async def _refresh(credentials: dict[str, Any]) -> dict[str, Any]:
             client_secret=str(client_secret) if client_secret else None,
             authentication=authentication,
             scope=str(scope) if scope else None,
+            resource=resource,
         )
 
     if str(credentials.get("grant_type") or "") == "client_credentials" or (
@@ -94,6 +107,7 @@ async def _refresh(credentials: dict[str, Any]) -> dict[str, Any]:
             client_secret=str(client_secret) if client_secret else None,
             authentication=authentication,
             scope=str(scope) if scope else None,
+            resource=resource,
         )
 
     raise RuntimeError("mcp_oauth2: refresh_token or authorization_code is required")
@@ -101,6 +115,7 @@ async def _refresh(credentials: dict[str, Any]) -> dict[str, Any]:
 
 definition = CredentialDefinition(
     key="mcp_oauth2",
+    personal=True,  # 10.4: personal by default; the "조직 공용 계정" marking is not built yet
     display_name="MCP OAuth2 Client",
     icon_id="plug",
     category="mcp",
@@ -120,6 +135,13 @@ definition = CredentialDefinition(
             display_name="Use Dynamic Client Registration",
             kind=FieldKind.TOGGLE,
             default=True,
+        ),
+        FieldDef(
+            # F-15: lets a manual (non-DCR) config still verify RFC 9207 ``iss``.
+            name="authorization_server_url",
+            display_name="Authorization Server URL (issuer)",
+            kind=FieldKind.STRING,
+            required=False,
         ),
         FieldDef(
             name="auth_url",

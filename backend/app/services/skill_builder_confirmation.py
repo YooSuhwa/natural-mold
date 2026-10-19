@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
 from functools import partial
 from typing import Any, assert_never
@@ -9,6 +8,7 @@ from anyio.to_thread import run_sync
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillBuilderMode, SkillBuilderStatus, SkillDraftPackage
@@ -23,10 +23,16 @@ from app.services.skill_builder_evaluations import (
     extract_builder_evaluation_payload,
     persist_builder_evaluation_records,
 )
+from app.services.skill_builder_mutation_scope import (
+    SkillBuilderMutationTarget,
+    load_mutation_session,
+    require_session_workspace,
+)
 from app.services.skill_builder_package_storage import package_metadata, replace_skill_storage
 from app.services.skill_builder_slug import unique_skill_slug
 from app.services.skill_locks import lock_skill_for_mutation
 from app.skills import service as skill_service
+from app.skills.creation import PackageSkillCreation
 from app.skills.package_builder import build_skill_zip_bytes
 from app.skills.validator import validate_draft_package
 
@@ -85,9 +91,12 @@ async def confirm_builder_session(
     db: AsyncSession,
     session: SkillBuilderSession,
     *,
-    user_id: uuid.UUID,
+    context: OrgContext,
     zip_from_workspace: bool = False,
 ) -> Skill:
+    session = await load_mutation_session(db, SkillBuilderMutationTarget(session.id, context))
+    require_session_workspace(session)
+    user_id = context.user_id
     draft = _parse_draft(session.draft_package)
     validation_result = validate_draft_package(
         files=draft.files,
@@ -125,7 +134,7 @@ async def confirm_builder_session(
                 db,
                 session=session,
                 draft=draft,
-                user_id=user_id,
+                context=context,
                 zip_from_workspace=zip_from_workspace,
             )
         case SkillBuilderMode.IMPROVE:
@@ -133,7 +142,7 @@ async def confirm_builder_session(
                 db,
                 session=session,
                 draft=draft,
-                user_id=user_id,
+                context=context,
                 zip_from_workspace=zip_from_workspace,
             )
         case unreachable:
@@ -157,16 +166,17 @@ async def _confirm_create(
     *,
     session: SkillBuilderSession,
     draft: SkillDraftPackage,
-    user_id: uuid.UUID,
+    context: OrgContext,
     zip_from_workspace: bool,
 ) -> Skill:
+    user_id = context.user_id
     changelog = build_revision_changelog(
         mode=SkillBuilderMode.CREATE,
         base_snapshot=session.base_snapshot,
         draft=draft,
         provided=session.changelog_draft,
     )
-    slug = await unique_skill_slug(db, user_id=user_id, requested=draft.slug)
+    slug = await unique_skill_slug(db, context=context, requested=draft.slug)
     # zip 빌드는 디스크 순회 + 압축이라 이벤트 루프에서 돌리지 않는다
     # (improve의 replace_skill_storage 오프로드와 대칭).
     zip_bytes = await run_sync(
@@ -174,10 +184,8 @@ async def _confirm_create(
     )
     skill = await skill_service.create_package_skill(
         db,
-        user_id=user_id,
-        zip_bytes=zip_bytes,
-        name_override=draft.name,
-        slug_override=slug,
+        PackageSkillCreation(zip_bytes=zip_bytes, name_override=draft.name, slug_override=slug),
+        context,
     )
     skill.credential_requirements = list(draft.credential_requirements) or None
     skill.execution_profile = dict(draft.execution_profile) or None
@@ -201,10 +209,11 @@ async def _confirm_improve(
     *,
     session: SkillBuilderSession,
     draft: SkillDraftPackage,
-    user_id: uuid.UUID,
+    context: OrgContext,
     zip_from_workspace: bool,
 ) -> Skill:
-    skill = await _load_source_skill(db, session=session, user_id=user_id)
+    user_id = context.user_id
+    skill = await _load_source_skill(db, session=session, context=context)
     skill = await lock_skill_for_mutation(db, skill=skill)
     if skill.content_hash != session.base_content_hash:
         session.status = SkillBuilderStatus.REVIEW.value
@@ -228,7 +237,7 @@ async def _confirm_improve(
     )
     slug = await unique_skill_slug(
         db,
-        user_id=user_id,
+        context=context,
         requested=draft.slug,
         exclude_skill_id=skill.id,
     )
@@ -239,6 +248,7 @@ async def _confirm_improve(
         partial(
             replace_skill_storage,
             skill_id=skill.id,
+            tenant_id=skill.tenant_id,
             current_kind=skill.kind,
             current_storage_path=skill.storage_path,
             zip_bytes=zip_bytes,
@@ -276,11 +286,11 @@ async def _load_source_skill(
     db: AsyncSession,
     *,
     session: SkillBuilderSession,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> Skill:
     if session.source_skill_id is None:
         raise SkillBuilderSourceSkillNotFound("source skill is required")
-    skill = await skill_service.get_skill(db, session.source_skill_id, user_id)
+    skill = await skill_service.get_skill(db, session.source_skill_id, context)
     if skill is None:
         raise SkillBuilderSourceSkillNotFound("source skill not found")
     return skill

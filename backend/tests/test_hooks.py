@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import select
 
-from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.hooks import register_default_hooks
 from app.hooks.base import CustomHook, HookContext, HookResult
 from app.hooks.builtin.audit_hook import AuditHook
@@ -16,6 +16,7 @@ from app.hooks.builtin.logging_hook import LoggingHook
 from app.hooks.registry import HookRegistry
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.user import User
+from tests.authz.unit_scope_fixture import create_test_credential, unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -36,6 +37,7 @@ def _make_ctx(
         started_at=datetime.now(UTC).replace(tzinfo=None),
         credential_id=credential_id,
         metadata=metadata or {},
+        tenant_id=uuid.uuid4(),
     )
 
 
@@ -182,12 +184,12 @@ async def test_audit_hook_writes_row_only_when_credential_present(monkeypatch) -
     async with TestSession() as db:
         db.add(User(id=TEST_USER_ID, email="hooks@test", name="hooks"))
         await db.commit()
-        cred = await credential_service.create(
+        cred = await create_test_credential(
             db,
-            user_id=TEST_USER_ID,
-            definition_key="openai",
-            name="hook cred",
-            data={"api_key": "sk-abc"},
+            CredentialCreation(
+                definition_key="openai", name="hook cred", data={"api_key": "sk-abc"}
+            ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
         cred_id = cred.id
@@ -200,10 +202,14 @@ async def test_audit_hook_writes_row_only_when_credential_present(monkeypatch) -
 
     async with TestSession() as db:
         rows = (
-            await db.execute(
-                select(CredentialAuditLog).where(CredentialAuditLog.action == "invoke")
+            (
+                await db.execute(
+                    select(CredentialAuditLog).where(CredentialAuditLog.action == "invoke")
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert rows == []
 
     # With credential → exactly one row, action=invoke, source=runtime.
@@ -218,10 +224,14 @@ async def test_audit_hook_writes_row_only_when_credential_present(monkeypatch) -
 
     async with TestSession() as db:
         rows = (
-            await db.execute(
-                select(CredentialAuditLog).where(CredentialAuditLog.action == "invoke")
+            (
+                await db.execute(
+                    select(CredentialAuditLog).where(CredentialAuditLog.action == "invoke")
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(rows) == 1
         row = rows[0]
         assert row.credential_id == cred_id
@@ -242,12 +252,12 @@ async def test_audit_hook_records_failure_with_error_message(monkeypatch) -> Non
     async with TestSession() as db:
         db.add(User(id=TEST_USER_ID, email="hooks@test", name="hooks"))
         await db.commit()
-        cred = await credential_service.create(
+        cred = await create_test_credential(
             db,
-            user_id=TEST_USER_ID,
-            definition_key="openai",
-            name="failure cred",
-            data={"api_key": "sk-x"},
+            CredentialCreation(
+                definition_key="openai", name="failure cred", data={"api_key": "sk-x"}
+            ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
         cred_id = cred.id
@@ -260,10 +270,14 @@ async def test_audit_hook_records_failure_with_error_message(monkeypatch) -> Non
 
     async with TestSession() as db:
         rows = (
-            await db.execute(
-                select(CredentialAuditLog).where(CredentialAuditLog.action == "invoke")
+            (
+                await db.execute(
+                    select(CredentialAuditLog).where(CredentialAuditLog.action == "invoke")
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(rows) == 1
         assert rows[0].error == "upstream 502"
         assert rows[0].log_metadata is not None

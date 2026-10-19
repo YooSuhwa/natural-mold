@@ -16,6 +16,7 @@ definition = CredentialDefinition(
     icon_id="shopping",
     documentation_url="https://partners.coupang.com/",
     category="api",
+    hosts=("api-gateway.coupang.com",),
     properties=[
         FieldDef(
             name="access_key",

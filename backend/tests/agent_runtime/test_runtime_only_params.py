@@ -20,6 +20,7 @@ from app.agent_runtime.tool_factory import (
     _build_runtime_args_schema,
     create_tool_for_runtime,
 )
+from app.outbound.transport import GuardTransport
 from app.tools.registry import registry as tool_registry
 from tests.tool_helpers import tool_coroutine
 
@@ -47,6 +48,8 @@ def _naver_news_config(
             "client_secret": "fake-client-secret",
         },
         "credential_id": None,
+        # F-11: credentials never run without a destination (fail closed).
+        "credential_destination": {"allowed_hosts": ["openapi.naver.com"], "empty_ok": False},
         "user_id": None,
         "agent_id": None,
     }
@@ -126,7 +129,8 @@ async def test_runtime_arg_overrides_stored_query_at_invocation() -> None:
             client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await tool_coroutine(tool)(query="한컴 최신 뉴스")
 
-    assert "verify" in client_cls.call_args.kwargs
+    # F-11: outbound_http_client() puts the trust store on the guarded transport.
+    assert isinstance(client_cls.call_args.kwargs["transport"], GuardTransport)
     assert captured["params"]["query"] == "한컴 최신 뉴스"
 
 

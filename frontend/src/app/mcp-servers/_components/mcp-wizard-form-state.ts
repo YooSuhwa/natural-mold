@@ -36,10 +36,11 @@ export type McpWizardFormState = {
 
 export type McpWizardFormPatch = Partial<McpWizardFormState>
 
-export type McpOAuthCompletedMessage = {
-  readonly type: 'moldy.oauth.completed'
-  readonly credentialId?: string
-}
+// The completion message check moved to the shared receiver (G-05); re-exported here.
+export {
+  isOAuthCompletedMessage,
+  type OAuthCompletedMessage as McpOAuthCompletedMessage,
+} from '@/lib/hooks/use-oauth-completion'
 
 export function createInitialMcpWizardState(): McpWizardFormState {
   return {
@@ -180,11 +181,4 @@ export function countMcpToolParameters(schema: Record<string, unknown> | null | 
   const props = schema['properties']
   if (!props || typeof props !== 'object') return 0
   return Object.keys(props).length
-}
-
-export function isOAuthCompletedMessage(data: unknown): data is McpOAuthCompletedMessage {
-  if (!data || typeof data !== 'object') return false
-  if (!('type' in data) || data.type !== 'moldy.oauth.completed') return false
-  if (!('credentialId' in data)) return true
-  return typeof data.credentialId === 'string' || data.credentialId === undefined
 }

@@ -25,6 +25,9 @@ from app.services.spend_writer import (
 )
 from tests.conftest import TestSession
 
+ORG_ID = uuid.uuid4()
+TENANT_ID = uuid.uuid4()
+
 
 @pytest.fixture
 def queue() -> DailySpendUpdateQueue:
@@ -53,6 +56,8 @@ def _entry(
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         cost_usd=Decimal(cost),
+        org_id=ORG_ID,  # F-14: aggregates are keyed (org_id, date, target)
+        tenant_id=TENANT_ID,
     )
 
 
@@ -108,9 +113,7 @@ async def test_skips_axis_when_target_id_missing(queue: DailySpendUpdateQueue) -
     """User axis always rolls up; agent / model axes need explicit ids."""
 
     user_id = uuid.uuid4()
-    await queue._flush_batch(
-        [_entry(user_id, agent_id=None, model_id=None)]
-    )
+    await queue._flush_batch([_entry(user_id, agent_id=None, model_id=None)])
 
     async with TestSession() as db:
         assert (await db.execute(select(DailySpendUser))).scalars().all()

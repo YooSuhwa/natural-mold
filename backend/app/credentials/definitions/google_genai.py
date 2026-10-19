@@ -12,6 +12,7 @@ definition = CredentialDefinition(
     icon_id="google",
     documentation_url="https://ai.google.dev/api",
     category="llm",
+    hosts=("generativelanguage.googleapis.com",),
     properties=[
         FieldDef(
             name="api_key",
@@ -21,11 +22,7 @@ definition = CredentialDefinition(
             type_options={"password": True},
         ),
     ],
-    authenticate=GenericAuth(
-        properties={
-            "params": {"key": "={{ $credentials.api_key }}"}
-        }
-    ),
+    authenticate=GenericAuth(properties={"params": {"key": "={{ $credentials.api_key }}"}}),
     test=TestRequestSpec(
         request={
             "method": "GET",

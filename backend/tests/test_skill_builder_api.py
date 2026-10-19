@@ -15,6 +15,8 @@ from app.models.conversation import Conversation
 from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import create_test_text_skill, unit_context
 from tests.conftest import TEST_USER_ID
 from tests.skill_builder_test_helpers import configure_system_llm as _configure_system_llm
 
@@ -68,9 +70,7 @@ async def test_start_requires_system_llm(client: AsyncClient) -> None:
     assert response.json()["error"]["code"] == "SYSTEM_LLM_NOT_CONFIGURED"
 
 
-async def test_start_create_session(
-    client: AsyncClient, db: AsyncSession, tmp_path: Path
-) -> None:
+async def test_start_create_session(client: AsyncClient, db: AsyncSession, tmp_path: Path) -> None:
     await _configure_system_llm(db)
 
     response = await client.post(
@@ -99,19 +99,13 @@ async def test_start_create_session(
     assert session.draft_workspace_path == f"skill-drafts/{body['id']}"
 
 
-async def test_start_lazy_seeds_hidden_agent_once(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_start_lazy_seeds_hidden_agent_once(client: AsyncClient, db: AsyncSession) -> None:
     """두 번 시작해도 히든 빌더 에이전트는 사용자당 1개만 시드된다."""
 
     await _configure_system_llm(db)
 
-    first = await client.post(
-        BASE, json={"mode": "create", "user_request": "스킬 하나"}
-    )
-    second = await client.post(
-        BASE, json={"mode": "create", "user_request": "스킬 둘"}
-    )
+    first = await client.post(BASE, json={"mode": "create", "user_request": "스킬 하나"})
+    second = await client.post(BASE, json={"mode": "create", "user_request": "스킬 둘"})
 
     assert first.status_code == 201 and second.status_code == 201
     assert first.json()["agent_id"] == second.json()["agent_id"]
@@ -137,9 +131,7 @@ async def test_get_session_returns_agent_and_conversation(
 ) -> None:
     await _configure_system_llm(db)
 
-    start = await client.post(
-        BASE, json={"mode": "create", "user_request": "회의록 스킬"}
-    )
+    start = await client.post(BASE, json={"mode": "create", "user_request": "회의록 스킬"})
     session_id = start.json()["id"]
 
     response = await client.get(f"{BASE}/{session_id}")
@@ -157,13 +149,15 @@ async def test_start_improve_session_snapshots_owned_skill(
 ) -> None:
     await _configure_system_llm(db)
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Notes",
-            slug="notes",
-            description="Use when summarizing notes.",
-            content=_skill_content(),
+            TextSkillCreation(
+                name="Notes",
+                slug="notes",
+                description="Use when summarizing notes.",
+                content=_skill_content(),
+            ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
 
@@ -195,13 +189,15 @@ async def test_start_improve_unowned_skill_returns_404(
 ) -> None:
     await _configure_system_llm(db)
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=uuid.uuid4(),
-            name="Other",
-            slug="other",
-            description="Use when summarizing notes.",
-            content=_skill_content("other"),
+            TextSkillCreation(
+                name="Other",
+                slug="other",
+                description="Use when summarizing notes.",
+                content=_skill_content("other"),
+            ),
+            unit_context(uuid.uuid4()),
         )
         await db.commit()
 
@@ -290,13 +286,15 @@ async def test_confirm_improve_conflict_returns_409(
 ) -> None:
     await _configure_system_llm(db)
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Notes",
-            slug="notes",
-            description="Use when summarizing notes.",
-            content=_skill_content(),
+            TextSkillCreation(
+                name="Notes",
+                slug="notes",
+                description="Use when summarizing notes.",
+                content=_skill_content(),
+            ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
         start = await client.post(
@@ -311,6 +309,7 @@ async def test_confirm_improve_conflict_returns_409(
             db,
             skill=skill,
             content=_skill_content() + "\nManual change.\n",
+            context=unit_context(TEST_USER_ID),
         )
         await db.commit()
         session_id = start.json()["id"]

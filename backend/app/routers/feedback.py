@@ -5,8 +5,10 @@ Toggle semantics:
 - DELETE /api/messages/{message_id}/feedback → clear current user's rating.
 
 Messages are owned by the LangGraph checkpointer, so ``message_id`` is just
-a string identifier carried in the URL — no FK validation against a messages
-table (there isn't one).
+a string identifier carried in the URL — no FK against a messages table (there
+isn't one). Upsert checks (D-10) that the body's conversation is the caller's
+(``CONVERSATION_NOT_FOUND``) and that the message is in its checkpoint
+(``MESSAGE_NOT_FOUND``).
 """
 
 from __future__ import annotations
@@ -18,9 +20,22 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.conversation_scope import load_private_conversation
+from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.dependencies import (
+    CurrentUser,
+    get_company_db,
+    get_current_user,
+    get_db,
+    get_org_context,
+    owned_conversation,
+    verify_csrf,
+)
+from app.error_codes import conversation_not_found, message_not_found
 from app.models.message_feedback import MessageFeedback
 from app.schemas.feedback import MessageFeedbackCreate, MessageFeedbackResponse
+from app.services.chat.message_membership import conversation_has_message
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +46,24 @@ router = APIRouter(tags=["feedback"])
     "/api/messages/{message_id}/feedback",
     response_model=MessageFeedbackResponse,
 )
+@authz_policy(PRIVATE("message_feedbacks"))
 async def upsert_feedback(
     message_id: str,
     data: MessageFeedbackCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    context: OrgContext = Depends(get_org_context),
 ) -> MessageFeedback:
     """Create or replace the current user's rating for ``message_id``."""
+
+    # ``owned_conversation`` reads a path ``conversation_id``; here it is in the body,
+    # so the same private loader and 404 run inline (after CSRF).
+    conversation = await load_private_conversation(db, data.conversation_id, context)
+    if conversation is None:
+        raise conversation_not_found()
+    if not await conversation_has_message(db, conversation, message_id, context):
+        raise message_not_found()
 
     result = await db.execute(
         select(MessageFeedback).where(
@@ -73,11 +98,12 @@ async def upsert_feedback(
     "/api/messages/{message_id}/feedback",
     status_code=204,
 )
+@authz_policy(PRIVATE("message_feedbacks"))
 async def clear_feedback(
     message_id: str,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
+    db: AsyncSession = Depends(get_company_db),
+    user: CurrentUser = Depends(get_current_user),
 ) -> None:
     """Remove the current user's rating for ``message_id`` (toggle off)."""
 
@@ -93,10 +119,12 @@ async def clear_feedback(
 @router.get(
     "/api/conversations/{conversation_id}/feedback",
     response_model=list[MessageFeedbackResponse],
+    dependencies=[Depends(owned_conversation)],  # I-05: foreign/unknown conversation -> 404
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def list_feedback_for_conversation(
     conversation_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[MessageFeedback]:
     """Return all of the current user's ratings inside a conversation.

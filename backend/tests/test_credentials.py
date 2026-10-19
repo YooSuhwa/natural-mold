@@ -12,9 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import registry
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.models.credential import Credential
 from app.models.user import User
 from app.security.key_provider import get_active_key_id
+from tests.authz.unit_scope_fixture import create_test_credential, unit_context
 from tests.conftest import TEST_USER_ID
 
 
@@ -256,12 +258,10 @@ async def test_other_user_cannot_access(client: AsyncClient, db: AsyncSession) -
     other_id = uuid.uuid4()
     db.add(User(id=other_id, email="other@test.com", name="Other"))
     await db.commit()
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=other_id,
-        definition_key="openai",
-        name="Other's key",
-        data={"api_key": "secret"},
+        CredentialCreation(definition_key="openai", name="Other's key", data={"api_key": "secret"}),
+        unit_context(other_id),
     )
     await db.commit()
 

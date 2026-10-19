@@ -12,6 +12,7 @@ import {
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
 import { AssistantPanel } from '@/components/agent/assistant-panel'
+import { useAgentAccess } from '@/components/agent/agent-access-context'
 import type { AgentIdentityMode, RuntimePolicyV1 } from '@/lib/types'
 import { TriggersTab } from '../triggers-tab'
 import { TestChatPanel } from './test-chat-panel'
@@ -61,6 +62,9 @@ export function RightPanel({
   initialFixMessage,
 }: RightPanelProps) {
   const t = useTranslations('agent.settings')
+  // Plan 13.9 row 2: edit (fix) needs can_edit, the API panel can_deploy. The test chat
+  // streams through the assistant endpoint, which also needs can_edit (H-05).
+  const { canEdit, canDeploy } = useAgentAccess()
 
   return (
     <Tabs
@@ -70,14 +74,18 @@ export function RightPanel({
     >
       <div className="scrollbar-hide sticky top-0 z-10 flex justify-center overflow-x-auto overflow-y-hidden bg-background">
         <LineTabsList>
-          <LineTabsTrigger value="fix">
-            <WrenchIcon className="size-3.5" />
-            {t('tabs.fix')}
-          </LineTabsTrigger>
-          <LineTabsTrigger value="test">
-            <MessageSquareIcon className="size-3.5" />
-            {t('tabs.test')}
-          </LineTabsTrigger>
+          {canEdit ? (
+            <LineTabsTrigger value="fix">
+              <WrenchIcon className="size-3.5" />
+              {t('tabs.fix')}
+            </LineTabsTrigger>
+          ) : null}
+          {canEdit ? (
+            <LineTabsTrigger value="test">
+              <MessageSquareIcon className="size-3.5" />
+              {t('tabs.test')}
+            </LineTabsTrigger>
+          ) : null}
           <LineTabsTrigger value="opener">
             <HelpCircleIcon className="size-3.5" />
             {t('tabs.opener')}
@@ -90,10 +98,12 @@ export function RightPanel({
             <SettingsIcon className="size-3.5" />
             {t('tabs.settings')}
           </LineTabsTrigger>
-          <LineTabsTrigger value="api">
-            <KeyRoundIcon className="size-3.5" />
-            {t('tabs.api')}
-          </LineTabsTrigger>
+          {canDeploy ? (
+            <LineTabsTrigger value="api">
+              <KeyRoundIcon className="size-3.5" />
+              {t('tabs.api')}
+            </LineTabsTrigger>
+          ) : null}
         </LineTabsList>
       </div>
 
@@ -102,14 +112,16 @@ export function RightPanel({
         keepMounted
         className="flex flex-1 min-h-0 flex-col overflow-hidden p-4 data-[state=inactive]:hidden"
       >
-        <AssistantPanel
-          agentId={agentId}
-          agentName={agentName}
-          showHeader={false}
-          createMode={createMode}
-          onCreateModeFirstMessage={onCreateModeFirstMessage}
-          initialMessage={initialFixMessage}
-        />
+        {canEdit ? (
+          <AssistantPanel
+            agentId={agentId}
+            agentName={agentName}
+            showHeader={false}
+            createMode={createMode}
+            onCreateModeFirstMessage={onCreateModeFirstMessage}
+            initialMessage={initialFixMessage}
+          />
+        ) : null}
       </TabsContent>
 
       <TabsContent
@@ -119,9 +131,9 @@ export function RightPanel({
       >
         {!agentId ? (
           <CreateModePlaceholder label={t('createModeLocked')} />
-        ) : (
+        ) : canEdit ? (
           <TestChatPanel agentId={agentId} agentName={agentName} agentImageUrl={agentImageUrl} />
-        )}
+        ) : null}
       </TabsContent>
 
       <TabsContent
@@ -129,7 +141,9 @@ export function RightPanel({
         keepMounted
         className="flex-1 overflow-auto p-4 data-[state=inactive]:hidden"
       >
-        <OpenerEditor questions={openerQuestions} onChange={onOpenerQuestionsChange} />
+        <fieldset disabled={!canEdit}>
+          <OpenerEditor questions={openerQuestions} onChange={onOpenerQuestionsChange} />
+        </fieldset>
       </TabsContent>
 
       <TabsContent
@@ -152,16 +166,18 @@ export function RightPanel({
         {!agentId ? (
           <CreateModePlaceholder label={t('createModeLocked')} />
         ) : identityMode && onIdentityModeChange ? (
-          <SettingsPanel
-            agentId={agentId}
-            imageUrl={agentImageUrl}
-            name={agentName}
-            identityMode={identityMode}
-            onIdentityModeChange={onIdentityModeChange}
-            runtimePolicy={runtimePolicy ?? null}
-            onRuntimePolicyChange={onRuntimePolicyChange}
-            modelContextWindow={modelContextWindow ?? null}
-          />
+          <fieldset disabled={!canEdit}>
+            <SettingsPanel
+              agentId={agentId}
+              imageUrl={agentImageUrl}
+              name={agentName}
+              identityMode={identityMode}
+              onIdentityModeChange={onIdentityModeChange}
+              runtimePolicy={runtimePolicy ?? null}
+              onRuntimePolicyChange={onRuntimePolicyChange}
+              modelContextWindow={modelContextWindow ?? null}
+            />
+          </fieldset>
         ) : (
           <CreateModePlaceholder label={t('createModeLocked')} />
         )}
@@ -174,9 +190,9 @@ export function RightPanel({
       >
         {!agentId ? (
           <CreateModePlaceholder label={t('createModeLocked')} />
-        ) : (
+        ) : canDeploy ? (
           <ApiPanel agentId={agentId} agentName={agentName} />
-        )}
+        ) : null}
       </TabsContent>
     </Tabs>
   )

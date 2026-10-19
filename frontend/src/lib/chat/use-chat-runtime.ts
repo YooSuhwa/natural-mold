@@ -31,6 +31,11 @@ import {
 } from '@/lib/stores/chat-store'
 import { upsertArtifactList, upsertChatArtifactAtom } from '@/lib/stores/chat-artifacts'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import {
+  setExcludedCapabilitiesAtom,
+  startExcludedCapabilitiesRunAtom,
+} from '@/lib/stores/chat-excluded-capabilities'
+import { EXCLUDED_CAPABILITIES_EVENT, parseExcludedCapabilities } from './excluded-capabilities'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
 import { streamResumeDecisions } from '@/lib/sse/stream-resume'
@@ -48,6 +53,8 @@ import {
   standardInterruptToToolCalls,
   type HiTLDecisionCoordinator,
 } from './standard-interrupt'
+import { toStandardInterruptPayload } from './auth-required-interrupt'
+import { hasHydratedSingleActionInterrupt } from './legacy-pending-interrupt'
 import { artifactKeys } from '@/lib/api/artifacts'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
 import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
@@ -423,6 +430,8 @@ export function useChatRuntime({
   const setChatCancelInFlight = useSetAtom(chatCancelInFlightAtom)
   const upsertArtifact = useSetAtom(upsertChatArtifactAtom)
   const setRightRail = useSetAtom(chatRightRailAtom)
+  const setExcludedCapabilities = useSetAtom(setExcludedCapabilitiesAtom)
+  const startExcludedRun = useSetAtom(startExcludedCapabilitiesRunAtom)
   const queryClient = useQueryClient()
   const tReconnect = useTranslations('chat.reconnect')
   const tPage = useTranslations('chat.page')
@@ -636,6 +645,8 @@ export function useChatRuntime({
       // 스트림이 throw/abort 없이 끝까지 소비됐는지 — finally 에서
       // ``consumedRunIdRef`` 기록 여부를 결정한다.
       let endedNormally = false
+      // F-06 / 13.6 — the run this stream belongs to (from `message_start`).
+      let streamRunId: string | undefined
       const cancelPendingFlush = () => {
         if (rafId === null) return
         cancelAnimationFrame(rafId)
@@ -777,6 +788,19 @@ export function useChatRuntime({
               }
               break
             }
+            case 'message_start': {
+              // F-06 / 13.6 — a new run clears the banner (exclusions are sent only if any).
+              streamRunId = event.data.id || assistantId
+              startExcludedRun({ conversationId: conversationIdRef.current, runId: streamRunId })
+              break
+            }
+            case EXCLUDED_CAPABILITIES_EVENT: {
+              const groups = parseExcludedCapabilities(event.data)
+              if (!groups) break
+              const runId = streamRunId ?? assistantId
+              setExcludedCapabilities({ conversationId: conversationIdRef.current, runId, groups })
+              break
+            }
             case 'memory_proposed': {
               queryClient.invalidateQueries({ queryKey: memoryKeys.all })
               toast.info(tMemory('proposedToast'))
@@ -799,7 +823,8 @@ export function useChatRuntime({
             }
             case 'interrupt': {
               setIsRunning(false)
-              const data = event.data as StandardInterruptPayload
+              // G-05: an `auth_required` wire payload becomes a native standard one.
+              const data = toStandardInterruptPayload(event.data)
               if (data.interrupt_id) lastInterruptIdRef.current = data.interrupt_id
               // 빈 fallback chunk — backend가 ``aget_state`` 실패로 정확한 액션을
               // 제시하지 못해 표준 미들웨어 contract만 채워 emit한다(streaming.py).
@@ -947,6 +972,8 @@ export function useChatRuntime({
       setReconnectState,
       upsertArtifact,
       setRightRail,
+      setExcludedCapabilities,
+      startExcludedRun,
       tReconnect,
       tPage,
       tMemory,
@@ -1283,7 +1310,11 @@ export function useChatRuntime({
     ) => {
       const coordinator = pendingHiTLCoordinatorRef.current
       if (!coordinator) {
-        if (interruptId !== undefined) {
+        const restored =
+          actionIndex === 0 &&
+          typeof interruptId === 'string' &&
+          hasHydratedSingleActionInterrupt(messages, interruptId)
+        if (interruptId !== undefined && !restored) {
           throw new DOMException('HiTL interrupt is no longer active', 'InvalidStateError')
         }
         await onResumeDecisions([decision], displayText)
@@ -1294,7 +1325,7 @@ export function useChatRuntime({
       }
       await coordinator.registerDecision(actionIndex, decision, displayText)
     },
-    [onResumeDecisions],
+    [messages, onResumeDecisions],
   )
 
   const onCancel = useCallback(async () => {

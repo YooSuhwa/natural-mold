@@ -19,6 +19,7 @@ preserved to keep those callers thin.
 
 from __future__ import annotations
 
+from app.services.authorized_runtime import prepare_authorized_runtime
 from app.services.chat.attachments import (
     gc_orphan_attachments as gc_orphan_attachments,
 )
@@ -49,7 +50,11 @@ from app.services.chat.conversations import (
     list_global_conversations_page,
     mark_conversation_read,
     maybe_set_auto_title,
+    prepare_executable_conversation,
+    prepare_resumed_conversation,
     promote_draft_conversation,
+    require_executable_conversation,
+    set_active_branch,
     touch_conversation,
     update_conversation,
 )
@@ -57,13 +62,13 @@ from app.services.chat.interrupts import (
     _hydrate_pending_interrupt_tool_calls as _hydrate_pending_interrupt_tool_calls,
 )
 from app.services.chat.messages import list_messages_from_checkpointer
+from app.services.chat.run_agents import get_run_agent_with_tools
 from app.services.chat.runtime_context import (
     build_agent_skills,
     build_effective_prompt,
     build_tools_config,
     get_agent_with_tools,
     get_owned_conversation_with_agent,
-    trigger_blocked_tools_for_agent_tree,
 )
 from app.services.chat.secrets import (
     _redact_response_tool_calls as _redact_response_tool_calls,
@@ -71,6 +76,7 @@ from app.services.chat.secrets import (
 from app.services.chat.secrets import (
     collect_conversation_secret_values,
 )
+from app.services.chat.trigger_blocked_tools import trigger_blocked_tools_for_agent_tree
 from app.services.chat.usage import save_token_usage
 
 __all__ = [
@@ -88,6 +94,8 @@ __all__ = [
     "get_owned_conversation",
     "get_owned_conversation_with_agent",
     "get_owned_ui_conversation_with_agent",
+    "get_run_agent_with_tools",
+    "prepare_authorized_runtime",
     "is_agent_owned_by_user",
     "link_attachments_to_conversation",
     "list_conversations",
@@ -97,7 +105,11 @@ __all__ = [
     "mark_conversation_read",
     "maybe_set_auto_title",
     "promote_draft_conversation",
+    "prepare_executable_conversation",
+    "prepare_resumed_conversation",
+    "require_executable_conversation",
     "save_token_usage",
+    "set_active_branch",
     "touch_conversation",
     "trigger_blocked_tools_for_agent_tree",
     "update_conversation",

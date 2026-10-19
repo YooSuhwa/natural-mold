@@ -23,8 +23,11 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import model_factory
+from app.authz.platform_scope import PlatformScope
 from app.credentials import service as credential_service
+from app.credentials.creation import CredentialCreation
 from app.models.user import User
+from tests.authz.unit_scope_fixture import create_test_credential, unit_context
 from tests.conftest import TEST_USER_ID
 
 
@@ -73,12 +76,12 @@ async def test_get_provider_keys_decrypts_anthropic(db: AsyncSession) -> None:
     """``get_provider_keys`` decrypts the api_key from a user credential and
     returns it under the ``_ENV_FALLBACK`` key (``anthropic`` 1:1)."""
 
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="anthropic",
-        name="Test Anthropic",
-        data={"api_key": "sk-decrypt-test"},
+        CredentialCreation(
+            definition_key="anthropic", name="Test Anthropic", data={"api_key": "sk-decrypt-test"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -95,12 +98,12 @@ async def test_get_provider_keys_maps_google_genai_to_google(
 ) -> None:
     """``google_genai`` definition maps to ``google`` env_key (ADR-013 §결정 4)."""
 
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="google_genai",
-        name="Test Gemini",
-        data={"api_key": "gem-key"},
+        CredentialCreation(
+            definition_key="google_genai", name="Test Gemini", data={"api_key": "gem-key"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -116,20 +119,19 @@ async def test_get_provider_keys_system_beats_user(db: AsyncSession) -> None:
     """When both system and user credentials exist for the same provider,
     the system row wins (ADR-013 priority: system > user)."""
 
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="anthropic",
-        name="user anthropic",
-        data={"api_key": "user-key"},
+        CredentialCreation(
+            definition_key="anthropic", name="user anthropic", data={"api_key": "user-key"}
+        ),
+        unit_context(TEST_USER_ID),
     )
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=None,
-        definition_key="anthropic",
-        name="system anthropic",
-        data={"api_key": "system-key"},
-        is_system=True,
+        CredentialCreation(
+            definition_key="anthropic", name="system anthropic", data={"api_key": "system-key"}
+        ),
+        PlatformScope(),
     )
     await db.commit()
 
@@ -163,12 +165,12 @@ async def test_sync_writes_credential_when_env_empty(
 
     _clear_env_fallback()
 
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="anthropic",
-        name="cred anthropic",
-        data={"api_key": "sk-cred-only"},
+        CredentialCreation(
+            definition_key="anthropic", name="cred anthropic", data={"api_key": "sk-cred-only"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -189,12 +191,12 @@ async def test_env_key_takes_priority_over_credential(
     model_factory._ENV_DEFAULTS["anthropic"] = "env-override"
     model_factory._ENV_FALLBACK["anthropic"] = "env-override"
 
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="anthropic",
-        name="cred anthropic",
-        data={"api_key": "cred-key"},
+        CredentialCreation(
+            definition_key="anthropic", name="cred anthropic", data={"api_key": "cred-key"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -212,12 +214,12 @@ async def test_sync_is_idempotent_after_credential_delete(
 
     _clear_env_fallback()
 
-    cred = await credential_service.create(
+    cred = await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="anthropic",
-        name="will-be-deleted",
-        data={"api_key": "sk-temp"},
+        CredentialCreation(
+            definition_key="anthropic", name="will-be-deleted", data={"api_key": "sk-temp"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -343,12 +345,12 @@ async def test_lifespan_syncs_credentials_to_env_fallback(
 
     _clear_env_fallback()
 
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="openai",
-        name="startup-openai",
-        data={"api_key": "sk-startup"},
+        CredentialCreation(
+            definition_key="openai", name="startup-openai", data={"api_key": "sk-startup"}
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -368,12 +370,14 @@ async def test_openai_compatible_credential_skipped(db: AsyncSession) -> None:
 
     _clear_env_fallback()
 
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="openai_compatible",
-        name="self-hosted",
-        data={"api_key": "sk-compat", "base_url": "https://example.com"},
+        CredentialCreation(
+            definition_key="openai_compatible",
+            name="self-hosted",
+            data={"api_key": "sk-compat", "base_url": "https://example.com"},
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 
@@ -392,12 +396,10 @@ async def test_sync_swallows_decrypt_failure(
 
     _clear_env_fallback()
 
-    await credential_service.create(
+    await create_test_credential(
         db,
-        user_id=TEST_USER_ID,
-        definition_key="anthropic",
-        name="broken",
-        data={"api_key": "sk-fine"},
+        CredentialCreation(definition_key="anthropic", name="broken", data={"api_key": "sk-fine"}),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
 

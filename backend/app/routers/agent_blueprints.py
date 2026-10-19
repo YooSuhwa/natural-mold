@@ -5,119 +5,70 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.authz.agent_delegations import commit_and_apply, sync_agent_delegations
+from app.authz.blueprint_read_scope import read_blueprint_presentations
+from app.authz.org_context import OrgContext
+from app.authz.organization_execution_prefix import mark_org_writer
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.resource_lifecycle import on_resource_created
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import marketplace_item_not_found
 from app.marketplace.schemas import AgentBlueprintOut, CreateAgentFromBlueprintIn
-from app.models.agent_blueprint import AgentBlueprint
-from app.models.marketplace import MarketplaceInstallation
-from app.routers.agents import _agent_to_response
+from app.routers.agents import _scoped_agent_response
 from app.schemas.agent import AgentResponse
 from app.services import agent_blueprint_service, audit_service
 
 router = APIRouter(prefix="/api/agent-blueprints", tags=["agent-blueprints"])
 
 
-def _project_blueprint(
-    blueprint: AgentBlueprint,
-    installation: MarketplaceInstallation | None,
-    *,
-    include_spec: bool = True,
-) -> AgentBlueprintOut:
-    return AgentBlueprintOut(
-        id=blueprint.id,
-        name=blueprint.name,
-        description=blueprint.description,
-        icon_id=blueprint.icon_id,
-        tags=blueprint.tags,
-        categories=blueprint.categories,
-        # ``spec`` is large publisher JSON — the list endpoint omits it.
-        spec=blueprint.spec if include_spec else None,
-        spec_hash=blueprint.spec_hash,
-        source_marketplace_item_id=blueprint.source_marketplace_item_id,
-        source_marketplace_version_id=blueprint.source_marketplace_version_id,
-        installation_id=installation.id if installation else None,
-        install_status=(installation.install_status if installation else blueprint.install_status),  # type: ignore[arg-type]
-        is_dirty=bool(blueprint.is_dirty or (installation and installation.is_dirty)),
-        created_agent_count=blueprint.created_agent_count,
-        created_at=blueprint.created_at,
-        updated_at=blueprint.updated_at,
-    )
-
-
 @router.get("", response_model=list[AgentBlueprintOut])
+@authz_policy(PRIVATE("agent_blueprints"))
 async def list_agent_blueprints(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> list[AgentBlueprintOut]:
-    rows = (
-        await db.execute(
-            select(AgentBlueprint, MarketplaceInstallation)
-            .outerjoin(
-                MarketplaceInstallation,
-                (MarketplaceInstallation.installed_agent_blueprint_id == AgentBlueprint.id)
-                # Uninstall is a soft delete (row kept with
-                # ``install_status='uninstalled'``) — joining those rows
-                # would duplicate blueprints after a re-install and show
-                # a stale "uninstalled" state.
-                & (MarketplaceInstallation.install_status != "uninstalled"),
-            )
-            .where(AgentBlueprint.user_id == user.id)
-            # Soft-uninstalled blueprints (row kept, status synced) are
-            # hidden so a re-install doesn't surface the old ghost copy.
-            .where(AgentBlueprint.install_status != "uninstalled")
-            .order_by(AgentBlueprint.updated_at.desc())
-        )
-    ).all()
-    return [
-        _project_blueprint(blueprint, installation, include_spec=False)
-        for blueprint, installation in rows
-    ]
+    rows = await read_blueprint_presentations(db, context, None)
+    return [AgentBlueprintOut.model_validate(row, from_attributes=True) for row in rows]
 
 
 @router.get("/{blueprint_id}", response_model=AgentBlueprintOut)
+@authz_policy(PRIVATE("agent_blueprints", param="blueprint_id"))
 async def get_agent_blueprint(
     blueprint_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> AgentBlueprintOut:
-    row = (
-        await db.execute(
-            select(AgentBlueprint, MarketplaceInstallation)
-            .outerjoin(
-                MarketplaceInstallation,
-                (MarketplaceInstallation.installed_agent_blueprint_id == AgentBlueprint.id)
-                & (MarketplaceInstallation.install_status != "uninstalled"),
-            )
-            .where(AgentBlueprint.id == blueprint_id)
-            .where(AgentBlueprint.user_id == user.id)
-            # A soft-uninstalled blueprint is treated as gone — collapse to
-            # 404 per the enumeration-safety convention.
-            .where(AgentBlueprint.install_status != "uninstalled")
-            .limit(1)
-        )
-    ).one_or_none()
-    if row is None:
+    rows = await read_blueprint_presentations(db, context, blueprint_id)
+    if not rows:
         raise marketplace_item_not_found()
-    blueprint, installation = row
-    return _project_blueprint(blueprint, installation)
+    return AgentBlueprintOut.model_validate(rows[0], from_attributes=True)
 
 
 @router.post("/{blueprint_id}/create-agent", response_model=AgentResponse, status_code=201)
+# PRIVATE blueprint + CAP(cap_create_agent) inside (plan 9.1).
+@authz_policy(PRIVATE("agent_blueprints", param="blueprint_id"))
 async def create_agent_from_blueprint(
     blueprint_id: uuid.UUID,
     body: CreateAgentFromBlueprintIn,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
 ) -> AgentResponse:
+    await authz.require_cap(context, "cap_create_agent", legacy=True)
+    mark_org_writer(db)  # F-02: prefix takes the org row FOR UPDATE (delegation writes)
     agent = await agent_blueprint_service.create_agent_from_blueprint(
         db,
         blueprint_id=blueprint_id,
-        user_id=user.id,
+        context=context,
         body=body,
     )
     await audit_service.record_self_event(
@@ -130,5 +81,10 @@ async def create_agent_from_blueprint(
         request=request,
         metadata={"blueprint_id": str(blueprint_id)},
     )
-    await db.commit()
-    return _agent_to_response(agent)
+    if agent.llm_credential_id is not None:  # F-02: the blueprint's bound model credential
+        agent.llm_credential_delegated_by = context.user_id
+        added = {("credential", agent.llm_credential_id)}
+        await sync_agent_delegations(db, context, agent.id, added=added)
+    created = await on_resource_created(db, agent, mode=authz.mode)
+    await commit_and_apply(db, authz, created)  # read-your-writes before responding (8.6)
+    return await _scoped_agent_response(db, agent.id, context)

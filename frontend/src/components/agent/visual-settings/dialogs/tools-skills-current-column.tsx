@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Trash2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
+import { LinkRequiredToggle } from '@/components/agent/link-required-context'
 import { SkillQualityInline } from '@/components/skill/skill-quality-inline'
 import { Button } from '@/components/ui/button'
 import type { McpToolWithServer } from '@/lib/types/mcp'
@@ -44,6 +45,7 @@ export function CurrentColumn({
             {tools.map((tool) => (
               <SelectedRow
                 key={`tool-${tool.id}`}
+                id={tool.id}
                 kind="tool"
                 name={tool.name}
                 subtitle={tool.definition_key}
@@ -53,6 +55,7 @@ export function CurrentColumn({
             {mcpTools.map((tool) => (
               <SelectedRow
                 key={`mcp-${tool.id}`}
+                id={tool.id}
                 kind="mcp"
                 name={tool.name}
                 subtitle={`${tool.server_name} · MCP`}
@@ -62,6 +65,7 @@ export function CurrentColumn({
             {skills.map((skill) => (
               <SelectedRow
                 key={`skill-${skill.id}`}
+                id={skill.id}
                 kind="skill"
                 name={skill.name}
                 subtitle={t('kind.skill')}
@@ -77,12 +81,14 @@ export function CurrentColumn({
 }
 
 function SelectedRow({
+  id,
   kind,
   name,
   subtitle,
   quality,
   onRemove,
 }: {
+  readonly id: string
   readonly kind: SelectedKind
   readonly name: string
   readonly subtitle: string
@@ -99,6 +105,7 @@ function SelectedRow({
         <p className="truncate moldy-ui-caption text-muted-foreground">{subtitle}</p>
         {quality ? <div className="mt-1 flex flex-wrap gap-1">{quality}</div> : null}
       </div>
+      <LinkRequiredToggle id={id} name={name} />
       <Button
         size="sm"
         variant="ghost"

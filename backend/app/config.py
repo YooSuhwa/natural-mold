@@ -4,8 +4,10 @@ from typing import Final, Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.authz.config import AuthzSettings
 
-class Settings(BaseSettings):
+
+class Settings(AuthzSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Runtime mode. ``production`` triggers strict boot-time validation
@@ -87,6 +89,19 @@ class Settings(BaseSettings):
     # are BOTH older than the retention window AND have no recorded messages.
     draft_conversation_gc_cron: str = "15 * * * *"
     draft_conversation_gc_retention_hours: int = 24
+    # E-08 daily per-company retention sweep (plan 6.2, 10.7, 14.1). Off by default so
+    # an upgrade never starts deleting conversations, trashed agents, removed members'
+    # data or company audit rows until an operator turns it on.
+    retention_sweep_enabled: bool = False
+    retention_sweep_cron: str = "20 3 * * *"
+    # I-07 company deletion (plan S04): grace period, export link lifetime and the daily
+    # leader purge job. The purge job is off by default; schedule/cancel work regardless.
+    tenant_deletion_grace_days: int = 30
+    tenant_export_ttl_days: int = 7
+    tenant_purge_enabled: bool = False
+    tenant_purge_cron: str = "40 3 * * *"
+    tenant_export_stale_minutes: int = 120
+    tenant_export_gc_cron: str = "55 * * * *"
     # Skill draft workspace GC (APScheduler crontab; default: hourly :45).
     # ``data/skill-drafts/<session_id>/`` dirs are deleted by SESSION STATE,
     # not mtime (spec AD-2): active/confirming sessions are preserved
@@ -277,6 +292,21 @@ class Settings(BaseSettings):
     # a transient "압축 중…" indicator + a permanent "이전 대화를 요약했어요" marker.
     # Off = legacy behavior (summarization tokens flow through, no marker).
     compaction_marker_enabled: bool = True
+    # Parent Task 10 — opt-in gate for executing runs through a prepared lease
+    # (materialize under the canonical locks, then dispatch the frozen graph).
+    # Off = every entry keeps the legacy ``_prepare_agent`` path.
+    prepared_run_lease_enabled: bool = False
+    # Selected-MCP discovery runs inside the materialization transaction while the
+    # canonical locks are held, so archive/suspension/stop wait at most the total
+    # bound (plus the short lock transaction). Keep both small.
+    prepared_mcp_discovery_server_timeout_seconds: float = 3.0
+    prepared_mcp_discovery_total_timeout_seconds: float = 5.0
+    # F-15 (plan 11.4.1): public Moldy base URL that remote authorization
+    # servers can reach. When set, Moldy serves a Client ID Metadata Document at
+    # ``{base}/.well-known/oauth-client/{deployment}`` and prefers it over
+    # pre-registration / DCR. Empty (default) = closed network, CIMD off.
+    mcp_oauth_client_metadata_base_url: str = ""
+    mcp_oauth_client_deployment: str = "default"
 
     # CORS allowed origins. Comma-separated origins, e.g.
     # "https://moldy.dev,https://staging.moldy.dev". Default permits the

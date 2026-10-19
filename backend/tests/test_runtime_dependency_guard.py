@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,7 +12,13 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from runtime_dependency_graph import ModuleSource, scan_sources  # noqa: E402
+from runtime_dependency_graph import (  # noqa: E402
+    DependencyGraphError,
+    ImportEdge,
+    ModuleSource,
+    scan_repository,
+    scan_sources,
+)
 from runtime_dependency_policy import (  # noqa: E402
     CyclicEdgeRecord,
     DynamicExceptionRecord,
@@ -54,6 +61,71 @@ def test_real_checkout_matches_reviewed_baseline_without_mutating_it() -> None:
 
     assert exit_code == 0, "\n".join(messages)
     assert DEFAULT_BASELINE.read_bytes() == before
+
+
+def test_repository_scan_resolves_untracked_leaf_in_current_source_union(tmp_path: Path) -> None:
+    backend = tmp_path / "backend"
+    package = backend / "app" / "agent_runtime" / "write_tools"
+    package.mkdir(parents=True)
+    (backend / "app" / "__init__.py").write_text("")
+    (backend / "app" / "agent_runtime" / "__init__.py").write_text("")
+    (package / "__init__.py").write_text("from .composition import build\n")
+    (package / "composition.py").write_text("from .leaf import execute\n\ndef build(): ...\n")
+    subprocess.run(["/usr/bin/git", "init", "--quiet"], cwd=backend, check=True)
+    subprocess.run(
+        [
+            "/usr/bin/git",
+            "add",
+            "app/agent_runtime/write_tools/__init__.py",
+            "app/agent_runtime/write_tools/composition.py",
+        ],
+        cwd=backend,
+        check=True,
+    )
+    (package / "leaf.py").write_text("def execute(): ...\n")
+
+    graph = scan_repository(backend)
+
+    assert (
+        ImportEdge(
+            "app.agent_runtime.write_tools.composition",
+            "app.agent_runtime.write_tools.leaf",
+        )
+        in graph.edges
+    )
+    assert check(graph, _baseline()).current.cyclic_edges == ()
+
+
+def test_repository_scan_excludes_deleted_and_ignored_sources(tmp_path: Path) -> None:
+    backend = tmp_path / "backend"
+    services = backend / "app" / "services"
+    services.mkdir(parents=True)
+    deleted = services / "deleted.py"
+    deleted.write_text("VALUE = 1\n")
+    (backend / ".gitignore").write_text("app/services/private.py\n")
+    subprocess.run(["/usr/bin/git", "init", "--quiet"], cwd=backend, check=True)
+    subprocess.run(
+        ["/usr/bin/git", "add", ".gitignore", "app/services/deleted.py"], cwd=backend, check=True
+    )
+    deleted.unlink()
+    (services / "private.py").write_text("VALUE = 2\n")
+
+    graph = scan_repository(backend)
+
+    assert graph.sources == ()
+
+
+def test_repository_scan_rejects_untracked_source_symlink(tmp_path: Path) -> None:
+    backend = tmp_path / "backend"
+    services = backend / "app" / "services"
+    services.mkdir(parents=True)
+    target = backend / "outside.py"
+    target.write_text("VALUE = 1\n")
+    (services / "linked.py").symlink_to(target)
+    subprocess.run(["/usr/bin/git", "init", "--quiet"], cwd=backend, check=True)
+
+    with pytest.raises(DependencyGraphError, match="symbolic link"):
+        scan_repository(backend)
 
 
 @pytest.mark.parametrize(

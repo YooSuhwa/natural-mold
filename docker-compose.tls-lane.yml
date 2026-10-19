@@ -1,0 +1,11 @@
+# I-09 TLS integration lane: publishes the TLS endpoints on loopback only so
+# tests/authz/test_i09_tls_lane.py can reach them from the host.
+# Used by scripts/run-internal-tls-lane.sh on top of docker-compose.yml and
+# docker-compose.tls.yml. Never use it for an installation.
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:${MOLDY_TLS_LANE_PG_PORT:-15432}:5432"
+  openfga:
+    ports:
+      - "127.0.0.1:${MOLDY_TLS_LANE_FGA_PORT:-18443}:8080"

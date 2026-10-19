@@ -13,6 +13,8 @@ from app.agent_runtime.protocol_events import (
     format_protocol_sse,
     matches_subscription,
 )
+from app.authz.conversation_scope import load_private_conversation, require_conversation_agent_id
+from app.authz.org_context import OrgContext
 from app.error_codes import conversation_not_found
 from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
@@ -23,7 +25,6 @@ from app.routers.conversation_agent_protocol_event_normalization import (
 from app.routers.conversation_agent_protocol_legacy import (
     protocol_events_from_legacy_sse,
 )
-from app.services import chat_service
 
 SUPPORTED_MULTITASK_STRATEGIES = {"reject", "enqueue", "interrupt"}
 
@@ -33,19 +34,19 @@ async def get_owned_thread(
     *,
     conversation_id: uuid.UUID,
     thread_id: str,
-    user_id: uuid.UUID,
+    context: OrgContext,
 ) -> Conversation:
     if thread_id != str(conversation_id):
         raise conversation_not_found()
 
-    conversation = await chat_service.get_owned_conversation(db, conversation_id, user_id)
+    conversation = await load_private_conversation(db, conversation_id, context)
     if conversation is None:
         raise conversation_not_found()
     return conversation
 
 
 def cfg_agent_uuid(conversation: Conversation) -> uuid.UUID:
-    return conversation.agent_id
+    return require_conversation_agent_id(conversation)
 
 
 def command_multitask_strategy(command: AgentCommandRequest) -> str:

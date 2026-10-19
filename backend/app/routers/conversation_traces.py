@@ -5,14 +5,27 @@ from collections.abc import Sequence
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
-from app.dependencies import CurrentUser, get_current_user, get_db, owned_conversation
+from app.authz.conversation_agent_checks import require_agent_permission
+from app.authz.org_context import OrgContext
+from app.authz.policies import PRIVATE, authz_policy
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    get_org_context,
+    owned_conversation,
+)
 from app.error_codes import (
     trace_not_found,
 )
+from app.exceptions import ConflictError
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
@@ -20,6 +33,7 @@ from app.observability.langfuse import is_langfuse_enabled
 from app.schemas.conversation import (
     DebugTraceDetailResponse,
     DebugTraceListResponse,
+    TraceEvent,
     TurnTraceResponse,
 )
 from app.schemas.conversation_run_message_links import (
@@ -33,22 +47,41 @@ from app.services.conversation_run_message_links import RunMessageLinkQuery, lis
 router = APIRouter(tags=["conversations"])
 
 
+async def _require_trace_config(
+    conversation: Conversation, context: OrgContext, authz: AuthzService
+) -> None:
+    """Debug traces expose tool args and prompts: ``agent#can_view_config`` (9.3).
+
+    Legacy keeps owner-only access, so the legacy answer is the owned conversation.
+    """
+    if conversation.agent_id is not None:
+        await require_agent_permission(
+            context,
+            conversation.agent_id,
+            "can_view_config",
+            authz=authz,
+            resource_org_id=conversation.org_id,
+        )
+
+
 @router.get(
     "/api/conversations/{conversation_id}/run-message-links",
     response_model=list[ConversationRunMessageLinkResponse],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_conversation_run_message_links(
     conversation_id: uuid.UUID,
     message_id: Annotated[list[ConversationRunMessageKey], Query(min_length=1, max_length=50)],
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     _conversation: Conversation = Depends(owned_conversation),
 ) -> list[ConversationRunMessageLinkResponse]:
     return await list_run_message_links(
         db,
         RunMessageLinkQuery(
             conversation_id=conversation_id,
-            user_id=user.id,
+            context=context,
             message_ids=message_id,
         ),
     )
@@ -96,14 +129,43 @@ async def _run_status_by_message_event_id(
     "/api/conversations/{conversation_id}/traces",
     response_model=list[TurnTraceResponse],
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def list_traces(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     conversation: Conversation = Depends(owned_conversation),
 ):
+    if conversation.agent_lifecycle_state == "purged":
+        from app.services.conversation_history_service import read_purged_history_content
+
+        retained = await read_purged_history_content(db, conversation)
+        responses: list[TurnTraceResponse] = []
+        for event in retained.events:
+            try:
+                trace_events = [TraceEvent.model_validate(item) for item in event.events]
+            except ValidationError as exc:
+                raise ConflictError(
+                    "CONVERSATION_HISTORY_INVALID",
+                    "Retained trace event does not match the history contract",
+                ) from exc
+            last_event_id = trace_events[-1].id if trace_events else None
+            responses.append(
+                TurnTraceResponse(
+                    assistant_msg_id=event.assistant_message_id,
+                    events=trace_events,
+                    last_event_id=last_event_id,
+                    linked_message_ids=None,
+                    created_at=event.created_at,
+                    completed_at=None,
+                )
+            )
+        return responses
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
-    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
+    secrets = tuple(
+        await chat_secrets.collect_conversation_secret_values(db, conversation, context)
+    )
     return [_public_turn_trace(record, secret_values=secrets) for record in records]
 
 
@@ -111,14 +173,20 @@ async def list_traces(
     "/api/conversations/{conversation_id}/debug/traces",
     response_model=DebugTraceListResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def list_debug_traces(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     conversation: Conversation = Depends(owned_conversation),
+    authz: AuthzService = Depends(get_authz),
 ):
+    await _require_trace_config(conversation, context, authz)
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
-    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
+    secrets = tuple(
+        await chat_secrets.collect_conversation_secret_values(db, conversation, context)
+    )
     run_statuses = await _run_status_by_message_event_id(db, records)
     langfuse_enabled = is_langfuse_enabled()
     fallback_reason = None if langfuse_enabled else "Langfuse disabled"
@@ -142,13 +210,17 @@ async def list_debug_traces(
     "/api/conversations/{conversation_id}/debug/traces/{trace_id}",
     response_model=DebugTraceDetailResponse,
 )
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def get_debug_trace_detail(
     conversation_id: uuid.UUID,
     trace_id: str,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
     conversation: Conversation = Depends(owned_conversation),
+    authz: AuthzService = Depends(get_authz),
 ):
+    await _require_trace_config(conversation, context, authz)
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
     record = next(
         (item for item in records if trace_id in {item.external_trace_id, item.assistant_msg_id}),
@@ -158,7 +230,9 @@ async def get_debug_trace_detail(
         raise trace_not_found()
 
     run_statuses = await _run_status_by_message_event_id(db, [record])
-    secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conversation))
+    secrets = tuple(
+        await chat_secrets.collect_conversation_secret_values(db, conversation, context)
+    )
     summary, spans, raw, fallback_reason = await trace_debug_service.build_debug_detail(
         record,
         run_status=run_statuses.get(record.assistant_msg_id),

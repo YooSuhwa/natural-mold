@@ -17,7 +17,13 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.company_catalog import model_scope
+from app.authz.model_access import require_company_model
+from app.authz.org_context import OrgContext
+from app.authz.resource_gate import LLM_MODEL, gate_row
+from app.authz.service import AuthzService
 from app.dependencies import CurrentUser
+from app.error_codes import model_not_found
 from app.models.agent import Agent
 from app.models.model import Model
 from app.schemas.model import ModelCreate, ModelUpdate
@@ -41,9 +47,10 @@ async def resolve_model(db: AsyncSession, model_name: str, *, strict: bool = Fal
     """
 
     order = (Model.is_default.desc(), Model.created_at.asc())
+    platform = model_scope(None)  # a company model (E-07) never resolves by name
 
     result = await db.execute(
-        select(Model).where(Model.display_name == model_name).order_by(*order).limit(1)
+        select(Model).where(platform, Model.display_name == model_name).order_by(*order).limit(1)
     )
     model = result.scalars().first()
     if model:
@@ -53,7 +60,7 @@ async def resolve_model(db: AsyncSession, model_name: str, *, strict: bool = Fal
         provider_part, parsed = model_name.split(":", 1)
         result = await db.execute(
             select(Model)
-            .where(Model.provider == provider_part, Model.model_name == parsed)
+            .where(platform, Model.provider == provider_part, Model.model_name == parsed)
             .order_by(*order)
             .limit(1)
         )
@@ -65,15 +72,17 @@ async def resolve_model(db: AsyncSession, model_name: str, *, strict: bool = Fal
         return None
 
     result = await db.execute(
-        select(Model).where(Model.is_default.is_(True)).order_by(*order).limit(1)
+        select(Model).where(platform, Model.is_default.is_(True)).order_by(*order).limit(1)
     )
     return result.scalars().first()
 
 
-async def list_models(db: AsyncSession, *, include_hidden: bool = False) -> list[dict]:
+async def list_models(
+    db: AsyncSession, *, include_hidden: bool = False, context: OrgContext | None = None
+) -> list[dict]:
     """List models with agent_count. Filters hidden rows by default — only
     super_user surfaces (the ``/models`` admin page) should pass
-    ``include_hidden=True``."""
+    ``include_hidden=True``. Platform models plus the caller company's models (E-07)."""
 
     stmt = (
         select(Model, func.count(Agent.id).label("agent_count"))
@@ -83,13 +92,35 @@ async def list_models(db: AsyncSession, *, include_hidden: bool = False) -> list
     )
     if not include_hidden:
         stmt = stmt.where(Model.is_visible.is_(True))
+    stmt = stmt.where(model_scope(None if include_hidden or not context else context.tenant_id))
     result = await db.execute(stmt)
     return [serialize_model(row[0], agent_count=row[1]) for row in result.all()]
 
 
 async def get_model(db: AsyncSession, model_id: uuid.UUID) -> Model | None:
-    result = await db.execute(select(Model).where(Model.id == model_id))
+    """Platform rows only: company models are managed under /api/tenants (E-07)."""
+    result = await db.execute(select(Model).where(Model.id == model_id, model_scope(None)))
     return result.scalar_one_or_none()
+
+
+async def load_model(
+    db: AsyncSession, model_id: uuid.UUID, context: OrgContext | None, authz: AuthzService
+) -> Model:
+    """Catalog lookup is the legacy answer; ``llm_model#can_use`` decides when consulted.
+
+    ``context`` is None only in legacy mode (``org_context_when_consulted``).
+    """
+
+    async def legacy() -> Model:
+        model = await get_model(db, model_id)
+        if not model:
+            raise model_not_found()
+        return model
+
+    if context is None:
+        return await legacy()
+    model = await gate_row(authz, db, context, LLM_MODEL, model_id, "can_use", legacy)
+    return require_company_model(model, context.tenant_id)
 
 
 def serialize_model(model: Model, *, agent_count: int = 0) -> dict:

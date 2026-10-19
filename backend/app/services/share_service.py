@@ -18,11 +18,31 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
+from app.authz.agent_execution_scope import (
+    AgentExecutionTarget,
+    assert_agent_tree_executable,
+    load_agent_tree_for_execution,
+)
+from app.authz.conversation_scope import (
+    load_private_conversation,
+    require_private_conversation,
+    resolve_conversation_actor,
+)
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.scoping import private_scope_predicate, private_scoped
+from app.error_codes import agent_not_found, public_share_links_disabled
+from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.organization import Organization, Tenant
 from app.models.share_link import ShareLink
+from app.services.agent_lifecycle_locks import read_agent_tree
 
 __all__ = [
     "create_or_get_active_share",
@@ -38,11 +58,21 @@ def _new_token() -> str:
 
 
 async def get_active_share_for_conversation(
-    db: AsyncSession, conversation_id: uuid.UUID
+    db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext
 ) -> ShareLink | None:
+    await require_private_actor(db, context)
     result = await db.execute(
-        select(ShareLink)
+        private_scoped(select(ShareLink), ShareLink, context)
         .where(ShareLink.conversation_id == conversation_id)
+        .where(
+            select(Conversation.id)
+            .where(
+                Conversation.id == ShareLink.conversation_id,
+                private_scope_predicate(Conversation, context),
+            )
+            .exists()
+        )
+        .execution_options(populate_existing=True)
         .where(ShareLink.revoked_at.is_(None))
         .order_by(ShareLink.created_at.desc())
         .limit(1)
@@ -50,17 +80,71 @@ async def get_active_share_for_conversation(
     return result.scalar_one_or_none()
 
 
+async def public_links_allowed(db: AsyncSession, org_id: uuid.UUID) -> bool:
+    """The organization's ``allow_public_share_links`` setting (default on)."""
+    settings = await db.scalar(
+        select(Organization.settings)
+        .where(Organization.id == org_id)
+        .execution_options(autoflush=False)
+    )
+    return (settings or {}).get("allow_public_share_links") is not False
+
+
+async def public_share_open(db: AsyncSession, link: ShareLink) -> bool:
+    """I-08 (8.9 "공개 공유 링크"): the link's own company is active, its organization is
+    active and belongs to that company, and the organization allows public links."""
+    row = (
+        await db.execute(
+            select(Organization.settings)
+            .join(Tenant, Tenant.id == Organization.tenant_id)
+            .where(
+                Organization.id == link.org_id,
+                Organization.tenant_id == link.tenant_id,
+                Organization.status == "active",
+                Tenant.status == "active",
+            )
+            .execution_options(autoflush=False)
+        )
+    ).one_or_none()
+    return row is not None and (row[0] or {}).get("allow_public_share_links") is not False
+
+
+async def share_token_owner(db: AsyncSession, token: str) -> tuple[uuid.UUID, uuid.UUID] | None:
+    """(company, conversation owner) of an active token: rate bucket and session scope only.
+
+    The owner is the identity the public message reads resolve (``resolve_conversation_actor``).
+    """
+    row = (
+        await db.execute(
+            select(ShareLink.tenant_id, Conversation.user_id)
+            .join(Conversation, Conversation.id == ShareLink.conversation_id)
+            .where(ShareLink.share_token == token, ShareLink.revoked_at.is_(None))
+            .execution_options(autoflush=False)
+            .limit(1)
+        )
+    ).one_or_none()
+    return None if row is None else (row.tenant_id, row.user_id)
+
+
 async def create_or_get_active_share(
-    db: AsyncSession, conversation: Conversation, user_id: uuid.UUID
+    db: AsyncSession, conversation: Conversation, context: OrgContext
 ) -> ShareLink:
-    existing = await get_active_share_for_conversation(db, conversation.id)
+    conversation = await require_private_conversation(db, conversation.id, context)
+    if not await public_links_allowed(db, context.org_id):
+        raise public_share_links_disabled()
+    if conversation.agent_id is None:
+        raise agent_not_found()
+    await load_agent_tree_for_execution(db, AgentExecutionTarget(conversation.agent_id, context))
+    existing = await get_active_share_for_conversation(db, conversation.id, context)
     if existing is not None:
         return existing
 
     link = ShareLink(
         share_token=_new_token(),
         conversation_id=conversation.id,
-        created_by=user_id,
+        created_by=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
     )
     db.add(link)
     try:
@@ -70,7 +154,7 @@ async def create_or_get_active_share(
         # ``uq_share_links_active_per_conversation`` (m30) blocks the second
         # active row. Roll back, return the winning row.
         await db.rollback()
-        winner = await get_active_share_for_conversation(db, conversation.id)
+        winner = await get_active_share_for_conversation(db, conversation.id, context)
         if winner is None:
             # Vanishingly unlikely (race + immediate revoke); re-raise.
             raise
@@ -79,15 +163,22 @@ async def create_or_get_active_share(
     return link
 
 
-async def revoke_share(db: AsyncSession, conversation_id: uuid.UUID) -> list[str]:
+async def revoke_share(
+    db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext
+) -> list[str]:
     """Soft-delete every active share link for the conversation.
 
     Returns the list of tokens that were just revoked so the caller can drop
     them from any auth-free snapshot cache. Empty list means the conversation
     had no active share to begin with (idempotent).
     """
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    if await load_private_conversation(db, conversation_id, context) is None:
+        return []
     token_result = await db.execute(
-        select(ShareLink.share_token)
+        private_scoped(select(ShareLink.share_token), ShareLink, context)
         .where(ShareLink.conversation_id == conversation_id)
         .where(ShareLink.revoked_at.is_(None))
     )
@@ -97,6 +188,11 @@ async def revoke_share(db: AsyncSession, conversation_id: uuid.UUID) -> list[str
 
     await db.execute(
         update(ShareLink)
+        .where(
+            ShareLink.org_id == context.org_id,
+            ShareLink.tenant_id == context.tenant_id,
+            ShareLink.created_by == context.user_id,
+        )
         .where(ShareLink.conversation_id == conversation_id)
         .where(ShareLink.revoked_at.is_(None))
         .values(revoked_at=datetime.now(UTC).replace(tzinfo=None))
@@ -109,6 +205,7 @@ async def get_share_by_token(db: AsyncSession, token: str) -> ShareLink | None:
     """Resolve a token to its share row, only when still active."""
     result = await db.execute(
         select(ShareLink)
+        .execution_options(populate_existing=True, autoflush=False)
         .where(ShareLink.share_token == token)
         .where(ShareLink.revoked_at.is_(None))
         .limit(1)
@@ -120,22 +217,54 @@ async def load_share_with_conversation_and_agent(
     db: AsyncSession, token: str
 ) -> tuple[ShareLink, Conversation, Agent] | None:
     """Single-pass fetch for the public view: share → conversation → agent."""
-    result = await db.execute(
-        select(ShareLink)
-        .where(ShareLink.share_token == token)
-        .where(ShareLink.revoked_at.is_(None))
-        .limit(1)
-    )
-    link = result.scalar_one_or_none()
-    if link is None:
-        return None
+    with db.no_autoflush:
+        result = await db.execute(
+            select(ShareLink)
+            .execution_options(populate_existing=True, autoflush=False)
+            .where(ShareLink.share_token == token)
+            .where(ShareLink.revoked_at.is_(None))
+            .limit(1)
+        )
+        link = result.scalar_one_or_none()
+        # Checked on every public read before any snapshot cache, so turning the
+        # setting off or suspending the company takes effect immediately without
+        # keying the cache on it.
+        if link is None or not await public_share_open(db, link):
+            return None
 
-    conv_result = await db.execute(
-        select(Conversation)
-        .options(selectinload(Conversation.agent))
-        .where(Conversation.id == link.conversation_id)
-    )
-    conversation = conv_result.scalar_one_or_none()
-    if conversation is None or conversation.agent is None:
-        return None
-    return link, conversation, conversation.agent
+        conv_result = await db.execute(
+            select(Conversation)
+            .execution_options(populate_existing=True, autoflush=False)
+            .where(Conversation.id == link.conversation_id)
+        )
+        conversation = conv_result.scalar_one_or_none()
+        if conversation is None or conversation.agent_id is None:
+            return None
+        if (link.created_by, link.org_id, link.tenant_id) != (
+            conversation.user_id,
+            conversation.org_id,
+            conversation.tenant_id,
+        ):
+            return None
+        try:
+            await resolve_conversation_actor(db, conversation.id, conversation.user_id)
+            owner_context = OrgContext(
+                org_id=conversation.org_id,
+                tenant_id=conversation.tenant_id,
+                user_id=conversation.user_id,
+            )
+            snapshot = await read_agent_tree(db, conversation.agent_id)
+            assert_agent_tree_executable(snapshot, owner_context)
+        except AppError:
+            return None
+        agent = await db.scalar(
+            select(Agent)
+            .where(
+                Agent.id == conversation.agent_id,
+                private_scope_predicate(Agent, owner_context),
+            )
+            .execution_options(populate_existing=True, autoflush=False)
+        )
+        if agent is None:
+            return None
+        return link, conversation, agent

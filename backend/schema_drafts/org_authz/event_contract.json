@@ -1,0 +1,2973 @@
+[
+  {
+    "source_cells": [
+      "조직 생성",
+      "organizations, 생성자 구성원·관리자",
+      "tenant:T tenant org, 생성자 member·admin, 허용된 시스템 자원마다 allowed_org·consumer",
+      "-",
+      "-"
+    ],
+    "db": [
+      {
+        "table": "organizations",
+        "columns": [
+          "id",
+          "tenant_id",
+          "status",
+          "settings",
+          "authz_epoch"
+        ],
+        "mutation": "organizations, 생성자 구성원·관리자"
+      },
+      {
+        "table": "organization_members",
+        "columns": [
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "status",
+          "removed_at"
+        ],
+        "mutation": "organizations, 생성자 구성원·관리자"
+      },
+      {
+        "table": "organization_role_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "role",
+          "principal_type",
+          "principal_id"
+        ],
+        "mutation": "organizations, 생성자 구성원·관리자"
+      },
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "organizations, 생성자 구성원·관리자"
+      }
+    ],
+    "writes": [
+      {
+        "template": "tenant:T tenant organization:O; user:creator member/admin organization:O",
+        "sources": [
+          {
+            "table": "organizations",
+            "columns": [
+              "id",
+              "tenant_id",
+              "status",
+              "settings",
+              "authz_epoch"
+            ],
+            "mutation": "organizations, 생성자 구성원·관리자"
+          },
+          {
+            "table": "organization_members",
+            "columns": [
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "status",
+              "removed_at"
+            ],
+            "mutation": "organizations, 생성자 구성원·관리자"
+          },
+          {
+            "table": "organization_role_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "role",
+              "principal_type",
+              "principal_id"
+            ],
+            "mutation": "organizations, 생성자 구성원·관리자"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "organizations, 생성자 구성원·관리자"
+          }
+        ]
+      },
+      {
+        "template": "organization:O allowed_org tool|skill|mcp_server:SYS; organization:O#member consumer SYS; llm_model consumer and marketplace_item viewer fanout by type",
+        "sources": [
+          {
+            "table": "organizations",
+            "columns": [
+              "id",
+              "tenant_id",
+              "status",
+              "settings",
+              "authz_epoch"
+            ],
+            "mutation": "organizations, 생성자 구성원·관리자"
+          },
+          {
+            "table": "organization_members",
+            "columns": [
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "status",
+              "removed_at"
+            ],
+            "mutation": "organizations, 생성자 구성원·관리자"
+          },
+          {
+            "table": "organization_role_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "role",
+              "principal_type",
+              "principal_id"
+            ],
+            "mutation": "organizations, 생성자 구성원·관리자"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "organizations, 생성자 구성원·관리자"
+          }
+        ]
+      }
+    ],
+    "deletes": [],
+    "scopes": [],
+    "marker_target": "none",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [],
+    "resolution": null
+  },
+  {
+    "source_cells": [
+      "구성원 추가(초대 수락)",
+      "organization_members active, 필요 시 tenant_members",
+      "user member org, user member tenant",
+      "-",
+      "-"
+    ],
+    "db": [
+      {
+        "table": "organization_members",
+        "columns": [
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "status",
+          "removed_at"
+        ],
+        "mutation": "organization_members active, 필요 시 tenant_members"
+      },
+      {
+        "table": "tenant_members",
+        "columns": [
+          "tenant_id",
+          "user_id",
+          "status"
+        ],
+        "mutation": "organization_members active, 필요 시 tenant_members"
+      },
+      {
+        "table": "org_invitations",
+        "columns": [
+          "id",
+          "accepted_at",
+          "accepted_by"
+        ],
+        "mutation": "organization_members active, 필요 시 tenant_members"
+      }
+    ],
+    "writes": [
+      {
+        "template": "user:U member organization:O; user:U member tenant:T (only when needed)",
+        "sources": [
+          {
+            "table": "organization_members",
+            "columns": [
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "status",
+              "removed_at"
+            ],
+            "mutation": "organization_members active, 필요 시 tenant_members"
+          },
+          {
+            "table": "tenant_members",
+            "columns": [
+              "tenant_id",
+              "user_id",
+              "status"
+            ],
+            "mutation": "organization_members active, 필요 시 tenant_members"
+          },
+          {
+            "table": "org_invitations",
+            "columns": [
+              "id",
+              "accepted_at",
+              "accepted_by"
+            ],
+            "mutation": "organization_members active, 필요 시 tenant_members"
+          }
+        ]
+      }
+    ],
+    "deletes": [],
+    "scopes": [],
+    "marker_target": "none",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [],
+    "resolution": null
+  },
+  {
+    "source_cells": [
+      "구성원 제거",
+      "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제",
+      "-",
+      "조직 구성원·역할·기능 권한 튜플, 그룹 구성원 튜플, 직접 grant 튜플",
+      "membership"
+    ],
+    "db": [
+      {
+        "table": "organization_members",
+        "columns": [
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "status",
+          "removed_at"
+        ],
+        "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+      },
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+      },
+      {
+        "table": "groups",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id"
+        ],
+        "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+      },
+      {
+        "table": "group_members",
+        "columns": [
+          "group_id",
+          "org_id",
+          "tenant_id",
+          "user_id"
+        ],
+        "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+      },
+      {
+        "table": "organization_role_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "role",
+          "principal_type",
+          "principal_id"
+        ],
+        "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+      },
+      {
+        "table": "org_capability_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "capability",
+          "principal_type",
+          "principal_id"
+        ],
+        "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+      }
+    ],
+    "writes": [],
+    "deletes": [
+      {
+        "template": "user:U member organization:O; roles/capabilities on O; user:U member group:G; direct grants to U",
+        "sources": [
+          {
+            "table": "organization_members",
+            "columns": [
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "status",
+              "removed_at"
+            ],
+            "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+          },
+          {
+            "table": "groups",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id"
+            ],
+            "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+          },
+          {
+            "table": "group_members",
+            "columns": [
+              "group_id",
+              "org_id",
+              "tenant_id",
+              "user_id"
+            ],
+            "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+          },
+          {
+            "table": "organization_role_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "role",
+              "principal_type",
+              "principal_id"
+            ],
+            "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+          },
+          {
+            "table": "org_capability_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "capability",
+              "principal_type",
+              "principal_id"
+            ],
+            "mutation": "구성원 removed, 그 사람에게 준 grant revoking, group_members 삭제"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "membership"
+    ],
+    "marker_target": "user:U, organization:O; reject all checks for U in O while pending",
+    "write_order": [],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": "R2"
+  },
+  {
+    "source_cells": [
+      "역할 부여·회수",
+      "organization_role_grants, tenant_role_grants",
+      "부여: 역할 튜플",
+      "회수: 역할 튜플",
+      "회수 시 role"
+    ],
+    "db": [
+      {
+        "table": "organization_role_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "role",
+          "principal_type",
+          "principal_id"
+        ],
+        "mutation": "organization_role_grants, tenant_role_grants"
+      },
+      {
+        "table": "tenant_role_grants",
+        "columns": [
+          "id",
+          "tenant_id",
+          "user_id",
+          "role"
+        ],
+        "mutation": "organization_role_grants, tenant_role_grants"
+      }
+    ],
+    "writes": [
+      {
+        "template": "principal role organization:O or user:U role tenant:T",
+        "sources": [
+          {
+            "table": "organization_role_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "role",
+              "principal_type",
+              "principal_id"
+            ],
+            "mutation": "organization_role_grants, tenant_role_grants"
+          },
+          {
+            "table": "tenant_role_grants",
+            "columns": [
+              "id",
+              "tenant_id",
+              "user_id",
+              "role"
+            ],
+            "mutation": "organization_role_grants, tenant_role_grants"
+          }
+        ]
+      }
+    ],
+    "deletes": [
+      {
+        "template": "same pre-change role tuple",
+        "sources": [
+          {
+            "table": "organization_role_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "role",
+              "principal_type",
+              "principal_id"
+            ],
+            "mutation": "organization_role_grants, tenant_role_grants"
+          },
+          {
+            "table": "tenant_role_grants",
+            "columns": [
+              "id",
+              "tenant_id",
+              "user_id",
+              "role"
+            ],
+            "mutation": "organization_role_grants, tenant_role_grants"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "role"
+    ],
+    "marker_target": "role principal and organization; tenant-role removals enumerate tenant organizations",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": "R3"
+  },
+  {
+    "source_cells": [
+      "그룹 구성원 추가·제거",
+      "group_members",
+      "추가: user member group",
+      "제거: 같은 튜플",
+      "제거 시 group_member"
+    ],
+    "db": [
+      {
+        "table": "groups",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id"
+        ],
+        "mutation": "group_members"
+      },
+      {
+        "table": "group_members",
+        "columns": [
+          "group_id",
+          "org_id",
+          "tenant_id",
+          "user_id"
+        ],
+        "mutation": "group_members"
+      }
+    ],
+    "writes": [
+      {
+        "template": "user:U member group:G",
+        "sources": [
+          {
+            "table": "groups",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id"
+            ],
+            "mutation": "group_members"
+          },
+          {
+            "table": "group_members",
+            "columns": [
+              "group_id",
+              "org_id",
+              "tenant_id",
+              "user_id"
+            ],
+            "mutation": "group_members"
+          }
+        ]
+      }
+    ],
+    "deletes": [
+      {
+        "template": "same pre-change user:U member group:G",
+        "sources": [
+          {
+            "table": "groups",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id"
+            ],
+            "mutation": "group_members"
+          },
+          {
+            "table": "group_members",
+            "columns": [
+              "group_id",
+              "org_id",
+              "tenant_id",
+              "user_id"
+            ],
+            "mutation": "group_members"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "group_member"
+    ],
+    "marker_target": "removed user:U in group organization:O",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": null
+  },
+  {
+    "source_cells": [
+      "그룹 삭제",
+      "groups 삭제, 그룹 대상 grant·기능 권한·역할 revoking",
+      "-",
+      "group:G#member가 주체인 모든 튜플, group org, 구성원 튜플",
+      "group_member(구성원 전원)"
+    ],
+    "db": [
+      {
+        "table": "groups",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id"
+        ],
+        "mutation": "groups 삭제, 그룹 대상 grant·기능 권한·역할 revoking"
+      },
+      {
+        "table": "group_members",
+        "columns": [
+          "group_id",
+          "org_id",
+          "tenant_id",
+          "user_id"
+        ],
+        "mutation": "groups 삭제, 그룹 대상 grant·기능 권한·역할 revoking"
+      },
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "groups 삭제, 그룹 대상 grant·기능 권한·역할 revoking"
+      },
+      {
+        "table": "organization_role_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "role",
+          "principal_type",
+          "principal_id"
+        ],
+        "mutation": "groups 삭제, 그룹 대상 grant·기능 권한·역할 revoking"
+      },
+      {
+        "table": "org_capability_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "capability",
+          "principal_type",
+          "principal_id"
+        ],
+        "mutation": "groups 삭제, 그룹 대상 grant·기능 권한·역할 revoking"
+      }
+    ],
+    "writes": [],
+    "deletes": [
+      {
+        "template": "all tuples with subject group:G#member; organization:O org group:G; user:U member group:G",
+        "sources": [
+          {
+            "table": "groups",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id"
+            ],
+            "mutation": "groups 삭제, 그룹 대상 grant·기능 권한·역할 revoking"
+          },
+          {
+            "table": "group_members",
+            "columns": [
+              "group_id",
+              "org_id",
+              "tenant_id",
+              "user_id"
+            ],
+            "mutation": "groups 삭제, 그룹 대상 grant·기능 권한·역할 revoking"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "groups 삭제, 그룹 대상 grant·기능 권한·역할 revoking"
+          },
+          {
+            "table": "organization_role_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "role",
+              "principal_type",
+              "principal_id"
+            ],
+            "mutation": "groups 삭제, 그룹 대상 grant·기능 권한·역할 revoking"
+          },
+          {
+            "table": "org_capability_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "capability",
+              "principal_type",
+              "principal_id"
+            ],
+            "mutation": "groups 삭제, 그룹 대상 grant·기능 권한·역할 revoking"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "group_member"
+    ],
+    "marker_target": "one marker per pre-delete group member user:U, organization:O",
+    "write_order": [],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": "R2"
+  },
+  {
+    "source_cells": [
+      "기능 권한 부여·회수",
+      "org_capability_grants",
+      "부여: cap_* 튜플",
+      "회수: 같은 튜플",
+      "회수 시 capability"
+    ],
+    "db": [
+      {
+        "table": "org_capability_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "capability",
+          "principal_type",
+          "principal_id"
+        ],
+        "mutation": "org_capability_grants"
+      }
+    ],
+    "writes": [
+      {
+        "template": "principal cap_* organization:O",
+        "sources": [
+          {
+            "table": "org_capability_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "capability",
+              "principal_type",
+              "principal_id"
+            ],
+            "mutation": "org_capability_grants"
+          }
+        ]
+      }
+    ],
+    "deletes": [
+      {
+        "template": "same pre-change capability tuple",
+        "sources": [
+          {
+            "table": "org_capability_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "capability",
+              "principal_type",
+              "principal_id"
+            ],
+            "mutation": "org_capability_grants"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "capability"
+    ],
+    "marker_target": "capability principal, organization:O",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": null
+  },
+  {
+    "source_cells": [
+      "자원 생성",
+      "자원 행(org_id, tenant_id, 소유자)",
+      "org, owner, 에이전트는 resident_agent, 마켓플레이스 항목은 tenant",
+      "-",
+      "-"
+    ],
+    "db": [
+      {
+        "table": "agents",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "archived_at"
+        ],
+        "mutation": "자원 행(org_id, tenant_id, 소유자)"
+      },
+      {
+        "table": "skills",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "자원 행(org_id, tenant_id, 소유자)"
+      },
+      {
+        "table": "tools",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "자원 행(org_id, tenant_id, 소유자)"
+      },
+      {
+        "table": "mcp_servers",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "자원 행(org_id, tenant_id, 소유자)"
+      },
+      {
+        "table": "credentials",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system",
+          "scope"
+        ],
+        "mutation": "자원 행(org_id, tenant_id, 소유자)"
+      },
+      {
+        "table": "marketplace_items",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "owner_user_id",
+          "is_system"
+        ],
+        "mutation": "자원 행(org_id, tenant_id, 소유자)"
+      }
+    ],
+    "writes": [
+      {
+        "template": "organization:O org R; user:OWNER owner R (non-system only)",
+        "sources": [
+          {
+            "table": "agents",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "archived_at"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          },
+          {
+            "table": "skills",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          },
+          {
+            "table": "tools",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          },
+          {
+            "table": "mcp_servers",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          },
+          {
+            "table": "credentials",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system",
+              "scope"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          },
+          {
+            "table": "marketplace_items",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "owner_user_id",
+              "is_system"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          }
+        ]
+      },
+      {
+        "template": "agent:A resident_agent organization:O; tenant:T tenant marketplace_item:I",
+        "sources": [
+          {
+            "table": "agents",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "archived_at"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          },
+          {
+            "table": "skills",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          },
+          {
+            "table": "tools",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          },
+          {
+            "table": "mcp_servers",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          },
+          {
+            "table": "credentials",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system",
+              "scope"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          },
+          {
+            "table": "marketplace_items",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "owner_user_id",
+              "is_system"
+            ],
+            "mutation": "자원 행(org_id, tenant_id, 소유자)"
+          }
+        ]
+      }
+    ],
+    "deletes": [],
+    "scopes": [],
+    "marker_target": "none",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [],
+    "resolution": "R4"
+  },
+  {
+    "source_cells": [
+      "공유 추가",
+      "resource_grants active",
+      "주체 관계 튜플(만료가 있으면 조건 포함)",
+      "-",
+      "-"
+    ],
+    "db": [
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "resource_grants active"
+      }
+    ],
+    "writes": [
+      {
+        "template": "principal relation R with condition_name/context or non_expired_grant(grant_time,grant_duration)",
+        "sources": [
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "resource_grants active"
+          }
+        ]
+      }
+    ],
+    "deletes": [],
+    "scopes": [],
+    "marker_target": "none",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [],
+    "resolution": "R8"
+  },
+  {
+    "source_cells": [
+      "공유 회수·만료",
+      "grant revoking → revoked",
+      "-",
+      "같은 튜플",
+      "grant"
+    ],
+    "db": [
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "grant revoking → revoked"
+      }
+    ],
+    "writes": [],
+    "deletes": [
+      {
+        "template": "same exact pre-change conditioned grant tuple",
+        "sources": [
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "grant revoking → revoked"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "grant"
+    ],
+    "marker_target": "grant principal, object R, organization:O",
+    "write_order": [],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": "R8"
+  },
+  {
+    "source_cells": [
+      "위임 연결·해제",
+      "grant grant_kind=delegation, source_link",
+      "agent:A consumer R(MCP 서버는 allowed_run_source 조건 필수)",
+      "해제: 같은 튜플",
+      "해제 시 grant"
+    ],
+    "db": [
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "grant grant_kind=delegation, source_link"
+      },
+      {
+        "table": "agent_tools",
+        "columns": [
+          "agent_id",
+          "tool_id",
+          "delegated_by",
+          "link_status",
+          "broken_reason"
+        ],
+        "mutation": "grant grant_kind=delegation, source_link"
+      },
+      {
+        "table": "agent_mcp_tools",
+        "columns": [
+          "agent_id",
+          "mcp_tool_id",
+          "delegated_by",
+          "link_status",
+          "broken_reason"
+        ],
+        "mutation": "grant grant_kind=delegation, source_link"
+      },
+      {
+        "table": "agent_skills",
+        "columns": [
+          "agent_id",
+          "skill_id",
+          "delegated_by",
+          "link_status",
+          "broken_reason"
+        ],
+        "mutation": "grant grant_kind=delegation, source_link"
+      },
+      {
+        "table": "agent_subagents",
+        "columns": [
+          "parent_agent_id",
+          "sub_agent_id",
+          "delegated_by",
+          "link_status",
+          "broken_reason"
+        ],
+        "mutation": "grant grant_kind=delegation, source_link"
+      },
+      {
+        "table": "agents",
+        "columns": [
+          "id",
+          "llm_credential_id",
+          "llm_credential_delegated_by"
+        ],
+        "mutation": "grant grant_kind=delegation, source_link"
+      }
+    ],
+    "writes": [
+      {
+        "template": "agent:A consumer R; MCP server requires allowed_run_source condition",
+        "sources": [
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          },
+          {
+            "table": "agent_tools",
+            "columns": [
+              "agent_id",
+              "tool_id",
+              "delegated_by",
+              "link_status",
+              "broken_reason"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          },
+          {
+            "table": "agent_mcp_tools",
+            "columns": [
+              "agent_id",
+              "mcp_tool_id",
+              "delegated_by",
+              "link_status",
+              "broken_reason"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          },
+          {
+            "table": "agent_skills",
+            "columns": [
+              "agent_id",
+              "skill_id",
+              "delegated_by",
+              "link_status",
+              "broken_reason"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          },
+          {
+            "table": "agent_subagents",
+            "columns": [
+              "parent_agent_id",
+              "sub_agent_id",
+              "delegated_by",
+              "link_status",
+              "broken_reason"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          },
+          {
+            "table": "agents",
+            "columns": [
+              "id",
+              "llm_credential_id",
+              "llm_credential_delegated_by"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          }
+        ]
+      }
+    ],
+    "deletes": [
+      {
+        "template": "same pre-change delegation tuple on disconnect",
+        "sources": [
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          },
+          {
+            "table": "agent_tools",
+            "columns": [
+              "agent_id",
+              "tool_id",
+              "delegated_by",
+              "link_status",
+              "broken_reason"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          },
+          {
+            "table": "agent_mcp_tools",
+            "columns": [
+              "agent_id",
+              "mcp_tool_id",
+              "delegated_by",
+              "link_status",
+              "broken_reason"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          },
+          {
+            "table": "agent_skills",
+            "columns": [
+              "agent_id",
+              "skill_id",
+              "delegated_by",
+              "link_status",
+              "broken_reason"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          },
+          {
+            "table": "agent_subagents",
+            "columns": [
+              "parent_agent_id",
+              "sub_agent_id",
+              "delegated_by",
+              "link_status",
+              "broken_reason"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          },
+          {
+            "table": "agents",
+            "columns": [
+              "id",
+              "llm_credential_id",
+              "llm_credential_delegated_by"
+            ],
+            "mutation": "grant grant_kind=delegation, source_link"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "grant"
+    ],
+    "marker_target": "agent:A, target R, organization:O",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": "R8"
+  },
+  {
+    "source_cells": [
+      "소유권 이전",
+      "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant",
+      "새 owner, 선택한 manager",
+      "이전 owner",
+      "ownership"
+    ],
+    "db": [
+      {
+        "table": "agents",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "archived_at"
+        ],
+        "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+      },
+      {
+        "table": "skills",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+      },
+      {
+        "table": "tools",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+      },
+      {
+        "table": "mcp_servers",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+      },
+      {
+        "table": "credentials",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system",
+          "scope"
+        ],
+        "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+      },
+      {
+        "table": "marketplace_items",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "owner_user_id",
+          "is_system"
+        ],
+        "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+      },
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+      }
+    ],
+    "writes": [
+      {
+        "template": "user:NEW owner R; optional user:OLD manager R",
+        "sources": [
+          {
+            "table": "agents",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "archived_at"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "skills",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "tools",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "mcp_servers",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "credentials",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system",
+              "scope"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "marketplace_items",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "owner_user_id",
+              "is_system"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          }
+        ]
+      }
+    ],
+    "deletes": [
+      {
+        "template": "user:OLD owner R",
+        "sources": [
+          {
+            "table": "agents",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "archived_at"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "skills",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "tools",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "mcp_servers",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "credentials",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system",
+              "scope"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "marketplace_items",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "owner_user_id",
+              "is_system"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "자원 소유자 열 변경, 선택 시 이전 소유자 관리 grant"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "ownership"
+    ],
+    "marker_target": "old owner, R, organization:O",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": "R4"
+  },
+  {
+    "source_cells": [
+      "에이전트 보관",
+      "archived_at, 트리거·배포 정지, 공유 grant revoking",
+      "-",
+      "공유·위임 튜플(소유자·조직·거주 튜플은 유지)",
+      "resource"
+    ],
+    "db": [
+      {
+        "table": "agents",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "archived_at",
+          "archived_by"
+        ],
+        "mutation": "archived_at, 트리거·배포 정지, 공유 grant revoking"
+      },
+      {
+        "table": "agent_triggers",
+        "columns": [
+          "id",
+          "agent_id",
+          "status"
+        ],
+        "mutation": "archived_at, 트리거·배포 정지, 공유 grant revoking"
+      },
+      {
+        "table": "agent_deployments",
+        "columns": [
+          "id",
+          "agent_id",
+          "status"
+        ],
+        "mutation": "archived_at, 트리거·배포 정지, 공유 grant revoking"
+      },
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "archived_at, 트리거·배포 정지, 공유 grant revoking"
+      }
+    ],
+    "writes": [],
+    "deletes": [
+      {
+        "template": "sharing/delegation tuples targeting A and delegation tuples with subject agent:A; retain owner/org/resident_agent",
+        "sources": [
+          {
+            "table": "agents",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "archived_at",
+              "archived_by"
+            ],
+            "mutation": "archived_at, 트리거·배포 정지, 공유 grant revoking"
+          },
+          {
+            "table": "agent_triggers",
+            "columns": [
+              "id",
+              "agent_id",
+              "status"
+            ],
+            "mutation": "archived_at, 트리거·배포 정지, 공유 grant revoking"
+          },
+          {
+            "table": "agent_deployments",
+            "columns": [
+              "id",
+              "agent_id",
+              "status"
+            ],
+            "mutation": "archived_at, 트리거·배포 정지, 공유 grant revoking"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "archived_at, 트리거·배포 정지, 공유 grant revoking"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "resource"
+    ],
+    "marker_target": "agent:A in organization:O; deny run/share/trigger/deploy immediately",
+    "write_order": [],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": "R1"
+  },
+  {
+    "source_cells": [
+      "자원 삭제",
+      "행 삭제",
+      "-",
+      "그 객체의 모든 튜플, 에이전트면 그 에이전트가 주체인 튜플",
+      "resource"
+    ],
+    "db": [
+      {
+        "table": "agents",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "archived_at"
+        ],
+        "mutation": "행 삭제"
+      },
+      {
+        "table": "skills",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "행 삭제"
+      },
+      {
+        "table": "tools",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "행 삭제"
+      },
+      {
+        "table": "mcp_servers",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "행 삭제"
+      },
+      {
+        "table": "credentials",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system",
+          "scope"
+        ],
+        "mutation": "행 삭제"
+      },
+      {
+        "table": "marketplace_items",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "owner_user_id",
+          "is_system"
+        ],
+        "mutation": "행 삭제"
+      },
+      {
+        "table": "mcp_tools",
+        "columns": [
+          "id",
+          "server_id"
+        ],
+        "mutation": "행 삭제"
+      },
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "행 삭제"
+      }
+    ],
+    "writes": [],
+    "deletes": [
+      {
+        "template": "all tuples with object R; if agent all tuples with subject agent:A",
+        "sources": [
+          {
+            "table": "agents",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "archived_at"
+            ],
+            "mutation": "행 삭제"
+          },
+          {
+            "table": "skills",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "행 삭제"
+          },
+          {
+            "table": "tools",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "행 삭제"
+          },
+          {
+            "table": "mcp_servers",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "행 삭제"
+          },
+          {
+            "table": "credentials",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system",
+              "scope"
+            ],
+            "mutation": "행 삭제"
+          },
+          {
+            "table": "marketplace_items",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "owner_user_id",
+              "is_system"
+            ],
+            "mutation": "행 삭제"
+          },
+          {
+            "table": "mcp_tools",
+            "columns": [
+              "id",
+              "server_id"
+            ],
+            "mutation": "행 삭제"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "행 삭제"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "resource"
+    ],
+    "marker_target": "deleted R and its organization; capture tuples before deleting source rows",
+    "write_order": [],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": null
+  },
+  {
+    "source_cells": [
+      "카탈로그 항목 켜기·끄기",
+      "조직 카탈로그 정책",
+      "켜기: allowed_org·consumer",
+      "끄기: 같은 튜플",
+      "끄기 시 resource(조직 범위)"
+    ],
+    "db": [
+      {
+        "table": "organizations",
+        "columns": [
+          "id",
+          "tenant_id",
+          "status",
+          "settings",
+          "authz_epoch"
+        ],
+        "mutation": "조직 카탈로그 정책"
+      },
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "조직 카탈로그 정책"
+      },
+      {
+        "table": "models",
+        "columns": [
+          "id",
+          "tenant_id",
+          "is_visible"
+        ],
+        "mutation": "조직 카탈로그 정책"
+      }
+    ],
+    "writes": [
+      {
+        "template": "organization:O allowed_org tool|skill|mcp_server:SYS; organization:O#member consumer SYS; llm_model consumer only and marketplace_item viewer only",
+        "sources": [
+          {
+            "table": "organizations",
+            "columns": [
+              "id",
+              "tenant_id",
+              "status",
+              "settings",
+              "authz_epoch"
+            ],
+            "mutation": "조직 카탈로그 정책"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "조직 카탈로그 정책"
+          },
+          {
+            "table": "models",
+            "columns": [
+              "id",
+              "tenant_id",
+              "is_visible"
+            ],
+            "mutation": "조직 카탈로그 정책"
+          }
+        ]
+      }
+    ],
+    "deletes": [
+      {
+        "template": "same catalog tuples for organization:O",
+        "sources": [
+          {
+            "table": "organizations",
+            "columns": [
+              "id",
+              "tenant_id",
+              "status",
+              "settings",
+              "authz_epoch"
+            ],
+            "mutation": "조직 카탈로그 정책"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "조직 카탈로그 정책"
+          },
+          {
+            "table": "models",
+            "columns": [
+              "id",
+              "tenant_id",
+              "is_visible"
+            ],
+            "mutation": "조직 카탈로그 정책"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "resource"
+    ],
+    "marker_target": "disabled catalog R only in organization:O",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": "R5"
+  },
+  {
+    "source_cells": [
+      "회사 공용 자격증명 허용 조직 변경",
+      "resource_grants(allowed_org, consumer)",
+      "추가된 조직 튜플",
+      "빠진 조직 튜플",
+      "빠진 조직마다 grant"
+    ],
+    "db": [
+      {
+        "table": "credentials",
+        "columns": [
+          "id",
+          "tenant_id",
+          "scope"
+        ],
+        "mutation": "resource_grants(allowed_org, consumer)"
+      },
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "resource_grants(allowed_org, consumer)"
+      }
+    ],
+    "writes": [
+      {
+        "template": "organization:ADDED allowed_org credential:C; organization:ADDED#member consumer credential:C",
+        "sources": [
+          {
+            "table": "credentials",
+            "columns": [
+              "id",
+              "tenant_id",
+              "scope"
+            ],
+            "mutation": "resource_grants(allowed_org, consumer)"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "resource_grants(allowed_org, consumer)"
+          }
+        ]
+      }
+    ],
+    "deletes": [
+      {
+        "template": "same tuples for each removed organization",
+        "sources": [
+          {
+            "table": "credentials",
+            "columns": [
+              "id",
+              "tenant_id",
+              "scope"
+            ],
+            "mutation": "resource_grants(allowed_org, consumer)"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "resource_grants(allowed_org, consumer)"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "grant"
+    ],
+    "marker_target": "one marker per removed organization and credential:C",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": null
+  },
+  {
+    "source_cells": [
+      "마켓플레이스 게시·회사 공개",
+      "항목·게시 링크·grant",
+      "org, tenant, owner, 공개 범위에 따라 org#member 또는 tenant#member의 viewer·installer",
+      "비공개 전환 시 공개 튜플",
+      "비공개 전환 시 grant"
+    ],
+    "db": [
+      {
+        "table": "marketplace_items",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "owner_user_id",
+          "is_system",
+          "visibility",
+          "tenant_publication"
+        ],
+        "mutation": "항목·게시 링크·grant"
+      },
+      {
+        "table": "marketplace_publication_links",
+        "columns": [
+          "id",
+          "item_id",
+          "source_agent_id",
+          "source_mcp_server_id",
+          "source_skill_id",
+          "resource_type"
+        ],
+        "mutation": "항목·게시 링크·grant"
+      },
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "항목·게시 링크·grant"
+      }
+    ],
+    "writes": [
+      {
+        "template": "organization:O org I; tenant:T tenant I; user:OWNER owner I; org/tenant#member viewer/installer I",
+        "sources": [
+          {
+            "table": "marketplace_items",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "owner_user_id",
+              "is_system",
+              "visibility",
+              "tenant_publication"
+            ],
+            "mutation": "항목·게시 링크·grant"
+          },
+          {
+            "table": "marketplace_publication_links",
+            "columns": [
+              "id",
+              "item_id",
+              "source_agent_id",
+              "source_mcp_server_id",
+              "source_skill_id",
+              "resource_type"
+            ],
+            "mutation": "항목·게시 링크·grant"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "항목·게시 링크·grant"
+          }
+        ]
+      }
+    ],
+    "deletes": [
+      {
+        "template": "old public viewer/installer tuples when scope narrows",
+        "sources": [
+          {
+            "table": "marketplace_items",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "owner_user_id",
+              "is_system",
+              "visibility",
+              "tenant_publication"
+            ],
+            "mutation": "항목·게시 링크·grant"
+          },
+          {
+            "table": "marketplace_publication_links",
+            "columns": [
+              "id",
+              "item_id",
+              "source_agent_id",
+              "source_mcp_server_id",
+              "source_skill_id",
+              "resource_type"
+            ],
+            "mutation": "항목·게시 링크·grant"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "항목·게시 링크·grant"
+          }
+        ]
+      }
+    ],
+    "scopes": [
+      "grant"
+    ],
+    "marker_target": "removed public audience, marketplace_item:I, each affected organization",
+    "write_order": [
+      "source_and_outbox_commit",
+      "fga_write"
+    ],
+    "delete_order": [
+      "marker_and_source_and_outbox_commit",
+      "fga_delete",
+      "finalize_marker"
+    ],
+    "resolution": "R4"
+  },
+  {
+    "source_cells": [
+      "회사 정지, 조직 보관",
+      "tenants.status, organizations.status",
+      "-",
+      "-(튜플 유지, 요청 단계에서 403)",
+      "-"
+    ],
+    "db": [
+      {
+        "table": "tenants",
+        "columns": [
+          "id",
+          "status"
+        ],
+        "mutation": "tenants.status, organizations.status"
+      },
+      {
+        "table": "organizations",
+        "columns": [
+          "id",
+          "tenant_id",
+          "status",
+          "settings",
+          "authz_epoch"
+        ],
+        "mutation": "tenants.status, organizations.status"
+      }
+    ],
+    "writes": [],
+    "deletes": [],
+    "scopes": [],
+    "marker_target": "none; request status gate rejects 403",
+    "write_order": [],
+    "delete_order": [
+      "request_status_gate"
+    ],
+    "resolution": "R6"
+  },
+  {
+    "source_cells": [
+      "회사 영구 삭제",
+      "회사 행과 하위 데이터 삭제(I-07)",
+      "-",
+      "회사·조직·자원 객체의 모든 튜플(일괄 삭제 작업)",
+      "-"
+    ],
+    "db": [
+      {
+        "table": "tenants",
+        "columns": [
+          "id",
+          "status",
+          "deletion_due_at"
+        ],
+        "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+      },
+      {
+        "table": "organizations",
+        "columns": [
+          "id",
+          "tenant_id",
+          "status",
+          "settings",
+          "authz_epoch"
+        ],
+        "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+      },
+      {
+        "table": "agents",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "archived_at"
+        ],
+        "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+      },
+      {
+        "table": "skills",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+      },
+      {
+        "table": "tools",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+      },
+      {
+        "table": "mcp_servers",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system"
+        ],
+        "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+      },
+      {
+        "table": "credentials",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "user_id",
+          "is_system",
+          "scope"
+        ],
+        "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+      },
+      {
+        "table": "marketplace_items",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "owner_user_id",
+          "is_system"
+        ],
+        "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+      },
+      {
+        "table": "resource_grants",
+        "columns": [
+          "id",
+          "org_id",
+          "tenant_id",
+          "state",
+          "resource_type",
+          "resource_id",
+          "relation",
+          "principal_type",
+          "principal_id",
+          "grant_kind",
+          "condition_name",
+          "condition_context",
+          "expires_at",
+          "granted_at",
+          "revoked_at",
+          "revoked_by"
+        ],
+        "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+      }
+    ],
+    "writes": [],
+    "deletes": [
+      {
+        "template": "all tuple objects for tenant, its organizations/resources; all usersets/agent subjects in deleted scope",
+        "sources": [
+          {
+            "table": "tenants",
+            "columns": [
+              "id",
+              "status",
+              "deletion_due_at"
+            ],
+            "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+          },
+          {
+            "table": "organizations",
+            "columns": [
+              "id",
+              "tenant_id",
+              "status",
+              "settings",
+              "authz_epoch"
+            ],
+            "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+          },
+          {
+            "table": "agents",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "archived_at"
+            ],
+            "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+          },
+          {
+            "table": "skills",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+          },
+          {
+            "table": "tools",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+          },
+          {
+            "table": "mcp_servers",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system"
+            ],
+            "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+          },
+          {
+            "table": "credentials",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "user_id",
+              "is_system",
+              "scope"
+            ],
+            "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+          },
+          {
+            "table": "marketplace_items",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "owner_user_id",
+              "is_system"
+            ],
+            "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+          },
+          {
+            "table": "resource_grants",
+            "columns": [
+              "id",
+              "org_id",
+              "tenant_id",
+              "state",
+              "resource_type",
+              "resource_id",
+              "relation",
+              "principal_type",
+              "principal_id",
+              "grant_kind",
+              "condition_name",
+              "condition_context",
+              "expires_at",
+              "granted_at",
+              "revoked_at",
+              "revoked_by"
+            ],
+            "mutation": "회사 행과 하위 데이터 삭제(I-07)"
+          }
+        ]
+      }
+    ],
+    "scopes": [],
+    "marker_target": "tenant deletion gate stays closed throughout purge; no per-resource revocation row",
+    "write_order": [],
+    "delete_order": [
+      "tenant_deletion_gate",
+      "source_and_outbox_commit",
+      "fga_delete"
+    ],
+    "resolution": "R7"
+  }
+]

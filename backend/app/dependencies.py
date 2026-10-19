@@ -15,15 +15,27 @@ import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.auth.jwt import InvalidTokenError, decode_token
+from app.authz.org_context import OrgContext, resolve_org_context
 from app.config import settings
-from app.database import async_session, close_session_shielded
+from app.database import (
+    bind_identity,
+    bind_platform,
+    bind_tenant,
+    close_session_shielded,
+    identity_scope,
+    tenant_session,
+)
 from app.exceptions import AppError
 from app.models.conversation import Conversation
 from app.services import user_service
+from app.tenancy.context import TenantContext, tenant_context_from_org
+from app.tenancy.deployment import require_platform_tenant_management
+from app.tenancy.session_binding import bind_company_once, is_unbound
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +61,23 @@ class CurrentUser:
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    session = async_session()
+    # Unbound company session (B-13): ``get_org_context`` binds it once the
+    # caller's company is resolved; every later transaction re-applies it.
+    session = tenant_session(None)
     try:
         yield session
     finally:
         await close_session_shielded(session)
+
+
+async def get_identity_db(db: AsyncSession = Depends(get_db)) -> AsyncSession:
+    """The request session bound to the identity gateway scope (I-06).
+
+    Only the account gateway routes (login, register, refresh, logout, profile,
+    SSO sign-in) use it; they act before, or without, any company context.
+    """
+    await bind_identity(db)
+    return db
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +116,9 @@ async def _resolve_user(token: str, db: AsyncSession) -> CurrentUser | None:
         user_id = uuid.UUID(payload.sub)
     except (TypeError, ValueError):
         return None
-    user = await user_service.get_by_id(db, user_id)
+    with db.no_autoflush:
+        async with identity_scope(db, user_id):  # I-06: token user before any company
+            user = await user_service.get_by_id(db, user_id)
     if user is None or not user.is_active:
         return None
     return CurrentUser(
@@ -149,10 +175,77 @@ async def require_super_user(
     return user
 
 
+async def get_org_context(
+    request: Request,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrgContext:
+    async with identity_scope(db, user.id):  # I-06: own memberships before the company
+        context = await resolve_org_context(
+            db,
+            user,
+            cookie=request.cookies.get(ACTIVE_ORG_COOKIE),
+        )
+    await bind_tenant(db, context)
+    request.state.org_context = context
+    return context
+
+
+async def get_company_db(
+    request: Request,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AsyncSession:
+    """I-06: a route without an org context runs in the caller's active company.
+
+    Same resolution as ``get_org_context`` but never fails: a caller without an
+    active organization keeps an unbound session (0 rows under RLS).
+    """
+    if is_unbound(db):
+        try:
+            async with identity_scope(db, user.id):
+                context = await resolve_org_context(
+                    db, user, cookie=request.cookies.get(ACTIVE_ORG_COOKIE)
+                )
+        except (AppError, HTTPException):
+            return db
+        await bind_company_once(db, context.tenant_id, user.id)
+    return db
+
+
+async def require_platform_operator(
+    user: CurrentUser = Depends(require_super_user),
+    db: AsyncSession = Depends(get_db),
+) -> CurrentUser:
+    """Operator screens for platform catalog rows (``tenant_id IS NULL``) run in platform scope."""
+    await bind_platform(db, "operator.system_catalog")
+    return user
+
+
+async def get_tenant_context(
+    request: Request,
+    context: OrgContext = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+) -> TenantContext:
+    tenant = await tenant_context_from_org(db, context)
+    request.state.tenant_context = tenant
+    return tenant
+
+
+async def require_saas_platform_operator(
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CurrentUser:
+    """SaaS operator company screens read and change every company (platform scope, I-06)."""
+    require_platform_tenant_management(user, settings.deployment_mode)
+    await bind_platform(db, "platform.tenant_admin")
+    return user
+
+
 async def owned_conversation(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
 ) -> Conversation:
     """Resolve a path ``conversation_id`` to the caller's own conversation.
 
@@ -166,10 +259,10 @@ async def owned_conversation(
 
     # Function-local: chat_service pulls in the runtime/model graph, importing
     # it at module load would cycle back through dependencies.
+    from app.authz.conversation_scope import load_private_conversation
     from app.error_codes import conversation_not_found
-    from app.services import chat_service
 
-    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
+    conv = await load_private_conversation(db, conversation_id, context)
     if conv is None:
         raise conversation_not_found()
     return conv

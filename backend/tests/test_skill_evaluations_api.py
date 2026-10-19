@@ -9,11 +9,18 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.authz.platform_scope import PlatformScope
+from app.credentials.creation import CredentialCreation
 from app.models.skill_evaluation import SkillEvaluationRun
 from app.models.system_llm_setting import SystemLlmSetting
 from app.routers import skill_evaluations as skill_evaluations_router
 from app.skills import service as skill_service
+from app.skills.creation import TextSkillCreation
+from tests.authz.unit_scope_fixture import (
+    create_test_credential,
+    create_test_text_skill,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.asyncio
@@ -22,6 +29,7 @@ pytestmark = pytest.mark.asyncio
 class RecordingEvaluationWorker:
     def __init__(self) -> None:
         self.enqueued_run_ids: list[uuid.UUID] = []
+        self.enqueued_scopes: list[tuple[uuid.UUID | None, uuid.UUID]] = []
         self.reserved_slots = 0
 
     def reserve_slot(self) -> None:
@@ -30,10 +38,18 @@ class RecordingEvaluationWorker:
     def release_slot(self) -> None:
         self.reserved_slots -= 1
 
-    def enqueue(self, run_id: uuid.UUID, *, reserved: bool = False) -> None:
+    def enqueue(
+        self,
+        run_id: uuid.UUID,
+        *,
+        tenant_id: uuid.UUID | None,
+        user_id: uuid.UUID,
+        reserved: bool = False,
+    ) -> None:
         if reserved:
             self.release_slot()
         self.enqueued_run_ids.append(run_id)
+        self.enqueued_scopes.append((tenant_id, user_id))
 
 
 @pytest.fixture(autouse=True)
@@ -54,13 +70,12 @@ def _skill_content() -> str:
 
 
 async def _configure_system_llm(db: AsyncSession) -> None:
-    credential = await credential_service.create(
+    credential = await create_test_credential(
         db,
-        user_id=None,
-        definition_key="openai",
-        name="evaluation-key",
-        data={"api_key": "sk-test"},
-        is_system=True,
+        CredentialCreation(
+            definition_key="openai", name="evaluation-key", data={"api_key": "sk-test"}
+        ),
+        PlatformScope(),
     )
     db.add(
         SystemLlmSetting(
@@ -74,14 +89,16 @@ async def _configure_system_llm(db: AsyncSession) -> None:
 
 async def _create_skill(db: AsyncSession, tmp_path: Path):
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Evaluator",
-            slug="evaluator",
-            description="Use when testing skill evaluation behavior.",
-            content=_skill_content(),
-            version="1.0.0",
+            TextSkillCreation(
+                name="Evaluator",
+                slug="evaluator",
+                description="Use when testing skill evaluation behavior.",
+                content=_skill_content(),
+                version="1.0.0",
+            ),
+            unit_context(TEST_USER_ID),
         )
         await db.commit()
         return skill
@@ -168,6 +185,8 @@ async def test_estimate_and_create_run(
     assert detail.status_code == 200, detail.text
     assert detail.json()["latest_run"]["id"] == run.json()["id"]
     assert evaluation_worker.enqueued_run_ids == [uuid.UUID(run.json()["id"])]
+    # H-07: the queue item names the skill's company and the requester.
+    assert evaluation_worker.enqueued_scopes == [(skill.tenant_id, skill.user_id)]
     assert evaluation_worker.reserved_slots == 0
 
 
@@ -186,7 +205,14 @@ async def test_create_run_returns_queue_full_when_worker_rejects(
         def release_slot(self) -> None:
             raise AssertionError("release_slot should not be called without a reservation")
 
-        def enqueue(self, run_id: uuid.UUID, *, reserved: bool = False) -> None:
+        def enqueue(
+            self,
+            run_id: uuid.UUID,
+            *,
+            tenant_id: uuid.UUID | None,
+            user_id: uuid.UUID,
+            reserved: bool = False,
+        ) -> None:
             raise AssertionError("enqueue should not be called when reservation fails")
 
     monkeypatch.setattr(

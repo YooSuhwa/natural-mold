@@ -7,6 +7,7 @@ from app.credentials.field import FieldDef, FieldKind
 
 definition = CredentialDefinition(
     key="foresttrip_account",
+    personal=True,
     display_name="Forest Trip Account",
     icon_id="tree",
     category="account",

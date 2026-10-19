@@ -9,6 +9,7 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import StoredProtocolEvent
+from app.authz.org_context import OrgContext
 from app.config import settings
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
@@ -41,18 +42,19 @@ async def maybe_mark_stale_active_run(
     run_id: uuid.UUID,
     user: CurrentUser,
     request: Request,
+    context: OrgContext,
 ) -> StaleProtocolReplay | None:
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation.id,
         run_id=run_id,
-        user_id=user.id,
+        context=context,
         for_update=True,
     )
     if run is None or not run.is_active or not _run_is_stale(run):
         return None
 
-    events = await load_protocol_events(db, conversation.id)
+    events = await load_protocol_events(db, conversation.id, context=context)
     stale_event = protocol_stale_event(
         run_id=str(run.id),
         thread_id=str(conversation.id),

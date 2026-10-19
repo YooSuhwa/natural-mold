@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 import pytest
@@ -124,6 +125,7 @@ def test_untrusted_mcp_get_tool_still_requires_approval():
 def test_execute_in_skill_has_code_execution_metadata(tmp_path: Path):
     ctx = SkillToolContext(
         thread_id="thread-1",
+        tenant_id=uuid.uuid4(),
         output_dir=tmp_path / "outputs",
         runtime_root=tmp_path / "skills",
         descriptors={},

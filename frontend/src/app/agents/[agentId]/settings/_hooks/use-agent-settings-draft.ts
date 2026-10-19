@@ -31,6 +31,7 @@ type DraftAction =
   | { type: 'toggleMcpTool'; id: string }
   | { type: 'toggleSkill'; id: string }
   | { type: 'toggleSubAgent'; id: string }
+  | { type: 'toggleRequired'; id: string }
   | { type: 'setTemperature'; value: number }
   | { type: 'setTopP'; value: number }
   | { type: 'setMaxTokens'; value: number }
@@ -50,6 +51,7 @@ export type AgentSettingsDraftActions = {
   toggleMcpTool: (id: string) => void
   toggleSkill: (id: string) => void
   toggleSubAgent: (id: string) => void
+  toggleRequired: (id: string) => void
   setTemperature: (value: number) => void
   setTopP: (value: number) => void
   setMaxTokens: (value: number) => void
@@ -126,6 +128,14 @@ function agentSettingsDraftReducer(state: DraftState, action: DraftAction): Draf
           selectedSubAgentIds: toggleSetItem(state.draft.selectedSubAgentIds, action.id),
         },
       }
+    case 'toggleRequired':
+      return {
+        ...state,
+        draft: {
+          ...state.draft,
+          requiredLinkIds: toggleSetItem(state.draft.requiredLinkIds, action.id),
+        },
+      }
     case 'setTemperature':
       return { ...state, draft: { ...state.draft, temperature: action.value } }
     case 'setTopP':
@@ -180,6 +190,7 @@ export function useAgentSettingsDraft(agent: Agent | undefined) {
       toggleMcpTool: (id) => dispatch({ type: 'toggleMcpTool', id }),
       toggleSkill: (id) => dispatch({ type: 'toggleSkill', id }),
       toggleSubAgent: (id) => dispatch({ type: 'toggleSubAgent', id }),
+      toggleRequired: (id) => dispatch({ type: 'toggleRequired', id }),
       setTemperature: (value) => dispatch({ type: 'setTemperature', value }),
       setTopP: (value) => dispatch({ type: 'setTopP', value }),
       setMaxTokens: (value) => dispatch({ type: 'setMaxTokens', value }),

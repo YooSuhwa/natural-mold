@@ -22,7 +22,6 @@ from typing import Any
 
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.skill_builder.eval_case_generator import generate_eval_cases
@@ -32,7 +31,10 @@ from app.agent_runtime.skill_builder.eval_schema import (
     parse_evals_json,
 )
 from app.agent_runtime.skill_builder.eval_templates import select_eval_template
+from app.authz.org_context import OrgContext
+from app.authz.skill_builder_scope import require_skill_builder_tool_session
 from app.models.skill_builder_session import SkillBuilderSession
+from app.schemas.skill_builder_scope import SkillBuilderToolTarget
 from app.services import skill_draft_workspace
 from app.skills.validator import validate_draft_package
 from app.tools.risk import ToolRiskLevel, attach_tool_risk, risk_metadata_dict
@@ -86,7 +88,7 @@ def build_skill_builder_tools(
     session_id: str,
     workspace_path: str,
     session_factory: SessionFactory,
-    user_id: str | None = None,
+    context: OrgContext,
     agent_id: str | None = None,
     credential_subject_user_id: str | None = None,
     include_runtime_tools: bool = False,
@@ -106,15 +108,22 @@ def build_skill_builder_tools(
         logger.warning("skill builder tools skipped — bad session id: %r", session_id)
         return []
 
-    async def _load_session(db: AsyncSession) -> SkillBuilderSession | None:
-        result = await db.execute(
-            select(SkillBuilderSession).where(SkillBuilderSession.id == session_uuid)
-        )
-        return result.scalar_one_or_none()
+    user_id = str(context.user_id)
+    target = SkillBuilderToolTarget(
+        session_uuid, context, workspace_path, uuid.UUID(agent_id) if agent_id else None
+    )
+
+    async def _load_session(db: AsyncSession) -> SkillBuilderSession:
+        return await require_skill_builder_tool_session(db, target)
+
+    async def _authorize() -> None:
+        async with session_factory() as db:
+            await _load_session(db)
 
     async def validate_skill() -> str:
         """드래프트를 검증하고 결과를 반환한다 (읽기 전용 + 세션에 결과 저장)."""
 
+        await _authorize()
         try:
             files = skill_draft_workspace.load_draft_files(workspace_path)
             result = validate_draft_package(files=files)
@@ -125,22 +134,21 @@ def build_skill_builder_tools(
             )
         async with session_factory() as db:
             session = await _load_session(db)
-            if session is not None:
-                session.validation_result = result
-                compatibility = result.get("compatibility_result")
-                if isinstance(compatibility, dict):
-                    session.compatibility_result = compatibility
-                await db.commit()
+            session.validation_result = result
+            compatibility = result.get("compatibility_result")
+            if isinstance(compatibility, dict):
+                session.compatibility_result = compatibility
+            await db.commit()
         return _json_dumps({"session_id": session_id, **result})
 
     async def generate_evals(intent: str | None = None) -> str:
         """평가 케이스를 생성해 드래프트의 ``evals/evals.json``에 기록한다."""
 
         effective_intent = (intent or "").strip()
-        if not effective_intent:
-            async with session_factory() as db:
-                session = await _load_session(db)
-                effective_intent = (session.user_request if session else "") or "general task"
+        async with session_factory() as db:
+            session = await _load_session(db)
+            if not effective_intent:
+                effective_intent = session.user_request or "general task"
 
         skill_md = next(
             (
@@ -178,6 +186,7 @@ def build_skill_builder_tools(
     async def test_skill_draft(command: str) -> str:
         """드래프트를 스킬 샌드박스에서 실행한다 (저장 전 시험, AD-3)."""
 
+        await _authorize()
         from app.agent_runtime.skill_builder.eval_runner import run_eval_skill_command
         from app.config import settings
         from app.marketplace.skill_runtime import build_skill_runtime_context
@@ -219,6 +228,7 @@ def build_skill_builder_tools(
             credential_subject_user_id=credential_subject_user_id,
             user_id=user_id,
             agent_id=agent_id,
+            org_context=context,
         )
         try:
             data_dir = Path(settings.data_root)
@@ -262,17 +272,10 @@ def build_skill_builder_tools(
 
         from app.services.skill_builder_finalize import finalize_draft_session
 
-        if user_id is None:
-            return _json_dumps({"error_code": "USER_REQUIRED", "message": "no user context"})
-        try:
-            owner_uuid = uuid.UUID(user_id)
-        except (TypeError, ValueError):
-            return _json_dumps({"error_code": "USER_REQUIRED", "message": "bad user context"})
+        await _authorize()
         try:
             async with session_factory() as db:
-                result = await finalize_draft_session(
-                    db, session_id=session_uuid, user_id=owner_uuid
-                )
+                result = await finalize_draft_session(db, session_id=session_uuid, context=context)
         except Exception:  # noqa: BLE001 — 도구 에러는 모델에게 텍스트로 전달
             logger.exception("finalize_skill failed (session=%s)", session_id)
             return _json_dumps(

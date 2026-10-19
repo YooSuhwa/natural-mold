@@ -13,24 +13,39 @@ import shutil
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.authz.org_context import OrgContext
+from app.authz.private_actor import (
+    PrivateResourceActor,
+    require_private_actor,
+    resolve_private_actor,
+)
+from app.authz.scoping import private_scoped
+from app.config import settings as settings  # tests patch ``skill_service.settings``
+from app.error_codes import skill_not_found
 from app.models.skill import Skill
+from app.skills.creation import PackageSkillCreation, TextSkillCreation
 from app.skills.file_service import (
     delete_skill_file,
     get_file_bytes,
     get_skill_files,
+    read_text_content,
     set_skill_file,
 )
 from app.skills.inspector import parse_skill_md
 from app.skills.package_hash import compute_package_tree_hash
 from app.skills.package_metadata import sync_frontmatter
 from app.skills.packager import PackageError, extract_package
-from app.storage.paths import ensure_relative, resolve_data_path
+from app.skills.runtime_dict import to_runtime_dict as to_runtime_dict
+from app.storage.paths import (
+    ensure_relative,
+    resolve_company_data_path,
+    resolve_data_path,
+    skill_storage_dir,
+)
 
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
 
@@ -47,16 +62,13 @@ def slugify(value: str) -> str:
 
 
 # ADR-018 — ``skills.storage_path`` is stored relative to ``settings.data_root``
-# as ``skills/<id>`` (package) or ``skills/<id>/SKILL.md`` (text). The
-# filesystem layout derives from ``data_root`` to match.
+# as ``<dir>`` (package) or ``<dir>/SKILL.md`` (text), where ``<dir>`` is the
+# company folder ``tenants/<tenant_id>/skills/<id>`` for new skills (I-08).
 
 
-def _storage_root() -> Path:
-    return (Path(settings.data_root) / "skills").resolve()
-
-
-def _skill_root(skill_id: uuid.UUID) -> Path:
-    return _storage_root() / str(skill_id)
+def _skill_root(skill_id: uuid.UUID, context: OrgContext) -> tuple[str, Path]:
+    relative = skill_storage_dir(skill_id, context.tenant_id)
+    return relative, resolve_data_path(relative)
 
 
 def _now() -> datetime:
@@ -68,12 +80,13 @@ def _now() -> datetime:
 
 async def list_skills(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    context: OrgContext,
     *,
     kind: str | None = None,
     query: str | None = None,
 ) -> list[Skill]:
-    stmt = select(Skill).where(Skill.user_id == user_id)
+    await require_private_actor(db, context)
+    stmt = private_scoped(select(Skill), Skill, context)
     if kind:
         stmt = stmt.where(Skill.kind == kind)
     if query:
@@ -84,8 +97,13 @@ async def list_skills(
     return list(result.scalars().all())
 
 
-async def get_skill(db: AsyncSession, skill_id: uuid.UUID, user_id: uuid.UUID) -> Skill | None:
-    result = await db.execute(select(Skill).where(Skill.id == skill_id, Skill.user_id == user_id))
+async def get_skill(db: AsyncSession, skill_id: uuid.UUID, context: OrgContext) -> Skill | None:
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    result = await db.execute(
+        private_scoped(select(Skill).where(Skill.id == skill_id), Skill, context)
+    )
     return result.scalar_one_or_none()
 
 
@@ -93,21 +111,24 @@ async def get_skill(db: AsyncSession, skill_id: uuid.UUID, user_id: uuid.UUID) -
 
 
 async def create_text_skill(
-    db: AsyncSession,
-    *,
-    user_id: uuid.UUID,
-    name: str,
-    slug: str | None,
-    description: str | None,
-    content: str,
-    version: str | None = None,
+    db: AsyncSession, creation: TextSkillCreation, context: OrgContext
 ) -> Skill:
     """Create a text skill, persisting ``content`` as ``SKILL.md`` on disk."""
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
 
+    name, slug, description, content, version = (
+        creation.name,
+        creation.slug,
+        creation.description,
+        creation.content,
+        creation.version,
+    )
     parse_skill_md(content, require_metadata=True)
     final_slug = slugify(slug or name)
     skill_id = uuid.uuid4()
-    root = _skill_root(skill_id)
+    relative, root = _skill_root(skill_id, context)
     await asyncio.to_thread(root.mkdir, parents=True, exist_ok=True)
     file_path = root / "SKILL.md"
     body_bytes = content.encode("utf-8")
@@ -115,12 +136,14 @@ async def create_text_skill(
 
     skill = Skill(
         id=skill_id,
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=name,
         slug=final_slug,
         description=description,
         kind="text",
-        storage_path=ensure_relative(f"skills/{skill_id}/SKILL.md"),
+        storage_path=ensure_relative(f"{relative}/SKILL.md"),
         content_hash=hashlib.sha256(body_bytes).hexdigest(),
         size_bytes=len(body_bytes),
         version=version,
@@ -134,17 +157,20 @@ async def create_text_skill(
 
 
 async def create_package_skill(
-    db: AsyncSession,
-    *,
-    user_id: uuid.UUID,
-    zip_bytes: bytes,
-    name_override: str | None = None,
-    slug_override: str | None = None,
+    db: AsyncSession, creation: PackageSkillCreation, context: OrgContext
 ) -> Skill:
     """Extract a ``.skill`` zip and persist as a package skill."""
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
 
+    zip_bytes, name_override, slug_override = (
+        creation.zip_bytes,
+        creation.name_override,
+        creation.slug_override,
+    )
     skill_id = uuid.uuid4()
-    root = _skill_root(skill_id)
+    relative, root = _skill_root(skill_id, context)
     try:
         info = await asyncio.to_thread(extract_package, zip_bytes, root)
     except PackageError:
@@ -157,12 +183,14 @@ async def create_package_skill(
 
     skill = Skill(
         id=skill_id,
-        user_id=user_id,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
         name=final_name,
         slug=final_slug,
         description=info.description,
         kind="package",
-        storage_path=ensure_relative(f"skills/{skill_id}"),
+        storage_path=relative,
         content_hash=await asyncio.to_thread(compute_package_tree_hash, root),
         size_bytes=info.total_bytes,
         version=info.version,
@@ -192,10 +220,15 @@ async def update_metadata(
     db: AsyncSession,
     *,
     skill: Skill,
+    context: OrgContext,
     name: str | None = None,
     description: str | None = None,
     version: str | None = None,
 ) -> Skill:
+    scoped = await get_skill(db, skill.id, context)
+    if scoped is None:
+        raise skill_not_found()
+    skill = scoped
     if name is not None and name != skill.name:
         skill.name = name
     if description is not None:
@@ -208,14 +241,21 @@ async def update_metadata(
     return skill
 
 
-async def update_text_content(db: AsyncSession, *, skill: Skill, content: str) -> Skill:
+async def update_text_content(
+    db: AsyncSession, *, skill: Skill, content: str, context: OrgContext
+) -> Skill:
+    scoped = await get_skill(db, skill.id, context)
+    if scoped is None:
+        raise skill_not_found()
+    skill = scoped
     if skill.kind != "text":
         raise ValueError("update_text_content only valid for text skills")
     if not skill.storage_path:
         raise ValueError("text skill missing storage_path")
     parse_skill_md(content, require_metadata=True)
     body_bytes = content.encode("utf-8")
-    await asyncio.to_thread(resolve_data_path(skill.storage_path).write_bytes, body_bytes)
+    path = resolve_company_data_path(skill.storage_path, skill.tenant_id)  # I-08 fail closed
+    await asyncio.to_thread(path.write_bytes, body_bytes)
     skill.content_hash = hashlib.sha256(body_bytes).hexdigest()
     skill.size_bytes = len(body_bytes)
     skill.is_dirty = True
@@ -225,38 +265,28 @@ async def update_text_content(db: AsyncSession, *, skill: Skill, content: str) -
     return skill
 
 
-async def delete_skill(db: AsyncSession, skill: Skill) -> None:
+async def delete_skill(db: AsyncSession, skill: Skill, context: OrgContext) -> None:
     """Remove the DB row and the on-disk storage.
 
     Both text and package skills live under ``<storage_dir>/<skill_id>/``;
     we wipe that directory regardless of kind. A missing path is a no-op.
     """
 
+    scoped = await get_skill(db, skill.id, context)
+    if scoped is None:
+        raise skill_not_found()
+    skill = scoped
     storage = skill.storage_path
+    # I-08: refuse another company's path before the row goes (fail closed).
+    path = resolve_company_data_path(storage, skill.tenant_id) if storage else None
     await db.delete(skill)
     await db.flush()
-    if not storage:
+    if path is None:
         return
-    path = resolve_data_path(storage)
     # Text skills store the file at .../<id>/SKILL.md — delete the parent dir.
     is_file = await asyncio.to_thread(path.is_file)
     target = path.parent if is_file else path
     await asyncio.to_thread(shutil.rmtree, target, ignore_errors=True)
-
-
-# -- file access -------------------------------------------------------------
-
-
-async def read_text_content(skill: Skill) -> str:
-    """Read the body of a text skill from disk."""
-
-    if skill.kind != "text" or not skill.storage_path:
-        return ""
-    path = resolve_data_path(skill.storage_path)
-    is_file = await asyncio.to_thread(path.is_file)
-    if not is_file:
-        return ""
-    return await asyncio.to_thread(path.read_text, "utf-8")
 
 
 __all__: list[str] = [
@@ -274,22 +304,3 @@ __all__: list[str] = [
     "update_metadata",
     "update_text_content",
 ]
-
-
-# Used by the runtime / agent prep — kept here to avoid a circular import.
-def to_runtime_dict(skill: Skill) -> dict[str, Any]:
-    """Serialize a skill to the dict deep-agents expects.
-
-    ``description`` is included so :func:`app.skills.prompt.build_skills_prompt`
-    can render a meaningful "Available Skills" block without re-fetching the
-    ORM rows.
-    """
-
-    return {
-        "id": str(skill.id),
-        "name": skill.name,
-        "slug": skill.slug,
-        "kind": skill.kind,
-        "storage_path": skill.storage_path or "",
-        "description": skill.description or "",
-    }

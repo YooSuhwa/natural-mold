@@ -8,9 +8,18 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dependencies import CurrentUser
 from app.schemas.skill_builder import SkillBuilderMode, SkillBuilderStatus
 from app.services import skill_builder_service, skill_revision_service
+from app.services.skill_builder_mutation_scope import SkillBuilderMutationTarget
 from app.skills import service as skill_service
+from app.skills.creation import PackageSkillCreation, TextSkillCreation
+from tests.authz.unit_scope_fixture import (
+    create_test_package_skill,
+    create_test_text_skill,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -38,16 +47,19 @@ async def test_confirm_session_create_mode_creates_package_skill(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         session = await skill_builder_service.create_session(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             user_request="스킬 만들어줘",
         )
         await skill_builder_service.save_draft_package(
             db,
-            session,
-            draft={
+            SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)),
+            {
                 "name": "Notes",
                 "slug": "notes",
                 "description": "Use when summarizing notes into action items.",
@@ -73,7 +85,9 @@ async def test_confirm_session_create_mode_creates_package_skill(
             },
         )
 
-        skill = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        skill = await skill_builder_service.confirm_session(
+            db, session, context=unit_context(TEST_USER_ID)
+        )
         await db.commit()
 
     assert skill.kind == "package"
@@ -88,15 +102,18 @@ async def test_confirm_session_create_mode_creates_package_skill(
 
 @pytest.mark.asyncio
 async def test_confirm_session_rejects_invalid_draft(db: AsyncSession) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     session = await skill_builder_service.create_session(
         db,
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
         user_request="스킬 만들어줘",
     )
     await skill_builder_service.save_draft_package(
         db,
-        session,
-        draft={
+        SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)),
+        {
             "name": "Broken",
             "slug": "broken",
             "description": "Broken",
@@ -105,7 +122,7 @@ async def test_confirm_session_rejects_invalid_draft(db: AsyncSession) -> None:
     )
 
     with pytest.raises(skill_builder_service.SkillBuilderValidationError):
-        await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        await skill_builder_service.confirm_session(db, session, context=unit_context(TEST_USER_ID))
 
 
 @pytest.mark.asyncio
@@ -113,27 +130,33 @@ async def test_confirm_session_improve_mode_updates_existing_skill(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Notes",
-            slug="notes",
-            description="Use when summarizing notes.",
-            content=_skill_content(),
+            TextSkillCreation(
+                name="Notes",
+                slug="notes",
+                description="Use when summarizing notes.",
+                content=_skill_content(),
+            ),
+            unit_context(TEST_USER_ID),
         )
         session = await skill_builder_service.create_session(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             user_request="불릿 중심으로 개선해줘",
             mode=SkillBuilderMode.IMPROVE,
             source_skill_id=skill.id,
         )
         session.changelog_draft = {"summary": "Added bullet-point output guidance."}
+        await db.flush()
         await skill_builder_service.save_draft_package(
             db,
-            session,
-            draft={
+            SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)),
+            {
                 "name": "Notes",
                 "slug": "notes",
                 "description": "Use when summarizing notes into action items.",
@@ -155,7 +178,9 @@ async def test_confirm_session_improve_mode_updates_existing_skill(
             },
         )
 
-        updated = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        updated = await skill_builder_service.confirm_session(
+            db, session, context=unit_context(TEST_USER_ID)
+        )
         revisions = await skill_revision_service.list_revisions(
             db,
             skill=updated,
@@ -165,7 +190,7 @@ async def test_confirm_session_improve_mode_updates_existing_skill(
 
         assert updated.id == skill.id
         assert updated.kind == "package"
-        assert updated.storage_path == f"skills/{skill.id}"
+        assert updated.storage_path == f"tenants/{skill.tenant_id}/skills/{skill.id}"
         assert updated.execution_profile == {"requires_network": False}
         assert b"Return concise bullet points" in skill_service.get_file_bytes(
             updated,
@@ -182,28 +207,33 @@ async def test_confirm_session_improve_package_preserves_unchanged_files(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_package_skill(
+        skill = await create_test_package_skill(
             db,
-            user_id=TEST_USER_ID,
-            zip_bytes=_zip_with(
-                {
-                    "SKILL.md": _skill_content(),
-                    "scripts/helper.py": "print('keep')\n",
-                }
+            PackageSkillCreation(
+                zip_bytes=_zip_with(
+                    {
+                        "SKILL.md": _skill_content(),
+                        "scripts/helper.py": "print('keep')\n",
+                    }
+                )
             ),
+            unit_context(TEST_USER_ID),
         )
         session = await skill_builder_service.create_session(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             user_request="출력 지침만 개선해줘",
             mode=SkillBuilderMode.IMPROVE,
             source_skill_id=skill.id,
         )
         await skill_builder_service.save_draft_package(
             db,
-            session,
-            draft={
+            SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)),
+            {
                 "name": "Notes",
                 "slug": "notes",
                 "description": "Use when summarizing notes into action items.",
@@ -213,18 +243,16 @@ async def test_confirm_session_improve_package_preserves_unchanged_files(
                         "content": _skill_content() + "\nAlways include owners.\n",
                         "role": "skill",
                     },
-                    {
-                        "path": "scripts/helper.py",
-                        "content": "print('keep')\n",
-                        "role": "script",
-                    },
+                    {"path": "scripts/helper.py", "content": "print('keep')\n", "role": "script"},
                 ],
                 "credential_requirements": [],
                 "execution_profile": {},
             },
         )
 
-        updated = await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+        updated = await skill_builder_service.confirm_session(
+            db, session, context=unit_context(TEST_USER_ID)
+        )
         await db.commit()
 
         assert b"Always include owners" in skill_service.get_file_bytes(updated, "SKILL.md")
@@ -236,18 +264,23 @@ async def test_confirm_session_improve_mode_rejects_stale_base_hash(
     db: AsyncSession,
     tmp_path: Path,
 ) -> None:
+    await ensure_unit_scope(
+        db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User")
+    )
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-        skill = await skill_service.create_text_skill(
+        skill = await create_test_text_skill(
             db,
-            user_id=TEST_USER_ID,
-            name="Notes",
-            slug="notes",
-            description="Use when summarizing notes.",
-            content=_skill_content(),
+            TextSkillCreation(
+                name="Notes",
+                slug="notes",
+                description="Use when summarizing notes.",
+                content=_skill_content(),
+            ),
+            unit_context(TEST_USER_ID),
         )
         session = await skill_builder_service.create_session(
             db,
-            user_id=TEST_USER_ID,
+            context=unit_context(TEST_USER_ID),
             user_request="개선해줘",
             mode=SkillBuilderMode.IMPROVE,
             source_skill_id=skill.id,
@@ -256,11 +289,12 @@ async def test_confirm_session_improve_mode_rejects_stale_base_hash(
             db,
             skill=skill,
             content=_skill_content() + "\nManual edit before builder apply.\n",
+            context=unit_context(TEST_USER_ID),
         )
         await skill_builder_service.save_draft_package(
             db,
-            session,
-            draft={
+            SkillBuilderMutationTarget(session.id, unit_context(TEST_USER_ID)),
+            {
                 "name": "Notes",
                 "slug": "notes",
                 "description": "Use when summarizing notes into action items.",
@@ -271,7 +305,9 @@ async def test_confirm_session_improve_mode_rejects_stale_base_hash(
         )
 
         with pytest.raises(skill_builder_service.SkillBuilderConflictError):
-            await skill_builder_service.confirm_session(db, session, user_id=TEST_USER_ID)
+            await skill_builder_service.confirm_session(
+                db, session, context=unit_context(TEST_USER_ID)
+            )
 
         await db.commit()
 

@@ -9,7 +9,9 @@ from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session
+from app.agent_runtime.tools.agent_memo import agent_memo_tools
+from app.authz.org_context import OrgContext
+from app.database import async_session, tenant_session
 from app.exceptions import ValidationError
 from app.schemas.memory import (
     MAX_MEMORY_CONTENT_LENGTH,
@@ -98,15 +100,19 @@ def _base_payload(
 
 def build_memory_tools(
     *,
-    user_id: str,
+    context: OrgContext,
     agent_id: str | None,
     conversation_id: str | None,
     is_trigger_mode: bool,
-    session_factory: SessionFactory = async_session,
+    session_factory: SessionFactory | None = None,
+    agent_memo_proposals: bool = False,
 ) -> list[BaseTool]:
-    """Build policy-bound long-term memory tools for a Moldy agent run."""
+    """Build policy-bound long-term memory tools for a Moldy agent run.
 
-    user_uuid = _parse_uuid(user_id)
+    ``agent_memo_proposals`` (F-09): a shared run also gets ``propose_agent_memo``.
+    """
+
+    user_uuid = context.user_id
     agent_uuid = _parse_uuid(agent_id)
     conversation_uuid = _parse_uuid(conversation_id)
     if user_uuid is None:
@@ -119,10 +125,10 @@ def build_memory_tools(
         reason: str | None,
     ) -> str:
         normalized_reason = _normalize_optional_reason(reason)
-        async with session_factory() as db:
+        async with tenant_session(context, maker=session_factory or async_session) as db:
             policy = await memory_service.resolve_effective_policy(
                 db,
-                user_id=user_uuid,
+                context=context,
                 agent_id=agent_uuid,
             )
             write_policy = policy.trigger_write_policy if is_trigger_mode else policy.write_policy
@@ -154,7 +160,7 @@ def build_memory_tools(
                 try:
                     proposal = await memory_service.create_memory_proposal(
                         db,
-                        user_id=user_uuid,
+                        context=context,
                         payload=MemoryProposalCreate(
                             scope=scope,
                             content=content,
@@ -203,7 +209,7 @@ def build_memory_tools(
             try:
                 record = await memory_service.create_memory_record(
                     db,
-                    user_id=user_uuid,
+                    context=context,
                     payload=MemoryRecordCreate(
                         scope=scope,
                         content=content,
@@ -268,7 +274,11 @@ def build_memory_tools(
 
         return await apply_memory_request(scope="agent", content=content, reason=reason)
 
+    memo = agent_memo_proposals and agent_uuid is not None and not is_trigger_mode
     return [
+        *agent_memo_tools(
+            memo, context, agent_uuid, conversation_uuid, session_factory, service=memory_service
+        ),
         StructuredTool.from_function(
             coroutine=propose_memory,
             name="propose_memory",

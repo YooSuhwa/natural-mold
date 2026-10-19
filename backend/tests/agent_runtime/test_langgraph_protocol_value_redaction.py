@@ -33,6 +33,8 @@ from app.agent_runtime import langgraph_agent_stream_runner
 from app.agent_runtime.langgraph_streaming import stream_agent_response_langgraph
 from app.agent_runtime.runtime_config import AgentConfig
 from tests.agent_runtime.langgraph_streaming_fixtures import ProtocolAgent, sse_payload
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 
 # Opaque, high-entropy token: no sensitive key prefix, not Bearer/sk-/JWT/DSN,
 # so heuristics cannot mask it — only value-based replacement can.
@@ -48,6 +50,7 @@ def _cfg_with_tool_secret() -> AgentConfig:
     """
 
     return AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="fake",
         model_name="fake-chat",
         api_key=None,
@@ -193,6 +196,7 @@ async def test_protocol_stream_contextvar_resets_after_run(monkeypatch) -> None:
         await _fake_prepare_agent(agent2),
     )
     cfg2 = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="fake",
         model_name="fake-chat",
         api_key=None,

@@ -21,7 +21,12 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.skills import service as skill_service
+from app.skills.creation import PackageSkillCreation, TextSkillCreation
+from tests.authz.unit_scope_fixture import (
+    create_test_package_skill,
+    create_test_text_skill,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID
 
 
@@ -48,13 +53,12 @@ async def test_text_skill_storage_path_is_relative(
     db: AsyncSession, tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setattr(settings, "data_root", str(tmp_path))
-    skill = await skill_service.create_text_skill(
+    skill = await create_test_text_skill(
         db,
-        user_id=TEST_USER_ID,
-        name="abs guard text",
-        slug=None,
-        description=None,
-        content=_skill_md("abs-guard-text"),
+        TextSkillCreation(
+            name="abs guard text", slug=None, description=None, content=_skill_md("abs-guard-text")
+        ),
+        unit_context(TEST_USER_ID),
     )
     await db.commit()
     await db.refresh(skill)
@@ -63,7 +67,8 @@ async def test_text_skill_storage_path_is_relative(
     assert not Path(skill.storage_path).is_absolute(), (
         f"text skill stored absolute path: {skill.storage_path}"
     )
-    assert skill.storage_path.startswith("skills/")
+    # I-08: new skills live in the company folder ``tenants/<tenant_id>/skills/<id>``.
+    assert skill.storage_path.startswith(f"tenants/{skill.tenant_id}/skills/")
     assert skill.storage_path.endswith("/SKILL.md")
 
 
@@ -72,10 +77,8 @@ async def test_package_skill_storage_path_is_relative(
     db: AsyncSession, tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setattr(settings, "data_root", str(tmp_path))
-    skill = await skill_service.create_package_skill(
-        db,
-        user_id=TEST_USER_ID,
-        zip_bytes=_zip_with_skill_md(),
+    skill = await create_test_package_skill(
+        db, PackageSkillCreation(zip_bytes=_zip_with_skill_md()), unit_context(TEST_USER_ID)
     )
     await db.commit()
     await db.refresh(skill)
@@ -84,8 +87,9 @@ async def test_package_skill_storage_path_is_relative(
     assert not Path(skill.storage_path).is_absolute(), (
         f"package skill stored absolute path: {skill.storage_path}"
     )
-    assert skill.storage_path.startswith("skills/")
+    prefix = f"tenants/{skill.tenant_id}/skills/"
+    assert skill.storage_path.startswith(prefix)
     try:
-        uuid.UUID(skill.storage_path.removeprefix("skills/"))
+        uuid.UUID(skill.storage_path.removeprefix(prefix))
     except ValueError:  # pragma: no cover — defensive
         pytest.fail(f"unexpected storage_path format: {skill.storage_path}")

@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 import { UserMenu } from '@/components/auth/UserMenu'
+import { NotificationsBell } from '@/components/notifications/notifications-bell'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -89,6 +90,7 @@ export function SidebarUtilityFooter() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        {user ? <NotificationsBell /> : null}
       </div>
       <SidebarMenu>
         <SidebarMenuItem>

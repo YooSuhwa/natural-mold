@@ -19,6 +19,11 @@ vi.mock('next/link', () => ({
 }))
 
 const mockUseModels = vi.fn()
+
+// Add/edit are operator actions (H-05); the header test renders as an operator.
+vi.mock('@/lib/auth/session', () => ({
+  useSession: () => ({ data: { id: 'op', is_super_user: true } }),
+}))
 const mockDeleteModel = vi.fn()
 
 vi.mock('@/lib/hooks/use-models', () => ({

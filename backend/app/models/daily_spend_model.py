@@ -17,12 +17,15 @@ from sqlalchemy import Date, ForeignKey, Index, Integer, Numeric, UniqueConstrai
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.resource_scope import NullableOrgScope, resource_scope_constraints
 
 
-class DailySpendModel(Base):
+class DailySpendModel(NullableOrgScope, Base):
     __tablename__ = "daily_spend_model"
     __table_args__ = (
-        UniqueConstraint("date", "model_id", name="uq_daily_spend_model_date_model"),
+        *resource_scope_constraints("daily_spend_model", system=False),
+        # F-14 (6.2, 8.7): spend is booked per organization.
+        UniqueConstraint("org_id", "date", "model_id", name="uq_daily_spend_model_org_date_model"),
         Index("ix_daily_spend_model_date", "date"),
         Index("ix_daily_spend_model_model_date", "model_id", "date"),
     )

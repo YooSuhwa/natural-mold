@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from app.agent_runtime.runtime_config import _DATA_DIR
-from app.storage.paths import resolve_data_path
+from app.storage.paths import run_data_path_or_none
 
 logger = logging.getLogger(__name__)
 type SkillExecutionAuditKind = Literal[
@@ -136,6 +136,7 @@ class SkillToolContext:
     agent_id: uuid.UUID | None = None
     run_id: str | None = None
     audit_kind: SkillExecutionAuditKind = "execute_in_skill"
+    tenant_id: uuid.UUID = field(kw_only=True)  # derived audit/usage writes open this company
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +221,7 @@ def _materialize_skill(descriptor: SkillRuntimeDescriptor, runtime_root: Path) -
 
 
 def _build_descriptor_from_skill_dict(
-    raw: dict[str, Any], runtime_root: Path
+    raw: dict[str, Any], runtime_root: Path, tenant_id: uuid.UUID | None = None
 ) -> SkillRuntimeDescriptor | None:
     """Translate a single ``agent_skills`` entry (see
     ``app.skills.service.to_runtime_dict``) into a runtime descriptor.
@@ -238,7 +239,9 @@ def _build_descriptor_from_skill_dict(
     except (TypeError, ValueError):
         return None
     # ADR-018 — resolve column (relative) to absolute for materialize/copy.
-    original = resolve_data_path(storage_path) if storage_path else runtime_root
+    original = run_data_path_or_none(storage_path, tenant_id) if storage_path else runtime_root
+    if original is None:  # another company's path (I-08)
+        return None
     return SkillRuntimeDescriptor(
         id=skill_id,
         slug=str(slug),
@@ -286,7 +289,9 @@ def build_skill_runtime_context(
         runtime_root.mkdir(parents=True, exist_ok=True)
 
         for raw in cfg.agent_skills:
-            descriptor = _build_descriptor_from_skill_dict(raw, runtime_root)
+            descriptor = _build_descriptor_from_skill_dict(
+                raw, runtime_root, cfg.org_context.tenant_id
+            )
             if descriptor is None:
                 continue
             descriptor.runtime_storage_path = runtime_root / descriptor.slug
@@ -300,6 +305,7 @@ def build_skill_runtime_context(
         descriptors=descriptors,
         user_id=_uuid_or_none(cfg.credential_subject_user_id or cfg.user_id),
         agent_id=_uuid_or_none(cfg.agent_id),
+        tenant_id=cfg.org_context.tenant_id,
     )
 
 
@@ -333,6 +339,9 @@ async def resolve_runtime_credentials(
     except (TypeError, ValueError):
         return
 
+    from dataclasses import replace
+
+    organization = replace(cfg.org_context, user_id=user_uuid)
     # Build a slug → raw-config map so we can pair descriptors with
     # their ``agent_skills.config`` overrides (Spec §3.8).
     raw_by_slug: dict[str, dict[str, Any]] = {
@@ -356,7 +365,7 @@ async def resolve_runtime_credentials(
         resolved, missing = await resolve_credential_bindings(
             db,
             skill=skill,
-            user_id=user_uuid,
+            context=organization,
             agent_skill_config=agent_config_override,
         )
         if missing:

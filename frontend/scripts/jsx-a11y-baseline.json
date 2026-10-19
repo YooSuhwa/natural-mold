@@ -1,7 +1,7 @@
 [
   {
     "filePath": "src/components/artifacts/artifact-library-content.tsx",
-    "line": 192,
+    "line": 195,
     "column": 21,
     "ruleId": "jsx-a11y/anchor-has-content",
     "message": "Anchors must have content and the content must be accessible by a screen reader."
@@ -43,7 +43,7 @@
   },
   {
     "filePath": "src/components/chat/chat-image.tsx",
-    "line": 49,
+    "line": 66,
     "column": 9,
     "ruleId": "jsx-a11y/click-events-have-key-events",
     "message": "Visible, non-interactive elements with click handlers must have at least one keyboard listener."
@@ -92,7 +92,7 @@
   },
   {
     "filePath": "src/components/artifacts/artifact-library-content.tsx",
-    "line": 192,
+    "line": 195,
     "column": 21,
     "ruleId": "jsx-a11y/control-has-associated-label",
     "message": "A control must be associated with a text label."
@@ -176,7 +176,7 @@
   },
   {
     "filePath": "src/components/layout/sidebar-utility-footer.tsx",
-    "line": 67,
+    "line": 68,
     "column": 21,
     "ruleId": "jsx-a11y/control-has-associated-label",
     "message": "A control must be associated with a text label."
@@ -218,7 +218,7 @@
   },
   {
     "filePath": "src/components/chat/chat-image.tsx",
-    "line": 49,
+    "line": 66,
     "column": 9,
     "ruleId": "jsx-a11y/no-noninteractive-element-interactions",
     "message": "Non-interactive elements should not be assigned mouse or keyboard event listeners."

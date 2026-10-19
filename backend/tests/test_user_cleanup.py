@@ -4,13 +4,15 @@ ADR-016 §6 / Phase 6-C — verifies that:
 
 1. LangGraph checkpoint deletion is invoked once per owned conversation.
 2. Active refresh tokens are revoked.
-3. Deleting the user cascades to their agents (via FK CASCADE in the schema).
+3. Account deletion is blocked until restricted resource ownership is released.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from datetime import UTC as _FIXTURE_UTC
+from datetime import datetime as _fixture_datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -26,6 +28,7 @@ from app.models.model import Model
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.services.user_service import cleanup_user_resources
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +75,8 @@ async def _make_agent(db: AsyncSession, user_id: uuid.UUID) -> Agent:
         name="A",
         system_prompt="hi",
         model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(agent)
     await db.flush()
@@ -79,7 +84,18 @@ async def _make_agent(db: AsyncSession, user_id: uuid.UUID) -> Agent:
 
 
 async def _make_conversation(db: AsyncSession, agent_id: uuid.UUID) -> Conversation:
-    conv = Conversation(id=uuid.uuid4(), agent_id=agent_id, title="t")
+    parent = await db.get(Agent, agent_id)
+    assert parent is not None
+    conv = Conversation(
+        id=uuid.uuid4(),
+        agent_id=agent_id,
+        title="t",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=parent.user_id,
+        agent_name_snapshot=parent.name,
+        last_activity_at=_fixture_datetime.now(_FIXTURE_UTC),
+    )
     db.add(conv)
     await db.flush()
     return conv

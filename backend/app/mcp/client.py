@@ -28,6 +28,7 @@ from app.credentials.interpolation import resolve_deep
 from app.hooks import HookContext, HookResult, hooks
 from app.mcp.apps import normalize_tool_ui_meta
 from app.mcp.domain import McpServerInfo, McpToolDescriptor
+from app.outbound.client import credentialed_mcp_options
 
 MOLDY_CREDENTIAL_HEADER = "X-Moldy-Credential"
 
@@ -79,6 +80,7 @@ async def connect_and_list(
     args: list[Any] | None = None,
     env_vars: dict[str, Any] | None = None,
     user_id: _uuid.UUID | None = None,
+    tenant_id: _uuid.UUID | None = None,
     mcp_server_id: _uuid.UUID | None = None,
     credential_id: _uuid.UUID | None = None,
 ) -> dict[str, Any]:
@@ -86,12 +88,13 @@ async def connect_and_list(
 
     Supports ``stdio`` (local subprocess) and ``sse`` / ``streamable_http``
     (network) transports. ``stdio`` requires ``command``; the network
-    transports require ``url``. Hook dispatch fires only when a ``user_id`` is
+    transports require ``url``. Hook dispatch fires only when ``user_id`` and ``tenant_id`` are
     provided so the test suite (which calls the helper directly) is unaffected.
     """
 
     hook_ctx = _build_mcp_hook_context(
         user_id=user_id,
+        tenant_id=tenant_id,
         mcp_server_id=mcp_server_id,
         credential_id=credential_id,
         url=url,
@@ -174,7 +177,11 @@ async def connect_and_list(
 
     try:
         async with (
-            streamablehttp_client(url, headers=merged_headers or None) as (read, write, _),
+            streamablehttp_client(
+                url,
+                headers=merged_headers or None,
+                **credentialed_mcp_options(credentials is not None),
+            ) as (read, write, _),
             ClientSession(read, write) as session,
         ):
             init_result = await session.initialize()
@@ -318,12 +325,13 @@ async def _connect_stdio(
 def _build_mcp_hook_context(
     *,
     user_id: _uuid.UUID | None,
+    tenant_id: _uuid.UUID | None,
     mcp_server_id: _uuid.UUID | None,
     credential_id: _uuid.UUID | None,
     url: str | None,
     transport: str,
 ) -> HookContext | None:
-    if user_id is None:
+    if user_id is None or tenant_id is None:
         return None
     return HookContext(
         request_id=str(_uuid.uuid4()),
@@ -333,6 +341,7 @@ def _build_mcp_hook_context(
         mcp_server_id=mcp_server_id,
         credential_id=credential_id,
         metadata={"transport": transport, "url": url},
+        tenant_id=tenant_id,
     )
 
 

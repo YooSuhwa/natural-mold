@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from app.models.agent_trigger import AgentTrigger
 from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TestSession
 
 
@@ -125,6 +127,8 @@ async def test_update_agent_rejects_per_user_when_active_trigger_exists(
     agent_id = resp.json()["id"]
     db.add(
         AgentTrigger(
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
             agent_id=uuid.UUID(agent_id),
             user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
             name="active schedule",
@@ -156,6 +160,9 @@ async def test_list_agent_summaries_returns_lean_card_payload(client: AsyncClien
         agent.is_favorite = True
         agent.model_fallback_list = [model_id]
         tool = Tool(
+            user_id=agent.user_id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
             name="Web Search",
             definition_key="builtin:web_search",
             description="Search the web",
@@ -163,7 +170,18 @@ async def test_list_agent_summaries_returns_lean_card_payload(client: AsyncClien
         db.add(tool)
         await db.flush()
         db.add(AgentToolLink(agent_id=agent.id, tool_id=tool.id))
-        db.add(Conversation(agent_id=agent.id, title="Recent", unread_count=3))
+        db.add(
+            Conversation(
+                agent_id=agent.id,
+                title="Recent",
+                unread_count=3,
+                user_id=agent.user_id,
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
+                agent_name_snapshot=agent.name,
+                last_activity_at=datetime.now(UTC),
+            )
+        )
         await db.commit()
 
     resp = await client.get("/api/agents/summary")
@@ -356,9 +374,7 @@ def test_builder_sessions_agent_id_fk_set_null():
     """
     from app.models.builder_session import BuilderSession
 
-    fk = next(
-        c for c in BuilderSession.__table__.foreign_keys if c.column.table.name == "agents"
-    )
+    fk = next(c for c in BuilderSession.__table__.foreign_keys if c.column.table.name == "agents")
     assert fk.ondelete == "SET NULL"
 
 
@@ -707,6 +723,8 @@ async def test_sub_agent_cross_user_owner_rejected(client: AsyncClient):
     async with TestSession() as session:
         session.add(
             Agent(
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
                 id=foreign_agent_id,
                 user_id=foreign_user_id,
                 name="ForeignAgent",

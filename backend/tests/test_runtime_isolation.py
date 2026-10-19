@@ -32,6 +32,8 @@ from app.marketplace.skill_runtime import (
     build_skill_runtime_context,
     cleanup_stale_runtime_roots,
 )
+from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import TEST_USER_ID
 from tests.tool_helpers import tool_coroutine
 
 # ---------------------------------------------------------------------------
@@ -53,6 +55,7 @@ def _make_cfg(
     caller wants the ``__post_init__`` guard exercised)."""
 
     return AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="anthropic",
         model_name="claude-sonnet-4-5",
         api_key=None,

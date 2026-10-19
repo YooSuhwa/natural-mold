@@ -146,6 +146,12 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuSeparator: () => <hr />,
 }))
 
+// The switcher needs OrgContextProvider (mounted by AppLayout); it has its own
+// tests in organization-switcher.test.tsx and org-switch-reset.test.tsx.
+vi.mock('@/components/layout/organization-switcher', () => ({
+  OrganizationSwitcher: () => null,
+}))
+
 vi.mock('@/components/layout/chat-navigator', () => ({
   ChatNavigator: () => <div data-testid="chat-navigator">에이전트</div>,
 }))

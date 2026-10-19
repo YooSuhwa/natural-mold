@@ -28,9 +28,16 @@ from app.agent_runtime.skill_validation_projection import (
     skill_validation_event_from_tool_result,
 )
 from app.config import settings
+from app.dependencies import CurrentUser
 from app.models.skill_builder_session import SkillBuilderSession
 from app.services import skill_draft_workspace as workspace
 from tests.agent_runtime.langgraph_streaming_fixtures import ProtocolAgent, sse_payload
+from tests.authz.unit_scope_fixture import (
+    TEST_ORG_ID,
+    TEST_TENANT_ID,
+    ensure_unit_scope,
+    unit_context,
+)
 from tests.conftest import TEST_USER_ID, TestSession
 
 pytestmark = pytest.mark.asyncio
@@ -51,10 +58,13 @@ _VALID_SKILL_MD = (
 
 
 async def _make_active_session(db: AsyncSession, *, seed_skill_md: bool = True):
+    await ensure_unit_scope(db, CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test"))
     session = SkillBuilderSession(
         user_id=TEST_USER_ID,
         user_request="회의록 액션 아이템 스킬",
         status="active",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add(session)
     await db.flush()
@@ -80,6 +90,7 @@ async def test_prepare_branch_swaps_prompt_tools_and_mounts_draft() -> None:
 
     session_id = uuid.uuid4()
     cfg = AgentConfig(
+        org_context=unit_context(TEST_USER_ID),
         provider="openai",
         model_name="gpt-5.4",
         api_key="sk-test",
@@ -87,7 +98,7 @@ async def test_prepare_branch_swaps_prompt_tools_and_mounts_draft() -> None:
         system_prompt="placeholder — must be replaced",
         tools_config=[],
         thread_id="thread-builder",
-        agent_id="agent-builder",
+        agent_id=str(uuid.uuid4()),
         user_id=str(TEST_USER_ID),
         runtime_profile="skill_builder",
         skill_builder_session_id=str(session_id),
@@ -146,7 +157,9 @@ async def test_resolve_agent_context_builder_branch(client, db: AsyncSession) ->
     body = start.json()
 
     user = CurrentUser(id=TEST_USER_ID, email="test@test.com", name="Test User", is_super_user=True)
-    cfg = await resolve_agent_context(db, uuid.UUID(body["conversation_id"]), user)
+    cfg = await resolve_agent_context(
+        db, uuid.UUID(body["conversation_id"]), user, context=unit_context(TEST_USER_ID)
+    )
     from app.agent_runtime.runtime_policy import SKILL_BUILDER_RUNTIME_POLICY
 
     assert cfg.runtime_policy is SKILL_BUILDER_RUNTIME_POLICY
@@ -178,6 +191,7 @@ def _tool(tools, name):
 async def test_validate_skill_tool_returns_and_persists_result(db: AsyncSession) -> None:
     session = await _make_active_session(db)
     tools = build_skill_builder_tools(
+        context=unit_context(TEST_USER_ID),
         session_id=str(session.id),
         workspace_path=session.draft_workspace_path or "",
         session_factory=TestSession,
@@ -201,6 +215,7 @@ async def test_validate_skill_tool_returns_and_persists_result(db: AsyncSession)
 async def test_generate_evals_writes_schema_valid_file(db: AsyncSession) -> None:
     session = await _make_active_session(db)
     tools = build_skill_builder_tools(
+        context=unit_context(TEST_USER_ID),
         session_id=str(session.id),
         workspace_path=session.draft_workspace_path or "",
         session_factory=TestSession,
@@ -224,6 +239,7 @@ async def test_generate_evals_writes_schema_valid_file(db: AsyncSession) -> None
 async def test_generate_evals_defaults_intent_to_session_request(db: AsyncSession) -> None:
     session = await _make_active_session(db)
     tools = build_skill_builder_tools(
+        context=unit_context(TEST_USER_ID),
         session_id=str(session.id),
         workspace_path=session.draft_workspace_path or "",
         session_factory=TestSession,
@@ -426,6 +442,8 @@ async def test_copy_conversation_attachments_filters_ownership(
         size_bytes=8,
         storage_path="uploads/a.bin",
         url="/api/uploads/a",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     theirs = MessageAttachment(
         user_id=uuid.uuid4(),
@@ -434,6 +452,8 @@ async def test_copy_conversation_attachments_filters_ownership(
         size_bytes=8,
         storage_path="uploads/a.bin",
         url="/api/uploads/b",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
     )
     db.add_all([mine, theirs])
     await db.commit()
@@ -442,7 +462,7 @@ async def test_copy_conversation_attachments_filters_ownership(
         db,
         storage_path=session.draft_workspace_path or "",
         attachment_ids=[mine.id, theirs.id],
-        user_id=TEST_USER_ID,
+        context=unit_context(TEST_USER_ID),
     )
 
     assert copied == ["inputs/mine.csv"]
