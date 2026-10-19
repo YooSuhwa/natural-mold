@@ -146,12 +146,18 @@ jobs:
           import json, pathlib, re
           path = pathlib.Path(".omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json")
           node = re.compile(r"tests/[A-Za-z0-9_/]+\.py::[A-Za-z0-9_\[\]\-.]+")
+          where = re.compile(r"[A-Za-z0-9_/.\-]+\.py:[0-9]+(: in [A-Za-z0-9_]+|:[A-Za-z]*Error)?")
+          error = re.compile(r"[A-Za-z_.]*(Error|Exception|Timeout)")
           data = json.loads(path.read_text()) if path.is_file() else {}
           for scenario in data.get("scenarios", []):
               receipt = scenario.get("test_receipt") or {}
               for item in receipt.get("failed_node_ids", []):
                   if isinstance(item, str) and node.fullmatch(item):
                       print(f"failed node: {item}")
+              records = (scenario.get("child_failure_diagnostics") or {}).get("records", [])
+              for item in records:
+                  if isinstance(item, str) and (where.fullmatch(item) or error.fullmatch(item)):
+                      print(f"failure record: {item}")
           PY
 
   # Project-wide Pyright is a blocking basic-mode gate. Keep standard-mode
