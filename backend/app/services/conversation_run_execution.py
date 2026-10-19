@@ -169,6 +169,7 @@ async def _run_conversation(
             final_status = "canceled"
             await _publish_message_end(ctx, status="canceled")
     except Exception as exc:
+        registry.mark_finishing(run_id)  # the body ended: a later stop must not tear this
         # A failed prepared start left the row queued; finalize fails it (I15).
         finalize_needed = finalize_needed or isinstance(exc, prepared_start.PreparedStartError)
         final_status = "failed"
@@ -187,6 +188,7 @@ async def _run_conversation(
         logger.exception("conversation run worker failed run_id=%s", run_id)
         await _publish_error(ctx, "에이전트 실행 중 오류가 발생했습니다.")
     finally:
+        registry.mark_finishing(run_id)
         # An activated lease the stream never claimed is closed (idempotent).
         await prepared_start.release_unclaimed(start)
         if heartbeat_task is not None:

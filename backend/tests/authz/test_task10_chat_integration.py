@@ -25,6 +25,7 @@ from app.agent_runtime.agent_stream_runner import execute_agent_stream
 from app.agent_runtime.prepared_run_registry import get_prepared_run_registry
 from app.exceptions import NotFoundError
 from app.services import conversation_run_worker, prepared_run_adapter
+from app.services.tenants.organization_archive_terminalizer import ARCHIVE_MESSAGE, ARCHIVE_REASON
 from app.services.thread_branch_service import build_fork_overwrite_input
 from tests.authz import prepared_entry_testkit as ekit
 from tests.authz import prepared_materialization_testkit as kit
@@ -165,9 +166,15 @@ async def test_native_chat_materialization_transaction_gaps(
         task10_lane.track(row.id, leased=True)
         return
     # Activation failure races the released archive for the durable fail; both
-    # bounded outcomes are terminal, keep the marker, and never dispatch.
+    # bounded outcomes are terminal, keep the marker, and never dispatch. A rollback
+    # releases the locks the archive waits on before the worker's own terminal
+    # transition takes the run row, so the archive may fail it first (seen on a
+    # loaded 2-core runner); the worker then leaves the archive's failure in place.
     codes = {
-        "rollback": {("runtime_error", "prepared_run_start_failed")},
+        "rollback": {
+            ("runtime_error", "prepared_run_start_failed"),
+            (ARCHIVE_REASON, ARCHIVE_MESSAGE),
+        },
         "activation_failed": {
             ("prepared_run_activation_failed", "Prepared run could not be started"),
             ("runtime_error", "prepared_run_start_failed"),

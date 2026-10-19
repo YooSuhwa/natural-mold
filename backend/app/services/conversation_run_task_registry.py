@@ -49,6 +49,7 @@ class RunTaskRegistry:
         self.worker_instance_id = worker_instance_id or f"worker-{uuid.uuid4().hex[:16]}"
         self._tasks: dict[uuid.UUID, asyncio.Task[None]] = {}
         self._cancel_reasons: dict[uuid.UUID, CancelReason] = {}
+        self._finishing: set[uuid.UUID] = set()
 
     def start(self, run_id: uuid.UUID, task: asyncio.Task[None]) -> None:
         existing = self._tasks.get(run_id)
@@ -87,9 +88,17 @@ class RunTaskRegistry:
     def cancel(self, run_id: uuid.UUID) -> bool:
         return self.request_cancel(run_id, reason="stop")
 
+    def mark_finishing(self, run_id: uuid.UUID) -> None:
+        """The run body has ended; its finalization reconciles a later stop under the row lock.
+
+        A local cancel from then on would only tear the terminal transition, the broker
+        close and the queue dispatch, so :meth:`request_cancel` ignores finishing runs.
+        """
+        self._finishing.add(run_id)
+
     def request_cancel(self, run_id: uuid.UUID, *, reason: CancelReason) -> bool:
         task = self._tasks.get(run_id)
-        if task is None or task.done():
+        if task is None or task.done() or run_id in self._finishing:
             return False
         self._cancel_reasons[run_id] = reason
         if task.cancelling() == 0:
@@ -102,6 +111,7 @@ class RunTaskRegistry:
     def discard(self, run_id: uuid.UUID) -> None:
         self._tasks.pop(run_id, None)
         self._cancel_reasons.pop(run_id, None)
+        self._finishing.discard(run_id)
 
     async def shutdown(self, timeout_seconds: float = 10.0) -> None:
         items = [(run_id, task) for run_id, task in self._tasks.items() if not task.done()]
@@ -125,3 +135,4 @@ class RunTaskRegistry:
                 )
         self._tasks.clear()
         self._cancel_reasons.clear()
+        self._finishing.clear()

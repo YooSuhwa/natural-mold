@@ -36,6 +36,7 @@ from tests.authz.unit_scope_fixture import (
 )
 from tests.conftest import TestSession
 from tests.integration._seed import seed_conversation_with_agent
+from tests.integration.run_status_wait import wait_for_run_status as _wait_for_run_status
 
 
 @pytest.fixture
@@ -69,29 +70,6 @@ async def _publish_event(kwargs: dict[str, Any], evt: dict[str, Any]) -> str:
     kwargs["trace_sink"].append(evt)
     await kwargs["persist_callback"]([evt])
     return format_sse(evt["event"], evt["data"], event_id=evt["id"])
-
-
-async def _wait_for_run_status(
-    run_id: str,
-    status: str,
-    *,
-    # 2s flaked on CI (2-core runner + xdist -n 4 starves the background
-    # worker task — PR #280 first run). The poll returns as soon as the
-    # status lands, so a generous deadline costs nothing when healthy.
-    timeout_seconds: float = 15.0,
-) -> ConversationRun:
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout_seconds
-    last_seen: str | None = None
-    while loop.time() < deadline:
-        async with TestSession() as db:
-            run = await db.get(ConversationRun, uuid.UUID(run_id))
-            if run is not None:
-                last_seen = run.status
-                if run.status == status:
-                    return run
-        await asyncio.sleep(0.01)
-    raise AssertionError(f"timeout waiting for run {run_id} status={status}; last={last_seen}")
 
 
 async def _audit_actions_for_run(run_id: str) -> set[str]:
