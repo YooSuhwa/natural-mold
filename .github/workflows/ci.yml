@@ -137,6 +137,22 @@ jobs:
         run: |
           uv run python ../scripts/check-isolation-cleanup.py \
             --discover ../.omo/evidence/project-restart-consolidated-roadmap
+      # A red lane names its failed nodes; only strings shaped like pytest node ids print.
+      - name: List failed PostgreSQL lane nodes
+        if: ${{ failure() && steps.postgres_lane.outcome == 'failure' }}
+        working-directory: .
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re
+          path = pathlib.Path(".omo/evidence/project-restart-consolidated-roadmap/ci-postgres.json")
+          node = re.compile(r"tests/[A-Za-z0-9_/]+\.py::[A-Za-z0-9_\[\]\-.]+")
+          data = json.loads(path.read_text()) if path.is_file() else {}
+          for scenario in data.get("scenarios", []):
+              receipt = scenario.get("test_receipt") or {}
+              for item in receipt.get("failed_node_ids", []):
+                  if isinstance(item, str) and node.fullmatch(item):
+                      print(f"failed node: {item}")
+          PY
 
   # Project-wide Pyright is a blocking basic-mode gate. Keep standard-mode
   # promotion as a separate decision so the zero-error baseline stays stable.
