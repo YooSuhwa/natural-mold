@@ -66,6 +66,8 @@ def test_pre_push_hook_isolates_nested_git_and_installs_locked_dev_tools(
         "pytest",
         "tests/",
         "-q",
+        "-n",
+        "4",
         "--tb=line",
     ]
     pytest_basetemp = pytest_basetemp_argument.removeprefix("--basetemp=")

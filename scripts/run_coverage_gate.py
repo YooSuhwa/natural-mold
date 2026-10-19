@@ -99,7 +99,9 @@ def _coverage_temp_parent() -> Path | None:
     return canonical
 
 
-def run_gate(kind: str, repo_root: Path) -> None:
+def run_gate(kind: str, repo_root: Path, *, workers: int | None = None) -> None:
+    if workers is not None and (kind != "backend" or workers < 1):
+        raise CoverageContractError("parallel coverage workers apply only to the backend")
     baseline = repo_root / kind / "quality/coverage-baseline.json"
     source_commit = baseline_source_commit(baseline, kind)
     provenance = resolve_provenance(source_commit, repo_root)
@@ -114,12 +116,16 @@ def run_gate(kind: str, repo_root: Path) -> None:
             pytest_temp_root.mkdir(mode=0o700)
             environment = dict(os.environ)
             environment["TMPDIR"] = str(pytest_temp_root)
+            # Coverage data (and xdist worker shards) stay inside the private root.
+            environment["COVERAGE_FILE"] = str(report_root / ".coverage")
             uv = _backend_uv()
+            parallel = [] if workers is None else ["-n", str(workers)]
             _run_measurement(
                 [
                     uv,
                     "run",
                     "pytest",
+                    *parallel,
                     "--cov=app",
                     f"--basetemp={pytest_base_temp}",
                     f"--cov-report=json:{report}",
@@ -159,9 +165,14 @@ def run_gate(kind: str, repo_root: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("kind", choices=("backend", "frontend"))
+    parser.add_argument(
+        "--workers",
+        type=int,
+        help="backend only: measure with pytest-xdist so one run is both suite and gate",
+    )
     args = parser.parse_args()
     repo_root = Path(__file__).resolve().parent.parent
-    run_gate(args.kind, repo_root)
+    run_gate(args.kind, repo_root, workers=args.workers)
     return 0
 
 

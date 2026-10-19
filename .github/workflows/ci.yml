@@ -33,8 +33,9 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
-    # A healthy run takes about 75 minutes; stop a hung run instead of using the 6 h default.
-    timeout-minutes: 120
+    # Lint, ratchets and one parallel coverage-measured suite; the PostgreSQL lane
+    # runs in backend-postgres. Stop a hung run instead of using the 6 h default.
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: backend
@@ -81,8 +82,8 @@ jobs:
       # Test suite runs on aiosqlite in-memory — no Postgres service needed.
       # tests/integration/ drives background run workers via asyncio timing;
       # under xdist -n 4 on a 2-core runner those tasks starve and the poll
-      # times out (flaky). Run the parallel suite without them, then the
-      # integration ones serially. tests/integration/conftest.py auto-applies
+      # times out (flaky). Run the parallel suite without them; backend-postgres
+      # runs them serially. tests/integration/conftest.py auto-applies
       # the `integration` marker to the whole directory, so the serial step
       # must select it explicitly — the trailing `-m` overrides the addopts
       # `-m 'not integration'` filter. Without it everything is deselected
@@ -90,13 +91,34 @@ jobs:
       # the *silent* variant is a full-suite `pytest tests/` run, where
       # passing sibling tests mask the deselection with exit 0. Both
       # contracts are pinned by tests/test_integration_marker_hook.py.
-      # The canonical serial lane provisions PostgreSQL 16, migrates twice,
-      # forces INTEGRATION_DATABASE_URL, verifies exact node execution, and
-      # proves owned-resource cleanup from its immutable manifest.
-      - run: bash scripts/run-isolated-command.sh --cwd backend -- uv run pytest -q -n 4 --ignore=tests/integration
+      # The coverage gate runs that parallel suite itself, once, under pytest-cov:
+      # the JSON report is written inside the wrapper-owned isolated root by this
+      # run and checked against the reviewed floor, so nothing re-runs the suite.
+      - name: Run backend suite and enforce reviewed coverage floor
         working-directory: .
-      - name: Enforce reviewed backend coverage floor
-        run: uv run python ../scripts/run_coverage_gate.py backend
+        run: |
+          bash scripts/run-isolated-command.sh --cwd backend -- \
+            uv run python ../scripts/run_coverage_gate.py backend --workers 4
+
+  # The canonical serial lane provisions PostgreSQL 16, migrates twice,
+  # forces INTEGRATION_DATABASE_URL, verifies exact node execution, and
+  # proves owned-resource cleanup from its immutable manifest. It runs in
+  # parallel with the backend job and needs only the backend environment.
+  backend-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --frozen --all-extras
       - name: Run disposable PostgreSQL integration lane
         id: postgres_lane
         working-directory: .

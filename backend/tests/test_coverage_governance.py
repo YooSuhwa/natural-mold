@@ -370,6 +370,8 @@ def test_coverage_runner_accepts_older_ancestor_and_fresh_external_report(
         temporary_root = Path(env["TMPDIR"])
         assert f"--basetemp={report.parent / 'pytest'}" in argv
         assert temporary_root == report.parent / "tmp"
+        assert Path(env["COVERAGE_FILE"]) == report.parent / ".coverage"
+        assert "-n" not in argv
         assert temporary_root.is_absolute()
         assert not temporary_root.is_relative_to(repo)
         assert not temporary_root.exists()
