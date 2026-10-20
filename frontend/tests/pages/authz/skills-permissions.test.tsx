@@ -50,6 +50,14 @@ vi.mock('@/lib/hooks/use-agents', () => ({ useAgents: () => ({ data: [] }) }))
 vi.mock('@/components/skill/skill-create-dialog', () => ({ SkillCreateDialog: () => null }))
 vi.mock('@/components/marketplace/publish-wizard', () => ({ PublishWizard: () => null }))
 vi.mock('@/lib/auth/session', () => ({ useSession: () => ({ data: { id: 'me' } }) }))
+vi.mock('@/components/sharing/resource-share-dialog', () => ({
+  ResourceShareDialog: (props: { open: boolean; resourceType: string; resourceId: string }) =>
+    props.open ? (
+      <div role="dialog" aria-label="share">
+        {props.resourceType}:{props.resourceId}
+      </div>
+    ) : null,
+}))
 const OWNER_ANSWER = ['can_use', 'can_view', 'can_edit', 'can_share', 'can_delete']
 vi.mock('@/lib/api/resource-permissions', () => ({
   RESOURCE_PERMISSION_BATCH: 100,
@@ -98,6 +106,15 @@ describe('skill list row actions by permission level', () => {
     expect(await screen.findByRole('menuitem', { name: /삭제/ })).toBeInTheDocument()
   })
 
+  it('owner: shares the skill from the row menu (can_share)', async () => {
+    state.permissions = null
+    render(<SkillsPageClient />)
+    await row().findByRole('button', { name: IMPROVE })
+    await openRowMenu()
+    await userEvent.click(await screen.findByRole('menuitem', { name: /공유/ }))
+    expect(await screen.findByRole('dialog', { name: 'share' })).toHaveTextContent('skill:skill-1')
+  })
+
   it('editor: improve without delete or publish', async () => {
     state.permissions = ['can_use', 'can_view', 'can_edit']
     render(<SkillsPageClient />)
@@ -106,6 +123,7 @@ describe('skill list row actions by permission level', () => {
     await openRowMenu()
     expect(screen.queryByRole('menuitem', { name: /삭제/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: /공개하기/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /^공유$/ })).not.toBeInTheDocument()
   })
 
   it('viewer: evaluation and versions, no improve', async () => {

@@ -3,7 +3,7 @@
 import { useCanPublishMarketplace } from '@/components/marketplace/use-marketplace-publish'
 import { createContext, useContext } from 'react'
 import { useRouter } from 'next/navigation'
-import { Download, MoreHorizontal, Trash2, UploadCloud } from 'lucide-react'
+import { Download, MoreHorizontal, Trash2, UploadCloud, UsersIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
@@ -30,6 +30,8 @@ export interface SkillRowActionHandlers {
   readonly improvePending: boolean
   readonly onPublish: (skill: Skill) => void
   readonly onDelete: (skill: Skill) => void
+  /** Plan 13.4: sharing needs can_share (the dialog lives outside the table rows). */
+  readonly onShare: (skill: Skill) => void
 }
 
 /**
@@ -42,8 +44,9 @@ export const SkillRowActionsContext = createContext<SkillRowActionHandlers | nul
 export function SkillRowActions({ skill }: { readonly skill: Skill }) {
   const handlers = useContext(SkillRowActionsContext)
   if (!handlers) throw new Error('SkillRowActions needs SkillRowActionsContext')
-  const { can, onImprove, improvePending, onPublish, onDelete } = handlers
+  const { can, onImprove, improvePending, onPublish, onDelete, onShare } = handlers
   const t = useTranslations('skill')
+  const tSharing = useTranslations('sharing')
   const list = useTranslations('skill.studio.list')
   const router = useRouter()
   const canPublish = useCanPublishMarketplace()
@@ -105,6 +108,12 @@ export function SkillRowActions({ skill }: { readonly skill: Skill }) {
           <DropdownMenuItem onClick={() => router.push(`/skills/${skill.id}/source`)}>
             {list('rowViewSource')}
           </DropdownMenuItem>
+          {can(skill, 'can_share') ? (
+            <DropdownMenuItem onClick={() => onShare(skill)}>
+              <UsersIcon className="size-4" />
+              {tSharing('share')}
+            </DropdownMenuItem>
+          ) : null}
           {canPublish && canPublishSkill(skill) && can(skill, 'can_share') ? (
             <DropdownMenuItem onClick={() => onPublish(skill)}>
               <UploadCloud className="size-4" />

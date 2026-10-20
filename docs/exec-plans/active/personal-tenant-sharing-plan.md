@@ -199,3 +199,4 @@ Related: [조직·권한·공유 실행 기록](org-authz-progress.md), [ADR-023
   (도구 상세·MCP 상세 대화상자, 편집 권한자만). 여러 종류를 받는 리소스는 종류를 먼저 고른다.
 - P2-3 화면 공백 해소: `GET /api/credentials/company-shared`(SELF, 내 조직에 지정된 회사 키의 id·이름·종류·상태만)
   와 자격 증명 선택기 `includeCompany`(도구·MCP 생성/상세 4곳에서 "회사 공유 키" 묶음 표시).
+- P2-5 구현: 스킬 목록 행 메뉴에 "공유"(`can_share`), 공유 대화상자는 삭제 확인처럼 표 밖에서 id로 열기.

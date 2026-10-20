@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
+import { ResourceShareDialog } from '@/components/sharing/resource-share-dialog'
 import { Button } from '@/components/ui/button'
 import { DataTable } from '@/components/ui/data-table'
 import { useAgents } from '@/lib/hooks/use-agents'
@@ -68,6 +69,9 @@ export function SkillListTable({
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([])
   const [deleting, setDeleting] = useState(false)
   const pendingSkills = skills.filter((skill) => pendingDeleteIds.includes(skill.id))
+  // Like deletion: keep the id and read the row from the current list when rendering.
+  const [sharingId, setSharingId] = useState<string | null>(null)
+  const sharingSkill = skills.find((skill) => skill.id === sharingId) ?? null
   // 다이얼로그가 파생-close된 뒤(대상이 refetch로 전부 소실) 잔존 id가 남으면
   // 해당 스킬이 목록에 재등장할 때 파괴적 다이얼로그가 저절로 재오픈된다 —
   // guarded render-time 리셋으로 정리(패키지 에디터 selectedPath 선례).
@@ -155,8 +159,9 @@ export function SkillListTable({
       improvePending,
       onPublish,
       onDelete: (target: Skill) => setPendingDeleteIds([target.id]),
+      onShare: (target: Skill) => setSharingId(target.id),
     }),
-    [can, onImprove, improvePending, onPublish],
+    [can, onImprove, improvePending, onPublish, setSharingId],
   )
 
   return (
@@ -236,6 +241,15 @@ export function SkillListTable({
         isPending={deleting}
         onConfirm={() => void executeDelete()}
       />
+      {sharingSkill ? (
+        <ResourceShareDialog
+          resourceType="skill"
+          resourceId={sharingSkill.id}
+          resourceName={sharingSkill.name}
+          open
+          onOpenChange={(open) => !open && setSharingId(null)}
+        />
+      ) : null}
     </SkillRowActionsContext.Provider>
   )
 }
