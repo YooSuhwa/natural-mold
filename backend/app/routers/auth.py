@@ -38,6 +38,7 @@ from app.schemas.auth import (
     UserResponse,
 )
 from app.services import audit_service, auth_service, user_profile_service, user_service
+from app.services.registration_personal import fan_out_personal_catalog
 from app.services.sso.discovery import refuse_sso_domain_signup
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,8 @@ async def register_endpoint(
     """
 
     await refuse_sso_domain_signup(db, payload.email)  # H-08: company domains use SSO
-    user = await auth_service.register(db, payload, request)
+    registration = await auth_service.register(db, payload, request)
+    user = registration.user
     access, refresh, csrf = await auth_service.issue_tokens(db, user, request)
     await user_service.record_login_success(db, user, ip=auth_service.client_ip(request))
     await audit_service.record_event(
@@ -105,6 +107,8 @@ async def register_endpoint(
         metadata={"source": "register"},
     )
     await db.commit()
+    if registration.personal_org_id is not None:
+        await fan_out_personal_catalog(request, user.id, registration.personal_org_id)
     await apply_for_request(request, db)  # 7.2.1: the new member's tuples now
     set_auth_cookies(
         response,

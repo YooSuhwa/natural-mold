@@ -20,7 +20,7 @@ from uuid import UUID, uuid4
 
 import anyio
 from pydantic import JsonValue
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.grant_completion import complete_sources
@@ -90,16 +90,26 @@ async def enqueue(
 ) -> list[UUID]:
     """Add queue rows to the caller's transaction (flushed, never committed here).
 
-    One INSERT per row, so ``seq`` follows ``ops`` order on every dialect.
+    One INSERT per row, so ``seq`` follows ``ops`` order on every dialect. No RETURNING:
+    request scopes may insert queue rows under RLS but only the platform drain reads them.
     """
+    await db.flush()  # pending ORM rows first, so their tuples keep their place in the queue
     ids: list[UUID] = []
     for op in ops:
-        row = AuthzOutbox(id=uuid4(), op=op.op, tuple=encode(op), tuple_key=tuple_key(op.tuple))
-        row.source_table, row.source_id = source_table, source_id
-        row.attempts, row.next_attempt_at = 0, now
-        db.add(row)
-        await db.flush()
-        ids.append(row.id)
+        row_id = uuid4()
+        await db.execute(
+            insert(AuthzOutbox).values(
+                id=row_id,
+                op=op.op,
+                tuple=encode(op),
+                tuple_key=tuple_key(op.tuple),
+                source_table=source_table,
+                source_id=source_id,
+                attempts=0,
+                next_attempt_at=now,
+            )
+        )
+        ids.append(row_id)
     return ids
 
 

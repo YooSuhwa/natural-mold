@@ -29,6 +29,7 @@ class DefaultEnrollment:
     scope: RegistrationOrganization
     user: User
     bootstrap: bool
+    personal: bool = False  # the account's own new company: it administers it
 
 
 async def enroll_default_organization(
@@ -40,7 +41,8 @@ async def enroll_default_organization(
         enrollment.user,
     )
     ensure_signup_scope_active(enrollment.scope)
-    if not enrollment.bootstrap:
+    administrator = enrollment.bootstrap or enrollment.personal
+    if not administrator:
         await require_member_capacity(db, company.id)  # H-06 member_limit
     sync = await capture_user(db, company.id, user.id, org.id)
     db.add(TenantMember(tenant_id=company.id, user_id=user.id))
@@ -49,7 +51,7 @@ async def enroll_default_organization(
     )
     role = (
         "admin"
-        if enrollment.bootstrap
+        if administrator
         else OrganizationSettings.model_validate(org.settings).default_member_role
     )
     events: list[tuple[str, str, UUID, dict[str, JsonValue]]] = [
@@ -75,7 +77,7 @@ async def enroll_default_organization(
                 {"role": role, "principal_type": "user"},
             )
         )
-    if enrollment.bootstrap:
+    if administrator:
         db.add(
             TenantRoleGrant(tenant_id=company.id, user_id=user.id, role="admin", granted_by=user.id)
         )
@@ -99,6 +101,7 @@ async def enroll_default_organization(
                 **details,
                 "source": "registration",
                 "bootstrap": enrollment.bootstrap,
+                "personal": enrollment.personal,
                 "org_id": str(org.id),
                 "tenant_id": str(company.id),
                 "principal_id": str(user.id),

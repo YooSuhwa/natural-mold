@@ -18,7 +18,7 @@
 
 [Features](#features) · [Quick start](#quick-start) · [Local development](#local-development) · [Configuration](#configuration) · [Architecture](#architecture) · [Testing](#testing) · [Docs](#documentation)
 
-<!-- project-current-source: migration=i06_company_rls; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-20 -->
+<!-- project-current-source: migration=i08_outbox_request_enqueue; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-21 -->
 
 </div>
 
@@ -41,7 +41,7 @@ original owner checks to an OpenFGA model.
 | Frontend | Next.js 16 (App Router), React 19, TailwindCSS v4, shadcn/ui, assistant-ui, TanStack Query, Jotai, next-intl |
 | Backend | FastAPI, SQLAlchemy 2.0 async, Alembic, APScheduler, Python 3.12 |
 | Agent runtime | LangChain 1.x, LangGraph 1.x, `deepagents` 0.7.11 (`create_deep_agent`), LangGraph `AsyncPostgresSaver` |
-| Data | PostgreSQL 16, Alembic head `i06_company_rls` |
+| Data | PostgreSQL 16, Alembic head `i08_outbox_request_enqueue` |
 | Authorization | Owner checks (legacy) or OpenFGA (shadow / enforce), optional PostgreSQL row-level security |
 | License | MIT |
 
@@ -132,8 +132,10 @@ upgrade.
   `DEPLOYMENT_MODE` selects a single company (`single_tenant`) or SaaS
   (`multi_tenant`).
 - **Invitations and sign-up policy.** Organization and company invitations
-  (`/invite/<token>`); `REGISTRATION_POLICY` is `default_org`, `invite_only` or
-  `closed`.
+  (`/invite/<token>`); `REGISTRATION_POLICY` is `default_org`, `personal_tenant`,
+  `invite_only` or `closed`. `personal_tenant` (`multi_tenant` only) gives every
+  uninvited sign-up its own company and organization, which that person
+  administers, so strangers are separated by the company boundary.
 - **Sharing.** Agents, skills, tools, MCP servers and credentials can be shared
   with users, groups or organizations. Each resource has an access list and
   ownership transfer.
@@ -218,7 +220,7 @@ docker compose up -d postgres
 cd backend
 cp .env.example .env            # set ENCRYPTION_KEYS and JWT_SECRET
 uv sync
-uv run alembic upgrade head     # head: i06_company_rls
+uv run alembic upgrade head     # head: i08_outbox_request_enqueue
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 
 # Frontend (http://localhost:3000), in another terminal
@@ -253,7 +255,7 @@ important settings:
 | `JWT_SECRET` | none | Signs access tokens. |
 | `APP_ENV` | `dev` | `production` enables startup safety checks and skips dev seeding. |
 | `ALLOW_FIRST_USER_AS_ADMIN` | `true` | First registered user becomes `super_user`. |
-| `REGISTRATION_POLICY` | `default_org` | `default_org`, `invite_only` or `closed`. |
+| `REGISTRATION_POLICY` | `default_org` | `default_org`, `personal_tenant` (`multi_tenant` only), `invite_only` or `closed`. |
 | `DEPLOYMENT_MODE` | `single_tenant` | `multi_tenant` enables platform company management. |
 | `AUTHZ_MODE` | `legacy` | `legacy`, `shadow` or `enforce`. |
 | `AUTHZ_ENFORCE_TYPES` | empty | Types enforced in `enforce` mode. Empty means all types. |

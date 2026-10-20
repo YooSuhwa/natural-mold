@@ -18,7 +18,7 @@
 
 [기능](#기능) · [빠른 시작](#빠른-시작) · [로컬 개발](#로컬-개발) · [설정](#설정) · [아키텍처](#아키텍처) · [테스트](#테스트) · [문서](#문서)
 
-<!-- project-current-source: migration=i06_company_rls; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-20 -->
+<!-- project-current-source: migration=i08_outbox_request_enqueue; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-21 -->
 
 </div>
 
@@ -39,7 +39,7 @@ OpenFGA 모델로 단계적으로 옮길 수 있습니다.
 | 프론트엔드 | Next.js 16 (App Router), React 19, TailwindCSS v4, shadcn/ui, assistant-ui, TanStack Query, Jotai, next-intl |
 | 백엔드 | FastAPI, SQLAlchemy 2.0 async, Alembic, APScheduler, Python 3.12 |
 | 에이전트 런타임 | LangChain 1.x, LangGraph 1.x, `deepagents` 0.7.11 (`create_deep_agent`), LangGraph `AsyncPostgresSaver` |
-| 데이터 | PostgreSQL 16, Alembic head `i06_company_rls` |
+| 데이터 | PostgreSQL 16, Alembic head `i08_outbox_request_enqueue` |
 | 권한 | 소유자 판정(legacy) 또는 OpenFGA(shadow / enforce), 선택적 PostgreSQL 행 단위 보안(RLS) |
 | 라이선스 | MIT |
 
@@ -114,7 +114,9 @@ OpenFGA 모델로 단계적으로 옮길 수 있습니다.
   사이드바에서 바꿉니다. `DEPLOYMENT_MODE`로 단일 회사(`single_tenant`)와
   SaaS(`multi_tenant`)를 고릅니다.
 - **초대와 가입 정책.** 조직·회사 초대(`/invite/<token>`). `REGISTRATION_POLICY`는
-  `default_org`, `invite_only`, `closed` 중 하나입니다.
+  `default_org`, `personal_tenant`, `invite_only`, `closed` 중 하나입니다.
+  `personal_tenant`(`multi_tenant` 전용)는 초대 없이 가입한 사람마다 그 사람이 관리하는
+  개인 회사와 조직을 만들어, 모르는 사용자끼리 회사 경계로 분리합니다.
 - **공유.** 에이전트, 스킬, 도구, MCP 서버, 자격 증명을 사용자·그룹·조직과 공유합니다.
   자원마다 접근 목록과 소유권 이전이 있습니다.
 - **OpenFGA.** 권한 모델은 [`backend/app/authz/model.fga`](backend/app/authz/model.fga)에
@@ -188,7 +190,7 @@ docker compose up -d postgres
 cd backend
 cp .env.example .env            # ENCRYPTION_KEYS, JWT_SECRET 설정
 uv sync
-uv run alembic upgrade head     # head: i06_company_rls
+uv run alembic upgrade head     # head: i08_outbox_request_enqueue
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 
 # 프론트엔드 (http://localhost:3000), 다른 터미널에서
@@ -221,7 +223,7 @@ pnpm dev
 | `JWT_SECRET` | 없음 | 액세스 토큰 서명 키. |
 | `APP_ENV` | `dev` | `production`이면 기동 안전 점검을 하고 개발용 시드를 건너뜁니다. |
 | `ALLOW_FIRST_USER_AS_ADMIN` | `true` | 처음 가입한 사용자가 `super_user`가 됩니다. |
-| `REGISTRATION_POLICY` | `default_org` | `default_org`, `invite_only`, `closed`. |
+| `REGISTRATION_POLICY` | `default_org` | `default_org`, `personal_tenant`(`multi_tenant` 전용), `invite_only`, `closed`. |
 | `DEPLOYMENT_MODE` | `single_tenant` | `multi_tenant`이면 플랫폼 회사 관리가 열립니다. |
 | `AUTHZ_MODE` | `legacy` | `legacy`, `shadow`, `enforce`. |
 | `AUTHZ_ENFORCE_TYPES` | 빈 값 | `enforce`에서 강제할 유형. 빈 값은 전체 유형입니다. |

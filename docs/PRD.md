@@ -1,6 +1,6 @@
 # Moldy PRD
 
-<!-- project-current-source: migration=i06_company_rls; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-20 -->
+<!-- project-current-source: migration=i08_outbox_request_enqueue; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-21 -->
 
 > Last updated: 2026-09-10
 > Version: v0.7

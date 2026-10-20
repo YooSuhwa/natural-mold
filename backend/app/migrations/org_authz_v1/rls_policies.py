@@ -26,6 +26,7 @@ from app.migrations.org_authz_v1.rls_manifest import (
 )
 
 POLICY: Final = "tenant_boundary"
+AUTHZ_QUEUE: Final = "authz_outbox"
 TENANT: Final = "nullif(current_setting('app.tenant_id', true), '')::uuid"
 USER: Final = "nullif(current_setting('app.user_id', true), '')::uuid"
 PLATFORM: Final = "current_setting('app.scope', true) = 'platform'"
@@ -137,6 +138,13 @@ def _table_policy(quote: Quote, name: str) -> TablePolicy:
         write = f"tenant_id = {TENANT}"
         read = f"({write} OR tenant_id IS NULL)" if name in PLATFORM_CATALOG else write
         return TablePolicy(name, *_scoped(read, write))
+    if name == AUTHZ_QUEUE:
+        # Request paths (signup on the identity scope, company sessions) enqueue the tuples of
+        # their own membership/share changes in the same transaction; only the platform drain
+        # reads, updates or deletes queue rows.
+        return TablePolicy(
+            name, PLATFORM, f"({PLATFORM}) OR ({IDENTITY}) OR ({TENANT} IS NOT NULL)"
+        )
     if name in PLATFORM_ONLY:
         return TablePolicy(name, PLATFORM, PLATFORM)
     if name in GLOBAL_IDENTITY:
