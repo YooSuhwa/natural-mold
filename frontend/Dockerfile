@@ -7,6 +7,7 @@ RUN corepack enable pnpm
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY frontend/package.json ./frontend/package.json
 COPY backend/skill-node/package.json ./backend/skill-node/package.json
+COPY vendor/ ./vendor/
 RUN pnpm install --frozen-lockfile --filter frontend...
 
 COPY frontend ./frontend

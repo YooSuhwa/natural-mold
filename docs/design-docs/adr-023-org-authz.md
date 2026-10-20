@@ -14,9 +14,9 @@ therefore requires changes to persistence, runtime credential resolution,
 background work, public links, UI state and authorization, together.
 
 The user authorized the complete implementation in
-[the supplied plan](../exec-plans/org-authz-plan.html), including its chapter 19
+[the supplied plan](../exec-plans/active/org-authz-plan.html), including its chapter 19
 decisions. The original HTML is preserved. Deviations and verification evidence
-are recorded in [the execution record](../exec-plans/org-authz-progress.md).
+are recorded in [the execution record](../exec-plans/active/org-authz-progress.md).
 
 ## Decisions
 
@@ -91,7 +91,7 @@ Enforced FGA errors deny with 503, while private reads remain independent.
 
 ## Decision clarifications
 
-- A-13's [event and schema crosswalk](../exec-plans/org-authz-event-contract.md)
+- A-13's [event and schema crosswalk](../org-authz/org-authz-event-contract.md)
   records all 19 original event rows, their concrete DB/tuple/revocation sources,
   and explicit R1–R8 resolutions where the original sections conflict. The
   crosswalk is a reviewed schema contract; event execution and exact emitted
@@ -216,8 +216,8 @@ baseline `c5cea625ee1e1470e386525edf120b02178bdbaf`. It describes a candidate.
 The aggregate gate (parent Task 16), the F1–F6 reviews and the native
 PostgreSQL lanes have not run, so nothing here records adoption of B11 or B12.
 The route-by-route contract and the 9.7 ownership crosswalk are in
-[the company administration contract](../exec-plans/org-authz-company-administration-contract.md).
-The candidate state is in [the execution record](../exec-plans/org-authz-progress.md).
+[the company administration contract](../org-authz/org-authz-company-administration-contract.md).
+The candidate state is in [the execution record](../exec-plans/active/org-authz-progress.md).
 
 ### Schema: a dedicated company invitation table
 
@@ -505,7 +505,7 @@ version nor the audit log.
 - Gate waivers. `ruff format --check .` reports 74 files, all of them outside
   this branch's diff (pre-existing). `scripts/check_project_facts.py` already
   fails at baseline `6d5323ee` because four tracked
-  `docs/exec-plans/org-authz-*.md` files are outside `active/` or
+  `docs/exec-plans/active/org-authz-*.md` files are outside `active/` or
   `completed/`. This branch adds a fifth,
   `org-authz-company-administration-contract.md`. Moving the files is deferred
   because sealed `.omo` records cite these paths.

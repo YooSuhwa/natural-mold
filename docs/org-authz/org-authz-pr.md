@@ -4,7 +4,7 @@
 
 Moldy를 운영자 1명 + 사용자별 소유 모델에서 **회사(tenant) > 조직 > 구성원·그룹·역할** 구조로 바꾸고,
 자원 공유와 실행 권한을 OpenFGA 기반 판정으로 옮깁니다(ADR-023,
-[기획서](org-authz-plan.html), [진행 기록](org-authz-progress.md)).
+[기획서](../exec-plans/active/org-authz-plan.html), [진행 기록](../exec-plans/active/org-authz-progress.md)).
 설치형(single_tenant)과 SaaS(multi_tenant)를 같은 코드로 지원합니다.
 
 이 PR은 기획서 17.4의 **PR 1(구현 완료)** 입니다. `AUTHZ_MODE=legacy`, `DB_RLS_ENABLED=false`가 기본값이라

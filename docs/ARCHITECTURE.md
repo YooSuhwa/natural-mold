@@ -1,6 +1,6 @@
 # Moldy Architecture Map
 
-<!-- project-current-source: migration=m77_side_chat_link; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-10 -->
+<!-- project-current-source: migration=i06_company_rls; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-20 -->
 
 > Last updated: 2026-09-10
 > Source basis: current tracked repository source, recent runtime commits, and

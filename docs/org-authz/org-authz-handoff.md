@@ -4,7 +4,7 @@
 
 ## 먼저 읽을 것
 
-`docs/exec-plans/org-authz-plan.html` 하나에 모든 내용이 있습니다. 브라우저로 열면 됩니다(외부 파일 없이 열림).
+`docs/exec-plans/active/org-authz-plan.html` 하나에 모든 내용이 있습니다. 브라우저로 열면 됩니다(외부 파일 없이 열림).
 
 읽는 순서:
 
@@ -20,11 +20,11 @@
 
 | 이 묶음 | 저장소 위치 | 관련 작업 |
 |---|---|---|
-| `docs/exec-plans/org-authz-plan.html` | 같은 경로. `docs/exec-plans/index.md`의 Active에 등록 | P0 첫 커밋 |
+| `docs/exec-plans/active/org-authz-plan.html` | 같은 경로. `docs/exec-plans/index.md`의 Active에 등록 | P0 첫 커밋 |
 | `backend/app/authz/model.fga`, `model.fga.yaml` | 같은 경로 | A-04 |
 | `scripts/p0/` | 같은 경로 | A-11, A-12 |
 
-진행 기록 `docs/exec-plans/org-authz-progress.md`는 개발팀이 P0 첫 커밋에서 새로 만듭니다(형식은 17.3).
+진행 기록 `docs/exec-plans/active/org-authz-progress.md`는 개발팀이 P0 첫 커밋에서 새로 만듭니다(형식은 17.3).
 
 ## 권한 모델 테스트
 

@@ -2892,7 +2892,7 @@ Plan-Task: B-01</code></pre>
 
 <h3>17.3 단계 완료 확인</h3>
 <ul>
-  <li><strong>진행 기록.</strong> P0 첫 커밋에서 이 기획서를 <code>docs/exec-plans/org-authz-plan.html</code>로, 진행 기록을 <code>docs/exec-plans/org-authz-progress.md</code>로 추가하고 <code>docs/exec-plans/index.md</code>의 Active에 등록합니다. 진행 기록은 기존 <code>CHECKPOINT.md</code> 형식(작업 체크박스, 검증 명령, 완료 조건, 상태와 날짜)을 따르고 단계마다 "결정 변경"과 "다음 단계 시작 조건"을 둡니다.</li>
+  <li><strong>진행 기록.</strong> P0 첫 커밋에서 이 기획서를 <code>docs/exec-plans/active/org-authz-plan.html</code>로, 진행 기록을 <code>docs/exec-plans/active/org-authz-progress.md</code>로 추가하고 <code>docs/exec-plans/index.md</code>의 Active에 등록합니다. 진행 기록은 기존 <code>CHECKPOINT.md</code> 형식(작업 체크박스, 검증 명령, 완료 조건, 상태와 날짜)을 따르고 단계마다 "결정 변경"과 "다음 단계 시작 조건"을 둡니다.</li>
   <li><strong>CI와 같은 검사.</strong> CI는 main push와 PR에서만 돕니다(<code>.github/workflows/ci.yml</code> 3~6행). 그래서 PR 1을 열기 전까지는 단계가 끝날 때마다 CI 작업을 로컬에서 같은 명령으로 돌립니다: <code>backend</code>(변경 파일 타입·포맷 래칫, 커버리지 기준, <code>scripts/run-isolated-postgres-tests.sh all</code>와 정리 확인), <code>backend-typecheck</code>(<code>uv run pyright</code>), <code>frontend</code>(lint, build, 커버리지 기준), <code>pr-scripted-smoke</code>(<code>pnpm --dir frontend test:e2e:scripted -- --project=scripted-smoke</code>). 결과를 진행 기록에 남깁니다.</li>
   <li><strong>단계 완료 커밋.</strong> 단계의 모든 작업이 완료 조건을 만족하고 위 검사가 통과하면 진행 기록만 바꾸는 커밋을 하나 더 하고 push합니다. 예: <code>docs(exec-plan): close P1 organization data [P1]</code>. 이 커밋이 다음 단계의 시작점입니다.</li>
   <li><strong>멈춤 조건.</strong> 완료 조건을 만족하지 못하거나 기획의 전제가 소스와 다르면(예: 라우트 집계가 달라짐) 다음 단계로 넘어가지 않고 진행 기록에 막힌 이유와 필요한 결정을 적습니다.</li>
@@ -2904,9 +2904,9 @@ Plan-Task: B-01</code></pre>
 <pre><code>git push -u origin feature/org-authz
 gh pr create --base main --head feature/org-authz \
   --title "feat(authz): organizations, tenants, permissions and sharing" \
-  --body-file docs/exec-plans/org-authz-pr.md</code></pre>
+  --body-file docs/org-authz/org-authz-pr.md</code></pre>
   GitHub 연결 권한 오류(403)가 나면 <code>AGENTS.md:489-493</code>대로 <code>gh pr create --draft --base main --head feature/org-authz</code>로 열고 보고에 그 사실을 적습니다. PR을 연 뒤 CI가 모두 통과해야 리뷰를 요청합니다.</li>
-  <li><strong>PR 1 본문</strong>(<code>docs/exec-plans/org-authz-pr.md</code>): 변경 의도, 단계별 요약(단계마다 작업 ID와 커밋 범위, 리뷰 순서), 마이그레이션 목록과 되돌리기 방법(15.4), 새 설정(15.2), 1.3 완료 기준 항목별 검증 결과와 근거, 머지 후 운영 전환 절차(15.3의 섀도 → 유형별 강제 → RLS), 남은 결정(Q19~Q23), <code>CONTRIBUTING.md</code>의 PR 체크리스트.</li>
+  <li><strong>PR 1 본문</strong>(<code>docs/org-authz/org-authz-pr.md</code>): 변경 의도, 단계별 요약(단계마다 작업 ID와 커밋 범위, 리뷰 순서), 마이그레이션 목록과 되돌리기 방법(15.4), 새 설정(15.2), 1.3 완료 기준 항목별 검증 결과와 근거, 머지 후 운영 전환 절차(15.3의 섀도 → 유형별 강제 → RLS), 남은 결정(Q19~Q23), <code>CONTRIBUTING.md</code>의 PR 체크리스트.</li>
   <li><strong>리뷰 부담.</strong> 단일 PR이 크므로 본문에 단계별 커밋 범위(<code>git log --oneline &lt;P0 완료 커밋&gt;..&lt;P1 완료 커밋&gt;</code>)를 표로 넣어 단계 단위로 나눠 볼 수 있게 합니다.</li>
   <li><strong>PR 2 정리.</strong> I-02 강제 전환 후 2주 동안 거부 오류가 기준 안이면 같은 규칙으로 <code>feature/org-authz-cleanup</code>에서 I-03, I-04를 진행하고 PR을 엽니다. 본문에 섀도 관찰 보고(I-01)와 강제 전환 기간 지표를 붙입니다.</li>
 </ul>

@@ -6,7 +6,7 @@ from pathlib import Path
 from schema_drafts.org_authz.event_contract import DELETE_ORDER, WRITE_ORDER, event_contracts
 from schema_drafts.org_authz.plan_source import source_rows
 
-PLAN = Path(__file__).parents[3] / "docs/exec-plans/org-authz-plan.html"
+PLAN = Path(__file__).parents[3] / "docs/exec-plans/active/org-authz-plan.html"
 
 
 def test_every_original_event_cell_has_one_exact_contract() -> None:

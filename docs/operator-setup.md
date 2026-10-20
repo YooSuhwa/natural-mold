@@ -86,7 +86,7 @@ uv run alembic upgrade head
 
 - [조직·권한 운영 가이드](org-authz-operations.md) — legacy → shadow → 유형별 enforce → RLS 전환,
   새 설정, 마이그레이션 되돌리기, OpenFGA·회사 데이터 운영, 모니터링
-- `docs/exec-plans/org-authz-plan.html` 15.1·15.2.1 — Compose 구성과 전송 구간 보호 기준
+- `docs/exec-plans/active/org-authz-plan.html` 15.1·15.2.1 — Compose 구성과 전송 구간 보호 기준
 - `docs/design-docs/adr-016-multiuser-auth.md` — 인증/세션 전체 설계
 - `backend/.env.example` — 전체 변수 목록 + 인라인 주석
 - `backend/app/security/production_check.py` — 검증 로직 (단일 소스)
@@ -153,8 +153,10 @@ docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
 
 - `postgres`, `openfga-postgres`: `ssl=on`, 평문 TCP 접속은 `pg_hba`에서 거부
 - `openfga`: `OPENFGA_HTTP_TLS_ENABLED=true`, 전용 Postgres 접속은 `sslmode=verify-full`
-- `backend`: 위 표대로 세 DB URL과 `OPENFGA_API_URL=https://openfga:8080`,
+- `backend`(1회성 `migrate`, `authz-bootstrap` 포함): 위 표대로 세 DB URL과 `OPENFGA_API_URL=https://openfga:8080`,
   `OPENFGA_CA_CERT=/certs/ca.crt`, `PGSSLROOTCERT=/certs/ca.crt`, `INTERNAL_PLAINTEXT_HOSTS` 빈 값
+- 기본 파일의 개발용 OpenFGA 기본값을 쓰지 않습니다. 루트 `.env`에 `OPENFGA_API_TOKEN`과
+  `OPENFGA_DB_PASSWORD`가 없으면 Compose가 기동을 거부합니다.
 
 인증서 디렉터리는 `MOLDY_TLS_CERT_DIR`(기본 `./certs/internal`)이며 모든 서비스에
 `/certs`로 읽기 전용 마운트됩니다. OpenFGA 이미지는 root가 아닌 사용자로 돌기 때문에
