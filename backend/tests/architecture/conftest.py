@@ -20,9 +20,9 @@ LOCAL_AUTHORITY_TESTS = frozenset(
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    if (ROOT / ".omo").is_dir():
+    if (ROOT / ".omo" / "evidence" / "company-administration").is_dir():
         return
-    skip = pytest.mark.skip(reason="local .omo authority record not present (CI checkout)")
+    skip = pytest.mark.skip(reason="local .omo authority record not present (CI or fresh checkout)")
     for item in items:
         if f"{item.path.name}::{item.name}" in LOCAL_AUTHORITY_TESTS:
             item.add_marker(skip)
