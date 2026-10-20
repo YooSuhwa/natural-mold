@@ -17,6 +17,7 @@ this router keeps schema conversion, ``Depends`` guards, and commits.
 from __future__ import annotations
 
 import uuid
+from typing import cast
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,7 @@ from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import unknown_tool_definition
 from app.models.tool import Tool
+from app.schemas.credential_binding import CredentialMode
 from app.schemas.tool import (
     ToolCreate,
     ToolDefinitionSchema,
@@ -61,6 +63,8 @@ def _to_response(tool: Tool) -> ToolInstanceResponse:
         description=tool.description,
         parameters=tool.parameters or {},
         credential_id=tool.credential_id,
+        credential_mode=cast("CredentialMode", tool.credential_mode or "none"),
+        credential_definition_key=tool.credential_definition_key,
         enabled=tool.enabled,
         last_used_at=tool.last_used_at,
         created_at=tool.created_at,

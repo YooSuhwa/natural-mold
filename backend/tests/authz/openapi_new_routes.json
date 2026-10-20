@@ -35211,6 +35211,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "credential_definition_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Definition Key"
+        },
         "credential_id": {
           "anyOf": [
             {
@@ -35222,6 +35233,16 @@
             }
           ],
           "title": "Credential Id"
+        },
+        "credential_mode": {
+          "default": "none",
+          "enum": [
+            "none",
+            "shared",
+            "per_user"
+          ],
+          "title": "Credential Mode",
+          "type": "string"
         },
         "description": {
           "anyOf": [
@@ -35398,6 +35419,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "credential_definition_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Definition Key"
+        },
         "credential_id": {
           "anyOf": [
             {
@@ -35409,6 +35441,16 @@
             }
           ],
           "title": "Credential Id"
+        },
+        "credential_mode": {
+          "default": "none",
+          "enum": [
+            "none",
+            "shared",
+            "per_user"
+          ],
+          "title": "Credential Mode",
+          "type": "string"
         },
         "description": {
           "anyOf": [
@@ -47893,6 +47935,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "credential_definition_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Definition Key"
+        },
         "credential_id": {
           "anyOf": [
             {
@@ -47904,6 +47957,16 @@
             }
           ],
           "title": "Credential Id"
+        },
+        "credential_mode": {
+          "default": "none",
+          "enum": [
+            "none",
+            "shared",
+            "per_user"
+          ],
+          "title": "Credential Mode",
+          "type": "string"
         },
         "definition_key": {
           "title": "Definition Key",

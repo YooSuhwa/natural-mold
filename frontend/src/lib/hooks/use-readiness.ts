@@ -7,7 +7,9 @@ import { readinessApi } from '@/lib/api/readiness'
 import { readinessSummaryBatcher } from '@/lib/api/readiness-summary-batcher'
 import { credentialQueryKeys } from '@/lib/query-keys/credentials'
 import { credentialBindingQueryKeys, readinessQueryKeys } from '@/lib/query-keys/readiness'
-import type { BindableResourceType } from '@/lib/types/readiness'
+import { mcpServerQueryKeys } from '@/lib/query-keys/mcp-servers'
+import { toolQueryKeys } from '@/lib/query-keys/tools'
+import type { BindableResourceType, CredentialMode } from '@/lib/types/readiness'
 import { requiredQueryValue } from './required-query-value'
 
 /** The server caches summaries for 60 s per caller and agent (plan 12.3). */
@@ -52,6 +54,28 @@ export function useBindCredential() {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: credentialBindingQueryKeys.all })
       await qc.invalidateQueries({ queryKey: credentialQueryKeys.all })
+      await qc.invalidateQueries({ queryKey: readinessQueryKeys.all })
+    },
+  })
+}
+
+export interface SetCredentialModeInput {
+  resourceType: BindableResourceType
+  resourceId: string
+  mode: CredentialMode
+  definitionKey?: string | null
+}
+
+/** F-04: switch a tool or MCP server between its own account and per-user connections. */
+export function useSetCredentialMode() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ resourceType, resourceId, mode, definitionKey }: SetCredentialModeInput) =>
+      credentialBindingsApi.setMode(resourceType, resourceId, mode, definitionKey),
+    onSuccess: async (_result, { resourceType }) => {
+      await qc.invalidateQueries({
+        queryKey: resourceType === 'tool' ? toolQueryKeys.all : mcpServerQueryKeys.all,
+      })
       await qc.invalidateQueries({ queryKey: readinessQueryKeys.all })
     },
   })

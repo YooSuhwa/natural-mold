@@ -1,5 +1,10 @@
 import { apiFetch } from './client'
-import type { BindableResourceType, CredentialBinding } from '@/lib/types/readiness'
+import type {
+  BindableResourceType,
+  CredentialBinding,
+  CredentialMode,
+  CredentialModeResult,
+} from '@/lib/types/readiness'
 
 const BASE = '/api/credential-bindings'
 
@@ -18,4 +23,21 @@ export const credentialBindingsApi = {
     }),
   unbind: (resourceType: BindableResourceType, resourceId: string) =>
     apiFetch<void>(path(resourceType, resourceId), { method: 'DELETE' }),
+  /** Owner/editor switch between the resource's account and per-user connections (F-04). */
+  setMode: (
+    resourceType: BindableResourceType,
+    resourceId: string,
+    mode: CredentialMode,
+    definitionKey?: string | null,
+  ) =>
+    apiFetch<CredentialModeResult>(
+      `/api/${resourceType === 'tool' ? 'tools' : 'mcp-servers'}/${encodeURIComponent(resourceId)}/credential-mode`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          credential_mode: mode,
+          ...(definitionKey ? { credential_definition_key: definitionKey } : {}),
+        }),
+      },
+    ),
 }

@@ -54,6 +54,18 @@ export interface ReadinessSummary {
 
 export type BindableResourceType = 'tool' | 'mcp_server'
 
+/** How a tool or MCP server gets its account (plan D15): none, the resource's own, or each caller's. */
+export type CredentialMode = 'none' | 'shared' | 'per_user'
+
+/** `PUT /api/{tools|mcp-servers}/{id}/credential-mode` response. */
+export interface CredentialModeResult {
+  resource_type: BindableResourceType
+  resource_id: string
+  credential_mode: CredentialMode
+  credential_definition_key: string | null
+  binding_count: number
+}
+
 export interface CredentialBinding {
   id: string
   resource_type: BindableResourceType

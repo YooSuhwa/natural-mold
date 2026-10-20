@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.mcp_server import STATUSES, TRANSPORTS
+from app.schemas.credential_binding import CredentialMode
 
 Transport = Literal["stdio", "sse", "streamable_http"]
 Status = Literal["unknown", "connected", "auth_needed", "unreachable", "disabled"]
@@ -77,6 +78,8 @@ class McpServerResponse(BaseModel):
     env_vars: dict[str, Any] = Field(default_factory=dict)
     headers: dict[str, Any] = Field(default_factory=dict)
     credential_id: uuid.UUID | None = None
+    credential_mode: CredentialMode = "none"
+    credential_definition_key: str | None = None
     status: str
     last_pinged_at: datetime | None = None
     last_tool_count: int | None = None

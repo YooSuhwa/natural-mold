@@ -6197,6 +6197,24 @@
     }
   },
   "readiness": {
+    "mode": {
+      "label": "Account connection",
+      "resource": "Share this resource's account",
+      "perUser": "Each user connects their own account",
+      "resourceHelp": "Everyone who may use it runs on the account connected to this resource.",
+      "perUserHelp": "Each person who runs it must connect their own account.",
+      "chooseType": "Choose the credential type to connect",
+      "toast": {
+        "perUser": "Each user now connects their own account",
+        "resource": "Everyone now uses this resource's account"
+      },
+      "errors": {
+        "reshareBlocked": "You may not share this account with others",
+        "personalAccount": "A personal account cannot be shared with others",
+        "invalid": "This setting cannot be applied. Check the connected account",
+        "failed": "Could not change the account connection"
+      }
+    },
     "badge": {
       "needsConnection": "Needs connection {count}",
       "limited": "{count} excluded",

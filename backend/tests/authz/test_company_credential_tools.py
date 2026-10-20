@@ -136,3 +136,18 @@ async def test_mcp_discovery_accepts_only_a_designated_company_credential(
     assert (await require_mcp_probe_scope(db, server, designated.id)) is not None
     with pytest.raises(AppError):
         await require_mcp_probe_scope(db, server, elsewhere.id)
+
+
+async def test_tool_responses_report_the_credential_mode(client, db: AsyncSession) -> None:  # noqa: ANN001
+    company = await _company(db, "a", orgs=(TEST_ORG_ID,))
+    created = await client.post(
+        "/api/tools",
+        json={
+            "definition_key": "http_request",
+            "name": "Company",
+            "credential_id": str(company.id),
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["credential_mode"] == "shared"
+    assert created.json()["credential_definition_key"] is None

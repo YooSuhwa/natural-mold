@@ -14,6 +14,7 @@ import { DialogShell } from '@/components/shared/dialog-shell'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
 import { ApiErrorState, useApiErrorMessage } from '@/components/shared/api-error-state'
 import { CredentialPicker } from '@/components/credential/credential-picker'
+import { CredentialModeControl } from '@/components/readiness/credential-mode-control'
 import { ResourceShareButton, SharedWithMeBadge } from '@/components/sharing/resource-share-button'
 import { ToolRunPanel } from './tool-run-panel'
 import { useDeleteTool, useTool, useToolType, useUpdateTool } from '@/lib/hooks/use-tools'
@@ -118,6 +119,16 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
                   definitionKeys={definition.credential_definition_keys}
                 />
               </div>
+            ) : null}
+            {canEdit && definition?.credential_definition_keys.length ? (
+              <CredentialModeControl
+                resourceType="tool"
+                resourceId={tool.id}
+                mode={tool.credential_mode ?? (tool.credential_id ? 'shared' : 'none')}
+                credentialId={tool.credential_id}
+                definitionKey={tool.credential_definition_key ?? null}
+                acceptedKeys={definition.credential_definition_keys}
+              />
             ) : null}
 
             {canEdit ? (

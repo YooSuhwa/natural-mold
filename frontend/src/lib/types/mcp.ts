@@ -1,5 +1,7 @@
 // MCP domain types — mirrors backend `app/schemas/mcp.py`.
 
+import type { CredentialMode } from './readiness'
+
 export type McpTransport = 'stdio' | 'sse' | 'streamable_http'
 export type McpStatus = 'unknown' | 'connected' | 'auth_needed' | 'unreachable' | 'disabled'
 
@@ -15,6 +17,8 @@ export interface McpServer {
   env_vars: Record<string, unknown>
   headers: Record<string, unknown>
   credential_id: string | null
+  credential_mode?: CredentialMode
+  credential_definition_key?: string | null
   status: McpStatus | string
   last_pinged_at: string | null
   last_tool_count: number | null
