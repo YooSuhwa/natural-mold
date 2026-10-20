@@ -4,11 +4,9 @@ from uuid import UUID
 
 import anyio
 import pytest
-from anyio.to_thread import run_sync
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from alembic import command
 from app.authz.org_context import resolve_org_context
 from app.config import settings
 from app.dependencies import CurrentUser
@@ -29,8 +27,7 @@ async def test_concurrent_seed_creates_one_explicit_development_membership_on_b1
     monkeypatch.setattr(settings, "e2e_seed_user_enabled", True)
     monkeypatch.setattr(settings, "e2e_user_email", "native-e2e-scope@example.test")
     monkeypatch.setattr(settings, "e2e_user_password", "native-fixture-password")
-    async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "head")
+    async with async_organization_lab(at_head=True) as lab:
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         seeded: list[UUID] = []

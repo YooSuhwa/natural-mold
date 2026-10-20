@@ -5,12 +5,10 @@ from uuid import UUID
 
 import anyio
 import pytest
-from anyio.to_thread import run_sync
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy import Uuid, column, select, table, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from alembic import command
 from app.dependencies import get_db
 from app.main import create_app
 from app.models.audit_event import AuditEvent
@@ -35,8 +33,7 @@ pytestmark = pytest.mark.integration
 async def test_live_catalog_scope_and_serialized_invitation_retries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "head")
+    async with async_organization_lab(at_head=True) as lab:
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:

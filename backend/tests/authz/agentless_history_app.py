@@ -4,11 +4,9 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 
 import pytest
-from anyio.to_thread import run_sync
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from alembic import command
 from app.dependencies import get_db
 from app.main import create_app
 from app.services import audit_service
@@ -21,8 +19,7 @@ async def agentless_history_app(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[SignupApp]:
     """Run the current app against an owned head-schema database with B08 lifecycle history."""
-    async with async_organization_lab() as lab:
-        await run_sync(command.upgrade, lab.config, "head")
+    async with async_organization_lab(at_head=True) as lab:
         engine = create_async_engine(lab.engine.url.set(drivername="postgresql+asyncpg"))
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         try:

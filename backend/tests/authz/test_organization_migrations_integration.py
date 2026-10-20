@@ -68,8 +68,7 @@ def test_live_upgrade_downgrade_repeats_and_preserves_reviewed_constraints() -> 
 
 def test_mapped_models_reject_cross_org_membership_and_clear_deleted_active_org() -> None:
     # Given: the current head schema, two companies, one member in A, and a group in A.
-    with organization_lab() as lab, Session(lab.engine) as session, session.begin():
-        command.upgrade(lab.config, "head")
+    with organization_lab(at_head=True) as lab, Session(lab.engine) as session, session.begin():
         user = User(email="org-model@example.test", name="Organization user")
         tenants = [Tenant(name=name, slug=name, secrets_namespace=name) for name in ("a", "b")]
         session.add_all([user, *tenants])
@@ -110,9 +109,8 @@ def test_mapped_models_reject_cross_org_membership_and_clear_deleted_active_org(
 
 def test_enterprise_identity_is_global_and_ldap_transport_requires_encryption() -> None:
     # Given: one identity accepted through one tenant's connection.
-    with organization_lab() as lab, Session(lab.engine) as session, session.begin():
-        # The mapped SsoConnection carries post-m80 columns (H-08), so use the head schema.
-        command.upgrade(lab.config, "head")
+    # The mapped SsoConnection carries post-m80 columns (H-08), so use the head schema.
+    with organization_lab(at_head=True) as lab, Session(lab.engine) as session, session.begin():
         tenant = Tenant(name="Identity", slug="identity", secrets_namespace="identity")
         user = User(email="identity@example.test", name="Identity user")
         session.add_all([tenant, user])
@@ -155,3 +153,46 @@ def test_enterprise_identity_is_global_and_ldap_transport_requires_encryption() 
                     ldap_start_tls=False,
                 )
             )
+
+
+_CATALOG_QUERIES = (
+    "SELECT table_name, column_name, data_type, is_nullable, column_default"
+    " FROM information_schema.columns WHERE table_schema = 'public' ORDER BY 1, 2",
+    "SELECT conrelid::regclass::text, conname, pg_get_constraintdef(oid)"
+    " FROM pg_constraint WHERE connamespace = 'public'::regnamespace ORDER BY 1, 2",
+    "SELECT tablename, indexname, indexdef FROM pg_indexes"
+    " WHERE schemaname = 'public' ORDER BY 1, 2",
+    "SELECT tablename, policyname, cmd, roles::text, qual, with_check FROM pg_policies"
+    " WHERE schemaname = 'public' ORDER BY 1, 2",
+    "SELECT relname, relkind, relrowsecurity, relforcerowsecurity FROM pg_class"
+    " WHERE relnamespace = 'public'::regnamespace ORDER BY 1",
+    "SELECT tgrelid::regclass::text, tgname, pg_get_triggerdef(oid) FROM pg_trigger"
+    " WHERE NOT tgisinternal ORDER BY 1, 2",
+    "SELECT proname, pg_get_functiondef(oid) FROM pg_proc"
+    " WHERE pronamespace = 'public'::regnamespace ORDER BY 1, 2",
+    "SELECT version_num FROM alembic_version",
+)
+
+
+def _schema_and_rows(engine: sa.Engine) -> list[object]:
+    with engine.connect() as connection:
+        observed: list[object] = [
+            [tuple(row) for row in connection.execute(sa.text(query))] for query in _CATALOG_QUERIES
+        ]
+        tables = sa.inspect(connection).get_table_names()
+        quote = connection.dialect.identifier_preparer.quote
+        observed.append(
+            {
+                table: connection.scalar(sa.text(f"SELECT count(*) FROM {quote(table)}"))  # noqa: S608
+                for table in sorted(tables)
+            }
+        )
+    return observed
+
+
+def test_head_template_clone_matches_a_real_empty_head_upgrade() -> None:
+    # Given: one empty database really upgraded to head, and one cloned from the lane template.
+    with organization_lab() as real, organization_lab(at_head=True) as cloned:
+        command.upgrade(real.config, "head")
+        # Then: schema, RLS state, policies, triggers, functions, seeded rows and revision match.
+        assert _schema_and_rows(cloned.engine) == _schema_and_rows(real.engine)
