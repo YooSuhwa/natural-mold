@@ -171,6 +171,10 @@ upgrade.
 - **System and user credentials.** Operators manage system credentials; users
   manage their own at `/credentials`. Vault or environment references are
   supported for external secrets.
+- **Company shared keys.** Keys a company admin registers and designates to an
+  organization serve that organization's agent chat (when the member has no
+  own key, or as the model default) and tools and MCP servers in shared-account
+  mode. Platform (operator) keys never serve agent chat (ADR-016 §9).
 - **Korean services.** Definitions for SRT, KTX, Forest Trip, KIPRIS, DART,
   ODsay, Coupang Partners and the K-Skill proxy.
 
