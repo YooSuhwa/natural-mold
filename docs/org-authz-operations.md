@@ -1,8 +1,8 @@
 # 조직·권한 운영 가이드 (org-authz)
 
 회사(tenant)·조직·권한(OpenFGA)·공유 기능을 운영 환경에 올리고 단계적으로 켜는 절차입니다.
-기준 문서는 [기획서](exec-plans/org-authz-plan.html) 15장(배포와 설정), 16.6(성능과 보안),
-17장 I-05이고, 구현과 다르게 정해진 결정은 [진행 기록](exec-plans/org-authz-progress.md)을 따릅니다.
+기준 문서는 [기획서](exec-plans/active/org-authz-plan.html) 15장(배포와 설정), 16.6(성능과 보안),
+17장 I-05이고, 구현과 다르게 정해진 결정은 [진행 기록](exec-plans/active/org-authz-progress.md)을 따릅니다.
 
 기본 운영 수칙(`APP_ENV=production` 부팅 검증, 첫 운영자 계정)은 [운영 환경 셋업](operator-setup.md)에
 있습니다. 이 문서는 그 위에 조직·권한 기능에 필요한 것만 다룹니다.
@@ -37,21 +37,28 @@ legacy 판정 코드는 정리 PR(PR 2, I-03) 전까지 남아 있으므로 1~3�
 ### 2.1 0단계 — OpenFGA 추가와 legacy 배포
 
 1. 루트 `.env`(Compose 보간용)에 `OPENFGA_API_TOKEN`(preshared 키)과 `OPENFGA_DB_PASSWORD`를 넣습니다.
-   `backend/.env`만으로는 Compose 보간이 되지 않습니다.
+   `backend/.env`만으로는 Compose 보간이 되지 않습니다. 두 값이 없으면 기본 `docker-compose.yml`은
+   개발용 기본값으로 뜨고([Docker 빠른 시작](docker-quickstart.md)), TLS 오버레이는 기동을 거부합니다.
    ```bash
    python -c "import secrets; print(secrets.token_urlsafe(48))"   # 각각 따로 생성
    ```
 2. 운영 DB 백업을 받습니다. m82(기본 회사·조직 이전)는 되돌리기에 이전 스냅숏이 필요하고,
    I-07 이후 일부 downgrade는 데이터 조건을 확인한 뒤 거부합니다([6절](#6-마이그레이션과-되돌리기)).
-3. `AUTHZ_MODE=legacy` 그대로 배포합니다. backend 기동 명령이 `alembic upgrade head`를 실행하며
+3. `AUTHZ_MODE=legacy` 그대로 배포합니다. Compose의 1회성 `migrate` 서비스가 backend보다 먼저
+   `alembic upgrade head`를 실행하며
    m78~i06이 적용되고 기본 회사(`DEFAULT_TENANT_NAME`)와 기본 조직(`DEFAULT_ORG_NAME`)이 만들어집니다.
    기존 사용자는 기본 조직의 빌더 역할로 들어가 기존 자원을 그대로 봅니다(Q2).
 4. OpenFGA 포트는 외부에 열지 않습니다. backend만 내부 네트워크로 접근합니다.
 
 ### 2.2 bootstrap과 대조
 
-Compose의 backend 명령은 기획서 15.1과 달리 `authz bootstrap`을 자동 실행하지 않습니다. 운영자가
-한 번 직접 실행합니다.
+Compose로 설치하면 1회성 `authz-bootstrap` 서비스가 `migrate` 뒤, backend 앞에서 매 기동마다
+bootstrap을 실행하고(기획서 15.1) 출력의 store ID와 model ID를 `moldy_runtime` 볼륨의 `openfga.env`에
+고정합니다. backend는 `OPENFGA_STORE_ID`, `OPENFGA_MODEL_ID`가 비어 있을 때만 이 값을 씁니다.
+모델이 바뀌지 않았으면 같은 ID를 다시 씁니다. 고정된 값은 `docker compose logs authz-bootstrap`으로
+확인합니다.
+
+Compose 밖에서 설치했다면 운영자가 한 번 직접 실행합니다.
 
 ```bash
 cd backend
@@ -435,4 +442,4 @@ I-05 중 **운영 문서(이 문서)와 점검 스크립트는 준비했고, 스
 - [ ] 어시스턴트 도구로 남의 자원 수정
 - [ ] 조건 컨텍스트 누락
 
-결과는 [진행 기록](exec-plans/org-authz-progress.md) P8 I-05 항목에 수치와 함께 남깁니다.
+결과는 [진행 기록](exec-plans/active/org-authz-progress.md) P8 I-05 항목에 수치와 함께 남깁니다.

@@ -4,693 +4,301 @@
 
 # Moldy
 
-**대화로 만드는 AI 에이전트 빌더 — FastAPI + LangGraph + deepagents**
+**직접 설치해 쓰는 노코드 AI 에이전트 빌더. 에이전트를 말로 설명해 만들고, 대화하고, 일정에 맞춰 실행하고, 조직 안에서 공유합니다.**
 
 [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)]()
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)]()
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)]()
-[![LangGraph](https://img.shields.io/badge/LangGraph-1.0+-purple.svg)]()
+[![LangGraph](https://img.shields.io/badge/LangGraph-1.x-purple.svg)]()
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-한국어 · [English](README.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+한국어 · [English](README.md) · [기여 가이드](CONTRIBUTING.md) · [보안](SECURITY.md)
 
-[Overview](#-overview) · [빠른 답변](#-빠른-답변) · [Quick Start](#-quick-start) · [신뢰 근거](#-품질보안문서화-신호) · [기능](#-주요-기능) · [아키텍처](#-아키텍처)
+[기능](#기능) · [빠른 시작](#빠른-시작) · [로컬 개발](#로컬-개발) · [설정](#설정) · [아키텍처](#아키텍처) · [테스트](#테스트) · [문서](#문서)
 
-<!-- project-current-source: migration=m76_pinned_conv_summaries; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-09-08 -->
-
-**마지막 업데이트:** 2026년 9월 5일 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
+<!-- project-current-source: migration=i06_company_rls; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-20 -->
 
 </div>
 
 ---
 
-## 🧐 Overview
+## Moldy란
 
-**Moldy**는 자연어로 원하는 업무를 설명하면 AI가 에이전트를 자동 구성해 주는
-노코드 AI 에이전트 빌더입니다. 코드 한 줄 없이 *대화*만으로 도구·스킬·트리거를
-조합한 자동화 워크플로우를 만들고, 만든 에이전트와 그대로 채팅하거나 스케줄에
-맞춰 실행할 수 있습니다.
+Moldy는 코드 없이 AI 에이전트를 만드는 오픈소스 웹 애플리케이션입니다. 원하는
+일을 설명하면 대화형 빌더가 모델, 도구, 스킬, MCP 서버, 일정을 제안합니다. 만든
+에이전트와는 채팅으로 대화하거나, 일정에 맞춰 실행하거나, API로 호출할 수 있습니다.
 
-### Moldy란?
+팀 단위 사용을 전제로 합니다. 사용자는 회사(tenant)와 하나 이상의 조직에 속하고,
+자원을 사람·그룹·조직 단위로 공유할 수 있습니다. 권한 판정은 기존 소유자 판정에서
+OpenFGA 모델로 단계적으로 옮길 수 있습니다.
 
-Moldy는 웹 UI에서 AI 에이전트를 만들고, 설정하고, 채팅하고, 스케줄링할 수 있는
-오픈소스 self-hostable AI 에이전트 빌더입니다. 이 프로젝트는 Next.js 16 + React
-19 프론트엔드, FastAPI 백엔드, PostgreSQL 16, LangGraph 1.x, `deepagents`의
-`create_deep_agent` 런타임을 결합합니다. Moldy는 멀티유저 운영을 전제로 설계되어
-있으며, ADR-016에 따라 JWT 인증, HttpOnly cookie, CSRF double-submit 보호,
-refresh token rotation, 시스템 리소스 관리를 위한 `super_user` 역할을 적용했습니다.
-이 monorepo에는 채팅 스트리밍, 메시지 분기, credential 관리, MCP 서버 통합,
-skill 패키지, 마켓플레이스 설치, 스케줄 트리거, 사용량 추적이 포함됩니다.
-
-### 프로젝트 사실
-
-| 항목 | 현재 README 기준 |
+| | |
 |---|---|
-| 프로젝트 유형 | 오픈소스 웹 애플리케이션 및 monorepo |
-| 주요 사용 사례 | 노코드 AI 에이전트 생성, 채팅, 스케줄링, 도구/스킬 오케스트레이션 |
-| Backend | FastAPI 0.115+, SQLAlchemy 2.0 async, Alembic, Python 3.12 |
-| Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
-| AI runtime | LangGraph 1.x + `create_deep_agent` 기반 `deepagents` 0.7.11 |
-| Runtime policy | 에이전트 정책 변경은 새 대화에 적용되며, 기존 대화는 최초 확정된 유효 정책 snapshot을 유지 |
-| Database | PostgreSQL 16, Alembic head는 `m76_pinned_conv_summaries` |
-| 인증 | JWT HS256, HttpOnly cookie, CSRF double-submit, refresh token rotation, `super_user` |
-| License | MIT |
+| 프론트엔드 | Next.js 16 (App Router), React 19, TailwindCSS v4, shadcn/ui, assistant-ui, TanStack Query, Jotai, next-intl |
+| 백엔드 | FastAPI, SQLAlchemy 2.0 async, Alembic, APScheduler, Python 3.12 |
+| 에이전트 런타임 | LangChain 1.x, LangGraph 1.x, `deepagents` 0.7.11 (`create_deep_agent`), LangGraph `AsyncPostgresSaver` |
+| 데이터 | PostgreSQL 16, Alembic head `i06_company_rls` |
+| 권한 | 소유자 판정(legacy) 또는 OpenFGA(shadow / enforce), 선택적 PostgreSQL 행 단위 보안(RLS) |
+| 라이선스 | MIT |
 
-### 무엇이 다른가
+## 기능
 
-- **대화형 빌더** — 메타 에이전트가 사용자의 의도를 파악해 빌드 옵션을 단계적으로
-  제안하고 합의된 시점에 실제 에이전트를 생성합니다. 폼을 채우는 대신 **요구사항을
-  설명**하면 됩니다.
-- **도구·스킬·MCP 통합 카탈로그** — 빌트인 검색/스크래퍼/캘린더/Gmail 같은
-  prebuilt 도구, 레지스트리 기반 **MCP 서버**(stdio/SSE/Streamable HTTP),
-  사용자 정의 **Skill**(SKILL.md + 보조 파일)을 한 화면에서 관리합니다.
-- **분기 가능한 대화** — LangGraph checkpointer 기반의 **fork & 시간여행**으로
-  메시지 편집·재생성 시 새 분기로 갈라지고, 좌우 화살표로 형제 응답을 비교할 수
-  있습니다.
-- **HITL(Human-in-the-Loop)** — 도구 호출 승인, 사용자 입력 요청, 명확화 질문
-  같은 인터럽트 패턴을 **카운트다운 + 자동 연장** UX로 처리합니다.
-- **노코드 트리거** — cron · interval 기반 스케줄 트리거로 에이전트를 정해진
-  시간에 자동 실행하고 결과를 알림으로 전달합니다.
-- **공개 공유 링크** — 한 번의 클릭으로 대화를 read-only 링크로 공유하면 누구나
-  로그인 없이 에이전트의 사고 과정을 추적할 수 있습니다.
+### 채팅
 
-## ❓ 빠른 답변
+- **스트리밍 실행.** v3 채팅은 에이전트 프로토콜의 `run.start` 명령으로 실행을
+  시작하고 SSE로 이벤트를 받습니다. 연결이 끊기면 이벤트 커서부터 이어 받고, 실행
+  중에 입력한 메시지는 대기열에 들어갑니다.
+- **분기.** 사용자 메시지를 고치거나 답변을 다시 생성하면 LangGraph 체크포인트가
+  갈라집니다. `<N/M>` 화살표로 형제 분기를 오갑니다.
+- **사람 승인(HITL).** 위험한 도구 호출은 승인 카드에서 승인·거부하거나 인자를 고칠
+  수 있고, 도구마다 허용된 결정만 보입니다. 대기 중인 호출 여러 건을 한 번에 승인할
+  수도 있습니다. 에이전트가 사용자에게 질문(`ask_user`)할 수도 있습니다.
+- **생성형 UI.** 도구 결과를 JSON 대신 표, 차트, 수치 카드, 터미널 출력으로 보여 줍니다.
+- **첨부.** 올린 파일은 메시지의 썸네일과 대화 파일 목록에 나옵니다. 텍스트 파일은
+  모델에 맥락으로 들어가고, 이미지는 화면에만 보이며 아직 모델에 전달되지 않습니다.
+- **찾기, 내보내기, 다시 시도.** Ctrl/Cmd+F로 대화 안을 찾고, 대화를 Markdown이나
+  JSON으로 내보내며, 실패한 실행은 오류와 함께 다시 시도 버튼을 보여 줍니다.
+- **긴 대화.** 맥락 압축(compaction) 뒤에는 요약 표시가 남고, 입력창에 컨텍스트 창
+  사용량 게이지가 있습니다. 고정한 대화 요약과 오른쪽 레일의 개요로 위치를 찾습니다.
+- **서브에이전트.** 위임받은 서브에이전트가 이름이 붙은 카드와 팀 스트립으로 보입니다.
+- **사이드 채팅.** 답변의 텍스트를 선택해 그 부분을 인용한 별도 대화를 엽니다.
+- **공유 링크와 추적.** 읽기 전용 `/shared/<id>` 페이지, 대화별 추적(trace) 화면,
+  메시지별 토큰 사용량(TTFT, 초당 토큰 포함), 선택적 LangSmith·Langfuse 전송.
+- **MCP Apps.** MCP 서버가 제공하는 UI 리소스를 채팅 안에 그립니다.
 
-### Moldy는 무엇을 하나요?
+### 에이전트 만들기
 
-Moldy는 자연어 요구사항을 실행 가능한 AI 에이전트로 바꿉니다. 사용자는 원하는
-워크플로우를 설명하고, 대화형 빌더가 제안하는 에이전트 설정을 검토한 뒤 도구,
-스킬, MCP 도구, credential을 연결할 수 있습니다. 이후 에이전트를 채팅에서 실행하거나
-cron/interval 트리거로 예약 실행할 수 있으며, 분기 가능한 대화, SSE 스트리밍, 도구
-호출 승인 흐름, 공개 read-only 공유 링크, 사용자별 credential 격리를 지원합니다.
+- **세 가지 생성 방법:** 대화형 빌더(요구 사항을 묻고 선택지를 제안하는 메타 에이전트),
+  직접 입력 양식, 템플릿.
+- **런타임 정책.** 에이전트의 런타임 정책은 버전으로 관리되고, 대화마다 시작 시점의
+  정책 스냅숏을 바꾸지 않고 유지합니다([ADR-022](docs/design-docs/adr-022-runtime-policy-lifecycle.md)).
+- **모델.** 자격 증명으로 모델 목록 가져오기, 모델 테스트와 상태 확인, 에이전트별
+  대체 모델 목록. 운영자는 빌더·어시스턴트·이미지 생성에 쓸 시스템 모델
+  (`text_primary`, `text_fallback`, `image`)을 고릅니다.
+- **어시스턴트 패널.** 에이전트 설정 편집을 돕는 앱 내 어시스턴트.
 
-### Moldy는 누구를 위한 프로젝트인가요?
+### 도구, 스킬, MCP
 
-Moldy는 완전 managed SaaS만 쓰기보다 로컬 또는 self-hosted 에이전트 빌더를 원하는
-개발자, 운영자, 내부 도구 팀을 위한 프로젝트입니다. README는 PostgreSQL, Python
-3.12, Node 22, `uv`, `pnpm`을 실행할 수 있는 독자를 기준으로 작성되어 있지만,
-제품 UI는 코딩하지 않는 사용자도 guided setup, credential, 도구, 스킬, 스케줄을
-통해 에이전트를 조립할 수 있도록 설계되어 있습니다.
+- **내장 도구:** 웹 검색, 웹 스크래퍼, 현재 날짜·시각, Tavily, 네이버·Google 검색,
+  Gmail, Google Calendar, Google Chat 웹훅, HTTP 요청.
+- **MCP 서버:** stdio, SSE, Streamable HTTP 전송. 레지스트리 프리셋, 저장 전 도구 확인,
+  MCP OAuth를 지원합니다.
+- **스킬.** 스킬은 `SKILL.md`와 부속 파일입니다. 편집기에서 직접 쓰거나 `.skill`
+  패키지로 올리거나, 스킬 빌더(`/skills/builder`)와 대화하며 만듭니다. 스킬마다 소스,
+  버전과 되돌리기, 평가(스킬 있음/없음 비교와 비용 포함), 사용자 피드백을 다루는
+  스튜디오가 있습니다. 스킬 스크립트는 `execute_in_skill`로 실행되며 기본적으로 승인을
+  거칩니다.
 
-### Moldy는 credential과 시스템 권한을 어떻게 다루나요?
+### 마켓플레이스, 아티팩트, 기억, API, 일정
 
-Moldy는 운영자가 관리하는 시스템 리소스와 사용자별 리소스를 분리합니다. System
-credentials와 System LLM settings는 `super_user` 계정이 관리하고, 일반 사용자는
-개인 credential을 `/credentials`에서 등록합니다. Credential payload는
-HKDF-SHA256과 AES-256-GCM을 사용하는 Cipher V2로 암호화되며, 런타임 접근은 명시적인
-도구, 모델, MCP, skill binding을 통해 이뤄집니다.
+- **마켓플레이스.** 스킬, MCP 서버 템플릿, 에이전트 명세를 게시하고 독립된 사본으로
+  설치합니다. 설치할 때 자격 증명을 연결하고, 게시물은 운영자가 검토합니다.
+- **아티팩트.** 에이전트가 쓴 파일은 `/artifacts`에 모이고 채팅 오른쪽 레일에서
+  미리 봅니다.
+- **기억.** 사용자·에이전트 기억과 설정, 승인이 필요한 기억 제안, 채팅의 회상 칩.
+  에이전트에는 공유 메모도 있습니다.
+- **Agent API.** 에이전트를 API 키 뒤에 배포해 다른 시스템에서 호출합니다
+  ([docs/agent-api.md](docs/agent-api.md)).
+- **일정.** cron·간격 트리거, 실행 횟수 한도, 종료 시각, 연속 실패 시 자동 일시 중지,
+  실행 이력.
 
-### README의 주장들은 어디에서 검증할 수 있나요?
+### 조직과 권한
 
-Moldy의 아키텍처와 보안 관련 설명은 repository 내부 문서로 검증할 수 있습니다.
-아키텍처 의사결정은 [`docs/design-docs/`](docs/design-docs/)에, 상위 시스템 구조는
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)에, 보안 신고 및 배포 hardening은
-[`SECURITY.md`](SECURITY.md)에 정리되어 있습니다. 이 README의 검증 명령과
-pre-push hook은 backend/frontend 테스트 스위트를 반복 실행할 수 있는 경로를 제공합니다.
+조직·권한 계층([ADR-023](docs/design-docs/adr-023-org-authz.md))은 머지되어 있지만
+엄격한 동작은 기본으로 꺼져 있습니다(`AUTHZ_MODE=legacy`, `DB_RLS_ENABLED=false`).
+기존 설치는 업그레이드할 때 기본 회사와 기본 조직으로 옮겨집니다.
 
-## 🚀 Quick Start
+- **회사와 조직.** 회사(tenant) 아래에 조직, 구성원, 그룹, 역할이 있습니다. 조직은
+  사이드바에서 바꿉니다. `DEPLOYMENT_MODE`로 단일 회사(`single_tenant`)와
+  SaaS(`multi_tenant`)를 고릅니다.
+- **초대와 가입 정책.** 조직·회사 초대(`/invite/<token>`). `REGISTRATION_POLICY`는
+  `default_org`, `invite_only`, `closed` 중 하나입니다.
+- **공유.** 에이전트, 스킬, 도구, MCP 서버, 자격 증명을 사용자·그룹·조직과 공유합니다.
+  자원마다 접근 목록과 소유권 이전이 있습니다.
+- **OpenFGA.** 권한 모델은 [`backend/app/authz/model.fga`](backend/app/authz/model.fga)에
+  있습니다. `legacy` → `shadow`(OpenFGA 판정은 기록·비교만) → `enforce` 순으로 옮기고,
+  `AUTHZ_ENFORCE_TYPES`로 자원 유형을 하나씩 강제합니다. 동기화 상태는
+  `/settings/admin/authz`에서 봅니다.
+- **실행 준비와 연결.** 실행 전에 에이전트의 자격 증명과 연결을 쓸 수 있는지 확인하고
+  빠진 것을 보여 줍니다. 자격 증명은 공유 또는 사용자별로 둘 수 있고, 도구에 본인
+  로그인이 필요하면 채팅에 연결용 `auth_required` 카드가 나옵니다.
+- **접근 요청과 알림.** 사용자는 자원 접근을 요청하고, 관리자는
+  `/settings/organization/requests`에서 검토합니다. 사이드바에 알림 종이 있습니다.
+- **감사와 사용 한도.** 감사 기록, 사용량 보고, 회사·조직·사용자·에이전트별 비용
+  한도(80%에서 경고, 100%에서 차단).
+- **회사 SSO.** OIDC와 LDAP/Active Directory, DNS 도메인 확인, 첫 로그인 시 계정 생성,
+  그룹→역할 매핑.
+- **데이터 격리.** 선택적 회사 단위 PostgreSQL RLS, 회사별 데이터 키, 회사 내보내기·
+  삭제 예약·영구 삭제, 그리고 허용하지 않은 평문 내부 연결이면 운영 모드 기동을 거부하는
+  점검.
+- **관리 화면.** 회사(`/settings/company`: 구성원, 모델, 정책, SSO), 조직
+  (`/settings/organization`: 구성원, 그룹, 역할, 카탈로그, 요청), 플랫폼
+  (`/settings/admin/tenants`, `multi_tenant`에서만).
 
-### 사전 요구사항
+### 자격 증명
 
-- [uv](https://docs.astral.sh/uv/) — Python 패키지 매니저 (backend 의존성·마이그레이션 + Python 3.12 자동 설치)
-- [Node.js 22](https://nodejs.org/) + [pnpm](https://pnpm.io/) — 프론트엔드 런타임 + 패키지 매니저
-- [Docker](https://www.docker.com/) — PostgreSQL 16 컨테이너용
-- LLM API 키 — OpenAI / Anthropic / OpenRouter / OpenAI-compatible(LiteLLM 등) 중 하나. ENV에 넣을 필요 없이 **부팅 후 UI에서 등록**합니다 (ADR-013)
+- **Cipher V2.** 자격 증명은 HKDF-SHA256 + AES-256-GCM으로 암호화하며, 여러 키를 두고
+  정기적으로 활성 키로 다시 암호화합니다.
+- **시스템·사용자 자격 증명.** 시스템 자격 증명은 운영자가, 개인 자격 증명은 사용자가
+  `/credentials`에서 관리합니다. 외부 비밀은 Vault나 환경 변수 참조로 둘 수 있습니다.
+- **국내 서비스.** SRT, KTX, 숲나들e, KIPRIS, DART, ODsay, 쿠팡 파트너스, K-Skill 프록시
+  정의가 있습니다.
 
-### 로컬 개발
+## 빠른 시작
+
+Docker와 Compose가 필요합니다. 새로 clone한 저장소에서:
 
 ```bash
-# 1. PostgreSQL 시작
-docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
+git clone https://github.com/YooSuhwa/natural-mold.git
+cd natural-mold
+docker compose up -d --build
+```
 
-# 2. Backend (uv가 Python 3.12를 자동으로 받아옴)
+이 명령 하나로 PostgreSQL, OpenFGA와 1회성 bootstrap, DB 마이그레이션, 백엔드,
+프론트엔드가 빌드되고 실행됩니다. 권한 판정은 여전히 `legacy` 모드로 시작합니다. 그다음:
+
+1. http://localhost:3000/register 에서 계정을 만듭니다. Docker 스택에는 시드 계정이 없고,
+   `ALLOW_FIRST_USER_AS_ADMIN=true`(기본값)이면 처음 만든 계정이 운영자(`super_user`)가
+   됩니다. 운영자 계정을 만든 뒤에는 끕니다.
+2. `/settings/system-credentials`에서 LLM 키를 등록합니다(OpenAI, Anthropic, Google,
+   OpenRouter, OpenAI 호환 엔드포인트).
+3. `/settings/system-llm`에서 시스템 모델을 고릅니다. 설정 전에는 빌더, 어시스턴트,
+   이미지 생성이 명시적인 오류를 냅니다.
+4. `/settings/models`에서 에이전트가 쓸 모델에 자격 증명을 연결하고 `/agents`에서
+   에이전트를 만듭니다.
+
+구성 요소, 호스트 포트 변경(예: `MOLDY_POSTGRES_PORT`), 처음부터 다시 시작하는 방법
+(`docker compose down -v`는 볼륨을 지웁니다)은
+[docs/docker-quickstart.md](docs/docker-quickstart.md)에 있습니다. 운영 설정(비밀 값,
+보안 쿠키, TLS)은 [docs/operator-setup.md](docs/operator-setup.md)와
+[docs/org-authz-operations.md](docs/org-authz-operations.md)를 봅니다.
+
+## 로컬 개발
+
+필요한 것: [uv](https://docs.astral.sh/uv/)(Python 3.12 자동 설치), Node.js 22
+(`.node-version`)와 [pnpm](https://pnpm.io/), PostgreSQL용 Docker.
+
+```bash
+# DB
+docker compose up -d postgres
+
+# 백엔드 (http://localhost:8001/docs)
 cd backend
-cp .env.example .env                  # ENCRYPTION_KEYS / JWT_SECRET 등 입력 (LLM 키는 UI에서 등록)
-uv sync                               # 의존성 설치 (+ Python 3.12 없으면 자동 다운로드)
-uv run alembic upgrade head           # DB 마이그레이션 (head: m76_pinned_conv_summaries)
+cp .env.example .env            # ENCRYPTION_KEYS, JWT_SECRET 설정
+uv sync
+uv run alembic upgrade head     # head: i06_company_rls
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
-# → http://localhost:8001/docs (Swagger UI)
 
-# 3. Frontend (새 터미널, Node 22)
+# 프론트엔드 (http://localhost:3000), 다른 터미널에서
 cd frontend
-cp .env.example .env.local            # NEXT_PUBLIC_API_BASE_URL / E2E 계정 기본값
+cp .env.example .env.local      # NEXT_PUBLIC_API_BASE_URL=http://localhost:8001
 pnpm install
 pnpm dev
-# → http://localhost:3000
 ```
 
-서버 시작 시 기본 모델(GPT-5.5, Claude Sonnet 4.6, Gemini 등), 시스템 도구,
-에이전트 템플릿, 로컬 Playwright E2E 계정이 자동 시드됩니다. 단,
-**에이전트를 만들고 쓰려면 아래 운영자 초기 설정이 필요**합니다.
+`backend/.env.example`은 `E2E_SEED_USER_ENABLED`를 켜 두어 기동할 때 로컬 Playwright용
+`super_user`를 만듭니다(`APP_ENV=production`에서는 건너뜀). 이 계정이 먼저 생기므로
+직접 가입한 계정은 첫 사용자가 아닙니다. E2E 계정으로 로그인하거나 처음 기동하기 전에
+시드를 끕니다.
 
-### 서버 기동 후 초기 설정 (운영자)
+**worktree.** git worktree에서는 `bash scripts/worktree-setup.sh`를 한 번 실행합니다.
+`backend/.env`를 main checkout으로 연결해 모든 worktree가 같은 DB, `ENCRYPTION_KEYS`,
+`JWT_SECRET`을 씁니다. 백엔드를 여러 개 띄울 때는 프론트 포트, 백엔드 포트,
+`CORS_ALLOWED_ORIGINS`, `NEXT_PUBLIC_API_BASE_URL`을 한 쌍으로 맞추고
+`pnpm dev -- --port <port>`로 포트를 고정합니다. 한 DB에 백엔드가 여럿 붙으면 예약
+작업이 두 번 돌 수 있습니다.
 
-LLM 키는 ENV가 아닌 UI에서 등록하고, system 기능(빌더·어시스턴트·이미지)은
-운영자가 사용할 모델을 직접 골라야 동작합니다 (ADR-013/016/019).
+## 설정
 
-1. **첫 계정 = 운영자** — http://localhost:3000 에서 회원가입. 첫 사용자는
-   `super_user`로 자동 승격됩니다 (ADR-016, `ALLOW_FIRST_USER_AS_ADMIN=true`;
-   운영 환경에서는 계정 생성 후 꺼주세요).
-2. **LLM 크리덴셜 등록** — `/settings/system-credentials`에서 OpenAI ·
-   Anthropic · OpenRouter · OpenAI-compatible(LiteLLM 등) 키를 등록합니다.
-3. **System LLM 모델 선택 (ADR-019, 필수)** — `/settings/system-llm`에서
-   `text_primary` · `text_fallback` · `image` 세 슬롯의 모델을 고릅니다.
-   크리덴셜 선택 → "모델 목록 불러오기" → 모델 선택. **이 설정 전에는 빌더 ·
-   어시스턴트 · 이미지 생성이 동작하지 않습니다**(조용한 실패 없이 명시적 에러).
-4. **에이전트용 모델 연결** — `/models`에서 일반 에이전트가 쓸 모델에 크리덴셜을
-   연결하거나 discovery로 자동 등록합니다.
+전체 목록은 [`backend/.env.example`](backend/.env.example)에 있습니다. 주요 설정:
 
-이후 대화형 빌더(`/agents`)로 에이전트를 만들고 채팅할 수 있습니다. 일반
-사용자는 본인 키를 `/credentials`에서 등록해 사용합니다.
-
-### Worktree 개발 포트/CORS 규칙
-
-git worktree에서 작업할 때는 먼저 `bash scripts/worktree-setup.sh`를 실행해
-`backend/.env`와 `backend/data`가 main checkout을 가리키는 symlink인지 맞춥니다.
-같은 PostgreSQL, `ENCRYPTION_KEYS`, `JWT_SECRET`을 공유해야 기존 credential 복호화와
-로그인 세션이 깨지지 않습니다.
-
-backend/frontend dev 서버는 **frontend port, backend port, CORS origin,
-`NEXT_PUBLIC_API_BASE_URL`을 한 세트로** 맞춰야 합니다. 기본 권장 조합:
-
-```bash
-# backend
-cd backend
-uv run uvicorn app.main:app --reload --reload-dir app --port 8001
-
-# frontend
-cd frontend
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev -- --port 3000
-```
-
-여러 worktree를 동시에 띄울 때는 포트 쌍을 명시합니다:
-
-```bash
-# backend (:8010)
-cd backend
-CORS_ALLOWED_ORIGINS=http://localhost:3010,http://127.0.0.1:3010 \
-  uv run uvicorn app.main:app --reload --reload-dir app --port 8010
-
-# frontend (:3010)
-cd frontend
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8010 pnpm dev -- --port 3010
-```
-
-Next.js가 포트 충돌로 임의 포트를 고르게 두면 CORS/cookie/CSRF가 어긋날 수
-있으므로 항상 `pnpm dev -- --port <port>`로 고정하세요. 여러 backend를 같은 DB에
-동시에 붙이면 APScheduler/trigger 작업이 중복 실행될 수 있어 장시간 동시 실행은
-주의가 필요합니다.
-
-### Docker Compose 전체 실행
-
-Compose는 `backend/.env`에서 시크릿을 읽고, backend 컨테이너 기동 전에
-`alembic upgrade head`로 마이그레이션을 실행하며, `data/`를 named volume에 보존합니다.
-
-```bash
-cp backend/.env.example backend/.env  # ENCRYPTION_KEYS / JWT_SECRET 입력
-docker compose up -d                  # postgres + backend(마이그레이션 → 기동) + frontend
-# 이후 위의 "서버 기동 후 초기 설정"을 따라 운영자 온보딩을 진행하세요.
-```
-
-원격 호스트(비 localhost)에 배포하나요? `NEXT_PUBLIC_API_BASE_URL`은 빌드 시점에
-프론트엔드 번들로 인라인되므로, 빌드 전에 설정하고 CORS에 새 origin을 허용해야 합니다:
-
-```bash
-NEXT_PUBLIC_API_BASE_URL=https://api.example.com \
-CORS_ALLOWED_ORIGINS=https://app.example.com \
-  docker compose up -d --build
-```
-
-### 검증 명령
-
-```bash
-# Backend
-cd backend
-uv run ruff check .                   # 린트 (Ruff 0.16.5)
-uv run pytest                         # 단위 테스트 (aiosqlite, Postgres 불필요)
-uv run pytest -m integration          # 통합 테스트 (Postgres 필요)
-cd ..
-manifest=".omo/evidence/project-restart-consolidated-roadmap/local-postgres-$(date +%s).json"
-bash scripts/run-isolated-postgres-tests.sh all --manifest "$manifest"
-(cd backend && uv run python ../scripts/check-isolation-cleanup.py "../$manifest")
-(cd backend && uv run python ../scripts/check-isolation-cleanup.py \
-  --discover ../.omo/evidence/project-restart-consolidated-roadmap) # 전체 테스트 잔여 리소스
-
-# Frontend
-cd frontend
-pnpm lint                             # ESLint
-pnpm exec tsc --noEmit                # 타입체크
-pnpm test --run                       # vitest (jsdom)
-pnpm build                            # 프로덕션 빌드
-pnpm test:e2e                         # Playwright E2E
-```
-
-## ✅ 품질·보안·문서화 신호
-
-Moldy는 기술적 의사결정과 운영 리스크를 repository 안에 문서화합니다. 따라서 README의
-설명을 홍보 문구가 아니라 실제 문서와 검증 명령으로 확인할 수 있습니다. 가장 강한
-신뢰 신호는 ADR 기록, 명시적인 보안 정책, 재현 가능한 테스트 명령, 로컬 운영자 초기
-설정 절차입니다. E-E-A-T 관점에서 이 README는 setup 세부사항으로 구현 경험을,
-아키텍처와 ADR 링크로 전문성을, repository-local evidence로 권위를, 보안 및 검증
-워크플로우로 신뢰성을 드러냅니다.
-
-| 신호 | 근거 | 의미 |
+| 변수 | 기본값 | 설명 |
 |---|---|---|
-| 아키텍처 의사결정 | [`docs/design-docs/`](docs/design-docs/)에는 멀티유저 인증 ADR-016, System LLM settings ADR-019 등이 포함됩니다 | 런타임, 인증, credential, UI 결정의 이유와 시점을 추적할 수 있습니다 |
-| 시스템 아키텍처 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)는 Next.js 프론트엔드, FastAPI 백엔드, PostgreSQL 데이터 계층, LangGraph/deepagents 런타임을 설명합니다 | README보다 자세한 설계 기준을 제공합니다 |
-| 보안 프로세스 | [`SECURITY.md`](SECURITY.md)는 비공개 취약점 신고, 응답 목표, 배포자 hardening 체크를 문서화합니다 | 보안 신고 절차와 운영 책임을 명시합니다 |
-| 검증 워크플로우 | 이 README는 backend lint/test, frontend lint/typecheck/test/build, integration test, Playwright E2E 명령을 나열합니다 | 유지보수자와 도입자가 같은 검증 경로를 재현할 수 있습니다 |
-| 운영 설정 | Quick Start는 로컬 개발, worktree CORS 규칙, Docker Compose, E2E seed auth, System LLM 설정, MCP registry 설정을 분리합니다 | self-hosted 또는 multi-worktree 개발에서 생기는 모호함을 줄입니다 |
+| `DATABASE_URL`, `DATABASE_URL_SYNC` | 로컬 `moldy` DB | 앱용 async URL과 LangGraph 체크포인터용 sync URL. DB를 바꾸면 둘 다 바꿉니다. |
+| `ENCRYPTION_KEYS` | 없음 | 콤마로 구분한 64자 hex 키, 첫 번째가 활성 키. `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `JWT_SECRET` | 없음 | 액세스 토큰 서명 키. |
+| `APP_ENV` | `dev` | `production`이면 기동 안전 점검을 하고 개발용 시드를 건너뜁니다. |
+| `ALLOW_FIRST_USER_AS_ADMIN` | `true` | 처음 가입한 사용자가 `super_user`가 됩니다. |
+| `REGISTRATION_POLICY` | `default_org` | `default_org`, `invite_only`, `closed`. |
+| `DEPLOYMENT_MODE` | `single_tenant` | `multi_tenant`이면 플랫폼 회사 관리가 열립니다. |
+| `AUTHZ_MODE` | `legacy` | `legacy`, `shadow`, `enforce`. |
+| `AUTHZ_ENFORCE_TYPES` | 빈 값 | `enforce`에서 강제할 유형. 빈 값은 전체 유형입니다. |
+| `OPENFGA_API_URL`, `OPENFGA_API_TOKEN`, `OPENFGA_STORE_ID`, `OPENFGA_MODEL_ID` | `http://openfga:8080`, 빈 값 | `shadow`부터 필요. store·model ID는 `python -m app.authz.cli bootstrap` 결과로 정합니다. |
+| `DB_RLS_ENABLED` | `false` | 회사 단위 RLS. 운영 가이드의 DB 역할 분리 뒤에만 켭니다. |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,...` | 모든 프론트엔드 origin을 넣습니다. |
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8001` | 프론트엔드. 빌드할 때 번들에 들어갑니다. |
 
-### Playwright E2E 인증
+LLM 키는 화면에서 등록하는 것을 권장합니다. 개발 환경에서는 `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY` 같은 변수를 기동 시 시스템 자격 증명으로 옮기고, 운영 환경은
+이 과정을 건너뜁니다. 도구 키(Tavily, 네이버, Google)는
+[docs/tool-setup-guide.md](docs/tool-setup-guide.md)에 있습니다.
 
-E2E는 테스트마다 로그인 폼을 통과하지 않고, Playwright global setup에서 한 번 API
-로그인 세션을 만든 뒤 `storageState`를 모든 브라우저 컨텍스트에 주입하는 방식을
-사용합니다. `backend/.env.example`은 로컬 개발용으로 `E2E_SEED_USER_ENABLED=true`를
-켜 두며, 백엔드 시작 시 아래 더미 super_user를 DB에 생성하거나 갱신합니다.
-`APP_ENV=production`에서는 이 seed가 자동으로 스킵됩니다.
+## 아키텍처
 
-```bash
-E2E_USER_EMAIL=playwright-e2e@moldy.dev
-E2E_USER_PASSWORD=correct horse battery staple 42
-E2E_USER_NAME=E2E User
+```mermaid
+flowchart LR
+  UI["Frontend<br/>Next.js 16 + assistant-ui"] -- "REST + SSE" --> API["Backend<br/>FastAPI routers → services"]
+  API --> RT["agent_runtime<br/>deepagents create_deep_agent"]
+  API --> AZ["authz<br/>legacy / shadow / enforce"]
+  AZ --> FGA[("OpenFGA")]
+  API --> PG[("PostgreSQL 16<br/>app data + checkpoints")]
+  RT --> PG
+  RT --> EXT["LLM providers · MCP servers · tools"]
+  SCH["APScheduler<br/>triggers, sync, retention"] --> API
 ```
 
-frontend 환경 파일도 같은 전용 테스트 계정 값을 사용합니다:
+- 백엔드 계층: `routers/`(HTTP와 권한 정책) → `services/`(업무 로직) →
+  `models/`(SQLAlchemy).
+- `agent_runtime/`은 모델, 도구, 스킬, 기억, 서브에이전트, 미들웨어를 조립해
+  `create_deep_agent`로 실행하고 LangGraph 이벤트를 SSE로 바꿉니다.
+- 권한 원본은 PostgreSQL에 있고, OpenFGA는 아웃박스로 동기화되는 파생 사본입니다.
+- 프론트엔드: `lib/api/` → TanStack Query 훅 → 컴포넌트, 클라이언트 상태는 Jotai.
 
-```bash
-cd frontend
-cp .env.example .env.local
-# 필요 시 E2E_USER_EMAIL / E2E_USER_PASSWORD 수정
-pnpm test:e2e
-```
+자세한 내용은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있습니다.
 
-권장 흐름은 `login → register fallback → login → e2e/.auth/user.json 저장`입니다.
-`frontend/e2e/.auth/`는 생성 산출물이므로 커밋하지 않습니다. API로 직접
-생성/수정하는 E2E setup 코드는 로그인 응답의 `csrf_token`을
-`X-CSRF-Token` header로 넣어야 합니다.
+## 테스트
 
-> **Pre-push hook**: `git push` 시점에 `.husky/pre-push`가 backend pytest +
-> frontend vitest를 자동 실행하여 회귀가 push되지 않도록 차단합니다. 우회는
-> `git push --no-verify` (WIP 브랜치 한정).
+| 묶음 | 명령 | 걸리는 시간 |
+|---|---|---|
+| 백엔드 단위(SQLite 메모리) | `cd backend && uv run pytest -n 4` (빠른 장비는 `-n 8`까지) | 약 5~7분 |
+| 백엔드 린트 | `cd backend && uv run ruff check .` (Ruff 0.16.5) | 수 초 |
+| 프론트엔드 단위(vitest) | `cd frontend && pnpm test -- --run` | 약 2.5분 |
+| 프론트엔드 점검 | `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm build` | 수 분 |
+| 네이티브 PostgreSQL 레인(Docker 필요) | `bash scripts/run-isolated-postgres-tests.sh all --manifest <file>.json` | 템플릿 DB 캐시(PR #315)가 있으면 약 6분, 없으면 더 걸림 |
+| E2E(Playwright) | `cd frontend && pnpm test:e2e` | 프로젝트에 따라 다름 |
 
-### Tavily + Deep Research
+- PostgreSQL 레인은 일회용 PostgreSQL 16 컨테이너를 띄워 마이그레이션하고 통합
+  테스트를 돌린 뒤, 만든 것을 기록해 정리할 수 있게 합니다. 정리 확인:
+  `cd backend && uv run python ../scripts/check-isolation-cleanup.py ../<file>.json`.
+- `tests/integration/`은 기본 pytest 실행에서 빠집니다. `-m integration`으로 실행합니다.
+- E2E는 기본으로 scripted 모델을 써서 LLM 키가 필요 없습니다. 포트 격리와 시드 계정은
+  [CLAUDE.md](CLAUDE.md)에 있습니다.
+- CI는 백엔드, PostgreSQL, 타입 검사, 프론트엔드, OpenFGA 모델, E2E smoke 작업을 병렬로
+  돌리며 전체 약 20분 걸립니다.
+- `git push`는 `.husky/pre-push` 훅(백엔드 pytest, 프론트엔드 vitest)을 실행합니다.
 
-Tavily hosted search tool(`tavily_search`)과 Deep Research 마켓플레이스 skill이
-연동되어 있습니다. backend `.env`에 `TAVILY_API_KEY`를 두면 Deep Research skill이
-`tavily_search`를 **런타임 tool dependency로 자동 주입**받아, 사용자가 별도로 도구를
-붙이지 않아도 citation 기반 멀티스텝 웹 리서치를 수행합니다. (설계 배경:
-`docs/superpowers/plans/2026-05-31-deep-research-tavily.md`)
+## 문서
 
-### MCP 레지스트리와 MCP Secret
+| 문서 | 내용 |
+|---|---|
+| [docs/docker-quickstart.md](docs/docker-quickstart.md) | Docker Compose로 전체 스택 실행 |
+| [docs/operator-setup.md](docs/operator-setup.md) | 운영 설정, 첫 운영자, TLS, RLS |
+| [docs/org-authz-operations.md](docs/org-authz-operations.md) | 조직·OpenFGA 권한 단계적 적용 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 아키텍처 |
+| [docs/PRD.md](docs/PRD.md), [docs/PRD-screens.md](docs/PRD-screens.md) | 제품 요구 사항과 화면 |
+| [docs/design-docs/index.md](docs/design-docs/index.md) | 아키텍처 결정 기록(ADR-001~ADR-023) |
+| [docs/exec-plans/index.md](docs/exec-plans/index.md) | 실행 계획 |
+| [docs/marketplace-resources-prd.md](docs/marketplace-resources-prd.md) | 마켓플레이스 |
+| [docs/agent-api.md](docs/agent-api.md) | Agent API |
+| [docs/tool-setup-guide.md](docs/tool-setup-guide.md) | 내장 도구 키 설정 |
+| [docs/e2e-coverage.md](docs/e2e-coverage.md) | E2E 범위 |
+| [CLAUDE.md](CLAUDE.md), [frontend/AGENTS.md](frontend/AGENTS.md) | 개발 규칙 |
 
-`/mcp-servers` → **새 MCP 서버**에서 레지스트리 프리셋을 고르면 transport, URL,
-stdio command/env template이 자동으로 채워지고, 저장 전 **도구 프로브**로 실제 노출
-도구를 확인할 수 있습니다. 현재 프리셋은 GitHub, Linear, Atlassian Jira, Slack,
-Notion과 로컬 first-party MCP(Hancom Groupware, Hancom Mile Meeting, Hancom Org
-Chart, Maepsi)를 포함합니다.
+## 기여와 라이선스
 
-인증이 필요한 first-party MCP 프리셋은 `/credentials`에서 `MCP Secret` 타입
-credential을 만든 뒤 마법사 **인증** 탭에서 연결합니다. Moldy는 연결/실행 시
-`secret` 값을 `X-Moldy-Credential` 헤더로 자동 전달합니다. 수동 MCP 서버를 등록할
-때도 헤더나 stdio 환경 변수 값에 `{{ $credentials.<field> }}` 형식으로 연결된
-credential 필드를 보간할 수 있습니다.
+[CONTRIBUTING.md](CONTRIBUTING.md)를 봅니다. 보안 문제는 [SECURITY.md](SECURITY.md)의
+절차로 알려 주세요.
 
-로컬 first-party MCP 프리셋의 기본 URL은 `localhost:18001`~`18004` 대역입니다.
-이 서버들은 `docker compose up`에 포함되지 않으므로, 해당 프리셋을 쓰려면 MCP 서버
-프로세스를 별도로 실행한 뒤 프로브하세요.
-
-## 📸 Screenshots
-
-> 준비 중. 주요 화면은 `docs/PRD-screens.md`에 와이어프레임으로 정리되어 있습니다.
-
-## ✨ 주요 기능
-
-<details>
-<summary><b>🤖 에이전트 시스템</b></summary>
-
-- **deepagents 엔진** — `create_deep_agent` + LangGraph 컴파일된 그래프 위에
-  메시지 트리, 분기, 체크포인트 관리
-- **대화형 빌더** — 메타 에이전트가 자연어 요구사항을 인터뷰하며 빌드 옵션을
-  제안 (`agent_runtime/creation_agent.py`)
-- **에이전트 템플릿** — 사전 정의된 에이전트로 즉시 시작
-- **Sub-agents** — 다단계 위임 (에이전트가 다른 에이전트를 도구처럼 호출)
-- **미들웨어 시스템** — 22종 미들웨어 카탈로그 (context engineering, planning,
-  safety, reliability, provider-specific)
-- **모델 fallback 체인** — primary 모델 실패 시 대체 모델 자동 호출 (최대 5단계)
-
-</details>
-
-<details>
-<summary><b>💬 채팅 + 분기</b></summary>
-
-- **SSE 스트리밍** — 토큰 단위 실시간 출력, 도구 호출 시각화. 스트리밍 중
-  코드 블록 plain 렌더 + SSE 큐 O(1) 처리 등으로 장문 응답 성능 최적화
-- **IME-safe 입력창** — 한글 등 조합형 입력 중 Enter/편집/재생성이 조합 문자열을
-  깨뜨리지 않도록 composer 상태를 안전하게 동기화
-- **LangGraph fork** — 사용자 메시지 편집 / 어시스턴트 재생성 시 새 분기 생성,
-  체크포인트 ID 기반 시간여행
-- **BranchPicker** — `<N/M>` 좌우 화살표로 형제 응답 비교 (assistant-ui 통합)
-- **HITL countdown** — 도구 승인 / 사용자 입력 / 명확화 질문 인터럽트에 카운트다운
-  타이머 + 만료 시 자동 연장 + 긴급 상태 스타일
-- **메시지 액션** — 복사·편집·재생성·thumb 피드백·삭제·검색
-- **Mermaid / KaTeX / 코드 블록** — 마크다운 렌더링, 이미지 lightbox
-- **첨부 파일** — 이미지/문서 업로드 후 메시지에 인라인 표시
-- **공개 공유 링크** — read-only 페이지 (`/shared/{token}`), 소프트 삭제로 즉시
-  무효화
-
-</details>
-
-<details>
-<summary><b>🛠️ 도구 · 스킬 · MCP</b></summary>
-
-- **빌트인 도구 카탈로그** — DuckDuckGo / 웹 스크래퍼 / 현재 시각 / 상대 날짜
-  해석(`resolve_relative_date`) / Tavily 검색 / Naver 검색 5종 / Google CSE 3종 /
-  Gmail 보내기 / Google 캘린더 / Google Chat Webhook / HTTP 요청
-- **MCP 통합** — stdio + SSE + Streamable HTTP 서버 등록,
-  `langchain-mcp-adapters` 기반 import/export, health check polling
-- **MCP 레지스트리 프리셋** — GitHub / Linear / Jira / Slack / Notion /
-  Hancom / Maepsi 서버를 `/mcp-servers` 마법사에서 선택하고 저장 전 도구 프로브
-- **MCP Secret credential** — first-party MCP 서버에 per-user secret을
-  `X-Moldy-Credential` 헤더로 자동 전달
-- **Skill 시스템** — SKILL.md(YAML frontmatter) + 보조 파일을 묶은 스킬 패키지,
-  multi-file 인라인 에디터, scratch/upload/import 3가지 생성 방식
-- **Skill 런타임 의존성** — Skill이 선언한 tool dependency를 에이전트 실행 시
-  자동 주입 (예: Deep Research → Tavily). 사용자가 도구를 수동으로 붙일 필요 없음
-- **사용자 정의 도구** — Pydantic 스키마로 도구 파라미터 정의
-
-</details>
-
-<details>
-<summary><b>🔐 크리덴셜 · 모델 관리</b></summary>
-
-- **Cipher V2 암호화** — HKDF-SHA256 + AES-256-GCM, 단일 블롭 Base64
-- **Vault 통합** — `hvac` 기반 external secrets 지원
-- **System / User 크리덴셜 분리** — 운영자 관리 vs 사용자 개인 키
-- **MCP Secret** — 로컬 first-party MCP 서버용 per-user secret credential
-- **한국 서비스 8종** — SRT · KTX · 산림청 숲길 · KIPRIS · DART · ODsay · 쿠팡 파트너스 · K-Skill 프록시
-- **모델 discovery** — 크리덴셜로 LLM API에 직접 질의해 사용 가능 모델 + 가격
-  + 컨텍스트 윈도우 자동 가져오기
-- **모델 health check** — 주기적 probe로 모델 가용성 모니터링
-- **벤치마크 랭킹** — LMArena · LiveBench · AAIndex 점수 표시
-
-</details>
-
-<details>
-<summary><b>⏰ 트리거 · 사용량 · 관측성</b></summary>
-
-- **스케줄 트리거** — APScheduler 기반 cron / interval, 에이전트별 입력 메시지
-  지정, Google Chat Webhook 알림
-- **스케줄 가드레일** — 최대 실행 횟수(`max_runs`), 종료 시각(`end_at`),
-  연속 실패 시 자동 일시정지(`auto_pause_after_failures`)
-- **대화 정책** — 트리거마다 새 대화 생성 / 지정 대화 재사용 선택
-- **실행 이력** — `agent_trigger_runs`에 실행별 source / 출력 미리보기 /
-  소요시간 / thread·checkpoint·trace ID 기록
-- **토큰 사용량 추적** — 에이전트별 / 모델별 / 일별 토큰 + 추정 비용
-- **Daily spend** — 사용자 / 에이전트 / 모델 단위 일별 집계
-- **트레이싱** — LangSmith 자동 전송 + Langfuse 외부 트레이스 연동
-  (`message_events`에 external trace provider/id/url 기록)
-
-</details>
-
-<details>
-<summary><b>🎨 Frontend</b></summary>
-
-- **Next.js 16 + React 19** — App Router, Server Components 우선
-- **TailwindCSS v4 + shadcn/ui** — 디자인 토큰 기반 (`--primary-strong` emerald),
-  ADR-010 디자인 시스템
-- **DialogShell 패턴** — 모든 다이얼로그를 토큰 사이즈(`md`/`lg`/`xl`/`console`)로
-  통일, lightbox용 `srOnly` 헤더 prop
-- **TanStack Query** — 서버 상태 관리 (캐싱 + invalidation)
-- **Jotai** — 클라이언트 상태 (사이드바, 우측 패널 등)
-- **assistant-ui** — 채팅 메시지 트리, BranchPicker, ActionBar
-- **i18n** — next-intl 기반, 한국어 기본
-- **반응형** — 모바일 사이드바 = Sheet, 데스크톱 = SidebarProvider
-
-</details>
-
-<details>
-<summary><b>🛒 마켓플레이스</b></summary>
-
-- **카탈로그** — Agent / MCP 서버 / Skill을 공개 마켓플레이스에 게시하고 한 클릭으로 설치
-- **원본-설치본 분리** — 설치 시 사용자 계정에 독립 복사본 생성, 원본 업데이트와 독립 동작
-- **버전 스냅샷** — `marketplace_versions` 테이블에 immutable 버전 이력 관리
-- **Credential 바인딩** — Skill별 필요 credential을 설치 시점에 사용자 계정 키로 매핑
-- **Tool dependency 표시** — Skill이 요구하는 도구(예: Tavily)를 설치 마법사에서
-  안내하고 실행 시 자동 주입
-- **모더레이션** — super_user가 `/settings/marketplace-admin`에서 공개 심사
-
-</details>
-
-## 🏗️ 아키텍처
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Frontend (Next.js)                      │
-│  app/ (라우트) → components/ (UI) → lib/api,hooks,stores        │
-│  ↓ fetch + SSE (EventSource)                                   │
-└─────────────────────────────────────────────────────────────────┘
-                                 ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                       Backend (FastAPI)                         │
-│  routers/ → services/ → models/ (SQLAlchemy 2.0 async)         │
-│                                                                 │
-│  agent_runtime/                                                 │
-│    ├ builder_v3/ (대화형 메타 빌더 — 최신)                      │
-│    ├ executor.py (compat facade)                                │
-│    ├ runtime_component_builder.py (models/tools/skills/memory)  │
-│    ├ agent_stream_runner.py (stream/invoke 실행)                │
-│    ├ streaming.py (LangGraph events → SSE + traces + artifacts) │
-│    ├ mcp_tool_loader.py / skill_executor.py                     │
-│    └ trigger_executor.py (스케줄 → invoke)                       │
-│                                                                 │
-│  scheduler.py — APScheduler 싱글턴                              │
-└─────────────────────────────────────────────────────────────────┘
-                  ↓                              ↓
-       PostgreSQL (모델/대화/도구)      LangGraph PostgresSaver
-                                        (체크포인트 = 메시지 트리)
-```
-
-### 3계층 구조
-
-- **Router** (`app/routers/`) — HTTP 엔드포인트, 요청·응답 변환
-- **Service** (`app/services/`) — 비즈니스 로직, DB 쿼리, 트랜잭션
-- **Model** (`app/models/`) — SQLAlchemy ORM
-
-### Frontend 패턴
-
-- API 클라이언트 (`lib/api/`) → TanStack Query 훅 (`lib/hooks/`) → 컴포넌트
-- 채팅 SSE는 `lib/sse/`의 EventSource 래퍼로 토큰 단위 처리
-- 디자인 토큰은 `lib/design-tokens.ts` + `app/globals.css` (oklch 기반)
-
-자세한 내용은 [`CLAUDE.md`](CLAUDE.md) (개발자 핸드북) 참고.
-
-## 📁 프로젝트 구조
-
-```
-natural-mold/
-├── backend/
-│   ├── app/
-│   │   ├── main.py              # FastAPI 앱 팩토리 + lifespan
-│   │   ├── config.py            # pydantic-settings (.env)
-│   │   ├── database.py          # async engine + session
-│   │   ├── dependencies.py      # get_db, get_current_user, require_super_user, verify_csrf
-│   │   ├── scheduler.py         # APScheduler 싱글턴
-│   │   ├── models/              # SQLAlchemy ORM
-│   │   ├── schemas/             # Pydantic 스키마
-│   │   ├── routers/             # HTTP 라우터
-│   │   ├── services/            # 비즈니스 로직
-│   │   ├── credentials/         # Cipher V2 + 도메인
-│   │   ├── agent_runtime/       # AI 실행 엔진
-│   │   └── seed/                # 시드 데이터
-│   ├── alembic/versions/        # 마이그레이션 (head: m76_pinned_conv_summaries)
-│   └── tests/                   # pytest (aiosqlite in-memory)
-├── frontend/
-│   └── src/
-│       ├── app/                 # Next.js App Router (23+ 라우트)
-│       ├── components/          # UI 컴포넌트
-│       └── lib/                 # api, hooks, stores, sse, types
-├── docs/
-│   ├── PRD.md                   # 제품 요구사항
-│   ├── PRD-screens.md           # 화면 와이어프레임
-│   ├── ARCHITECTURE.md          # 시스템 아키텍처
-│   ├── design-docs/             # ADR (디자인 결정)
-│   ├── marketplace-resources-prd.md  # 마켓플레이스 PRD
-│   └── tool-setup-guide.md      # 도구 API 키 설정
-├── tasks/                       # 작업 메모 + archive/
-├── docker-compose.yml
-├── HANDOFF.md                   # 세션 인계 문서
-├── TASKS.md                     # Phase별 태스크 트래커
-├── CLAUDE.md                    # 개발자 핸드북
-├── CONTRIBUTING.md
-└── SECURITY.md
-```
-
-## 🔧 환경변수
-
-전체 목록은 `backend/.env.example` 참고. 최소 동작 키:
-
-| 변수 | 필수 | 설명 |
-|------|------|------|
-| `DATABASE_URL` | O | PostgreSQL async URL (`postgresql+asyncpg://...`) |
-| `DATABASE_URL_SYNC` | O | PostgreSQL sync URL (`postgresql://...`) — LangGraph checkpointer용. `DATABASE_URL`에서 **파생되지 않으므로** DB 호스트를 바꾸면 둘 다 설정 |
-| `ENCRYPTION_KEYS` | O | Cipher V2 마스터 키 — 콤마 구분 64-char hex, 첫 번째가 활성 키 (HKDF-SHA256 + AES-256-GCM). 생성: `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `JWT_SECRET` | O | JWT HS256 서명 키 (ADR-016 멀티유저 인증) |
-| LLM 키 (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 등) | - | UI Credentials에서 등록 권장 (ADR-013). ENV는 dev bootstrap용 선택값 |
-| `OPENROUTER_API_KEY` | - | Agent 이미지 생성 (OpenRouter + Gemini Flash Image) |
-| `LANGSMITH_API_KEY` | - | LangSmith 트레이싱 (선택) |
-| `TAVILY_API_KEY` | - | Tavily 검색 / Deep Research skill용 hosted 키 (선택) |
-| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | - | 네이버 검색 도구 |
-| `GOOGLE_API_KEY` / `GOOGLE_CSE_ID` | - | Google CSE 도구 |
-| Google OAuth2 토큰 | - | Gmail / Calendar 도구 (`scripts/google_oauth_setup.py`) |
-
-도구별 키 설정은 [`docs/tool-setup-guide.md`](docs/tool-setup-guide.md) 참고.
-
-## 🧩 구조화 데이터 (JSON-LD)
-
-Moldy README를 프로젝트 홈페이지, 문서 사이트, 제품 페이지에 게시한다면 아래 JSON-LD를
-사용할 수 있습니다. GitHub README 렌더링은 JSON-LD를 실행하지 않으므로, 실제 웹
-페이지의 server-rendered `<script type="application/ld+json">` 요소 안에 배치하세요.
-이 schema는 repository에서 확인 가능한 사실만 사용합니다. 공식 프로필이나 문서 URL이
-추가로 생긴 뒤에만 `sameAs` 링크를 더 넣는 것이 좋습니다.
-
-```json
-{
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "Organization",
-      "@id": "https://github.com/YooSuhwa/natural-mold#organization",
-      "name": "Moldy 기여자",
-      "url": "https://github.com/YooSuhwa/natural-mold",
-      "sameAs": [
-        "https://github.com/YooSuhwa/natural-mold"
-      ],
-      "description": "Moldy 기여자는 AI 에이전트를 만들고, 채팅하고, 스케줄링할 수 있는 오픈소스 self-hostable AI 에이전트 빌더를 유지보수합니다.",
-      "knowsAbout": [
-        "AI 에이전트 빌더",
-        "LangGraph",
-        "deepagents",
-        "FastAPI",
-        "Next.js",
-        "Model Context Protocol",
-        "credential 암호화",
-        "에이전트 스케줄링"
-      ]
-    },
-    {
-      "@type": "SoftwareApplication",
-      "@id": "https://github.com/YooSuhwa/natural-mold#software",
-      "name": "Moldy",
-      "url": "https://github.com/YooSuhwa/natural-mold",
-      "description": "Moldy는 웹 UI에서 AI 에이전트를 만들고, 설정하고, 채팅하고, 스케줄링할 수 있는 오픈소스 self-hostable 노코드 AI 에이전트 빌더입니다.",
-      "applicationCategory": "DeveloperApplication",
-      "operatingSystem": "Web",
-      "isAccessibleForFree": true,
-      "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
-      "softwareVersion": "development snapshot, migration head m76_pinned_conv_summaries",
-      "dateModified": "2026-09-01",
-      "author": {
-        "@id": "https://github.com/YooSuhwa/natural-mold#organization"
-      },
-      "publisher": {
-        "@id": "https://github.com/YooSuhwa/natural-mold#organization"
-      },
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      },
-      "softwareRequirements": [
-        "Python 3.12",
-        "Node.js 22",
-        "PostgreSQL 16",
-        "Docker",
-        "uv",
-        "pnpm"
-      ],
-      "featureList": [
-        "대화형 AI 에이전트 빌더",
-        "LangGraph 및 deepagents 런타임",
-        "MCP 서버 레지스트리와 도구 가져오기",
-        "Skill 패키지 관리",
-        "JWT 및 HttpOnly cookie 인증",
-        "Cipher V2 credential 암호화",
-        "SSE 채팅 스트리밍",
-        "분기 가능한 대화",
-        "Cron 및 interval 에이전트 트리거",
-        "Skill 마켓플레이스 설치"
-      ]
-    },
-    {
-      "@type": "SoftwareSourceCode",
-      "@id": "https://github.com/YooSuhwa/natural-mold#source-code",
-      "name": "Moldy source code",
-      "codeRepository": "https://github.com/YooSuhwa/natural-mold",
-      "programmingLanguage": [
-        "Python",
-        "TypeScript"
-      ],
-      "runtimePlatform": [
-        "Python 3.12",
-        "Node.js 22",
-        "PostgreSQL 16"
-      ],
-      "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
-      "targetProduct": {
-        "@id": "https://github.com/YooSuhwa/natural-mold#software"
-      }
-    },
-    {
-      "@type": "FAQPage",
-      "@id": "https://github.com/YooSuhwa/natural-mold#faq",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "Moldy는 무엇을 하나요?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Moldy는 자연어 요구사항을 도구, 스킬, MCP 도구, credential, 채팅 스트리밍, 스케줄 트리거를 사용할 수 있는 실행 가능한 AI 에이전트로 바꿉니다."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Moldy는 credential과 시스템 권한을 어떻게 보호하나요?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Moldy는 super_user가 관리하는 시스템 리소스와 사용자별 리소스를 분리하고, JWT auth, HttpOnly cookie, CSRF 보호를 사용하며, credential payload를 HKDF-SHA256과 AES-256-GCM 기반 Cipher V2로 암호화합니다."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Moldy는 어떤 기술 스택을 사용하나요?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Moldy는 Next.js 16, React 19, TailwindCSS v4, FastAPI, SQLAlchemy 2.0 async, PostgreSQL 16, LangGraph 1.x, deepagents create_deep_agent를 사용합니다."
-          }
-        }
-      ]
-    }
-  ]
-}
-```
-
-## 🤝 Contributing
-
-기여 방법은 [`CONTRIBUTING.md`](CONTRIBUTING.md) 참고. 보안 이슈는
-[`SECURITY.md`](SECURITY.md) 절차대로.
-
-## 📄 License
-
-[MIT](LICENSE) — Copyright (c) 2026 Moldy contributors.
-
----
-
-<div align="center">
-
-세부 컨벤션·디자인 토큰·long-horizon 워크플로우는 [`CLAUDE.md`](CLAUDE.md)와
-[`frontend/AGENTS.md`](frontend/AGENTS.md)를 참고하세요.
-
-</div>
+[MIT](LICENSE). Copyright (c) 2026 Moldy contributors.

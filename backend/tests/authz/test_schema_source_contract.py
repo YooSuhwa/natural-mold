@@ -12,7 +12,7 @@ from schema_drafts.org_authz.schema import NEW_TABLES, baseline_metadata
 from schema_drafts.org_authz.schema_contract import schema_contract, table_inventory
 from tests.authz.test_full_draft_chain import execute_draft
 
-PLAN = Path(__file__).parents[3] / "docs/exec-plans/org-authz-plan.html"
+PLAN = Path(__file__).parents[3] / "docs/exec-plans/active/org-authz-plan.html"
 
 
 @pytest.fixture(scope="module")

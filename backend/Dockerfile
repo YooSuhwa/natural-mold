@@ -6,6 +6,7 @@ RUN corepack enable pnpm
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY backend/skill-node/package.json ./backend/skill-node/package.json
+COPY vendor/ ./vendor/
 RUN pnpm install --frozen-lockfile --prod --filter @moldy/skill-node-runtime... --ignore-scripts
 
 FROM node:22-slim AS node-runtime

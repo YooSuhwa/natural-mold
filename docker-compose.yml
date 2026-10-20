@@ -1,9 +1,71 @@
+# Local quickstart: `docker compose up -d --build` brings up the whole stack with
+# no .env editing (docs/docker-quickstart.md). Startup order:
+#
+#   openfga-postgres -> openfga-migrate -> openfga ----------------------+
+#   postgres + init-secrets -> migrate (alembic) -> authz-bootstrap -----+-> backend -> frontend
+#
+# Settings precedence inside the backend containers, highest first:
+#   1. the `environment:` blocks below (shell / root .env interpolation)
+#   2. backend/.env, when present (env_file)
+#   3. files generated in the moldy_runtime volume, used only for variables still
+#      unset or empty after 1 and 2: ENCRYPTION_KEYS and JWT_SECRET (init-secrets,
+#      created once and reused), OPENFGA_STORE_ID and OPENFGA_MODEL_ID
+#      (authz-bootstrap, refreshed on every `up`).
+# Shared or production installs set real OpenFGA secrets in the root .env and
+# layer docker-compose.tls.yml on top (docs/operator-setup.md section 7).
+
+x-openfga-datastore-uri: &openfga-datastore-uri postgres://openfga:${OPENFGA_DB_PASSWORD:-moldy-dev-openfga-db}@openfga-postgres:5432/openfga?sslmode=disable
+
+x-backend-build: &backend-build
+  context: .
+  dockerfile: backend/Dockerfile
+
+# Fills unset/empty variables from the generated runtime files, then runs the
+# service command. MOLDY_DEMO_SCRIPTED_MODEL=true turns on the keyless scripted
+# chat model (dev only; the backend ignores it with APP_ENV=production).
+x-backend-entrypoint: &backend-entrypoint
+  - sh
+  - -c
+  - |
+    set -eu
+    for file in /run/moldy/secrets.env /run/moldy/openfga.env; do
+      [ -f "$$file" ] || continue
+      while IFS='=' read -r key value || [ -n "$$key" ]; do
+        case "$$key" in ''|*[!A-Z0-9_]*) continue ;; esac
+        if [ -z "$$(printenv "$$key" || true)" ]; then export "$$key=$$value"; fi
+      done < "$$file"
+    done
+    if [ "$${MOLDY_DEMO_SCRIPTED_MODEL:-false}" = true ]; then
+      export E2E_SCRIPTED_MODEL_ENABLED=true
+    fi
+    exec "$$@"
+  - moldy-env
+
+x-backend-environment: &backend-environment
+  APP_ENV: ${APP_ENV:-dev}
+  # Point at the `postgres` service, not localhost — these override whatever
+  # backend/.env sets for local (uv) development.
+  DATABASE_URL: postgresql+asyncpg://moldy:moldy@postgres:5432/moldy
+  DATABASE_URL_SYNC: postgresql://moldy:moldy@postgres:5432/moldy
+  OPENFGA_API_URL: http://openfga:8080
+  OPENFGA_API_TOKEN: ${OPENFGA_API_TOKEN:-moldy-dev-openfga-token}
+  AUTHZ_MODE: ${AUTHZ_MODE:-legacy}
+  DB_RLS_ENABLED: ${DB_RLS_ENABLED:-false}
+
+# Secrets (ENCRYPTION_KEYS, JWT_SECRET, optional LLM keys) may come from
+# backend/.env — the same file the local-dev workflow creates. Optional: without
+# it the generated runtime files are used. `environment:` wins over this file.
+x-backend-env-file: &backend-env-file
+  - path: ./backend/.env
+    required: false
+
 services:
   openfga-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: openfga
-      POSTGRES_PASSWORD: ${OPENFGA_DB_PASSWORD:?Set OPENFGA_DB_PASSWORD}
+      # Dev default, reachable only inside the Compose network (no host port).
+      POSTGRES_PASSWORD: ${OPENFGA_DB_PASSWORD:-moldy-dev-openfga-db}
       POSTGRES_DB: openfga
     volumes:
       - openfga_data:/var/lib/postgresql/data
@@ -18,7 +80,7 @@ services:
     command: migrate
     environment:
       OPENFGA_DATASTORE_ENGINE: postgres
-      OPENFGA_DATASTORE_URI: postgres://openfga:${OPENFGA_DB_PASSWORD:?Set OPENFGA_DB_PASSWORD}@openfga-postgres:5432/openfga?sslmode=disable
+      OPENFGA_DATASTORE_URI: *openfga-datastore-uri
     depends_on:
       openfga-postgres:
         condition: service_healthy
@@ -29,11 +91,19 @@ services:
     command: run
     environment:
       OPENFGA_DATASTORE_ENGINE: postgres
-      OPENFGA_DATASTORE_URI: postgres://openfga:${OPENFGA_DB_PASSWORD:?Set OPENFGA_DB_PASSWORD}@openfga-postgres:5432/openfga?sslmode=disable
+      OPENFGA_DATASTORE_URI: *openfga-datastore-uri
       OPENFGA_AUTHN_METHOD: preshared
-      OPENFGA_AUTHN_PRESHARED_KEYS: ${OPENFGA_API_TOKEN:?Set OPENFGA_API_TOKEN}
+      # Dev default, reachable only inside the Compose network. The TLS overlay
+      # refuses to start without a real value.
+      OPENFGA_AUTHN_PRESHARED_KEYS: ${OPENFGA_API_TOKEN:-moldy-dev-openfga-token}
       OPENFGA_PLAYGROUND_ENABLED: "false"
       OPENFGA_METRICS_ENABLED: "true"
+    healthcheck:
+      # gRPC health stays plaintext under the TLS overlay (it enables HTTP TLS only).
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=127.0.0.1:8081"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     depends_on:
       openfga-migrate:
         condition: service_completed_successfully
@@ -47,7 +117,7 @@ services:
       POSTGRES_PASSWORD: moldy
       POSTGRES_DB: moldy
     ports:
-      - "5432:5432"
+      - "${MOLDY_POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -56,47 +126,121 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    # Run migrations before serving so a fresh database has its tables before
-    # the lifespan seed queries them (there is no create_all — Alembic owns the
-    # schema). `alembic upgrade head` is idempotent, so this is safe on restart.
+  # One-shot: generate ENCRYPTION_KEYS and JWT_SECRET into the moldy_runtime
+  # volume on first run; later runs keep the existing file, so credentials stay
+  # decryptable and sessions survive restarts. `down -v` deletes it.
+  init-secrets:
+    build: *backend-build
+    entrypoint: ["python", "-c"]
+    command:
+      - |
+        import os, secrets
+        path = "/run/moldy/secrets.env"
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            print("init-secrets: reusing", path)
+        else:
+            os.umask(0o077)
+            with open(path + ".tmp", "w") as out:
+                out.write(f"ENCRYPTION_KEYS={secrets.token_hex(32)}\n")
+                out.write(f"JWT_SECRET={secrets.token_urlsafe(64)}\n")
+            os.replace(path + ".tmp", path)
+            print("init-secrets: generated", path)
+    volumes:
+      - moldy_runtime:/run/moldy
+
+  # One-shot: Alembic owns the schema (there is no create_all), so the database
+  # is migrated before the backend's lifespan seed queries it. Idempotent.
+  migrate:
+    build: *backend-build
+    entrypoint: *backend-entrypoint
+    command: ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+    environment: *backend-environment
+    env_file: *backend-env-file
+    volumes:
+      - moldy_runtime:/run/moldy:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      init-secrets:
+        condition: service_completed_successfully
+
+  # One-shot `authz bootstrap` (org-authz plan 15.1): find or create the store,
+  # deploy the model (reused when unchanged), write the expected tuples, and pin
+  # the ids into moldy_runtime/openfga.env so the outbox/reconcile jobs schedule
+  # once AUTHZ_MODE leaves legacy. Ids pinned in backend/.env take precedence.
+  authz-bootstrap:
+    build: *backend-build
+    entrypoint: *backend-entrypoint
     command:
       - sh
       - -c
-      - uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
-    ports:
-      - "8001:8000"
+      - |
+        set -eu
+        uv run --no-sync python -m app.authz.cli bootstrap > /tmp/bootstrap.json
+        uv run --no-sync python - <<'PY'
+        import json, os
+        lines = [line for line in open("/tmp/bootstrap.json") if line.lstrip().startswith("{")]
+        result = json.loads(lines[-1])
+        model, tuples = result["model"], result["tuples"]
+        with open("/run/moldy/openfga.env.tmp", "w") as out:
+            out.write(f"OPENFGA_STORE_ID={model['store_id']}\n")
+            out.write(f"OPENFGA_MODEL_ID={model['model_id']}\n")
+        os.replace("/run/moldy/openfga.env.tmp", "/run/moldy/openfga.env")
+        print(
+            f"authz-bootstrap: pinned store_id={model['store_id']} model_id={model['model_id']}"
+            f" model_changed={model['changed']} expected_tuples={tuples['expected']}"
+        )
+        PY
     environment:
-      APP_ENV: ${APP_ENV:-dev}
-      # Point at the `postgres` service, not localhost — these override whatever
-      # backend/.env sets for local (uv) development.
-      DATABASE_URL: postgresql+asyncpg://moldy:moldy@postgres:5432/moldy
-      DATABASE_URL_SYNC: postgresql://moldy:moldy@postgres:5432/moldy
+      <<: *backend-environment
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://moldy:moldy@postgres:5432/moldy
+    env_file: *backend-env-file
+    volumes:
+      - moldy_runtime:/run/moldy
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      openfga:
+        condition: service_healthy
+
+  backend:
+    build: *backend-build
+    entrypoint: *backend-entrypoint
+    command:
+      ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${MOLDY_BACKEND_PORT:-8001}:8000"
+    environment:
+      <<: *backend-environment
       CHECKPOINTER_POOL_MIN_SIZE: ${CHECKPOINTER_POOL_MIN_SIZE:-4}
       CHECKPOINTER_POOL_MAX_SIZE: ${CHECKPOINTER_POOL_MAX_SIZE:-20}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
-      OPENFGA_API_URL: http://openfga:8080
-      OPENFGA_API_TOKEN: ${OPENFGA_API_TOKEN:?Set OPENFGA_API_TOKEN}
-      AUTHZ_MODE: ${AUTHZ_MODE:-legacy}
-      DB_RLS_ENABLED: ${DB_RLS_ENABLED:-false}
-    # Secrets (ENCRYPTION_KEYS, JWT_SECRET, optional LLM keys) are read from
-    # backend/.env — the same file the local-dev workflow creates. Marked
-    # optional so `docker compose up postgres -d` keeps working before the
-    # file exists. The environment block above takes precedence over it.
-    env_file:
-      - path: ./backend/.env
-        required: false
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:${MOLDY_FRONTEND_PORT:-3000},http://127.0.0.1:${MOLDY_FRONTEND_PORT:-3000}}
+      MOLDY_DEMO_SCRIPTED_MODEL: ${MOLDY_DEMO_SCRIPTED_MODEL:-false}
+    env_file: *backend-env-file
     volumes:
       # Persist skills, uploads, artifacts, and agent images across recreation.
       - backend_data:/app/data
+      - moldy_runtime:/run/moldy:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4)
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
       openfga:
-        condition: service_started
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      authz-bootstrap:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
   frontend:
     build:
@@ -105,20 +249,35 @@ services:
       args:
         # NEXT_PUBLIC_* is inlined into the browser bundle at build time, so the
         # API URL must be set HERE — a runtime env var alone never reaches the
-        # client. Override for remote deploys, e.g. https://api.example.com
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8001}
+        # client. Override for remote deploys, e.g. https://api.example.com.
+        # Changing it (or MOLDY_BACKEND_PORT) needs `up -d --build`.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${MOLDY_BACKEND_PORT:-8001}}
         NEXT_PUBLIC_CHAT_RUNTIME: ${NEXT_PUBLIC_CHAT_RUNTIME:-langgraph_v3}
     ports:
-      - "3000:3000"
+      - "${MOLDY_FRONTEND_PORT:-3000}:3000"
     environment:
-      # Runtime value for server-side (SSR) fetches; the client bundle uses the
-      # build arg above.
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8001}
+      # Kept in step with the build arg. The Next server itself never calls the
+      # backend; pages fetch it from the browser.
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${MOLDY_BACKEND_PORT:-8001}}
       NEXT_PUBLIC_CHAT_RUNTIME: ${NEXT_PUBLIC_CHAT_RUNTIME:-langgraph_v3}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/login').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   backend_data:
   openfga_data:
+  # Generated secrets.env and openfga.env (see init-secrets and authz-bootstrap).
+  moldy_runtime:

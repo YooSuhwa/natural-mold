@@ -5,11 +5,11 @@ each link records its declared state; Completed also holds closed/superseded
 plans, explicitly labeled below. Current product follow-ups live in `../../TASKS.md`.
 
 The active organization authorization program follows the supplied
-[HTML specification](org-authz-plan.html).
+[HTML specification](active/org-authz-plan.html).
 
 ## Active
 
-- [조직·권한·공유 실행 기록](org-authz-progress.md) — approved for implementation by the user on 2026-10-10; P0 complete, P1 in progress.
+- [조직·권한·공유 실행 기록](active/org-authz-progress.md) — approved 2026-10-10; P0–P7 and P8 implementation merged in PR #314 (2026-10-19); I-01–I-05 operations and U-05 pending deployment.
 
 ## Completed
 

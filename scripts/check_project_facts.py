@@ -37,7 +37,7 @@ RUNTIME_POLICY_CONTRACT: Final = re.compile(
 )
 E2E_CURRENT_CONTRACT: Final = re.compile(
     r"<!-- e2e-current-source: profile-personalization=(untested|covered); "
-    r"refreshed=(\d{4}-\d{2}-\d{2}) -->"
+    r"(?:nightly-setup=[a-z]+; )?refreshed=(\d{4}-\d{2}-\d{2}) -->"
 )
 PROFILE_E2E_SPEC: Final = "frontend/e2e/profile-personalization.spec.ts"
 FUTURE_PROGRAM: Final = re.compile(r"<!-- future-program: ([a-z0-9-]+); status=([a-z]+) -->")

@@ -35,6 +35,19 @@ x-postgres-tls: &postgres-tls
         -c ssl_cert_file="$$tls/server.crt" -c ssl_key_file="$$tls/server.key" \
         -c hba_file="$$tls/pg_hba.conf"
 
+# Shared by backend, migrate and authz-bootstrap. The base file's dev-default
+# OpenFGA secrets are refused here: set OPENFGA_API_TOKEN and OPENFGA_DB_PASSWORD
+# in the root .env.
+x-backend-tls-env: &backend-tls-env
+  DATABASE_URL: postgresql+asyncpg://moldy:moldy@postgres:5432/moldy?ssl=verify-full
+  DATABASE_URL_SYNC: postgresql://moldy:moldy@postgres:5432/moldy?sslmode=verify-full&sslrootcert=/certs/ca.crt
+  # asyncpg cannot take sslrootcert in the SQLAlchemy URL; it reads this instead.
+  PGSSLROOTCERT: /certs/ca.crt
+  OPENFGA_API_URL: https://openfga:8080
+  OPENFGA_API_TOKEN: ${OPENFGA_API_TOKEN:?Set OPENFGA_API_TOKEN}
+  OPENFGA_CA_CERT: /certs/ca.crt
+  INTERNAL_PLAINTEXT_HOSTS: ""
+
 services:
   openfga-postgres:
     <<: *postgres-tls
@@ -56,6 +69,7 @@ services:
       OPENFGA_HTTP_TLS_ENABLED: "true"
       OPENFGA_HTTP_TLS_CERT: /certs/server.crt
       OPENFGA_HTTP_TLS_KEY: /certs/server.key
+      OPENFGA_AUTHN_PRESHARED_KEYS: ${OPENFGA_API_TOKEN:?Set OPENFGA_API_TOKEN}
     group_add:
       - "${MOLDY_TLS_KEY_GID:?Set MOLDY_TLS_KEY_GID to the group id owning server.key}"
     volumes:
@@ -67,15 +81,22 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - *tls-certs
 
-  backend:
+  # The migrate and authz-bootstrap one-shots reach the same servers as the
+  # backend, so they take the same verified-TLS settings.
+  migrate:
+    environment: *backend-tls-env
+    volumes:
+      - *tls-certs
+
+  authz-bootstrap:
     environment:
-      DATABASE_URL: postgresql+asyncpg://moldy:moldy@postgres:5432/moldy?ssl=verify-full
-      DATABASE_URL_SYNC: postgresql://moldy:moldy@postgres:5432/moldy?sslmode=verify-full&sslrootcert=/certs/ca.crt
-      # asyncpg cannot take sslrootcert in the SQLAlchemy URL; it reads this instead.
-      PGSSLROOTCERT: /certs/ca.crt
-      OPENFGA_API_URL: https://openfga:8080
-      OPENFGA_CA_CERT: /certs/ca.crt
-      INTERNAL_PLAINTEXT_HOSTS: ""
+      <<: *backend-tls-env
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://moldy:moldy@postgres:5432/moldy?ssl=verify-full
+    volumes:
+      - *tls-certs
+
+  backend:
+    environment: *backend-tls-env
     volumes:
       - backend_data:/app/data
       - *tls-certs
