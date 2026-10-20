@@ -5,12 +5,15 @@ from __future__ import annotations
 import base64
 import json
 from typing import Any, Final
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.agent_runtime.run_secrets import collect_secret_values
+from app.authz.org_context import OrgContext
 from app.credentials import service as credential_service
+from app.credentials.company_use import company_credential_usable
 from app.credentials.run_resolution import RunCredentialResolver
 from app.credentials.run_subject import subject_for_caller
 from app.mcp.apps import (
@@ -23,6 +26,7 @@ from app.mcp.apps import (
 from app.mcp.apps_binding_store import require_live_agent_tree
 from app.mcp.auth import ResolvedMcpAuth, resolve_mcp_auth
 from app.mcp.invocation import call_mcp_tool_once, read_mcp_resource_once
+from app.models.credential import Credential
 from app.services.mcp_apps_binding_service import (
     AuthorizedBinding,
     BindingDraft,
@@ -149,6 +153,9 @@ async def _auth_for_context(db: AsyncSession, context: AuthorizedBinding) -> Res
     elif credential_id is not None:
         credential = await credential_service.get_for_user(db, credential_id, context.org_context)
         if credential is None:
+            credential = await _company_shared(db, credential_id, context.org_context)
+            owner_id = None  # a company shared credential has no owner account
+        if credential is None:
             raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 404)
     auth = await resolve_mcp_auth(
         db, credential_id=credential_id, user_id=owner_id, static_headers=server.headers
@@ -156,6 +163,21 @@ async def _auth_for_context(db: AsyncSession, context: AuthorizedBinding) -> Res
     if auth.error:
         raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 403)
     return auth
+
+
+async def _company_shared(
+    db: AsyncSession, credential_id: UUID, context: OrgContext
+) -> Credential | None:
+    credential = await db.get(Credential, credential_id)
+    if credential is None or not await company_credential_usable(
+        db,
+        credential,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
+    ):
+        return None
+    return credential
 
 
 def _resource_html(item: dict[str, Any]) -> str:

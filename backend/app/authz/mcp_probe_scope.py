@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
+from app.credentials.company_use import designated_to, is_company_credential
 from app.error_codes import credential_not_found, mcp_server_not_found
 from app.models.credential import Credential
 from app.models.mcp_server import McpServer
@@ -39,6 +40,9 @@ async def require_mcp_probe_scope(
             and credential.tenant_id is None
             and credential.scope == "platform"
         )
+    elif server.tenant_id is not None and is_company_credential(credential, server.tenant_id):
+        # A company shared credential, while the company designates it to the server's org.
+        permitted = server.org_id is not None and await designated_to(db, credential, server.org_id)
     else:
         permitted = not credential.is_system and (
             credential.user_id,

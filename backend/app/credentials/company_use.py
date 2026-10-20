@@ -19,6 +19,7 @@ from app.authz.error_codes import authorization_error
 from app.authz.principal import Principal, RunSource
 from app.authz.run_decisions import require_decided
 from app.authz.runtime import runtime_authz
+from app.authz.service import AuthzService
 from app.authz.service_types import Verdict
 from app.exceptions import AppError
 from app.models.credential import Credential
@@ -47,13 +48,14 @@ async def company_credential_usable(
     org_id: UUID,
     tenant_id: UUID,
     run_source: RunSource = "CHAT",
+    authz: AuthzService | None = None,
 ) -> bool:
     if not is_company_credential(credential, tenant_id) or credential.status != "active":
         return False
     reaches = await designated_to(db, credential, org_id)
     try:
         await require_decided(
-            runtime_authz(),
+            authz or runtime_authz(),
             Principal("user", user_id, org_id, run_source=run_source),
             "can_use",
             f"credential:{credential.id}",

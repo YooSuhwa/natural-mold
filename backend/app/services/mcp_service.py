@@ -233,7 +233,7 @@ async def create_server(
     validate_payload_consistency(data.transport, data.url, data.command, data.credential_id)
     if data.credential_id is not None:
         await require_credential_use(
-            db, credential_id=data.credential_id, context=context, authz=authz
+            db, credential_id=data.credential_id, context=context, authz=authz, allow_company=True
         )
     server = McpServer(
         user_id=context.user_id,
@@ -276,7 +276,9 @@ async def create_server_from_registry_entry(
     command = entry.get("command")
     validate_payload_consistency(transport, url, command, credential_id)
     if credential_id is not None:
-        await require_credential_use(db, credential_id=credential_id, context=context, authz=authz)
+        await require_credential_use(
+            db, credential_id=credential_id, context=context, authz=authz, allow_company=True
+        )
 
     server = McpServer(
         user_id=context.user_id,
@@ -329,7 +331,11 @@ async def update_server(
     if "credential_id" in fields_set:
         if data.credential_id is not None:
             await require_credential_use(
-                db, credential_id=data.credential_id, context=context, authz=authz
+                db,
+                credential_id=data.credential_id,
+                context=context,
+                authz=authz,
+                allow_company=True,
             )
         server.credential_id = data.credential_id
     if "status" in fields_set and data.status is not None:

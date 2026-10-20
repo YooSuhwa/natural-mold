@@ -258,13 +258,18 @@ async def probe_mcp_server(
 
     credentials: dict[str, Any] | None = None
     if payload.credential_id is not None:
-        await require_credential_use(
-            db, credential_id=payload.credential_id, context=context, authz=authz
+        attached = await require_credential_use(
+            db,
+            credential_id=payload.credential_id,
+            context=context,
+            authz=authz,
+            allow_company=True,
         )
         auth = await resolve_mcp_auth(
             db,
             credential_id=payload.credential_id,
-            user_id=user.id,
+            # A company shared credential has no owner account.
+            user_id=user.id if attached is None or attached.user_id is not None else None,
             static_headers=headers,
         )
         if auth.error:

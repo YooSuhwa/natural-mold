@@ -190,3 +190,8 @@ Related: [조직·권한·공유 실행 기록](org-authz-progress.md), [ADR-023
 - **편차(P2-2)**: 플랫폼 모델 `default_credential_id`를 "플랫폼 키 또는 NULL"로 제한하는 검증은 넣지 않았다.
   운영자 모델 추가 화면(`model-add-dialog.tsx`)이 운영자 본인의 개인 키를 기본 키로 저장하는 정상 흐름이라,
   제한하면 그 흐름이 깨진다. 실행 시 남의 개인 키는 계속 건너뛴다.
+- P2-3 구현: `shared` 모드만 회사 키 허용(`require_credential_use(allow_company=True)`는 도구·MCP 연결에만,
+  사용자별 연결은 그대로 개인 키), 실행 시 `RunCredentialResolver._company`가 실행 조직 지정을 다시 판정,
+  MCP 탐색(`require_mcp_probe_scope`)·MCP Apps 인증·모드 전환 재공유 가드에 회사 키 분기.
+- **편차(P2-3)**: MCP 탐색은 플랫폼 서버에 플랫폼 키를 허용하고 실행은 거부하는 불일치는 손대지 않았다.
+  실행 기준으로 맞추면 시드된 플랫폼 MCP 서버의 탐색이 깨질 수 있어, 영향 조사가 먼저 필요하다(후속).
