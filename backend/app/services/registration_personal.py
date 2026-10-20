@@ -28,10 +28,10 @@ from app.authz.runtime import get_authz
 from app.config import settings
 from app.models.organization import Organization, Tenant
 from app.models.user import User
-from app.schemas.admin_tenant import TenantLimitSummary
 from app.services import audit_service
 from app.services.registration_membership import DefaultEnrollment, enroll_default_organization
 from app.services.tenants.identifiers import DEFAULT_ORGANIZATION_SLUG, tenant_secrets_namespace
+from app.tenancy.default_limits import parse_default_limits
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,7 @@ _NAME_MAX_LENGTH: Final = 200
 
 def personal_tenant_limits() -> dict[str, JsonValue]:
     """``TENANT_DEFAULT_LIMITS`` keys that were set; an absent key means unlimited/allowed."""
-    limits = TenantLimitSummary.model_validate_json(settings.tenant_default_limits)
-    return limits.model_dump(mode="json", exclude_unset=True)
+    return parse_default_limits(settings.tenant_default_limits)
 
 
 def personal_tenant_name(user: User) -> str:

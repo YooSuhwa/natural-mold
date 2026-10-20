@@ -134,7 +134,9 @@ async def test_personal_company_takes_only_the_configured_default_limits(
     # Given: installation-wide defaults for new companies.
     await seed_registration_default(db)
     monkeypatch.setattr(
-        settings, "tenant_default_limits", '{"member_limit": 5, "monthly_spend_limit": 20}'
+        settings,
+        "tenant_default_limits",
+        '{"member_limit": 5, "monthly_spend_limit": 20, "request_rate_limit": 30}',
     )
     # When: a personal company is created.
     user_id = await _register(raw_client, "limited@example.com")
@@ -142,7 +144,11 @@ async def test_personal_company_takes_only_the_configured_default_limits(
     [company_id] = await _companies(db, user_id)
     company = await db.get(Tenant, company_id)
     assert company is not None
-    assert company.limits == {"member_limit": 5, "monthly_spend_limit": "20"}
+    assert company.limits == {
+        "member_limit": 5,
+        "monthly_spend_limit": "20",
+        "request_rate_limit": 30,
+    }
 
 
 @pytest.mark.usefixtures("personal_signup")
@@ -181,3 +187,17 @@ def test_personal_signup_requires_a_multi_tenant_installation() -> None:
         AuthzSettings(registration_policy="personal_tenant", deployment_mode="single_tenant")
     allowed = AuthzSettings(registration_policy="personal_tenant", deployment_mode="multi_tenant")
     assert allowed.registration_policy == "personal_tenant"
+
+
+@pytest.mark.parametrize(
+    "limits",
+    ['{"seat_limit": 1}', '{"member_limit": -1}', "not json", '{"allow_system_models": 2}'],
+)
+def test_personal_signup_refuses_to_start_with_unusable_default_limits(limits: str) -> None:
+    # Otherwise every personal signup would fail at the first request.
+    with pytest.raises(ValidationError):
+        AuthzSettings(
+            registration_policy="personal_tenant",
+            deployment_mode="multi_tenant",
+            tenant_default_limits=limits,
+        )

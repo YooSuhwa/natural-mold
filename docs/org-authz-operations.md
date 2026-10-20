@@ -134,7 +134,7 @@ SaaS로 운영하려면 그 뒤 `DEPLOYMENT_MODE=multi_tenant`로 바꾸고 회�
 | `DEPLOYMENT_MODE` | `single_tenant` | `single_tenant`(설치형) / `multi_tenant`(SaaS). 플랫폼 운영 회사 관리 화면(S03/S04)과 `/api/admin/tenants/*`는 `multi_tenant` + super_user일 때만 열림(`platform_tenant_management_enabled`, 그 외 404) |
 | `DEFAULT_TENANT_NAME` | `기본 회사` | m82 이전과 설치형 첫 회사 이름 |
 | `DEFAULT_ORG_NAME` | `기본 조직` | m82 이전 시 기본 조직 이름 |
-| `TENANT_DEFAULT_LIMITS` | `{}` | SaaS 새 회사의 기본 한도 JSON. `personal_tenant` 가입으로 만든 개인 회사에도 적용(지정한 키만 저장, 없는 키는 무제한) |
+| `TENANT_DEFAULT_LIMITS` | `{}` | SaaS 새 회사의 기본 한도 JSON. `personal_tenant` 가입으로 만든 개인 회사에도 적용(지정한 키만 저장, 없는 키는 무제한). 키: `member_limit`, `monthly_spend_limit`, `concurrent_run_limit`, `request_rate_limit`, `allow_system_models`. `personal_tenant`이면 잘못된 값은 시작 시 거부 |
 | `ORG_MULTI_ENABLED` | `true` | `false`면 회사당 조직 1개, 조직 만들기 숨김 |
 | `REGISTRATION_POLICY` | `default_org` | `default_org` / `personal_tenant` / `invite_only` / `closed`. `personal_tenant`는 `DEPLOYMENT_MODE=multi_tenant`에서만 시작됨: 초대 없는 가입마다 개인 회사(`settings.kind=personal`)와 기본 조직을 만들고 가입자를 회사·조직 관리자로 둠. 첫 가입자(`ALLOW_FIRST_USER_AS_ADMIN`)는 그대로 기본 회사 운영자. 초대 가입은 초대한 조직으로 들어감 |
 | `SSO_ENABLED` | `true` | 회사별 SSO 메뉴 노출 |

@@ -5,6 +5,8 @@ from typing import Literal
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings
 
+from app.tenancy.default_limits import parse_default_limits
+
 
 class AuthzSettings(BaseSettings):
     """Settings mixin; mutable to support existing test/installation overrides."""
@@ -52,4 +54,6 @@ class AuthzSettings(BaseSettings):
             "multi_tenant"
         ):
             raise ValueError("REGISTRATION_POLICY=personal_tenant requires multi_tenant")
+        if self.registration_policy == "personal_tenant":
+            parse_default_limits(self.tenant_default_limits)  # every signup would fail on it
         return self
