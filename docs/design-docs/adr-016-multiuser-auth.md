@@ -4,6 +4,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-05-09
+- **Amended**: 2026-10-21 — §9 회사 공유 LLM 키를 에이전트 채팅에 허용(플랫폼 키는 계속 제외)
 - **Supersedes / Relates**: ADR-009 (Credentials 그린필드 — `is_system` 추가에 영향), ADR-013 (Service-side LLM Key — 사용자별 credential 우선순위 정책)
 - **Branch**: `feature/multiuser-auth`
 - **Plan source**: `~/.claude/plans/replicated-crunching-lark.md`
@@ -360,6 +361,21 @@ async def verify_csrf(request: Request) -> None:
 | 5회 실패 잠금이 brute-force가 아닌 사용자 비밀번호 망각으로 인한 false positive | 낮음 | `locked_until = NOW + 15min`으로 영구 잠금 회피. Phase 2에서 비밀번호 재설정 활성화로 근본 해결 |
 
 ---
+
+## 9. 개정 — 회사 공유 LLM 키 (2026-10-21)
+
+조직·권한 도입(ADR-023) 뒤 회사(`credentials.scope='tenant'`, `is_system=TRUE`, `user_id`·`org_id` NULL)가
+LLM 키를 등록해 조직에 지정할 수 있다. 에이전트 채팅의 키 해석은 다음과 같이 넓힌다
+([개인 테넌트·회사 키 계획](../exec-plans/active/personal-tenant-sharing-plan.md) P2-1, Q1·Q3).
+
+1. 에이전트 키(본인 또는 enforce 위임) → 2. 모델 기본 키(본인 키, 또는 실행 조직에 지정된 회사 키) →
+3. 같은 provider의 본인 키 → 4. 같은 provider의 실행 조직에 지정된 회사 키.
+
+- 판정 주체는 사용자다. legacy·shadow는 회사 지정(`tenants.settings.credential_orgs`), enforce는 OpenFGA
+  `credential#can_use`로 판정한다.
+- **플랫폼(운영자) 키는 계속 에이전트 채팅에 쓰지 않는다.** 위 비용 안전 결정(§3, §8)은 그대로다.
+- 비용은 지금처럼 요청자(트리거·Agent API는 에이전트 소유자) 기준으로 집계하고 회사·조직·사용자 한도를
+  적용한다.
 
 ## Appendix A — 검증 체크리스트
 

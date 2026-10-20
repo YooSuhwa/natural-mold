@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.run_secrets import collect_secret_values, collect_url_userinfo
 from app.credentials.boundary import open_values
+from app.credentials.company_use import company_credentials_for
 from app.credentials.external_secrets import EXTERNAL_MARKER
 from app.credentials.service import PROVIDER_TO_DEFINITION_KEY
 from app.mcp.client import build_env_vars, build_headers
@@ -79,6 +80,12 @@ async def _collect_agent_secrets(
         matched = await _provider_credential_id(db, agent)
         if matched is not None:
             credential_ids.add(matched)
+    # Tier 4 may serve any active company key of the provider; masking every one of them
+    # over-masks at worst.
+    definition_key = PROVIDER_TO_DEFINITION_KEY.get(model.provider)
+    if definition_key is not None and agent.tenant_id is not None:
+        for company in await company_credentials_for(db, agent.tenant_id, definition_key):
+            credential_ids.add(company.id)
 
     for link in agent.tool_links:
         tool = link.tool
