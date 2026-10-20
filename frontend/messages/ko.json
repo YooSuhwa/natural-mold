@@ -6061,7 +6061,9 @@
     },
     "picker": {
       "placeholder": "자격증명 선택",
-      "none": "사용 안 함"
+      "none": "사용 안 함",
+      "ownGroup": "내 자격증명",
+      "companyGroup": "회사 공유 키"
     },
     "testButton": {
       "label": "테스트",

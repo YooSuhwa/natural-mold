@@ -32,6 +32,16 @@ export function useCredentials() {
   })
 }
 
+/** Company shared keys designated to my organization (tools and MCP shared accounts). */
+export function useCompanySharedCredentials(enabled = true) {
+  return useQuery({
+    queryKey: credentialQueryKeys.companyShared,
+    queryFn: credentialsApi.listCompanyShared,
+    staleTime: 30_000,
+    enabled,
+  })
+}
+
 export function useCredential(id: string | null | undefined) {
   return useQuery({
     queryKey: credentialQueryKeys.detail(id),

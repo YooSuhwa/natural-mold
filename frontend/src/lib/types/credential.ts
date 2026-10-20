@@ -53,6 +53,14 @@ export interface FieldDef {
   runtime_only?: boolean
 }
 
+/** `GET /api/credentials/company-shared`: a company key designated to my organization. */
+export interface CompanySharedCredential {
+  id: string
+  name: string
+  definition_key: string
+  status: string
+}
+
 export interface CredentialDefinition {
   key: string
   display_name: string

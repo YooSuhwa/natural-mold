@@ -1,5 +1,6 @@
 import { apiFetch, API_BASE } from './client'
 import type {
+  CompanySharedCredential,
   Credential,
   CredentialAuditLog,
   CredentialCreateRequest,
@@ -15,6 +16,7 @@ export const credentialsApi = {
   getType: (key: string) => apiFetch<CredentialDefinition>(`/api/credential-types/${key}`),
 
   list: () => apiFetch<Credential[]>('/api/credentials'),
+  listCompanyShared: () => apiFetch<CompanySharedCredential[]>('/api/credentials/company-shared'),
   get: (id: string) => apiFetch<Credential>(`/api/credentials/${id}`),
   create: (data: CredentialCreateRequest) =>
     apiFetch<Credential>('/api/credentials', {

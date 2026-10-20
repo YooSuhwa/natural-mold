@@ -46,7 +46,7 @@ def test_every_d04_route_declares_a_reviewed_non_legacy_policy() -> None:
         if isinstance(route, APIRoute) and route.endpoint.__module__ in D04_MODULES
     ]
     kinds = {policy_kind(route.endpoint) for route in routes}
-    assert len(routes) == 54
+    assert len(routes) == 55  # +1 SELF: GET /api/credentials/company-shared (P2-3)
     assert kinds == {"CATALOG", "CANDIDATES", "CAP", "RES", "SELF", "SUPER", "PUBLIC"}
 
 

@@ -180,6 +180,7 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
             <div className="space-y-1.5">
               <label className="text-xs font-medium">{t('credential')}</label>
               <CredentialPicker
+                includeCompany
                 disabled={!canEdit}
                 value={server.credential_id}
                 onChange={handleCredentialChange}

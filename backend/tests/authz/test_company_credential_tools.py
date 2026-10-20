@@ -151,3 +151,15 @@ async def test_tool_responses_report_the_credential_mode(client, db: AsyncSessio
     assert created.status_code == 201, created.text
     assert created.json()["credential_mode"] == "shared"
     assert created.json()["credential_definition_key"] is None
+
+
+async def test_members_list_only_company_credentials_designated_to_their_org(
+    client,  # noqa: ANN001
+    db: AsyncSession,
+) -> None:
+    designated = await _company(db, "a", orgs=(TEST_ORG_ID,))
+    await _company(db, "b", orgs=(OTHER_ORG_ID,))
+    listed = await client.get("/api/credentials/company-shared")
+    assert listed.status_code == 200, listed.text
+    assert [row["id"] for row in listed.json()] == [str(designated.id)]
+    assert set(listed.json()[0]) == {"id", "name", "definition_key", "status"}

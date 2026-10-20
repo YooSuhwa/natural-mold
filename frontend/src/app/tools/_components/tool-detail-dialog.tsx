@@ -113,6 +113,7 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
               <div className="space-y-1.5">
                 <label className="text-xs font-medium">{t('credential')}</label>
                 <CredentialPicker
+                  includeCompany
                   disabled={!canEdit}
                   value={tool.credential_id}
                   onChange={handleCredentialChange}

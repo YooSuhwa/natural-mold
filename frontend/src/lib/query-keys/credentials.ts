@@ -1,6 +1,7 @@
 export const credentialQueryKeys = {
   all: ['credentials'] as const,
   detail: (credentialId: string | null | undefined) => ['credentials', credentialId] as const,
+  companyShared: ['credentials', 'company-shared'] as const,
   types: ['credential-types'] as const,
   typeDetail: (definitionKey: string | null | undefined) =>
     ['credential-types', definitionKey] as const,

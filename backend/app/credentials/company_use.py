@@ -71,6 +71,29 @@ async def company_credential_usable(
     return True
 
 
+async def usable_company_credentials(
+    db: AsyncSession, *, user_id: UUID, org_id: UUID, tenant_id: UUID
+) -> list[Credential]:
+    """Every active company credential ``user_id`` may use in ``org_id``, newest first."""
+    rows = await db.scalars(
+        select(Credential)
+        .where(
+            Credential.scope == "tenant",
+            Credential.tenant_id == tenant_id,
+            Credential.org_id.is_(None),
+            Credential.status == "active",
+        )
+        .order_by(Credential.created_at.desc(), Credential.id)
+    )
+    return [
+        row
+        for row in rows
+        if await company_credential_usable(
+            db, row, user_id=user_id, org_id=org_id, tenant_id=tenant_id
+        )
+    ]
+
+
 async def company_credentials_for(
     db: AsyncSession, tenant_id: UUID, definition_key: str
 ) -> list[Credential]:

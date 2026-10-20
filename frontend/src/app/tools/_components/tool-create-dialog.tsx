@@ -128,6 +128,7 @@ export function ToolCreateDialog({
                 {definition.requires_credential && <span className="text-destructive">*</span>}
               </label>
               <CredentialPicker
+                includeCompany
                 value={credentialId}
                 onChange={setCredentialId}
                 definitionKeys={definition.credential_definition_keys}

@@ -6061,7 +6061,9 @@
     },
     "picker": {
       "placeholder": "Select a credential",
-      "none": "Do not use"
+      "none": "Do not use",
+      "ownGroup": "My credentials",
+      "companyGroup": "Company shared keys"
     },
     "testButton": {
       "label": "Test",

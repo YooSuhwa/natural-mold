@@ -30,6 +30,7 @@ from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
 from app.credentials import service as credential_service
 from app.credentials.boundary import open_values
+from app.credentials.company_use import usable_company_credentials
 from app.credentials.creation import CredentialCreation
 from app.credentials.mutation_scope import (
     CredentialAuditQuery,
@@ -55,6 +56,7 @@ from app.exceptions import AppError
 from app.models.credential import Credential
 from app.routers import credential_oauth
 from app.schemas.credential import (
+    CompanySharedCredentialResponse,
     CredentialAuditLogResponse,
     CredentialCreate,
     CredentialDefinitionSchema,
@@ -175,6 +177,24 @@ async def list_credentials(
         candidates=lambda: credential_service.list_candidates(db, context),
     )
     return [_to_response(c) for c in creds]
+
+
+@crud_router.get("/company-shared", response_model=list[CompanySharedCredentialResponse])
+@authz_policy(SELF)
+async def list_company_shared_credentials(
+    db: AsyncSession = Depends(get_db),
+    context: OrgContext = Depends(get_org_context),
+) -> list[CompanySharedCredentialResponse]:
+    """Company shared credentials designated to the caller's organization (plan P2-3)."""
+    rows = await usable_company_credentials(
+        db, user_id=context.user_id, org_id=context.org_id, tenant_id=context.tenant_id
+    )
+    return [
+        CompanySharedCredentialResponse(
+            id=row.id, name=row.name, definition_key=row.definition_key, status=row.status
+        )
+        for row in rows
+    ]
 
 
 @crud_router.post("", response_model=CredentialResponse, status_code=201)
