@@ -63,6 +63,12 @@ def catalog_view_candidate_predicate(context: OrgContext) -> ColumnElement[bool]
         and_(
             MarketplaceItem.status == "published",
             MarketplaceItem.visibility.in_(("public", "unlisted")),
+            # Public reach ends at the company boundary, as enforced mode decides it
+            # (personal-tenant signups put strangers in separate companies).
+            or_(
+                MarketplaceItem.tenant_id == context.tenant_id,
+                MarketplaceItem.tenant_id.is_(None),
+            ),
             # E-09 (10.2): a pending or rejected company publication stays inside the
             # publishing organization; untouched (``none``) rows keep the legacy reach.
             or_(

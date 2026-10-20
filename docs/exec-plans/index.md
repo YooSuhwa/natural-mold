@@ -10,7 +10,7 @@ The active organization authorization program follows the supplied
 ## Active
 
 - [조직·권한·공유 실행 기록](active/org-authz-progress.md) — approved 2026-10-10; P0–P7 and P8 implementation merged in PR #314 (2026-10-19); I-01–I-05 operations and U-05 pending deployment.
-- [개인 테넌트·회사 키·공유 공백 실행 계획](active/personal-tenant-sharing-plan.md) — draft 2026-10-21; awaiting user review of Q1–Q8.
+- [개인 테넌트·회사 키·공유 공백 실행 계획](active/personal-tenant-sharing-plan.md) — approved 2026-10-21 (Q1–Q8 recommendations accepted); implementation in progress.
 
 ## Completed
 

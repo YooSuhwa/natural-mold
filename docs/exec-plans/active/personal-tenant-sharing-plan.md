@@ -1,7 +1,7 @@
 # 개인 테넌트·회사 키·공유 공백 실행 계획
 
-Status: draft — 사용자 검토 대기 (2026-10-21)
-Branch: `feature/personal-tenant` (PR-A), 이후 PR별 브랜치
+Status: approved 2026-10-21 (Q1–Q8 추천안 채택) — 구현 중
+Branch: `feature/personal-tenant` (단계별 커밋, 한 브랜치; 5절 PR 구분은 커밋 묶음으로 유지)
 Baseline: `24c29186` (PR #316 머지 직후 main)
 Related: [조직·권한·공유 실행 기록](org-authz-progress.md), [ADR-023](../../design-docs/adr-023-org-authz.md)
 
@@ -174,4 +174,5 @@ Related: [조직·권한·공유 실행 기록](org-authz-progress.md), [ADR-023
 
 ## 6. 진행 기록
 
-- 2026-10-21: PR-A 1차 커밋 `664c0ce0`(P1-1 + RLS 가입 버그). 계획 문서 작성, 사용자 검토 대기.
+- 2026-10-21: PR-A 1차 커밋 `664c0ce0`(P1-1 + RLS 가입 버그). 계획 문서 `5dd201bb`.
+- 2026-10-21: 사용자가 Q1–Q8 추천안 승인, 전체 개발 진행 지시.
