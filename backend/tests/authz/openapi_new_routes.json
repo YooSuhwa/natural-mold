@@ -38620,6 +38620,15 @@
           "title": "Tenant Id",
           "type": "string"
         },
+        "tenant_kind": {
+          "default": "company",
+          "enum": [
+            "company",
+            "personal"
+          ],
+          "title": "Tenant Kind",
+          "type": "string"
+        },
         "tenant_name": {
           "title": "Tenant Name",
           "type": "string"

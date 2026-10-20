@@ -12,12 +12,21 @@ vi.mock(
 vi.mock('@/lib/api/tenant-admin', async () => (await import('./company-mocks')).tenantAdminApiMock)
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
+const navigation = vi.hoisted(() => ({ search: '' }))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn() }),
+  usePathname: () => '/settings/company/members',
+  useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(navigation.search),
+}))
+
 const api = tenantAdminApiMock.tenantAdminApi
 const SECRET = 'company-invite-secret-xyz'
 
 describe('CompanyMembersContent (S06)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    navigation.search = ''
     orgApiMock.meOrganizationsApi.list.mockResolvedValue([makeOrganization()])
     api.listMembers.mockResolvedValue({
       items: [
@@ -73,6 +82,21 @@ describe('CompanyMembersContent (S06)', () => {
     expect(document.body.textContent).not.toContain(SECRET)
     await userEvent.click(screen.getByRole('button', { name: '초대 코드 복사' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(SECRET))
+  })
+
+  it('opens the invite dialog at once from the solo workspace entry (?invite=1)', async () => {
+    navigation.search = 'invite=1'
+    orgApiMock.tenantsApi.overview.mockResolvedValue(makeOverview('admin'))
+    render(<CompanyMembersContent />)
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(await screen.findByLabelText(/이메일/)).toBeInTheDocument()
+  })
+
+  it('keeps the invite dialog closed without the entry parameter', async () => {
+    orgApiMock.tenantsApi.overview.mockResolvedValue(makeOverview('admin'))
+    render(<CompanyMembersContent />)
+    expect(await screen.findByRole('button', { name: '회사에 초대' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('closes the invite dialog on Escape and returns focus to its trigger', async () => {

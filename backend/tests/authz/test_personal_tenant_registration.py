@@ -201,3 +201,17 @@ def test_personal_signup_refuses_to_start_with_unusable_default_limits(limits: s
             deployment_mode="multi_tenant",
             tenant_default_limits=limits,
         )
+
+
+@pytest.mark.usefixtures("personal_signup")
+async def test_organization_list_reports_the_personal_company_kind(
+    db: AsyncSession, raw_client: AsyncClient
+) -> None:
+    # Given: a personal signup and the operator in the default company.
+    await seed_registration_default(db)
+    await _register(raw_client, "kind@example.com")
+    # When: the account lists its organizations.
+    listed = await raw_client.get("/api/me/organizations")
+    # Then: the screens can tell its own company apart from a shared one.
+    assert listed.status_code == 200, listed.text
+    assert [row["tenant_kind"] for row in listed.json()] == ["personal"]

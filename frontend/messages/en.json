@@ -5458,6 +5458,7 @@
       "organizationRequests": "Access requests",
       "companyOrganizations": "Company organizations",
       "companySso": "SSO & domains",
+      "makeTeam": "Invite people to make it a team",
       "companyMembers": "Company members",
       "companyPolicies": "Company policies",
       "companyModels": "Models and LLM settings",

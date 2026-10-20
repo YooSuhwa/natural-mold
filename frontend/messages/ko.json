@@ -5458,6 +5458,7 @@
       "organizationRequests": "접근 요청",
       "companyOrganizations": "회사 조직 목록",
       "companySso": "SSO와 도메인",
+      "makeTeam": "사람 초대해서 팀으로 쓰기",
       "companyMembers": "회사 구성원",
       "companyPolicies": "회사 정책",
       "companyModels": "모델과 LLM 설정",

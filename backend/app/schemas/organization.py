@@ -26,6 +26,8 @@ class OrganizationSummary(BaseModel):
     tenant_id: UUID
     tenant_name: str
     tenant_status: Literal["active", "suspended", "deletion_scheduled"]
+    # "personal": created by a REGISTRATION_POLICY=personal_tenant signup for its owner.
+    tenant_kind: Literal["company", "personal"] = "company"
     is_default: bool
     is_active: bool = False
     roles: tuple[OrgRole, ...] = ()

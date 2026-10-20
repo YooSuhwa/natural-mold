@@ -49,6 +49,9 @@ async def list_user_organizations(
                     "tenant_id": tenant.id,
                     "tenant_name": tenant.name,
                     "tenant_status": tenant.status,
+                    "tenant_kind": (
+                        "personal" if tenant.settings.get("kind") == "personal" else "company"
+                    ),
                     "is_default": organization.is_default,
                     "roles": roles,
                     "capabilities": capabilities,

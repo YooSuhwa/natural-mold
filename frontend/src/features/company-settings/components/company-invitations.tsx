@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
+import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 
 import { ApiErrorState } from '@/components/shared/api-error-state'
@@ -25,7 +26,9 @@ export function CompanyInvitations({ scope }: { scope: CompanyScope }) {
   const pager = useCursorPager()
   const page = useTenantInvitations(scope.tenantId, pager.cursor)
   const { revoke, resend } = useTenantInvitationMutations(scope.tenantId)
-  const [inviting, setInviting] = useState(false)
+  const searchParams = useSearchParams()
+  // ``?invite=1`` (the solo workspace's "make it a team" entry) opens the dialog at once.
+  const [inviting, setInviting] = useState(() => searchParams.get('invite') === '1')
   const [resent, setResent] = useState<TenantInvitationCreated | null>(null)
   const version = scope.overview.updated_at
 

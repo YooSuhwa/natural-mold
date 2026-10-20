@@ -149,6 +149,35 @@ describe('SettingsSidebar organization section', () => {
     expect(screen.queryByRole('link', { name: '회사 구성원' })).not.toBeInTheDocument()
   })
 
+  it('collapses a solo personal company to one "make it a team" entry', () => {
+    orgHooks.active.mockReturnValue({
+      activeOrganization: makeOrganization({ tenant_kind: 'personal' }),
+    })
+    orgHooks.info.mockReturnValue({ data: { permissions: ['can_manage_members'] } })
+    orgHooks.overview.mockReturnValue({ data: { access: 'admin', active_member_count: 1 } })
+    renderSidebar()
+    expect(screen.getByRole('link', { name: '사람 초대해서 팀으로 쓰기' })).toHaveAttribute(
+      'href',
+      '/settings/company/members?invite=1',
+    )
+    for (const name of ['멤버', '역할 및 권한', '회사 구성원', '회사 정책']) {
+      expect(screen.queryByRole('link', { name })).not.toBeInTheDocument()
+    }
+  })
+
+  it.each([
+    ['a personal company with a second member', 'personal', 2],
+    ['a shared company with one member', 'company', 1],
+  ] as const)('keeps the full administration for %s', (_label, kind, count) => {
+    orgHooks.active.mockReturnValue({ activeOrganization: makeOrganization({ tenant_kind: kind }) })
+    orgHooks.overview.mockReturnValue({ data: { access: 'admin', active_member_count: count } })
+    renderSidebar()
+    expect(screen.getByRole('link', { name: '회사 구성원' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: '사람 초대해서 팀으로 쓰기' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('shows the catalog policy only with can_manage_policy', () => {
     orgHooks.info.mockReturnValue({ data: { permissions: ['can_manage_policy'] } })
     const { unmount } = renderSidebar()
