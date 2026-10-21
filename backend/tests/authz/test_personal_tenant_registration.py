@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -13,8 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.authz.config import AuthzSettings
+from app.authz.service import AuthzService
 from app.config import settings
 from app.models.audit_event import AuditEvent
+from app.models.model import Model
 from app.models.organization import (
     Organization,
     OrganizationMember,
@@ -24,8 +27,10 @@ from app.models.organization import (
     TenantRoleGrant,
 )
 from app.models.organization_group import OrgInvitation
+from tests.authz.membership_sync_testkit import MemberStore, drain, reconciled_store
 from tests.authz.registration_fixture import seed_registration_default
 from tests.authz.test_org_groups_api import grant_admin
+from tests.conftest import TestSession
 
 if TYPE_CHECKING:
     from tests.authz.org_context_fixture import OrgFixture
@@ -215,3 +220,28 @@ async def test_organization_list_reports_the_personal_company_kind(
     # Then: the screens can tell its own company apart from a shared one.
     assert listed.status_code == 200, listed.text
     assert [row["tenant_kind"] for row in listed.json()] == ["personal"]
+
+
+async def test_enforced_personal_signup_sees_the_platform_catalog_at_once(
+    db: AsyncSession,
+    raw_client: AsyncClient,
+    raw_test_app: FastAPI,
+    personal_signup: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: enforced authorization on a tuple store and one visible platform model.
+    monkeypatch.setattr("app.database.async_session", TestSession)
+    await seed_registration_default(db)
+    model = Model(provider="openai", model_name="visible-personal", display_name="Visible")
+    db.add(model)
+    await db.commit()
+    store = MemberStore()
+    await reconciled_store(store)
+    await drain(store)
+    monkeypatch.setattr(raw_test_app.state, "authz", AuthzService(store, mode="enforce"), False)
+    # When: a stranger signs up and lists models right away (no outbox drain in between).
+    await _register(raw_client, "catalog-at-once@example.com")
+    listed = await raw_client.get("/api/models")
+    # Then: the personal company's catalog fanout was written before the signup returned.
+    assert listed.status_code == 200, listed.text
+    assert str(model.id) in {row["id"] for row in listed.json()}
