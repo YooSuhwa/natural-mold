@@ -82,8 +82,6 @@ class AgentConfig:
     user_id: str | None = None
     model_id: str | None = None
     llm_credential_id: str | None = None
-    # "personal" / "tenant": whose key the LLM runs on (copied to token usage; plan P2 Q2).
-    llm_credential_scope: str | None = None
     agent_owner_user_id: str | None = None
     caller_user_id: str | None = None
     credential_subject_user_id: str | None = None
@@ -143,6 +141,8 @@ class AgentConfig:
     access_plan: RuntimeAccessPlan | None = None
     # H-06 (8.7): the root run's agent, whose spend tier a subagent's model calls use.
     usage_root_agent_id: str | None = None
+    # "personal" / "tenant": whose key the LLM runs on (copied to token usage; plan P2 Q2).
+    llm_credential_scope: str | None = None
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,
