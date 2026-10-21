@@ -12,6 +12,7 @@ from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import acquire_execution_proof, lock_row
 from app.authz.organization_execution_proof import live_proof
 from app.authz.private_actor import require_private_actor
+from app.authz.run_agent_loader import run_agent_scope_predicate
 from app.authz.scoping import private_scope_predicate
 from app.exceptions import AppError
 from app.models.agent import Agent
@@ -103,11 +104,14 @@ async def lock_run_conversation(
     conversation = proof.cursor.held_row(LockClass.CONVERSATION, target.conversation_id)
     if not isinstance(conversation, Conversation) or conversation.agent_id != target.agent_id:
         return None
+    # The caller's own agent, or (``agent`` enforced) one of this organization shared to
+    # them: the run decided ``agent#can_run`` before the proof (owner-only rejected every
+    # chat with a shared agent on an enforced stack).
     agent_in_scope = await db.scalar(
         select(Agent.id)
         .where(
             Agent.id == target.agent_id,
-            private_scope_predicate(Agent, target.context),
+            run_agent_scope_predicate(target.context),
         )
         .execution_options(autoflush=False)
     )

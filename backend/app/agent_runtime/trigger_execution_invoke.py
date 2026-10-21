@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.credential_access import AgentCredentialAccess
+from app.agent_runtime.credential_resolution import resolved_llm_credential_scope
 from app.agent_runtime.identity import AgentIdentityError
 from app.agent_runtime.run_error_codes import denial_error_code
 from app.agent_runtime.run_secrets import collect_cfg_secret_values
@@ -74,6 +75,7 @@ async def invoke_trigger_run(
     api_key = await _executor_attr("resolve_llm_api_key_for_agent")(
         db, agent, AgentCredentialAccess(context, identity)
     )
+    llm_credential_scope = resolved_llm_credential_scope()
     fallback_chain = await _executor_attr("_resolve_fallback_chain")(db, agent.model_fallback_list)
     cfg = build_trigger_agent_config(
         TriggerConfigSource(
@@ -86,6 +88,7 @@ async def invoke_trigger_run(
             thread_id=str(conversation.id),
             runtime_policy=runtime_policy,
             api_key=api_key,
+            llm_credential_scope=llm_credential_scope,
             fallback_chain=fallback_chain,
             access_plan=materialized.access_plan,
         )

@@ -69,6 +69,7 @@ async def persist_run_metrics_and_usage(
     run: ConversationRun,
     snapshot: RunMetricsSnapshot,
     model_name: str,
+    llm_credential_scope: str | None = None,
 ) -> ConversationRunMetrics:
     """Persist the frozen snapshot and its deduplicated usage in caller transaction."""
     metrics = await persist_run_metrics(db, run_id=run.id, snapshot=snapshot)
@@ -86,6 +87,7 @@ async def persist_run_metrics_and_usage(
             ),
             run_id=run.id,
             commit=False,
-            attribution=usage_columns(run),  # F-14: the run's org and attribution
+            # F-14: the run's org and attribution; whose key paid (plan P2 Q2).
+            attribution={**usage_columns(run), "llm_credential_scope": llm_credential_scope},
         )
     return metrics

@@ -88,6 +88,8 @@ async def test_a_fixed_shared_agent_decides_links_as_the_agent(db: AsyncSession)
     runtime = await _prepare(db, agent, authz)
     assert _ids(runtime.plan.tool_links) == {own.id, lent.id}
     assert _excluded(runtime) == {("tool", denied.id, "denied"), ("tool", broken.id, "broken")}
+    # The connection guard names excluded tools from the plan, not the ORM relationships.
+    assert {item.name for item in runtime.plan.excluded} == {"no", "broken"}
     # Serialized views never carry the resource ids (a runner may not see those rows).
     assert sorted(runtime.excluded_capabilities, key=str) == [
         {"type": "tool", "reason": "broken"},

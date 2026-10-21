@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.credential_access import AgentCredentialAccess
+from app.agent_runtime.credential_resolution import resolved_llm_credential_scope
 from app.agent_runtime.identity import (
     AgentRunSource,
     make_agent_runtime_name,
@@ -103,6 +104,7 @@ async def resolve_agent_context(
     api_key = await stream_attr("resolve_llm_api_key_for_agent")(
         db, agent, AgentCredentialAccess(context, identity)
     )
+    llm_credential_scope = resolved_llm_credential_scope()
     base_url = agent.model.base_url
 
     runtime = await prepare_authorized_runtime(
@@ -153,6 +155,7 @@ async def resolve_agent_context(
         llm_credential_id=(
             str(agent.llm_credential.id) if agent.llm_credential is not None else None
         ),
+        llm_credential_scope=llm_credential_scope,
         model_fallback_chain=fallback_chain,
         checkpoint_id=checkpoint_id,
         agent_owner_user_id=str(agent.user_id),

@@ -175,6 +175,7 @@ def trigger_config_resolver(target: PreparedTriggerTarget) -> ResolveConfig:
                 thread_id=str(run.conversation_id),
                 runtime_policy=runtime_policy,
                 api_key=api_key,
+                llm_credential_scope=credential_resolution.resolved_llm_credential_scope(),
                 fallback_chain=await resolve_fallback_chain(db, agent.model_fallback_list),
                 access_plan=plan,
             )

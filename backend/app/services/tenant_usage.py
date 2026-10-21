@@ -6,7 +6,7 @@ organization rows), grouped per organization. ``my_usage_limit`` answers
 month and what is left under every higher limit — never the higher amounts themselves.
 """
 
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.org_context import OrgContext
 from app.models.daily_spend_user import DailySpendUser
 from app.models.organization import Organization
+from app.models.token_usage import TokenUsage
+from app.schemas.org_usage import UsageTotals
 from app.schemas.usage_limits import MyUsageLimit, TenantOrgUsage, TenantUsageSummary
 from app.tenancy.limit_usage import (
     Subject,
@@ -66,6 +68,21 @@ async def tenant_usage(
             )
         ).all()
     }
+    company_keys = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(TokenUsage.prompt_tokens), 0).label("tokens_in"),
+                func.coalesce(func.sum(TokenUsage.completion_tokens), 0).label("tokens_out"),
+                func.coalesce(func.sum(TokenUsage.estimated_cost), Decimal("0")).label("cost"),
+                func.count(TokenUsage.id).label("requests"),
+            ).where(
+                TokenUsage.tenant_id == tenant_id,
+                TokenUsage.llm_credential_scope == "tenant",
+                TokenUsage.created_at >= datetime.combine(from_date, time.min),
+                TokenUsage.created_at < datetime.combine(to_date + timedelta(days=1), time.min),
+            )
+        )
+    ).one()
     orgs = (await db.scalars(select(Organization).where(Organization.tenant_id == tenant_id))).all()
     items = [
         TenantOrgUsage(
@@ -82,6 +99,7 @@ async def tenant_usage(
         from_date=from_date,
         to_date=to_date,
         organizations=items,
+        company_keys=UsageTotals(**_totals(company_keys)),
         **_totals(total),
     )
 

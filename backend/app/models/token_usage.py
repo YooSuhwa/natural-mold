@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Integer, Numeric, String
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -21,6 +21,10 @@ class TokenUsage(NullableOrgScope, Base):
         *resource_scope_constraints("token_usages", system=False),
         Index("ix_token_usages_org_created", "org_id", "created_at"),
         Index("ix_token_usages_agent_caller", "agent_id", "caller_user_id"),
+        CheckConstraint(
+            "llm_credential_scope IS NULL OR llm_credential_scope IN ('personal','tenant')",
+            name="ck_token_usages_llm_credential_scope",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -46,6 +50,8 @@ class TokenUsage(NullableOrgScope, Base):
     on_behalf_of_user_id: Mapped[uuid.UUID | None] = mapped_column(_user_fk(), nullable=True)
     credential_subject_user_id: Mapped[uuid.UUID | None] = mapped_column(_user_fk(), nullable=True)
     run_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # "personal" (a user's own key) or "tenant" (a company shared key); NULL: keyless/older.
+    llm_credential_scope: Mapped[str | None] = mapped_column(String(20), nullable=True)
     invoker_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),

@@ -47395,6 +47395,15 @@
     },
     "TenantUsageSummary": {
       "properties": {
+        "company_keys": {
+          "$ref": "#/components/schemas/UsageTotals",
+          "default": {
+            "request_count": 0,
+            "total_cost_usd": 0.0,
+            "total_tokens_in": 0,
+            "total_tokens_out": 0
+          }
+        },
         "from_date": {
           "format": "date",
           "title": "From Date",
@@ -49557,6 +49566,32 @@
         "resets_at"
       ],
       "title": "UsageLimitView",
+      "type": "object"
+    },
+    "UsageTotals": {
+      "properties": {
+        "request_count": {
+          "default": 0,
+          "title": "Request Count",
+          "type": "integer"
+        },
+        "total_cost_usd": {
+          "default": 0.0,
+          "title": "Total Cost Usd",
+          "type": "number"
+        },
+        "total_tokens_in": {
+          "default": 0,
+          "title": "Total Tokens In",
+          "type": "integer"
+        },
+        "total_tokens_out": {
+          "default": 0,
+          "title": "Total Tokens Out",
+          "type": "integer"
+        }
+      },
+      "title": "UsageTotals",
       "type": "object"
     },
     "UserMemorySettingsOut": {

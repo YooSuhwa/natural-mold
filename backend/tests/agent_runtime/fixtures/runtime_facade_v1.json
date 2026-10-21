@@ -526,6 +526,12 @@
           "name": "usage_root_agent_id"
         },
         {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "llm_credential_scope"
+        },
+        {
           "annotation": "OrgContext",
           "default": "required",
           "kind": "keyword_only",

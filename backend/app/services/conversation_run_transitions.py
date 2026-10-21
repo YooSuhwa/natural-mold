@@ -72,6 +72,7 @@ async def _transition(
     model_name: str,
     terminal_event_for_status: Callable[[TerminalRunState], dict[str, Any]] | None = None,
     tenant: TenantScoped,
+    llm_credential_scope: str | None = None,
 ) -> tuple[ConversationRun | None, TerminalRunState]:
     async with _tenant_session(tenant) as session:
         run = await session.get(ConversationRun, run_id, with_for_update=True)
@@ -114,6 +115,7 @@ async def _transition(
                 run=run,
                 snapshot=metrics_snapshot,
                 model_name=model_name,
+                llm_credential_scope=llm_credential_scope,
             )
             await session.commit()
         except ValueError:

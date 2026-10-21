@@ -54,6 +54,11 @@ class Exclusion:
     kind: str
     resource_id: UUID
     reason: Reason
+    # The excluded tool's own name (and tool definition), captured while the link is in
+    # hand: the run's connection guard names it without touching ORM relationships, which
+    # are not loaded in the worker's session (lazy IO there raised MissingGreenlet).
+    name: str | None = None
+    definition_key: str | None = None
 
     def as_dict(self) -> dict[str, str]:
         """Serializable view without the resource id: a runner may not see the row."""
@@ -112,6 +117,9 @@ _LINKS = (
 )
 
 
+_ROW_ATTR = {kind: attr for kind, _name, attr in _LINKS}
+
+
 def runtime_access_enforced(authz: AuthzService | None = None) -> bool:
     service = authz or current_authz()
     return any(service.enforces(kind) for kind in RUN_TYPES)
@@ -159,7 +167,16 @@ class RuntimeAccessPlanner:
                     draft.kept[item.kind].append(item.link)
             elif item.link is not None:
                 rid = UUID(item.obj.partition(":")[2])
-                draft.excluded.append(Exclusion(item.kind, rid, item.reason))
+                row = getattr(item.link, _ROW_ATTR.get(item.kind, ""), None)
+                draft.excluded.append(
+                    Exclusion(
+                        item.kind,
+                        rid,
+                        item.reason,
+                        name=getattr(row, "name", None),
+                        definition_key=getattr(row, "definition_key", None),
+                    )
+                )
         tools, mcp, skills, subs = (
             _ordered(_links(agent, name, root), draft.kept[kind]) for kind, name, _ in _LINKS
         )

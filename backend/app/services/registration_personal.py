@@ -16,14 +16,17 @@ from uuid import UUID, uuid4
 
 from fastapi import Request
 from pydantic import JsonValue
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import audit_actions
-from app.authz.catalog_fanout_backfill import backfill_catalog_fanout
+from app.authz.catalog_fanout import organization_fanout, sync_fanout
 from app.authz.membership_projection import OrgSubject
 from app.authz.membership_sync import queue_created
+from app.authz.org_context import OrgContext
 from app.authz.reconcile import reconcile_sessions
 from app.authz.registration_queries import RegistrationOrganization
+from app.authz.resource_lifecycle import apply_lifecycle
 from app.authz.runtime import get_authz
 from app.config import settings
 from app.models.organization import Organization, Tenant
@@ -113,10 +116,25 @@ async def create_personal_tenant(
 
 
 async def fan_out_personal_catalog(request: Request, user_id: UUID, org_id: UUID) -> None:
-    """Best effort after the signup commit; ``cli catalog-fanout --org`` repairs a failure."""
-    if (await get_authz(request)).mode == "legacy":
+    """Best effort after the signup commit; ``cli catalog-fanout --org`` repairs a failure.
+
+    The grants are written to OpenFGA before the response (like operator company creation),
+    so the new account's first screen already lists the platform catalog instead of waiting
+    for the outbox drain.
+    """
+    authz = await get_authz(request)
+    if authz.mode == "legacy":
         return
     try:
-        await backfill_catalog_fanout(reconcile_sessions(), user_id, org_id=org_id)
+        async with reconcile_sessions()() as db:
+            organization = await db.scalar(
+                select(Organization).where(Organization.id == org_id).with_for_update()
+            )
+            if organization is None:
+                return
+            ctx = OrgContext(org_id=org_id, tenant_id=organization.tenant_id, user_id=user_id)
+            change = await sync_fanout(db, ctx, await organization_fanout(db, organization))
+            await db.commit()
+        await apply_lifecycle(change, authz)
     except Exception:
         logger.exception("personal tenant catalog fanout failed org_id=%s", org_id)
