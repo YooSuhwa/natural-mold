@@ -71,6 +71,15 @@ class CredentialUpdate(BaseModel):
         return check_reserved_marker(value, "name")
 
 
+class CompanySharedCredentialResponse(BaseModel):
+    """A company shared credential the caller's organization may use (never its values)."""
+
+    id: uuid.UUID
+    name: str
+    definition_key: str
+    status: str
+
+
 class CredentialResponse(BaseModel):
     id: uuid.UUID
     # ``None`` for system credentials (operator-managed, ``is_system=True``);

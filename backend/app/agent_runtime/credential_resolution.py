@@ -11,8 +11,12 @@ Tiered policy:
   2. ``agent.model.default_credential_id`` (captured at Add-model time —
      respects user intent without forcing every agent to re-bind).
   3. Provider-matched user-owned credential.
+  4. Provider-matched company shared credential designated to the run's organization.
 
-Missing user credentials raise ``LLMCredentialRequiredError``. Builder,
+Tier 2 also takes a company shared credential set as the model default when the company
+designated it to the run's organization (``app.credentials.company_use``). Platform
+credentials never serve agent chat. Missing credentials raise
+``LLMCredentialRequiredError``. Builder,
 Assistant, and other service flows use ``system_credential_resolver`` instead.
 """
 
@@ -34,6 +38,7 @@ from app.authz.service_types import Verdict
 from app.config import settings
 from app.credentials import service as credential_service
 from app.credentials.boundary import open_values
+from app.credentials.company_use import company_credential_usable, company_credentials_for
 from app.credentials.run_subject import subject_for_agent
 from app.credentials.service import PROVIDER_TO_DEFINITION_KEY
 from app.exceptions import AppError
@@ -44,10 +49,11 @@ logger = logging.getLogger(__name__)
 
 
 class LLMCredentialRequiredError(AppError):
-    """Raised when an agent chat reaches LLM call with no user-owned key.
+    """Raised when an agent chat reaches LLM call with no usable key.
 
     User-facing agent chats — for *every* user, including super_users —
-    must run on a credential the agent's owner personally registered.
+    must run on a credential the run's subject registered, or on a company
+    shared credential designated to the run's organization (ADR-016 §9).
     System credentials are reserved for operator-managed service flows
     (Fix Agent / builder / image generation) routed through a separate
     resolver. Returning ``None`` here would silently fall back to the
@@ -122,6 +128,12 @@ async def resolve_llm_api_key_for_agent(
         fallback_cred = await credential_service.get_for_user(
             db, model.default_credential_id, subject
         )
+        if fallback_cred is None:
+            company_default = await db.get(Credential, model.default_credential_id)
+            if company_default is not None and await _company_usable(
+                db, company_default, agent, access
+            ):
+                fallback_cred = company_default
         if fallback_cred is not None:
             key = await _decrypt_api_key(fallback_cred)
             if key is not None:
@@ -177,7 +189,23 @@ async def resolve_llm_api_key_for_agent(
                 )
                 return key
 
-    # No user-owned credential found. The model factory's env fallback would
+    # 4th tier — a company shared key for the provider, designated to the run's org.
+    if model is not None and model.provider in PROVIDER_TO_DEFINITION_KEY:
+        definition_key = PROVIDER_TO_DEFINITION_KEY[model.provider]
+        for company_cred in await company_credentials_for(db, subject.tenant_id, definition_key):
+            if not await _company_usable(db, company_cred, agent, access):
+                continue
+            key = await _decrypt_api_key(company_cred)
+            if key is not None:
+                logger.info(
+                    "agent %s: api_key from company credential (id=%s, definition=%s)",
+                    agent.id,
+                    company_cred.id,
+                    definition_key,
+                )
+                return key
+
+    # No usable credential found. The model factory's env fallback would
     # otherwise serve up the operator's system credential (ADR-013 sync),
     # leaking operator quota to whoever is chatting — *including* super_users,
     # who'd pay the operator's bill for their own personal chats. System
@@ -241,6 +269,20 @@ async def llm_credential_delegated(
             return False
         raise
     return True
+
+
+async def _company_usable(
+    db: AsyncSession, cred: Credential, agent: Agent, access: AgentCredentialAccess
+) -> bool:
+    context = access.context
+    return await company_credential_usable(
+        db,
+        cred,
+        user_id=access.identity.credential_subject_user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
+        run_source=subject_for_agent(agent, context, access.identity).principal.run_source,
+    )
 
 
 async def _decrypt_api_key(cred: Credential) -> str | None:

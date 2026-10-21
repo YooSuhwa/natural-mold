@@ -23,6 +23,7 @@ from app.authz.org_context import OrgContext
 from app.authz.personal_accounts import require_unshared_for_personal
 from app.authz.resource_gate import CREDENTIAL, MCP_SERVER, TOOL, gate_row
 from app.authz.service import AuthzService
+from app.credentials.company_use import company_credential_usable, is_company_credential
 from app.credentials.registry import registry as credential_registry
 from app.credentials.validation import require_user_credential
 from app.exceptions import AppError
@@ -52,6 +53,14 @@ async def _require_reshare(
     if row.credential_id is None:
         return
     cid = row.credential_id
+    company = await db.get(Credential, cid)
+    if company is not None and is_company_credential(company, ctx.tenant_id):
+        # The company designates who may use it; sharing the resource adds no one.
+        if await company_credential_usable(
+            db, company, user_id=ctx.user_id, org_id=ctx.org_id, tenant_id=ctx.tenant_id
+        ):
+            return
+        raise authorization_error("credential_reshare_blocked")
 
     async def owned() -> Credential | None:
         return await require_user_credential(db, credential_id=cid, context=ctx)

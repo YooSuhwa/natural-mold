@@ -32,6 +32,7 @@ WRITERS = {
     "services/orgs/roles.py",
     "services/platform/tenant_creation.py",
     "services/registration_membership.py",
+    "services/registration_personal.py",
     "services/tenants/invitation_membership.py",
     "services/tenants/member_exit.py",
     "services/tenants/members.py",

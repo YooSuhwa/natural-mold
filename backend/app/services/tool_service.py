@@ -127,7 +127,9 @@ async def create_tool(
     )
     if tool_registry.get(data.definition_key) is None:
         raise HTTPException(status_code=400, detail=f"unknown definition '{data.definition_key}'")
-    await require_credential_use(db, credential_id=data.credential_id, context=context, authz=authz)
+    await require_credential_use(
+        db, credential_id=data.credential_id, context=context, authz=authz, allow_company=True
+    )
 
     tool = Tool(
         user_id=context.user_id,
@@ -162,7 +164,7 @@ async def update_tool(
         tool.parameters = data.parameters
     if data.credential_id is not None or "credential_id" in data.model_fields_set:
         await require_credential_use(
-            db, credential_id=data.credential_id, context=context, authz=authz
+            db, credential_id=data.credential_id, context=context, authz=authz, allow_company=True
         )
         tool.credential_id = data.credential_id
     if data.enabled is not None:

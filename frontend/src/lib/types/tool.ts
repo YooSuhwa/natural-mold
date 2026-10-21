@@ -1,6 +1,7 @@
 // Tool domain types — mirrors backend `app/schemas/tool.py`.
 
 import type { FieldDef } from './credential'
+import type { CredentialMode } from './readiness'
 
 export interface ToolDefinition {
   key: string
@@ -21,6 +22,8 @@ export interface ToolInstance {
   description: string | null
   parameters: Record<string, unknown>
   credential_id: string | null
+  credential_mode?: CredentialMode
+  credential_definition_key?: string | null
   enabled: boolean
   last_used_at: string | null
   created_at: string

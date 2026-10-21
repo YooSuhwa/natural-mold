@@ -68,9 +68,11 @@ def user_agent(request: Request) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-async def register(db: AsyncSession, payload: RegisterRequest, request: Request) -> User:
+async def register(
+    db: AsyncSession, payload: RegisterRequest, request: Request
+) -> registration_service.Registration:
     """Apply registration policy and atomically prepare account/scope membership."""
-    return await registration_service.register_user(db, payload, request)
+    return await registration_service.register(db, payload, request)
 
 
 # ---------------------------------------------------------------------------

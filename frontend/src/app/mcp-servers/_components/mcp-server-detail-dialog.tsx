@@ -14,6 +14,8 @@ import { DialogShell } from '@/components/shared/dialog-shell'
 import { DomainIconTile, getDomainIconIdForMcpTransport } from '@/components/shared/icon'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
 import { CredentialPicker } from '@/components/credential/credential-picker'
+import { CredentialModeControl } from '@/components/readiness/credential-mode-control'
+import { useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { McpHealthSection } from './mcp-health-section'
 import { McpToolTable } from './mcp-tool-table'
 import {
@@ -50,6 +52,11 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
   // Plan 13.9: test, tool refresh, credential and health check need can_edit (hidden
   // from runners), deletion can_delete.
   const canEdit = access.can(server, 'can_edit')
+  const { data: credentialTypes } = useCredentialTypes()
+  const credentialTypeKeys = useMemo(
+    () => (credentialTypes ?? []).map((type) => type.key),
+    [credentialTypes],
+  )
   const canDelete = access.can(server, 'can_delete')
 
   async function handleTest() {
@@ -173,11 +180,23 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
             <div className="space-y-1.5">
               <label className="text-xs font-medium">{t('credential')}</label>
               <CredentialPicker
+                includeCompany
                 disabled={!canEdit}
                 value={server.credential_id}
                 onChange={handleCredentialChange}
               />
             </div>
+
+            {canEdit ? (
+              <CredentialModeControl
+                resourceType="mcp_server"
+                resourceId={server.id}
+                mode={server.credential_mode ?? (server.credential_id ? 'shared' : 'none')}
+                credentialId={server.credential_id}
+                definitionKey={server.credential_definition_key ?? null}
+                acceptedKeys={credentialTypeKeys}
+              />
+            ) : null}
 
             <McpHealthSection serverId={server.id} canCheck={canEdit} />
 

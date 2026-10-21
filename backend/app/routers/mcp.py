@@ -7,7 +7,7 @@ this router keeps schema conversion, ``Depends`` guards, and commits.
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +34,7 @@ from app.mcp.auth import resolve_mcp_auth
 from app.mcp.client import connect_and_list
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
+from app.schemas.credential_binding import CredentialMode
 from app.schemas.mcp import (
     McpDiscoverResponse,
     McpExportEntry,
@@ -86,6 +87,8 @@ def _server_to_response(server: McpServer, readable: bool = True) -> McpServerRe
         env_vars=(server.env_vars or {}) if readable else masked(server.env_vars),
         headers=(server.headers or {}) if readable else masked(server.headers),
         credential_id=server.credential_id,
+        credential_mode=cast("CredentialMode", server.credential_mode or "none"),
+        credential_definition_key=server.credential_definition_key,
         status=server.status,
         last_pinged_at=server.last_pinged_at,
         last_tool_count=server.last_tool_count,
@@ -258,13 +261,18 @@ async def probe_mcp_server(
 
     credentials: dict[str, Any] | None = None
     if payload.credential_id is not None:
-        await require_credential_use(
-            db, credential_id=payload.credential_id, context=context, authz=authz
+        attached = await require_credential_use(
+            db,
+            credential_id=payload.credential_id,
+            context=context,
+            authz=authz,
+            allow_company=True,
         )
         auth = await resolve_mcp_auth(
             db,
             credential_id=payload.credential_id,
-            user_id=user.id,
+            # A company shared credential has no owner account.
+            user_id=user.id if attached is None or attached.user_id is not None else None,
             static_headers=headers,
         )
         if auth.error:

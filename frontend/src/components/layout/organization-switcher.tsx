@@ -37,6 +37,36 @@ export function OrganizationSwitcher() {
   const triggerLabel = activeOrganization
     ? t('trigger', { name: activeOrganization.name })
     : t('choose')
+  const current = activeOrganization ? (
+    <span className="flex min-w-0 flex-1 flex-col text-left">
+      <span className="truncate text-sm font-semibold">{activeOrganization.name}</span>
+      <span className="truncate text-xs text-muted-foreground">
+        {activeOrganization.tenant_name}
+      </span>
+    </span>
+  ) : null
+
+  // Nothing to switch to: show where the user is, without a menu.
+  if (organizations.length === 1 && activeOrganization) {
+    return (
+      <SidebarGroup className="py-0">
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip={activeOrganization.name}
+                render={<div />}
+                data-testid="organization-switcher-current"
+              >
+                <Building2Icon className="size-4" />
+                {current}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    )
+  }
 
   return (
     <SidebarGroup className="py-0">

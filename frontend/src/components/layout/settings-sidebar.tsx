@@ -18,6 +18,7 @@ import {
   ShieldCheckIcon,
   SlidersHorizontalIcon,
   StoreIcon,
+  UserPlusIcon,
   UsersRoundIcon,
   UserIcon,
 } from 'lucide-react'
@@ -41,6 +42,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { orgAccess } from '@/features/organizations/lib/access'
+import { isSoloWorkspace, MAKE_TEAM_HREF } from '@/features/organizations/lib/solo-workspace'
 import { useSession } from '@/lib/auth/session'
 import {
   useActiveOrganization,
@@ -100,14 +102,17 @@ export function SettingsSidebar() {
     },
   ]
 
+  const solo = isSoloWorkspace(activeOrganization, tenantOverview)
   const organizationSections: SidebarNavSectionConfig[] = activeOrganization
     ? [
         {
           label: tSettings('nav.organization'),
-          items: [
-            ...organizationNavItems(access, tSettings),
-            ...companyNavItems(tenantOverview?.access, tSettings),
-          ],
+          items: solo
+            ? [{ href: MAKE_TEAM_HREF, label: tSettings('nav.makeTeam'), icon: UserPlusIcon }]
+            : [
+                ...organizationNavItems(access, tSettings),
+                ...companyNavItems(tenantOverview?.access, tSettings),
+              ],
         },
       ]
     : []

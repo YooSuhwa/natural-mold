@@ -103,6 +103,17 @@ def test_direct_and_child_policies_bind_writes_to_the_session_company() -> None:
         assert table_policy(QUOTE, name).read == "current_setting('app.scope', true) = 'platform'"
 
 
+def test_request_scopes_only_enqueue_into_the_authz_outbox() -> None:
+    # Signup (identity) and company sessions enqueue their own tuple changes; only the
+    # platform drain reads (and so updates or deletes) queue rows.
+    queue = table_policy(QUOTE, "authz_outbox")
+    assert queue.read == "current_setting('app.scope', true) = 'platform'"
+    assert "current_setting('app.scope', true) = 'identity'" in queue.write
+    assert f"{TENANT} IS NOT NULL" in queue.write
+    for name in PLATFORM_ONLY - {"authz_outbox"}:
+        assert table_policy(QUOTE, name).write == queue.read
+
+
 @pytest.mark.parametrize("name", sorted(CHILDREN))
 def test_child_policy_checks_every_parent(name: str) -> None:
     policy = table_policy(QUOTE, name)

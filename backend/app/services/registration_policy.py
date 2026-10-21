@@ -36,6 +36,13 @@ class DefaultRegistrationScope:
 
 
 @dataclass(frozen=True, slots=True)
+class PersonalRegistrationScope:
+    """An uninvited ``personal_tenant`` signup; ``default`` still serializes bootstrap."""
+
+    default: RegistrationOrganization
+
+
+@dataclass(frozen=True, slots=True)
 class TenantInvitationRegistrationScope:
     target: Tenant
     invitation: TenantInvitation
@@ -43,7 +50,10 @@ class TenantInvitationRegistrationScope:
 
 
 PreparedRegistration = (
-    DefaultRegistrationScope | RegistrationScope | TenantInvitationRegistrationScope
+    DefaultRegistrationScope
+    | PersonalRegistrationScope
+    | RegistrationScope
+    | TenantInvitationRegistrationScope
 )
 
 
@@ -87,6 +97,9 @@ async def prepare_registration(db: AsyncSession, payload: RegisterRequest) -> Pr
         include_default=settings.allow_first_user_as_admin,
     )
     invitation = locked.invitation
+    if invitation is None and settings.registration_policy == "personal_tenant":
+        # The default company's own signup policy governs joining it, not this signup.
+        return PersonalRegistrationScope(locked.default)
     if invitation is not None:
         require_pending_invitation(invitation, str(payload.email))
     ensure_signup_scope_active(locked.target)

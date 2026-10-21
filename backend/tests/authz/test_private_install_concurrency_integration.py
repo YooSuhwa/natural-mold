@@ -86,6 +86,14 @@ async def test_real_concurrent_installers_reuse_only_their_exact_company(
         )
         assert published.status_code == 201, published.text
         item_id = UUID(published.json()["id"])
+        # Only platform items reach every company (an org's public item stops at its own
+        # company, as in enforced mode), so promote the fixture to a platform item.
+        async with stack.sessions() as db:
+            item = await db.get(MarketplaceItem, item_id)
+            assert item is not None
+            item.is_system, item.visibility = True, "system"
+            item.owner_user_id = item.org_id = item.tenant_id = None
+            await db.commit()
         second = await select_second_company(stack, csrf, "native-concurrent-install@example.com")
         contexts = (first, first, second, second)
         replies: list[InstallReply] = []

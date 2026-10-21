@@ -2,8 +2,10 @@
 
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings
+
+from app.tenancy.default_limits import parse_default_limits
 
 
 class AuthzSettings(BaseSettings):
@@ -36,7 +38,22 @@ class AuthzSettings(BaseSettings):
     authz_reconcile_cron: str = "0 3 * * *"
     authz_delegation_cron: str = "30 3 * * *"  # F-03 daily delegation validator (10.6)
     authz_shadow_max_rps: int = Field(default=50, ge=0)
-    registration_policy: Literal["default_org", "invite_only", "closed"] = "default_org"
+    # personal_tenant: an uninvited signup gets its own company and organization.
+    registration_policy: Literal["default_org", "personal_tenant", "invite_only", "closed"] = (
+        "default_org"
+    )
     default_org_name: str = "기본 조직"
     org_multi_enabled: bool = True
     authz_trusted_proxy_cidrs: str = ""
+
+    @model_validator(mode="after")
+    def _personal_tenants_need_multi_tenant(self) -> "AuthzSettings":
+        # single_tenant shares file storage across companies and lets a company admin
+        # manage its own usage limits; neither is safe for self-service companies.
+        if self.registration_policy == "personal_tenant" and self.deployment_mode != (
+            "multi_tenant"
+        ):
+            raise ValueError("REGISTRATION_POLICY=personal_tenant requires multi_tenant")
+        if self.registration_policy == "personal_tenant":
+            parse_default_limits(self.tenant_default_limits)  # every signup would fail on it
+        return self

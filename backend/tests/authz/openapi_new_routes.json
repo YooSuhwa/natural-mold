@@ -7704,6 +7704,33 @@
         ]
       }
     },
+    "/api/credentials/company-shared": {
+      "get": {
+        "description": "Company shared credentials designated to the caller's organization (plan P2-3).",
+        "operationId": "list_company_shared_credentials_api_credentials_company_shared_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CompanySharedCredentialResponse"
+                  },
+                  "title": "Response List Company Shared Credentials Api Credentials Company Shared Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Company Shared Credentials",
+        "tags": [
+          "credentials",
+          "credentials"
+        ]
+      }
+    },
     "/api/credentials/preview-test": {
       "post": {
         "operationId": "preview_test_api_credentials_preview_test_post",
@@ -28669,6 +28696,36 @@
       "title": "CatalogPolicyView",
       "type": "object"
     },
+    "CompanySharedCredentialResponse": {
+      "description": "A company shared credential the caller's organization may use (never its values).",
+      "properties": {
+        "definition_key": {
+          "title": "Definition Key",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "definition_key",
+        "status"
+      ],
+      "title": "CompanySharedCredentialResponse",
+      "type": "object"
+    },
     "ConversationAgentBrief": {
       "properties": {
         "id": {
@@ -35211,6 +35268,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "credential_definition_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Definition Key"
+        },
         "credential_id": {
           "anyOf": [
             {
@@ -35222,6 +35290,16 @@
             }
           ],
           "title": "Credential Id"
+        },
+        "credential_mode": {
+          "default": "none",
+          "enum": [
+            "none",
+            "shared",
+            "per_user"
+          ],
+          "title": "Credential Mode",
+          "type": "string"
         },
         "description": {
           "anyOf": [
@@ -35398,6 +35476,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "credential_definition_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Definition Key"
+        },
         "credential_id": {
           "anyOf": [
             {
@@ -35409,6 +35498,16 @@
             }
           ],
           "title": "Credential Id"
+        },
+        "credential_mode": {
+          "default": "none",
+          "enum": [
+            "none",
+            "shared",
+            "per_user"
+          ],
+          "title": "Credential Mode",
+          "type": "string"
         },
         "description": {
           "anyOf": [
@@ -38618,6 +38717,15 @@
         "tenant_id": {
           "format": "uuid",
           "title": "Tenant Id",
+          "type": "string"
+        },
+        "tenant_kind": {
+          "default": "company",
+          "enum": [
+            "company",
+            "personal"
+          ],
+          "title": "Tenant Kind",
           "type": "string"
         },
         "tenant_name": {
@@ -47884,6 +47992,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "credential_definition_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Definition Key"
+        },
         "credential_id": {
           "anyOf": [
             {
@@ -47895,6 +48014,16 @@
             }
           ],
           "title": "Credential Id"
+        },
+        "credential_mode": {
+          "default": "none",
+          "enum": [
+            "none",
+            "shared",
+            "per_user"
+          ],
+          "title": "Credential Mode",
+          "type": "string"
         },
         "definition_key": {
           "title": "Definition Key",

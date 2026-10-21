@@ -37,6 +37,7 @@ from app.authz.runtime import runtime_authz
 from app.authz.service import AuthzService
 from app.authz.service_types import Verdict
 from app.credentials.boundary import ResolvedCredential, SecretValues, open_values
+from app.credentials.company_use import company_credential_usable, is_company_credential
 from app.credentials.run_subject import RunSubject
 from app.error_codes import mcp_server_not_found, tool_not_found
 from app.exceptions import AppError, ValidationError
@@ -127,6 +128,8 @@ class RunCredentialResolver:
         if credential is None:
             raise subject_mismatch()
         ctx = self.subject.context
+        if is_company_credential(credential, ctx.tenant_id):
+            return await self._company(credential)
         owner = self.subject.account_user_id if _platform(row) else row.user_id
         if credential.is_system or (
             credential.user_id,
@@ -139,6 +142,23 @@ class RunCredentialResolver:
         ):
             raise subject_mismatch()
         if credential.status not in USABLE_STATUSES and not self.read_only:
+            raise subject_mismatch()
+        return credential
+
+    async def _company(self, credential: Credential) -> Credential:
+        """A shared company credential reaches the run only through its organization."""
+        if self.read_only:  # masking: never narrower than the run
+            return credential
+        ctx = self.subject.context
+        if self.db is None or not await company_credential_usable(
+            self.db,
+            credential,
+            user_id=self.subject.account_user_id,
+            org_id=ctx.org_id,
+            tenant_id=ctx.tenant_id,
+            run_source=self.subject.principal.run_source,
+            authz=self.authz,
+        ):
             raise subject_mismatch()
         return credential
 

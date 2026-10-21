@@ -1,6 +1,8 @@
 """Account and typed signup scope mutations share the auth transaction."""
 
+from dataclasses import dataclass
 from typing import assert_never
+from uuid import UUID
 
 from anyio.to_thread import run_sync
 from fastapi import Request
@@ -18,8 +20,10 @@ from app.services.orgs.invitation_acceptance import (
     accept_registration_invitation,
 )
 from app.services.registration_membership import DefaultEnrollment, enroll_default_organization
+from app.services.registration_personal import create_personal_tenant
 from app.services.registration_policy import (
     DefaultRegistrationScope,
+    PersonalRegistrationScope,
     RegistrationScope,
     TenantInvitationRegistrationScope,
     prepare_registration,
@@ -30,7 +34,17 @@ from app.services.tenants.invitation_acceptance import (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class Registration:
+    user: User
+    personal_org_id: UUID | None  # set when the signup created the account's own company
+
+
 async def register_user(db: AsyncSession, payload: RegisterRequest, request: Request) -> User:
+    return (await register(db, payload, request)).user
+
+
+async def register(db: AsyncSession, payload: RegisterRequest, request: Request) -> Registration:
     with db.no_autoflush:
         scope = await prepare_registration(db, payload)
         if await user_service.email_exists(db, payload.email):
@@ -47,7 +61,14 @@ async def register_user(db: AsyncSession, payload: RegisterRequest, request: Req
         is_super_user=promote,
     )
     mutation = OrgMutationRequest(db=db, request=request, expected_version=None)
+    personal_org_id = None
     match scope:
+        case PersonalRegistrationScope(default=default) if promote:
+            # The first account still administers the installation's default company.
+            await enroll_default_organization(db, DefaultEnrollment(default, user, True), request)
+        case PersonalRegistrationScope():
+            personal = await create_personal_tenant(db, user, request)
+            personal_org_id = personal.organization.id
         case DefaultRegistrationScope(default=default):
             await enroll_default_organization(
                 db, DefaultEnrollment(default, user, promote), request
@@ -80,4 +101,4 @@ async def register_user(db: AsyncSession, payload: RegisterRequest, request: Req
             )
         case unreachable:
             assert_never(unreachable)
-    return user
+    return Registration(user, personal_org_id)

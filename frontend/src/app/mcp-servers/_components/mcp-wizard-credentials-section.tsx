@@ -43,6 +43,7 @@ export function McpWizardCredentialsSection({
       <div className="space-y-1.5">
         <label>{t('credential')}</label>
         <CredentialPicker
+          includeCompany
           value={credentialId}
           onChange={onCredentialChange}
           definitionKeys={credentialDefinitionFilter ? [credentialDefinitionFilter] : undefined}

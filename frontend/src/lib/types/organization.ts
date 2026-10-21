@@ -25,6 +25,8 @@ export interface OrganizationSummary {
   tenant_id: string
   tenant_name: string
   tenant_status: TenantStatus
+  /** `personal`: the owner's own company from a personal-tenant signup. */
+  tenant_kind?: 'company' | 'personal'
   is_default: boolean
   /** True for the org the server resolves for this browser's active-org cookie. */
   is_active: boolean
@@ -191,6 +193,8 @@ export interface TenantOverview {
   status: TenantStatus
   updated_at: string
   access: 'member' | 'auditor' | 'admin'
+  /** Company admins and auditors only. */
+  active_member_count?: number
 }
 
 export interface DirectoryPage<Entry> {

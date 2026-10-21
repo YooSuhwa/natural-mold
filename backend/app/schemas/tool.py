@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 # ---- Catalog ---------------------------------------------------------------
+from app.schemas.credential_binding import CredentialMode
 
 
 class ToolFieldSchema(BaseModel):
@@ -71,6 +72,8 @@ class ToolInstanceResponse(BaseModel):
     description: str | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
     credential_id: uuid.UUID | None = None
+    credential_mode: CredentialMode = "none"
+    credential_definition_key: str | None = None
     enabled: bool = True
     last_used_at: datetime | None = None
     created_at: datetime

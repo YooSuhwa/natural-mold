@@ -5458,6 +5458,7 @@
       "organizationRequests": "접근 요청",
       "companyOrganizations": "회사 조직 목록",
       "companySso": "SSO와 도메인",
+      "makeTeam": "사람 초대해서 팀으로 쓰기",
       "companyMembers": "회사 구성원",
       "companyPolicies": "회사 정책",
       "companyModels": "모델과 LLM 설정",
@@ -6060,7 +6061,9 @@
     },
     "picker": {
       "placeholder": "자격증명 선택",
-      "none": "사용 안 함"
+      "none": "사용 안 함",
+      "ownGroup": "내 자격증명",
+      "companyGroup": "회사 공유 키"
     },
     "testButton": {
       "label": "테스트",
@@ -6196,6 +6199,24 @@
     }
   },
   "readiness": {
+    "mode": {
+      "label": "계정 연결 방식",
+      "resource": "이 리소스의 계정을 함께 사용",
+      "perUser": "사용자마다 자기 계정 연결",
+      "resourceHelp": "쓸 수 있는 모든 사람이 이 리소스에 연결된 계정으로 실행합니다.",
+      "perUserHelp": "실행하는 사람마다 자기 계정을 연결해야 합니다.",
+      "chooseType": "연결할 자격 증명 종류 선택",
+      "toast": {
+        "perUser": "이제 사용자마다 자기 계정을 연결합니다",
+        "resource": "이제 이 리소스의 계정을 함께 사용합니다"
+      },
+      "errors": {
+        "reshareBlocked": "이 계정을 다른 사람과 함께 쓸 권한이 없습니다",
+        "personalAccount": "개인 계정은 다른 사람과 함께 쓸 수 없습니다",
+        "invalid": "이 설정으로는 바꿀 수 없습니다. 연결된 계정을 확인해 주세요",
+        "failed": "계정 연결 방식을 바꾸지 못했습니다"
+      }
+    },
     "badge": {
       "needsConnection": "연결 필요 {count}",
       "limited": "{count}개 제외",

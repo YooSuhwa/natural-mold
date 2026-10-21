@@ -134,9 +134,9 @@ SaaS로 운영하려면 그 뒤 `DEPLOYMENT_MODE=multi_tenant`로 바꾸고 회�
 | `DEPLOYMENT_MODE` | `single_tenant` | `single_tenant`(설치형) / `multi_tenant`(SaaS). 플랫폼 운영 회사 관리 화면(S03/S04)과 `/api/admin/tenants/*`는 `multi_tenant` + super_user일 때만 열림(`platform_tenant_management_enabled`, 그 외 404) |
 | `DEFAULT_TENANT_NAME` | `기본 회사` | m82 이전과 설치형 첫 회사 이름 |
 | `DEFAULT_ORG_NAME` | `기본 조직` | m82 이전 시 기본 조직 이름 |
-| `TENANT_DEFAULT_LIMITS` | `{}` | SaaS 새 회사의 기본 한도 JSON |
+| `TENANT_DEFAULT_LIMITS` | `{}` | SaaS 새 회사의 기본 한도 JSON. `personal_tenant` 가입으로 만든 개인 회사에도 적용(지정한 키만 저장, 없는 키는 무제한). 키: `member_limit`, `monthly_spend_limit`, `concurrent_run_limit`, `request_rate_limit`, `allow_system_models`. `personal_tenant`이면 잘못된 값은 시작 시 거부 |
 | `ORG_MULTI_ENABLED` | `true` | `false`면 회사당 조직 1개, 조직 만들기 숨김 |
-| `REGISTRATION_POLICY` | `default_org` | `default_org` / `invite_only` / `closed` |
+| `REGISTRATION_POLICY` | `default_org` | `default_org` / `personal_tenant` / `invite_only` / `closed`. `personal_tenant`는 `DEPLOYMENT_MODE=multi_tenant`에서만 시작됨: 초대 없는 가입마다 개인 회사(`settings.kind=personal`)와 기본 조직을 만들고 가입자를 회사·조직 관리자로 둠. 첫 가입자(`ALLOW_FIRST_USER_AS_ADMIN`)는 그대로 기본 회사 운영자. 초대 가입은 초대한 조직으로 들어감 |
 | `SSO_ENABLED` | `true` | 회사별 SSO 메뉴 노출 |
 | `SSO_PUBLIC_BASE_URL` | 빈 값 | IdP Redirect URI에 쓰는 공개 URL(없으면 요청 URL) |
 
@@ -245,7 +245,7 @@ uv run python -m app.services.platform.tenant_data_cli purge [--tenant <id>]
 ## 6. 마이그레이션과 되돌리기
 
 기획서의 m78~m92 번호와 실제 Alembic revision ID는 다릅니다. 체인은 `m77_side_chat_link`(origin/main) 뒤에 붙고
-head는 `i06_company_rls`입니다. 모두 downgrade가 있으며, 되돌리기 전 반드시 운영 백업을 받습니다.
+head는 `i08_outbox_request_enqueue`입니다. 모두 downgrade가 있으며, 되돌리기 전 반드시 운영 백업을 받습니다.
 
 | 순서 | revision | 기획 번호·작업 | 내용 | 되돌리기 주의 |
 |------|----------|----------------|------|---------------|
@@ -274,6 +274,7 @@ head는 `i06_company_rls`입니다. 모두 downgrade가 있으며, 되돌리기 
 | 23 | `h04_authz_reconcile_runs` | H-04 | 대조 실행 기록 | 테이블 삭제 |
 | 24 | `i07_tenant_exports` | I-07 | 내보내기·삭제 영수증·`source_removed` | `source_removed` 설치가 있으면 거부(먼저 삭제) |
 | 25 | `i06_company_rls` | m92, I-06 | 회사 RLS 정책·앱 역할 권한 | PostgreSQL만. RLS 끄고 정책 삭제. 그 전에 `rls_activation disable` + `DB_RLS_ENABLED=false` |
+| 26 | `i08_outbox_request_enqueue` | I-06 후속 | 가입·회사 세션이 `authz_outbox`에 행을 추가할 수 있게 함(읽기·수정·삭제는 플랫폼 전용 유지) | PostgreSQL만. outbox 정책을 플랫폼 전용으로 되돌림 |
 
 m90(옛 열·테이블 삭제)과 m91은 이 PR에 없습니다(I-04, PR 2). m90은 되돌릴 수 없으므로 백업·복원 시험 기록을 남긴 뒤 적용합니다.
 

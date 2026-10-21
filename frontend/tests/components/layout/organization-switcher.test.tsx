@@ -103,6 +103,17 @@ describe('OrganizationSwitcher', () => {
   })
 })
 
+describe('OrganizationSwitcher with a single organization', () => {
+  it('shows the current organization without a switch menu', async () => {
+    vi.mocked(meOrganizationsApi.list).mockResolvedValue([ALPHA])
+    renderSwitcher()
+    const current = await screen.findByTestId('organization-switcher-current')
+    expect(current).toHaveTextContent('Alpha')
+    expect(current).toHaveTextContent('Hancom')
+    expect(screen.queryByTestId('organization-switcher-trigger')).not.toBeInTheDocument()
+  })
+})
+
 describe('OrganizationSwitcher without a resolvable active org', () => {
   it('prompts to choose an organization', async () => {
     vi.mocked(meOrganizationsApi.list).mockResolvedValue([{ ...ALPHA, is_active: false }])
