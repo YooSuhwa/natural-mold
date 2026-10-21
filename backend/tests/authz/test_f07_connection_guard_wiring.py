@@ -76,13 +76,24 @@ def _cfg(plan: Any) -> SimpleNamespace:
     )
 
 
+class _UnloadedAgent:
+    """The worker's Agent: touching a lazy relationship would do IO (MissingGreenlet)."""
+
+    @property
+    def tool_links(self) -> list[Any]:
+        raise AssertionError("the guard must not read agent.tool_links")
+
+    @property
+    def mcp_tool_links(self) -> list[Any]:
+        raise AssertionError("the guard must not read agent.mcp_tool_links")
+
+
 def _plan() -> SimpleNamespace:
-    excluded_tool = SimpleNamespace(id=EXCLUDED_ID, name="Excluded Tool", definition_key="http")
-    agent = SimpleNamespace(tool_links=[SimpleNamespace(tool=excluded_tool)], mcp_tool_links=[])
     principal = Principal("user", TEST_USER_ID, TEST_ORG_ID)
+    excluded = Exclusion("tool", EXCLUDED_ID, "denied", name="Excluded Tool", definition_key="http")
     return SimpleNamespace(
-        agent=agent,
-        excluded=(Exclusion("tool", EXCLUDED_ID, "denied"),),
+        agent=_UnloadedAgent(),
+        excluded=(excluded,),
         decided=frozenset({f"mcp_tool:{MCP_TOOL_ID}"}),
         subject=SimpleNamespace(principal=principal),
     )

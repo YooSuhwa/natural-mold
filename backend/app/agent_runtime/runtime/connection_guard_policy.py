@@ -173,19 +173,16 @@ def _guarded(tool: BaseTool, config: Mapping[str, Any]) -> GuardedTool | None:
 
 
 def _denied_names(plan: RuntimeAccessPlan) -> dict[str, str]:
-    excluded = {(item.kind, item.resource_id) for item in plan.excluded}
+    """Names of excluded tools, from the plan's exclusions (never the agent's relationships)."""
     names: dict[str, str] = {}
-    agent = plan.agent
-    for link in getattr(agent, "tool_links", ()):
-        row = link.tool
-        if row is not None and ("tool", row.id) in excluded:
-            names[row.name] = names[_safe_name(row.name, row.definition_key)] = (
-                "permission_required"
-            )
-    for link in getattr(agent, "mcp_tool_links", ()):
-        row = link.mcp_tool
-        if row is not None and ("mcp_tool", row.id) in excluded:
-            names[row.name] = "permission_required"
+    for item in plan.excluded:
+        if item.name is None:
+            continue
+        if item.kind == "tool":
+            safe = _safe_name(item.name, item.definition_key or "tool")
+            names[item.name] = names[safe] = "permission_required"
+        elif item.kind == "mcp_tool":
+            names[item.name] = "permission_required"
     return names
 
 
