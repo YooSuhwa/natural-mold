@@ -5940,7 +5940,6 @@
       "new": "새 자격증명",
       "count": "{count}개",
       "fieldCount": "{count}개 필드",
-      "shared": "공유됨",
       "tabs": {
         "label": "자격증명 상태",
         "all": "전체",

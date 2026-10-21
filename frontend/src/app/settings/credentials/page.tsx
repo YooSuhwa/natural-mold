@@ -255,7 +255,6 @@ export default function CredentialsPage() {
                         })}
                         lastUsedLabel={formatDate(credential.last_used_at)}
                         lastTestedLabel={formatDate(credential.last_tested_at)}
-                        sharedLabel={t('shared')}
                         manageLabel={t('actions.manage')}
                         onOpen={setDetailId}
                       />
@@ -286,7 +285,6 @@ function CredentialCard({
   fieldCountLabel,
   lastUsedLabel,
   lastTestedLabel,
-  sharedLabel,
   manageLabel,
   onOpen,
 }: {
@@ -297,12 +295,12 @@ function CredentialCard({
   fieldCountLabel: string
   lastUsedLabel: string
   lastTestedLabel: string
-  sharedLabel: string
   manageLabel: string
   onOpen: (id: string) => void
 }) {
   const tone = getResourceTone(definition?.category ?? credential.definition_key)
-  const secondaryMetaLabel = credential.is_shared ? sharedLabel : lastTestedLabel || lastUsedLabel
+  // `is_shared` is a stored flag nothing enforces; real sharing is shown by the share dialog.
+  const secondaryMetaLabel = lastTestedLabel || lastUsedLabel
 
   return (
     <ResourceListCard

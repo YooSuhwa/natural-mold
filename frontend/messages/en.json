@@ -5940,7 +5940,6 @@
       "new": "New",
       "count": "{count}",
       "fieldCount": "{count} fields",
-      "shared": "Shared",
       "tabs": {
         "label": "Credential status",
         "all": "All",
