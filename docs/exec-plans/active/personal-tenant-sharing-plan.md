@@ -200,3 +200,9 @@ Related: [조직·권한·공유 실행 기록](org-authz-progress.md), [ADR-023
 - P2-3 화면 공백 해소: `GET /api/credentials/company-shared`(SELF, 내 조직에 지정된 회사 키의 id·이름·종류·상태만)
   와 자격 증명 선택기 `includeCompany`(도구·MCP 생성/상세 4곳에서 "회사 공유 키" 묶음 표시).
 - P2-5 구현: 스킬 목록 행 메뉴에 "공유"(`can_share`), 공유 대화상자는 삭제 확인처럼 표 밖에서 id로 열기.
+- 2026-10-21: PR #317 머지(`02f9419e`). 후속 브랜치 `feature/company-key-usage`.
+- Q2 후속 구현: 키 해석기가 쓴 키 종류(`personal`/`tenant`)를 남기고(`resolved_llm_credential_scope`),
+  대화·Agent API·트리거 설정이 `AgentConfig.llm_credential_scope`로 받아 종료 시 `token_usages.llm_credential_scope`
+  (`i09_token_usage_credential_scope`)에 기록. 회사 사용량 API(`GET /api/tenants/{id}/usage`)에 `company_keys` 합계 추가.
+  회사 사용량 화면은 아직 없어 API만 제공(화면은 후속).
+- 자격 증명 카드의 "공유됨" 표시 제거(`is_shared`는 권한에 쓰이지 않음, 열 삭제는 I-04).

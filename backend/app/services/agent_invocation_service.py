@@ -9,7 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.credential_access import AgentCredentialAccess
-from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
+from app.agent_runtime.credential_resolution import (
+    resolve_llm_api_key_for_agent,
+    resolved_llm_credential_scope,
+)
 from app.agent_runtime.identity import (
     AGENT_IDENTITY_FIXED,
     AgentRunSource,
@@ -198,6 +201,7 @@ async def build_agent_config_for_loaded_agent(
     api_key = await resolve_llm_api_key_for_agent(
         db, agent, AgentCredentialAccess(context, identity)
     )
+    llm_credential_scope = resolved_llm_credential_scope()
     runtime = await prepare_authorized_runtime(
         agent, path="api", context=context, db=db, identity=identity, conversation_id=thread_id
     )
@@ -212,6 +216,7 @@ async def build_agent_config_for_loaded_agent(
         provider=agent.model.provider,
         model_name=agent.model.model_name,
         api_key=api_key,
+        llm_credential_scope=llm_credential_scope,
         base_url=agent.model.base_url,
         system_prompt=effective_prompt,
         tools_config=runtime.tools_config,

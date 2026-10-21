@@ -23,7 +23,9 @@ Assistant, and other service flows use ``system_credential_resolver`` instead.
 from __future__ import annotations
 
 import logging
+from contextvars import ContextVar
 from dataclasses import replace
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +48,26 @@ from app.models.agent import Agent
 from app.models.credential import Credential
 
 logger = logging.getLogger(__name__)
+
+
+LlmCredentialScope = Literal["personal", "tenant"]
+_resolved_scope: ContextVar[LlmCredentialScope | None] = ContextVar(
+    "resolved_llm_credential_scope", default=None
+)
+
+
+def resolved_llm_credential_scope() -> LlmCredentialScope | None:
+    """Whose key the last ``resolve_llm_api_key_for_agent`` call in this task returned:
+    ``personal`` (a user's own), ``tenant`` (a company shared key) or ``None`` (no key).
+
+    Read right after the call; run configs copy it so token usage can tell company-key
+    spend apart (plan P2 Q2).
+    """
+    return _resolved_scope.get()
+
+
+def _used(cred: Credential) -> None:
+    _resolved_scope.set("tenant" if cred.scope == "tenant" else "personal")
 
 
 class LLMCredentialRequiredError(AppError):
@@ -86,6 +108,7 @@ async def resolve_llm_api_key_for_agent(
     backend stdout 로 진단 가능 (silent fail 회귀 방지).
     """
 
+    _resolved_scope.set(None)
     subject = replace(access.context, user_id=access.identity.credential_subject_user_id)
     subject_user_id = subject.user_id
     model = getattr(agent, "model", None)
@@ -104,6 +127,7 @@ async def resolve_llm_api_key_for_agent(
         ):
             key = await _decrypt_api_key(cred)
             if key is not None:
+                _used(cred)
                 logger.info(
                     "agent %s: api_key from agent.llm_credential for subject %s",
                     agent.id,
@@ -137,6 +161,7 @@ async def resolve_llm_api_key_for_agent(
         if fallback_cred is not None:
             key = await _decrypt_api_key(fallback_cred)
             if key is not None:
+                _used(fallback_cred)
                 logger.info(
                     "agent %s: api_key from model.default_credential (id=%s)",
                     agent.id,
@@ -180,6 +205,7 @@ async def resolve_llm_api_key_for_agent(
         if matches is not None:
             key = await _decrypt_api_key(matches)
             if key is not None:
+                _used(matches)
                 logger.info(
                     "agent %s: api_key from provider-matched user credential"
                     " (id=%s, definition=%s)",
@@ -197,6 +223,7 @@ async def resolve_llm_api_key_for_agent(
                 continue
             key = await _decrypt_api_key(company_cred)
             if key is not None:
+                _used(company_cred)
                 logger.info(
                     "agent %s: api_key from company credential (id=%s, definition=%s)",
                     agent.id,

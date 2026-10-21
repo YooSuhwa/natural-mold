@@ -230,6 +230,7 @@ async def _run_conversation(
                     run_metrics=run_metrics,
                     model_name=getattr(cfg, "model_name", "unknown"),
                     tenant=cfg.org_context,
+                    llm_credential_scope=getattr(cfg, "llm_credential_scope", None),
                     terminal_event_for_status=(
                         lambda status: terminal_delivery.terminal_events_for_status(status)[1]
                     )

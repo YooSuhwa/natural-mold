@@ -32,6 +32,7 @@ class TriggerConfigSource:
     api_key: str | None
     fallback_chain: list[dict[str, Any]] | None
     access_plan: RuntimeAccessPlan | None = None  # F-06: children follow the parent plan
+    llm_credential_scope: str | None = None
 
 
 def build_trigger_agent_config(source: TriggerConfigSource) -> AgentConfig:
@@ -44,6 +45,7 @@ def build_trigger_agent_config(source: TriggerConfigSource) -> AgentConfig:
         provider=model.provider,
         model_name=model.model_name,
         api_key=api_key,
+        llm_credential_scope=source.llm_credential_scope,
         base_url=model.base_url,
         system_prompt=source.effective_prompt,
         tools_config=source.tools_config,

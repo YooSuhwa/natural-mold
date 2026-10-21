@@ -1,6 +1,6 @@
 # Moldy — TASKS
 
-<!-- project-current-source: migration=i08_outbox_request_enqueue; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-21 -->
+<!-- project-current-source: migration=i09_token_usage_credential_scope; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-21 -->
 
 > Last updated: 2026-09-10
 > Source-aligned snapshot: Alembic head `m77_side_chat_link`. The

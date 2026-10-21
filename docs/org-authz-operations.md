@@ -245,7 +245,7 @@ uv run python -m app.services.platform.tenant_data_cli purge [--tenant <id>]
 ## 6. 마이그레이션과 되돌리기
 
 기획서의 m78~m92 번호와 실제 Alembic revision ID는 다릅니다. 체인은 `m77_side_chat_link`(origin/main) 뒤에 붙고
-head는 `i08_outbox_request_enqueue`입니다. 모두 downgrade가 있으며, 되돌리기 전 반드시 운영 백업을 받습니다.
+head는 `i09_token_usage_credential_scope`입니다. 모두 downgrade가 있으며, 되돌리기 전 반드시 운영 백업을 받습니다.
 
 | 순서 | revision | 기획 번호·작업 | 내용 | 되돌리기 주의 |
 |------|----------|----------------|------|---------------|
@@ -275,6 +275,7 @@ head는 `i08_outbox_request_enqueue`입니다. 모두 downgrade가 있으며, �
 | 24 | `i07_tenant_exports` | I-07 | 내보내기·삭제 영수증·`source_removed` | `source_removed` 설치가 있으면 거부(먼저 삭제) |
 | 25 | `i06_company_rls` | m92, I-06 | 회사 RLS 정책·앱 역할 권한 | PostgreSQL만. RLS 끄고 정책 삭제. 그 전에 `rls_activation disable` + `DB_RLS_ENABLED=false` |
 | 26 | `i08_outbox_request_enqueue` | I-06 후속 | 가입·회사 세션이 `authz_outbox`에 행을 추가할 수 있게 함(읽기·수정·삭제는 플랫폼 전용 유지) | PostgreSQL만. outbox 정책을 플랫폼 전용으로 되돌림 |
+| 27 | `i09_token_usage_credential_scope` | P2 Q2 | `token_usages.llm_credential_scope`(personal/tenant): 회사 공유 키 사용량 구분, 회사 사용량 API `company_keys` | 열 삭제 |
 
 m90(옛 열·테이블 삭제)과 m91은 이 PR에 없습니다(I-04, PR 2). m90은 되돌릴 수 없으므로 백업·복원 시험 기록을 남긴 뒤 적용합니다.
 

@@ -18,7 +18,7 @@
 
 [기능](#기능) · [빠른 시작](#빠른-시작) · [로컬 개발](#로컬-개발) · [설정](#설정) · [아키텍처](#아키텍처) · [테스트](#테스트) · [문서](#문서)
 
-<!-- project-current-source: migration=i08_outbox_request_enqueue; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-21 -->
+<!-- project-current-source: migration=i09_token_usage_credential_scope; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-21 -->
 
 </div>
 
@@ -39,7 +39,7 @@ OpenFGA 모델로 단계적으로 옮길 수 있습니다.
 | 프론트엔드 | Next.js 16 (App Router), React 19, TailwindCSS v4, shadcn/ui, assistant-ui, TanStack Query, Jotai, next-intl |
 | 백엔드 | FastAPI, SQLAlchemy 2.0 async, Alembic, APScheduler, Python 3.12 |
 | 에이전트 런타임 | LangChain 1.x, LangGraph 1.x, `deepagents` 0.7.11 (`create_deep_agent`), LangGraph `AsyncPostgresSaver` |
-| 데이터 | PostgreSQL 16, Alembic head `i08_outbox_request_enqueue` |
+| 데이터 | PostgreSQL 16, Alembic head `i09_token_usage_credential_scope` |
 | 권한 | 소유자 판정(legacy) 또는 OpenFGA(shadow / enforce), 선택적 PostgreSQL 행 단위 보안(RLS) |
 | 라이선스 | MIT |
 
@@ -193,7 +193,7 @@ docker compose up -d postgres
 cd backend
 cp .env.example .env            # ENCRYPTION_KEYS, JWT_SECRET 설정
 uv sync
-uv run alembic upgrade head     # head: i08_outbox_request_enqueue
+uv run alembic upgrade head     # head: i09_token_usage_credential_scope
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 
 # 프론트엔드 (http://localhost:3000), 다른 터미널에서

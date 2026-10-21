@@ -80,3 +80,5 @@ class TenantUsageSummary(UsageTotals):
     from_date: date
     to_date: date
     organizations: list[TenantOrgUsage]
+    # Runs that used a company shared LLM key (token_usages.llm_credential_scope='tenant').
+    company_keys: UsageTotals = UsageTotals()

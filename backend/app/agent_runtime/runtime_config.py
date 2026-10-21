@@ -82,6 +82,8 @@ class AgentConfig:
     user_id: str | None = None
     model_id: str | None = None
     llm_credential_id: str | None = None
+    # "personal" / "tenant": whose key the LLM runs on (copied to token usage; plan P2 Q2).
+    llm_credential_scope: str | None = None
     agent_owner_user_id: str | None = None
     caller_user_id: str | None = None
     credential_subject_user_id: str | None = None

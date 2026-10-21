@@ -16,6 +16,7 @@ from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.credential_resolution import (
     LLMCredentialRequiredError,
     resolve_llm_api_key_for_agent,
+    resolved_llm_credential_scope,
 )
 from app.agent_runtime.identity import (
     AGENT_IDENTITY_FIXED,
@@ -136,6 +137,7 @@ async def test_company_key_designated_to_the_run_org_serves_a_member_without_a_k
 ) -> None:
     await _company_key(db, "sk-company", orgs=(TEST_ORG_ID,))
     assert await _resolve(db, await _agent(db)) == "sk-company"
+    assert resolved_llm_credential_scope() == "tenant"
 
 
 @pytest.mark.parametrize(
@@ -149,12 +151,14 @@ async def test_company_key_outside_the_run_org_or_inactive_is_never_used(
     await _company_key(db, "sk-company", orgs=orgs, status=status)
     with pytest.raises(LLMCredentialRequiredError):
         await _resolve(db, await _agent(db))
+    assert resolved_llm_credential_scope() is None
 
 
 async def test_own_provider_key_comes_before_the_company_key(db: AsyncSession) -> None:
     await _company_key(db, "sk-company", orgs=(TEST_ORG_ID,))
     await _personal_key(db, "sk-own")
     assert await _resolve(db, await _agent(db)) == "sk-own"
+    assert resolved_llm_credential_scope() == "personal"
 
 
 async def test_company_key_set_as_the_model_default_comes_before_the_own_key(
