@@ -13,7 +13,7 @@ import {
   test,
   type CsrfHeaders,
 } from './fixtures'
-import { registerMember } from './helpers/member-session'
+import { registerOrgMember } from './helpers/member-session'
 
 const idSchema = z.object({ id: z.string() })
 const installationSchema = z.object({
@@ -125,7 +125,7 @@ test('configures a needs-setup install and safely overwrites a dirty update', as
     )
     itemId = published.id
 
-    const member = await registerMember(page)
+    const member = await registerOrgMember(page, request, publisherCsrf)
     memberCsrf = { 'X-CSRF-Token': member.csrf_token }
     const credential = idSchema.parse(
       await apiPostJson(page.request, `${API_BASE}/api/credentials`, memberCsrf, {
