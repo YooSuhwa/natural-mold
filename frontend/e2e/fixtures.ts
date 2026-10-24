@@ -19,6 +19,7 @@ import {
   isExpectedApiReadNavigationAbort,
   deferredApiReadAbortCode,
   collectNetworkFailureCodes,
+  createDocumentCommitTracker,
   shouldDeferApiReadAbort,
   recordNetworkFailure,
   type NetworkFailureCode,
@@ -164,12 +165,15 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
         return collectNetworkFailureCodes(
           persistentNetworkCodes,
           deferredApiReadAborts,
-          mainFrameNavigationGeneration,
+          documentCommits.generation,
         )
       },
     }
     const mainFrameRequestGenerations = new WeakMap<Request, number>()
     let mainFrameNavigationGeneration = 0
+    // Deferred API-read aborts are judged by committed documents (see the tracker).
+    const documentCommits = createDocumentCommitTracker()
+    const requestDocumentGenerations = new WeakMap<Request, number>()
 
     page.on('request', (request) => {
       const observation = observeAndRecordMainFrameRequestAtStart(
@@ -180,6 +184,11 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
       )
       if (observation === undefined) return
       mainFrameNavigationGeneration = observation.navigationGeneration
+      requestDocumentGenerations.set(request, documentCommits.generation)
+      if (observation.mainFrameNavigationBegan) documentCommits.navigationRequested()
+    })
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) documentCommits.frameNavigated()
     })
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
@@ -211,6 +220,8 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
     })
     page.on('requestfailed', (req) => {
       const requestStartNavigationGeneration = mainFrameRequestGenerations.get(req)
+      const requestStartDocumentGeneration = requestDocumentGenerations.get(req)
+      requestDocumentGenerations.delete(req)
       const nextStaticChunkProvenance = consumeMainFrameRequestFailure(
         mainFrameRequestGenerations,
         req,
@@ -362,9 +373,9 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
         }
       }
       if (apiReadAbortCandidate) {
-        if (requestStartNavigationGeneration !== undefined) {
+        if (requestStartDocumentGeneration !== undefined) {
           deferredApiReadAborts.push({
-            startNavigationGeneration: requestStartNavigationGeneration,
+            startNavigationGeneration: requestStartDocumentGeneration,
             url,
             input: {
               errorText,
@@ -386,7 +397,7 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
     // arrived. A later main-frame navigation proves prior-document provenance;
     // otherwise retain the real abort code.
     for (const candidate of deferredApiReadAborts) {
-      const code = deferredApiReadAbortCode(candidate, mainFrameNavigationGeneration)
+      const code = deferredApiReadAbortCode(candidate, documentCommits.generation)
       if (code !== undefined) {
         recordNetworkFailure(persistentNetworkCodes, testInfo.annotations, code)
         testInfo.annotations.push({

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   collectNetworkFailureCodes,
+  createDocumentCommitTracker,
   deferredApiReadAbortCode,
   isApiReadNavigationAbortCandidate,
   isExpectedApiReadNavigationAbort,
@@ -135,5 +136,42 @@ describe('event-order provenance correction', () => {
     expect(isApiReadNavigationAbortCandidate({ ...deferred.input, resourceType: 'xhr' }, API)).toBe(
       false,
     )
+  })
+})
+
+describe('outgoing-document read during a reload', () => {
+  const candidate = (startNavigationGeneration: number): DeferredApiReadAbort => ({
+    startNavigationGeneration,
+    input: {
+      ...input,
+      requestUrl: `${API}/api/me/organizations`,
+      startedBeforeCurrentMainFrameNavigation: false,
+    },
+  })
+
+  it('excuses a read the old page started after the reload request but before the commit', () => {
+    const commits = createDocumentCommitTracker()
+    commits.navigationRequested()
+    const raced = candidate(commits.generation)
+    expect(deferredApiReadAbortCode(raced, commits.generation)).toBe('api_request_abort')
+    commits.frameNavigated()
+    expect(deferredApiReadAbortCode(raced, commits.generation)).toBeUndefined()
+  })
+
+  it('keeps an abort of the current document when no new document commits', () => {
+    const commits = createDocumentCommitTracker()
+    commits.navigationRequested()
+    commits.frameNavigated()
+    const current = candidate(commits.generation)
+    expect(collectNetworkFailureCodes([], [current], commits.generation)).toEqual([
+      'api_request_abort',
+    ])
+  })
+
+  it('does not treat a same-document history navigation as a new document', () => {
+    const commits = createDocumentCommitTracker()
+    const read = candidate(commits.generation)
+    commits.frameNavigated()
+    expect(deferredApiReadAbortCode(read, commits.generation)).toBe('api_request_abort')
   })
 })

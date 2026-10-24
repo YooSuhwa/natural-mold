@@ -118,6 +118,35 @@ export function shouldDeferApiReadAbort(
   return !alreadyExpected && isApiReadNavigationAbortCandidate(input, apiBaseUrl)
 }
 
+export type DocumentCommitTracker = {
+  readonly generation: number
+  readonly navigationRequested: () => void
+  readonly frameNavigated: () => void
+}
+
+/** Count main-frame documents that actually replaced their predecessor. A navigation
+ * request alone does not unload the page: until the new document commits, the outgoing
+ * one can still start requests and then lose them. Prior-document provenance for API
+ * reads is therefore decided by commits, not by navigation starts. A same-document
+ * `framenavigated` (history API) has no navigation request and is not a commit. */
+export function createDocumentCommitTracker(): DocumentCommitTracker {
+  let generation = 0
+  let navigationPending = false
+  return {
+    get generation() {
+      return generation
+    },
+    navigationRequested() {
+      navigationPending = true
+    },
+    frameNavigated() {
+      if (!navigationPending) return
+      navigationPending = false
+      generation += 1
+    },
+  }
+}
+
 export type DeferredApiReadAbort = {
   readonly input: RequestFailureDiagnosticInput
   readonly startNavigationGeneration: number
