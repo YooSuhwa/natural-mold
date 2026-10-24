@@ -2,6 +2,7 @@ import { test, expect } from './fixtures'
 import type { Page, Route } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { MOCK_ORGANIZATIONS } from './helpers/organization-mock'
 
 const now = '2026-06-10T12:00:00Z'
 const captureDir = join(process.cwd(), '..', 'output', 'e2e-captures', '20260611-chat-navigator')
@@ -131,6 +132,20 @@ async function mockApi(route: Route) {
         is_super_user: true,
       },
     })
+    return
+  }
+  // Readiness (S21) for the mocked agents: before the agent-detail pattern, which would
+  // otherwise also match `/api/agents/readiness-summary`.
+  if (pathname === '/api/agents/readiness-summary') {
+    await route.fulfill({ json: {} })
+    return
+  }
+  if (pathname.endsWith('/readiness')) {
+    await route.fulfill({ json: { overall: 'ready', items: [] } })
+    return
+  }
+  if (pathname === '/api/me/organizations') {
+    await route.fulfill({ json: MOCK_ORGANIZATIONS })
     return
   }
   if (pathname === '/api/agents/summary') {

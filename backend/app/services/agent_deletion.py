@@ -72,6 +72,11 @@ async def stage_agent_archive(
     if locked_agent is None:
         raise agent_not_found()
     archived_at = locked_agent.archived_at or request.archived_at
+    if archived_at.tzinfo is not None:
+        # An agent archived before reads back timezone-aware from PostgreSQL; the naive
+        # UTC columns below (queue_paused_at, run inputs, share links, triggers) made asyncpg
+        # refuse it, so re-deleting an archived agent with conversations was a 500.
+        archived_at = archived_at.astimezone(UTC).replace(tzinfo=None)
     if locked_agent.archived_at is None:
         await db.execute(
             update(Agent)

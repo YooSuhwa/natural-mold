@@ -1,8 +1,13 @@
 import { test, expect } from './fixtures'
+import { mockOwnerResourcePermissions } from './helpers/resource-permissions-mock'
 
 // E2E: Skills page — create text skill.
 
 test.describe('Skills page', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockOwnerResourcePermissions(page)
+  })
+
   test('user can create a text skill, open its source, and return to the table', async ({
     page,
     errors,

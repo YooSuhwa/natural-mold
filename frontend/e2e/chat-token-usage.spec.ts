@@ -155,6 +155,11 @@ test.describe('Chat token usage hover', () => {
       route.fulfill({ json: { total_unread: 0 } }),
     )
     await page.route(`**/api/agents/${AGENT_ID}`, (route) => route.fulfill({ json: FAKE_AGENT }))
+    // S21 readiness for the fixture agent (the real backend does not know its id).
+    await page.route(`**/api/agents/${AGENT_ID}/readiness**`, (route) =>
+      route.fulfill({ json: { overall: 'ready', items: [] } }),
+    )
+    await page.route('**/api/agents/readiness-summary', (route) => route.fulfill({ json: {} }))
     await page.route(`**/api/agents/${AGENT_ID}/conversations/page**`, (route) =>
       route.fulfill({
         json: { items: [FAKE_CONVERSATION], next_cursor: null, has_more: false },

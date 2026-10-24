@@ -1,7 +1,7 @@
 import type { APIRequestContext, Page, TestInfo } from '@playwright/test'
+import { purgeAgentAndModel } from './helpers/agent-purge'
 import {
   API_BASE,
-  apiDeleteOk,
   apiGetJson,
   apiPostJson,
   expect,
@@ -264,11 +264,10 @@ test.describe('Auto-compaction marker', () => {
       expect(errors.network).toEqual([])
       expect(errors.page).toEqual([])
     } finally {
-      // The fixture is dedicated to this test, so deleting the parent agent also
-      // removes its conversations. The isolated lane's throwaway database is an
-      // independent final cleanup boundary if a browser teardown interrupts this.
-      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.agentId}`, setup.csrfHeaders)
-      await apiDeleteOk(request, `${API_BASE}/api/models/${setup.modelId}`, setup.csrfHeaders)
+      // The fixture is dedicated to this test: deleting only archives the agent (B-08),
+      // which keeps holding the model, so purge it before deleting the model. The
+      // isolated lane's throwaway database is the final cleanup boundary.
+      await purgeAgentAndModel(request, setup.csrfHeaders, setup.agentId, setup.modelId)
     }
   }
 

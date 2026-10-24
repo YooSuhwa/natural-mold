@@ -34,6 +34,23 @@ describe('MCP Apps optional shim telemetry classifier', () => {
     ).toEqual({ consoleErrors: [], requestFailures: [] })
   })
 
+  it('accepts the beacon after Cloudflare rotates its version segment', () => {
+    const rotated =
+      'https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092'
+    expect(
+      unexpectedMcpAppsBrowserErrors(
+        [{ ...knownConsoleError, locationUrl: rotated }],
+        [{ ...knownRequestFailure, url: rotated }],
+        APP_ORIGIN,
+      ),
+    ).toEqual({ consoleErrors: [], requestFailures: [] })
+  })
+
+  it('rejects other scripts on the beacon host', () => {
+    const other = { ...knownRequestFailure, url: 'https://static.cloudflareinsights.com/other.js' }
+    expect(unexpectedMcpAppsBrowserErrors([], [other], APP_ORIGIN).requestFailures).toEqual([other])
+  })
+
   it('rejects an unrelated DNS failure even when the aggregate category is identical', () => {
     const unrelated = {
       ...knownRequestFailure,

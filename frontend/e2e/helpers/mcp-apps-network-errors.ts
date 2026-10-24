@@ -3,6 +3,22 @@ import { isExpectedNextRscPrefetchAbort } from './network-failure-diagnostic'
 export const KNOWN_SHIM_BEACON_URL =
   'https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495'
 
+// Cloudflare rotates the beacon's version segment, so match its shape, not one hash.
+const SHIM_BEACON_PATH = /^\/beacon\.min\.js\/v[0-9a-f]+$/
+
+function isShimBeaconUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return (
+      parsed.origin === 'https://static.cloudflareinsights.com' &&
+      SHIM_BEACON_PATH.test(parsed.pathname) &&
+      parsed.search === ''
+    )
+  } catch {
+    return false
+  }
+}
+
 export interface ConsoleErrorObservation {
   readonly text: string
   readonly locationUrl: string
@@ -33,7 +49,7 @@ function isOfficialShimFrame(frameUrl: string | null, appOrigin: string): boolea
 
 export function isKnownShimConsoleError(observation: ConsoleErrorObservation): boolean {
   return (
-    observation.locationUrl === KNOWN_SHIM_BEACON_URL &&
+    isShimBeaconUrl(observation.locationUrl) &&
     observation.text === 'Failed to load resource: net::ERR_NAME_NOT_RESOLVED'
   )
 }
@@ -46,7 +62,7 @@ export function isKnownShimRequestFailure(
     return false
   }
   if (
-    observation.url === KNOWN_SHIM_BEACON_URL &&
+    isShimBeaconUrl(observation.url) &&
     observation.errorText === 'net::ERR_NAME_NOT_RESOLVED' &&
     observation.resourceType === 'script'
   ) {

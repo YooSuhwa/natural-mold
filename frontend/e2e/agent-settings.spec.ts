@@ -346,9 +346,11 @@ test.describe('Agent settings — edit & attach', () => {
 
   test('renders a generic inaccessible-agent state without runtime controls', async ({ page }) => {
     await page.goto('/agents/00000000-0000-4000-8000-000000000000/settings')
-    await expect(
-      page.getByText('에이전트를 찾을 수 없거나 접근 권한이 없습니다.', { exact: true }),
-    ).toBeVisible()
+    // AgentSettingsGate (org-authz): the shared not-found state, identical for a missing
+    // agent and one the caller may not see (no enumeration oracle).
+    const unavailable = page.getByRole('alert').filter({ hasText: '찾을 수 없어요' })
+    await expect(unavailable).toBeVisible()
+    await expect(unavailable).toContainText('삭제되었거나 볼 수 없는 항목이에요.')
     await expect(page.getByRole('textbox', { name: '에이전트 이름' })).toHaveCount(0)
     await expect(page.getByRole('heading', { name: '실행 동작' })).toHaveCount(0)
   })
