@@ -144,7 +144,11 @@ test.describe('Chat run lifecycle API contract', () => {
       const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
       await expect(composer).toBeVisible()
       await composer.fill('E2E_SLOW_STREAM')
-      await composer.press('Enter')
+      // The row spinner shows optimistically; navigate only once the server owns the run.
+      const runId = await waitForAcceptedRunStart(page, conversationA, () =>
+        composer.press('Enter'),
+      )
+      await waitForRunStatus(request, conversationA, runId, 'running')
 
       const spinnerA = page.locator(`[data-moldy-run-spinner="${conversationA}"]`)
       await expect(spinnerA).toBeVisible({ timeout: 10_000 })

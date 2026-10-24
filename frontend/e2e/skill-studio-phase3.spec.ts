@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures'
+import { mockOwnerResourcePermissions } from './helpers/resource-permissions-mock'
 
 // Phase 3 — 평가 탭 실측 지표: A/B 벤치마크, usage/비용, 버전별 통과율,
 // 휴먼 피드백(스킬/케이스) 상호작용, 히스토리 배지, 실단가 estimate.
@@ -311,6 +312,10 @@ async function mockPhase3Apis(page: import('@playwright/test').Page) {
 }
 
 test.describe('Skill studio phase 3 — measured evaluation surfaces', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockOwnerResourcePermissions(page)
+  })
+
   test('evaluation tab renders measured A/B benchmark, usage and version stats', async ({
     page,
   }) => {
@@ -380,7 +385,10 @@ test.describe('Skill studio phase 3 — measured evaluation surfaces', () => {
     await mockPhase3Apis(page)
     await page.goto(`/skills/${SKILL_ID}/evaluation`)
 
-    await page.getByRole('button', { name: /다시 실행/ }).first().click()
+    await page
+      .getByRole('button', { name: /다시 실행/ })
+      .first()
+      .click()
     await expect(page.getByTestId('estimate-cost')).toContainText('$0.0231')
     await expect(page.getByText('scripted-eval-model')).toBeVisible()
   })
@@ -389,7 +397,10 @@ test.describe('Skill studio phase 3 — measured evaluation surfaces', () => {
     await mockPhase3Apis(page)
     await page.goto(`/skills/${SKILL_ID}/evaluation`)
 
-    await page.getByRole('button', { name: /다시 실행/ }).first().click()
+    await page
+      .getByRole('button', { name: /다시 실행/ })
+      .first()
+      .click()
     const toggle = page.getByTestId('estimate-baseline-toggle')
     await expect(toggle).toBeChecked()
     await expect(page.getByTestId('estimate-cost')).toContainText('$0.0231')

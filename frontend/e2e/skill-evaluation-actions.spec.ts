@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 
 import { test, expect } from './fixtures'
+import { mockOwnerResourcePermissions } from './helpers/resource-permissions-mock'
 
 const now = '2026-06-01T00:00:00.000Z'
 
@@ -131,6 +132,10 @@ const credentialRequiredSkill = {
 }
 
 test.describe('Skill evaluation actions', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockOwnerResourcePermissions(page)
+  })
+
   test('shows rerun and cancel controls in the installed skill evaluation tab', async ({
     page,
   }) => {

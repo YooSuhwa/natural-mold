@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures'
+import { mockOwnerResourcePermissions } from './helpers/resource-permissions-mock'
 
 // Phase 2 — 스킬 스튜디오 6탭 IA: 탭 내비/컨텍스트 바/스킬 스위처/빌더 인덱스.
 
@@ -95,6 +96,10 @@ async function mockStudioApis(page: import('@playwright/test').Page) {
 }
 
 test.describe('Skill studio IA', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockOwnerResourcePermissions(page)
+  })
+
   test('list rows navigate to skill tabs; scoped tabs disabled without context', async ({
     page,
   }) => {

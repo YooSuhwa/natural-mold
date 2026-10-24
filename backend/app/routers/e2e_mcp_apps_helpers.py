@@ -126,6 +126,8 @@ async def create_e2e_mcp_apps_fixture(
                 "user_id": str(user.id),
                 "agent_id": str(conversation.agent_id),
                 "credential_subject_user_id": str(user.id),
+                "org_id": str(context.org_id),
+                "tenant_id": str(context.tenant_id),
             }
             for tool in records.tools
         ]
