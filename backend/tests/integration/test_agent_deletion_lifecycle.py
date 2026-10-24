@@ -186,3 +186,22 @@ async def test_agent_archive_first_fences_owned_execution_then_returns_archived(
         assert participant_count == 0
         archived = await verify_db.get(Agent, graph.agent_id)
         assert archived is not None and archived.archived_at is not None
+
+
+async def test_deleting_an_already_archived_agent_with_conversations_succeeds(
+    pg_factory: async_sessionmaker[AsyncSession], graph: SeededGraph
+) -> None:
+    # Nightly E2E: the second DELETE of an archived agent reads archived_at back from
+    # PostgreSQL (timezone-aware) and wrote it into the naive conversations.queue_paused_at;
+    # asyncpg refused the bound value and the request failed with 500.
+    for _ in range(2):
+        async with pg_factory() as db:
+            agent = await db.get(Agent, graph.agent_id)
+            assert agent is not None
+            await agent_service.delete_agent(db, agent, context=unit_context(graph.user_id))
+            await db.commit()
+    async with pg_factory() as verify_db:
+        conversation = await verify_db.get(Conversation, graph.conversation_id)
+        assert conversation is not None
+        assert conversation.queue_paused is True
+        assert conversation.queue_paused_at is not None
