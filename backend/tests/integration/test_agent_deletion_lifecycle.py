@@ -2,18 +2,23 @@ from __future__ import annotations
 
 import anyio
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.authz.agent_delegations import link_grants, lock_delegations, sync_agent_delegations
 from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.agent_lifecycle import ConversationRunAgent
+from app.models.agent_subagent import AgentSubAgentLink
+from app.models.authz import AuthzOutbox, ResourceGrant
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.organization import Organization
 from app.models.user import User
 from app.services import agent_service
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
-from tests.authz.unit_scope_fixture import unit_context
+from app.services.agent_lifecycle_locks import acquire_agent_lifecycle_locks
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID, unit_context
 from tests.integration.test_conversation_run_delete_races import (
     SeededGraph,
     _assert_graph,
@@ -205,3 +210,94 @@ async def test_deleting_an_already_archived_agent_with_conversations_succeeds(
         assert conversation is not None
         assert conversation.queue_paused is True
         assert conversation.queue_paused_at is not None
+
+
+async def test_archive_that_revokes_a_subagent_delegation_does_not_deadlock_an_executor(
+    pg_factory: async_sessionmaker[AsyncSession], graph: SeededGraph
+) -> None:
+    # Nightly E2E deadlock: archiving a subagent revokes its parent's delegation grant,
+    # which locks the Organization row FOR UPDATE. The archive took it after the agent
+    # lifecycle lock, while queue recovery holds the Organization FOR SHARE (execution
+    # prefix) and then waits for that lifecycle lock: PostgreSQL killed one of them.
+    # Given: a parent that delegates to the graph's agent through a subagent link.
+    context = unit_context(graph.user_id)
+    async with pg_factory() as seed_db:
+        child = await seed_db.get(Agent, graph.agent_id)
+        assert child is not None
+        parent = Agent(
+            user_id=graph.user_id,
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            name="Race Parent",
+            system_prompt="x",
+            model_id=child.model_id,
+        )
+        seed_db.add(parent)
+        await seed_db.flush()
+        await lock_delegations(seed_db, context)
+        seed_db.add(
+            AgentSubAgentLink(
+                parent_agent_id=parent.id, sub_agent_id=child.id, delegated_by=graph.user_id
+            )
+        )
+        await sync_agent_delegations(seed_db, context, parent.id, added={("agent", child.id)})
+        await seed_db.commit()
+        parent_id = parent.id
+        assert len(await link_grants(seed_db, {parent_id})) == 1
+
+    try:
+        async with pg_factory() as executor_db, pg_factory() as delete_db:
+            # The executor's canonical prefix: Organization FOR SHARE, before lifecycle.
+            await executor_db.execute(
+                select(Organization.id)
+                .where(Organization.id == TEST_ORG_ID)
+                .with_for_update(read=True)
+            )
+            agent = await delete_db.get(Agent, graph.agent_id)
+            assert agent is not None
+            delete_pid = await _backend_pid(delete_db)
+            attempted = anyio.Event()
+            finished = anyio.Event()
+
+            async def archive() -> None:
+                attempted.set()
+                await agent_service.delete_agent(delete_db, agent, context=context)
+                await delete_db.commit()
+                finished.set()
+
+            # When: the archive waits behind the executor, which then takes the lifecycle lock.
+            async with anyio.create_task_group() as tasks:
+                tasks.start_soon(archive)
+                await attempted.wait()
+                await _wait_for_lock(executor_db, delete_pid)
+                with anyio.fail_after(5):
+                    await acquire_agent_lifecycle_locks(executor_db, (graph.agent_id,))
+                assert not finished.is_set()
+                await executor_db.commit()
+                with anyio.fail_after(5):
+                    await finished.wait()
+
+        # Then: the archive committed and revoked the parent's delegation.
+        async with pg_factory() as verify_db:
+            archived = await verify_db.get(Agent, graph.agent_id)
+            assert archived is not None and archived.archived_at is not None
+            assert await link_grants(verify_db, {parent_id}) == []
+    finally:
+        async with pg_factory() as cleanup_db:
+            grant_ids = select(ResourceGrant.id).where(ResourceGrant.principal_id == parent_id)
+            await cleanup_db.execute(
+                delete(AuthzOutbox).where(AuthzOutbox.source_id.in_(grant_ids))
+            )
+            await cleanup_db.execute(
+                delete(ResourceGrant).where(ResourceGrant.principal_id == parent_id)
+            )
+            await cleanup_db.execute(
+                delete(AgentSubAgentLink).where(
+                    or_(
+                        AgentSubAgentLink.parent_agent_id == parent_id,
+                        AgentSubAgentLink.sub_agent_id == parent_id,
+                    )
+                )
+            )
+            await cleanup_db.execute(delete(Agent).where(Agent.id == parent_id))
+            await cleanup_db.commit()

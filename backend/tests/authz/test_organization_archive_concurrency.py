@@ -254,8 +254,15 @@ async def test_b08_compatibility_lock_race_has_no_deadlock(
     async with lock_trace(monkeypatch) as b08_trace:
         await asyncio.wait_for(archive_agent(db, actor, w.agent_id), timeout=10)
         await db.commit()
-    # Standalone B08 order: lifecycle -> Agent -> Conversation -> Trigger, no parent lock.
-    assert _collapse(b08_trace) == [LIFECYCLE, "agents", "conversations", "agent_triggers"]
+    # Standalone B08 order: Organization (for the delegation revoke) -> lifecycle -> Agent
+    # -> Conversation -> Trigger; no parent row after the lifecycle lock.
+    assert _collapse(b08_trace) == [
+        "organizations",
+        LIFECYCLE,
+        "agents",
+        "conversations",
+        "agent_triggers",
+    ]
     db.expire_all()
     canceled = await db.get(ConversationRunInput, w.pending_input_id)
     assert canceled is not None and (canceled.status, canceled.revision) == ("canceled", 2)

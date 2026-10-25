@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz.agent_delegations import sync_agent_delegations
+from app.authz.agent_delegations import lock_delegations, sync_agent_delegations
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_prefix import mark_org_writer
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
@@ -55,6 +55,27 @@ async def _revoke_subagent_delegations(
     ctx = OrgContext(org_id=scope.org_id, tenant_id=scope.tenant_id, user_id=request.actor_user_id)
     for agent_id in sorted({request.agent_id, *parents}, key=lambda item: item.bytes):
         await sync_agent_delegations(db, ctx, agent_id, kinds=frozenset({"agent"}))
+
+
+async def lock_archive_target(db: AsyncSession, agent_id: UUID, actor_user_id: UUID) -> None:
+    """Lock the Organization row, then the Agent tree, before an archive is staged.
+
+    The archive revokes the removed subagent links' delegations, and that revoke takes
+    the Organization row ``FOR UPDATE`` (E-02). Taken after the lifecycle lock it
+    inverts the canonical Organization -> Agent lifecycle order, so an execution
+    holding the Organization ``FOR SHARE`` while it waits for this Agent's lifecycle
+    lock (queue recovery, a run start) deadlocks with the archive.
+    """
+    scope = (
+        await db.execute(select(Agent.org_id, Agent.tenant_id).where(Agent.id == agent_id))
+    ).one_or_none()
+
+    async def lock_organization() -> None:
+        if scope is not None:
+            ctx = OrgContext(org_id=scope.org_id, tenant_id=scope.tenant_id, user_id=actor_user_id)
+            await lock_delegations(db, ctx)
+
+    await lock_agent_tree(db, agent_id, parent_lock=lock_organization)
 
 
 async def stage_agent_archive(
@@ -183,7 +204,7 @@ async def delete_agent(db: AsyncSession, agent: Agent, context: OrgContext) -> N
     F-02: no app route calls it; it does not commit, so its queued delegation revokes
     stay on the session for the caller's ``commit_and_apply`` (or the outbox worker)."""
     mark_org_writer(db)  # archive may revoke: any prefix takes the org row FOR UPDATE
-    await lock_agent_tree(db, agent.id)
+    await lock_archive_target(db, agent.id, context.user_id)
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
@@ -206,5 +227,6 @@ __all__ = [
     "AgentArchiveMutation",
     "AgentArchiveRequest",
     "delete_agent",
+    "lock_archive_target",
     "stage_agent_archive",
 ]
