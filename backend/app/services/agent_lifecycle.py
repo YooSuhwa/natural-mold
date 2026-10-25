@@ -23,7 +23,11 @@ from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_purge import AgentPurgeReceipt
 from app.models.conversation import Conversation
 from app.schemas.agent_lifecycle import AgentLifecycleMetadataResponse, AgentRestoreResponse
-from app.services.agent_deletion import AgentArchiveRequest, stage_agent_archive
+from app.services.agent_deletion import (
+    AgentArchiveRequest,
+    lock_archive_target,
+    stage_agent_archive,
+)
 from app.services.agent_execution_owner import PreparedCancelIntent
 from app.services.agent_lifecycle_projection import (
     lifecycle_metadata,
@@ -45,7 +49,7 @@ async def archive_agent(
     agent_id: UUID,
 ) -> AgentArchiveResult:
     """Stage one atomic archive transaction and return post-commit notifications."""
-    await lock_lifecycle_target(db, agent_id)
+    await lock_archive_target(db, agent_id, actor.id)
     authority = await authorize_agent_lifecycle(
         db, actor, AgentLifecycleAuthorization(agent_id=agent_id, action="archive")
     )

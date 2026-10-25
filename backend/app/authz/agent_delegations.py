@@ -18,8 +18,8 @@ link tools):
 ``delegated_by`` is stamped where link rows are created (the callers' builders) and
 ``llm_credential_delegated_by`` wherever the model credential changes. Lock order
 (E-02): ``lock_delegations`` takes the organization row (claimed for the Task 10
-tracker) before any link, agent or grant write — callers lock first, sync re-locks only
-when it writes (an archive with nothing to revoke keeps the pinned B08 order).
+tracker) before any link, agent or grant write — callers lock first (an agent archive
+too, before its lifecycle lock), and sync re-locks only when it writes.
 
 Writes go through ``GrantService`` (grant rows, outbox rows and ``delegation.*`` audit
 in the caller's transaction) in every mode, legacy included (precedent: E-01 shares);
@@ -200,7 +200,7 @@ async def sync_agent_delegations(
     stale = [k for k in held.keys() - wanted if held[k].org_id == ctx.org_id]  # foreign: skip
     new = [k for k in (set(added) & wanted) - held.keys() if await _grantable(db, ctx, k)]
     if not stale and not new:
-        return LifecycleChange()  # nothing to write: no lock (keeps the B08 archive order)
+        return LifecycleChange()  # nothing to write: no lock
     await lock_delegations(db, ctx)  # before any grant write (re-lock when callers took it)
     grants = service or GrantService()
     outbox: list[UUID] = []

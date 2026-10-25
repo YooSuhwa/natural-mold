@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from hashlib import blake2b
 from typing import Final
@@ -173,16 +173,25 @@ async def acquire_agent_lifecycle_locks(db: AsyncSession, agent_ids: Iterable[UU
         )
 
 
-async def lock_agent_tree(db: AsyncSession, root_agent_id: UUID) -> AgentTreeSnapshot:
+async def lock_agent_tree(
+    db: AsyncSession,
+    root_agent_id: UUID,
+    *,
+    parent_lock: Callable[[], Awaitable[None]] | None = None,
+) -> AgentTreeSnapshot:
     """Lock a stable tree at a clean, metadata-only transaction boundary.
 
     A graph drift rolls back the whole metadata transaction so transaction-level
     locks release before the retry. Callers must invoke this before staging any
     writes; pending ORM state is rejected rather than silently discarded.
+    ``parent_lock`` takes a row that precedes the lifecycle locks in the canonical
+    order; it runs on every attempt because the drift rollback releases it too.
     """
     if db.new or db.dirty or db.deleted:
         raise AgentLifecycleTransactionDirtyError(root_agent_id)
     for _attempt in range(_GRAPH_RETRY_LIMIT):
+        if parent_lock is not None:
+            await parent_lock()
         before = await read_agent_tree(db, root_agent_id)
         await acquire_agent_lifecycle_locks(db, before.agent_ids or (root_agent_id,))
         after = await read_agent_tree(db, root_agent_id)

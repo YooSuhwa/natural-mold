@@ -398,7 +398,10 @@ version nor the audit log.
   Agent locks come before Trigger and Deployment locks, which matches the
   source order of the standalone B08 agent archive, restore and purge
   (`Agent lifecycle -> Agent -> AgentTrigger -> AgentDeployment`). Those B08
-  paths take no parent row after Agent. A trigger claim enters the gateway and
+  paths take no parent row after Agent. The archive takes the Organization
+  row `FOR UPDATE` before the Agent lifecycle lock, because it revokes the
+  removed subagent links' delegations; taking it during the revoke inverted
+  the order and deadlocked with queue recovery. A trigger claim enters the gateway and
   the Agent tree before it locks the trigger.
 - Terminal states. Organization archive, and the reusable `tenant_suspended`
   writer seam, apply one projection to rows that are already locked:
