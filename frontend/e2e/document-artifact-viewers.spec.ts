@@ -447,21 +447,17 @@ test.describe('Document artifact viewers', () => {
             name: 'moldy-patent-demo.hwpx',
           })
           await expect(image).toBeVisible({ timeout: 30_000 })
+          // The SVG page decodes asynchronously; naturalWidth stays 0 until it has loaded.
           await expect
             .poll(
               () =>
                 image.evaluate((element) => {
                   const img = element as HTMLImageElement
-                  return { width: img.naturalWidth, height: img.naturalHeight }
+                  return img.naturalWidth * img.naturalHeight
                 }),
               { timeout: 30_000, intervals: [500, 1000, 2000] },
             )
-            .toEqual(expect.objectContaining({ width: expect.any(Number) }))
-          const size = await image.evaluate((element) => {
-            const img = element as HTMLImageElement
-            return img.naturalWidth * img.naturalHeight
-          })
-          expect(size).toBeGreaterThan(10_000)
+            .toBeGreaterThan(10_000)
         },
       },
     ]
