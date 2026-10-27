@@ -70,6 +70,31 @@ async def _fail(runtime: OwnedRuntime, _error: BaseException) -> None:
     await _owned().finish(runtime, "failed")
 
 
+class _CancelPoller:
+    """The cancel poll beside the body, stopped and joined before the terminal write.
+
+    A poll still reading the run while ``finish`` writes would use the connection
+    concurrently; on the shared unit-test SQLite connection its session close rolls
+    back ``finish``'s uncommitted terminal update.
+    """
+
+    def __init__(self) -> None:
+        self._scope = anyio.CancelScope()
+        self._done = anyio.Event()
+
+    async def run(self, runtime: OwnedRuntime, heartbeat: bool) -> None:
+        try:
+            with self._scope:
+                await poll_cancel(runtime, heartbeat)
+        finally:
+            self._done.set()
+
+    async def stop(self) -> None:
+        self._scope.cancel()
+        with anyio.CancelScope(shield=True):
+            await self._done.wait()
+
+
 @asynccontextmanager
 async def supervise_owned_run(
     runtime: OwnedRuntime,
@@ -89,20 +114,24 @@ async def supervise_owned_run(
         raise RuntimeOwnershipConflict(run_id, "locally_owned")
     registry.start_current(run_id)
     failure: BaseException | None = None
+    poller = _CancelPoller()
     try:
         async with anyio.create_task_group() as tasks:
-            tasks.start_soon(poll_cancel, runtime, heartbeat)
+            tasks.start_soon(poller.run, runtime, heartbeat)
             try:
                 yield
             except (GeneratorExit, anyio.get_cancelled_exc_class()) as error:
                 with anyio.CancelScope(shield=True):
+                    await poller.stop()
                     await owned.finish(runtime, "canceled")
                 failure = error
             except BaseException as error:  # noqa: BLE001
                 with anyio.CancelScope(shield=True):
+                    await poller.stop()
                     await on_failure(runtime, error)
                 failure = error
             else:
+                await poller.stop()
                 if not await owned.finish(runtime, "completed"):
                     failure = RuntimeOwnershipConflict(run_id, "owner_changed")
             finally:
