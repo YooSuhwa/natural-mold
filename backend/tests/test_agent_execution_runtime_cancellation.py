@@ -11,6 +11,7 @@ from anyio.lowlevel import checkpoint
 
 from app.models.conversation_run import ConversationRun
 from app.services import agent_execution_runtime, conversation_run_worker
+from app.services.agent_execution_lifecycle import OwnedRuntime, TerminalOutcome
 from app.services.agent_execution_owner import (
     CancelIntentRequest,
     notify_local_owner,
@@ -273,3 +274,58 @@ async def test_executor_base_exception_is_terminalized_before_propagation() -> N
         assert stored is not None and stored.status == "failed"
         assert stored.error_code == "runtime_error"
     assert get_run_task_registry().get(run.id) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["completed", "failed", "canceled"])
+async def test_cancel_poll_is_stopped_before_the_terminal_write(
+    monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    # A poll still reading during ``finish`` rolled back its uncommitted terminal
+    # update on the shared SQLite connection (PR #323 CI): ``canceling`` was left.
+    run, agent, conversation = await seed_runtime_run()
+    polling = False
+    polling_at_finish: list[bool] = []
+    started = anyio.Event()
+    original_finish = agent_execution_runtime.finish
+
+    async def poll(_runtime: object, _heartbeat: bool) -> None:
+        nonlocal polling
+        polling = True
+        try:
+            await anyio.sleep_forever()
+        finally:
+            polling = False
+
+    async def finish(runtime: OwnedRuntime, terminal: TerminalOutcome) -> bool:
+        polling_at_finish.append(polling)
+        return await original_finish(runtime, terminal)
+
+    monkeypatch.setattr("app.services.agent_execution_lifecycle.poll_cancel", poll)
+    monkeypatch.setattr(agent_execution_runtime, "finish", finish)
+
+    async def operation() -> str:
+        await checkpoint()
+        started.set()
+        if outcome == "failed":
+            raise RuntimeError("boom")
+        if outcome == "canceled":
+            await anyio.sleep_forever()
+        return "done"
+
+    async def owner() -> None:
+        try:
+            await run_owned_execution(runtime_request(run, agent, conversation), operation)
+        except (RuntimeError, anyio.get_cancelled_exc_class()):
+            pass
+
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(owner)
+        await started.wait()
+        if outcome == "canceled":
+            tasks.cancel_scope.cancel()
+
+    assert polling_at_finish == [False]
+    async with TestSession() as db:
+        stored = await db.get(ConversationRun, run.id)
+        assert stored is not None and stored.status == outcome
