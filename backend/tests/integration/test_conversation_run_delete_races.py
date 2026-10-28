@@ -437,20 +437,30 @@ async def test_run_creation_user_fence_allows_memory_settings_insert_before_comm
     ``KEY SHARE`` foreign-key lock on that user row. The create fence must be
     compatible with that insert while still blocking a delete.
     """
-    async with pg_factory() as create_db, pg_factory() as memory_db:
-        # Given: create_run has acquired its user/conversation fences but has
-        # not committed the new run yet.
-        await _create_run(create_db, graph)
+    # A blocked insert waits forever, so the memory session gets a lock_timeout
+    # instead of a wall-clock deadline: only a lock wait fails the test, not a slow runner.
+    bind = pg_factory.kw["bind"]
+    memory_engine = create_async_engine(
+        bind.url, connect_args={"server_settings": {"lock_timeout": "2s"}}
+    )
+    memory_factory = async_sessionmaker(memory_engine, expire_on_commit=False)
+    try:
+        async with pg_factory() as create_db, memory_factory() as memory_db:
+            # Given: create_run has acquired its user/conversation fences but has
+            # not committed the new run yet.
+            await _create_run(create_db, graph)
 
-        # When: the separately scoped runtime-memory session resolves its
-        # policy, lazily creating default user settings.
-        with anyio.fail_after(1):
-            policy = await memory_service.resolve_effective_policy(
-                memory_db,
-                context=unit_context(graph.user_id),
-                agent_id=graph.agent_id,
-            )
+            # When: the separately scoped runtime-memory session resolves its
+            # policy, lazily creating default user settings.
+            with anyio.fail_after(30):
+                policy = await memory_service.resolve_effective_policy(
+                    memory_db,
+                    context=unit_context(graph.user_id),
+                    agent_id=graph.agent_id,
+                )
 
-        # Then: the FK-backed insert completes before create_run commits.
-        assert policy.read_enabled is True
-        await create_db.rollback()
+            # Then: the FK-backed insert completes before create_run commits.
+            assert policy.read_enabled is True
+            await create_db.rollback()
+    finally:
+        await memory_engine.dispose()
