@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback } from 'react'
 import {
   useInfiniteQuery,
   useMutation,
@@ -234,6 +235,20 @@ export function useMessagesEnvelope(conversationId: string, enabled = true) {
     enabled: enabled && !!conversationId,
     refetchOnWindowFocus: false,
   })
+}
+
+/** Fetch the messages envelope now, bypassing staleness, and keep the query cache in sync. */
+export function useFetchMessagesEnvelope() {
+  const qc = useQueryClient()
+  return useCallback(
+    (conversationId: string) =>
+      qc.fetchQuery({
+        queryKey: conversationKeys.messages(conversationId),
+        queryFn: () => conversationsApi.messagesEnvelope(conversationId),
+        staleTime: 0,
+      }),
+    [qc],
+  )
 }
 
 export function useConversationDebugTraces(conversationId: string, enabled = true) {
