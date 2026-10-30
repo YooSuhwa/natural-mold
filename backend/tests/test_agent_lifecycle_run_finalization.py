@@ -9,6 +9,9 @@ from app.models.audit_event import AuditEvent
 from app.models.conversation_run_metrics import ConversationRunMetrics
 from app.models.message_event import MessageEvent, MessageEventChunk
 from app.services import conversation_run_service
+from app.services.conversation_run_cancellation_recovery import (
+    finalize_workerless_cancel_before_start,
+)
 from app.services.conversation_run_worker import RunTaskRegistry
 from tests.authz.run_fixture_config import run_fixture_config
 from tests.authz.unit_scope_fixture import unit_context
@@ -113,3 +116,37 @@ async def test_workerless_terminal_finalization_writes_one_event_audit_and_metri
             )
             == 1
         )
+
+
+@pytest.mark.asyncio
+async def test_workerless_recovery_finalizer_writes_the_same_empty_metrics(
+    db: AsyncSession,
+) -> None:
+    root, _child, conversation = await _seed_execution_tree(db)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=root.id,
+        context=unit_context(root.user_id),
+        source="chat",
+        input_preview="recovered-before-start",
+    )
+    await conversation_run_service.request_cancel_run(db, run)
+    await db.commit()
+    run_id = run.id
+
+    finalized = await finalize_workerless_cancel_before_start(
+        session_factory=TestSession, protected_run_ids=()
+    )
+
+    assert finalized == [conversation.id]
+    async with TestSession() as verify_db:
+        metrics = await verify_db.get(ConversationRunMetrics, run_id)
+        assert metrics is not None
+        assert metrics.terminal_state == "canceled"
+        assert (
+            metrics.root_tool_calls,
+            metrics.descendant_tool_calls,
+            metrics.root_subagent_calls,
+            metrics.descendant_subagent_calls,
+        ) == (0, 0, 0, 0)

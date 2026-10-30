@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only, noload
 
+from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.authz.conversation_maintenance import (
     ConversationMaintenanceTarget,
     lock_maintenance_conversation,
@@ -16,6 +17,7 @@ from app.models.conversation_run import ConversationRun, run_attribution_attrs
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_service
 from app.services.conversation_audit_service import record_conversation_run_audit
+from app.services.conversation_run_metrics_service import persist_run_metrics
 
 
 async def finalize_workerless_cancel_before_start(
@@ -122,6 +124,13 @@ async def finalize_workerless_cancel_before_start(
                 run,
                 "canceled",
                 append_terminal_event=True,
+            )
+            # The owning worker's cancel-before-start path stores an empty snapshot;
+            # store the same one so a run reads alike whichever path finished it.
+            await persist_run_metrics(
+                db,
+                run_id=run.id,
+                snapshot=RunMetricsAccumulator(started_at=None).finalize("canceled"),
             )
             await record_conversation_run_audit(
                 db,
