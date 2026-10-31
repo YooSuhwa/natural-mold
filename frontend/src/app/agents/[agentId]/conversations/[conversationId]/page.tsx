@@ -8,6 +8,7 @@ import type { Conversation, Message } from '@/lib/types'
 import { useAgent } from '@/lib/hooks/use-agents'
 import { useSession } from '@/lib/auth/session'
 import {
+  useFetchMessagesEnvelope,
   useMessagesEnvelope,
   useMarkConversationRead,
   conversationDetailQueryOptions,
@@ -24,7 +25,11 @@ import {
   conversationRuntimeStatusAtom,
   type ConversationRuntimeStatus,
 } from '@/lib/stores/chat-navigator-store'
-import { resolveFeedbackMessageId, useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
+import {
+  publicMessageIdMap,
+  resolveFeedbackMessageId,
+  useChatFeedbackAdapter,
+} from '@/lib/chat/feedback-adapter'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
 import { getChatRuntimeMode } from '@/lib/chat/runtime-mode'
 import {
@@ -316,23 +321,29 @@ export default function ChatPage({
   }, [messages])
   const getActiveRating = useCallback((mid: string) => ratingByMessage.get(mid), [ratingByMessage])
 
-  const publicMessageIds = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const message of messages) {
-      map.set(message.id, message.id)
-      if (message.runtime_message_id) map.set(message.runtime_message_id, message.id)
-    }
-    return map
-  }, [messages])
+  const fetchMessagesEnvelope = useFetchMessagesEnvelope()
+  const publicMessageIds = useMemo(() => publicMessageIdMap(messages), [messages])
   const getFeedbackMessageId = useCallback(
     (id: string) => resolveFeedbackMessageId(publicMessageIds, id),
     [publicMessageIds],
+  )
+  const refreshFeedbackMessageId = useCallback(
+    async (id: string) => {
+      if (!resolvedSideEffectConversationId) return undefined
+      const envelope = await fetchMessagesEnvelope(resolvedSideEffectConversationId)
+      const publicId = resolveFeedbackMessageId(publicMessageIdMap(envelope.messages), id)
+      if (!publicId) return undefined
+      const rating = envelope.messages.find((message) => message.id === publicId)?.feedback?.rating
+      return { id: publicId, rating }
+    },
+    [fetchMessagesEnvelope, resolvedSideEffectConversationId],
   )
   const feedbackAdapter = useChatFeedbackAdapter(
     resolvedSideEffectConversationId,
     getActiveRating,
     {
       resolveMessageId: getFeedbackMessageId,
+      refreshMessageId: refreshFeedbackMessageId,
       onMutate: () => {
         queryClient.invalidateQueries({
           queryKey: conversationKeys.messages(resolvedSideEffectConversationId),

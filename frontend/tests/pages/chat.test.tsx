@@ -77,6 +77,7 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
     mutateAsync: async () => ({ suggestion: null }),
   }),
   useMessages: (...args: unknown[]) => mockUseMessages(...args),
+  useFetchMessagesEnvelope: () => vi.fn().mockResolvedValue({ messages: [] }),
   useMessagesEnvelope: (...args: unknown[]) => {
     const result = mockUseMessages(...args)
     if (args[1] === false) {

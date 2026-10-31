@@ -65,11 +65,60 @@ describe('feedback identity', () => {
     },
   )
 
-  it('skips persisting while the public id is unresolved', () => {
+  it('skips persisting while the public id is unresolved and nothing can refresh it', () => {
     const { result } = renderHook(() =>
       useChatFeedbackAdapter('conversation', vi.fn(), { resolveMessageId: () => undefined }),
     )
     act(() => result.current?.submit({ message: assistantMessage(), type: 'positive' }))
+    expect(feedbackApi.set).not.toHaveBeenCalled()
+    expect(feedbackApi.clear).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [undefined, 'set'],
+    ['up', 'clear'],
+  ] as const)(
+    'refreshes an unresolved id once and persists against it (refreshed prior %s)',
+    async (rating, call) => {
+      const onMutate = vi.fn()
+      const getActiveRating = vi.fn(() => undefined)
+      const refreshMessageId = vi.fn(async () => ({ id: 'public-answer', rating }))
+      const { result } = renderHook(() =>
+        useChatFeedbackAdapter('conversation', getActiveRating, {
+          resolveMessageId: () => undefined,
+          refreshMessageId,
+          onMutate,
+        }),
+      )
+      act(() => result.current?.submit({ message: assistantMessage(), type: 'positive' }))
+      await waitFor(() => expect(onMutate).toHaveBeenCalledOnce())
+      expect(refreshMessageId).toHaveBeenCalledExactlyOnceWith('runtime-answer')
+      expect(getActiveRating).not.toHaveBeenCalled()
+      if (call === 'set') {
+        expect(feedbackApi.set).toHaveBeenCalledExactlyOnceWith(
+          'public-answer',
+          'up',
+          'conversation',
+        )
+        expect(feedbackApi.clear).not.toHaveBeenCalled()
+      } else {
+        expect(feedbackApi.clear).toHaveBeenCalledExactlyOnceWith('public-answer')
+        expect(feedbackApi.set).not.toHaveBeenCalled()
+      }
+    },
+  )
+
+  it('skips persisting when the refreshed messages still lack the id', async () => {
+    const refreshMessageId = vi.fn(async () => undefined)
+    const { result } = renderHook(() =>
+      useChatFeedbackAdapter('conversation', vi.fn(), {
+        resolveMessageId: () => undefined,
+        refreshMessageId,
+      }),
+    )
+    act(() => result.current?.submit({ message: assistantMessage(), type: 'positive' }))
+    await waitFor(() => expect(refreshMessageId).toHaveBeenCalledOnce())
+    await Promise.resolve()
     expect(feedbackApi.set).not.toHaveBeenCalled()
     expect(feedbackApi.clear).not.toHaveBeenCalled()
   })
