@@ -261,17 +261,23 @@ important settings:
 | `ALLOW_FIRST_USER_AS_ADMIN` | `true` | First registered user becomes `super_user`. |
 | `REGISTRATION_POLICY` | `default_org` | `default_org`, `personal_tenant` (`multi_tenant` only), `invite_only` or `closed`. |
 | `DEPLOYMENT_MODE` | `single_tenant` | `multi_tenant` enables platform company management. |
+| `ORG_MULTI_ENABLED` | `true` | `false` limits each company to one organization and hides organization creation. |
 | `AUTHZ_MODE` | `legacy` | `legacy`, `shadow` or `enforce`. |
 | `AUTHZ_ENFORCE_TYPES` | empty | Types enforced in `enforce` mode. Empty means all types. |
 | `OPENFGA_API_URL`, `OPENFGA_API_TOKEN`, `OPENFGA_STORE_ID`, `OPENFGA_MODEL_ID` | `http://openfga:8080`, empty | Needed from `shadow` on. Store and model IDs come from `python -m app.authz.cli bootstrap`. |
 | `DB_RLS_ENABLED` | `false` | Company-scoped row-level security; turn on only after the database role split in the operator guide. |
+| `TENANT_DATA_KEYS_ENABLED` | `false` | Per-company data keys (ciphertext v2) for credentials and SSO secrets. |
+| `RETENTION_SWEEP_ENABLED` | `false` | Daily job that deletes data past each company's and organization's retention policy. Nothing is deleted while it is off. |
+| `TENANT_PURGE_ENABLED` | `false` | Daily job that permanently deletes companies whose deletion grace period has ended. Scheduling and cancelling a deletion work either way. |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,...` | Must include every frontend origin. |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8001` | Frontend; inlined into the bundle at build time. |
 
 LLM keys are best added in the UI. In development, `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY` and similar variables are copied into system credentials at
 startup; production skips this. Tool keys (Tavily, Naver, Google) are described
-in [docs/tool-setup-guide.md](docs/tool-setup-guide.md).
+in [docs/tool-setup-guide.md](docs/tool-setup-guide.md). Company, permission and
+retention settings are listed in full in
+[docs/org-authz-operations.md](docs/org-authz-operations.md) section 3.
 
 ## Architecture
 
