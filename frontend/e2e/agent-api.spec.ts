@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Agent API deployment (/settings/agent-api), real backend, no LLM needed:
 // deploy a fixed-identity agent, issue a server API key through the create
@@ -43,7 +44,7 @@ test.describe('Agent API deployment & keys', () => {
       id: string
       provider: string
     }[]
-    const scripted = models.find((m) => m.provider === 'e2e_scripted')
+    const scripted = models.find(isSeededScriptedModel)
     if (!scripted) throw new Error('e2e_scripted model should be seeded')
     // API deployment requires a fixed-identity agent; the deploy flow itself
     // never runs the model, so the keyless scripted model is fine.

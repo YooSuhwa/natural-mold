@@ -6,6 +6,7 @@ import {
   setupLangGraphV3Agent,
 } from '../langgraph-v3-helpers'
 import { capture, captureLocator, DESKTOP_VIEWPORT, settle, warmUpChatRoute } from './_capture-helpers'
+import { isSeededScriptedModel } from '../helpers/scripted-model'
 
 /**
  * Wave 1 시나리오 캡처 — "에이전트 팀의 하루" 스토리로 Wave 1 기능을 순서대로 시연:
@@ -38,7 +39,7 @@ async function findOpenWikiTemplateId(request: APIRequestContext): Promise<strin
 async function findScriptedModelId(request: APIRequestContext): Promise<string> {
   const models = await apiGetJson(request, `${API_BASE}/api/models`)
   if (!Array.isArray(models)) throw new Error('models list failed')
-  const model = models.find((item) => isRecord(item) && item.provider === 'e2e_scripted')
+  const model = models.find(isSeededScriptedModel)
   if (!isRecord(model) || typeof model.id !== 'string') throw new Error('scripted model missing')
   return model.id
 }

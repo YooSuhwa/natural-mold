@@ -13,6 +13,7 @@ import {
 } from './fixtures'
 import { startMcpAppsFixture } from './helpers/mcp-apps-fixture'
 import { captureResourcePage } from './helpers/capture-resource-page'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 const idSchema = z.object({ id: z.string() })
 const agentSchema = z.object({ mcp_tools: z.array(idSchema) })
@@ -43,7 +44,7 @@ test('discovered MCP tool attaches, survives reload and detaches from agent sett
     const models = z
       .array(idSchema.extend({ provider: z.string() }))
       .parse(await apiGetJson(request, `${API_BASE}/api/models`))
-    const model = models.find((candidate) => candidate.provider === 'e2e_scripted')
+    const model = models.find(isSeededScriptedModel)
     if (!model) throw new Error('Scripted model is not seeded')
     agentId = idSchema.parse(
       await apiPostJson(request, `${API_BASE}/api/agents`, csrf, {

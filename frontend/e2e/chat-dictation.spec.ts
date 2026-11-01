@@ -11,6 +11,7 @@ import {
   loginApi,
   test,
 } from './fixtures'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 const CAPTURE_DIR = path.resolve(
   process.cwd(),
@@ -37,9 +38,7 @@ async function createDictationFixture(request: APIRequestContext): Promise<Dicta
   const csrfHeaders = await loginApi(request)
   const models = await apiGetJson(request, `${API_BASE}/api/models`)
   if (!Array.isArray(models)) throw new Error('Models response was not an array')
-  const scripted = models.find(
-    (model) => isRecord(model) && model.provider === 'e2e_scripted' && typeof model.id === 'string',
-  )
+  const scripted = models.find(isSeededScriptedModel)
   if (!scripted) throw new Error('The isolated scripted model was not seeded')
 
   const agent = await apiPostJson(request, `${API_BASE}/api/agents`, csrfHeaders, {

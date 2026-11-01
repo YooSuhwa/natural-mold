@@ -1,5 +1,7 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext, Locator, Page, TestInfo } from '@playwright/test'
+import { purgeAgent } from './helpers/agent-purge'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Real agent-settings journeys against the live backend (no LLM needed):
 // edit the system prompt and attach a sub-agent, then verify each persisted
@@ -71,7 +73,7 @@ test.describe('Agent settings — edit & attach', () => {
       id: string
       provider: string
     }[]
-    const scripted = models.find((m) => m.provider === 'e2e_scripted')
+    const scripted = models.find(isSeededScriptedModel)
     if (!scripted) throw new Error('e2e_scripted model should be seeded')
     const unique = Date.now()
     const contextModelResponse = await request.post(`${API}/api/models`, {
@@ -155,11 +157,19 @@ test.describe('Agent settings — edit & attach', () => {
   })
 
   test.afterAll(async ({ request }) => {
+    // DELETE only archives an agent, which keeps holding its model; purge so the
+    // fixture models (4096 / no context window) can be deleted for later specs.
     for (const id of [agentId, childId]) {
-      if (id) await request.delete(`${API}/api/agents/${id}`, { headers: csrf })
+      if (id) await purgeAgent(request, csrf, id)
     }
     for (const id of [contextModelId, noContextModelId]) {
-      if (id) await request.delete(`${API}/api/models/${id}`, { headers: csrf })
+      if (!id) continue
+      await expect
+        .poll(
+          async () => (await request.delete(`${API}/api/models/${id}`, { headers: csrf })).status(),
+          { timeout: 30_000, intervals: [500, 1000, 2000] },
+        )
+        .toBe(204)
     }
     if (skillId) await request.delete(`${API}/api/skills/${skillId}`, { headers: csrf })
     if (toolId) await request.delete(`${API}/api/tools/${toolId}`, { headers: csrf })

@@ -23,18 +23,21 @@ import {
 // token count crosses 85% of ``model.profile["max_input_tokens"]`` — which Moldy
 // sources from ``models.context_window`` (Phase 0). To make compaction fire
 // deterministically in CI we register a *dedicated* keyless scripted model with a
-// tiny context window (50 tokens → ~42 token threshold) and bind a throwaway
-// agent to it. A couple of long warm-up turns push the history past the threshold,
-// so the next turn compacts. The model is unique per run (no mutation of the
+// small context window and bind a throwaway agent to it. Deep Agents 0.7.30+ counts
+// the system prompt and tool schemas against the input budget and fails a request
+// that still does not fit after compaction, so the window must hold that overhead:
+// each padded turn is about 45% of the window (approximate count, 4 chars per
+// token), so the second warm-up crosses the 85% trigger and every later turn
+// compacts again while the compacted request still fits. The model is unique per run (no mutation of the
 // shared seeded scripted model), so this stays isolated even under parallel
 // workers.
 const SCRIPTED_PROVIDER = 'e2e_scripted'
-const COMPACTION_CONTEXT_WINDOW = 50
+const COMPACTION_CONTEXT_WINDOW = 24_000
 // ``E2E_SLOW_STREAM`` makes the scripted model stream its answer in ~0.75s chunks
 // (≈4.5s total), keeping the run activity strip mounted long enough to observe the
 // transient compaction pill before the run finishes.
 const SLOW_STREAM_MARKER = 'E2E_SLOW_STREAM'
-const CONTEXT_PADDING = '이것은 컨텍스트를 채우기 위한 아주 긴 질문입니다 '.repeat(30)
+const CONTEXT_PADDING = '이것은 컨텍스트를 채우기 위한 아주 긴 질문입니다 '.repeat(1_600)
 // Same i18n strings the components render (frontend/messages/ko.json):
 //  - chat.activity.compaction  → run activity strip pill (running + complete)
 //  - chat.compaction.summary   → permanent marker on the compacted turn
@@ -200,7 +203,7 @@ test.describe('Auto-compaction marker', () => {
     try {
       await page.goto(`/agents/${setup.agentId}/conversations/${setup.conversationId}`)
 
-      // Warm up the thread so the history exceeds the tiny 50-token window.
+      // Warm up the thread so the history crosses the compaction trigger.
       await sendAndAwaitReply(page, `${CONTEXT_PADDING} [warmup 1]`, 1)
       await sendAndAwaitReply(page, `${CONTEXT_PADDING} [warmup 2]`, 2)
 

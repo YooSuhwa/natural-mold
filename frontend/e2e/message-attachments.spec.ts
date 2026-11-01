@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Message attachments (P1-7): attach a file in the chat composer, send a turn
 // against the keyless scripted model, and verify the file is uploaded and
@@ -36,7 +37,7 @@ test.describe('Message attachments', () => {
       id: string
       provider: string
     }[]
-    const scripted = models.find((m) => m.provider === 'e2e_scripted')
+    const scripted = models.find(isSeededScriptedModel)
     if (!scripted) throw new Error('e2e_scripted model should be seeded')
     const agent = (await (
       await request.post(`${API}/api/agents`, {

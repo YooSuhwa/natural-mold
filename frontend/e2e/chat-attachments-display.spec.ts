@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext, Browser } from '@playwright/test'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Chat attachments DISPLAY (Phase 0 + P1). Proves the end-to-end flow a unit
 // test can't: a real run backfills message_attachments.message_id, the read
@@ -26,7 +27,9 @@ const PNG = Buffer.from(
 )
 
 async function login(request: APIRequestContext): Promise<Record<string, string>> {
-  const res = await request.post(`${API}/api/auth/login`, { data: { email: EMAIL, password: PASSWORD } })
+  const res = await request.post(`${API}/api/auth/login`, {
+    data: { email: EMAIL, password: PASSWORD },
+  })
   expect(res.ok()).toBeTruthy()
   return { 'X-CSRF-Token': (await res.json()).csrf_token as string }
 }
@@ -69,13 +72,17 @@ test.describe('Chat attachments display', () => {
       id: string
       provider: string
     }[]
-    const scripted = models.find((m) => m.provider === 'e2e_scripted')
+    const scripted = models.find(isSeededScriptedModel)
     if (!scripted) throw new Error('e2e_scripted model should be seeded')
     agentId = (
       (await (
         await request.post(`${API}/api/agents`, {
           headers: csrf,
-          data: { name: `E2E Attach Display ${Date.now()}`, system_prompt: 'x', model_id: scripted.id },
+          data: {
+            name: `E2E Attach Display ${Date.now()}`,
+            system_prompt: 'x',
+            model_id: scripted.id,
+          },
         })
       ).json()) as { id: string }
     ).id
@@ -208,9 +215,7 @@ test.describe('Chat attachments display', () => {
       }
 
       // The unified files endpoint is auth-gated (no public/anon access).
-      const anonFiles = await anon.request.get(
-        `${API}/api/conversations/${conversationId}/files`,
-      )
+      const anonFiles = await anon.request.get(`${API}/api/conversations/${conversationId}/files`)
       expect(anonFiles.status(), 'files endpoint must reject anon').toBeGreaterThanOrEqual(401)
       expect(anonFiles.ok()).toBeFalsy()
 

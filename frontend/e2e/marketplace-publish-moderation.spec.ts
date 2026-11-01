@@ -16,6 +16,7 @@ import { registerMember } from './helpers/member-session'
 import { startMcpAppsFixture } from './helpers/mcp-apps-fixture'
 import { captureResourcePage } from './helpers/capture-resource-page'
 import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '../src/lib/auth/session-flags'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 const itemSchema = z.object({
   id: z.string(),
@@ -63,7 +64,7 @@ test('agent UI publication waits for operator approval and becomes listed', asyn
   const models = z
     .array(idSchema.extend({ provider: z.string() }))
     .parse(await apiGetJson(request, `${API_BASE}/api/models`))
-  const model = models.find((candidate) => candidate.provider === 'e2e_scripted')
+  const model = models.find(isSeededScriptedModel)
   if (!model) throw new Error('Scripted model is not seeded')
   const agent = idSchema.parse(
     await apiPostJson(request, `${API_BASE}/api/agents`, csrf, {

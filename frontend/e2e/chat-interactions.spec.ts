@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext, Page } from '@playwright/test'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Detailed coverage of the core chat interactions against the live backend +
 // the keyless scripted model: branching by regenerate, branching by editing a
@@ -56,7 +57,7 @@ test.describe('Chat interactions', () => {
       id: string
       provider: string
     }[]
-    const scripted = models.find((m) => m.provider === 'e2e_scripted')
+    const scripted = models.find(isSeededScriptedModel)
     if (!scripted) throw new Error('e2e_scripted model should be seeded')
     const agent = (await (
       await request.post(`${API}/api/agents`, {

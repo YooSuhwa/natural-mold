@@ -964,6 +964,46 @@ async def test_scoped_offload_adapter_denies_sibling_identity_roots(tmp_path: Pa
 
 
 @pytest.mark.asyncio
+async def test_compiled_agent_keeps_the_moldy_filesystem_guard(tmp_path: Path) -> None:
+    """Deep Agents 0.7.30+ rebuilds the filesystem tools with the agent's rules.
+
+    The rebuilt tools must still carry Moldy's guard, so a denial in a real compiled
+    graph is the uniform safe message and not the upstream error text.
+    """
+    import itertools
+
+    from langchain_core.messages import AIMessage
+
+    from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
+    from app.agent_runtime.offload_storage_backends import HiddenFilesystemBackend
+    from app.agent_runtime.runtime_agent_builder import build_agent
+    from tests.agent_runtime.test_langgraph_streaming_compaction import _FakeModel
+
+    (tmp_path / "conversations" / "thread-a").mkdir(parents=True)
+    graph = build_agent(
+        _FakeModel(messages=itertools.cycle([AIMessage(content="ok")])),
+        [],
+        "sys",
+        backend=HiddenFilesystemBackend(root_dir=tmp_path, virtual_mode=True),
+        permissions=build_filesystem_permissions(
+            thread_id="thread-a",
+            agent_id="agent-a",
+            user_id="owner-a",
+            selected_skill_slugs=[],
+        ),
+    )
+    read_file = graph.nodes["tools"].bound.tools_by_name["read_file"]
+
+    result = await tool_coroutine(read_file)(
+        file_path="/conversations/thread-a/../thread-b/secret.txt",
+        runtime=SimpleNamespace(tool_call_id="call-compiled"),
+    )
+
+    assert result.status == "error"
+    assert result.content == "Error: filesystem permission denied"
+
+
+@pytest.mark.asyncio
 async def test_symlink_swap_after_permission_calculation_is_denied(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
