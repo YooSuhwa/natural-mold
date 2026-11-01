@@ -11,7 +11,10 @@ from ``dev-plan-context-compaction-marker.md``:
 * ★ the real answer content survives intact (suppress must be exact-match only),
 * with the flag off the legacy behavior holds (no markers, tokens flow through).
 
-The window stays tiny (``max_input_tokens=50``) per §7 — no need to fill 85%.
+Deep Agents 0.7.30+ counts the system prompt and tool schemas (about 3,600 tokens
+here) against the input budget and refuses a request that still does not fit after
+compaction, so the window must hold that overhead. ``_WINDOW`` and ``_REPEAT`` keep
+the original shape: no compaction on the first run, one on each later run.
 """
 
 from __future__ import annotations
@@ -77,10 +80,14 @@ class _FallbackAfterCompactionModel(_FakeModel):
                 assert_never(unreachable)
 
 
+_WINDOW = 12_000
+_REPEAT = 4_400  # about 5,900 tokens per question
+
+
 def _build_agent(summarization: JsonObject | None = None) -> Any:
     fake = _FakeModel(messages=itertools.cycle([AIMessage(content=_ANSWER)]))
     # Tiny window → deepagents summarizes on the next turn.
-    fake.profile = {"max_input_tokens": 50}
+    fake.profile = {"max_input_tokens": _WINDOW}
     if summarization is not None:
         policy: JsonObject = {
             "version": 1,
@@ -310,12 +317,12 @@ async def test_stored_summarization_projects_two_runs_without_offload_path_leaks
 
     agent = _build_agent(summarization)
     thread_id = "thread-compact"
-    await _drive(agent, thread_id, "run-before-compaction", "첫 질문 " * 40)
+    await _drive(agent, thread_id, "run-before-compaction", "첫 질문 " * _REPEAT)
     first_events, first_persisted, first_trace, first_broker = await _drive(
-        agent, thread_id, "run-first-compaction", "둘째 질문 " * 40
+        agent, thread_id, "run-first-compaction", "둘째 질문 " * _REPEAT
     )
     second_events, second_persisted, second_trace, second_broker = await _drive(
-        agent, thread_id, "run-second-compaction", "셋째 질문 " * 40
+        agent, thread_id, "run-second-compaction", "셋째 질문 " * _REPEAT
     )
 
     first_payloads = _compaction_payloads(first_events)
@@ -373,7 +380,7 @@ async def test_stored_auto_compaction_keeps_normal_answer_fallback_functional() 
             ]
         )
     )
-    primary.profile = {"max_input_tokens": 50}
+    primary.profile = {"max_input_tokens": _WINDOW}
     fallback = _FakeModel(messages=itertools.repeat(AIMessage(content=_FALLBACK_ANSWER)))
     agent = build_agent(
         primary,
@@ -384,9 +391,9 @@ async def test_stored_auto_compaction_keeps_normal_answer_fallback_functional() 
         runtime_policy=_stored_auto_policy(),
     )
 
-    await _drive(agent, "thread-fallback", "run-before-compaction", "첫 질문 " * 40)
+    await _drive(agent, "thread-fallback", "run-before-compaction", "첫 질문 " * _REPEAT)
     events, persisted, trace, broker = await _drive(
-        agent, "thread-fallback", "run-after-compaction", "둘째 질문 " * 40
+        agent, "thread-fallback", "run-after-compaction", "둘째 질문 " * _REPEAT
     )
 
     payloads = _compaction_payloads(events)
@@ -403,8 +410,8 @@ async def test_compaction_disabled_flows_summary_tokens(
     monkeypatch.setattr(settings, "compaction_marker_enabled", False)
     agent = _build_agent()
     thread_id = "thread-off"
-    await _drive(agent, thread_id, "run-off-before", "첫 질문 " * 40)
-    events, _, _, _ = await _drive(agent, thread_id, "run-off", "둘째 질문 " * 40)
+    await _drive(agent, thread_id, "run-off-before", "첫 질문 " * _REPEAT)
+    events, _, _, _ = await _drive(agent, thread_id, "run-off", "둘째 질문 " * _REPEAT)
 
     # Flag off → no markers, and the legacy v3 path leaves summarization tokens
     # in the stream (no suppress).

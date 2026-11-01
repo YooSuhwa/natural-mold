@@ -210,6 +210,11 @@ def _serialize_value(value: Any) -> Any:
         return {str(key): _serialize_value(item) for key, item in value.items()}
     if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
         return [_serialize_value(item) for item in value]
+    # Before the dataclass branch: langgraph 1.2.19 added ``Interrupt.response_schema``
+    # (possibly a class), and the wire contract is ``{value, id}``.
+    interrupt = _serialize_interrupt_like(value)
+    if interrupt is not None:
+        return interrupt
     if is_dataclass(value) and not isinstance(value, type):
         return _serialize_value(asdict(value))
     message = _serialize_message_like(value)
@@ -221,10 +226,6 @@ def _serialize_value(value: Any) -> Any:
     dict_value = _method_result(value, "dict")
     if dict_value is not None:
         return _serialize_value(dict_value)
-
-    interrupt = _serialize_interrupt_like(value)
-    if interrupt is not None:
-        return interrupt
 
     return repr(value)
 
