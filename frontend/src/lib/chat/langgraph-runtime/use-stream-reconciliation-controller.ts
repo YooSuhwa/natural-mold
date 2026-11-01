@@ -6,6 +6,8 @@ import { useSetAtom } from 'jotai'
 import type { BaseMessage } from '@langchain/core/messages'
 import type { AppendMessage } from '@assistant-ui/react'
 import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
+import { conversationRunsApi } from '@/lib/api/conversation-runs'
+import type { ConversationRunStatus } from '@/lib/types'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
 import {
   EMPTY_SERVER_MESSAGE_METADATA,
@@ -51,6 +53,14 @@ interface UseStreamReconciliationControllerOptions {
   readonly onRunStartAccepted?: (runId?: string) => void
   readonly clearBranchPickerSuppression: () => void
 }
+
+const SETTLED_RUN_STATUSES: ReadonlySet<ConversationRunStatus> = new Set([
+  'interrupted',
+  'canceled',
+  'completed',
+  'failed',
+  'stale',
+])
 
 export function useStreamReconciliationController({
   agentId,
@@ -288,6 +298,10 @@ export function useStreamReconciliationController({
           })
         },
         abort.signal,
+        async () =>
+          SETTLED_RUN_STATUSES.has(
+            (await conversationRunsApi.get(conversationId, runId, abort.signal)).status,
+          ),
       )
         .then(async (outcome) => {
           if (outcome !== 'terminal') return

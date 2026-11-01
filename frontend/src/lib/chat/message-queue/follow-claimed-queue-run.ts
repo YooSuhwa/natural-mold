@@ -49,6 +49,7 @@ export async function followClaimedQueueRunValues(
   isCurrent: () => boolean,
   onInFlightChange?: (inFlight: boolean) => void,
   signal?: AbortSignal,
+  isRunSettled?: () => Promise<boolean>,
 ): Promise<ClaimedQueueFollowOutcome> {
   onInFlightChange?.(true)
   let unsubscribe: (() => Promise<void>) | undefined
@@ -63,6 +64,12 @@ export async function followClaimedQueueRunValues(
     unsubscribe = () => subscription.unsubscribe()
     signal?.addEventListener('abort', cancel, { once: true })
     if (signal?.aborted) return 'stale'
+    // The claim is often seen through queue polling after a fast run has already
+    // ended. The open thread stream does not replay that terminal event, so check
+    // once after subscribing; a later terminal still arrives on the subscription.
+    if (isRunSettled && (await isRunSettled().catch(() => false))) {
+      return signal?.aborted || !isCurrent() ? 'stale' : 'terminal'
+    }
     for await (const event of subscription) {
       if (signal?.aborted || !isCurrent()) return 'stale'
       if (isRecord(event) && event.method === 'values') onValues(eventData(event))
