@@ -11,6 +11,7 @@ import {
   test,
 } from './fixtures'
 import { sendMessageForRun, setupLangGraphV3Agent, waitForRunStatus } from './langgraph-v3-helpers'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 function runStartResourceContext(request: Request): readonly unknown[] | null {
   if (request.method() !== 'POST') return null
@@ -205,10 +206,7 @@ test.describe('Chat commands and authoritative resource context', () => {
       const foreignHeaders = { 'X-CSRF-Token': registration.csrf_token }
       const models = await apiJson(await foreign.get('/api/models'), 'foreign models')
       if (!Array.isArray(models)) throw new Error('Foreign models response was not an array')
-      const scriptedModel = models.find(
-        (model) =>
-          isRecord(model) && model.provider === 'e2e_scripted' && typeof model.id === 'string',
-      )
+      const scriptedModel = models.find(isSeededScriptedModel)
       if (!isRecord(scriptedModel) || typeof scriptedModel.id !== 'string') {
         throw new Error('Foreign user could not resolve the scripted model')
       }

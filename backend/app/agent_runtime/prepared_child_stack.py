@@ -117,7 +117,7 @@ def prepared_child_spec(
         FilesystemMiddleware(
             backend=child_backend,
             custom_tool_descriptions=profile.tool_description_overrides,
-            _permissions=permissions,
+            permissions=permissions,
         ),
         create_summarization_middleware(model, child_backend),
         PatchToolCallsMiddleware(),

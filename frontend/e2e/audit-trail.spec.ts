@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Audit trail (/settings/audit), real backend: an auditable action (creating an
 // agent emits `agent.create`) shows up in the personal audit log. The action
@@ -32,7 +33,7 @@ test.describe('Audit trail', () => {
       id: string
       provider: string
     }[]
-    const scripted = models.find((m) => m.provider === 'e2e_scripted')
+    const scripted = models.find(isSeededScriptedModel)
     if (!scripted) throw new Error('e2e_scripted model should be seeded')
     const agent = (await (
       await request.post(`${API}/api/agents`, {

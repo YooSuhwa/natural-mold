@@ -8,7 +8,7 @@ from typing import Any, Protocol, cast
 
 from deepagents.backends import BackendProtocol, StateBackend
 from deepagents.middleware.async_subagents import AsyncSubAgent
-from deepagents.middleware.filesystem import FilesystemPermission
+from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
 from deepagents.middleware.subagents import CompiledSubAgent, SubAgent
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.human_in_the_loop import InterruptOnConfig
@@ -146,6 +146,8 @@ def normalize_declarative_subagents_impl(
             backend=child_backend,
             permissions=child_permissions,
         )
+        if (enforced := _agent_permissions(child_middleware, child_permissions)) is not None:
+            child["permissions"] = enforced
         child["middleware"] = with_actor_summarization(
             child_middleware,
             model=child_model,
@@ -165,7 +167,7 @@ def normalize_declarative_subagents_impl(
             model=model,
             tools=list(tools),
             middleware=general_purpose_middleware,
-            permissions=permissions,
+            permissions=_agent_permissions(general_purpose_middleware, permissions),
             interrupt_on=interrupt_on,
         )
         general_purpose["middleware"] = with_actor_summarization(
@@ -178,6 +180,22 @@ def normalize_declarative_subagents_impl(
         normalized.insert(0, general_purpose)
 
     return normalized
+
+
+def _agent_permissions(
+    middleware: Sequence[Any], permissions: list[FilesystemPermission] | None
+) -> list[FilesystemPermission] | None:
+    """The rules Moldy's filesystem layer enforces, which Deep Agents requires at both levels.
+
+    The layer adds the scoped offload read rules, and Deep Agents 0.7.30+ refuses a
+    filesystem middleware whose rules differ from the agent's.
+    """
+    if permissions is None or not isinstance(middleware, (list, tuple)):
+        return permissions
+    for item in middleware:
+        if isinstance(item, FilesystemMiddleware) and item._permissions:  # noqa: SLF001
+            return list(item._permissions)  # noqa: SLF001
+    return permissions
 
 
 def build_agent_impl(
@@ -236,7 +254,7 @@ def build_agent_impl(
         backend=cast(BackendProtocol, resolved_backend),
         skills=skills,
         memory=memory,
-        permissions=permissions,
+        permissions=_agent_permissions(compatible_middleware, permissions),
         name=name,
         subagents=cast(Sequence[_DeepAgentSubagent], compatible_subagents),
     )

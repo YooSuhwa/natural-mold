@@ -3,6 +3,7 @@ import type { Request } from '@playwright/test'
 import { API_BASE, apiDeleteOk, apiGetJson, apiPostJson, expect, loginApi, test } from './fixtures'
 import { readinessServer } from './helpers/readiness-server'
 import { commandMethod } from './langgraph-v3-helpers'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Plan 16.5 E2E #5 (G-04 card side): "대화 중 토큰 만료 → 인증 카드 → 연결 → 이어서 실행".
 // The conversation is real; its thread state is answered with a pending `auth_required`
@@ -45,7 +46,7 @@ test.describe('Auth card → connect → continue (E2E #5)', () => {
   }) => {
     const csrf = await loginApi(request)
     const models = (await apiGetJson(request, `${API_BASE}/api/models`)) as IdRow[]
-    const model = models.find((candidate) => candidate.provider === 'e2e_scripted')
+    const model = models.find(isSeededScriptedModel)
     if (!model) throw new Error('Scripted model is not seeded')
     const agent = (await apiPostJson(request, `${API_BASE}/api/agents`, csrf, {
       name: `E2E 인증 카드 ${Date.now()}`,

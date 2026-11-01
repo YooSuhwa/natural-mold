@@ -196,15 +196,27 @@ class MoldyFilesystemMiddleware(FilesystemMiddleware):
         if permissions is not None:
             _require_safe_backend(backend)
         effective_permissions = None if permissions is None else list(permissions)
-        upstream_permissions = None if permissions is None else []
+        # Read by ``_create_tools`` during ``super().__init__``, so it is set first.
+        self._moldy_permissions = effective_permissions
         super().__init__(
             backend=backend,
             tools=tools,
-            _permissions=upstream_permissions,
+            permissions=None if permissions is None else [],
         )
         if effective_permissions is not None:
             self._permissions = effective_permissions
-            self.tools = [_guard_tool(tool, backend, effective_permissions) for tool in self.tools]
+
+    def _create_tools(self) -> list[BaseTool]:
+        """Guard every tool build, including Deep Agents' ``_with_permissions`` copy.
+
+        Deep Agents 0.7.30+ copies the filesystem middleware with the agent's rules
+        and rebuilds its tools; guarding only in ``__init__`` lost the guard there.
+        """
+        tools = super()._create_tools()
+        permissions = self._moldy_permissions
+        if permissions is None:
+            return tools
+        return [_guard_tool(tool, self.backend, permissions) for tool in tools]
 
 
 __all__ = ["MoldyFilesystemMiddleware"]

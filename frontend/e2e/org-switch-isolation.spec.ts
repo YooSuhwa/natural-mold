@@ -1,6 +1,7 @@
 import type { APIRequestContext } from '@playwright/test'
 
 import { API_BASE, apiGetJson, apiPostJson, isRecord, loginApi, test, expect } from './fixtures'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Org-authz B-07/B-09 on a real backend: a member of two organizations of one company
 // switches with the sidebar switcher and sees only the active organization's agents
@@ -26,9 +27,7 @@ function orgRows(value: unknown): OrgRow[] {
 
 async function scriptedModelId(request: APIRequestContext): Promise<string> {
   const models = await apiGetJson(request, `${API_BASE}/api/models`)
-  const model = Array.isArray(models)
-    ? models.find((row) => isRecord(row) && row.provider === 'e2e_scripted')
-    : undefined
+  const model = Array.isArray(models) ? models.find(isSeededScriptedModel) : undefined
   if (!isRecord(model) || typeof model.id !== 'string') throw new Error('no scripted model')
   return model.id
 }

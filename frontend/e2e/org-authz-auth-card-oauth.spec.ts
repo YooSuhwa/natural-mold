@@ -2,6 +2,7 @@ import type { Request } from '@playwright/test'
 
 import { API_BASE, apiDeleteOk, apiGetJson, apiPostJson, expect, loginApi, test } from './fixtures'
 import { commandMethod } from './langgraph-v3-helpers'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // G-05 (plan 13.6, 11.5): an `auth_required` card for one of my OAuth connections survives
 // a reload (thread state with the latest attempt), its 연결하기 opens the OAuth popup, and
@@ -45,7 +46,7 @@ test.describe('Auth card → OAuth popup → retry (G-05)', () => {
   }) => {
     const csrf = await loginApi(request)
     const models = (await apiGetJson(request, `${API_BASE}/api/models`)) as IdRow[]
-    const model = models.find((candidate) => candidate.provider === 'e2e_scripted')
+    const model = models.find(isSeededScriptedModel)
     if (!model) throw new Error('Scripted model is not seeded')
     const agent = (await apiPostJson(request, `${API_BASE}/api/agents`, csrf, {
       name: `E2E OAuth 카드 ${Date.now()}`,

@@ -5,6 +5,7 @@
       "HumanInTheLoopMiddleware.after_model",
       "PatchToolCallsMiddleware.before_agent",
       "TodoListMiddleware.after_model",
+      "_ParentNotifierMiddleware.after_agent",
       "__start__",
       "model",
       "tools"
@@ -31,6 +32,7 @@
         "HumanInTheLoopMiddleware.after_model",
         "PatchToolCallsMiddleware.before_agent",
         "TodoListMiddleware.after_model",
+        "_ParentNotifierMiddleware.after_agent",
         "__start__",
         "model",
         "tools"
@@ -68,6 +70,7 @@
       "HumanInTheLoopMiddleware.after_model",
       "PatchToolCallsMiddleware.before_agent",
       "TodoListMiddleware.after_model",
+      "_ParentNotifierMiddleware.after_agent",
       "__start__",
       "model",
       "tools"
@@ -92,6 +95,7 @@
       "MemoryMiddleware.before_agent",
       "PatchToolCallsMiddleware.before_agent",
       "TodoListMiddleware.after_model",
+      "_ParentNotifierMiddleware.after_agent",
       "__start__",
       "model",
       "tools"
@@ -109,6 +113,7 @@
       "MemoryMiddleware.before_agent",
       "PatchToolCallsMiddleware.before_agent",
       "TodoListMiddleware.after_model",
+      "_ParentNotifierMiddleware.after_agent",
       "__start__",
       "model",
       "tools"

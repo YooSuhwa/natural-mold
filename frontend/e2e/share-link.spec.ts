@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Public share links: send a message, publish the conversation, then open the
 // read-only /shared/{token} page in a fresh logged-OUT context (the headline
@@ -33,7 +34,7 @@ test.describe('Public share link', () => {
       id: string
       provider: string
     }[]
-    const scripted = models.find((m) => m.provider === 'e2e_scripted')
+    const scripted = models.find(isSeededScriptedModel)
     if (!scripted) throw new Error('e2e_scripted model should be seeded')
     const agent = (await (
       await request.post(`${API}/api/agents`, {

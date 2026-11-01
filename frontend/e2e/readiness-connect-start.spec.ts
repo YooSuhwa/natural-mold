@@ -3,6 +3,7 @@ import type { Request } from '@playwright/test'
 import { API_BASE, apiDeleteOk, apiGetJson, apiPostJson, expect, loginApi, test } from './fixtures'
 import { readinessServer } from './helpers/readiness-server'
 import { commandMethod, sendMessage } from './langgraph-v3-helpers'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Plan 16.5 E2E #4 (G-04): "per_user MCP가 붙은 에이전트: 점검 패널에서 연결하기 → 시작".
 // The agent and the chat run are real (scripted model); the readiness, credential and
@@ -17,7 +18,7 @@ interface IdRow {
 async function scriptedAgent(request: Parameters<typeof loginApi>[0]) {
   const csrf = await loginApi(request)
   const models = (await apiGetJson(request, `${API_BASE}/api/models`)) as IdRow[]
-  const model = models.find((candidate) => candidate.provider === 'e2e_scripted')
+  const model = models.find(isSeededScriptedModel)
   if (!model) throw new Error('Scripted model is not seeded')
   const agent = (await apiPostJson(request, `${API_BASE}/api/agents`, csrf, {
     name: `E2E 인사 도우미 ${Date.now()}`,
