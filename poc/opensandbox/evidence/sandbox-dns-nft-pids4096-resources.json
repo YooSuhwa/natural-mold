@@ -1,0 +1,33 @@
+{
+ "label": "dns+nft, pids_limit=4096 (server default)",
+ "resources": {
+  "cgroup_limits": "2684354564096100000 100000",
+  "non_root": {
+   "exit_code": 0,
+   "seconds": 1.01,
+   "stdout": "uid=1000 gid=1000 groups=1000touch: cannot touch '/etc/x': Permission denied",
+   "stderr": "",
+   "error": null
+  },
+  "alloc_1gb": {
+   "run": {
+    "exit_code": 0,
+    "seconds": 1.21,
+    "stdout": "exit=137",
+    "stderr": "bash: line 1:    33 Killed                  python3 -c \"b = bytearray(1024 * 1024 * 1024); print('allocated')\"",
+    "error": null
+   },
+   "execd_alive_after": "alive",
+   "oom_killed_processes": "true"
+  },
+  "fork_bomb": {
+   "run": {
+    "exception": "SandboxConnectionException: Network connectivity error: peer closed connection without sending complete message body (incomplete chunked read) | [CONNECTION] Network connectivity error: peer closed connection without sending complete message body (incomplete chunked read)"
+   },
+   "execd_alive_after": {
+    "exception": "SandboxConnectionException: Network connectivity error: Server disconnected without sending a response. | [CONNECTION] Network connectivity error: Server disconnected without sending a response."
+   },
+   "oom_killed_processes": "true"
+  }
+ }
+}

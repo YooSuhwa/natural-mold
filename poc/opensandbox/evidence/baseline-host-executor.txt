@@ -1,0 +1,30 @@
+allowlist verdict for 'python scripts/probe.py --other-tenant-file /app/data/tenants/tenant-b/conversations/c1/secret.txt': ALLOWED
+{
+ "uid": 0,
+ "cap_eff": "00000000a80425fb",
+ "own_env_secret_hits": [],
+ "other_process_env_secret_hits": {
+  "pid 1 (/app/.venv/bin/python /poc/baseline_host.py)": [
+   "ENCRYPTION_KEYS(len=64)",
+   "JWT_SECRET(len=25)",
+   "DATABASE_URL(len=41)",
+   "POC_FAKE_SECRET(len=10)"
+  ]
+ },
+ "other_tenant_file_read": "READ: tenant-b private conversation file",
+ "other_tenant_file_write": "WROTE",
+ "app_data_listing": [
+  "tenants"
+ ],
+ "docker_socket": false,
+ "dns_example_com": "resolved: 172.66.147.243",
+ "tcp_example_com_443": "connected",
+ "tcp_pypi_org_443": "connected",
+ "tcp_direct_ip_1_1_1_1_443": "connected",
+ "tcp_metadata_169_254_169_254_80": "blocked: TimeoutError: timed out",
+ "tcp_host_docker_internal_18080": "connected",
+ "peers": {},
+ "http_posts": {},
+ "after_tcp": {}
+}
+
