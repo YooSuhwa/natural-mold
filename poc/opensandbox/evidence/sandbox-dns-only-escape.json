@@ -1,0 +1,50 @@
+{
+ "label": "dns",
+ "escape_probe": {
+  "victim_internal_ip": "172.17.0.2",
+  "victim_host_execd": "127.0.0.1:57298/proxy/44772",
+  "probe": {
+   "uid": 0,
+   "cap_eff": "00000000800405fb",
+   "own_env_secret_hits": [
+    "POC_FAKE_SECRET"
+   ],
+   "other_process_env_secret_hits": {
+    "pid 1 (/bin/sh /opt/opensandbox/bootstrap.sh tail -f /dev/null)": [
+     "POC_FAKE_SECRET(len=23)"
+    ],
+    "pid 20 (/opt/opensandbox/execd)": [
+     "POC_FAKE_SECRET(len=23)"
+    ],
+    "pid 21 (tail -f /dev/null)": [
+     "POC_FAKE_SECRET(len=23)"
+    ]
+   },
+   "other_tenant_file_read": "denied: FileNotFoundError",
+   "other_tenant_file_write": "WROTE",
+   "app_data_listing": [
+    "tenants"
+   ],
+   "docker_socket": false,
+   "dns_example_com": "blocked: gaierror",
+   "tcp_example_com_443": "blocked: gaierror: [Errno -2] Name or service not known",
+   "tcp_pypi_org_443": "connected",
+   "tcp_direct_ip_1_1_1_1_443": "connected",
+   "tcp_metadata_169_254_169_254_80": "blocked: ConnectionRefusedError: [Errno 111] Connection refused",
+   "tcp_host_docker_internal_18080": "blocked: gaierror: [Errno -2] Name or service not known",
+   "peers": {
+    "172.17.0.2:44772": "connected",
+    "host.docker.internal:57298": "blocked: gaierror: [Errno -2] Name or service not known"
+   },
+   "http_posts": {
+    "http://172.17.0.2:44772/command": "HTTP 200: {\"type\":\"init\",\"text\":\"99e812abb53f4607a4a42b7fb0a31bb6\",\"timestamp\":1793567505934}\n\n{\"type\":\"ping\",\"text\":\"pong\",\"timestamp\":1793567505934}\n\n{\"type\":\"stdout\",\"text\":\"POC_FAKE_SECRET=tenant-b\",\"timestamp\":1793567505935}\n\n{\"type\":\"execution_complete\",\"execution_time\":1,\"timestamp\":1793567505935}\n\n",
+    "http://host.docker.internal:57298/proxy/44772/command": "blocked: URLError: <urlopen error [Errno -2] Name or service not known>",
+    "http://127.0.0.1:18080/policy": "HTTP 401: unauthorized\n"
+   },
+   "after_tcp": {
+    "example.com:443": "blocked: gaierror: [Errno -2] Name or service not known"
+   }
+  },
+  "privileged_tools": "bash: line 1: nft: command not foundbash: line 1: ip: command not foundmount: /mnt: permission denied."
+ }
+}

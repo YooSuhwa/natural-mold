@@ -5,6 +5,8 @@
 > **독자**: Moldy 백엔드/인프라 개발자.
 > **작성일 기준 브랜치**: `feature/skill-studio-phase3` / `main` (deepagents 0.6.9).
 > **전략**: **B안(컨테이너-백드 `execute_in_skill`, 계약 보존)** 을 먼저 달성하고, 그 산출물을 디딤돌로 **A안(deepagents 네이티브 `SandboxBackendProtocol`)** 으로 수렴한다.
+>
+> **2026-11-02 PoC**: 기능 확장 기획서 v2가 제안한 OpenSandbox 경로의 격리 PoC 결과는 [skill-sandbox-opensandbox-poc.md](skill-sandbox-opensandbox-poc.md)에 있다(현재 경로의 시크릿 노출 실측 포함).
 
 ---
 

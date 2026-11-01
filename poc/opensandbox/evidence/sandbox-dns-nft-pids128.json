@@ -1,0 +1,144 @@
+{
+ "label": "dns+nft, pids_limit=128",
+ "skill_run": {
+  "create_seconds": 1.9,
+  "uploaded_files": 6,
+  "upload_errors": [],
+  "execute": {
+   "exit_code": 0,
+   "output": "{\"ok\": true, \"file\": \"moldy-patent-demo.hwpx\", \"path\": \"/workspace/outputs/moldy-patent-demo.hwpx\"}",
+   "seconds": 1.14
+  },
+  "downloaded_hwpx": {
+   "bytes": 101142,
+   "mimetype": "application/hwp+zip",
+   "entries": 11,
+   "crc_ok": true
+  }
+ },
+ "file_tools": {
+  "write_error": null,
+  "edit_error": null,
+  "read": "ReadResult(error=None, file_data={'content': 'line 1\\nmoldy sandbox line', 'encoding': 'utf-8'}, total_lines=2, start_line=1, end_line=2, next_offset=None, no_lines_requested=False)",
+  "ls": "LsResult(error=None, entries=[{'path': '/workspace/notes/plan.md', 'is_dir': False}])",
+  "grep": "GrepResult(error=None, matches=[{'path': '/workspace/notes/plan.md', 'line': 2, 'text': 'moldy sandbox line'}], truncated=False)",
+  "glob": "GlobResult(error=None, matches=[{'path': '/workspace/notes/plan.md', 'is_dir': False}], truncated=False, truncation_reason=None)"
+ },
+ "escape_probe": {
+  "victim_internal_ip": "172.17.0.2",
+  "victim_host_execd": "127.0.0.1:56443/proxy/44772",
+  "probe": {
+   "uid": 0,
+   "cap_eff": "00000000800405fb",
+   "own_env_secret_hits": [
+    "POC_FAKE_SECRET"
+   ],
+   "other_process_env_secret_hits": {
+    "pid 1 (/bin/sh /opt/opensandbox/bootstrap.sh tail -f /dev/null)": [
+     "POC_FAKE_SECRET(len=23)"
+    ],
+    "pid 20 (/opt/opensandbox/execd)": [
+     "POC_FAKE_SECRET(len=23)"
+    ],
+    "pid 21 (tail -f /dev/null)": [
+     "POC_FAKE_SECRET(len=23)"
+    ]
+   },
+   "other_tenant_file_read": "denied: FileNotFoundError",
+   "other_tenant_file_write": "WROTE",
+   "app_data_listing": [
+    "tenants"
+   ],
+   "docker_socket": false,
+   "dns_example_com": "blocked: gaierror",
+   "tcp_example_com_443": "blocked: gaierror: [Errno -2] Name or service not known",
+   "tcp_pypi_org_443": "connected",
+   "tcp_direct_ip_1_1_1_1_443": "blocked: TimeoutError: timed out",
+   "tcp_metadata_169_254_169_254_80": "blocked: TimeoutError: timed out",
+   "tcp_host_docker_internal_18080": "blocked: gaierror: [Errno -2] Name or service not known",
+   "peers": {
+    "172.17.0.2:44772": "blocked: TimeoutError: timed out",
+    "host.docker.internal:56443": "blocked: gaierror: [Errno -2] Name or service not known"
+   },
+   "http_posts": {
+    "http://172.17.0.2:44772/command": "blocked: URLError: <urlopen error timed out>",
+    "http://host.docker.internal:56443/proxy/44772/command": "blocked: URLError: <urlopen error [Errno -2] Name or service not known>",
+    "http://127.0.0.1:18080/policy": "HTTP 401: unauthorized\n"
+   },
+   "after_tcp": {
+    "example.com:443": "blocked: gaierror: [Errno -2] Name or service not known"
+   }
+  },
+  "privileged_tools": "bash: line 1: nft: command not foundbash: line 1: ip: command not foundmount: /mnt: permission denied."
+ },
+ "resources": {
+  "cgroup_limits": "268435456128100000 100000",
+  "non_root": {
+   "exit_code": 0,
+   "seconds": 1.01,
+   "stdout": "uid=1000 gid=1000 groups=1000touch: cannot touch '/etc/x': Permission denied",
+   "stderr": "",
+   "error": null
+  },
+  "alloc_1gb": {
+   "run": {
+    "exit_code": 0,
+    "seconds": 1.2,
+    "stdout": "exit=137",
+    "stderr": "bash: line 1:    33 Killed                  python3 -c \"b = bytearray(1024 * 1024 * 1024); print('allocated')\"",
+    "error": null
+   },
+   "execd_alive_after": "alive",
+   "oom_killed_processes": "true"
+  },
+  "fork_bomb": {
+   "run": {
+    "exit_code": 0,
+    "seconds": 1.03,
+    "stdout": "stopped after 117 BlockingIOError",
+    "stderr": "",
+    "error": null
+   },
+   "execd_alive_after": "alive",
+   "oom_killed_processes": "false"
+  }
+ },
+ "timeout": {
+  "run": {
+   "exit_code": -1,
+   "seconds": 4.01,
+   "stdout": "",
+   "stderr": "",
+   "error": "CommandExecError: -1"
+  },
+  "sleep_processes_left": "0"
+ },
+ "interrupt": {
+  "before": "1",
+  "after_interrupt": "0"
+ },
+ "execd_auth": {
+  "secure_access=False": {
+   "endpoint": "127.0.0.1:57493/proxy/44772",
+   "unauthenticated_post_command": "HTTP 200: {\"type\":\"init\",\"text\":\"64ba622c1d7545aa97d99f3f86531b87\",\"timestamp\":1793567674692}\n\n{\"type\":\"ping\",\"text\":\"pong\",\"timestamp\":1793567674692}\n\n{\"type\":\"stdout\",\"text\":\"uid=0(root) gid=0(root) groups=0("
+  },
+  "secure_access=True": {
+   "create_error": "SandboxApiException: Create sandbox failed: secureAccess is not supported when runtime.type='docker'. Use the Kubernetes runtime to create secured sandboxes. | [SANDBOX::INVALID_PARAMETER] secureAccess is not supported when runtime.type='docker'. Use the Kubernetes runtime to create secured sandboxe"
+  }
+ },
+ "cleanup": {
+  "containers_before": [
+   {
+    "name": "sandbox-beb3d891-3b86-4fd2-97cd-20c557d140b7",
+    "image": "python:3.12-slim",
+    "state": "running"
+   },
+   {
+    "name": "sandbox-egress-beb3d891-3b86-4fd2-97cd-20c557d140b7",
+    "image": "opensandbox/egress:v1.1.7",
+    "state": "running"
+   }
+  ],
+  "containers_after_kill": []
+ }
+}
