@@ -34,6 +34,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_artifact import ConversationArtifact
 from app.models.conversation_run import ConversationRun
 from app.models.message_attachment import MessageAttachment
+from app.storage.paths import tenant_relative
 
 logger = logging.getLogger(__name__)
 PreLock = Callable[[AsyncSession, UUID], Awaitable[None]]
@@ -44,23 +45,27 @@ class DeletedConversation:
     conversation_id: UUID
     owner_id: UUID
     attachment_paths: tuple[str, ...]
+    tenant_id: UUID | None = None
 
 
-def _remove_files(paths: Sequence[str], artifact_root: Path | None) -> None:
+def _remove_files(paths: Sequence[str], artifact_roots: Sequence[Path | None]) -> None:
     for raw in paths:
         try:
             Path(raw).unlink(missing_ok=True)
         except OSError:
             logger.warning("retention attachment delete failed: %s", raw, exc_info=True)
-    if artifact_root is not None:
-        shutil.rmtree(artifact_root, ignore_errors=True)
+    for root in artifact_roots:
+        if root is not None:
+            shutil.rmtree(root, ignore_errors=True)
 
 
-def _artifact_root(conversation_id: UUID) -> Path | None:
+def _artifact_root(conversation_id: UUID, tenant_id: UUID | None = None) -> Path | None:
+    """The conversation's local artifact tree; company rows live under ``tenants/<id>/``."""
     if settings.artifact_storage_backend != "local":
         return None
     root = Path(settings.artifact_storage_dir).resolve()
-    target = (root / "conversations" / str(conversation_id)).resolve()
+    relative = tenant_relative(tenant_id, f"conversations/{conversation_id}")
+    target = (root / relative).resolve()
     return target if target.is_relative_to(root) and target.is_dir() else None
 
 
@@ -105,7 +110,9 @@ async def delete_conversation_row(
     )
     for child in (MessageAttachment, ConversationArtifact):
         await db.execute(delete(child).where(child.conversation_id == conversation_id))
-    deleted = DeletedConversation(conversation_id, conversation.user_id, paths)
+    deleted = DeletedConversation(
+        conversation_id, conversation.user_id, paths, conversation.tenant_id
+    )
     await db.delete(conversation)
     await db.flush()
     return deleted
@@ -125,8 +132,12 @@ async def clean_up_files(deleted: DeletedConversation) -> None:
     except Exception:  # noqa: BLE001
         logger.warning("retention offload delete failed: %s", conversation, exc_info=True)
     try:
-        root = _artifact_root(deleted.conversation_id)
-        await asyncio.to_thread(_remove_files, deleted.attachment_paths, root)
+        # Files written before I-08 stay at the storage root, so both trees are removed.
+        roots = (
+            _artifact_root(deleted.conversation_id, deleted.tenant_id),
+            _artifact_root(deleted.conversation_id),
+        )
+        await asyncio.to_thread(_remove_files, deleted.attachment_paths, roots)
     except Exception:  # noqa: BLE001
         logger.warning("retention file delete failed: %s", conversation, exc_info=True)
 

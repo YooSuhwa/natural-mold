@@ -147,7 +147,7 @@ async def company_files(db: AsyncSession, tenant_id: UUID) -> CompanyFiles:
     )
     for conversation_id, owner_id in conversations.all():
         paths = tuple(by_conversation.get(conversation_id, ()))
-        found.conversations.append(DeletedConversation(conversation_id, owner_id, paths))
+        found.conversations.append(DeletedConversation(conversation_id, owner_id, paths, tenant_id))
     for agent_id in await db.scalars(select(Agent.id).where(Agent.tenant_id == tenant_id)):
         found.agent_dirs.append((f"agent_images/{agent_id}", agent_image_dir() / str(agent_id)))
         found.agent_dirs.append(

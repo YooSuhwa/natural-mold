@@ -1,12 +1,14 @@
 """E-08 review fixes: lock re-checks, idle definition, chunking, cleanup order, purge actor."""
 
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.agent_api import AgentApiRun
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.audit_event import AuditEvent
@@ -145,6 +147,25 @@ async def test_file_cleanup_failure_does_not_undo_the_committed_delete(
     assert (await sweep())[TEST_ORG_ID].conversations == 2
     assert not await exists(Conversation, first)
     assert not await exists(Conversation, second)
+
+
+async def test_sweep_removes_the_company_artifact_tree(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(settings, "artifact_storage_backend", "local")
+    monkeypatch.setattr(settings, "artifact_storage_dir", str(tmp_path))
+    agent = await add_agent(db)
+    await set_retention(db, conversation_days=30)
+    conversation = await add_conversation(db, agent, user=TEST_USER_ID, last_activity=days_ago(40))
+    company = tmp_path / "tenants" / str(TEST_TENANT_ID) / "conversations" / str(conversation)
+    legacy = tmp_path / "conversations" / str(conversation)  # written before I-08
+    for tree in (company, legacy):
+        (tree / "artifact" / "v1").mkdir(parents=True)
+        (tree / "artifact" / "v1" / "report.md").write_text("x")
+
+    assert (await sweep())[TEST_ORG_ID].conversations == 1
+    assert not company.exists()
+    assert not legacy.exists()
 
 
 async def test_sweep_purge_is_marked_as_system_in_the_purge_audit(
