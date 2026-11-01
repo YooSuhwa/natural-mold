@@ -157,6 +157,8 @@ test.describe('Agent settings — edit & attach', () => {
   })
 
   test.afterAll(async ({ request }) => {
+    // Log in again: other logins during the suite rotate the CSRF token.
+    const csrf = await login(request)
     // DELETE only archives an agent, which keeps holding its model; purge so the
     // fixture models (4096 / no context window) can be deleted for later specs.
     for (const id of [agentId, childId]) {

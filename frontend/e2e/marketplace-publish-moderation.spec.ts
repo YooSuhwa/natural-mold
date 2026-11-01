@@ -62,7 +62,7 @@ test('agent UI publication waits for operator approval and becomes listed', asyn
   const csrf = await loginApi(request)
   const name = `E2E Published Agent ${randomUUID()}`
   const models = z
-    .array(idSchema.extend({ provider: z.string() }))
+    .array(idSchema.extend({ provider: z.string(), model_name: z.string() }))
     .parse(await apiGetJson(request, `${API_BASE}/api/models`))
   const model = models.find(isSeededScriptedModel)
   if (!model) throw new Error('Scripted model is not seeded')

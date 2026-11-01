@@ -42,7 +42,7 @@ test('discovered MCP tool attaches, survives reload and detaches from agent sett
     const weather = discovered.tools.find((tool) => tool.name === 'weather')
     if (!weather) throw new Error('Local MCP discovery did not return weather')
     const models = z
-      .array(idSchema.extend({ provider: z.string() }))
+      .array(idSchema.extend({ provider: z.string(), model_name: z.string() }))
       .parse(await apiGetJson(request, `${API_BASE}/api/models`))
     const model = models.find(isSeededScriptedModel)
     if (!model) throw new Error('Scripted model is not seeded')
