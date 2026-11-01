@@ -337,7 +337,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | [docs/org-authz-operations.md](docs/org-authz-operations.md) | Rolling out organizations and OpenFGA permissions |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
 | [docs/PRD.md](docs/PRD.md), [docs/PRD-screens.md](docs/PRD-screens.md) | Product requirements and screens |
-| [docs/design-docs/index.md](docs/design-docs/index.md) | Architecture decision records (ADR-001 to ADR-023) |
+| [docs/design-docs/index.md](docs/design-docs/index.md) | Architecture decision records (ADR-001 to ADR-024) |
 | [docs/exec-plans/index.md](docs/exec-plans/index.md) | Execution plans |
 | [docs/marketplace-resources-prd.md](docs/marketplace-resources-prd.md) | Marketplace |
 | [docs/agent-api.md](docs/agent-api.md) | Agent API |

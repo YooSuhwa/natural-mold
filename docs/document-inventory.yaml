@@ -234,6 +234,10 @@ documents:
     lifecycle: decision-record
     status: accepted
     index: adr
+  - path: docs/design-docs/adr-024-common-execution-contract.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
   - path: docs/design-docs/agent-edit-workbench.md
     lifecycle: completed-plan
     status: completed

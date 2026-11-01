@@ -28,3 +28,4 @@
 | ADR-021 | [Value-Based Trace Redaction (값 기반 트레이스 시크릿 마스킹)](adr-021-value-based-trace-redaction.md) | Proposed (제안됨, 2026-06-24) |
 | ADR-022 | [Versioned Runtime Policy Lifecycle](adr-022-runtime-policy-lifecycle.md) | Accepted (2026-09-05) |
 | ADR-023 | [Tenant, organization, authorization and sharing](adr-023-org-authz.md) | Accepted for implementation; production enforcement pending evidence (2026-10-10) |
+| ADR-024 | [Common execution contract for new features](adr-024-common-execution-contract.md) | Accepted (2026-11-01) |

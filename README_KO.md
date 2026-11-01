@@ -293,7 +293,7 @@ flowchart LR
 | [docs/org-authz-operations.md](docs/org-authz-operations.md) | 조직·OpenFGA 권한 단계적 적용 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 아키텍처 |
 | [docs/PRD.md](docs/PRD.md), [docs/PRD-screens.md](docs/PRD-screens.md) | 제품 요구 사항과 화면 |
-| [docs/design-docs/index.md](docs/design-docs/index.md) | 아키텍처 결정 기록(ADR-001~ADR-023) |
+| [docs/design-docs/index.md](docs/design-docs/index.md) | 아키텍처 결정 기록(ADR-001~ADR-024) |
 | [docs/exec-plans/index.md](docs/exec-plans/index.md) | 실행 계획 |
 | [docs/marketplace-resources-prd.md](docs/marketplace-resources-prd.md) | 마켓플레이스 |
 | [docs/agent-api.md](docs/agent-api.md) | Agent API |
