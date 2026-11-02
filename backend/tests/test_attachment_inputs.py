@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from langchain.agents.middleware import ModelRequest
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from PIL import Image
 
 from app.agent_runtime.attachment_inputs import (
@@ -415,7 +416,10 @@ def test_image_block_converts_for_each_provider(tmp_path: Path) -> None:
         "data": encoded,
     }
     _, google_history = _parse_chat_history([sent])
-    assert google_history[0].parts[1].inline_data.data == image.path.read_bytes()
+    google_parts = google_history[0].parts
+    assert google_parts is not None
+    inline = google_parts[1].inline_data
+    assert inline is not None and inline.data == image.path.read_bytes()
 
 
 @pytest.mark.asyncio
@@ -445,7 +449,7 @@ async def test_deep_agent_graph_sends_the_image_but_checkpoints_the_reference(
         middleware=[AttachmentInputMiddleware(AttachmentInputs({image.id: image}, True))],
         checkpointer=MemorySaver(),
     )
-    config = {"configurable": {"thread_id": "attachment-graph"}}
+    config: RunnableConfig = {"configurable": {"thread_id": "attachment-graph"}}
     payload = tag_input_with_attachments(
         {"messages": [{"type": "human", "content": "이 이미지는?"}]}, [ref]
     )
