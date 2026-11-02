@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import logging
 import time
 import uuid
@@ -78,6 +79,16 @@ async def _run_conversation(
     )
     start: prepared_start.PreparedRunStart | None = None
     try:
+        input_payload, attachment_inputs = await worker_attr("_prepare_turn_attachment_inputs")(
+            run_id,
+            WorkerConversationTarget(conversation_id, cfg.org_context),
+            cfg.model_id,
+            attachment_ids,
+            input_payload,
+            tag_input=moldy_source != "resume",
+        )
+        if attachment_inputs is not None:
+            cfg = dataclasses.replace(cfg, attachment_inputs=attachment_inputs)
         start = await prepared_start.start_owned_run(
             _execution_target(run_id, conversation_id, cfg),
             prepared_start.OwnedRunInputs(cfg, user, input_payload, executor_fn, config_transform),

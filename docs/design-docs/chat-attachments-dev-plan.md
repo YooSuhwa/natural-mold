@@ -73,7 +73,7 @@
 | D12 | 통합 리스트 데이터 | **백엔드 통합 엔드포인트** `GET /api/conversations/{id}/files` 하나로 생성+첨부를 정규화 반환(단일 소스). 레일이 이걸 사용, 라이브러리도 동일 소스로 확장. *프론트 머지(표면별 중복)는 채택 안 함.* 리스크: 기존 아티팩트 레일의 데이터 소스 교체 → 회귀 주의 | ✅ 확정 |
 | D13 | DB 스키마 | **마이그레이션 불필요** — `message_attachments.message_id` 컬럼이 이미 존재(현재 null로 방치). 채우기만 함 | ✅ 확정 |
 | O2 | 업로드 암호화 | 전체/민감 MIME만/안 함 | ⛳ 보류(후속) |
-| O3 | P2(모델입력) 착수 시점 | P1 출시 후 별도 | ⛳ 후속 |
+| O3 | P2(모델입력) 착수 시점 | 이미지·텍스트는 기능 확장 기획서 v2 1A로 구현(2026-11-02). PDF는 후속 | ✅ 일부 |
 
 ---
 
@@ -195,11 +195,20 @@
 **E2E**
 - [ ] 첨부(이미지+문서) 전송 → user 버블 인라인 표시 → reload 후 유지 → 통합 리스트에 `첨부` 배지로 노출 → 프리뷰 열림 → "대화로 이동" 동작 → 다운로드 링크.
 
-### P2+ — 모델 입력: 이미지 (M~L, 후속)
-- [ ] 메시지 조립 경로에서 이미지 첨부를 LangChain `image` content block으로 주입: `HumanMessage(content_blocks=[{type:'text',...},{type:'image',base64,mime_type}])`. 위치 = `messages_history` 생성/`convert_to_langchain_messages` 상류.
-- [ ] **provider 능력 게이팅(D4)**: `(provider, model)`이 vision 지원일 때만 주입, 아니면 표시만(주입 skip). Hancom 게이트웨이/openai_compatible은 보장 안 됨 → 보수적 처리.
-- [ ] 토큰/compaction 영향 확인(media가 prompt 토큰 폭증 → context-window 프로파일 연동).
-- [ ] 테스트: vision 모델 주입/비전 미지원 skip, 토큰 카운트.
+### P2 — 모델 입력: 이미지·텍스트 (기능 확장 기획서 v2 1A, 구현됨)
+
+- [x] **참조만 체크포인트에 저장.** 실행 시작 시(`_run_conversation`) 입력의 마지막 사람 메시지 `additional_kwargs["moldy_attachments"]`에 `{id, filename, mime_type, form}`을 서버가 적는다. 클라이언트가 보낸 같은 키는 지운다. 파일 바이트는 체크포인트에 들어가지 않는다.
+- [x] **모델 호출마다 펼침.** `AttachmentInputMiddleware`(`agent_runtime/attachment_inputs.py`)가 참조를 content block으로 바꾼다.
+  - `image`: 표준 base64 image block. 3.75 MB를 넘거나 jpeg/png/gif/webp가 아니면 긴 변 1568px로 줄여 다시 인코딩한다.
+  - `text`(`text/*`, JSON): 본문을 넣되 50,000자에서 자른다.
+  - 그 밖의 형식(PDF 등), vision이 없는 모델의 이미지, 사라진 파일: 모델이 사용자에게 알릴 수 있도록 짧은 안내 문구를 넣는다.
+  - 한 호출에 이미지는 최근 8개까지 보내고, 이전 이미지는 안내 문구로 바꾼다.
+- [x] **vision 게이팅(D4).** `models.supports_vision`이 `true`일 때만 이미지를 보낸다. `null`(모름)도 보내지 않는다. 텍스트 전용 모델에 이미지를 보내면 그 호출뿐 아니라 이후 모든 턴이 실패하기 때문이다. 운영자가 모델 설정에서 `supports_vision`을 켜면 보낸다.
+- [x] **고정과 재검증(ADR-024 §4).** 첨부(id, 파일, mime)는 접수 시 입력과 함께 고정된다(`ConversationRunInput.attachment_ids`). 전달 형식은 mime과 실행 시작 시점의 모델로 정해진다(모델은 ADR-024의 "실행 시작 시 live" 항목). 모델 호출마다 행·파일·현재 모델의 vision을 다시 확인한다.
+- [x] **실행 기록.** 결정된 형식을 `conversation_runs.metadata_json["attachment_inputs"] = {supports_vision, items[]}`에 남긴다.
+- [x] **실행 경로(ADR-024 §1).** 기본 경로를 지원한다. prepared lease 경로는 대화에 첨부가 있으면 `attachment_input` 사유로 기본 경로로 대체 실행한다. Agent API와 트리거에는 첨부 입력이 없다. 메시지에 참조를 넣어도 그 대화의 첨부가 아니면 해석되지 않는다.
+- [x] 테스트: `backend/tests/test_attachment_inputs.py`(형식 결정, 참조 태깅·위조 제거, 펼침, vision 재확인, 이미지 상한, 축소, provider 3종 변환, 실행 기록, 회사·대화 범위).
+- [ ] 남은 것: PDF 입력(아래), 실행 기록을 화면에 보여 주기, 이미지가 많을 때의 토큰 표시.
 
 ### P2+ — 문서 모델 입력 (L, 후속)
 - [ ] PDF → `file` content block(provider별: Anthropic document / OpenAI base64+filename / Google PDF). URL 파일은 OpenAI Chat Completions 거부 주의.

@@ -13,7 +13,9 @@ config does not carry it) and ``agent_memory_file_write``: the legacy policy
 grants the agent write on the shared ``/agents/<id>/AGENTS.md``; the lease
 only serves it as a read-only snapshot (a writable run-root route would have
 to be a prefix route over all of ``/agents/<id>/`` and would silently stop
-persisting memory edits), so that shape fails typed instead.
+persisting memory edits), so that shape fails typed instead. ``attachment_input``: a
+conversation with chat attachments needs the attachment-input middleware, which
+reads the upload rows and files per model call; the lease does not carry them.
 
 Substitution (not degradation): the legacy default reliability middleware
 ``ModelRetryMiddleware`` is not installed; lease-owned models retry inside
@@ -54,6 +56,7 @@ def unsupported(reason: str) -> PreparedRunUnsupportedError:
 LEGACY_FALLBACK_REASONS: frozenset[str] = frozenset(
     {
         "agent_memory_file_write",
+        "attachment_input",
         "child_model_missing",
         "child_skills",
         "llm_credential_missing",

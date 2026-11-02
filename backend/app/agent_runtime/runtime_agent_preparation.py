@@ -232,6 +232,11 @@ async def _prepare_agent(
         run_id=run_id,
         scope_offload_backend=run_id is not None,
     )
+    middleware = list(components.middleware or [])
+    if cfg.attachment_inputs is not None and cfg.runtime_profile == "standard":
+        from app.agent_runtime.attachment_inputs import AttachmentInputMiddleware
+
+        middleware.append(AttachmentInputMiddleware(cfg.attachment_inputs))
     last_mark = time.perf_counter()
 
     # 5. 에이전트 빌드 — create_deep_agent + checkpointer
@@ -242,7 +247,7 @@ async def _prepare_agent(
         components.model,
         components.tools,
         components.system_prompt,
-        middleware=components.middleware or None,
+        middleware=middleware or None,
         interrupt_on=components.interrupt_on,
         checkpointer=get_checkpointer(),
         backend=components.backend,
