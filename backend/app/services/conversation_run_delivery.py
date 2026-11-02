@@ -218,6 +218,36 @@ def _trace_status_for_run(
     return "failed"
 
 
+async def _prepare_turn_attachment_inputs(
+    run_id: uuid.UUID,
+    target: WorkerConversationTarget,
+    model_id: str | None,
+    attachment_ids: list[uuid.UUID] | None,
+    input_payload: Any,
+    *,
+    tag_input: bool,
+) -> tuple[Any, Any]:
+    """Load the conversation's attachments for the model and tag a new input (1A).
+
+    Runs before the graph starts, in its own session. A new input's attachments
+    are recorded on the run row; a resume only reloads the files for its history.
+    """
+
+    from app.services.chat.attachment_inputs import prepare_attachment_inputs
+
+    async with _tenant_session(target.context) as session:
+        return await prepare_attachment_inputs(
+            session,
+            run_id=run_id,
+            conversation_id=target.conversation_id,
+            context=target.context,
+            model_id=model_id,
+            attachment_ids=attachment_ids,
+            input_payload=input_payload,
+            tag_input=tag_input,
+        )
+
+
 async def _backfill_turn_attachments(
     target: WorkerConversationTarget, attachment_ids: list[uuid.UUID]
 ) -> None:

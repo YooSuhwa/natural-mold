@@ -54,6 +54,7 @@ from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found
 from app.models.conversation_run import ConversationRun
 from app.services import chat_service
+from app.services.chat.attachment_inputs import conversation_has_attachments
 from app.services.conversation_agent_context import resolve_agent_context
 from app.services.prepared_run_children import resolve_prepared_children
 
@@ -154,6 +155,12 @@ class PreparedRunResolver:
             provider_middleware=bindings.get_provider_middleware(cfg.provider),
             memory_write_policy=await self._memory.write_policy(cfg, db, is_trigger_mode=trigger),
         )
+        if await conversation_has_attachments(
+            db, conversation_id=run.conversation_id, context=request.context
+        ):
+            # 1A expands attachment references per model call from live upload rows;
+            # the lease has no frozen copy of them yet.
+            raise unsupported("attachment_input")
         model = lease_model_spec(
             provider=cfg.provider,
             model_name=cfg.model_name,

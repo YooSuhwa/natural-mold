@@ -15,6 +15,7 @@ from app.authz.org_context import OrgContext
 from app.config import settings
 
 if TYPE_CHECKING:
+    from app.agent_runtime.attachment_inputs import AttachmentInputs
     from app.authz.runtime_access_planner import RuntimeAccessPlan
 
 _configured_data_root = Path(settings.data_root)
@@ -143,6 +144,9 @@ class AgentConfig:
     usage_root_agent_id: str | None = None
     # "personal" / "tenant": whose key the LLM runs on (copied to token usage; plan P2 Q2).
     llm_credential_scope: str | None = None
+    # 1A: this conversation's attachment files and the model's vision support, loaded
+    # by the run worker so preparation stays DB-free. ``None``: no attachments.
+    attachment_inputs: AttachmentInputs | None = None
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,

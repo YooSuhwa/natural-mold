@@ -32,6 +32,8 @@ type RuntimeMessageContent = str | list[str | dict[str, JsonValue]]
 class RuntimeMessage(TypedDict, total=False):
     role: Required[str]
     content: Required[RuntimeMessageContent]
+    # Server-written attachment references (``attachment_inputs``).
+    additional_kwargs: dict[str, JsonValue]
 
 
 def is_runtime_message(value: dict[str, JsonValue]) -> TypeGuard[RuntimeMessage]:
@@ -239,7 +241,9 @@ def convert_to_langchain_messages(messages: Sequence[RuntimeMessage]) -> list[Ba
         if role == "system":
             lc_messages.append(SystemMessage(content=content))
         elif role == "user":
-            lc_messages.append(HumanMessage(content=content))
+            lc_messages.append(
+                HumanMessage(content=content, additional_kwargs=msg.get("additional_kwargs") or {})
+            )
         elif role == "assistant":
             lc_messages.append(AIMessage(content=content))
     return lc_messages

@@ -22,6 +22,7 @@ from app.authz.organization_execution_proof import live_proof
 from app.config import settings
 from app.models.agent import Agent
 from app.models.conversation_run import ConversationRun
+from app.models.message_attachment import MessageAttachment
 from app.models.model import Model
 from app.services import conversation_stream_service
 from tests.authz import prepared_adapter_testkit as akit
@@ -157,6 +158,23 @@ async def _provider(db: AsyncSession, seeded: akit.Seeded) -> None:
     child_model.provider = "bedrock"
 
 
+async def _attachment(db: AsyncSession, seeded: akit.Seeded) -> None:
+    context = seeded.graph.context
+    db.add(
+        MessageAttachment(
+            user_id=context.user_id,
+            org_id=context.org_id,
+            tenant_id=context.tenant_id,
+            conversation_id=seeded.graph.conversation_ids[0],
+            filename="a.png",
+            mime_type="image/png",
+            size_bytes=1,
+            storage_path="a.png",
+            url="/api/uploads/a",
+        )
+    )
+
+
 # case -> (overrides, expected reason suffix)
 CASES: dict[str, tuple[dict[str, Any], str]] = {
     "middleware": ({"mutate": _middleware}, "middleware:model_retry"),
@@ -168,6 +186,7 @@ CASES: dict[str, tuple[dict[str, Any], str]] = {
     "child_provider": ({"mutate": _provider}, "child:{child}:provider:bedrock"),
     "child_key": ({"child_key": None}, "child:{child}:llm_credential_missing"),
     "agent_memory_file_write": ({"policy": LEGACY_RUNTIME_POLICY}, ":agent_memory_file_write"),
+    "attachment_input": ({"mutate": _attachment}, ":attachment_input"),
 }
 
 

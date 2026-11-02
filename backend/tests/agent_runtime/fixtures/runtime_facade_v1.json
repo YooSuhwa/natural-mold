@@ -532,6 +532,12 @@
           "name": "llm_credential_scope"
         },
         {
+          "annotation": "AttachmentInputs | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "attachment_inputs"
+        },
+        {
           "annotation": "OrgContext",
           "default": "required",
           "kind": "keyword_only",
