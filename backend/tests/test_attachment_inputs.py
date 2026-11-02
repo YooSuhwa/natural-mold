@@ -14,6 +14,8 @@ from langchain.agents.middleware import ModelRequest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from PIL import Image
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from app.agent_runtime.attachment_inputs import (
     ATTACHMENT_REFS_KEY,
@@ -53,6 +55,34 @@ def _png(size: tuple[int, int] = (4, 4), *, noise: bool = False) -> bytes:
     )
     out = io.BytesIO()
     image.save(out, format="PNG")
+    return out.getvalue()
+
+
+def _pdf(*pages: str, password: str | None = None) -> bytes:
+    writer = PdfWriter()
+    font = writer._add_object(
+        DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            }
+        )
+    )
+    for text in pages:
+        page = writer.add_blank_page(300, 300)
+        if not text:
+            continue
+        page[NameObject("/Resources")] = DictionaryObject(
+            {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})}
+        )
+        stream = DecodedStreamObject()
+        stream.set_data(f"BT /F1 12 Tf 10 150 Td ({text}) Tj ET".encode())
+        page[NameObject("/Contents")] = writer._add_object(stream)
+    if password:
+        writer.encrypt(password)
+    out = io.BytesIO()
+    writer.write(out)
     return out.getvalue()
 
 
@@ -99,7 +129,8 @@ def _call(middleware: AttachmentInputMiddleware, messages: list[Any]) -> list[An
         ("image/svg+xml", True, "unsupported"),
         ("text/plain; charset=utf-8", None, "text"),
         ("application/json", False, "text"),
-        ("application/pdf", True, "unsupported"),
+        ("application/pdf", None, "pdf"),
+        ("application/zip", True, "unsupported"),
     ],
 )
 def test_attachment_form(mime: str, vision: bool | None, form: str) -> None:
@@ -143,23 +174,23 @@ def test_tag_input_handles_message_objects_and_legacy_lists() -> None:
 def test_middleware_expands_image_and_text_without_touching_state(tmp_path: Path) -> None:
     image = _file(tmp_path, "red.png", "image/png", _png())
     text = _file(tmp_path, "note.txt", "text/plain", "안녕 첨부".encode())
-    pdf = _file(tmp_path, "doc.pdf", "application/pdf", b"%PDF-1.4")
+    archive = _file(tmp_path, "doc.zip", "application/zip", b"PK")
     state_message = _human(
-        "look", [_ref(image, "image"), _ref(text, "text"), _ref(pdf, "unsupported")]
+        "look", [_ref(image, "image"), _ref(text, "text"), _ref(archive, "unsupported")]
     )
     middleware = AttachmentInputMiddleware(
-        AttachmentInputs({item.id: item for item in (image, text, pdf)}, True)
+        AttachmentInputs({item.id: item for item in (image, text, archive)}, True)
     )
 
     (sent,) = _call(middleware, [state_message])
 
-    text_block, image_block, file_block, pdf_note = sent.content
+    text_block, image_block, file_block, archive_note = sent.content
     assert text_block == {"type": "text", "text": "look"}
     assert image_block["type"] == "image"
     assert image_block["mime_type"] == "image/png"
     assert base64.b64decode(image_block["base64"]) == image.path.read_bytes()
     assert "안녕 첨부" in file_block["text"]
-    assert "doc.pdf" in pdf_note["text"]
+    assert "doc.zip" in archive_note["text"] and "application/zip" in archive_note["text"]
     assert sent.id == state_message.id
     assert ATTACHMENT_REFS_KEY not in sent.additional_kwargs  # not sent to the provider
     assert state_message.content == "look"  # the checkpointed message keeps references only
@@ -215,6 +246,54 @@ def test_middleware_downscales_large_images_and_caps_text(tmp_path: Path) -> Non
     assert len(data) <= MAX_IMAGE_BYTES
     assert max(Image.open(io.BytesIO(data)).size) <= 1568
     assert f"앞부분 {MAX_TEXT_CHARS}자만" in text_block["text"]
+
+
+def test_middleware_sends_pdf_text_not_the_file(tmp_path: Path) -> None:
+    pdf = _file(tmp_path, "report.pdf", "application/pdf", _pdf("First page", "", "Third page"))
+    # Vision does not matter: only the extracted text is sent.
+    middleware = AttachmentInputMiddleware(AttachmentInputs({pdf.id: pdf}, None))
+
+    (sent,) = _call(middleware, [_human("read", [_ref(pdf, "pdf")])])
+
+    _, block = sent.content
+    assert block["type"] == "text"
+    assert "[첨부 파일: report.pdf]" in block["text"]
+    assert "First page\nThird page" in block["text"]
+    assert "앞부분" not in block["text"]
+
+
+def test_middleware_caps_pdf_text(tmp_path: Path) -> None:
+    line = "x" * 1000
+    pages = [line] * (MAX_TEXT_CHARS // 1000 + 5)
+    pdf = _file(tmp_path, "long.pdf", "application/pdf", _pdf(*pages))
+    middleware = AttachmentInputMiddleware(AttachmentInputs({pdf.id: pdf}, True))
+
+    (sent,) = _call(middleware, [_human("", [_ref(pdf, "pdf")])])
+
+    (block,) = sent.content
+    body = block["text"].split("```\n", 1)[1].rsplit("\n```", 1)[0]
+    assert len(body) == MAX_TEXT_CHARS
+    assert f"앞부분 {MAX_TEXT_CHARS}자만" in block["text"]
+
+
+@pytest.mark.parametrize(
+    ("data", "reason"),
+    [
+        (_pdf("", ""), "추출할 텍스트가 없습니다"),
+        (_pdf("secret", password="pw"), "암호가 걸린 PDF"),
+        (b"%PDF-1.4\nnot a pdf", "PDF를 읽지 못해"),
+    ],
+)
+def test_middleware_notes_pdfs_without_text(tmp_path: Path, data: bytes, reason: str) -> None:
+    pdf = _file(tmp_path, "scan.pdf", "application/pdf", data)
+    middleware = AttachmentInputMiddleware(AttachmentInputs({pdf.id: pdf}, True))
+
+    (sent,) = _call(middleware, [_human("", [_ref(pdf, "pdf")])])
+
+    (block,) = sent.content
+    assert block["type"] == "text"
+    assert "scan.pdf" in block["text"] and reason in block["text"]
+    assert "secret" not in block["text"]
 
 
 def test_middleware_ignores_refs_on_non_human_messages(tmp_path: Path) -> None:
@@ -331,6 +410,7 @@ async def test_prepare_tags_input_and_records_the_run(
     run_id = await _seed_run(conversation_id, supports_vision=vision)
     image_id = await _seed_attachment(conversation_id, "a.png", "image/png", _png())
     text_id = await _seed_attachment(conversation_id, "b.txt", "text/plain", b"hello")
+    pdf_id = await _seed_attachment(conversation_id, "d.pdf", "application/pdf", _pdf("hi"))
     elsewhere = await _seed_attachment(
         await seed_conversation_with_agent(), "c.txt", "text/plain", b"x"
     )
@@ -339,7 +419,7 @@ async def test_prepare_tags_input_and_records_the_run(
     payload, inputs = await _prepare(
         run_id,
         conversation_id,
-        [text_id, image_id, elsewhere],
+        [text_id, image_id, pdf_id, elsewhere],
         {"messages": [{"type": "human", "content": "see"}]},
     )
 
@@ -347,9 +427,11 @@ async def test_prepare_tags_input_and_records_the_run(
     assert [(ref["id"], ref["form"]) for ref in refs] == [
         (str(text_id), "text"),
         (str(image_id), image_form),
+        (str(pdf_id), "pdf"),
     ]
     assert inputs is not None
-    assert set(inputs.files) == {str(text_id), str(image_id)}  # this conversation only
+    # this conversation only
+    assert set(inputs.files) == {str(text_id), str(image_id), str(pdf_id)}
     assert inputs.supports_vision is vision
     async with TestSession() as db:
         run = await db.get(ConversationRun, run_id)
@@ -360,7 +442,7 @@ async def test_prepare_tags_input_and_records_the_run(
             db, conversation_id=conversation_id, context=unit_context(TEST_USER_ID)
         )
     assert record["supports_vision"] is vision
-    assert [item["form"] for item in record["items"]] == ["text", image_form]
+    assert [item["form"] for item in record["items"]] == ["text", image_form, "pdf"]
 
 
 @pytest.mark.asyncio

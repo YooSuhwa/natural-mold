@@ -7,6 +7,8 @@ references into content blocks for each model call:
 
 - ``image``: a standard base64 image block, when the run's model supports vision;
 - ``text``: the decoded text (``text/*`` and JSON), capped;
+- ``pdf``: the text extracted from the PDF, capped the same way. The PDF itself
+  is never sent: a scanned page without text becomes a note;
 - anything else, or an image for a model without vision: a short text note, so
   the model can tell the user what it could not see.
 
@@ -34,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 ATTACHMENT_REFS_KEY = "moldy_attachments"
 
-AttachmentForm = Literal["image", "image_no_vision", "text", "unsupported"]
+AttachmentForm = Literal["image", "image_no_vision", "text", "pdf", "unsupported"]
 
 # Provider image limits differ (Anthropic 5 MB, OpenAI 20 MB); stay under the lowest.
 MAX_IMAGE_BYTES = 3_750_000
@@ -76,6 +78,8 @@ def attachment_form(mime_type: str, *, supports_vision: bool | None) -> Attachme
         return "image" if supports_vision is True else "image_no_vision"
     if base.startswith("text/") or base == "application/json":
         return "text"
+    if base == "application/pdf":
+        return "pdf"
     return "unsupported"
 
 
@@ -153,6 +157,34 @@ def _read_text(path: Path) -> tuple[str, bool]:
     return text[:MAX_TEXT_CHARS], truncated
 
 
+class _PdfEncryptedError(Exception):
+    pass
+
+
+def _read_pdf(path: Path) -> tuple[str, bool]:
+    from pypdf import PdfReader
+
+    reader = PdfReader(path)
+    if reader.is_encrypted and not reader.decrypt(""):
+        raise _PdfEncryptedError
+    pages: list[str] = []
+    total = 0
+    for page in reader.pages:
+        if total > MAX_TEXT_CHARS:
+            return "\n".join(pages)[:MAX_TEXT_CHARS], True
+        text = (page.extract_text() or "").strip()
+        if text:
+            pages.append(text)
+            total += len(text) + 1
+    text = "\n".join(pages)
+    return text[:MAX_TEXT_CHARS], len(text) > MAX_TEXT_CHARS
+
+
+def _text_block(filename: str, text: str, truncated: bool) -> dict[str, str]:
+    suffix = f"\n(앞부분 {MAX_TEXT_CHARS}자만 포함)" if truncated else ""
+    return {"type": "text", "text": f"[첨부 파일: {filename}]\n```\n{text}\n```{suffix}"}
+
+
 def _read_image(path: Path, mime_type: str) -> tuple[bytes, str] | None:
     data = path.read_bytes()
     base = _base_mime(mime_type)
@@ -214,7 +246,7 @@ class AttachmentInputMiddleware(AgentMiddleware):
             return _note(ref, "현재 모델이 이미지를 지원하지 않아 내용을 전달하지 못했습니다")
         if form == "image" and not image_allowed:
             return _note(ref, f"이미지가 {MAX_IMAGES_PER_CALL}개를 넘어 이전 이미지는 생략했습니다")
-        if form not in {"image", "text"}:
+        if form not in {"image", "text", "pdf"}:
             return _note(ref, f"{attachment.mime_type} 형식은 아직 모델에 전달하지 않습니다")
         cached = self._blocks.get(attachment.id)
         if cached is not None:
@@ -225,14 +257,11 @@ class AttachmentInputMiddleware(AgentMiddleware):
 
     def _load(self, attachment: AttachmentFile, form: str) -> dict[str, Any]:
         ref = {"filename": attachment.filename}
+        if form == "pdf":
+            return self._load_pdf(attachment)
         try:
             if form == "text":
-                text, truncated = _read_text(attachment.path)
-                suffix = f"\n(앞부분 {MAX_TEXT_CHARS}자만 포함)" if truncated else ""
-                return {
-                    "type": "text",
-                    "text": f"[첨부 파일: {attachment.filename}]\n```\n{text}\n```{suffix}",
-                }
+                return _text_block(attachment.filename, *_read_text(attachment.path))
             image = _read_image(attachment.path, attachment.mime_type)
         except OSError:
             logger.warning("attachment read failed id=%s", attachment.id, exc_info=True)
@@ -245,6 +274,20 @@ class AttachmentInputMiddleware(AgentMiddleware):
             "base64": base64.b64encode(data).decode("ascii"),
             "mime_type": mime_type,
         }
+
+    def _load_pdf(self, attachment: AttachmentFile) -> dict[str, Any]:
+        ref = {"filename": attachment.filename}
+        try:
+            text, truncated = _read_pdf(attachment.path)
+        except _PdfEncryptedError:
+            return _note(ref, "암호가 걸린 PDF라 내용을 전달하지 못했습니다")
+        except Exception:
+            # A malformed PDF can fail anywhere in the parser; it must not fail the run.
+            logger.warning("attachment pdf read failed id=%s", attachment.id, exc_info=True)
+            return _note(ref, "PDF를 읽지 못해 전달하지 못했습니다")
+        if not text:
+            return _note(ref, "PDF에 추출할 텍스트가 없습니다(스캔 문서일 수 있음)")
+        return _text_block(attachment.filename, text, truncated)
 
     def _expand(self, messages: Sequence[AnyMessage]) -> list[AnyMessage] | None:
         tagged = [(index, _refs_of(message)) for index, message in enumerate(messages)]

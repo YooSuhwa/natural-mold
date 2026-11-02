@@ -66,6 +66,8 @@ dependencies = [
     # EmailStr validation (Pydantic) for /api/auth payloads.
     "email-validator>=2.0",
     "openfga-sdk==0.10.5",
+    # PDF chat attachments: text extraction for the model.
+    "pypdf>=6.0",
 ]
 
 [project.optional-dependencies]
