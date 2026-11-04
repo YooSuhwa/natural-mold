@@ -35,6 +35,7 @@ from app.schemas.conversation_scope import ConversationMutation
 from app.services import chat_service, conversation_run_service
 from app.services.agent_image_paths import build_agent_image_url
 from app.services.conversation_audit_service import record_conversation_audit
+from app.services.retention.conversations import remove_conversation_files
 
 router = APIRouter(tags=["conversations"])
 
@@ -346,5 +347,6 @@ async def delete_conversation(
         agent_id=conv.agent_id,
         title=conv.title,
     )
-    await chat_service.delete_conversation(db, conv, context)
+    deleted = await chat_service.delete_conversation(db, conv, context)
     await db.commit()
+    await remove_conversation_files(deleted)

@@ -131,6 +131,11 @@ async def clean_up_files(deleted: DeletedConversation) -> None:
         )
     except Exception:  # noqa: BLE001
         logger.warning("retention offload delete failed: %s", conversation, exc_info=True)
+    await remove_conversation_files(deleted)
+
+
+async def remove_conversation_files(deleted: DeletedConversation) -> None:
+    """Attachment blobs and the local artifact tree, after the commit; failures are logged."""
     try:
         # Files written before I-08 stay at the storage root, so both trees are removed.
         roots = (
@@ -139,7 +144,7 @@ async def clean_up_files(deleted: DeletedConversation) -> None:
         )
         await asyncio.to_thread(_remove_files, deleted.attachment_paths, roots)
     except Exception:  # noqa: BLE001
-        logger.warning("retention file delete failed: %s", conversation, exc_info=True)
+        logger.warning("retention file delete failed: %s", deleted.conversation_id, exc_info=True)
 
 
 async def delete_conversations(

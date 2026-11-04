@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
 from sqlalchemy import and_, delete, func, or_, select, update
@@ -40,6 +41,7 @@ from app.models.agent import (
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
+from app.models.message_attachment import MessageAttachment
 from app.models.message_event import MessageEvent
 from app.schemas.conversation import ConversationSort
 from app.schemas.conversation_scope import (
@@ -75,6 +77,9 @@ from app.services.chat.conversation_pages import (
     list_global_conversations_page,
 )
 from app.services.conversation_runtime_policy import ensure_conversation_runtime_policy
+
+if TYPE_CHECKING:
+    from app.services.retention.conversations import DeletedConversation
 
 logger = logging.getLogger(__name__)
 
@@ -239,10 +244,18 @@ async def get_owned_ui_conversation_with_agent(
     return result.unique().scalar_one_or_none()
 
 
-async def delete_conversation(db: AsyncSession, conv: Conversation, context: OrgContext) -> None:
+async def delete_conversation(
+    db: AsyncSession, conv: Conversation, context: OrgContext
+) -> DeletedConversation:
+    """Delete the row (children cascade) and runtime state.
+
+    Attachment blobs and the artifact tree are not removed here: the caller commits,
+    then passes the result to ``retention.conversations.remove_conversation_files``.
+    """
     from app.agent_runtime.checkpointer import delete_thread
     from app.agent_runtime.offload_storage import delete_conversation_offloads
     from app.agent_runtime.runtime_config import _DATA_DIR
+    from app.services.retention.conversations import DeletedConversation
 
     locked_conversation = await lock_private_conversation(db, conv.id, context)
     foreign_child_id = await db.scalar(
@@ -283,5 +296,16 @@ async def delete_conversation(db: AsyncSession, conv: Conversation, context: Org
         )
         .values(source="ui", side_chat_parent_id=None)
     )
+    attachment_paths = tuple(
+        await db.scalars(
+            select(MessageAttachment.storage_path).where(
+                MessageAttachment.conversation_id == locked_conversation.id
+            )
+        )
+    )
+    deleted = DeletedConversation(
+        locked_conversation.id, owner_id, attachment_paths, locked_conversation.tenant_id
+    )
     await db.delete(locked_conversation)
     await db.flush()
+    return deleted
