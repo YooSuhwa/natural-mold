@@ -132,6 +132,8 @@ class FileItem(BaseModel):
     message_id: str | None = None
     created_at: UtcDatetime
     editable: bool
+    # attached → how the run passed it to the model (``attachment_form``); None if unrecorded.
+    model_input: str | None = None
 
 
 class MessageCreate(BaseModel):

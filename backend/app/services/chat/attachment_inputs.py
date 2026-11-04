@@ -58,6 +58,26 @@ async def conversation_has_attachments(
     return (await db.execute(query)).scalars().first() is not None
 
 
+async def recorded_attachment_forms(
+    db: AsyncSession, *, conversation_id: uuid.UUID, context: OrgContext
+) -> dict[str, str]:
+    """Each attachment's form from the run records; a later run (edit, regenerate) wins."""
+
+    records = await db.scalars(
+        select(ConversationRun.metadata_json)
+        .where(ConversationRun.conversation_id == conversation_id, private_run_predicate(context))
+        .order_by(ConversationRun.created_at, ConversationRun.id)
+    )
+    forms: dict[str, str] = {}
+    for metadata in records:
+        record = (metadata or {}).get(RUN_METADATA_KEY)
+        items = record.get("items") if isinstance(record, dict) else None
+        for item in items if isinstance(items, list) else []:
+            if isinstance(item, dict) and isinstance(item.get("id"), str):
+                forms[item["id"]] = str(item.get("form"))
+    return forms
+
+
 def _files(rows: list[MessageAttachment]) -> dict[str, AttachmentFile]:
     files: dict[str, AttachmentFile] = {}
     for row in rows:

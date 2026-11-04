@@ -2812,7 +2812,10 @@
       "attachmentRemove": "Attachment Remove",
       "stop": "Stop",
       "artifacts": {
-        "openLabel": "Open {name} file"
+        "openLabel": "Open {name} file",
+        "notSent": "Not sent to the model",
+        "notSentNoVision": "The current model does not support images, so this image was not sent to it.",
+        "notSentUnsupported": "This file type is not sent to the model."
       }
     },
     "pinnedSummary": {

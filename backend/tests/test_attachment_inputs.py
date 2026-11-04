@@ -641,3 +641,45 @@ async def test_worker_runs_with_tagged_input_and_attachment_inputs(upload_dir: P
     refs = captured["payload"]["messages"][0]["additional_kwargs"][ATTACHMENT_REFS_KEY]
     assert [ref["id"] for ref in refs] == [str(image_id)]
     assert set(captured["cfg"].attachment_inputs.files) == {str(image_id)}
+
+
+@pytest.mark.asyncio
+async def test_file_list_shows_the_latest_recorded_form(upload_dir: Path) -> None:
+    from sqlalchemy import update
+
+    from app.services.chat.attachments import list_conversation_files
+
+    conversation_id = await seed_conversation_with_agent()
+    image_id = await _seed_attachment(conversation_id, "a.png", "image/png", _png())
+    unrecorded = await _seed_attachment(conversation_id, "b.txt", "text/plain", b"x")
+    async with TestSession() as db:
+        await db.execute(
+            update(MessageAttachment)
+            .where(MessageAttachment.conversation_id == conversation_id)
+            .values(message_id="m-1")
+        )
+        await db.commit()
+    payload = {"messages": [{"type": "human", "content": "see"}]}
+    first = await _seed_run(conversation_id, supports_vision=None)
+    await _prepare(first, conversation_id, [image_id], payload)
+    async with TestSession() as db:
+        await db.execute(
+            update(ConversationRun)
+            .where(ConversationRun.id == first)
+            .values(is_active=False, status="completed")
+        )
+        await db.commit()
+    # A regenerate after the model gained vision records the image again.
+    second = await _seed_run(conversation_id, supports_vision=True)
+    await _prepare(second, conversation_id, [image_id], payload)
+
+    async with TestSession() as db:
+        files = await list_conversation_files(
+            db,
+            user_id=TEST_USER_ID,
+            conversation_id=conversation_id,
+            context=unit_context(TEST_USER_ID),
+        )
+
+    forms = {item.id: item.model_input for item in files}
+    assert forms == {str(image_id): "image", str(unrecorded): None}
