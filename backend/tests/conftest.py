@@ -130,6 +130,18 @@ def _stub_llm_credential_resolution(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_wall_clock_outbox_budget(monkeypatch):
+    """Keep the 2 s immediate authz delivery budget out of tests that do not test it.
+
+    On a loaded CI runner the budget can expire mid-statement. The cancel then breaks the
+    single shared SQLite connection (tests/sqlite_test_engine.py) under the test's own
+    session (``no active connection``, PR #346 CI), which a pooled PostgreSQL connection
+    would not do. The timeout path itself is tested in tests/authz/test_outbox_budget.py.
+    """
+    monkeypatch.setattr("app.authz.outbox.IMMEDIATE_TIMEOUT_SECONDS", 60.0)
+
+
+@pytest.fixture(autouse=True)
 def _clear_event_broker_registry():
     """W3-out M2 — module-level ``event_broker.registry`` is process-local and
     persists across tests. Without this fixture, any test that creates a
