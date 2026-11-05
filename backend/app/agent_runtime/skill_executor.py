@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import time
 from pathlib import Path
 
 from langchain_core.tools import BaseTool, StructuredTool
@@ -20,11 +21,13 @@ from app.agent_runtime.skill_execution_policy import (
 from app.agent_runtime.skill_executor_audit import (
     record_credential_audits,
     record_sandbox_denial,
+    record_sandbox_run,
 )
 from app.agent_runtime.skill_sandbox import SkillRunResult, SkillSandboxError
 from app.config import settings
 from app.marketplace.skill_runtime import (
     ResolvedCredential,
+    SkillRuntimeDescriptor,
     SkillToolContext,
 )
 from app.tools.risk import attach_tool_risk, execute_in_skill_risk
@@ -67,6 +70,58 @@ async def _run_on_host(
         stderr=stderr.decode("utf-8", errors="replace"),
         returncode=proc.returncode,
     )
+
+
+async def _run_sandboxed(
+    ctx: SkillToolContext,
+    descriptor: SkillRuntimeDescriptor,
+    args: list[str],
+    *,
+    skill_dir: Path,
+    env: dict[str, str],
+    timeout_seconds: float,
+) -> SkillRunResult:
+    """The sandbox run plus its audit event and trace span (plan v2 §15.3)."""
+    domains = skill_sandbox.network_domains(descriptor.execution_profile)
+    details: dict[str, object] = {
+        "command_executable": Path(args[0]).name,
+        "network_domains": list(domains),
+        "timeout_seconds": timeout_seconds,
+    }
+    started = time.monotonic()
+
+    async def audit(outcome: str, reason: str | None, **extra: object) -> None:
+        extra["duration_ms"] = int((time.monotonic() - started) * 1000)
+        await record_sandbox_run(
+            ctx, descriptor, outcome=outcome, reason_code=reason, details={**details, **extra}
+        )
+
+    with skill_sandbox.trace_span(ctx.run_id, {"skill_slug": descriptor.slug, **details}) as span:
+        try:
+            run = await skill_sandbox.run_in_sandbox(
+                args,
+                skill_dir=skill_dir,
+                output_dir=ctx.output_dir,
+                env=env,
+                timeout_seconds=timeout_seconds,
+                domains=domains,
+            )
+        except SkillSandboxError as exc:
+            await audit("failure", "sandbox_unavailable", error=str(exc))
+            raise
+        except asyncio.CancelledError:
+            await asyncio.shield(audit("failure", "cancelled"))
+            raise
+        result = {"sandbox_id": run.sandbox_id, "exit_code": run.returncode}
+        if span is not None:
+            span.update(output={**result, "timed_out": run.timed_out})
+    if run.timed_out:
+        await audit("failure", "timeout", **result)
+    elif run.returncode != 0:
+        await audit("failure", "nonzero_exit", **result)
+    else:
+        await audit("success", None, **result)
+    return run
 
 
 def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
@@ -114,6 +169,14 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
 
         # A sandboxed command sees its own copies at fixed paths and the image's PATH.
         sandboxed = settings.skill_sandbox_enabled
+        if sandboxed and descriptor.slug in skill_sandbox.HOST_WORKSPACE_SKILLS:
+            await record_sandbox_denial(
+                ctx, descriptor, reason_code="sandbox_unsupported", executable="unknown"
+            )
+            return (
+                "Error: this skill keeps a workspace outside the conversation, which the "
+                "skill sandbox does not support yet."
+            )
         out = skill_sandbox.OUTPUT_DIR if sandboxed else str(output_dir)
         skill_home = skill_sandbox.SKILL_DIR if sandboxed else str(resolved)
         env = {
@@ -192,13 +255,13 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
         await asyncio.to_thread(output_dir.mkdir, parents=True, exist_ok=True)
         if sandboxed:
             try:
-                run = await skill_sandbox.run_in_sandbox(
+                run = await _run_sandboxed(
+                    ctx,
+                    descriptor,
                     args,
                     skill_dir=resolved,
-                    output_dir=output_dir,
                     env=env,
                     timeout_seconds=timeout_seconds,
-                    requires_network=_requires_network(descriptor),
                 )
             except SkillSandboxError as exc:
                 return f"Error: {exc}"
