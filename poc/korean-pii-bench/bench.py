@@ -1,3 +1,5 @@
+# pyright: reportMissingImports=false
+# The PoC runs in its own venv (presidio-analyzer, ko-pii[presidio], spacy), not the backend one.
 """Presidio built-in Korean recognizers vs the ko-pii Presidio plugin on K-PII-Bench Track A.
 
 Usage: python bench.py <test_track_a.jsonl> <out.json> [sample_size] [setup,...]
