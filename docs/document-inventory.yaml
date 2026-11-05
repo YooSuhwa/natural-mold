@@ -283,12 +283,18 @@ documents:
   - path: docs/design-docs/generic-tool-call-grouping-plan.md
     lifecycle: active-plan
     status: active
+  - path: docs/design-docs/guardrail-minimum-plan.md
+    lifecycle: active-plan
+    status: active
   - path: docs/design-docs/hitl-ask-user-standardization-plan.md
     lifecycle: active-plan
     status: active
   - path: docs/design-docs/index.md
     lifecycle: canonical-current
     status: current
+  - path: docs/design-docs/korean-pii-detector-benchmark.md
+    lifecycle: generated-evidence
+    status: generated
   - path: docs/design-docs/langfuse-trace-debugger-plan.md
     lifecycle: active-plan
     status: active
