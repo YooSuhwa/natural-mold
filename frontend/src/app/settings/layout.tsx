@@ -6,6 +6,7 @@ const SETTINGS_MESSAGE_NAMESPACES = [
   'artifacts',
   'chat',
   'credentials',
+  'guardrailModel',
   'marketplace',
   'model',
   'orgAdmin',

@@ -78,7 +78,8 @@ docker compose ps
 - 이미지(약 1.6 GB)는 PyTorch CPU 인덱스(`download.pytorch.org`)에서 torch를 받습니다. TLS를
   검사하는 사내망이면 루트 `.env`에 `MOLDY_BUILD_EXTRA_CA=<회사 CA 파일 경로>`를 넣습니다. 이
   CA는 빌드 중 설치에만 쓰고 이미지에 남기지 않습니다.
-- 모델 없이 규칙 묶음만 쓰려면 `GUARDRAIL_PII_MODEL_URL= docker compose up -d`.
+- 운영자는 웹 UI의 **설정 → 가드레일 모델**(`/settings/guardrail-model`)에서 모델을 켜고 끄고, 주소를 바꾸고, 연결 테스트를 할 수 있습니다. 저장한 값이 환경변수보다 우선하고, "기본값으로 되돌리기"를 누르면 환경변수 값으로 돌아갑니다.
+- 모델 없이 규칙 묶음만 쓰려면 위 화면에서 끄거나, `GUARDRAIL_PII_MODEL_URL= docker compose up -d`로 띄웁니다.
 - 처리 시간: Apple Silicon의 Docker Desktop에서 문서당 약 60 ms(스레드 1개, 동시 2건)입니다.
 
 ## 3. 접속 주소

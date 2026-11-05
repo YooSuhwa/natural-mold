@@ -147,6 +147,11 @@ export function SettingsSidebar() {
               icon: SlidersHorizontalIcon,
             },
             {
+              href: '/settings/guardrail-model',
+              label: tSettings('nav.guardrailModel'),
+              icon: ShieldCheckIcon,
+            },
+            {
               href: '/settings/admin-audit',
               label: tSettings('nav.adminAudit'),
               icon: UsersRoundIcon,

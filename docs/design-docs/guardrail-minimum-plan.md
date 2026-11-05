@@ -44,6 +44,7 @@ K-PII-Bench 3,000건 측정(엄격 span)에서 **ko-pii 플러그인 + Presidio 
 | API | `POST /detect {"texts": [...]}`(최대 64개, 1 MiB) → 텍스트별 `{entity, start, end, score}`. 라벨은 규칙 묶음과 같은 ko-pii 이름으로 바꿔 돌려준다. 본문은 로그에 남기지 않는다 |
 | 접근 | 호스트 포트 없음, 비밀 값 없음. 스킬 샌드박스는 Compose 망에 닿지 않는다. 키(`PII_DETECTOR_API_KEY`)는 선택 |
 | 대체 | URL이 없거나, 응답이 없거나, 잘못된 응답(개수 불일치, 범위 밖 span)이거나, 1 MiB를 넘는 텍스트는 `kr` 규칙 묶음으로 검사한다. 경고는 끊길 때와 돌아올 때 한 번씩 |
+| 운영 설정 | 운영자 화면 `/settings/guardrail-model`(API `/api/guardrail-model-settings`): 켜기·끄기, 주소, 선택 키(시스템 `http_bearer` 자격증명), 연결 테스트, 기본값으로 되돌리기. 저장한 값(`guardrail_model_settings`, 플랫폼 행 하나)이 환경변수보다 우선하고, 지우면 환경변수로 돌아간다. 실행 중에는 30초 캐시로 읽고 저장하면 그 프로세스의 캐시를 바로 비운다(다른 워커는 30초 안에 반영). 주소는 내부 주소가 정상이라 사설망을 막지 않는 대신 운영자만 바꾸고 시험할 수 있고, 리다이렉트를 따르지 않으며, 연결 테스트는 결과(연결됨·연결 불가·시간 초과·키 거부·모델 없음·잘못된 응답)만 돌려주고 응답 본문은 돌려주지 않는다. 변경·되돌리기·연결 테스트는 감사 이벤트(`guardrail_model_setting.update`/`.reset`/`.test`, 변경 전후 값)로 남는다 |
 | 측정 | 서비스를 거친 `common,kr_model`: 엄격 F1 0.784, 겹침 0.915(3.1절 v7 기본 + 주민번호 정규식과 같음). 처리 시간은 Apple Silicon Docker Desktop에서 문서당 p50 약 60 ms. 같은 모델이 macOS 호스트에서는 22 ms였으므로 linux aarch64 CPU 빌드의 차이다. 스레드를 2·4개로 늘리면 오히려 느려진다(109 ms) |
 
 ## 3. 구현 설계

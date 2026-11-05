@@ -41,7 +41,11 @@ PURPOSES: dict[str, frozenset[str]] = {
         }
     ),
     "system": frozenset(
-        {"routers/system_llm_settings.py", "services/system_credential_resolver.py"}
+        {
+            "routers/system_llm_settings.py",
+            "services/system_credential_resolver.py",
+            "guardrails/model_settings.py",  # guardrail model service bearer token
+        }
     ),
     "install": frozenset({"marketplace/credential_requirements.py"}),
 }

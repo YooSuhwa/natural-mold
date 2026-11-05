@@ -1244,6 +1244,7 @@
       "credentials": "Credentials",
       "systemCredentials": "System Credentials",
       "systemLlm": "System LLM Settings",
+      "guardrailModel": "Guardrail model",
       "skills": "Skills",
       "schedules": "Schedules",
       "usage": "Usage",
@@ -3806,6 +3807,68 @@
       "saveFailed": "Operation failed."
     }
   },
+  "guardrailModel": {
+    "title": "Guardrail model",
+    "description": "Set the model service the guardrails use to find Korean personal data (names, addresses and more). When it is off or does not answer, the rules (ko-pii) check instead; the check is never skipped.",
+    "loading": "Loading…",
+    "operatorOnly": {
+      "title": "Operators only",
+      "description": "Applies to the whole installation. Changes and connection tests are recorded in the audit log."
+    },
+    "card": {
+      "title": "Korean personal-data model",
+      "description": "The default is the pii-detector service installed with Moldy. Once saved, this setting takes precedence over the environment."
+    },
+    "source": {
+      "environment": "Default (environment)",
+      "saved": "Saved setting"
+    },
+    "enabled": {
+      "label": "Use the model",
+      "description": "When off, only the rules (ko-pii) check."
+    },
+    "url": {
+      "label": "Service address",
+      "description": "The pii-detector service address, for example http://pii-detector:8095",
+      "descriptionWithDefault": "The pii-detector service address. Default: {url}",
+      "placeholder": "http://pii-detector:8095"
+    },
+    "credential": {
+      "label": "Service key (optional)",
+      "description": "Choose one only if the service has a key set. Pick an HTTP Bearer Token system credential.",
+      "none": "None"
+    },
+    "urlErrors": {
+      "missing": "A service address is required to turn the model on.",
+      "too_long": "The address is too long.",
+      "malformed": "The address is not valid.",
+      "scheme_or_host": "Enter an address starting with http:// or https://.",
+      "credentials_in_url": "The address cannot contain a user name or password. Choose the service key below.",
+      "query_or_fragment": "The address cannot contain ? or #."
+    },
+    "probe": {
+      "ok": "Connected.",
+      "details": "Model {model} · {latency} ms · {findings} found in the test sentence",
+      "unreachable": "Cannot reach the service. Check the address and the network.",
+      "timeout": "The service did not answer in time.",
+      "unauthorized": "The service rejected the key. Check the service key.",
+      "model_missing": "The service answers but has no model. Check the pii-model-fetch log.",
+      "bad_response": "This is not a pii-detector response. Check the address."
+    },
+    "test": "Test connection",
+    "testing": "Testing…",
+    "save": "Save",
+    "saving": "Saving…",
+    "reset": "Reset to default",
+    "resetting": "Resetting…",
+    "toast": {
+      "saved": "Guardrail model setting saved.",
+      "saveFailed": "Could not save.",
+      "reset": "Back to the default (environment).",
+      "resetFailed": "Could not reset.",
+      "testFailed": "Could not run the connection test."
+    }
+  },
   "skill": {
     "pageTitle": "Skill Management",
     "title": "Skills",
@@ -5451,6 +5514,7 @@
       "marketplaceAdmin": "Marketplace Admin",
       "systemCredentials": "System Credentials",
       "systemLlm": "System LLM Settings",
+      "guardrailModel": "Guardrail model",
       "authzSync": "Authorization Sync",
       "adminAudit": "All Activity",
       "organization": "Organization",
@@ -5768,6 +5832,7 @@
     "adminAudit": "All Activity",
     "systemCredentials": "System Credentials",
     "systemLlm": "System LLM Settings",
+    "guardrailModel": "Guardrail model",
     "skills": "Skills",
     "create": "Create",
     "createAgent": "Create Agent",

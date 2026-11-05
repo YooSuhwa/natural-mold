@@ -164,6 +164,16 @@ def _patch_conversation_run_worker_session(monkeypatch):
     monkeypatch.setattr("app.services.conversation_run_queue_worker.async_session", TestSession)
     monkeypatch.setattr("app.services.conversation_stream_service.async_session", TestSession)
     monkeypatch.setattr("app.services.skill_builder_finalize.async_session", TestSession)
+    # The guardrail model setting: the test database, and its 30 s cache empty per test.
+    from app.database import platform_session
+    from app.guardrails import model_settings
+
+    monkeypatch.setattr(
+        model_settings,
+        "platform_session",
+        lambda reason: platform_session(reason, maker=TestSession),
+    )
+    model_settings.invalidate()
 
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:

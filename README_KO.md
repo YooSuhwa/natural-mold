@@ -216,6 +216,9 @@ docker compose ps pii-detector               # 모델을 읽으면 healthy
 GUARDRAIL_PII_MODEL_URL= docker compose up -d   # 모델 없이 규칙만
 ```
 
+운영자는 **설정 → 가드레일 모델**(`/settings/guardrail-model`)에서 모델을 켜고 끄고, 주소를
+바꾸고, 연결 테스트를 할 수 있습니다. 저장한 값은 되돌리기 전까지 환경변수보다 우선합니다.
+
 TLS를 검사하는 사내망에서는 이미지 빌드가 PyTorch CPU 인덱스에 닿도록 루트 `.env`에
 `MOLDY_BUILD_EXTRA_CA=<회사 CA 파일 경로>`를 넣습니다. 받아 둔 모델을 직접 넣는 방법은
 [docs/docker-quickstart.md](docs/docker-quickstart.md)에 있습니다.
@@ -279,7 +282,7 @@ pnpm dev
 | `SKILL_SANDBOX_USE_SERVER_PROXY` | `false` (Docker 스택은 `true`) | 서버를 거쳐 샌드박스에 접속. 백엔드가 컨테이너 안에 있을 때 필요합니다. |
 | `SKILL_SANDBOX_IMAGE` | `python:3.12-slim` (Docker 스택은 `moldy-skill-sandbox:local`) | 샌드박스 이미지. `moldy-skill-sandbox`에는 Node 22와 skill-node 패키지도 있습니다. |
 | `SKILL_SANDBOX_CPU`, `SKILL_SANDBOX_MEMORY` | `1`, `512Mi` | 샌드박스 하나의 한도. |
-| `GUARDRAIL_PII_MODEL_URL` | 빈 값 (Docker 스택은 `http://pii-detector:8095`) | 가드레일 한국어 모델 서비스. 비어 있거나 서비스가 실패하면 ko-pii 규칙으로 대신 검사합니다. |
+| `GUARDRAIL_PII_MODEL_URL` | 빈 값 (Docker 스택은 `http://pii-detector:8095`) | 가드레일 한국어 모델 서비스. 설정 → 가드레일 모델의 기본값입니다. 비어 있거나 서비스가 실패하면 ko-pii 규칙으로 대신 검사합니다. |
 | `GUARDRAIL_PII_MODEL_API_KEY`, `GUARDRAIL_PII_MODEL_TIMEOUT_SECONDS` | 빈 값, `15` | 서비스가 `PII_DETECTOR_API_KEY`를 설정했을 때만 쓰는 키, 요청 시간 제한. |
 | `MOLDY_BUILD_EXTRA_CA` | 빈 값 | 루트 `.env`, Docker 전용. TLS를 검사하는 망에서 `pii-detector` 이미지 빌드가 신뢰할 CA 묶음. 이미지에 남지 않습니다. |
 

@@ -251,6 +251,10 @@ docker compose ps pii-detector               # healthy once the model is loaded
 GUARDRAIL_PII_MODEL_URL= docker compose up -d   # rules only, no model
 ```
 
+Operators can also turn the model on or off, change its address and test the
+connection under **Settings → Guardrail model** (`/settings/guardrail-model`). A
+saved value overrides the environment until it is reset.
+
 On a network that inspects TLS, set `MOLDY_BUILD_EXTRA_CA` in the root `.env` to
 the company CA file so the image build can reach the PyTorch CPU index. Copying
 a downloaded model in by hand is described in
@@ -322,7 +326,7 @@ important settings:
 | `SKILL_SANDBOX_USE_SERVER_PROXY` | `false` (`true` in the Docker stack) | Reach the sandboxes through the server; needed when the backend runs in a container. |
 | `SKILL_SANDBOX_IMAGE` | `python:3.12-slim` (`moldy-skill-sandbox:local` in the Docker stack) | Sandbox image. `moldy-skill-sandbox` also has Node 22 and the skill-node packages. |
 | `SKILL_SANDBOX_CPU`, `SKILL_SANDBOX_MEMORY` | `1`, `512Mi` | Limits per sandbox. |
-| `GUARDRAIL_PII_MODEL_URL` | empty (`http://pii-detector:8095` in the Docker stack) | Guardrail Korean model service. Empty, or the service failing, uses the ko-pii rules instead. |
+| `GUARDRAIL_PII_MODEL_URL` | empty (`http://pii-detector:8095` in the Docker stack) | Guardrail Korean model service; the default for Settings → Guardrail model. Empty, or the service failing, uses the ko-pii rules instead. |
 | `GUARDRAIL_PII_MODEL_API_KEY`, `GUARDRAIL_PII_MODEL_TIMEOUT_SECONDS` | empty, `15` | Bearer key, only if the service sets `PII_DETECTOR_API_KEY`; request timeout. |
 | `MOLDY_BUILD_EXTRA_CA` | empty | Root `.env`, Docker only: a CA bundle the `pii-detector` image build trusts, for networks that inspect TLS. Not kept in the image. |
 

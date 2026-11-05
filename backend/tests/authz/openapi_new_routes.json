@@ -8093,6 +8093,120 @@
         ]
       }
     },
+    "/api/guardrail-model-settings": {
+      "delete": {
+        "description": "Forget the saved setting; the environment applies again.",
+        "operationId": "reset_guardrail_model_setting_api_guardrail_model_settings_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reset Guardrail Model Setting",
+        "tags": [
+          "guardrail-model-settings"
+        ]
+      },
+      "get": {
+        "operationId": "get_guardrail_model_setting_api_guardrail_model_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailModelSettingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Guardrail Model Setting",
+        "tags": [
+          "guardrail-model-settings"
+        ]
+      },
+      "put": {
+        "operationId": "update_guardrail_model_setting_api_guardrail_model_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardrailModelSettingUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailModelSettingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Guardrail Model Setting",
+        "tags": [
+          "guardrail-model-settings"
+        ]
+      }
+    },
+    "/api/guardrail-model-settings/test": {
+      "post": {
+        "operationId": "test_guardrail_model_setting_api_guardrail_model_settings_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardrailModelProbeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailModelProbeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Guardrail Model Setting",
+        "tags": [
+          "guardrail-model-settings"
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "health_check_api_health_get",
@@ -32765,6 +32879,186 @@
         "updated_at"
       ],
       "title": "GroupView",
+      "type": "object"
+    },
+    "GuardrailModelProbeOut": {
+      "properties": {
+        "findings": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Findings"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latency Ms"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "unreachable",
+            "timeout",
+            "unauthorized",
+            "model_missing",
+            "bad_response"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "GuardrailModelProbeOut",
+      "type": "object"
+    },
+    "GuardrailModelProbeRequest": {
+      "description": "Test an address before saving it; the form sends what it shows.",
+      "properties": {
+        "credential_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Id"
+        },
+        "url": {
+          "maxLength": 2048,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "GuardrailModelProbeRequest",
+      "type": "object"
+    },
+    "GuardrailModelSettingOut": {
+      "description": "What the ``kr_model`` pack uses now, and where it comes from.",
+      "properties": {
+        "credential_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Id"
+        },
+        "credential_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Name"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "environment_url": {
+          "title": "Environment Url",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "environment",
+            "saved"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Updated At"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled",
+        "url",
+        "source",
+        "environment_url"
+      ],
+      "title": "GuardrailModelSettingOut",
+      "type": "object"
+    },
+    "GuardrailModelSettingUpdate": {
+      "properties": {
+        "credential_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Id"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "url": {
+          "default": "",
+          "maxLength": 2048,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "title": "GuardrailModelSettingUpdate",
       "type": "object"
     },
     "HTTPValidationError": {
