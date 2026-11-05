@@ -74,25 +74,30 @@ class CommonPack:
         return found + _ko_pii(text, self.name, include=_COMMON_LABELS)
 
 
+def rrn_fallback(text: str, pack: str) -> list[Finding]:
+    return [Finding("RRN", m.start(), m.end(), 0.5, pack) for m in _RRN_PATTERN.finditer(text)]
+
+
 class KoreanRulesPack:
     name = "kr"
 
     def detect(self, text: str) -> list[Finding]:
-        found = _ko_pii(text, self.name, exclude=_COMMON_LABELS)
-        return found + [
-            Finding("RRN", m.start(), m.end(), 0.5, self.name) for m in _RRN_PATTERN.finditer(text)
-        ]
+        return _ko_pii(text, self.name, exclude=_COMMON_LABELS) + rrn_fallback(text, self.name)
 
 
 PACKS: dict[str, DetectorPack] = {pack.name: pack for pack in (CommonPack(), KoreanRulesPack())}
 
 
-def detect(text: str, packs: Sequence[str]) -> list[Finding]:
-    """Run the named packs; one finding per (entity, span), highest score kept, in text order."""
+def merge(findings: Iterable[Finding]) -> list[Finding]:
+    """One finding per (entity, span), highest score kept, in text order."""
     best: dict[tuple[str, int, int], Finding] = {}
-    for name in packs:
-        for finding in PACKS[name].detect(text):
-            key = (finding.entity, finding.start, finding.end)
-            if key not in best or finding.score > best[key].score:
-                best[key] = finding
+    for finding in findings:
+        key = (finding.entity, finding.start, finding.end)
+        if key not in best or finding.score > best[key].score:
+            best[key] = finding
     return sorted(best.values(), key=lambda f: (f.start, f.end, f.entity))
+
+
+def detect(text: str, packs: Sequence[str]) -> list[Finding]:
+    """Run the named rule packs. The ``kr_model`` pack is async: ``model_pack.detect_texts``."""
+    return merge(finding for name in packs for finding in PACKS[name].detect(text))

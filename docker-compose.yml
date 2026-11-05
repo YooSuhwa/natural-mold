@@ -4,6 +4,8 @@
 #   openfga-postgres -> openfga-migrate -> openfga ----------------------+
 #   postgres + init-secrets -> migrate (alembic) -> authz-bootstrap -----+-> backend -> frontend
 #   init-secrets + skill-sandbox-image -> opensandbox ---------------------+
+#   pii-model-fetch -> pii-detector (guardrail Korean model pack; the backend falls back
+#   to its rules pack while it is missing)
 #
 # Settings precedence inside the backend containers, highest first:
 #   1. the `environment:` blocks below (shell / root .env interpolation)
@@ -21,6 +23,14 @@ x-openfga-datastore-uri: &openfga-datastore-uri postgres://openfga:${OPENFGA_DB_
 x-backend-build: &backend-build
   context: .
   dockerfile: backend/Dockerfile
+
+# extra_ca: an optional CA bundle for networks that inspect TLS (MOLDY_BUILD_EXTRA_CA); the
+# build uses it to reach the PyTorch CPU index and does not keep it in the image.
+x-pii-detector-build: &pii-detector-build
+  context: .
+  dockerfile: docker/pii-detector/Dockerfile
+  secrets:
+    - extra_ca
 
 # Fills unset/empty variables from the generated runtime files, then runs the
 # service command. MOLDY_DEMO_SCRIPTED_MODEL=true turns on the keyless scripted
@@ -206,6 +216,37 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  # One-shot: download the pinned schift-ko-pii-v7 checkpoint (docker/pii-detector/
+  # model_files.py) into the pii_model volume on first run. A failed download exits 0 so
+  # the stack still starts; see docs/docker-quickstart.md to copy a downloaded folder in.
+  pii-model-fetch:
+    build: *pii-detector-build
+    image: moldy-pii-detector:local
+    command: ["python", "/opt/pii-detector/fetch.py"]
+    volumes:
+      - pii_model:/models
+
+  # Guardrail Korean model pack (docs/design-docs/guardrail-minimum-plan.md §2). It loads
+  # only the pinned files, publishes no host port, and gets no secrets.
+  pii-detector:
+    image: moldy-pii-detector:local
+    volumes:
+      - pii_model:/models:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/healthz', timeout=4)
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    depends_on:
+      pii-model-fetch:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   # One-shot: Alembic owns the schema (there is no create_all), so the database
   # is migrated before the backend's lifespan seed queries it. Idempotent.
   migrate:
@@ -279,6 +320,8 @@ services:
       SKILL_SANDBOX_DOMAIN: opensandbox:8090
       SKILL_SANDBOX_USE_SERVER_PROXY: "true"
       SKILL_SANDBOX_IMAGE: moldy-skill-sandbox:local
+      # Empty runs the guardrail Korean rules pack only.
+      GUARDRAIL_PII_MODEL_URL: ${GUARDRAIL_PII_MODEL_URL-http://pii-detector:8095}
     env_file: *backend-env-file
     volumes:
       # Persist skills, uploads, artifacts, and agent images across recreation.
@@ -348,3 +391,9 @@ volumes:
   # Generated secrets.env and openfga.env (see init-secrets and authz-bootstrap).
   moldy_runtime:
   opensandbox_data:
+  # The pinned schift-ko-pii-v7 checkpoint (pii-model-fetch).
+  pii_model:
+
+secrets:
+  extra_ca:
+    file: ${MOLDY_BUILD_EXTRA_CA:-/dev/null}

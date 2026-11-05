@@ -203,6 +203,23 @@ SKILL_SANDBOX_ENABLED=false docker compose up -d    # 끄기: 백엔드 컨테�
 (`uv run uvicorn`)에서는 기본으로 꺼져 있습니다. 로컬에서 쓰는 방법은
 [docs/design-docs/skill-sandbox-docker.md](docs/design-docs/skill-sandbox-docker.md) 5절에 있습니다.
 
+### 가드레일 한국어 모델
+
+스택은 가드레일이 쓸 한국어 개인정보 모델 서비스 `pii-detector`도 띄웁니다(아직 채팅에 적용되는
+가드레일 미들웨어는 없습니다). `pii-model-fetch`가 처음 기동할 때 Hugging Face에서 고정 리비전의
+schift-ko-pii-v7 파일(약 160 MB)을 받고 해시를 확인합니다. 모델이 없거나 서비스가 멈추면 백엔드는
+ko-pii 규칙으로 대신 검사합니다.
+
+```bash
+docker compose logs pii-model-fetch          # downloaded / reusing / download failed
+docker compose ps pii-detector               # 모델을 읽으면 healthy
+GUARDRAIL_PII_MODEL_URL= docker compose up -d   # 모델 없이 규칙만
+```
+
+TLS를 검사하는 사내망에서는 이미지 빌드가 PyTorch CPU 인덱스에 닿도록 루트 `.env`에
+`MOLDY_BUILD_EXTRA_CA=<회사 CA 파일 경로>`를 넣습니다. 받아 둔 모델을 직접 넣는 방법은
+[docs/docker-quickstart.md](docs/docker-quickstart.md)에 있습니다.
+
 ## 로컬 개발
 
 필요한 것: [uv](https://docs.astral.sh/uv/)(Python 3.12 자동 설치), Node.js 22
@@ -262,6 +279,9 @@ pnpm dev
 | `SKILL_SANDBOX_USE_SERVER_PROXY` | `false` (Docker 스택은 `true`) | 서버를 거쳐 샌드박스에 접속. 백엔드가 컨테이너 안에 있을 때 필요합니다. |
 | `SKILL_SANDBOX_IMAGE` | `python:3.12-slim` (Docker 스택은 `moldy-skill-sandbox:local`) | 샌드박스 이미지. `moldy-skill-sandbox`에는 Node 22와 skill-node 패키지도 있습니다. |
 | `SKILL_SANDBOX_CPU`, `SKILL_SANDBOX_MEMORY` | `1`, `512Mi` | 샌드박스 하나의 한도. |
+| `GUARDRAIL_PII_MODEL_URL` | 빈 값 (Docker 스택은 `http://pii-detector:8095`) | 가드레일 한국어 모델 서비스. 비어 있거나 서비스가 실패하면 ko-pii 규칙으로 대신 검사합니다. |
+| `GUARDRAIL_PII_MODEL_API_KEY`, `GUARDRAIL_PII_MODEL_TIMEOUT_SECONDS` | 빈 값, `15` | 서비스가 `PII_DETECTOR_API_KEY`를 설정했을 때만 쓰는 키, 요청 시간 제한. |
+| `MOLDY_BUILD_EXTRA_CA` | 빈 값 | 루트 `.env`, Docker 전용. TLS를 검사하는 망에서 `pii-detector` 이미지 빌드가 신뢰할 CA 묶음. 이미지에 남지 않습니다. |
 
 LLM 키는 화면에서 등록하는 것을 권장합니다. 개발 환경에서는 `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY` 같은 변수를 기동 시 시스템 자격 증명으로 옮기고, 운영 환경은

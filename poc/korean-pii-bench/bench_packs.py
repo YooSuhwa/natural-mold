@@ -5,10 +5,12 @@
 Usage (from backend/): uv run python ../poc/korean-pii-bench/bench_packs.py \
        <test_track_a.jsonl> <out.json> [size] [packs]
 packs defaults to "common,kr". SECRET findings have no gold type and are not scored.
+kr_model needs the pii-detector service: GUARDRAIL_PII_MODEL_URL and _API_KEY.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import statistics
 import sys
@@ -20,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from bench_schift import GOLD, match, prf, sample  # noqa: E402
 
-from app.guardrails.detectors import detect  # noqa: E402
+from app.guardrails.model_pack import detect_texts  # noqa: E402
 
 PRED = {
     "PERSON": "PERSON",
@@ -38,6 +40,10 @@ PRED = {
     "IP": "IP",
     "URL": "URL",
 }
+
+
+def detect(text: str, packs: list[str]) -> list:
+    return asyncio.run(detect_texts([text], packs))[0]
 
 
 def main() -> None:
