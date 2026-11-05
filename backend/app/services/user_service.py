@@ -13,19 +13,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.account_erasure import (
+    account_file_rows,
     lock_account_history,
     lock_account_scopes,
     require_account_resources_released,
     require_no_account_grants,
     revoke_account_grants,
 )
-from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
-from app.models.message_attachment import MessageAttachment
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 
@@ -251,22 +250,10 @@ async def _account_files(
     """Files of the rows the User delete cascades away, read before the delete."""
     from app.services.retention.conversations import DeletedConversation
 
-    conversations = (
-        await db.execute(
-            select(Conversation.id, Conversation.tenant_id).where(Conversation.user_id == user_id)
-        )
-    ).all()
+    conversations, attachments = await account_file_rows(db, user_id)
     owned = {conversation_id for conversation_id, _ in conversations}
     paths: dict[uuid.UUID | None, list[str]] = {}
-    attachments = await db.execute(
-        select(MessageAttachment.conversation_id, MessageAttachment.storage_path).where(
-            or_(
-                MessageAttachment.user_id == user_id,
-                MessageAttachment.conversation_id.in_(owned),
-            )
-        )
-    )
-    for conversation_id, storage_path in attachments.all():
+    for conversation_id, storage_path in attachments:
         paths.setdefault(conversation_id if conversation_id in owned else None, []).append(
             storage_path
         )

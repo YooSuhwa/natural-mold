@@ -10,7 +10,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
@@ -24,6 +24,7 @@ from app.authz.tenant_org_write_locks import (
 )
 from app.models.authz import ResourceGrant
 from app.models.conversation import Conversation
+from app.models.message_attachment import MessageAttachment
 from app.models.organization import OrganizationMember
 
 if TYPE_CHECKING:  # app.dependencies imports this module through user_service
@@ -119,3 +120,30 @@ async def lock_account_history(db: AsyncSession, user_id: UUID) -> list[UUID]:
             )
         ).all()
     )
+
+
+async def account_file_rows(
+    db: AsyncSession, user_id: UUID
+) -> tuple[list[tuple[UUID, UUID | None]], list[tuple[UUID | None, str]]]:
+    """``(conversation id, tenant id)`` and ``(conversation id, storage path)`` rows the
+    User delete cascades away: the account's conversations, their attachments and the
+    account's own uploads (linked or not)."""
+    conversations = [
+        (row[0], row[1])
+        for row in await db.execute(
+            select(Conversation.id, Conversation.tenant_id).where(Conversation.user_id == user_id)
+        )
+    ]
+    owned = [conversation_id for conversation_id, _ in conversations]
+    attachments = [
+        (row[0], row[1])
+        for row in await db.execute(
+            select(MessageAttachment.conversation_id, MessageAttachment.storage_path).where(
+                or_(
+                    MessageAttachment.user_id == user_id,
+                    MessageAttachment.conversation_id.in_(owned),
+                )
+            )
+        )
+    ]
+    return conversations, attachments
