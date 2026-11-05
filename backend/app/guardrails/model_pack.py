@@ -4,7 +4,9 @@ guardrail-minimum-plan.md §2: schift-ko-pii v7 with its ko-pii adapter, plus th
 without the checksum (benchmark strict F1 0.78). The model runs in its own container, so the
 pack is async and sends texts in batches.
 
-Texts the service does not answer (not configured, unreachable, slow, a bad reply, or a text
+Which service, and whether it is on, comes from ``model_settings.current()`` (the operator's
+saved setting, else the environment). Texts the service does not answer (switched off or not
+configured, unreachable, slow, a bad reply, or a text
 over its size limit) are checked with the ``kr`` rules pack instead: detection gets weaker but
 is never skipped.
 """
@@ -20,6 +22,7 @@ from anyio.to_thread import run_sync
 
 from app.config import settings
 from app.guardrails.detectors import Finding, detect, merge, rrn_fallback
+from app.guardrails.model_settings import ModelService, current
 from app.outbound.client import outbound_http_client
 
 logger = logging.getLogger(__name__)
@@ -71,12 +74,14 @@ def _parse(payload: object, texts: list[str]) -> list[list[Finding]]:
     return parsed
 
 
-async def _ask_service(client: httpx.AsyncClient, texts: list[str]) -> list[list[Finding]]:
+async def _ask_service(
+    client: httpx.AsyncClient, service: ModelService, texts: list[str]
+) -> list[list[Finding]]:
     headers = {"Content-Type": "application/json"}
-    if settings.guardrail_pii_model_api_key:
-        headers["Authorization"] = f"Bearer {settings.guardrail_pii_model_api_key}"
+    if service.api_key:
+        headers["Authorization"] = f"Bearer {service.api_key}"
     response = await client.post(
-        f"{settings.guardrail_pii_model_url.rstrip('/')}/detect",
+        f"{service.url.rstrip('/')}/detect",
         content=json.dumps({"texts": texts}, ensure_ascii=False).encode(),
         headers=headers,
     )
@@ -88,13 +93,14 @@ async def _model_findings(texts: Sequence[str]) -> dict[int, list[Finding]]:
     """Findings per text index for the texts the service answered."""
     global _service_down
     answered: dict[int, list[Finding]] = {}
-    if not settings.guardrail_pii_model_url:
+    service = await current()
+    if not service.enabled or not service.url:
         return answered
     timeout = httpx.Timeout(settings.guardrail_pii_model_timeout_seconds)
     async with outbound_http_client(timeout=timeout) as client:
         for batch in _batches(texts):
             try:
-                results = await _ask_service(client, [texts[i] for i in batch])
+                results = await _ask_service(client, service, [texts[i] for i in batch])
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
                 if not _service_down:
                     # The error type only: the texts under check never reach the log.

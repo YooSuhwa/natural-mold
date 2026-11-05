@@ -47,6 +47,7 @@ PLATFORM_REASONS: dict[str, str] = {
     # TODO(8.9 company overrides): once system_llm_settings gains tenant rows,
     # this read must filter ``tenant_id IS NULL`` (or move to a tenant session).
     "system_llm.resolve": "8.9 system LLM: platform default (company override later)",
+    "guardrail.model_settings": "8.9 instance-wide guardrail model service setting",
     "audit.platform_event": "8.9 audit: platform events (denied before a company)",
     "skill_evaluation.reconcile": "8.9 restart: leader lists companies of interrupted runs (H-07)",
     "skill_evaluation.system_skill": "8.9 system skills have no company: platform scope (H-07)",

@@ -1244,6 +1244,7 @@
       "credentials": "자격증명",
       "systemCredentials": "시스템 자격증명",
       "systemLlm": "시스템 LLM 설정",
+      "guardrailModel": "가드레일 모델",
       "skills": "스킬",
       "schedules": "스케줄",
       "usage": "사용량",
@@ -3806,6 +3807,68 @@
       "saveFailed": "저장 실패"
     }
   },
+  "guardrailModel": {
+    "title": "가드레일 모델",
+    "description": "가드레일이 한국어 개인정보(이름·주소 등)를 찾을 때 쓰는 모델 서비스를 설정합니다. 끄거나 서비스가 응답하지 않으면 규칙(ko-pii)으로 대신 검사하며, 검사를 건너뛰지는 않습니다.",
+    "loading": "불러오는 중…",
+    "operatorOnly": {
+      "title": "운영자 전용",
+      "description": "설치 전체에 적용됩니다. 설정 변경과 연결 테스트는 감사 기록에 남습니다."
+    },
+    "card": {
+      "title": "한국어 개인정보 모델",
+      "description": "기본값은 함께 설치되는 pii-detector 서비스입니다. 저장하면 저장한 값이 환경변수보다 우선합니다."
+    },
+    "source": {
+      "environment": "기본값(환경변수)",
+      "saved": "저장된 설정"
+    },
+    "enabled": {
+      "label": "모델 사용",
+      "description": "끄면 규칙(ko-pii)으로만 검사합니다."
+    },
+    "url": {
+      "label": "서비스 주소",
+      "description": "pii-detector 서비스 주소입니다. 예: http://pii-detector:8095",
+      "descriptionWithDefault": "pii-detector 서비스 주소입니다. 기본값: {url}",
+      "placeholder": "http://pii-detector:8095"
+    },
+    "credential": {
+      "label": "서비스 키 (선택)",
+      "description": "서비스에 키를 설정했을 때만 고릅니다. 시스템 자격증명의 HTTP Bearer Token 중에서 선택합니다.",
+      "none": "사용 안 함"
+    },
+    "urlErrors": {
+      "missing": "모델을 켜려면 서비스 주소가 필요합니다.",
+      "too_long": "주소가 너무 깁니다.",
+      "malformed": "주소 형식이 올바르지 않습니다.",
+      "scheme_or_host": "http:// 또는 https://로 시작하는 주소를 입력하세요.",
+      "credentials_in_url": "주소에 사용자 이름이나 비밀번호를 넣을 수 없습니다. 서비스 키는 아래에서 고르세요.",
+      "query_or_fragment": "주소에 ?나 #를 넣을 수 없습니다."
+    },
+    "probe": {
+      "ok": "연결되었습니다.",
+      "details": "모델 {model} · 응답 {latency}ms · 시험 문장에서 {findings}건 탐지",
+      "unreachable": "서비스에 연결할 수 없습니다. 주소와 네트워크를 확인하세요.",
+      "timeout": "응답 시간이 초과되었습니다.",
+      "unauthorized": "서비스가 키를 거부했습니다. 서비스 키를 확인하세요.",
+      "model_missing": "서비스는 응답하지만 모델이 없습니다. pii-model-fetch 로그를 확인하세요.",
+      "bad_response": "pii-detector 서비스의 응답이 아닙니다. 주소를 확인하세요."
+    },
+    "test": "연결 테스트",
+    "testing": "테스트 중…",
+    "save": "저장",
+    "saving": "저장 중…",
+    "reset": "기본값으로 되돌리기",
+    "resetting": "되돌리는 중…",
+    "toast": {
+      "saved": "가드레일 모델 설정을 저장했습니다.",
+      "saveFailed": "저장하지 못했습니다.",
+      "reset": "기본값(환경변수)으로 되돌렸습니다.",
+      "resetFailed": "되돌리지 못했습니다.",
+      "testFailed": "연결 테스트를 실행하지 못했습니다."
+    }
+  },
   "skill": {
     "pageTitle": "스킬 관리",
     "title": "스킬",
@@ -5451,6 +5514,7 @@
       "marketplaceAdmin": "운영자 관리",
       "systemCredentials": "시스템 자격증명",
       "systemLlm": "시스템 LLM 설정",
+      "guardrailModel": "가드레일 모델",
       "authzSync": "권한 동기화",
       "adminAudit": "전체 활동 기록",
       "organization": "조직",
@@ -5768,6 +5832,7 @@
     "adminAudit": "전체 활동 기록",
     "systemCredentials": "시스템 자격증명",
     "systemLlm": "시스템 LLM 설정",
+    "guardrailModel": "가드레일 모델",
     "skills": "스킬",
     "create": "새로 만들기",
     "createAgent": "에이전트 만들기",

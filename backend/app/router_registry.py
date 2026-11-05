@@ -25,6 +25,7 @@ def include_app_routers(app: FastAPI) -> None:
         credential_bindings,
         credentials,
         feedback,
+        guardrail_model_settings,
         health,
         invitation_accept,
         marketplace,
@@ -167,6 +168,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(skill_credentials.router)
     app.include_router(skill_revisions.router)
     app.include_router(system_llm_settings.router)
+    app.include_router(guardrail_model_settings.router)
     app.include_router(tools.router)
     app.include_router(triggers.router)
     app.include_router(uploads.router)

@@ -39,6 +39,7 @@ from app.models.credential_oauth_state import CredentialOAuthState
 from app.models.daily_spend_agent import DailySpendAgent
 from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
+from app.models.guardrail_model_setting import GuardrailModelSetting
 from app.models.health_check_history import HealthCheckHistory
 from app.models.marketplace import (
     MarketplaceInstallation,
@@ -147,6 +148,7 @@ __all__ = [
     "DailySpendAgent",
     "DailySpendModel",
     "DailySpendUser",
+    "GuardrailModelSetting",
     "HealthCheckHistory",
     "MarketplaceInstallation",
     "MarketplaceItem",

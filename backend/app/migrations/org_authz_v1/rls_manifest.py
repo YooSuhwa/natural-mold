@@ -95,6 +95,7 @@ PLATFORM_ONLY: Final = frozenset(
         "authz_outbox",
         "authz_reconcile_runs",
         "authz_shadow_diffs",
+        "guardrail_model_settings",  # operator's guardrail model service choice
         # Historical migration artefacts that may still exist physically.
         "_m11_dedup_connection_snapshot",
         "_m11_dedup_tool_remap",
