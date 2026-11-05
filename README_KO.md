@@ -89,7 +89,8 @@ OpenFGA 모델로 단계적으로 옮길 수 있습니다.
   패키지로 올리거나, 스킬 빌더(`/skills/builder`)와 대화하며 만듭니다. 스킬마다 소스,
   버전과 되돌리기, 평가(스킬 있음/없음 비교와 비용 포함), 사용자 피드백을 다루는
   스튜디오가 있습니다. 스킬 스크립트는 `execute_in_skill`로 실행되며 기본적으로 승인을
-  거칩니다.
+  거치고, `SKILL_SANDBOX_ENABLED`(Docker 스택에서는 켜짐)이면 호출마다 새 샌드박스
+  컨테이너에서 실행됩니다.
 
 ### 마켓플레이스, 아티팩트, 기억, API, 일정
 
@@ -161,8 +162,11 @@ cd natural-mold
 docker compose up -d --build
 ```
 
-이 명령 하나로 PostgreSQL, OpenFGA와 1회성 bootstrap, DB 마이그레이션, 백엔드,
-프론트엔드가 빌드되고 실행됩니다. 권한 판정은 여전히 `legacy` 모드로 시작합니다. 그다음:
+이 명령 하나로 PostgreSQL, OpenFGA와 1회성 bootstrap, DB 마이그레이션, 스킬 실행 샌드박스
+서버, 백엔드, 프론트엔드가 빌드되고 실행됩니다. 권한 판정은 여전히 `legacy` 모드로 시작합니다.
+스킬 스크립트는 호출마다 새 샌드박스 컨테이너에서 실행되고, 샌드박스 서버는 Docker 소켓으로 그
+컨테이너를 만듭니다([docs/design-docs/skill-sandbox-docker.md](docs/design-docs/skill-sandbox-docker.md)).
+그다음:
 
 1. http://localhost:3000/register 에서 계정을 만듭니다. Docker 스택에는 시드 계정이 없고,
    `ALLOW_FIRST_USER_AS_ADMIN=true`(기본값)이면 처음 만든 계정이 운영자(`super_user`)가

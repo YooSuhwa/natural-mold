@@ -1,0 +1,53 @@
+# OpenSandbox server for Moldy skill execution (docker runtime). The API key comes
+# from OPENSANDBOX_SERVER_API_KEY; see docs/design-docs/skill-sandbox-docker.md for
+# why each limit is set (PoC 2026-11-02).
+
+[server]
+host = "0.0.0.0"
+port = 8090
+max_sandbox_timeout_seconds = 3600
+
+[proxy]
+# The backend reaches execd through this server, which routes to the sandbox's
+# address on the default bridge (start.py joins it).
+resolve_internal = true
+
+[log]
+level = "INFO"
+
+[runtime]
+type = "docker"
+execd_image = "opensandbox/execd:v1.1.0"
+
+[storage]
+allowed_host_paths = []
+
+[store]
+type = "sqlite"
+path = "/var/lib/opensandbox/opensandbox.db"
+
+[docker]
+# Egress policy is enforced only on the default bridge. The backend and databases
+# stay on the Compose network.
+network_mode = "bridge"
+# Where sandbox ports are published and where this containerised server reaches
+# them; start.py fills both (Docker Desktop: 127.0.0.1 via host.docker.internal,
+# Linux: the bridge gateway). Never 0.0.0.0: execd has no authentication.
+publish_host = "@PUBLISH_HOST@"
+host_ip = "@HOST_IP@"
+drop_capabilities = ["AUDIT_WRITE", "MKNOD", "NET_ADMIN", "NET_RAW", "SYS_ADMIN", "SYS_MODULE", "SYS_PTRACE", "SYS_TIME", "SYS_TTY_CONFIG"]
+no_new_privileges = true
+# 4096 (the default) let a fork bomb OOM-kill execd; 128 keeps it alive.
+pids_limit = 128
+
+[ingress]
+mode = "direct"
+
+[egress]
+image = "opensandbox/egress:v1.1.7"
+# "dns" lets direct-IP connections through, including to other sandboxes' execd.
+mode = "dns+nft"
+readiness_timeout_seconds = 30.0
+
+[renew_intent]
+enabled = false

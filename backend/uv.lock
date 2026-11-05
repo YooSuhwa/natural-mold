@@ -1279,6 +1279,7 @@ dependencies = [
     { name = "langsmith" },
     { name = "mcp" },
     { name = "openfga-sdk" },
+    { name = "opensandbox" },
     { name = "orjson" },
     { name = "passlib", extra = ["bcrypt"] },
     { name = "pillow" },
@@ -1346,6 +1347,7 @@ requires-dist = [
     { name = "langsmith", specifier = ">=0.11.2" },
     { name = "mcp" },
     { name = "openfga-sdk", specifier = "==0.10.5" },
+    { name = "opensandbox", specifier = ">=1.2,<2" },
     { name = "orjson", specifier = ">=3.10" },
     { name = "passlib", extras = ["bcrypt"], specifier = ">=1.7.4" },
     { name = "pillow", specifier = ">=12.2.0" },
@@ -1483,6 +1485,24 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a3/af/40ef80ce225de586a2d51326893f16a54c6dde74a1ce66bda25d7492356d/openfga_sdk-0.10.5.tar.gz", hash = "sha256:3383baf1c900cf7abed471b596ea6a8cd10180e937e10845150058048e3e8d18", size = 349625, upload-time = "2026-09-29T09:00:06.831Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d3/77/88bcd03ccb9061b53bf58db18f44b668d2ab9c2e3457d0427c7d7f8357a7/openfga_sdk-0.10.5-py3-none-any.whl", hash = "sha256:f3fadb7eca71d8575aa0e572ba24c78ee85dde44ce28bc21e3d372eec8f44e2f", size = 267241, upload-time = "2026-09-29T09:00:05.146Z" },
+]
+
+[[package]]
+name = "opensandbox"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "attrs" },
+    { name = "httpcore" },
+    { name = "httpx" },
+    { name = "httpx-sse" },
+    { name = "opentelemetry-api" },
+    { name = "pydantic" },
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0b/2f/6682d18a69043b5ad29e8a411e969e2ee4216127dbc2257752690f502287/opensandbox-1.2.0.tar.gz", hash = "sha256:e7936d0bf3f7defa4e26571b0634089b4c3eb15d023909f6da9d940b95736c54", size = 329030, upload-time = "2026-10-27T12:36:39.214Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4f/18/2de1578aead2e5da094c352e2c1610d750c399070769feac02cb42ff8941/opensandbox-1.2.0-py3-none-any.whl", hash = "sha256:15a0f3c3245018afa43b75fb14e892a64c2c8807276a0fdaf2a1a469f5e214ea", size = 744130, upload-time = "2026-10-27T12:36:37.805Z" },
 ]
 
 [[package]]

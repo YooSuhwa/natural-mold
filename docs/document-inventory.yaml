@@ -310,6 +310,9 @@ documents:
   - path: docs/design-docs/skill-execution-sandbox-isolation-plan.md
     lifecycle: active-plan
     status: active
+  - path: docs/design-docs/skill-sandbox-docker.md
+    lifecycle: canonical-current
+    status: current
   - path: docs/design-docs/skill-sandbox-opensandbox-poc.md
     lifecycle: generated-evidence
     status: generated

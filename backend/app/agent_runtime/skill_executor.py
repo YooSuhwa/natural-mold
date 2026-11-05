@@ -7,6 +7,7 @@ from pathlib import Path
 
 from langchain_core.tools import BaseTool, StructuredTool
 
+from app.agent_runtime import skill_sandbox
 from app.agent_runtime.skill_execution_policy import (
     _expand_shell_vars,
     _prepare_skill_subprocess_args,
@@ -20,6 +21,8 @@ from app.agent_runtime.skill_executor_audit import (
     record_credential_audits,
     record_sandbox_denial,
 )
+from app.agent_runtime.skill_sandbox import SkillRunResult, SkillSandboxError
+from app.config import settings
 from app.marketplace.skill_runtime import (
     ResolvedCredential,
     SkillToolContext,
@@ -32,6 +35,38 @@ __all__ = [
     "_prepare_skill_subprocess_args",
     "_skill_timeout_seconds",
 ]
+
+
+async def _run_on_host(
+    args: list[str], *, cwd: Path, env: dict[str, str], timeout_seconds: float
+) -> SkillRunResult:
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        cwd=str(cwd),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return SkillRunResult(stdout="", stderr="", returncode=None, timed_out=True)
+    except asyncio.CancelledError:
+        # run cancel(Stop)/worker shutdown 이 이 await 를 취소하면 timeout
+        # kill 경로도 함께 취소되어 subprocess 가 고아로 남는다 — 즉시
+        # 종료시켜 취소된 대화 디렉토리에 출력이 계속 쌓이는 것을 막고
+        # 취소를 전파한다.
+        if proc.returncode is None:
+            proc.kill()
+        await proc.wait()
+        raise
+    return SkillRunResult(
+        stdout=stdout.decode("utf-8", errors="replace"),
+        stderr=stderr.decode("utf-8", errors="replace"),
+        returncode=proc.returncode,
+    )
 
 
 def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
@@ -77,21 +112,25 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
         if not resolved.is_relative_to(ctx.runtime_root.resolve()) or not resolved.is_dir():
             return f"Error: invalid skill directory: {skill_directory}"
 
-        out = str(output_dir)
+        # A sandboxed command sees its own copies at fixed paths and the image's PATH.
+        sandboxed = settings.skill_sandbox_enabled
+        out = skill_sandbox.OUTPUT_DIR if sandboxed else str(output_dir)
+        skill_home = skill_sandbox.SKILL_DIR if sandboxed else str(resolved)
         env = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/usr/local/bin"),
-            "PYTHONPATH": str(resolved),
-            "HOME": str(resolved),
+            "PYTHONPATH": skill_home,
+            "HOME": skill_home,
             "SKILL_OUTPUT_DIR": out,
             "OUTPUTS_DIR": out,
         }
-        node_modules = _resolve_skill_node_modules()
-        if node_modules is not None:
-            env["NODE_PATH"] = str(node_modules)
-        for key in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"):
-            value = os.environ.get(key)
-            if value:
-                env[key] = value
+        if not sandboxed:
+            env["PATH"] = os.environ.get("PATH", "/usr/bin:/usr/local/bin")
+            node_modules = _resolve_skill_node_modules()
+            if node_modules is not None:
+                env["NODE_PATH"] = str(node_modules)
+            for key in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"):
+                value = os.environ.get(key)
+                if value:
+                    env[key] = value
         # Slice E Stage 3 — credential env injection (Spec §8.2).
         # ``descriptor.credential_bindings`` is populated by
         # ``build_skill_runtime_context`` at agent build time so the
@@ -151,33 +190,29 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
         )
 
         await asyncio.to_thread(output_dir.mkdir, parents=True, exist_ok=True)
-        proc = await asyncio.create_subprocess_exec(
-            *args,
-            cwd=str(resolved),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
+        if sandboxed:
+            try:
+                run = await skill_sandbox.run_in_sandbox(
+                    args,
+                    skill_dir=resolved,
+                    output_dir=output_dir,
+                    env=env,
+                    timeout_seconds=timeout_seconds,
+                    requires_network=_requires_network(descriptor),
+                )
+            except SkillSandboxError as exc:
+                return f"Error: {exc}"
+        else:
+            run = await _run_on_host(args, cwd=resolved, env=env, timeout_seconds=timeout_seconds)
+        if run.timed_out:
             return f"Error: script execution timed out ({timeout_seconds:g}s)."
-        except asyncio.CancelledError:
-            # run cancel(Stop)/worker shutdown 이 이 await 를 취소하면 timeout
-            # kill 경로도 함께 취소되어 subprocess 가 고아로 남는다 — 즉시
-            # 종료시켜 취소된 대화 디렉토리에 출력이 계속 쌓이는 것을 막고
-            # 취소를 전파한다.
-            if proc.returncode is None:
-                proc.kill()
-            await proc.wait()
-            raise
 
-        result = stdout.decode("utf-8", errors="replace")
-        if proc.returncode != 0:
-            err = stderr.decode("utf-8", errors="replace")
-            result += f"\nSTDERR: {err}"
+        result = run.stdout
+        if run.returncode != 0:
+            result += f"\nSTDERR: {run.stderr}"
+        if sandboxed:
+            # Copied-back outputs live in output_dir; the rewrite below expects that path.
+            result = result.replace(f"{skill_sandbox.OUTPUT_DIR}/", f"{output_dir}/")
 
         # Phase 3 skill-axis usage (spec §5.3 — "성공 경로에서") — count a
         # SUCCESSFUL (exit 0) sandbox execution for agent runs (chat + scheduled
@@ -188,11 +223,7 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
         # Trigger/API runs whose thread_id is not a conversation UUID record with
         # conversation_id NULL (self-describing). A failed script (nonzero exit)
         # is NOT counted — the "실행" stat reflects successful executions.
-        if (
-            proc.returncode == 0
-            and ctx.audit_kind == "execute_in_skill"
-            and ctx.user_id is not None
-        ):
+        if run.returncode == 0 and ctx.audit_kind == "execute_in_skill" and ctx.user_id is not None:
             from app.services.skill_usage_service import record_chat_execution_nonfatal
 
             await record_chat_execution_nonfatal(

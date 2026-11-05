@@ -68,6 +68,8 @@ dependencies = [
     "openfga-sdk==0.10.5",
     # PDF chat attachments: text extraction for the model.
     "pypdf>=6.0",
+    # Isolated skill execution (SKILL_SANDBOX_ENABLED).
+    "opensandbox>=1.2,<2",
 ]
 
 [project.optional-dependencies]

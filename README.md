@@ -103,7 +103,8 @@ original owner checks to an OpenFGA model.
   builder (`/skills/builder`). Each skill has a studio with source, versions and
   rollback, evaluation (including a with/without-skill comparison and cost) and
   user feedback. Skill scripts run through `execute_in_skill`, which asks for
-  approval by default.
+  approval by default and, with `SKILL_SANDBOX_ENABLED` (on in the Docker
+  stack), runs each call in a throwaway sandbox container.
 
 ### Marketplace, artifacts, memory, API and schedules
 
@@ -189,8 +190,12 @@ docker compose up -d --build
 ```
 
 This one command builds and starts PostgreSQL, OpenFGA with a one-time
-bootstrap, the database migrations, the backend and the frontend. Permissions
-still start in `legacy` mode. Then:
+bootstrap, the database migrations, the skill sandbox server, the backend and
+the frontend. Permissions still start in `legacy` mode. Skill scripts run in a
+throwaway sandbox container per call; the sandbox server starts those containers
+through the Docker socket
+([docs/design-docs/skill-sandbox-docker.md](docs/design-docs/skill-sandbox-docker.md)).
+Then:
 
 1. Open http://localhost:3000/register and create an account. The Docker stack
    has no seeded account, and while `ALLOW_FIRST_USER_AS_ADMIN=true` (the
