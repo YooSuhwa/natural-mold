@@ -103,7 +103,8 @@ original owner checks to an OpenFGA model.
   builder (`/skills/builder`). Each skill has a studio with source, versions and
   rollback, evaluation (including a with/without-skill comparison and cost) and
   user feedback. Skill scripts run through `execute_in_skill`, which asks for
-  approval by default.
+  approval by default and, with `SKILL_SANDBOX_ENABLED` (on in the Docker
+  stack), runs each call in a throwaway sandbox container.
 
 ### Marketplace, artifacts, memory, API and schedules
 
@@ -189,8 +190,12 @@ docker compose up -d --build
 ```
 
 This one command builds and starts PostgreSQL, OpenFGA with a one-time
-bootstrap, the database migrations, the backend and the frontend. Permissions
-still start in `legacy` mode. Then:
+bootstrap, the database migrations, the skill sandbox server, the backend and
+the frontend. Permissions still start in `legacy` mode. Skill scripts run in a
+throwaway sandbox container per call; the sandbox server starts those containers
+through the Docker socket
+([docs/design-docs/skill-sandbox-docker.md](docs/design-docs/skill-sandbox-docker.md)).
+Then:
 
 1. Open http://localhost:3000/register and create an account. The Docker stack
    has no seeded account, and while `ALLOW_FIRST_USER_AS_ADMIN=true` (the
@@ -209,6 +214,28 @@ to start over (`docker compose down -v` deletes the volumes). For production
 settings (secrets, secure cookies, TLS), read
 [docs/operator-setup.md](docs/operator-setup.md) and
 [docs/org-authz-operations.md](docs/org-authz-operations.md).
+
+### Skill sandbox
+
+In the Docker stack every `execute_in_skill` call runs in a new container that
+is deleted when the call ends. The script runs as an unprivileged user, sees
+only that skill's files and the conversation's output files, gets credentials
+for that one command, and has no network unless the skill declares
+`requires_network` (internal addresses stay blocked even then).
+
+```bash
+docker compose ps opensandbox                       # sandbox server: healthy
+docker compose logs opensandbox                     # server log
+docker ps --filter name=sandbox-                    # sandboxes, only while a skill runs
+SKILL_SANDBOX_ENABLED=false docker compose up -d    # run scripts in the backend container instead
+```
+
+The first start downloads the OpenSandbox images (about 730 MB). The
+`opensandbox` service starts containers through the Docker socket, so it can
+control the Docker host. Local development (`uv run uvicorn`) keeps the sandbox
+off by default; to use it there, see
+[docs/design-docs/skill-sandbox-docker.md](docs/design-docs/skill-sandbox-docker.md)
+section 5.
 
 ## Local development
 
@@ -271,6 +298,11 @@ important settings:
 | `TENANT_PURGE_ENABLED` | `false` | Daily job that permanently deletes companies whose deletion grace period has ended. Scheduling and cancelling a deletion work either way. |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,...` | Must include every frontend origin. |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8001` | Frontend; inlined into the bundle at build time. |
+| `SKILL_SANDBOX_ENABLED` | `false` (`true` in the Docker stack) | Run each skill script in a throwaway OpenSandbox sandbox. No fallback to the host when the server is down. |
+| `SKILL_SANDBOX_DOMAIN`, `SKILL_SANDBOX_API_KEY` | `127.0.0.1:18080`, empty | Sandbox server address and key. The Docker stack sets both (`opensandbox:8090`, a generated key). |
+| `SKILL_SANDBOX_USE_SERVER_PROXY` | `false` (`true` in the Docker stack) | Reach the sandboxes through the server; needed when the backend runs in a container. |
+| `SKILL_SANDBOX_IMAGE` | `python:3.12-slim` (`moldy-skill-sandbox:local` in the Docker stack) | Sandbox image. `moldy-skill-sandbox` also has Node 22 and the skill-node packages. |
+| `SKILL_SANDBOX_CPU`, `SKILL_SANDBOX_MEMORY` | `1`, `512Mi` | Limits per sandbox. |
 
 LLM keys are best added in the UI. In development, `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY` and similar variables are copied into system credentials at

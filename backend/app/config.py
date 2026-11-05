@@ -150,6 +150,18 @@ class Settings(AuthzSettings):
     # dependency directory for built-in document-generation skills.
     skill_node_binary: str = "node"
     skill_node_modules_dir: str = "./skill-node/node_modules"
+    # Isolated skill execution (docs/design-docs/skill-sandbox-docker.md). When on,
+    # every ``execute_in_skill`` call runs in its own OpenSandbox sandbox that is
+    # deleted afterwards; there is no fallback to the host when the server fails.
+    skill_sandbox_enabled: bool = False
+    skill_sandbox_domain: str = "127.0.0.1:18080"
+    skill_sandbox_api_key: str = ""
+    # Reach execd through the server, for a backend that cannot reach the ports the
+    # server publishes on its host (the backend running in a container).
+    skill_sandbox_use_server_proxy: bool = False
+    skill_sandbox_image: str = "python:3.12-slim"
+    skill_sandbox_cpu: str = "1"
+    skill_sandbox_memory: str = "512Mi"
 
     skill_evaluation_enabled: bool = True
     skill_evaluation_max_concurrent: int = 1

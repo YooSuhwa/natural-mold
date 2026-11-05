@@ -3,13 +3,15 @@
 #
 #   openfga-postgres -> openfga-migrate -> openfga ----------------------+
 #   postgres + init-secrets -> migrate (alembic) -> authz-bootstrap -----+-> backend -> frontend
+#   init-secrets + skill-sandbox-image -> opensandbox ---------------------+
 #
 # Settings precedence inside the backend containers, highest first:
 #   1. the `environment:` blocks below (shell / root .env interpolation)
 #   2. backend/.env, when present (env_file)
 #   3. files generated in the moldy_runtime volume, used only for variables still
 #      unset or empty after 1 and 2: ENCRYPTION_KEYS and JWT_SECRET (init-secrets,
-#      created once and reused), OPENFGA_STORE_ID and OPENFGA_MODEL_ID
+#      created once and reused; SKILL_SANDBOX_API_KEY is added to an older file),
+#      OPENFGA_STORE_ID and OPENFGA_MODEL_ID
 #      (authz-bootstrap, refreshed on every `up`).
 # Shared or production installs set real OpenFGA secrets in the root .env and
 # layer docker-compose.tls.yml on top (docs/operator-setup.md section 7).
@@ -126,9 +128,10 @@ services:
       timeout: 5s
       retries: 5
 
-  # One-shot: generate ENCRYPTION_KEYS and JWT_SECRET into the moldy_runtime
-  # volume on first run; later runs keep the existing file, so credentials stay
-  # decryptable and sessions survive restarts. `down -v` deletes it.
+  # One-shot: generate ENCRYPTION_KEYS, JWT_SECRET and SKILL_SANDBOX_API_KEY into
+  # the moldy_runtime volume on first run; later runs keep the existing values, so
+  # credentials stay decryptable and sessions survive restarts, and only add a key
+  # the file does not have yet. `down -v` deletes it.
   init-secrets:
     build: *backend-build
     entrypoint: ["python", "-c"]
@@ -136,17 +139,72 @@ services:
       - |
         import os, secrets
         path = "/run/moldy/secrets.env"
-        if os.path.exists(path) and os.path.getsize(path) > 0:
+        values = {
+            "ENCRYPTION_KEYS": lambda: secrets.token_hex(32),
+            "JWT_SECRET": lambda: secrets.token_urlsafe(64),
+            "SKILL_SANDBOX_API_KEY": lambda: secrets.token_urlsafe(32),
+        }
+        lines = open(path).read().splitlines() if os.path.exists(path) else []
+        present = {line.split("=", 1)[0] for line in lines if "=" in line}
+        missing = [key for key in values if key not in present]
+        if not missing:
             print("init-secrets: reusing", path)
         else:
             os.umask(0o077)
             with open(path + ".tmp", "w") as out:
-                out.write(f"ENCRYPTION_KEYS={secrets.token_hex(32)}\n")
-                out.write(f"JWT_SECRET={secrets.token_urlsafe(64)}\n")
+                out.writelines(f"{line}\n" for line in lines)
+                out.writelines(f"{key}={values[key]()}\n" for key in missing)
             os.replace(path + ".tmp", path)
-            print("init-secrets: generated", path)
+            print("init-secrets: generated", ", ".join(missing), "in", path)
     volumes:
       - moldy_runtime:/run/moldy
+
+  # Builds the image every skill sandbox starts from (docker/skill-sandbox); the
+  # opensandbox server starts containers from it, so it only has to exist locally.
+  skill-sandbox-image:
+    build:
+      context: .
+      dockerfile: docker/skill-sandbox/Dockerfile
+    image: moldy-skill-sandbox:local
+    entrypoint: ["true"]
+
+  # Isolated skill execution (docs/design-docs/skill-sandbox-docker.md): one
+  # throwaway sandbox container per execute_in_skill call. It starts containers
+  # through the Docker socket, which gives this service control of the Docker host;
+  # it publishes no host port and the backend reaches it inside the Compose network.
+  # Sandboxes run on Docker's default bridge (egress policy works only there); the
+  # server joins that network at start to reach them, so the backend does not.
+  opensandbox:
+    build:
+      context: .
+      dockerfile: docker/opensandbox/Dockerfile
+    entrypoint: *backend-entrypoint
+    command:
+      - sh
+      - -c
+      - OPENSANDBOX_SERVER_API_KEY="$$SKILL_SANDBOX_API_KEY" exec python /opt/opensandbox/start.py
+    env_file: *backend-env-file
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - opensandbox_data:/var/lib/opensandbox
+      - moldy_runtime:/run/moldy:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=4)
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      # The first start pulls the execd and egress images (start.py).
+      start_period: 300s
+    depends_on:
+      init-secrets:
+        condition: service_completed_successfully
+      skill-sandbox-image:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
   # One-shot: Alembic owns the schema (there is no create_all), so the database
   # is migrated before the backend's lifespan seed queries it. Idempotent.
@@ -216,6 +274,11 @@ services:
       CHECKPOINTER_POOL_MAX_SIZE: ${CHECKPOINTER_POOL_MAX_SIZE:-20}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:${MOLDY_FRONTEND_PORT:-3000},http://127.0.0.1:${MOLDY_FRONTEND_PORT:-3000}}
       MOLDY_DEMO_SCRIPTED_MODEL: ${MOLDY_DEMO_SCRIPTED_MODEL:-false}
+      # Skill scripts run in throwaway sandboxes; false runs them in this container.
+      SKILL_SANDBOX_ENABLED: ${SKILL_SANDBOX_ENABLED:-true}
+      SKILL_SANDBOX_DOMAIN: opensandbox:8090
+      SKILL_SANDBOX_USE_SERVER_PROXY: "true"
+      SKILL_SANDBOX_IMAGE: moldy-skill-sandbox:local
     env_file: *backend-env-file
     volumes:
       # Persist skills, uploads, artifacts, and agent images across recreation.
@@ -240,6 +303,9 @@ services:
         condition: service_completed_successfully
       authz-bootstrap:
         condition: service_completed_successfully
+      # Not healthy: without the server only skill scripts fail; chat still works.
+      opensandbox:
+        condition: service_started
     restart: unless-stopped
 
   frontend:
@@ -281,3 +347,4 @@ volumes:
   openfga_data:
   # Generated secrets.env and openfga.env (see init-secrets and authz-bootstrap).
   moldy_runtime:
+  opensandbox_data:
