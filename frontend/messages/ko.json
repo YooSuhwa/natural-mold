@@ -2812,7 +2812,10 @@
       "attachmentRemove": "첨부 파일 제거",
       "stop": "중단",
       "artifacts": {
-        "openLabel": "{name} 파일 열기"
+        "openLabel": "{name} 파일 열기",
+        "notSent": "모델에 전달 안 됨",
+        "notSentNoVision": "현재 모델이 이미지를 지원하지 않아 이 이미지는 모델에 전달되지 않았습니다.",
+        "notSentUnsupported": "이 파일 형식은 모델에 전달되지 않습니다."
       }
     },
     "pinnedSummary": {

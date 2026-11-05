@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen, userEvent, within } from '../../../../tests/test-utils'
 import {
+  AttachmentModelInputNote,
   MessageAttachmentItem,
   UserMessageAttachments,
   fileItemToBrief,
@@ -41,6 +42,7 @@ vi.mock('@/lib/hooks/use-conversation-files', () => ({
         preview_url: '/api/uploads/attachment',
         message_id: 'public-user',
         size_bytes: 28,
+        model_input: 'unsupported',
       },
     ],
   }),
@@ -49,6 +51,7 @@ vi.mock('@/lib/hooks/use-conversation-files', () => ({
 it('renders persisted attachments for a runtime message carrying its public ID', () => {
   render(<UserMessageAttachments />)
   expect(screen.getByRole('button', { name: /quoted-report.txt/ })).toBeInTheDocument()
+  expect(screen.getByText('모델에 전달 안 됨')).toBeInTheDocument()
 })
 
 vi.mock('@/lib/chat/attachment-preview', () => ({
@@ -163,4 +166,19 @@ describe('MessageAttachmentItem', () => {
     // The body text comes from the upload content endpoint, not an empty 404.
     expect(await within(dialog).findByText(/hello from a text attachment/)).toBeInTheDocument()
   })
+})
+
+describe('AttachmentModelInputNote', () => {
+  it.each(['image_no_vision', 'unsupported'])('marks %s as not sent to the model', (form) => {
+    render(<AttachmentModelInputNote modelInput={form} />)
+    expect(screen.getByText('모델에 전달 안 됨')).toBeInTheDocument()
+  })
+
+  it.each(['image', 'text', 'pdf', null, undefined, 'image_no'])(
+    'renders nothing for %s',
+    (form) => {
+      const { container } = render(<AttachmentModelInputNote modelInput={form} />)
+      expect(container).toBeEmptyDOMElement()
+    },
+  )
 })

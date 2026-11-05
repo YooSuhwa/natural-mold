@@ -32356,6 +32356,17 @@
           "title": "Mime Type",
           "type": "string"
         },
+        "model_input": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Input"
+        },
         "name": {
           "title": "Name",
           "type": "string"

@@ -343,6 +343,8 @@ export interface FileItem {
   message_id?: string | null
   created_at: string
   editable: boolean
+  /** 첨부: 실행 기록상 모델 전달 형식(image/image_no_vision/text/pdf/unsupported). 기록 없으면 null. */
+  model_input?: string | null
 }
 
 export interface Message {

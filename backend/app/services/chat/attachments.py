@@ -26,6 +26,7 @@ from app.models.conversation import Conversation
 from app.models.message_attachment import MessageAttachment
 from app.schemas.conversation import FileItem
 from app.services.artifact_service import list_conversation_artifacts
+from app.services.chat.attachment_inputs import recorded_attachment_forms
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +256,7 @@ async def list_conversation_files(
         .scalars()
         .all()
     )
+    forms = await recorded_attachment_forms(db, conversation_id=conversation_id, context=context)
     items.extend(
         FileItem(
             source="attached",
@@ -269,6 +271,7 @@ async def list_conversation_files(
             message_id=att.message_id,
             created_at=att.created_at,
             editable=False,
+            model_input=forms.get(str(att.id)),
         )
         for att in attach_rows
     )

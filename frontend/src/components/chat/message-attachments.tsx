@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useAuiState } from '@assistant-ui/react'
-import { FileIcon } from 'lucide-react'
+import { EyeOffIcon, FileIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { ArtifactPreview } from '@/components/chat/artifacts/artifact-preview'
@@ -96,6 +96,32 @@ export function MessageAttachmentItem({ brief }: { brief: MessageAttachmentBrief
   )
 }
 
+/** 실행 기록상 모델에 전달되지 않은 첨부 형식(``attachment_form``). */
+const NOT_SENT_REASONS = {
+  image_no_vision: 'notSentNoVision',
+  unsupported: 'notSentUnsupported',
+} as const
+
+/**
+ * 모델에 전달되지 않은 첨부 아래에 붙는 작은 표시. 전달된 첨부(이미지·텍스트·PDF)와
+ * 기록이 없는 첨부에는 아무것도 렌더하지 않는다.
+ */
+export function AttachmentModelInputNote({ modelInput }: { modelInput?: string | null }) {
+  const t = useTranslations('chat.message.artifacts')
+  const reason =
+    modelInput && modelInput in NOT_SENT_REASONS
+      ? NOT_SENT_REASONS[modelInput as keyof typeof NOT_SENT_REASONS]
+      : null
+  if (!reason) return null
+  return (
+    <span title={t(reason)} className="inline-flex items-center gap-1 text-[11px] text-status-warn">
+      <EyeOffIcon className="size-3" aria-hidden />
+      {t('notSent')}
+      <span className="sr-only">: {t(reason)}</span>
+    </span>
+  )
+}
+
 /**
  * 보낸 user 메시지 버블의 첨부 행. assistant-ui ``MessagePrimitive.Attachments``
  * render-prop으로 각 첨부를 순회한다. 첨부가 없으면 아무것도 렌더하지 않는다.
@@ -116,18 +142,19 @@ export function UserMessageAttachments() {
     return typeof publicId === 'string' ? publicId : s.message.id
   })
   const { data } = useConversationFiles(conversationId)
-  const briefs = useMemo<MessageAttachmentBrief[]>(() => {
+  const files = useMemo<FileItem[]>(() => {
     if (!messageId) return []
-    return (data ?? [])
-      .filter((f) => f.source === 'attached' && f.message_id === messageId)
-      .map(fileItemToBrief)
+    return (data ?? []).filter((f) => f.source === 'attached' && f.message_id === messageId)
   }, [data, messageId])
 
-  if (briefs.length === 0) return null
+  if (files.length === 0) return null
   return (
     <div className="mt-1.5 flex flex-wrap justify-end gap-1.5">
-      {briefs.map((brief) => (
-        <MessageAttachmentItem key={brief.id} brief={brief} />
+      {files.map((file) => (
+        <div key={file.id} className="inline-flex flex-col items-end gap-0.5">
+          <MessageAttachmentItem brief={fileItemToBrief(file)} />
+          <AttachmentModelInputNote modelInput={file.model_input} />
+        </div>
       ))}
     </div>
   )
