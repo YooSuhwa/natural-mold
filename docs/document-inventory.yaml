@@ -271,6 +271,9 @@ documents:
   - path: docs/design-docs/chat-subagent-streaming-visibility-plan.md
     lifecycle: active-plan
     status: active
+  - path: docs/design-docs/deepagents-0.7.32-upgrade-evidence.md
+    lifecycle: generated-evidence
+    status: generated
   - path: docs/design-docs/dev-plan-context-compaction-marker.md
     lifecycle: active-plan
     status: active
