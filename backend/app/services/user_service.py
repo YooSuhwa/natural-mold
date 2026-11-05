@@ -6,8 +6,10 @@ can compose user lookups + token issuance without circular imports.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -15,6 +17,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.account_erasure import (
+    account_file_rows,
     lock_account_history,
     lock_account_scopes,
     require_account_resources_released,
@@ -27,6 +30,7 @@ from app.models.user import User
 
 if TYPE_CHECKING:
     from app.authz.resource_lifecycle import LifecycleChange
+    from app.services.retention.conversations import DeletedConversation
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +43,15 @@ LOCKOUT_DURATION = timedelta(minutes=15)
 
 class ActiveConversationRunConflict(RuntimeError):
     """User cleanup cannot safely proceed while a conversation run is active."""
+
+
+@dataclass(frozen=True, slots=True)
+class DeletedUser:
+    """``delete_user``'s result: grant revocations and the files the cascade left behind."""
+
+    change: LifecycleChange
+    conversations: tuple[DeletedConversation, ...] = ()
+    upload_paths: tuple[str, ...] = ()  # uploads outside those conversations (never sent)
 
 
 async def get_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
@@ -231,15 +244,46 @@ async def cleanup_user_resources(db: AsyncSession, user_id: uuid.UUID) -> None:
     )
 
 
+async def _account_files(
+    db: AsyncSession, user_id: uuid.UUID
+) -> tuple[tuple[DeletedConversation, ...], tuple[str, ...]]:
+    """Files of the rows the User delete cascades away, read before the delete."""
+    from app.services.retention.conversations import DeletedConversation
+
+    conversations, attachments = await account_file_rows(db, user_id)
+    owned = {conversation_id for conversation_id, _ in conversations}
+    paths: dict[uuid.UUID | None, list[str]] = {}
+    for conversation_id, storage_path in attachments:
+        paths.setdefault(conversation_id if conversation_id in owned else None, []).append(
+            storage_path
+        )
+    deleted = tuple(
+        DeletedConversation(conversation_id, user_id, tuple(paths.get(conversation_id, ())), tenant)
+        for conversation_id, tenant in conversations
+    )
+    return deleted, tuple(paths.get(None, ()))
+
+
+async def remove_user_files(deleted: DeletedUser) -> None:
+    """After the commit (ADR-024 §6); failures are only logged."""
+    from app.services.chat.attachments import _unlink_paths
+    from app.services.retention.conversations import remove_conversation_files
+
+    for conversation in deleted.conversations:
+        await remove_conversation_files(conversation)
+    await asyncio.to_thread(_unlink_paths, deleted.upload_paths)
+
+
 async def delete_user(
     db: AsyncSession, user_id: uuid.UUID, *, operator_id: uuid.UUID | None = None
-) -> LifecycleChange:
+) -> DeletedUser:
     """Hard-delete a user (10.7 "사용자 삭제", E-02).
 
     Caller is responsible for calling ``commit`` after — we keep the
     transaction open so the audit/logging layer at the router level can
     decide whether to roll back on a failure mid-way — and then for
-    ``apply_lifecycle`` on the returned grant revocations.
+    ``apply_lifecycle`` on the returned grant revocations and
+    ``remove_user_files`` on the result (attachment blobs and artifact trees).
 
     Owned resources refuse first (409 ``resource_transfer_required`` with the list).
     The account's company/organization/member rows are locked, its grants revoked
@@ -251,18 +295,19 @@ async def delete_user(
     from app.authz.resource_lifecycle import LifecycleChange  # call-time: import cycle
 
     if await db.scalar(select(User.id).where(User.id == user_id)) is None:
-        return LifecycleChange()
+        return DeletedUser(LifecycleChange())
     await require_account_resources_released(db, user_id)
     await lock_account_scopes(db, user_id)
     change = await revoke_account_grants(db, user_id, operator_id or user_id)
     user = await db.scalar(select(User).where(User.id == user_id).with_for_update())
     if user is None:
-        return change
+        return DeletedUser(change)
     await require_account_resources_released(db, user_id)
     await require_no_account_grants(db, user_id)
     syncs = await capture_account(db, user_id)
     await cleanup_user_resources(db, user_id)
+    conversations, upload_paths = await _account_files(db, user_id)
     await db.delete(user)
     await db.flush()
     queued = [i for sync in syncs for i in await sync.queue(db)]  # membership rows cascade
-    return LifecycleChange((*change.outbox_ids, *queued))
+    return DeletedUser(LifecycleChange((*change.outbox_ids, *queued)), conversations, upload_paths)

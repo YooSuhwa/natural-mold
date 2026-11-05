@@ -63,7 +63,7 @@ async def test_owned_resources_refuse_deletion_with_the_list_archived_included(
 async def test_deletion_revokes_the_accounts_grants_then_deletes(db: AsyncSession) -> None:
     tool_id = await _share_to_other(db)
     with patch(CHECKPOINT, AsyncMock()):
-        change = await delete_user(db, OTHER_USER_ID)
+        change = (await delete_user(db, OTHER_USER_ID)).change
     await db.commit()
     assert change.outbox_ids  # applied by the caller after commit (8.6 item 2)
     assert await db.get(User, OTHER_USER_ID) is None
@@ -91,4 +91,4 @@ async def test_a_grant_written_after_the_revocation_pass_answers_conflict(
 
 
 async def test_unknown_account_is_a_no_op(db: AsyncSession) -> None:
-    assert (await delete_user(db, uuid4())).outbox_ids == ()
+    assert (await delete_user(db, uuid4())).change.outbox_ids == ()
