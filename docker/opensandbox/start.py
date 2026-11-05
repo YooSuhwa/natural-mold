@@ -18,6 +18,7 @@ import tomllib
 from pathlib import Path
 
 import docker
+from docker.errors import ImageNotFound
 
 TEMPLATE = Path("/etc/opensandbox/sandbox.toml")
 CONFIG = Path("/var/lib/opensandbox/sandbox.toml")
@@ -39,7 +40,7 @@ config = tomllib.loads(TEMPLATE.read_text())
 for image in (config["runtime"]["execd_image"], config["egress"]["image"]):
     try:
         client.images.get(image)
-    except docker.errors.ImageNotFound:
+    except ImageNotFound:
         print(f"opensandbox: pulling {image}", flush=True)
         client.images.pull(image)
 
