@@ -184,6 +184,25 @@ docker compose up -d --build
 보안 쿠키, TLS)은 [docs/operator-setup.md](docs/operator-setup.md)와
 [docs/org-authz-operations.md](docs/org-authz-operations.md)를 봅니다.
 
+### 스킬 샌드박스
+
+Docker 스택에서는 `execute_in_skill`을 호출할 때마다 새 컨테이너에서 실행하고, 호출이 끝나면
+그 컨테이너를 지웁니다. 스크립트는 일반 사용자로 실행되고, 그 스킬의 파일과 대화의 출력 파일만
+보며, 자격 증명은 그 명령에만 들어갑니다. 네트워크는 스킬이 `requires_network`를 선언했을 때만
+열리고, 그때도 내부 주소는 막힙니다.
+
+```bash
+docker compose ps opensandbox                       # 샌드박스 서버: healthy
+docker compose logs opensandbox                     # 서버 로그
+docker ps --filter name=sandbox-                    # 스킬이 실행되는 동안에만 보이는 샌드박스
+SKILL_SANDBOX_ENABLED=false docker compose up -d    # 끄기: 백엔드 컨테이너 안에서 실행
+```
+
+처음 기동할 때 OpenSandbox 이미지(약 730 MB)를 받습니다. `opensandbox` 서비스는 Docker
+소켓으로 컨테이너를 만들기 때문에 Docker 호스트를 제어할 수 있습니다. 로컬 개발
+(`uv run uvicorn`)에서는 기본으로 꺼져 있습니다. 로컬에서 쓰는 방법은
+[docs/design-docs/skill-sandbox-docker.md](docs/design-docs/skill-sandbox-docker.md) 5절에 있습니다.
+
 ## 로컬 개발
 
 필요한 것: [uv](https://docs.astral.sh/uv/)(Python 3.12 자동 설치), Node.js 22
@@ -238,6 +257,11 @@ pnpm dev
 | `DB_RLS_ENABLED` | `false` | 회사 단위 RLS. 운영 가이드의 DB 역할 분리 뒤에만 켭니다. |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,...` | 모든 프론트엔드 origin을 넣습니다. |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8001` | 프론트엔드. 빌드할 때 번들에 들어갑니다. |
+| `SKILL_SANDBOX_ENABLED` | `false` (Docker 스택은 `true`) | 스킬 스크립트를 호출마다 새 OpenSandbox 샌드박스에서 실행. 서버가 없으면 호스트로 대신 실행하지 않고 실패합니다. |
+| `SKILL_SANDBOX_DOMAIN`, `SKILL_SANDBOX_API_KEY` | `127.0.0.1:18080`, 빈 값 | 샌드박스 서버 주소와 키. Docker 스택이 둘 다 설정합니다(`opensandbox:8090`, 생성된 키). |
+| `SKILL_SANDBOX_USE_SERVER_PROXY` | `false` (Docker 스택은 `true`) | 서버를 거쳐 샌드박스에 접속. 백엔드가 컨테이너 안에 있을 때 필요합니다. |
+| `SKILL_SANDBOX_IMAGE` | `python:3.12-slim` (Docker 스택은 `moldy-skill-sandbox:local`) | 샌드박스 이미지. `moldy-skill-sandbox`에는 Node 22와 skill-node 패키지도 있습니다. |
+| `SKILL_SANDBOX_CPU`, `SKILL_SANDBOX_MEMORY` | `1`, `512Mi` | 샌드박스 하나의 한도. |
 
 LLM 키는 화면에서 등록하는 것을 권장합니다. 개발 환경에서는 `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY` 같은 변수를 기동 시 시스템 자격 증명으로 옮기고, 운영 환경은
