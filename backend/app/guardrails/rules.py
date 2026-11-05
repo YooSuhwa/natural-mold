@@ -11,7 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-Stage = Literal["llm_send", "tool_args", "tool_result"]
+# output: what the model answers, streamed to the user and stored (plan stage ⑤).
+Stage = Literal["llm_send", "tool_args", "tool_result", "output"]
 Action = Literal["block", "redact", "hash", "mask", "warn"]
 
 # The strongest action wins when rules overlap on one span.
@@ -58,29 +59,34 @@ class RuleSet:
         return best
 
 
-_SEND: frozenset[Stage] = frozenset({"llm_send"})
-_ALL: frozenset[Stage] = frozenset({"llm_send", "tool_args", "tool_result"})
+_SEND_OUT: frozenset[Stage] = frozenset({"llm_send", "output"})
+_IN: frozenset[Stage] = frozenset({"llm_send", "tool_args", "tool_result"})
+_OUT: frozenset[Stage] = frozenset({"output"})
+_ALL: frozenset[Stage] = _IN | _OUT
 _IDS = frozenset(
     {"RRN", "FRN", "PASSPORT", "DRIVER_LICENSE", "CARD", "ACCOUNT", "MEDICAL_INSURANCE"}
 )
 
 BUILTIN_TEMPLATES: dict[str, RuleSet] = {
-    # Secrets never leave; identifiers are replaced before a model or a tool result sees
-    # them; contacts keep their last digits; names and addresses are recorded only until
-    # pseudonymization (plan §3.3.1) can keep their meaning.
+    # Secrets never leave and are replaced if the model writes one; identifiers are replaced
+    # before a model, a tool result or the user sees them; contacts keep their last digits;
+    # names and addresses are recorded only until pseudonymization (plan §3.3.1).
     "kr-default": RuleSet(
         "kr-default",
-        1,
+        2,
         (
-            Rule("secrets", ("common",), _ALL, "block", frozenset({"SECRET"})),
+            Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
+            Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
             Rule("kr-identifiers", ("kr_model",), _ALL, "redact", _IDS),
-            Rule("contacts", ("common", "kr_model"), _SEND, "mask", frozenset({"PHONE", "EMAIL"})),
-            Rule("people", ("kr_model",), _SEND, "warn", frozenset({"PERSON", "ADDRESS"})),
+            Rule(
+                "contacts", ("common", "kr_model"), _SEND_OUT, "mask", frozenset({"PHONE", "EMAIL"})
+            ),
+            Rule("people", ("kr_model",), _SEND_OUT, "warn", frozenset({"PERSON", "ADDRESS"})),
         ),
     ),
     # Observation mode: every finding recorded, nothing changed.
     "kr-observe": RuleSet(
-        "kr-observe", 1, (Rule("observe", ("common", "kr_model"), _ALL, "warn"),)
+        "kr-observe", 2, (Rule("observe", ("common", "kr_model"), _ALL, "warn"),)
     ),
 }
 

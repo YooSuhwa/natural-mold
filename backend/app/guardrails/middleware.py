@@ -23,13 +23,18 @@ import uuid
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, NamedTuple
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from deepagents.middleware.summarization import SummarizationState
 from langchain.agents.middleware import AgentMiddleware
-from langchain.agents.middleware.types import ModelRequest, ModelResponse
+from langchain.agents.middleware.types import (
+    ExtendedModelResponse,
+    ModelRequest,
+    ModelResponse,
+)
 from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, ToolMessage
 from langgraph.types import Command
 
@@ -37,6 +42,7 @@ from app.guardrails.actions import Applied, Decision, apply, block_notice
 from app.guardrails.detectors import Finding
 from app.guardrails.model_pack import detect_texts
 from app.guardrails.rules import RuleSet, Stage
+from app.guardrails.stream import GuardrailStreamTransformer
 from app.security import key_provider
 
 logger = logging.getLogger(__name__)
@@ -162,11 +168,16 @@ class Guard:
                     self._cache.popitem(last=False)
         return [self._cache.get(d, []) for d in digests]
 
-    async def check(self, texts: Sequence[str], stage: Stage) -> list[Applied]:
+    async def check(
+        self, texts: Sequence[str], stage: Stage, *, record: bool = True
+    ) -> list[Applied]:
+        """``record=False`` for display copies (the stream) of something already recorded."""
         results = [
             apply(text, found, self.rules, stage, self.key)
             for text, found in zip(texts, await self._findings(texts, stage), strict=True)
         ]
+        if not record:
+            return results
         for result in results:
             self.decisions.extend(result.decisions)
         if any(result.decisions for result in results):
@@ -206,11 +217,17 @@ class Guard:
 
 
 class GuardrailMiddleware(AgentMiddleware):
-    """② for the main path (inside the attachment middleware) and ③④ around every tool."""
+    """② and ⑤ around the model call (inside the attachment middleware), ③④ around tools.
+
+    ⑤ is checked twice: the stream transformer guards what streams to the user, and the
+    model response is checked here before the graph stores it.
+    """
 
     def __init__(self, guard: Guard) -> None:
         super().__init__()
         self.guard = guard
+        if guard.rules.packs_for("output") or guard.rules.packs_for("tool_result"):
+            self.transformers = (partial(GuardrailStreamTransformer, guard=_StreamGuard(guard)),)
 
     @property
     def name(self) -> str:
@@ -222,7 +239,41 @@ class GuardrailMiddleware(AgentMiddleware):
     async def awrap_model_call(
         self, request: ModelRequest, handler: Callable[[ModelRequest], Awaitable[Any]]
     ) -> Any:
-        return await self.guard.guard_request(request, handler)
+        response = await self.guard.guard_request(request, handler)
+        if isinstance(response, ExtendedModelResponse):
+            checked = await self._guard_response(response.model_response)
+            return ExtendedModelResponse(model_response=checked, command=response.command)
+        if isinstance(response, ModelResponse):
+            return await self._guard_response(response)
+        return response
+
+    async def _guard_response(self, response: ModelResponse) -> ModelResponse:
+        """⑤ The answer as the graph stores it: AI text only (tool-call args go through ③)."""
+        result: list[BaseMessage] = []
+        changed = False
+        for message in response.result:
+            if isinstance(message, AIMessage):
+                slots = [
+                    (slot, text) for slot, text in _message_texts(0, message) if slot.kind != "arg"
+                ]
+                checked = await self.guard.check([text for _, text in slots], "output")
+                if any(r.blocked for r in checked):
+                    notice = block_notice(tuple(d for r in checked for d in r.decisions))
+                    message = message.model_copy(update={"content": notice})
+                    changed = True
+                else:
+                    edits = {
+                        slot: r.text
+                        for (slot, text), r in zip(slots, checked, strict=True)
+                        if r.text != text
+                    }
+                    if edits:
+                        message = _rebuild(message, edits)
+                        changed = True
+            result.append(message)
+        if not changed:
+            return response
+        return ModelResponse(result=result, structured_response=response.structured_response)
 
     def wrap_tool_call(self, request: Any, handler: Any) -> Any:
         raise RuntimeError(_SYNC_REFUSAL)
@@ -303,6 +354,16 @@ class GuardedSummarizationMiddleware(AgentMiddleware):
         return await self.guard.guard_request(
             request, lambda guarded: self.inner.awrap_model_call(guarded, handler)
         )
+
+
+class _StreamGuard:
+    """The run's guard for display copies: same rules and cache, decisions not recorded twice."""
+
+    def __init__(self, guard: Guard) -> None:
+        self._guard = guard
+
+    async def check(self, texts: Sequence[str], stage: Stage) -> list[Applied]:
+        return await self._guard.check(texts, stage, record=False)
 
 
 def middleware_name(item: Any) -> str | None:
