@@ -29,10 +29,22 @@ K-PII-Bench 3,000건 측정(엄격 span)에서 **ko-pii 플러그인 + Presidio 
 
 - 이름·주소는 규칙으로 F1 0.29다. `schift-ko-pii` 0.6.0(v7 모델) 기본 설정 + Presidio 주민등록번호 인식기는 전체 F1 0.78(이름 0.73, 계좌 0.81)이고 문서당 약 22 ms다(벤치마크 3.1절). 이것을 한국 묶음 기본으로 하고, 모델을 받을 수 없는 설치는 규칙 묶음(C 구성)으로 대체한다. 모델은 `trust_remote_code`로 저장소 코드를 실행하므로 고정 리비전(9d9bc145)과 코드 검토 뒤에만 쓰고, 가중치는 이미지에 넣거나 내부 저장소에서 받는다.
 - `schift-ko-pii` 0.6.0은 `ko-pii==1.15.2`를 고정한다. 같은 Python 환경에 ko-pii 최신판(1.22.x)을 따로 넣을 수 없으므로 한 묶음 안에서는 schift가 가져오는 ko-pii만 쓴다.
-- 실행: torch 스레드 1개 고정, 이미 검사한 메시지는 해시로 건너뛰고 새 내용만 검사, 이벤트 루프 밖 고정 크기 풀에서 실행하고 동시 실행 수를 제한한다. GPU가 있으면 선택적으로 쓴다(긴 입력에서 약 5배).
+- 실행 위치: 모델은 별도 컨테이너에서 돈다(2.1절). torch 스레드 1개 고정, 이미 검사한 메시지는 해시로 건너뛰고 새 내용만 검사, 이벤트 루프 밖 고정 크기 풀에서 실행하고 동시 실행 수를 제한한다. GPU가 있으면 선택적으로 쓴다(긴 입력에서 약 5배).
 - 망 분리: ko-pii는 의존성과 네트워크 접근이 없다. (Presidio URL·이메일 검사는 처음 쓸 때 public suffix 목록을 인터넷에서 받으려 하므로, 나중에 Presidio를 넣으면 내장본만 쓰도록 고정한다.)
 - 비밀값 패턴은 스트리밍 경로에서 돈다. URL 사용자정보 패턴이 `a.b.a.b…` 같은 긴 입력에서 제곱 시간(100 KB에 3.1초)이라, 스킴 길이를 32자로 제한했다(`secret_scan.py`, 업로드 검사에도 적용). 시험이 100 KB 입력 시간을 잡는다.
 - 묶음마다 한국어 시험 세트(막아야 할 문장과 비슷하지만 통과해야 할 문장)를 둔다. 회귀 시험은 `poc/korean-pii-bench` 측정 방식을 CI용 소형 세트로 옮긴다.
+
+### 2.1 모델 묶음 서비스 (`pii-detector`)
+
+| 항목 | 내용 |
+|---|---|
+| 왜 별도 컨테이너인가 | torch(이미지 약 1.6 GB)와 모델 저장소 코드(`trust_remote_code`, transformers 전역 패치)를 백엔드 밖에 둔다 |
+| 고정 | 리비전 `9d9bc145c573…`, 파일 6개 sha256(`docker/pii-detector/model_files.py`). 모델 코드는 검토한 v6 파일과 같은 바이트다. 해시가 다른 파일은 읽지 않는다 |
+| 받기 | `pii-model-fetch`(1회)가 `pii_model` 볼륨에 받는다. 실패해도 0으로 끝나 스택 기동을 막지 않는다. 받을 수 없는 망은 `docker compose cp`로 넣는다 |
+| API | `POST /detect {"texts": [...]}`(최대 64개, 1 MiB) → 텍스트별 `{entity, start, end, score}`. 라벨은 규칙 묶음과 같은 ko-pii 이름으로 바꿔 돌려준다. 본문은 로그에 남기지 않는다 |
+| 접근 | 호스트 포트 없음, 비밀 값 없음. 스킬 샌드박스는 Compose 망에 닿지 않는다. 키(`PII_DETECTOR_API_KEY`)는 선택 |
+| 대체 | URL이 없거나, 응답이 없거나, 잘못된 응답(개수 불일치, 범위 밖 span)이거나, 1 MiB를 넘는 텍스트는 `kr` 규칙 묶음으로 검사한다. 경고는 끊길 때와 돌아올 때 한 번씩 |
+| 측정 | 서비스를 거친 `common,kr_model`: 엄격 F1 0.784, 겹침 0.915(3.1절 v7 기본 + 주민번호 정규식과 같음). 처리 시간은 Apple Silicon Docker Desktop에서 문서당 p50 약 60 ms. 같은 모델이 macOS 호스트에서는 22 ms였으므로 linux aarch64 CPU 빌드의 차이다. 스레드를 2·4개로 늘리면 오히려 느려진다(109 ms) |
 
 ## 3. 구현 설계
 
@@ -105,7 +117,7 @@ K-PII-Bench 3,000건 측정(엄격 span)에서 **ko-pii 플러그인 + Presidio 
 
 1. **스파이크(1~2일)**: `PIIMiddleware` 스트림 변환기가 Moldy SSE·저장 이벤트·추적을 덮는지, `wrap_model_call` 변경이 저장 기록에 남지 않는지 시험.
    - 1차 결과(2026-11-05, 최소 에이전트 + 가짜 모델, langchain 1.4.7): `astream_events(version="v3")` 이벤트 17건 중 원래 값이 남은 이벤트 0건, 체크포인트의 AI 응답도 가려짐. 그러나 `apply_to_input`은 **사용자 메시지를 저장 기록에서도 바꾸고**, 콜백(`on_llm_new_token`, `on_llm_end`)에는 **원래 값이 남는다**. 그래서 ②는 `wrap_model_call`로, 추적은 Langfuse `mask`로 처리한다(3.1절). Moldy 실제 SSE 투영·저장 이벤트 확인은 구현 PR의 시험으로 한다.
-2. 탐지 묶음 모듈(공통·한국 규칙)과 소형 회귀 세트. **구현됨**: `app/guardrails/detectors.py`, `tests/test_guardrail_detectors.py`. 모델 묶음(schift v7)은 실행 위치(백엔드 안 또는 별도 컨테이너)를 정한 뒤 따로 넣는다.
+2. 탐지 묶음 모듈(공통·한국 규칙)과 소형 회귀 세트. **구현됨**: `app/guardrails/detectors.py`, `tests/test_guardrail_detectors.py`. 모델 묶음(`kr_model`)도 **구현됨**: 별도 컨테이너 `pii-detector`(`docker/pii-detector`)와 백엔드 클라이언트 `app/guardrails/model_pack.py`(2.1절).
 3. `GuardrailMiddleware`(②③④⑤) + 처리 방식 + 탐지 기록 + 스팬.
 4. 회사 정책·템플릿·버전 고정·감사 이벤트.
 5. 위험 등급별 기본 조치(C5 최소)와 lease 경로 대체 실행.

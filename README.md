@@ -237,6 +237,25 @@ off by default; to use it there, see
 [docs/design-docs/skill-sandbox-docker.md](docs/design-docs/skill-sandbox-docker.md)
 section 5.
 
+### Guardrail Korean model
+
+The stack also runs `pii-detector`, the Korean personal-data model the guardrails
+will use (no guardrail middleware is applied to chats yet). `pii-model-fetch`
+downloads the pinned schift-ko-pii-v7 files (about 160 MB) from Hugging Face on
+the first start and checks their hashes. Without the model, or while the service
+is down, the backend checks with the ko-pii rules instead.
+
+```bash
+docker compose logs pii-model-fetch          # downloaded / reusing / download failed
+docker compose ps pii-detector               # healthy once the model is loaded
+GUARDRAIL_PII_MODEL_URL= docker compose up -d   # rules only, no model
+```
+
+On a network that inspects TLS, set `MOLDY_BUILD_EXTRA_CA` in the root `.env` to
+the company CA file so the image build can reach the PyTorch CPU index. Copying
+a downloaded model in by hand is described in
+[docs/docker-quickstart.md](docs/docker-quickstart.md).
+
 ## Local development
 
 Requirements: [uv](https://docs.astral.sh/uv/) (installs Python 3.12),
@@ -303,6 +322,9 @@ important settings:
 | `SKILL_SANDBOX_USE_SERVER_PROXY` | `false` (`true` in the Docker stack) | Reach the sandboxes through the server; needed when the backend runs in a container. |
 | `SKILL_SANDBOX_IMAGE` | `python:3.12-slim` (`moldy-skill-sandbox:local` in the Docker stack) | Sandbox image. `moldy-skill-sandbox` also has Node 22 and the skill-node packages. |
 | `SKILL_SANDBOX_CPU`, `SKILL_SANDBOX_MEMORY` | `1`, `512Mi` | Limits per sandbox. |
+| `GUARDRAIL_PII_MODEL_URL` | empty (`http://pii-detector:8095` in the Docker stack) | Guardrail Korean model service. Empty, or the service failing, uses the ko-pii rules instead. |
+| `GUARDRAIL_PII_MODEL_API_KEY`, `GUARDRAIL_PII_MODEL_TIMEOUT_SECONDS` | empty, `15` | Bearer key, only if the service sets `PII_DETECTOR_API_KEY`; request timeout. |
+| `MOLDY_BUILD_EXTRA_CA` | empty | Root `.env`, Docker only: a CA bundle the `pii-detector` image build trusts, for networks that inspect TLS. Not kept in the image. |
 
 LLM keys are best added in the UI. In development, `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY` and similar variables are copied into system credentials at

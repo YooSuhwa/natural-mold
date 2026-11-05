@@ -1,6 +1,6 @@
 # Docker 빠른 시작
 
-저장소를 clone한 뒤 명령 하나로 Moldy 전체(DB, OpenFGA, 스킬 실행 샌드박스, 백엔드, 프론트엔드)를 로컬에 띄우는 방법입니다.
+저장소를 clone한 뒤 명령 하나로 Moldy 전체(DB, OpenFGA, 스킬 실행 샌드박스, 가드레일 한국어 모델, 백엔드, 프론트엔드)를 로컬에 띄우는 방법입니다.
 `.env` 파일을 만들거나 고치지 않아도 됩니다. 개발용 구성이므로 운영 설치는
 [운영 환경 셋업](operator-setup.md)과 [조직·권한 운영 가이드](org-authz-operations.md)를 따릅니다.
 
@@ -32,6 +32,8 @@ docker compose ps
 | `init-secrets` | 1회 | `ENCRYPTION_KEYS`, `JWT_SECRET`, `SKILL_SANDBOX_API_KEY`를 생성해 `moldy_runtime` 볼륨에 저장. 두 번째 실행부터는 기존 값을 재사용하고, 파일에 없는 키만 추가 |
 | `skill-sandbox-image` | 1회 | 스킬 샌드박스가 쓰는 이미지 `moldy-skill-sandbox:local`을 빌드(Python 3.12, Node 22, skill-node 패키지, curl, git) |
 | `opensandbox` | 상시 | 스킬 실행 샌드박스 서버(OpenSandbox). 호스트 포트 없음. 아래 "스킬 실행 샌드박스" 참고 |
+| `pii-model-fetch` | 1회 | 가드레일 한국어 모델(schift-ko-pii-v7, 고정 리비전)을 `pii_model` 볼륨에 내려받음. 이미 있으면 재사용. 받지 못해도 `Exited (0)`으로 끝남 |
+| `pii-detector` | 상시 | 가드레일 한국어 개인정보 모델 서비스. 호스트 포트 없음. 아래 "가드레일 한국어 모델" 참고 |
 | `migrate` | 1회 | `alembic upgrade head` |
 | `authz-bootstrap` | 1회 | `python -m app.authz.cli bootstrap`으로 store와 모델을 준비하고, store ID와 model ID를 `moldy_runtime` 볼륨에 고정 |
 | `backend` | 상시 | FastAPI(uvicorn). `GET /api/health`로 상태 확인 |
@@ -52,6 +54,32 @@ docker compose ps
   받으므로 몇 분 더 걸립니다.
 - 끄려면 `SKILL_SANDBOX_ENABLED=false docker compose up -d`. 그러면 예전처럼 백엔드 컨테이너
   안에서 스크립트를 실행합니다.
+
+### 가드레일 한국어 모델
+
+가드레일의 한국어 개인정보 탐지(이름·주소 등)는 모델 서비스 `pii-detector`가 맡습니다
+([guardrail-minimum-plan.md](design-docs/guardrail-minimum-plan.md) 2절). 아직 채팅에 적용되는
+가드레일 미들웨어는 없고, 이 서비스는 그 준비입니다.
+
+- `pii-model-fetch`가 처음 기동할 때 Hugging Face에서 고정 리비전의 파일 6개(약 160 MB)를 받고
+  sha256을 확인합니다. 서비스는 그 해시와 맞는 파일만 읽습니다.
+- 모델이 없거나 서비스가 응답하지 않으면 백엔드는 규칙 묶음(ko-pii)으로 대신 검사합니다. 검사를
+  건너뛰지는 않습니다. 이때 `docker compose ps pii-detector`는 unhealthy입니다.
+- Hugging Face에 접속할 수 없는 망에서는 받아 둔 폴더를 넣고 다시 시작합니다.
+
+  ```bash
+  for f in config.json model.safetensors modeling_lfm2_bidirectional.py schift_heads.json \
+           tokenizer.json tokenizer_config.json; do
+    docker compose cp <받아 둔 폴더>/$f pii-model-fetch:/models/schift-ko-pii-v7/$f
+  done
+  docker compose restart pii-detector
+  ```
+
+- 이미지(약 1.6 GB)는 PyTorch CPU 인덱스(`download.pytorch.org`)에서 torch를 받습니다. TLS를
+  검사하는 사내망이면 루트 `.env`에 `MOLDY_BUILD_EXTRA_CA=<회사 CA 파일 경로>`를 넣습니다. 이
+  CA는 빌드 중 설치에만 쓰고 이미지에 남기지 않습니다.
+- 모델 없이 규칙 묶음만 쓰려면 `GUARDRAIL_PII_MODEL_URL= docker compose up -d`.
+- 처리 시간: Apple Silicon의 Docker Desktop에서 문서당 약 60 ms(스레드 1개, 동시 2건)입니다.
 
 ## 3. 접속 주소
 
@@ -131,6 +159,8 @@ docker compose logs -f backend            # 백엔드 로그
 docker compose logs authz-bootstrap       # 고정된 store_id / model_id 확인
 docker compose logs init-secrets          # generated / reusing
 docker compose logs opensandbox           # 스킬 샌드박스 서버
+docker compose logs pii-model-fetch       # downloaded / reusing / download failed
+docker compose ps pii-detector            # 가드레일 한국어 모델: healthy
 curl http://localhost:8001/api/health     # {"status":"ok"}
 ```
 
@@ -142,7 +172,7 @@ docker compose down -v     # 중지 + 모든 볼륨 삭제: DB, 업로드·스�
 ```
 
 데이터는 이름 있는 볼륨 `postgres_data`, `backend_data`, `openfga_data`, `moldy_runtime`,
-`opensandbox_data`(샌드박스 서버 상태)에 남습니다.
+`opensandbox_data`(샌드박스 서버 상태), `pii_model`(가드레일 한국어 모델)에 남습니다.
 `down -v` 후 다시 `up`하면 비밀 값이 새로 생성되고 첫 가입자가 다시 운영자가 됩니다.
 
 ## 9. 문제 해결
@@ -156,6 +186,8 @@ docker compose down -v     # 중지 + 모든 볼륨 삭제: DB, 업로드·스�
 | 로그인 직후 다시 로그인 화면 | `backend/.env`에 `COOKIE_SECURE=true`가 있으면 http에서 쿠키가 저장되지 않습니다. 개발 구성은 `false`(기본값)로 둡니다 |
 | 자격 증명 복호화 실패 | `ENCRYPTION_KEYS`가 바뀌었습니다(6절). 원래 값을 되돌리거나 `down -v`로 초기화합니다 |
 | OpenFGA DB 인증 실패 | `OPENFGA_DB_PASSWORD`를 첫 기동 뒤에 바꿨습니다. 원래 값으로 되돌리거나 `down -v` |
+| 빌드 중 `download.pytorch.org` `CERTIFICATE_VERIFY_FAILED` | TLS를 검사하는 망입니다. 루트 `.env`에 `MOLDY_BUILD_EXTRA_CA=<회사 CA 파일 경로>`를 넣고 다시 빌드합니다(2절 "가드레일 한국어 모델") |
+| `pii-detector`가 unhealthy | `docker compose logs pii-model-fetch`에서 다운로드 결과를 봅니다. 받을 수 없는 망이면 2절의 `docker compose cp`로 넣습니다. 그동안에는 규칙 묶음으로 검사합니다 |
 | 스킬 실행이 `Error: skill sandbox is unavailable.` | `docker compose ps opensandbox`가 healthy인지, `docker compose logs opensandbox`에 오류가 없는지 봅니다. Docker 소켓을 쓸 수 없는 환경이면 `SKILL_SANDBOX_ENABLED=false`로 끕니다 |
 
 ## 10. 다른 작업 방식과의 관계

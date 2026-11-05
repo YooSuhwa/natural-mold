@@ -165,6 +165,11 @@ class Settings(AuthzSettings):
     # Domains every ``requires_network`` skill may reach besides its own
     # ``execution_profile.network_domains`` (comma separated, ``*.`` wildcards).
     skill_sandbox_allowed_domains: str = ""
+    # Guardrail Korean model pack (docker/pii-detector). An empty URL, or the
+    # service failing, falls back to the Korean rules pack.
+    guardrail_pii_model_url: str = ""
+    guardrail_pii_model_api_key: str = ""
+    guardrail_pii_model_timeout_seconds: float = 15.0
 
     skill_evaluation_enabled: bool = True
     skill_evaluation_max_concurrent: int = 1

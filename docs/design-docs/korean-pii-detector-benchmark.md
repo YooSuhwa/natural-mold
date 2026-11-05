@@ -135,5 +135,12 @@ cd backend && uv run python ../poc/korean-pii-bench/bench_packs.py <test_track_a
 
 - ko-pii를 1.22.17에서 schift가 고정하는 1.15.2로 바꿔도 C 구성 결과는 같다(엄격 F1 0.571, 겹침 0.631; 의료보험·전화의 F1만 소수 셋째 자리 차이).
 - Moldy 묶음(`common,kr`)도 같은 표본에서 엄격 F1 0.571, 겹침 0.631이다. 문서당 p50 1.9 ms(비밀값 패턴 포함).
+- 모델 묶음(`common,kr_model`, `pii-detector` 서비스 경유): 엄격 F1 0.784, 겹침 0.915로 v7 기본 + 주민번호 정규식과 같다. 문서당 p50 68 ms(HTTP 포함; 서비스 안 모델 시간 약 59 ms, Apple Silicon Docker Desktop, linux aarch64 CPU torch 2.15.0).
+
+```bash
+# 모델 묶음: pii-detector를 띄운 뒤 (docs/docker-quickstart.md)
+cd backend && GUARDRAIL_PII_MODEL_URL=http://127.0.0.1:<포트> uv run python \
+  ../poc/korean-pii-bench/bench_packs.py <test_track_a.jsonl> report_model.json 3000 common,kr_model
+```
 
 정확도는 위 명령의 결과이고, 처리 시간 표는 torch 스레드 1개로 300건을 따로 잰 값이다.
