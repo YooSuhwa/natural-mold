@@ -2,7 +2,7 @@
 
 > 기준: 기능 확장 기획서 v2(2026-10-27, 저장소 밖 문서), `main` d00ca992.
 > 대상: 기획서 순번 27개 중 완료로 보고한 1·2·3·4·6번. 기획서의 각 장 완료 증거와 실제 PR을 대조했다.
-> 진행: 4-2·4-3·4-4·4-5 처리(2026-11-05, `fix/sandbox-plan-gaps`). OpenWiki는 샌드박스에서 임시로 실행하지 않는다([skill-sandbox-docker.md](skill-sandbox-docker.md) 1절).
+> 진행: 4-2·4-3·4-4·4-5 처리(2026-11-05, `fix/sandbox-plan-gaps`). OpenWiki는 샌드박스에서 임시로 실행하지 않는다([skill-sandbox-docker.md](skill-sandbox-docker.md) 1절). 3-1·3-2·3-3 처리([deepagents-0.7.32-upgrade-evidence.md](deepagents-0.7.32-upgrade-evidence.md)). 0.7.11 체크포인트 재개 시험은 남음.
 > 관련: [ADR-024](adr-024-common-execution-contract.md), [chat-attachments-dev-plan.md](chat-attachments-dev-plan.md), [skill-sandbox-docker.md](skill-sandbox-docker.md)
 
 ## 1. 요약

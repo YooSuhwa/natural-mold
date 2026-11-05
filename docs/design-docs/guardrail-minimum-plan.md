@@ -25,7 +25,9 @@ K-PII-Bench 3,000건 측정(엄격 span)에서 **ko-pii 플러그인 + Presidio 
 | 한국 | ko-pii Presidio 플러그인(33개 라벨 중 매핑된 것), Presidio `KrRrnRecognizer` | 주민등록번호는 2020-10 이후 뒷자리가 임의라 검증 숫자로 거르지 않는 Presidio 인식기를 함께 둔다 |
 | 다른 나라 | Presidio 나라 묶음(`supported_countries`) | 예: 폴란드는 `PlPeselRecognizer`(PESEL)만 있고, 이름·주소는 spaCy `pl` 모델 NER이 필요하다(미측정) |
 
-- 이름·주소는 규칙으로 F1 0.29다. `schift-ko-pii-v6`(34M)를 더하면 이름 0.71, 주소 0.40, 전체 0.77이 된다(벤치마크 3.1절). CPU 지연이 문서당 약 0.6초라 P0에서는 선택형 "모델 묶음"으로 두고, 기본은 규칙 묶음이다. GPU·ONNX·양자화로 지연을 줄이는 것과 v7 비교는 P1. 모델은 `trust_remote_code`로 저장소 코드를 실행하므로 고정 리비전과 코드 검토 뒤에만 쓴다.
+- 이름·주소는 규칙으로 F1 0.29다. `schift-ko-pii` 0.6.0(v7 모델) 기본 설정 + Presidio 주민등록번호 인식기는 전체 F1 0.78(이름 0.73, 계좌 0.81)이고 문서당 약 22 ms다(벤치마크 3.1절). 이것을 한국 묶음 기본으로 하고, 모델을 받을 수 없는 설치는 규칙 묶음(C 구성)으로 대체한다. 모델은 `trust_remote_code`로 저장소 코드를 실행하므로 고정 리비전(9d9bc145)과 코드 검토 뒤에만 쓰고, 가중치는 이미지에 넣거나 내부 저장소에서 받는다.
+- `schift-ko-pii` 0.6.0은 `ko-pii==1.15.2`를 고정한다. 같은 Python 환경에 ko-pii 최신판(1.22.x)을 따로 넣을 수 없으므로 한 묶음 안에서는 schift가 가져오는 ko-pii만 쓴다.
+- 실행: torch 스레드 1개 고정, 이미 검사한 메시지는 해시로 건너뛰고 새 내용만 검사, 이벤트 루프 밖 고정 크기 풀에서 실행하고 동시 실행 수를 제한한다. GPU가 있으면 선택적으로 쓴다(긴 입력에서 약 5배).
 - Presidio URL·이메일 검사는 처음 쓸 때 public suffix 목록을 인터넷에서 받으려 한다. 망 분리 설치를 위해 내장본만 쓰도록 고정한다.
 - 묶음마다 한국어 시험 세트(막아야 할 문장과 비슷하지만 통과해야 할 문장)를 둔다. 회귀 시험은 `poc/korean-pii-bench` 측정 방식을 CI용 소형 세트로 옮긴다.
 
@@ -38,6 +40,7 @@ K-PII-Bench 3,000건 측정(엄격 span)에서 **ko-pii 플러그인 + Presidio 
 | `PIIMiddleware(detector=...)` | 처리 방식 이름과 의미를 맞춘다: `redact`, `mask`, `hash`, `block` | 인스턴스 하나에 종류 하나이고, `apply_to_input`·`apply_to_tool_results`는 `before_model`에서 **상태(대화 기록)를 직접 고친다**. ② LLM 송신 검사는 저장 기록을 바꾸지 않고 이번 호출만 바꿔야 하므로 Moldy 미들웨어의 `wrap_model_call`로 한다 |
 | `PIIMiddleware` 스트림 변환기 (`apply_to_output=True`) | ⑤ 출력의 방출 전 가림 | `astream_events(version="v3")`, `run.messages`, `values`를 덮고 청크 경계에 걸친 값을 위해 앞부분을 붙잡아 둔다(lookback). Moldy 채팅도 v3 경로라 적용될 가능성이 높지만, SSE 투영·저장 이벤트(다시 보기)·추적까지 덮는지 **P0 첫 작업으로 시험**한다. 안 덮는 곳은 Moldy 투영 단계에 같은 검사를 붙인다 |
 | `HumanInTheLoopMiddleware` | ③ "승인 요청" 조치 | 이미 쓰는 중(위험 도구 기본 승인). 가드레일 규칙이 승인 대상을 추가하는 경로만 더한다 |
+| Langfuse 클라이언트 `mask` 함수 | 추적 | 스트림 변환기는 콜백을 덮지 않는다. 추적의 모델 출력(스트리밍 토큰, 최종 응답)은 콜백으로 수집되므로 Langfuse `mask`에 같은 탐지기를 연결한다 |
 | `before_agent` / `after_agent` + `jump_to: "end"` | ① 입력 차단 | `after_agent`만으로는 이미 스트리밍된 내용을 막지 못한다(기획서 16.8절). ⑤는 위 스트림 변환기와 `after_model` 검사로 한다 |
 
 ### 3.2 미들웨어 배치
@@ -98,6 +101,7 @@ K-PII-Bench 3,000건 측정(엄격 span)에서 **ko-pii 플러그인 + Presidio 
 ## 6. 작업 순서
 
 1. **스파이크(1~2일)**: `PIIMiddleware` 스트림 변환기가 Moldy SSE·저장 이벤트·추적을 덮는지, `wrap_model_call` 변경이 저장 기록에 남지 않는지 시험.
+   - 1차 결과(2026-11-05, 최소 에이전트 + 가짜 모델, langchain 1.4.7): `astream_events(version="v3")` 이벤트 17건 중 원래 값이 남은 이벤트 0건, 체크포인트의 AI 응답도 가려짐. 그러나 `apply_to_input`은 **사용자 메시지를 저장 기록에서도 바꾸고**, 콜백(`on_llm_new_token`, `on_llm_end`)에는 **원래 값이 남는다**. 그래서 ②는 `wrap_model_call`로, 추적은 Langfuse `mask`로 처리한다(3.1절). Moldy 실제 SSE 투영·저장 이벤트 확인은 구현 PR의 시험으로 한다.
 2. 탐지 묶음 모듈(공통·한국, Presidio + ko-pii, 망 분리 설정)과 소형 회귀 세트.
 3. `GuardrailMiddleware`(②③④⑤) + 처리 방식 + 탐지 기록 + 스팬.
 4. 회사 정책·템플릿·버전 고정·감사 이벤트.
@@ -109,5 +113,5 @@ K-PII-Bench 3,000건 측정(엄격 span)에서 **ko-pii 플러그인 + Presidio 
 | 항목 | 기본안 |
 |---|---|
 | 설치 기본 정책(D25) | "자율", 새 에이전트에 기본 템플릿 추천 |
-| 이름·주소 모델 | schift-ko-pii 선택형 모델 묶음(v6 측정 완료, v7 측정 예정), 기본은 끔 |
+| 한국 묶음 | schift-ko-pii 0.6.0(v7) + Presidio 주민번호. 모델이 없는 설치는 규칙 묶음 |
 | 원문 저장 | 해시만. 원문 저장은 회사 설정으로(기본 끔) |
