@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.conversation_scope import resolve_conversation_actor
 from app.config import settings
+from app.guardrails.run import guard_for
+from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.services import chat_service
 from app.services.system_credential_resolver import (
@@ -99,6 +101,21 @@ def _transcript_tail(messages: list[Any]) -> str | None:
     return "\n".join(lines)
 
 
+async def _guarded_transcript(
+    db: AsyncSession, conversation: Conversation, transcript: str
+) -> str | None:
+    """The transcript as the agent's guardrail lets it leave (plan §3.4.1); ``None``: blocked.
+
+    The suggestion call is outside the agent, so its middleware does not see it.
+    """
+    agent = await db.get(Agent, conversation.agent_id) if conversation.agent_id else None
+    guard = guard_for(agent.runtime_profile, conversation.tenant_id) if agent else None
+    if guard is None:
+        return transcript
+    [checked] = await guard.check([transcript], "llm_send")
+    return None if checked.blocked else checked.text
+
+
 async def generate_followup_suggestion(
     db: AsyncSession,
     conversation: Conversation,
@@ -122,6 +139,9 @@ async def generate_followup_suggestion(
             context=await resolve_conversation_actor(db, conversation.id, user_id),
         )
         transcript = _transcript_tail(messages)
+        if transcript is None:
+            return None
+        transcript = await _guarded_transcript(db, conversation, transcript)
         if transcript is None:
             return None
 

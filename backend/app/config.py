@@ -170,6 +170,10 @@ class Settings(AuthzSettings):
     guardrail_pii_model_url: str = ""
     guardrail_pii_model_api_key: str = ""
     guardrail_pii_model_timeout_seconds: float = 15.0
+    # Built-in guardrail template applied to every standard agent run until company
+    # policy and agent bindings exist (app/guardrails/rules.py: kr-default, kr-observe).
+    # Empty: guardrails off. An unknown name fails the run instead of running unchecked.
+    guardrail_default_template: str = ""
 
     skill_evaluation_enabled: bool = True
     skill_evaluation_max_concurrent: int = 1

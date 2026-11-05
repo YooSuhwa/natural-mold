@@ -10,6 +10,7 @@ from deepagents.backends import BackendProtocol, StateBackend
 from deepagents.middleware.async_subagents import AsyncSubAgent
 from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
 from deepagents.middleware.subagents import CompiledSubAgent, SubAgent
+from deepagents.middleware.summarization import create_summarization_middleware
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.human_in_the_loop import InterruptOnConfig
 from langchain_core.language_models import BaseChatModel
@@ -31,6 +32,7 @@ from app.agent_runtime.deep_agent_middleware_factory import (
 )
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.runtime.connection_guard_order import order_connection_guard
+from app.guardrails.middleware import Guard, guard_stack
 
 type _DeepAgentSubagent = SubAgent | CompiledSubAgent | AsyncSubAgent
 
@@ -182,6 +184,45 @@ def normalize_declarative_subagents_impl(
     return normalized
 
 
+def _guarded(
+    middleware: list[Any],
+    subagents: list[dict[str, Any]],
+    guard: Guard,
+    model: BaseChatModel,
+    backend: Any,
+) -> tuple[list[Any], list[dict[str, Any]]]:
+    """The root and every declarative child behind the same guardrail (plan §3.4.1).
+
+    Deep Agents passes root middleware only to forked children, so each child gets its own
+    copy; its summarizer is wrapped too. Precompiled and async specs are left alone (the
+    prepared path does not run with a guard).
+    """
+    guarded_root = guard_stack(
+        middleware,
+        guard,
+        create_summarizer=lambda: create_summarization_middleware(model, backend),
+    )
+    children: list[dict[str, Any]] = []
+    for spec in subagents:
+        if "runnable" in spec or "graph_id" in spec:
+            children.append(spec)
+            continue
+        child_model = cast(BaseChatModel, spec.get("model", model))
+        children.append(
+            {
+                **spec,
+                "middleware": guard_stack(
+                    spec.get("middleware") or [],
+                    guard,
+                    create_summarizer=lambda m=child_model: create_summarization_middleware(
+                        m, backend
+                    ),
+                ),
+            }
+        )
+    return guarded_root, children
+
+
 def _agent_permissions(
     middleware: Sequence[Any], permissions: list[FilesystemPermission] | None
 ) -> list[FilesystemPermission] | None:
@@ -215,6 +256,7 @@ def build_agent_impl(
     subagents: list[dict[str, Any]] | None = None,
     bindings: DeepAgentFactoryBindings,
     prepared_task_middleware: AgentMiddleware | None = None,
+    guard: Guard | None = None,
 ) -> Any:
     resolved_backend = backend if backend is not None else StateBackend()
     compatible_middleware = bindings.with_compatibility(
@@ -223,6 +265,9 @@ def build_agent_impl(
         permissions=permissions,
     )
     if prepared_task_middleware is not None:
+        if guard is not None:
+            # Prepared runs fall back to this default path when a guardrail applies.
+            raise ValueError("prepared runs do not carry guardrail middleware")
         # Prepared leases: every child is already a compiled base child (including
         # general-purpose) and the interceptor is the first app tool-call wrapper.
         if not subagents or any("runnable" not in spec for spec in subagents):
@@ -243,6 +288,10 @@ def build_agent_impl(
             interrupt_on=interrupt_on,
             skills=skills,
         )
+        if guard is not None:
+            compatible_middleware, compatible_subagents = _guarded(
+                compatible_middleware, compatible_subagents, guard, model, resolved_backend
+            )
     return bindings.create_deep_agent(
         model=model,
         tools=tools,

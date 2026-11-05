@@ -187,6 +187,7 @@ CASES: dict[str, tuple[dict[str, Any], str]] = {
     "child_key": ({"child_key": None}, "child:{child}:llm_credential_missing"),
     "agent_memory_file_write": ({"policy": LEGACY_RUNTIME_POLICY}, ":agent_memory_file_write"),
     "attachment_input": ({"mutate": _attachment}, ":attachment_input"),
+    "guardrail_policy": ({"guardrail_template": "kr-default"}, ":guardrail_policy"),
 }
 
 
@@ -198,6 +199,8 @@ async def test_unsupported_shapes_fail_typed_before_marker(
     options, reason = CASES[case]
     registry = kit.fresh_registry(monkeypatch)
     akit.patch_keys(monkeypatch, child_key=options.get("child_key", "k"))
+    if "guardrail_template" in options:
+        monkeypatch.setattr(settings, "guardrail_default_template", options["guardrail_template"])
     if options.get("fallback"):
 
         async def chain(*_a: Any) -> list[dict[str, Any]]:
