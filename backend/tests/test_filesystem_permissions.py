@@ -556,6 +556,62 @@ async def test_moldy_filesystem_tools_enforce_scoped_permissions(
 
 
 @pytest.mark.asyncio
+async def test_symlinks_in_an_allowed_scope_do_not_reach_denied_paths(tmp_path: Path) -> None:
+    """Feature plan v2 §14.4: the runtime backend never follows links, even inside the scope."""
+    from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
+    from app.agent_runtime.offload_storage_backends import HiddenFilesystemBackend
+    from app.agent_runtime.runtime_component_builder import _build_moldy_filesystem_middleware
+
+    _seed_virtual_data(tmp_path)
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("outside secret\n")
+    other = tmp_path / "conversations" / "thread-b"
+    other.mkdir(parents=True, exist_ok=True)
+    (other / "private.txt").write_text("other conversation\n")
+    own = tmp_path / "conversations" / "thread-a"
+    own.mkdir(parents=True, exist_ok=True)
+    (own / "to-other.txt").symlink_to(other / "private.txt")
+    (own / "to-other-dir").symlink_to(other, target_is_directory=True)
+    (own / "to-memory.md").symlink_to(tmp_path / "agents" / "agent-b" / "AGENTS.md")
+    (own / "to-outside.txt").symlink_to(outside / "secret.txt")
+    (own / "mine.txt").write_text("own output\n")
+    (own / "to-mine.txt").symlink_to(own / "mine.txt")
+    middleware = _build_moldy_filesystem_middleware(
+        backend=HiddenFilesystemBackend(root_dir=tmp_path, virtual_mode=True),
+        permissions=build_filesystem_permissions(
+            thread_id="thread-a",
+            agent_id="agent-a",
+            user_id="user-a",
+            selected_skill_slugs=["selected"],
+        ),
+    )
+    runtime = SimpleNamespace(tool_call_id="call-1")
+    read_file = tool_coroutine(_tool_by_name(middleware, "read_file"))
+    write_file = tool_coroutine(_tool_by_name(middleware, "write_file"))
+
+    control = await read_file(file_path="/conversations/thread-a/to-mine.txt", runtime=runtime)
+    assert control.status == "error"  # same-scope target: still not followed
+    assert (own / "mine.txt").read_text() == "own output\n"
+
+    for link in ("to-other.txt", "to-other-dir/private.txt", "to-memory.md", "to-outside.txt"):
+        result = await read_file(file_path=f"/conversations/thread-a/{link}", runtime=runtime)
+        assert result.status == "error", link
+        assert "permission denied" in result.content, link
+        for leaked in ("other conversation", "other memory", "outside secret"):
+            assert leaked not in result.content, link
+
+    written = await write_file(
+        file_path="/conversations/thread-a/to-other-dir/planted.txt",
+        content="planted\n",
+        runtime=runtime,
+    )
+    assert written.status == "error"
+    assert not (other / "planted.txt").exists()
+    assert (outside / "secret.txt").read_text() == "outside secret\n"
+
+
+@pytest.mark.asyncio
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
 @patch("app.agent_runtime.runtime_component_builder.build_agent")
