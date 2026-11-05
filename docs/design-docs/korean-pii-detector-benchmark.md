@@ -96,4 +96,9 @@
 ```bash
 python -m venv .venv && .venv/bin/pip install presidio-analyzer "ko-pii[presidio]" spacy
 .venv/bin/python poc/korean-pii-bench/bench.py <test_track_a.jsonl> report.json 3000
+
+# schift-ko-pii-v6 (별도 venv, 모델 폴더는 Hugging Face 리비전 f3c18072를 받아 둔 곳)
+python -m venv .venv-schift && .venv-schift/bin/pip install "schift-ko-pii==0.4.0"
+HF_HUB_OFFLINE=1 HF_HOME=./hfhome .venv-schift/bin/python poc/korean-pii-bench/bench_schift.py \
+  <test_track_a.jsonl> <schift-ko-pii-v6 폴더> report_schift.json 3000
 ```
