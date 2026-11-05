@@ -277,6 +277,9 @@ documents:
   - path: docs/design-docs/dev-plan-context-compaction.md
     lifecycle: active-plan
     status: active
+  - path: docs/design-docs/feature-plan-v2-gap-audit.md
+    lifecycle: active-plan
+    status: active
   - path: docs/design-docs/generic-tool-call-grouping-plan.md
     lifecycle: active-plan
     status: active
