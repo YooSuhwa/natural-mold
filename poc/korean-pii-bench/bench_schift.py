@@ -42,6 +42,13 @@ PRED = {
     "account_number": "ACCOUNT",
     "private_address": "ADDRESS",
     "private_url": "URL",
+    # 0.6.0 + its ko-pii adapter
+    "ip": "IP",
+    "card": "CARD",
+    "passport": "PASSPORT",
+    "driver_license": "DRIVER_LICENSE",
+    "medical_insurance": "MEDICAL_INSURANCE",
+    "vehicle": "VEHICLE",
 }
 IPV4 = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 
@@ -89,7 +96,10 @@ def prf(tp, fp, fn):
 def main() -> None:
     path, model_dir, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
     size = int(sys.argv[4]) if len(sys.argv) > 4 else 3000
-    extended = len(sys.argv) > 5 and sys.argv[5] == "extended"
+    mode = sys.argv[5] if len(sys.argv) > 5 else "off"
+    # off: model + postprocess only; extended: add the ko-pii adapter; default: the
+    # package default (0.6.0 turns the adapter on when ko-pii is installed).
+    extended = {"off": False, "extended": True, "default": None}[mode]
 
     import importlib
 
