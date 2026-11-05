@@ -43,6 +43,7 @@ from app.agent_runtime.runtime_preparation_support import (
 )
 from app.agent_runtime.tool_factory import create_builtin_tool
 from app.config import settings
+from app.guardrails.run import guard_for
 from app.tenancy.checkpoint_audit import checkpoint_tenant
 
 # Preserve the facade's logger name for ``agent_prepare_timing`` records.
@@ -237,6 +238,8 @@ async def _prepare_agent(
         from app.agent_runtime.attachment_inputs import AttachmentInputMiddleware
 
         middleware.append(AttachmentInputMiddleware(cfg.attachment_inputs))
+    # Appended after the attachment middleware so ② sees the expanded attachment text.
+    guard = guard_for(cfg.runtime_profile, cfg.org_context.tenant_id)
     last_mark = time.perf_counter()
 
     # 5. 에이전트 빌드 — create_deep_agent + checkpointer
@@ -257,6 +260,7 @@ async def _prepare_agent(
         name=cfg.agent_runtime_name or f"agent_{cfg.thread_id[:8]}",
         subagents=cfg.subagents_config,
         runtime_policy=cfg.runtime_policy,
+        guard=guard,
     )
     timings["build_agent_ms"] = int((time.perf_counter() - build_started) * 1000)
     last_mark = time.perf_counter()

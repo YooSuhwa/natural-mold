@@ -52,6 +52,7 @@ from app.authz.org_context import OrgContext
 from app.authz.organization_execution_proof import live_proof
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found
+from app.guardrails.run import rules_for
 from app.models.conversation_run import ConversationRun
 from app.services import chat_service
 from app.services.chat.attachment_inputs import conversation_has_attachments
@@ -161,6 +162,9 @@ class PreparedRunResolver:
             # 1A expands attachment references per model call from live upload rows;
             # the lease has no frozen copy of them yet.
             raise unsupported("attachment_input")
+        if rules_for(cfg.runtime_profile) is not None:
+            # The guardrail middleware is not lease-owned yet (plan §3.2, step 5).
+            raise unsupported("guardrail_policy")
         model = lease_model_spec(
             provider=cfg.provider,
             model_name=cfg.model_name,

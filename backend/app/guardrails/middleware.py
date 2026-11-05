@@ -1,0 +1,332 @@
+"""Guardrail middleware: check what goes to the model and to tools (guardrail-minimum-plan.md §3).
+
+Stages covered here:
+
+* ② ``llm_send`` — ``awrap_model_call`` changes only this call's copy of the messages;
+  the stored history, checkpoint and screen keep the original values (plan §3.1). A block
+  answers with a notice instead of calling the model.
+* ③ ``tool_args`` / ④ ``tool_result`` — ``awrap_tool_call`` checks the arguments before the
+  tool runs (a block returns a tool error the model can read) and the result before the
+  model or the stored history sees it.
+
+Deep Agents puts custom middleware *inside* its summarizer, whose summary call goes to the
+model on its own. ``GuardedSummarizationMiddleware`` takes the summarizer's name, so it
+replaces it in place and runs the same ② check first (plan §3.4.1). Only the async agent
+API is guarded; the sync hooks refuse rather than run unchecked.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+import uuid
+from collections import OrderedDict
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass, field
+from typing import Any, NamedTuple
+
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from deepagents.middleware.summarization import SummarizationState
+from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware.types import ModelRequest, ModelResponse
+from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, ToolMessage
+from langgraph.types import Command
+
+from app.guardrails.actions import Applied, Decision, apply, block_notice
+from app.guardrails.detectors import Finding
+from app.guardrails.model_pack import detect_texts
+from app.guardrails.rules import RuleSet, Stage
+from app.security import key_provider
+
+logger = logging.getLogger(__name__)
+
+SUMMARIZATION_MIDDLEWARE_NAME = "SummarizationMiddleware"
+_CACHE_SIZE = 2048
+_SKIPPED_BLOCKS = frozenset({"thinking", "redacted_thinking", "reasoning"})
+_SYNC_REFUSAL = "guardrails run on the async agent API only (ainvoke / astream)"
+
+
+def hash_key(tenant_id: uuid.UUID | None) -> bytes:
+    """The company's HMAC key for the ``hash`` action, derived from the active master key.
+
+    Per company, so the same value hashes differently in two companies; a small value space
+    (RRN) cannot be reversed by hashing every candidate without the key. Rotating the master
+    key changes the tokens.
+    """
+    info = f"moldy-guardrail-hash|{tenant_id or 'platform'}".encode()
+    return HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=info).derive(
+        key_provider.get_active_key().raw
+    )
+
+
+class _Slot(NamedTuple):
+    message: int
+    kind: str  # "content", "block", "arg"
+    key: tuple[Any, ...]
+
+
+def _leaves(value: Any, path: tuple[Any, ...] = ()) -> list[tuple[tuple[Any, ...], str]]:
+    if isinstance(value, str):
+        return [(path, value)]
+    if isinstance(value, dict):
+        return [leaf for k, v in value.items() for leaf in _leaves(v, (*path, k))]
+    if isinstance(value, list | tuple):
+        return [leaf for i, v in enumerate(value) for leaf in _leaves(v, (*path, i))]
+    return []
+
+
+def _replace_leaf(value: Any, path: tuple[Any, ...], text: str) -> Any:
+    if not path:
+        return text
+    head, rest = path[0], path[1:]
+    if isinstance(value, dict):
+        return {**value, head: _replace_leaf(value[head], rest, text)}
+    items = list(value)
+    items[head] = _replace_leaf(items[head], rest, text)
+    return items if isinstance(value, list) else tuple(items)
+
+
+def _message_texts(index: int, message: BaseMessage) -> list[tuple[_Slot, str]]:
+    found: list[tuple[_Slot, str]] = []
+    content = message.content
+    if isinstance(content, str):
+        found.append((_Slot(index, "content", ()), content))
+    elif isinstance(content, list):
+        for i, block in enumerate(content):
+            if isinstance(block, str):
+                found.append((_Slot(index, "block", (i,)), block))
+            elif isinstance(block, dict) and block.get("type") not in _SKIPPED_BLOCKS:
+                if isinstance(block.get("text"), str):
+                    found.append((_Slot(index, "block", (i, "text")), block["text"]))
+                if isinstance(block.get("input"), dict):  # Anthropic tool_use blocks
+                    for path, text in _leaves(block["input"]):
+                        found.append((_Slot(index, "block", (i, "input", *path)), text))
+    if isinstance(message, AIMessage):
+        for c, call in enumerate(message.tool_calls):
+            for path, text in _leaves(call.get("args")):
+                found.append((_Slot(index, "arg", (c, *path)), text))
+    return found
+
+
+def _rebuild[M: BaseMessage](message: M, changes: dict[_Slot, str]) -> M:
+    update: dict[str, Any] = {}
+    content = message.content
+    for slot, text in changes.items():
+        if slot.kind == "content":
+            content = text
+        elif slot.kind == "block":
+            blocks = list(content) if isinstance(content, list) else []
+            i, *path = slot.key
+            blocks[i] = text if not path else _replace_leaf(blocks[i], tuple(path), text)
+            content = blocks
+    if content is not message.content:
+        update["content"] = content
+    if isinstance(message, AIMessage):
+        calls: list[Any] = list(message.tool_calls)
+        for slot, text in changes.items():
+            if slot.kind == "arg":
+                c, *path = slot.key
+                calls[c] = {**calls[c], "args": _replace_leaf(calls[c]["args"], tuple(path), text)}
+        if any(slot.kind == "arg" for slot in changes):
+            update["tool_calls"] = calls
+    return message.model_copy(update=update)
+
+
+@dataclass
+class Guard:
+    """One run's rules, company key and detection cache, shared by every hook of the run."""
+
+    rules: RuleSet
+    tenant_id: uuid.UUID | None
+    decisions: list[Decision] = field(default_factory=list)
+    _cache: OrderedDict[str, list[Finding]] = field(default_factory=OrderedDict)
+    _key: bytes | None = None
+
+    @property
+    def key(self) -> bytes:
+        if self._key is None:
+            self._key = hash_key(self.tenant_id)
+        return self._key
+
+    async def _findings(self, texts: Sequence[str], stage: Stage) -> list[list[Finding]]:
+        """Detection per text; a text already seen this run is not detected again."""
+        packs = self.rules.packs_for(stage)
+        digests = [hashlib.sha256(f"{stage}\x00{t}".encode()).hexdigest() for t in texts]
+        missing = [i for i, d in enumerate(digests) if d not in self._cache]
+        if missing and packs:
+            fresh = await detect_texts([texts[i] for i in missing], packs)
+            for i, found in zip(missing, fresh, strict=True):
+                self._cache[digests[i]] = found
+                while len(self._cache) > _CACHE_SIZE:
+                    self._cache.popitem(last=False)
+        return [self._cache.get(d, []) for d in digests]
+
+    async def check(self, texts: Sequence[str], stage: Stage) -> list[Applied]:
+        results = [
+            apply(text, found, self.rules, stage, self.key)
+            for text, found in zip(texts, await self._findings(texts, stage), strict=True)
+        ]
+        for result in results:
+            self.decisions.extend(result.decisions)
+        if any(result.decisions for result in results):
+            # Rule ids, entities and actions only; the values never reach the log.
+            logger.info(
+                "guardrail decisions stage=%s template=%s %s",
+                stage,
+                self.rules.template,
+                sorted({(d.rule, d.entity, d.action) for r in results for d in r.decisions}),
+            )
+        return results
+
+    async def guard_messages(
+        self, messages: Sequence[AnyMessage]
+    ) -> tuple[list[Any], tuple[Decision, ...]]:
+        """② Return a changed copy of ``messages`` and the decisions; the input is untouched."""
+        slots = [pair for i, m in enumerate(messages) for pair in _message_texts(i, m)]
+        results = await self.check([text for _, text in slots], "llm_send")
+        changes: dict[int, dict[_Slot, str]] = {}
+        decisions: list[Decision] = []
+        for (slot, text), result in zip(slots, results, strict=True):
+            decisions.extend(result.decisions)
+            if result.text != text:
+                changes.setdefault(slot.message, {})[slot] = result.text
+        guarded = [_rebuild(m, changes[i]) if i in changes else m for i, m in enumerate(messages)]
+        return guarded, tuple(decisions)
+
+    async def guard_request(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], Awaitable[Any]],
+    ) -> Any:
+        messages, decisions = await self.guard_messages(request.messages)
+        if any(d.action == "block" for d in decisions):
+            return ModelResponse(result=[AIMessage(content=block_notice(decisions))])
+        return await handler(request.override(messages=messages))
+
+
+class GuardrailMiddleware(AgentMiddleware):
+    """② for the main path (inside the attachment middleware) and ③④ around every tool."""
+
+    def __init__(self, guard: Guard) -> None:
+        super().__init__()
+        self.guard = guard
+
+    @property
+    def name(self) -> str:
+        return "GuardrailMiddleware"
+
+    def wrap_model_call(self, request: Any, handler: Any) -> Any:
+        raise RuntimeError(_SYNC_REFUSAL)
+
+    async def awrap_model_call(
+        self, request: ModelRequest, handler: Callable[[ModelRequest], Awaitable[Any]]
+    ) -> Any:
+        return await self.guard.guard_request(request, handler)
+
+    def wrap_tool_call(self, request: Any, handler: Any) -> Any:
+        raise RuntimeError(_SYNC_REFUSAL)
+
+    async def awrap_tool_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
+        call = request.tool_call
+        leaves = _leaves(call.get("args"))
+        results = await self.guard.check([text for _, text in leaves], "tool_args")
+        decisions = tuple(d for r in results for d in r.decisions)
+        if any(d.action == "block" for d in decisions):
+            return ToolMessage(
+                content=block_notice(decisions) + " 같은 인자로 다시 시도하지 마세요.",
+                tool_call_id=call["id"],
+                name=call.get("name"),
+                status="error",
+            )
+        args = call.get("args")
+        for (path, text), result in zip(leaves, results, strict=True):
+            if result.text != text:
+                args = _replace_leaf(args, path, result.text)
+        if args is not call.get("args"):
+            # A new call: the dict in the state's AIMessage.tool_calls stays as the model wrote it.
+            request = request.override(tool_call={**call, "args": args})
+        return await self._guard_result(await handler(request))
+
+    async def _guard_result(self, response: Any) -> Any:
+        if isinstance(response, ToolMessage):
+            return await self._guard_tool_message(response)
+        if isinstance(response, Command) and isinstance(response.update, dict):
+            messages = response.update.get("messages")
+            if isinstance(messages, list):
+                guarded = [
+                    await self._guard_tool_message(m) if isinstance(m, ToolMessage) else m
+                    for m in messages
+                ]
+                return Command(
+                    graph=response.graph,
+                    update={**response.update, "messages": guarded},
+                    resume=response.resume,
+                    goto=response.goto,
+                )
+        return response
+
+    async def _guard_tool_message(self, message: ToolMessage) -> ToolMessage:
+        slots = _message_texts(0, message)
+        results = await self.guard.check([text for _, text in slots], "tool_result")
+        if any(r.blocked for r in results):
+            notice = block_notice(tuple(d for r in results for d in r.decisions))
+            return message.model_copy(update={"content": notice})
+        changes = {
+            slot: result.text
+            for (slot, text), result in zip(slots, results, strict=True)
+            if result.text != text
+        }
+        return _rebuild(message, changes) if changes else message
+
+
+class GuardedSummarizationMiddleware(AgentMiddleware):
+    """The Deep Agents summarizer behind the same ② check (replaces it by name, in place)."""
+
+    state_schema = SummarizationState
+
+    def __init__(self, inner: AgentMiddleware, guard: Guard) -> None:
+        super().__init__()
+        self.inner = inner
+        self.guard = guard
+
+    @property
+    def name(self) -> str:
+        return SUMMARIZATION_MIDDLEWARE_NAME
+
+    def wrap_model_call(self, request: Any, handler: Any) -> Any:
+        raise RuntimeError(_SYNC_REFUSAL)
+
+    async def awrap_model_call(
+        self, request: ModelRequest, handler: Callable[[ModelRequest], Awaitable[Any]]
+    ) -> Any:
+        return await self.guard.guard_request(
+            request, lambda guarded: self.inner.awrap_model_call(guarded, handler)
+        )
+
+
+def middleware_name(item: Any) -> str | None:
+    name = getattr(item, "name", None)
+    return name if isinstance(name, str) else None
+
+
+def guard_stack(
+    middleware: Sequence[Any],
+    guard: Guard,
+    *,
+    create_summarizer: Callable[[], AgentMiddleware],
+) -> list[Any]:
+    """``middleware`` with the guardrail appended and the summarizer guarded.
+
+    A summarizer already in the list (Moldy's actor-scoped child summarizer) is wrapped;
+    otherwise one is created and wrapped, and it replaces Deep Agents' own by name.
+    """
+    stack = list(middleware)
+    for i, item in enumerate(stack):
+        if middleware_name(item) == SUMMARIZATION_MIDDLEWARE_NAME:
+            stack[i] = GuardedSummarizationMiddleware(item, guard)
+            break
+    else:
+        stack.append(GuardedSummarizationMiddleware(create_summarizer(), guard))
+    stack.append(GuardrailMiddleware(guard))
+    return stack

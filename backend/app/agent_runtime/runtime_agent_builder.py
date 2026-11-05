@@ -39,6 +39,7 @@ from app.agent_runtime.runtime_subagent_normalization import _SUMMARIZATION_MIDD
 from app.agent_runtime.runtime_summarization_policy import (
     create_stored_summarization_middleware,
 )
+from app.guardrails.middleware import Guard
 
 # Deep Agents 0.7 makes ``delete`` part of its default filesystem surface and
 # stops installing TodoListMiddleware. Moldy intentionally preserves its
@@ -219,6 +220,7 @@ def build_agent(
     name: str | None = None,
     subagents: list[dict[str, Any]] | None = None,
     runtime_policy: ResolvedRuntimePolicy | None = None,
+    guard: Guard | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
     effective_permissions = permissions
@@ -266,4 +268,5 @@ def build_agent(
         name=name,
         subagents=subagents,
         bindings=bindings,
+        guard=guard,
     )
