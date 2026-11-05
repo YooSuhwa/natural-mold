@@ -97,7 +97,7 @@ def main() -> None:
 
     det = importlib.import_module("schift_ko_pii.detect")
 
-    det.HF_MODEL_ID = model_dir
+    setattr(det, "HF_MODEL_ID", model_dir)  # noqa: B010 - module attribute the package reads
     huggingface_hub.hf_hub_download = lambda _repo, filename, **_kw: str(Path(model_dir) / filename)
     labels_seen: Counter = Counter()
 
