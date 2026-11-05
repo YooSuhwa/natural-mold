@@ -18,6 +18,7 @@ import statistics
 import sys
 import time
 from collections import Counter, defaultdict
+from pathlib import Path
 
 import spacy
 from ko_pii.integrations.presidio_plugin import KPiiRecognizer
@@ -111,7 +112,7 @@ def analyzer(recognizers: list) -> AnalyzerEngine:
 
 
 def sample(path: str, size: int) -> list[dict]:
-    docs = [json.loads(line) for line in open(path, encoding="utf-8")]
+    docs = [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines()]
     kopii = {
         d["doc_id"]
         for d in sorted(
@@ -142,7 +143,14 @@ def prf(tp: int, fp: int, fn: int) -> dict:
     p = tp / (tp + fp) if tp + fp else 0.0
     r = tp / (tp + fn) if tp + fn else 0.0
     f = 2 * p * r / (p + r) if p + r else 0.0
-    return {"tp": tp, "fp": fp, "fn": fn, "precision": round(p, 3), "recall": round(r, 3), "f1": round(f, 3)}
+    return {
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "precision": round(p, 3),
+        "recall": round(r, 3),
+        "f1": round(f, 3),
+    }
 
 
 def run(name: str, docs: list[dict], threshold: float) -> dict:
@@ -177,7 +185,11 @@ def run(name: str, docs: list[dict], threshold: float) -> dict:
             total.update(v)
         out[mode] = {"micro": prf(total["tp"], total["fp"], total["fn"]), "per_category": cats}
     q = statistics.quantiles(latencies, n=100)
-    out["latency_ms"] = {"p50": round(q[49], 2), "p95": round(q[94], 2), "mean": round(statistics.mean(latencies), 2)}
+    out["latency_ms"] = {
+        "p50": round(q[49], 2),
+        "p95": round(q[94], 2),
+        "mean": round(statistics.mean(latencies), 2),
+    }
     return out
 
 
@@ -191,9 +203,7 @@ def main() -> None:
         "sample_size": len(docs),
         "seed": SEED,
         "gold_counts": dict(sorted(gold_counts.items())),
-        "unscored_gold_types": sorted(
-            {e["type"] for d in docs for e in d["entities"]} - set(GOLD)
-        ),
+        "unscored_gold_types": sorted({e["type"] for d in docs for e in d["entities"]} - set(GOLD)),
         "setups": {},
     }
     names = sys.argv[4].split(",") if len(sys.argv) > 4 else list(SETUPS)
@@ -202,7 +212,7 @@ def main() -> None:
             t0 = time.perf_counter()
             report["setups"][f"{name}@{threshold}"] = run(name, docs, threshold)
             print(f"{name}@{threshold} done in {time.perf_counter() - t0:.1f}s", flush=True)
-    json.dump(report, open(out_path, "w"), ensure_ascii=False, indent=2)
+    Path(out_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":
