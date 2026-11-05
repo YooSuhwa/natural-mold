@@ -143,14 +143,18 @@ async def apply_now(
     writer: TupleWriter,
     ids: Collection[UUID],
     *,
-    budget_seconds: float = IMMEDIATE_TIMEOUT_SECONDS,
+    budget_seconds: float | None = None,
     now: datetime | None = None,
 ) -> OutboxRun:
-    """8.6 item 2: right after commit; any failure leaves the rows to the worker."""
+    """8.6 item 2: right after commit; any failure leaves the rows to the worker.
+
+    The budget defaults to ``IMMEDIATE_TIMEOUT_SECONDS``, read per call.
+    """
     if not ids:
         return OutboxRun()
+    budget = IMMEDIATE_TIMEOUT_SECONDS if budget_seconds is None else budget_seconds
     try:
-        with anyio.move_on_after(budget_seconds):
+        with anyio.move_on_after(budget):
             return await process_outbox(sessions, writer, ids=ids, limit=len(ids), now=now)
         logger.warning("authz_outbox_immediate_timeout", extra={"rows": len(ids)})
     except Exception as error:  # CancelledError is a BaseException and propagates

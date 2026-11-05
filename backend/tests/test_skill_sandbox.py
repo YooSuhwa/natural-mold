@@ -53,6 +53,8 @@ class FakeSandbox:
     outputs: dict[str, bytes] = field(default_factory=dict)
     listing: str | None = None
     hang: bool = False
+    # Set when a hanging command has started, so a test cancels only once it is in flight.
+    hanging: asyncio.Event = field(default_factory=asyncio.Event)
     id: str = "fake-sandbox"
     written: dict[str, bytes] = field(default_factory=dict)
     commands_seen: list[tuple[str, Any]] = field(default_factory=list)
@@ -80,6 +82,7 @@ class FakeSandbox:
                 listing = "".join(f"{n}\t{len(c)}\n" for n, c in self.outputs.items())
             return _execution(0, listing)
         if self.hang:
+            self.hanging.set()
             await asyncio.sleep(3600)
         return _execution(self.run_code, self.run_stdout)
 
@@ -269,11 +272,12 @@ async def test_a_cancelled_run_still_deletes_its_sandbox(fake: FakeSandbox, tmp_
     fake.hang = True
     tool, _ = _tool(tmp_path)
     task = asyncio.create_task(_invoke(tool))
-    for _ in range(1000):
-        if task.done() or any(not c[0].startswith("mkdir") for c in fake.commands_seen):
-            break
-        await asyncio.sleep(0)
-    assert not task.done(), task.result()
+    # Wait for the command itself, not a fixed number of loop turns: the run first does real
+    # IO (database, thread offload) that a busy CI runner can make slower than any count.
+    hanging = asyncio.create_task(fake.hanging.wait())
+    await asyncio.wait({task, hanging}, timeout=30, return_when=asyncio.FIRST_COMPLETED)
+    hanging.cancel()
+    assert fake.hanging.is_set(), task.result() if task.done() else "command never started"
 
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
