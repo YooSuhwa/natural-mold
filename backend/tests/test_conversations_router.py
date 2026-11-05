@@ -1119,6 +1119,87 @@ async def test_delete_conversation(client: AsyncClient):
     assert resp.json() == []
 
 
+async def _seed_conversation_files(
+    conv_id: uuid.UUID, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[Path], Path]:
+    """An attachment blob and both artifact trees of ``conv_id``, plus another conversation's."""
+    from app.config import settings
+    from app.models.message_attachment import MessageAttachment
+
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path / "uploads"))
+    monkeypatch.setattr(settings, "artifact_storage_dir", str(tmp_path / "artifacts"))
+    monkeypatch.setattr(settings, "artifact_storage_backend", "local")
+    upload = tmp_path / "uploads" / "tenants" / str(TEST_TENANT_ID) / f"{uuid.uuid4()}.png"
+    tenant_tree = tmp_path / "artifacts" / "tenants" / str(TEST_TENANT_ID) / "conversations"
+    legacy_tree = tmp_path / "artifacts" / "conversations"
+    owned = [upload, tenant_tree / str(conv_id) / "a.md", legacy_tree / str(conv_id) / "b.md"]
+    other = tenant_tree / str(uuid.uuid4()) / "keep.md"
+    for path in [*owned, other]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x")
+    async with TestSession() as db:
+        db.add(
+            MessageAttachment(
+                user_id=TEST_USER_ID,
+                conversation_id=conv_id,
+                message_id="m-1",
+                filename="a.png",
+                mime_type="image/png",
+                size_bytes=1,
+                storage_path=str(upload),
+                url="/api/uploads/x",
+                org_id=TEST_ORG_ID,
+                tenant_id=TEST_TENANT_ID,
+            )
+        )
+        await db.commit()
+    return owned, other
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation_removes_its_files(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+    owned, other = await _seed_conversation_files(conv_id, tmp_path, monkeypatch)
+
+    with patch("app.agent_runtime.checkpointer.delete_thread", new_callable=AsyncMock):
+        resp = await client.delete(f"/api/conversations/{conv_id}")
+
+    assert resp.status_code == 204
+    assert [path for path in owned if path.exists()] == []
+    assert not owned[1].parent.exists() and not owned[2].parent.exists()
+    assert other.exists()
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation_keeps_files_when_refused(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+    owned, _ = await _seed_conversation_files(conv_id, tmp_path, monkeypatch)
+    async with TestSession() as db:
+        db.add(
+            ConversationRun(
+                conversation_id=conv_id,
+                agent_id=agent_id,
+                user_id=TEST_USER_ID,
+                source="chat",
+                status="running",
+                is_active=True,
+            )
+        )
+        await db.commit()
+
+    with patch("app.agent_runtime.checkpointer.delete_thread", new_callable=AsyncMock):
+        resp = await client.delete(f"/api/conversations/{conv_id}")
+
+    assert resp.status_code == 409
+    assert all(path.exists() for path in owned)
+
+
 @pytest.mark.asyncio
 async def test_delete_conversation_rejects_active_run_without_cleanup(
     client: AsyncClient,
