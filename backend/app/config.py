@@ -162,6 +162,9 @@ class Settings(AuthzSettings):
     skill_sandbox_image: str = "python:3.12-slim"
     skill_sandbox_cpu: str = "1"
     skill_sandbox_memory: str = "512Mi"
+    # Domains every ``requires_network`` skill may reach besides its own
+    # ``execution_profile.network_domains`` (comma separated, ``*.`` wildcards).
+    skill_sandbox_allowed_domains: str = ""
 
     skill_evaluation_enabled: bool = True
     skill_evaluation_max_concurrent: int = 1

@@ -11,13 +11,7 @@ def _skill_md(
     body: str = "Use when summarizing meeting notes. See references/guide.md.",
 ) -> str:
     description_line = "" if description is None else f'description: "{description}"\n'
-    return (
-        "---\n"
-        f"name: {name}\n"
-        f"{description_line}"
-        "---\n\n"
-        f"{body}\n"
-    )
+    return f"---\nname: {name}\n{description_line}---\n\n{body}\n"
 
 
 def _file(path: str, content: str) -> SkillDraftFile:
@@ -43,9 +37,7 @@ def test_missing_frontmatter_description_is_error() -> None:
 
 
 def test_weak_trigger_description_is_warning() -> None:
-    result = validate_draft_package(
-        files=[_file("SKILL.md", _skill_md(description="Summarizes."))]
-    )
+    result = validate_draft_package(files=[_file("SKILL.md", _skill_md(description="Summarizes."))])
 
     assert result["valid"] is True
     assert "WEAK_TRIGGER_DESCRIPTION" in _codes(result)
@@ -97,6 +89,23 @@ def test_network_command_without_network_profile_is_warning() -> None:
     )
 
     assert "NETWORK_PROFILE_MISSING" in _codes(result)
+
+
+def test_network_domains_must_be_domains() -> None:
+    files = [_file("SKILL.md", _skill_md())]
+    bad = validate_draft_package(
+        files=files,
+        execution_profile={"requires_network": True, "network_domains": ["https://x.io/a"]},
+    )
+    missing = validate_draft_package(files=files, execution_profile={"requires_network": True})
+    good = validate_draft_package(
+        files=files,
+        execution_profile={"requires_network": True, "network_domains": ["*.example.com"]},
+    )
+
+    assert "NETWORK_DOMAINS_INVALID" in _codes(bad) and bad["valid"] is False
+    assert "NETWORK_DOMAINS_MISSING" in _codes(missing)
+    assert not {"NETWORK_DOMAINS_INVALID", "NETWORK_DOMAINS_MISSING"} & _codes(good)
 
 
 def test_unknown_credential_definition_key_is_error() -> None:
@@ -218,7 +227,7 @@ def test_valid_portable_package_returns_valid_true() -> None:
             _file("SKILL.md", _skill_md()),
             _file(
                 "agents/openai.yaml",
-                "interface:\n  default_prompt: \"$meeting-notes summarize this\"\n",
+                'interface:\n  default_prompt: "$meeting-notes summarize this"\n',
             ),
             _file("references/guide.md", "Guide"),
         ]

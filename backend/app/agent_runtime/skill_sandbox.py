@@ -7,9 +7,11 @@ create-time env, which every later command could read), and the output files the
 command wrote are copied back into ``output_dir``. Everything after that (path
 rewrite, OUTPUT_FILES, redaction, artifact indexing) is the caller's, unchanged.
 
-Network is denied unless the skill declares ``requires_network``; then it is
-allowed except for internal ranges, which keeps one sandbox away from another
-sandbox's unauthenticated execd (PoC 2026-11-02, §3.1).
+Network is denied. A skill that declares ``requires_network`` reaches only the
+domains in ``execution_profile.network_domains`` plus the deployment allow-list
+(``SKILL_SANDBOX_ALLOWED_DOMAINS``); internal ranges stay denied even then, which
+keeps one sandbox away from another sandbox's unauthenticated execd (PoC
+2026-11-02, §3.1). Feature plan v2 §15.3.
 """
 
 from __future__ import annotations
@@ -17,12 +19,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import shlex
 import sys
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 
@@ -53,6 +58,10 @@ _INTERNAL_RANGES = (
     "fc00::/7",
     "fe80::/10",
 )
+_DOMAIN = re.compile(r"^(\*\.)?([a-z0-9-]{1,63}\.)+[a-z]{2,63}$")
+# Skills that keep a workspace outside the conversation (OpenWiki clones into the
+# shared ``workspaces`` directory). A throwaway sandbox cannot hold it yet.
+HOST_WORKSPACE_SKILLS = frozenset({"openwiki"})
 
 
 class SkillSandboxError(RuntimeError):
@@ -65,6 +74,7 @@ class SkillRunResult:
     stderr: str
     returncode: int | None
     timed_out: bool = False
+    sandbox_id: str | None = None
 
 
 def sandbox_argv(args: list[str]) -> list[str]:
@@ -76,13 +86,56 @@ def sandbox_argv(args: list[str]) -> list[str]:
     return args
 
 
-def network_policy(requires_network: bool) -> NetworkPolicy:
+def valid_domain(value: object) -> bool:
+    """An FQDN or ``*.`` wildcard, lower case (the egress sidecar's target form)."""
+    return isinstance(value, str) and _DOMAIN.fullmatch(value) is not None
+
+
+def network_domains(profile: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """Domains the sandbox may reach: none unless the skill declares ``requires_network``."""
+    profile = profile or {}
+    if profile.get("requires_network") is not True:
+        return ()
+    declared = profile.get("network_domains")
+    allowed = [*(declared if isinstance(declared, list) else [])]
+    allowed += settings.skill_sandbox_allowed_domains.split(",")
+    return tuple(sorted({d.strip().lower() for d in allowed if valid_domain(d.strip().lower())}))
+
+
+def network_policy(domains: Sequence[str]) -> NetworkPolicy:
     from opensandbox.models.sandboxes import NetworkPolicy, NetworkRule
 
-    if not requires_network:
+    if not domains:
         return NetworkPolicy(defaultAction="deny", egress=[])
+    # Rules are evaluated in order: an allowed name resolving to an internal address
+    # still hits a deny first.
     rules = [NetworkRule(action="deny", target=cidr) for cidr in _INTERNAL_RANGES]
-    return NetworkPolicy(defaultAction="allow", egress=rules)
+    rules += [NetworkRule(action="allow", target=domain) for domain in domains]
+    return NetworkPolicy(defaultAction="deny", egress=rules)
+
+
+@contextmanager
+def trace_span(run_id: str | None, metadata: dict[str, Any]) -> Iterator[Any]:
+    """A ``sandbox`` span on the run's Langfuse trace; nothing when tracing is off."""
+    from app.observability import langfuse
+
+    span_cm = None
+    if run_id is not None and langfuse.is_langfuse_enabled():
+        try:
+            client = langfuse._get_langfuse_client()  # noqa: SLF001 - same package's client cache
+            span_cm = client.start_as_current_observation(
+                as_type="span",
+                name="sandbox",
+                trace_context={"trace_id": langfuse._trace_id_for_run(client, run_id)},  # noqa: SLF001
+                metadata=metadata,
+            )
+        except Exception:  # noqa: BLE001 - tracing never fails the run
+            logger.debug("sandbox trace span not started", exc_info=True)
+    if span_cm is None:
+        yield None
+        return
+    with span_cm as span:
+        yield span
 
 
 def _read_tree(root: Path, limit: int) -> list[tuple[str, bytes]]:
@@ -142,14 +195,14 @@ async def run_in_sandbox(
     output_dir: Path,
     env: dict[str, str],
     timeout_seconds: float,
-    requires_network: bool,
+    domains: Sequence[str],
 ) -> SkillRunResult:
     from opensandbox.exceptions import SandboxException
 
     skill_files = await asyncio.to_thread(_read_tree, skill_dir, settings.skill_max_package_bytes)
     outputs = await asyncio.to_thread(_read_outputs, output_dir)
     try:
-        sandbox = await _create(timeout_seconds, requires_network)
+        sandbox = await _create(timeout_seconds, domains)
     except SandboxException as exc:
         logger.warning("skill sandbox create failed: %s", type(exc).__name__)
         raise SkillSandboxError("skill sandbox is unavailable.") from exc
@@ -158,7 +211,9 @@ async def run_in_sandbox(
         run = await _run(sandbox, args, env, timeout_seconds)
         if run.returncode is not None:
             await _download(sandbox, output_dir)
-        return run
+        return SkillRunResult(
+            run.stdout, run.stderr, run.returncode, run.timed_out, sandbox_id=sandbox.id
+        )
     except SandboxException as exc:
         logger.warning("skill sandbox run failed: %s", type(exc).__name__)
         raise SkillSandboxError("skill sandbox stopped before the command finished.") from exc
@@ -167,7 +222,7 @@ async def run_in_sandbox(
         await asyncio.shield(_discard(sandbox))
 
 
-async def _create(timeout_seconds: float, requires_network: bool) -> Sandbox:
+async def _create(timeout_seconds: float, domains: Sequence[str]) -> Sandbox:
     from opensandbox import Sandbox
     from opensandbox.config import ConnectionConfig
 
@@ -180,7 +235,7 @@ async def _create(timeout_seconds: float, requires_network: bool) -> Sandbox:
     return await Sandbox.create(
         settings.skill_sandbox_image,
         connection_config=connection,
-        network_policy=network_policy(requires_network),
+        network_policy=network_policy(domains),
         resource={"cpu": settings.skill_sandbox_cpu, "memory": settings.skill_sandbox_memory},
         metadata={"app": "moldy", "kind": "execute_in_skill"},
         timeout=timedelta(seconds=timeout_seconds + _LIFETIME_MARGIN_SECONDS),

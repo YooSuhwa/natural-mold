@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from app.agent_runtime.skill_sandbox import valid_domain
 from app.marketplace.secret_scan import scan_package
 from app.schemas.skill_builder import SkillDraftFile
 from app.skills.compatibility import check_portable_compatibility
@@ -182,6 +183,26 @@ def _validate_network(
             "NETWORK_PROFILE_MISSING",
             "warning",
             "Network usage should set execution_profile.requires_network=true.",
+            "agents/moldy.yaml",
+        )
+    domains = execution_profile.get("network_domains")
+    if domains is not None and not (
+        isinstance(domains, list) and all(valid_domain(domain) for domain in domains)
+    ):
+        _add_issue(
+            issues,
+            "NETWORK_DOMAINS_INVALID",
+            "error",
+            "execution_profile.network_domains must list lower-case domains or *. wildcards.",
+            "agents/moldy.yaml",
+        )
+    elif execution_profile.get("requires_network") is True and not domains:
+        _add_issue(
+            issues,
+            "NETWORK_DOMAINS_MISSING",
+            "warning",
+            "In the skill sandbox a requires_network skill reaches only "
+            "execution_profile.network_domains and the deployment allow-list.",
             "agents/moldy.yaml",
         )
 

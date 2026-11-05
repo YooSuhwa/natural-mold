@@ -7,6 +7,7 @@ docs/design-docs/skill-sandbox-docker.md; these lock the contract the executor k
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,6 +15,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 
 from app.agent_runtime import skill_executor, skill_sandbox
 from app.agent_runtime.skill_executor import _create_skill_execute_tool
@@ -23,6 +25,8 @@ from app.marketplace.skill_runtime import (
     SkillRuntimeDescriptor,
     SkillToolContext,
 )
+from app.models.audit_event import AuditEvent
+from tests.conftest import TestSession
 
 pytestmark = pytest.mark.asyncio
 SECRET = "sk-sandbox-secret-value"
@@ -93,13 +97,15 @@ class FakeSandbox:
 @pytest.fixture
 def fake(monkeypatch: pytest.MonkeyPatch) -> FakeSandbox:
     sandbox = FakeSandbox()
-    created: list[tuple[float, bool]] = []
+    created: list[tuple[float, tuple[str, ...]]] = []
 
-    async def create(timeout_seconds: float, requires_network: bool) -> FakeSandbox:
-        created.append((timeout_seconds, requires_network))
+    async def create(timeout_seconds: float, domains: tuple[str, ...]) -> FakeSandbox:
+        created.append((timeout_seconds, tuple(domains)))
         return sandbox
 
+    monkeypatch.setattr("app.agent_runtime.skill_executor_audit.async_session", TestSession)
     monkeypatch.setattr(settings, "skill_sandbox_enabled", True)
+    monkeypatch.setattr(settings, "skill_sandbox_allowed_domains", "")
     monkeypatch.setattr(skill_sandbox, "_create", create)
     sandbox.created = created  # type: ignore[attr-defined]
 
@@ -114,8 +120,10 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> FakeSandbox:
     return sandbox
 
 
-def _tool(tmp_path: Path, profile: dict[str, Any] | None = None) -> tuple[Any, Path]:
-    skill_dir = tmp_path / "runtime" / "demo"
+def _tool(
+    tmp_path: Path, profile: dict[str, Any] | None = None, slug: str = "demo"
+) -> tuple[Any, Path]:
+    skill_dir = tmp_path / "runtime" / slug
     (skill_dir / "scripts").mkdir(parents=True)
     (skill_dir / "scripts" / "run.py").write_text("print('hi')\n")
     (skill_dir / "SKILL.md").write_text("---\nname: demo\n---\n")
@@ -124,7 +132,7 @@ def _tool(tmp_path: Path, profile: dict[str, Any] | None = None) -> tuple[Any, P
     (output_dir / "earlier.txt").write_text("from an earlier turn")
     descriptor = SkillRuntimeDescriptor(
         id=uuid.uuid4(),
-        slug="demo",
+        slug=slug,
         name="Demo",
         description="demo",
         original_storage_path=skill_dir,
@@ -144,15 +152,18 @@ def _tool(tmp_path: Path, profile: dict[str, Any] | None = None) -> tuple[Any, P
         tenant_id=uuid.uuid4(),
         output_dir=output_dir,
         runtime_root=tmp_path / "runtime",
-        descriptors={"demo": descriptor},
+        descriptors={slug: descriptor},
+        run_id="run-1",
     )
     return _create_skill_execute_tool(ctx), output_dir
 
 
 async def _invoke(
-    tool: Any, command: str = "python scripts/run.py --out $OUTPUTS_DIR/a.png"
+    tool: Any,
+    command: str = "python scripts/run.py --out $OUTPUTS_DIR/a.png",
+    slug: str = "demo",
 ) -> str:
-    return await tool.ainvoke({"skill_directory": "/skills/demo", "command": command})
+    return await tool.ainvoke({"skill_directory": f"/skills/{slug}", "command": command})
 
 
 async def test_command_runs_in_the_sandbox_and_its_outputs_come_back(
@@ -175,8 +186,24 @@ async def test_command_runs_in_the_sandbox_and_its_outputs_come_back(
     assert "/api/conversations/thread-1/files/a.png" in result
     assert SECRET not in result
     assert "OUTPUT_FILES:" in result and "a.png" in result
-    assert fake.created == [(30.0, False)]  # type: ignore[attr-defined]
+    assert fake.created == [(30.0, ())]  # type: ignore[attr-defined]
     assert fake.killed and fake.closed
+    event = await _run_event()
+    assert (event.outcome, event.reason_code) == ("success", None)
+    assert event.event_metadata is not None
+    assert event.event_metadata["sandbox_id"] == "fake-sandbox"
+    assert event.event_metadata["exit_code"] == 0
+    assert event.event_metadata["network_domains"] == []
+    assert SECRET not in str(event.event_metadata)
+
+
+async def _run_event() -> AuditEvent:
+    async with TestSession() as db:
+        return (
+            await db.execute(
+                select(AuditEvent).where(AuditEvent.action == "skill_security.sandbox_run")
+            )
+        ).scalar_one()
 
 
 async def test_arguments_are_quoted_for_the_sandbox_shell(
@@ -218,6 +245,8 @@ async def test_timeout_is_reported_and_the_sandbox_deleted(
     assert await _invoke(tool) == "Error: script execution timed out (30s)."
     assert fake.killed
     assert not any(c[0].startswith("find") for c in fake.commands_seen)
+    event = await _run_event()
+    assert (event.outcome, event.reason_code) == ("failure", "timeout")
 
 
 async def test_server_failure_fails_closed(
@@ -232,6 +261,8 @@ async def test_server_failure_fails_closed(
     tool, _ = _tool(tmp_path)
 
     assert await _invoke(tool) == "Error: skill sandbox is unavailable."
+    event = await _run_event()
+    assert (event.outcome, event.reason_code) == ("failure", "sandbox_unavailable")
 
 
 async def test_a_cancelled_run_still_deletes_its_sandbox(fake: FakeSandbox, tmp_path: Path) -> None:
@@ -249,18 +280,81 @@ async def test_a_cancelled_run_still_deletes_its_sandbox(fake: FakeSandbox, tmp_
         await task
 
     assert fake.killed
+    event = await _run_event()
+    assert (event.outcome, event.reason_code) == ("failure", "cancelled")
 
 
-async def test_network_is_denied_unless_declared_and_internal_ranges_always(
+async def test_network_reaches_only_declared_and_allow_listed_domains(
+    fake: FakeSandbox, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "skill_sandbox_allowed_domains", "pypi.org, Bad Domain")
+    profile = {"requires_network": True, "network_domains": ["api.example.com", "*.cdn.io"]}
+    tool, _ = _tool(tmp_path, profile)
+    await _invoke(tool)
+
+    domains = ("*.cdn.io", "api.example.com", "pypi.org")
+    assert fake.created == [(30.0, domains)]  # type: ignore[attr-defined]
+    event = await _run_event()
+    assert event.event_metadata is not None
+    assert event.event_metadata["network_domains"] == list(domains)
+
+
+async def test_network_policy_denies_by_default_and_internal_ranges_first() -> None:
+    assert skill_sandbox.network_domains({"network_domains": ["api.example.com"]}) == ()
+    assert skill_sandbox.network_domains({"requires_network": True}) == ()
+    closed = skill_sandbox.network_policy(())
+    assert (closed.default_action, closed.egress) == ("deny", [])
+
+    policy = skill_sandbox.network_policy(("api.example.com",))
+    assert policy.default_action == "deny"
+    rules = [(rule.action, rule.target) for rule in policy.egress or []]
+    assert rules[-1] == ("allow", "api.example.com")
+    denied = {target for action, target in rules[:-1] if action == "deny"}
+    assert {"172.16.0.0/12", "10.0.0.0/8", "169.254.0.0/16", "127.0.0.0/8"} <= denied
+
+
+async def test_a_skill_with_a_shared_workspace_is_refused_in_the_sandbox(
     fake: FakeSandbox, tmp_path: Path
 ) -> None:
-    tool, _ = _tool(tmp_path, {"requires_network": True})
-    await _invoke(tool)
-    assert fake.created == [(30.0, True)]  # type: ignore[attr-defined]
+    tool, _ = _tool(tmp_path, slug="openwiki")
 
-    closed = skill_sandbox.network_policy(False)
-    assert (closed.default_action, closed.egress) == ("deny", [])
-    open_ = skill_sandbox.network_policy(True)
-    assert open_.default_action == "allow"
-    denied = {rule.target for rule in open_.egress or [] if rule.action == "deny"}
-    assert {"172.16.0.0/12", "10.0.0.0/8", "169.254.0.0/16", "127.0.0.0/8"} <= denied
+    result = await _invoke(tool, slug="openwiki")
+
+    assert result.startswith("Error: this skill keeps a workspace outside the conversation")
+    assert fake.commands_seen == [] and fake.created == []  # type: ignore[attr-defined]
+    async with TestSession() as db:
+        denial = (
+            await db.execute(
+                select(AuditEvent).where(AuditEvent.action == "skill_security.sandbox_denied")
+            )
+        ).scalar_one()
+    assert denial.reason_code == "sandbox_unsupported"
+
+
+async def test_trace_span_attaches_to_the_run_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.observability import langfuse
+
+    calls: list[dict[str, Any]] = []
+
+    class Client:
+        def start_as_current_observation(self, **kwargs: Any) -> Any:
+            calls.append(kwargs)
+            return contextlib.nullcontext("span")
+
+    monkeypatch.setattr(langfuse, "is_langfuse_enabled", lambda: True)
+    monkeypatch.setattr(langfuse, "_get_langfuse_client", Client)
+    monkeypatch.setattr(langfuse, "_trace_id_for_run", lambda _client, run_id: f"t-{run_id}")
+
+    with skill_sandbox.trace_span("run-1", {"skill_slug": "demo"}) as span:
+        assert span == "span"
+    with skill_sandbox.trace_span(None, {}) as span:
+        assert span is None
+
+    assert calls == [
+        {
+            "as_type": "span",
+            "name": "sandbox",
+            "trace_context": {"trace_id": "t-run-1"},
+            "metadata": {"skill_slug": "demo"},
+        }
+    ]
