@@ -114,7 +114,10 @@ export function AttachmentModelInputNote({ modelInput }: { modelInput?: string |
       : null
   if (!reason) return null
   return (
-    <span title={t(reason)} className="inline-flex items-center gap-1 text-[11px] text-status-warn">
+    <span
+      title={t(reason)}
+      className="moldy-ui-caption inline-flex items-center gap-1 text-status-warn"
+    >
       <EyeOffIcon className="size-3" aria-hidden />
       {t('notSent')}
       <span className="sr-only">: {t(reason)}</span>

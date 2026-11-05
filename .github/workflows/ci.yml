@@ -204,12 +204,13 @@ jobs:
         working-directory: backend
       - run: pnpm lint
       # Custom guards (docs/lint-hardening-plan.md §A) — only guards whose
-      # ENFORCING mode is green are wired. Not wired yet: lint:a11y and
-      # lint:design-system carry real violations needing component fixes
-      # (A-2 / FE-D2 / FE-D4), and lint:frontend-architecture's non-strict
+      # ENFORCING mode is green are wired. Not wired yet: lint:a11y carries
+      # real violations needing component fixes (A-2), and
+      # lint:frontend-architecture's non-strict
       # mode always exits 0 (no gate value) while its strict mode is red
       # (7 blocking issues in the current baseline) — wire it once those are fixed.
       - run: pnpm lint:i18n
+      - run: pnpm lint:design-system
       - run: pnpm lint:type-safety
       - run: pnpm lint:e2e-hygiene
       - run: pnpm exec vitest run
