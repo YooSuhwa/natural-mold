@@ -2,7 +2,7 @@
 
 > 기준: 기능 확장 기획서 v2(2026-10-27) 16장(C4 가드레일), 17장(C5), 27장(F2), 28장(F3), 31.2절(출시 단위 1B), 31.3절.
 > 근거 자료: [korean-pii-detector-benchmark.md](korean-pii-detector-benchmark.md)(한국어 탐지기 측정), LangChain 공식 가드레일 문서, "Guardrails in LangChain" 글(Nayan Kunwar, Medium) 요약.
-> 상태: 계획. 코드 변경 없음.
+> 상태: 진행 중. 6절 2번(탐지 묶음 모듈) 구현: `backend/app/guardrails/detectors.py`.
 
 ## 1. 왜 지금, 무엇까지
 
@@ -21,14 +21,17 @@ K-PII-Bench 3,000건 측정(엄격 span)에서 **ko-pii 플러그인 + Presidio 
 
 | 묶음 | 인식기 | 비고 |
 |---|---|---|
-| 공통 | 비밀값(기존 `marketplace/secret_scan` 패턴 재사용), 카드(Luhn), IP | 언어 무관. Presidio 공통 이메일·URL은 한국어 문장에서 쓰지 않음 |
-| 한국 | ko-pii Presidio 플러그인(33개 라벨 중 매핑된 것), Presidio `KrRrnRecognizer` | 주민등록번호는 2020-10 이후 뒷자리가 임의라 검증 숫자로 거르지 않는 Presidio 인식기를 함께 둔다 |
-| 다른 나라 | Presidio 나라 묶음(`supported_countries`) | 예: 폴란드는 `PlPeselRecognizer`(PESEL)만 있고, 이름·주소는 spaCy `pl` 모델 NER이 필요하다(미측정) |
+| 공통 (`common`) | 비밀값(기존 `marketplace/secret_scan` 패턴, `re.ASCII`로 컴파일), ko-pii의 이메일·카드(Luhn)·IP | 언어 무관 |
+| 한국 (`kr`) | ko-pii의 나머지 라벨(주민번호, 전화, 계좌, 주소, 이름 등), 검증 숫자로 거르지 않는 주민등록번호 정규식(Presidio `KrRrnRecognizer`와 같은 패턴) | 2020-10 이후 주민번호 뒷자리는 임의다. 측정 표본의 주민번호 1,257개 중 428개는 이 정규식만 찾는다 |
+| 다른 나라 | Presidio 나라 묶음(`supported_countries`) | 첫 다른 나라 묶음을 넣을 때 Presidio를 의존성에 추가한다. 예: 폴란드는 `PlPeselRecognizer`(PESEL)만 있고, 이름·주소는 spaCy `pl` 모델 NER이 필요하다(미측정) |
+
+- **구현에서 Presidio를 쓰지 않은 이유:** Presidio의 카드·IP 인식기는 `\b`로 끝나서 한국어 조사가 붙은 값(`4111…로`)을 놓친다. C 구성에서 Presidio가 맡은 것은 주민번호 정규식 하나였고, 그것만 옮겼다. Presidio를 넣으면 spaCy 등 의존성 20여 개가 따라온다. 모듈의 측정 결과는 C 구성과 같다(F1 엄격 0.571, 겹침 0.631, 문서당 p50 1.9 ms; `poc/korean-pii-bench/bench_packs.py`).
 
 - 이름·주소는 규칙으로 F1 0.29다. `schift-ko-pii` 0.6.0(v7 모델) 기본 설정 + Presidio 주민등록번호 인식기는 전체 F1 0.78(이름 0.73, 계좌 0.81)이고 문서당 약 22 ms다(벤치마크 3.1절). 이것을 한국 묶음 기본으로 하고, 모델을 받을 수 없는 설치는 규칙 묶음(C 구성)으로 대체한다. 모델은 `trust_remote_code`로 저장소 코드를 실행하므로 고정 리비전(9d9bc145)과 코드 검토 뒤에만 쓰고, 가중치는 이미지에 넣거나 내부 저장소에서 받는다.
 - `schift-ko-pii` 0.6.0은 `ko-pii==1.15.2`를 고정한다. 같은 Python 환경에 ko-pii 최신판(1.22.x)을 따로 넣을 수 없으므로 한 묶음 안에서는 schift가 가져오는 ko-pii만 쓴다.
 - 실행: torch 스레드 1개 고정, 이미 검사한 메시지는 해시로 건너뛰고 새 내용만 검사, 이벤트 루프 밖 고정 크기 풀에서 실행하고 동시 실행 수를 제한한다. GPU가 있으면 선택적으로 쓴다(긴 입력에서 약 5배).
-- Presidio URL·이메일 검사는 처음 쓸 때 public suffix 목록을 인터넷에서 받으려 한다. 망 분리 설치를 위해 내장본만 쓰도록 고정한다.
+- 망 분리: ko-pii는 의존성과 네트워크 접근이 없다. (Presidio URL·이메일 검사는 처음 쓸 때 public suffix 목록을 인터넷에서 받으려 하므로, 나중에 Presidio를 넣으면 내장본만 쓰도록 고정한다.)
+- 비밀값 패턴은 스트리밍 경로에서 돈다. URL 사용자정보 패턴이 `a.b.a.b…` 같은 긴 입력에서 제곱 시간(100 KB에 3.1초)이라, 스킴 길이를 32자로 제한했다(`secret_scan.py`, 업로드 검사에도 적용). 시험이 100 KB 입력 시간을 잡는다.
 - 묶음마다 한국어 시험 세트(막아야 할 문장과 비슷하지만 통과해야 할 문장)를 둔다. 회귀 시험은 `poc/korean-pii-bench` 측정 방식을 CI용 소형 세트로 옮긴다.
 
 ## 3. 구현 설계
@@ -102,7 +105,7 @@ K-PII-Bench 3,000건 측정(엄격 span)에서 **ko-pii 플러그인 + Presidio 
 
 1. **스파이크(1~2일)**: `PIIMiddleware` 스트림 변환기가 Moldy SSE·저장 이벤트·추적을 덮는지, `wrap_model_call` 변경이 저장 기록에 남지 않는지 시험.
    - 1차 결과(2026-11-05, 최소 에이전트 + 가짜 모델, langchain 1.4.7): `astream_events(version="v3")` 이벤트 17건 중 원래 값이 남은 이벤트 0건, 체크포인트의 AI 응답도 가려짐. 그러나 `apply_to_input`은 **사용자 메시지를 저장 기록에서도 바꾸고**, 콜백(`on_llm_new_token`, `on_llm_end`)에는 **원래 값이 남는다**. 그래서 ②는 `wrap_model_call`로, 추적은 Langfuse `mask`로 처리한다(3.1절). Moldy 실제 SSE 투영·저장 이벤트 확인은 구현 PR의 시험으로 한다.
-2. 탐지 묶음 모듈(공통·한국, Presidio + ko-pii, 망 분리 설정)과 소형 회귀 세트.
+2. 탐지 묶음 모듈(공통·한국 규칙)과 소형 회귀 세트. **구현됨**: `app/guardrails/detectors.py`, `tests/test_guardrail_detectors.py`. 모델 묶음(schift v7)은 실행 위치(백엔드 안 또는 별도 컨테이너)를 정한 뒤 따로 넣는다.
 3. `GuardrailMiddleware`(②③④⑤) + 처리 방식 + 탐지 기록 + 스팬.
 4. 회사 정책·템플릿·버전 고정·감사 이벤트.
 5. 위험 등급별 기본 조치(C5 최소)와 lease 경로 대체 실행.

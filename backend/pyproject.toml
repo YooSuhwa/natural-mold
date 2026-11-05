@@ -70,6 +70,8 @@ dependencies = [
     "pypdf>=6.0",
     # Isolated skill execution (SKILL_SANDBOX_ENABLED).
     "opensandbox>=1.2,<2",
+    # Guardrail Korean detector pack. Pinned to what schift-ko-pii 0.6.0 requires.
+    "ko-pii==1.15.2",
 ]
 
 [project.optional-dependencies]

@@ -128,6 +128,12 @@ HF_HUB_OFFLINE=1 HF_HOME=./hfhome .venv-schift/bin/python poc/korean-pii-bench/b
 python -m venv .venv-schift7 && .venv-schift7/bin/pip install "schift-ko-pii==0.6.0"
 OMP_NUM_THREADS=1 HF_HUB_OFFLINE=1 HF_HOME=./hfhome .venv-schift7/bin/python poc/korean-pii-bench/bench_schift.py \
   <test_track_a.jsonl> <schift-ko-pii-v7 폴더> report_v7.json 3000 default
+
+# Moldy 탐지 묶음(app/guardrails/detectors.py, 백엔드 venv). 마지막 인자 묶음 목록, 기본 common,kr
+cd backend && uv run python ../poc/korean-pii-bench/bench_packs.py <test_track_a.jsonl> report_packs.json 3000
 ```
+
+- ko-pii를 1.22.17에서 schift가 고정하는 1.15.2로 바꿔도 C 구성 결과는 같다(엄격 F1 0.571, 겹침 0.631; 의료보험·전화의 F1만 소수 셋째 자리 차이).
+- Moldy 묶음(`common,kr`)도 같은 표본에서 엄격 F1 0.571, 겹침 0.631이다. 문서당 p50 1.9 ms(비밀값 패턴 포함).
 
 정확도는 위 명령의 결과이고, 처리 시간 표는 torch 스레드 1개로 300건을 따로 잰 값이다.

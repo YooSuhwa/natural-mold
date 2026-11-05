@@ -54,9 +54,7 @@ SECRET_CONTENT_PATTERNS: tuple[re.Pattern[bytes], ...] = (
     # OpenAI / Anthropic / Cohere etc.
     re.compile(rb"\bsk-[A-Za-z0-9_\-]{20,}\b"),
     # PEM-encoded private keys (RSA, EC, DSA, OpenSSH, plain).
-    re.compile(
-        rb"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |)PRIVATE KEY-----"
-    ),
+    re.compile(rb"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |)PRIVATE KEY-----"),
     # AWS env exports — operators leak shell history into READMEs.
     re.compile(rb"AWS_SECRET_ACCESS_KEY\s*[:=]"),
     # Google ADC.
@@ -69,8 +67,9 @@ SECRET_CONTENT_PATTERNS: tuple[re.Pattern[bytes], ...] = (
     # segment may be empty (``redis://:pass@host``). The password segment
     # excludes ``{`` so credential interpolation placeholders
     # (``https://u:{{$credentials.pw}}@host``) don't trip the scanner;
-    # plain URLs / host:port never match (no ``@``).
-    re.compile(rb"\b[A-Za-z][A-Za-z0-9+.\-]*://[^/\s:@]*:[^/\s@{]+@"),
+    # plain URLs / host:port never match (no ``@``). The scheme is capped at 32
+    # chars: unbounded, every start in a long ``a.b.a.b…`` run rescans the run.
+    re.compile(rb"\b[A-Za-z][A-Za-z0-9+.\-]{0,31}://[^/\s:@]*:[^/\s@{]+@"),
     # Slack tokens (bot / user / app / refresh / legacy).
     re.compile(rb"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
     # Telegram bot tokens — ``<bot_id>:<35-char secret>``.
@@ -229,9 +228,7 @@ _URL_VALUE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*://", re.IGNORECASE)
 # A MIME / media type like ``application/json``. The subtype length is
 # capped so an opaque secret smuggled as ``application/x-<secret>`` is not
 # auto-allowed — values past the cap fall through to the opaque check.
-_MIME_VALUE_RE = re.compile(
-    r"^[A-Za-z0-9.\-]+/[A-Za-z0-9.\-+]{1,40}(?:\s*;.*)?$"
-)
+_MIME_VALUE_RE = re.compile(r"^[A-Za-z0-9.\-]+/[A-Za-z0-9.\-+]{1,40}(?:\s*;.*)?$")
 
 _HEX_RUN_RE = re.compile(r"^[0-9a-fA-F]+$")
 
@@ -248,9 +245,7 @@ def _shannon_entropy(value: str) -> float:
         return 0.0
     counts = Counter(value)
     length = len(value)
-    return -sum(
-        (count / length) * math.log2(count / length) for count in counts.values()
-    )
+    return -sum((count / length) * math.log2(count / length) for count in counts.values())
 
 
 def _matches_content_pattern(value: str) -> bool:
@@ -299,9 +294,9 @@ def _is_opaque_secret_run(value: str) -> bool:
     core = core.strip()
     if len(core) < _OPAQUE_VALUE_MIN_LEN:
         # The opaque part alone is too short (rare ``a:bc`` config).
-        return len(value) >= _OPAQUE_VALUE_MIN_LEN and _shannon_entropy(
-            value
-        ) >= _OPAQUE_ENTROPY_MIN
+        return (
+            len(value) >= _OPAQUE_VALUE_MIN_LEN and _shannon_entropy(value) >= _OPAQUE_ENTROPY_MIN
+        )
 
     if (
         _HEX_RUN_RE.match(core)
@@ -399,9 +394,7 @@ def _check_filename(rel_path: str) -> SecretFinding | None:
     basename = Path(rel_path).name
     for pattern in SECRET_FILE_PATTERNS:
         if pattern.match(basename):
-            return SecretFinding(
-                path=rel_path, kind="filename", pattern=pattern.pattern
-            )
+            return SecretFinding(path=rel_path, kind="filename", pattern=pattern.pattern)
     return None
 
 
