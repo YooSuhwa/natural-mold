@@ -1,7 +1,7 @@
 """Per-process MCP tool discovery cache keyed by credential identity (plan 11.3; F-12).
 
 Cached tools keep their connection config (transport headers) and the
-interceptors that inject ``auth_config`` arguments, so an entry is only valid
+``auth_config`` arguments they inject (``app.mcp.sdk``), so an entry is only valid
 for the identity that resolved it. ``identity_cache_key`` therefore adds, to the
 server key (URL + transport-header digest), the tenant, org, server id, resolved
 credential id, credential mode, run account and a digest of the injected

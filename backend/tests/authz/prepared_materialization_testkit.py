@@ -120,7 +120,7 @@ class FakeMcpServer:
     discoveries: int = 0
     calls: int = 0
 
-    async def discover(self, _key: str, _config: dict, _interceptors: list) -> list[BaseTool]:
+    async def discover(self, _key: str, _config: dict, _inject: dict) -> list[BaseTool]:
         self.discoveries += 1
 
         async def call(**_kwargs: Any) -> str:

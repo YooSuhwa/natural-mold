@@ -46,11 +46,11 @@ async def prepare_mcp_tools(
         return PreparedMcpResources(tools=(), discovery_count=0)
     count = 0
 
-    async def bounded(key: str, config: dict, interceptors: list) -> list:
+    async def bounded(key: str, config: dict, inject: dict) -> list:
         nonlocal count
         count += 1
         with anyio.fail_after(per_server_timeout):
-            return await discover(key, config, interceptors)
+            return await discover(key, config, inject)
 
     try:
         with anyio.fail_after(total_timeout):
