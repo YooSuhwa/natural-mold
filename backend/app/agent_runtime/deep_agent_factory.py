@@ -282,15 +282,33 @@ def build_agent_impl(
         permissions=permissions,
     )
     if prepared_task_middleware is not None:
-        if guard is not None or tool_risk is not None:
-            # Prepared runs fall back to this default path when a guardrail applies.
-            raise ValueError("prepared runs do not carry guardrail middleware")
         # Prepared leases: every child is already a compiled base child (including
         # general-purpose) and the interceptor is the first app tool-call wrapper.
         if not subagents or any("runnable" not in spec for spec in subagents):
             raise ValueError("prepared runs require precompiled subagents")
         compatible_middleware = [prepared_task_middleware, *compatible_middleware]
         compatible_subagents = list(subagents)
+        # Children were compiled with their own guardrail and tool risk stacks
+        # (prepared_run_compile); here only the root's.
+        if tool_risk is not None:
+            applied = apply_to_agent(
+                tool_risk,
+                tools=tools,
+                interrupt_on=interrupt_on,
+                middleware=compatible_middleware,
+                subagents=[],
+            )
+            tools, interrupt_on = applied.tools, applied.interrupt_on
+            compatible_middleware = applied.middleware
+        if guard is not None:
+            if has_approval_rules(guard.rules):
+                # Approval rules ride interrupt_on predicates; the lease falls back.
+                raise ValueError("prepared runs do not carry guardrail approval rules")
+            compatible_middleware = guard_stack(
+                compatible_middleware,
+                guard,
+                create_summarizer=lambda: create_summarization_middleware(model, resolved_backend),
+            )
     else:
         # F-07: the interactive ConnectionGuard checks before the HITL approval step.
         compatible_middleware = order_connection_guard(

@@ -7,6 +7,8 @@ to the installation default (``GUARDRAIL_DEFAULT_TEMPLATE``) so it is never less
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from typing import Any
 
@@ -14,6 +16,7 @@ from app.config import settings
 from app.guardrails.events import RunScope
 from app.guardrails.middleware import Guard
 from app.guardrails.rules import RuleSet, builtin
+from app.guardrails.templates import rules_to_json
 
 
 class UnknownGuardrailTemplateError(ValueError):
@@ -53,3 +56,13 @@ def guard_for(
     if rules is None:
         return None
     return Guard(rules, tenant_id, scope, interactive=interactive)
+
+
+def guardrail_versions(rules: RuleSet | None, tool_risk: Any) -> dict[str, str]:
+    """What a prepared lease's digest records about the run's guardrails."""
+    snapshot = {
+        "rules": rules_to_json(rules) if rules is not None else None,
+        "tool_risk": dict(tool_risk.actions) if tool_risk is not None else None,
+    }
+    encoded = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
+    return {"guardrails": hashlib.sha256(encoded.encode()).hexdigest()}

@@ -16,8 +16,9 @@ to be a prefix route over all of ``/agents/<id>/`` and would silently stop
 persisting memory edits), so that shape fails typed instead. ``attachment_input``: a
 conversation with chat attachments needs the attachment-input middleware, which
 reads the upload rows and files per model call; the lease does not carry them.
-``guardrail_policy``: a run with a guardrail rule set needs the guardrail middleware, which
-the lease does not carry yet.
+``guardrail_policy``: a run whose guardrail rules ask for approval before a tool runs; those
+rules are ``interrupt_on`` predicates, which frozen inputs cannot hold. Other rules and tool
+risk actions are compiled into the lease (``prepared_run_compile``).
 
 Substitution (not degradation): the legacy default reliability middleware
 ``ModelRetryMiddleware`` is not installed; lease-owned models retry inside

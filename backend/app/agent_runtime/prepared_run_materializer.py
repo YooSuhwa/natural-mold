@@ -74,6 +74,7 @@ from app.agent_runtime.prepared_task_tool_handler import PreparedStateProjector
 from app.agent_runtime.runtime_config import PreparedRunBinding
 from app.agent_runtime.runtime_effective_capabilities import tool_node_names
 from app.agent_runtime.tool_access_policy import ToolOrigin
+from app.guardrails.run import guard_for
 from app.tenancy.checkpoint_audit import run_configurable
 
 Trace = Callable[[str], None]
@@ -160,11 +161,26 @@ async def materialize_prepared_lease(
             "memory": inputs.memory,
         }
         child_common = {**common, "parent_middleware": inputs.custom_middleware}
+        # Tool risk shapes the tool surface, so the probe applies it too; the guardrail
+        # middleware (records, checks) is installed in the final pass only.
+        guarding = inputs.guardrails
+        tool_risk = guarding.tool_risk if guarding is not None else None
+        guard = (
+            guard_for(
+                guarding.rules,
+                guarding.tenant_id,
+                guarding.scope,
+                interactive=guarding.interactive,
+            )
+            if guarding is not None
+            else None
+        )
         probe_runnables, child_surfaces = compile_children(
             catalog,
             admission_factory=refused_admission,
             guards=None,
             compile_child=None,
+            tool_risk=tool_risk,
             **child_common,
         )
         probe = compile_root(
@@ -172,6 +188,7 @@ async def materialize_prepared_lease(
             admission_factory=refused_admission,
             app_middleware=inputs.custom_middleware,
             checkpointer=None,
+            tool_risk=tool_risk,
             **root_common,
         )
         surfaces = {ROOT_PATH: tool_node_names(probe), **child_surfaces}
@@ -217,6 +234,8 @@ async def materialize_prepared_lease(
             admission_factory=lambda: admission,
             guards=guards,
             compile_child=seams.compile_child,
+            guard=guard,
+            tool_risk=tool_risk,
             **child_common,
         )
         trace("compile_children")
@@ -225,6 +244,8 @@ async def materialize_prepared_lease(
             admission_factory=lambda: admission,
             app_middleware=(guards[ROOT_PATH], *inputs.custom_middleware),
             checkpointer=saver,
+            guard=guard,
+            tool_risk=tool_risk,
             **root_common,
         )
         trace("compile_root")

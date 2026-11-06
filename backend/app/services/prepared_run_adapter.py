@@ -52,7 +52,9 @@ from app.authz.org_context import OrgContext
 from app.authz.organization_execution_proof import live_proof
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found
-from app.guardrails.run import effective_rules
+from app.guardrails.approval import has_approval_rules
+from app.guardrails.pinning import run_guardrails
+from app.guardrails.run import effective_rules, guardrail_versions
 from app.models.conversation_run import ConversationRun
 from app.services import chat_service
 from app.services.chat.attachment_inputs import conversation_has_attachments
@@ -162,8 +164,18 @@ class PreparedRunResolver:
             # 1A expands attachment references per model call from live upload rows;
             # the lease has no frozen copy of them yet.
             raise unsupported("attachment_input")
-        if effective_rules(cfg) is not None or cfg.tool_risk is not None:
-            # The guardrail middleware is not lease-owned yet (plan §3.2, step 5).
+        pinned = await run_guardrails(
+            db,
+            run,
+            tenant_id=request.context.tenant_id,
+            agent_id=run.agent_id,
+            runtime_profile=cfg.runtime_profile,
+        )
+        cfg.guardrail_rules, cfg.tool_risk = pinned.rules, pinned.tool_risk
+        cfg.guardrail_resolved = True
+        rules = effective_rules(cfg)
+        if has_approval_rules(rules):
+            # Approval rules are interrupt_on predicates, which frozen inputs cannot hold.
             raise unsupported("guardrail_policy")
         model = lease_model_spec(
             provider=cfg.provider,
@@ -208,8 +220,10 @@ class PreparedRunResolver:
                 versions={
                     "agent_updated_at": agent.updated_at.isoformat() if agent.updated_at else "",
                     "runtime_policy_hash": cfg.runtime_policy.policy_hash,
+                    **guardrail_versions(rules, cfg.tool_risk),
                     **resolved.versions,
                 },
+                run_id=str(run.id),
             ),
             bindings=bindings,
         )
