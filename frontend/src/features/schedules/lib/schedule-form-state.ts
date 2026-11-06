@@ -24,7 +24,13 @@ export interface ScheduleRequestOptions {
   autoPauseAfterFailures: string
   maxRunsLimited: boolean
   autoPauseEnabled: boolean
+  /** Plan 17.3: a call needing approval waits in the inbox or is skipped (BLOCKED). */
+  approvalPolicy?: ApprovalPolicy
 }
+
+export type ApprovalPolicy = 'inbox' | 'blocked'
+/** New schedules pause themselves after this many failures in a row (plan 17.3). */
+export const DEFAULT_AUTO_PAUSE_AFTER_FAILURES = '10'
 
 export const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
 export const WEEKDAY_CRON = [1, 2, 3, 4, 5, 6, 0] as const
@@ -223,5 +229,6 @@ function withCommonOptions(
     max_runs: parsedMaxRuns && parsedMaxRuns > 0 ? parsedMaxRuns : null,
     end_at: options.endAt ? new Date(options.endAt).toISOString() : null,
     auto_pause_after_failures: parsedFailures && parsedFailures > 0 ? parsedFailures : null,
+    ...(options.approvalPolicy ? { approval_policy: options.approvalPolicy } : {}),
   }
 }

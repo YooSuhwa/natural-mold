@@ -225,7 +225,7 @@ async def _tell_owners(
         target=_target_ref(row),
         actor_id=actor_id,
         payload={"scope_type": row.scope_type, "reason": (row.release_reason or row.reason)[:200]},
-        link="/approvals?tab=runs",
+        link="/approvals?tab=stops",
     )
 
 

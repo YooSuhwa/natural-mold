@@ -48,6 +48,16 @@ export function notificationText(item: NotificationView, t: Translate): string {
         : t('kinds.grantReceivedNoActor', values)
     case 'trigger.blocked':
       return t('kinds.triggerBlocked', values)
+    case 'approval.requested':
+      return t('kinds.approvalRequested', values)
+    case 'approval.expiring':
+      return t('kinds.approvalExpiring', values)
+    case 'approval.decided':
+      return t('kinds.approvalDecided', values)
+    case 'emergency_stop.applied':
+      return t('kinds.emergencyStopApplied', values)
+    case 'emergency_stop.released':
+      return t('kinds.emergencyStopReleased', values)
     case 'mcp_tool.review_needed':
       return t('kinds.mcpToolReviewNeeded', values)
     case 'connection.owner_needed':

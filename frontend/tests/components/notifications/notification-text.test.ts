@@ -70,3 +70,21 @@ describe('notificationText mcp_tool.review_needed', () => {
     expect(notificationText(note, t)).toBe('사내 메일에 검토할 도구가 있어요')
   })
 })
+
+describe('notificationText approval inbox and emergency stop', () => {
+  it.each([
+    ['approval.requested', '메일 비서이(가) 승인을 기다려요'],
+    ['approval.expiring', '메일 비서의 승인 요청이 곧 만료돼요'],
+    ['approval.decided', '메일 비서의 승인 요청이 만료되어 거절됐어요'],
+    ['emergency_stop.applied', '메일 비서이(가) 긴급 중지됐어요'],
+    ['emergency_stop.released', '메일 비서의 긴급 중지가 해제됐어요'],
+  ])('%s', (kind, text) => {
+    const note = grant({
+      kind,
+      target: { type: 'approval_request', id: 'a-1', name: '메일 비서', accessible: true },
+      actor: null,
+      payload: {},
+    })
+    expect(notificationText(note, t)).toBe(text)
+  })
+})

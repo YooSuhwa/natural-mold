@@ -16,6 +16,11 @@ export type NotificationKind =
   | 'usage.limit_warning'
   | 'agent_memo.proposal'
   | 'mcp_tool.review_needed'
+  | 'approval.requested'
+  | 'approval.expiring'
+  | 'approval.decided'
+  | 'emergency_stop.applied'
+  | 'emergency_stop.released'
 
 /** `accessible: false` — the recipient lost access; the server withholds id and name. */
 export interface NotificationTarget {

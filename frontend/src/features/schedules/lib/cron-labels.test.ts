@@ -29,6 +29,7 @@ const trigger: AgentTrigger = {
   max_runs: null,
   end_at: null,
   auto_pause_after_failures: null,
+  approval_policy: 'inbox',
   created_at: '2026-06-17T00:00:00Z',
   updated_at: '2026-06-17T00:00:00Z',
 }

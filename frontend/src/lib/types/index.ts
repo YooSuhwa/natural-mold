@@ -772,6 +772,8 @@ export interface AgentTrigger {
   max_runs: number | null
   end_at: string | null
   auto_pause_after_failures: number | null
+  /** Plan 17.3: a call needing approval waits in the inbox or is BLOCKED. */
+  approval_policy: 'inbox' | 'blocked'
   created_at: string
   updated_at: string
   agent_name?: string | null
@@ -790,6 +792,7 @@ export interface TriggerCreateRequest {
   max_runs?: number | null
   end_at?: string | null
   auto_pause_after_failures?: number | null
+  approval_policy?: 'inbox' | 'blocked'
 }
 
 export interface TriggerUpdateRequest {
@@ -804,6 +807,7 @@ export interface TriggerUpdateRequest {
   max_runs?: number | null
   end_at?: string | null
   auto_pause_after_failures?: number | null
+  approval_policy?: 'inbox' | 'blocked'
 }
 
 export interface TriggerRun {

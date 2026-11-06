@@ -4,6 +4,7 @@ import { useCallback } from 'react'
 import { useAtom } from 'jotai'
 import {
   BookOpenIcon,
+  InboxIcon,
   LayoutTemplateIcon,
   Plug2Icon,
   PlusIcon,
@@ -29,12 +30,14 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { usePendingApprovalCount } from '@/lib/hooks/use-approvals'
 import { featuresExpandedAtom } from '@/lib/stores/sidebar-store'
 
 export function AppSidebar() {
@@ -43,10 +46,13 @@ export function AppSidebar() {
   const t = useTranslations('sidebar')
 
   const [featuresExpanded, setFeaturesExpanded] = useAtom(featuresExpandedAtom)
+  const pendingApprovals = usePendingApprovalCount().data?.count ?? 0
 
   const buildItems = [
-    { label: t('nav.templates'), href: '/agents/new/template', icon: LayoutTemplateIcon },
-    { label: t('nav.marketplace'), href: '/marketplace', icon: StoreIcon },
+    { label: t('nav.templates'), href: '/agents/new/template', icon: LayoutTemplateIcon, badge: 0 },
+    { label: t('nav.marketplace'), href: '/marketplace', icon: StoreIcon, badge: 0 },
+    // 승인함 (plan 17.2): requests waiting for my decision from every run.
+    { label: t('nav.approvals'), href: '/approvals', icon: InboxIcon, badge: pendingApprovals },
   ]
 
   const featureChildren: AppSidebarNavChild[] = [
@@ -97,7 +103,7 @@ export function AppSidebar() {
 
         <SidebarSeparator />
 
-        {/* Build group — Templates, Marketplace */}
+        {/* Build group — Templates, Marketplace, Approvals */}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
@@ -115,6 +121,9 @@ export function AppSidebar() {
                       <item.icon className="size-4" />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
+                    {item.badge ? (
+                      <SidebarMenuBadge>{item.badge > 99 ? '99+' : item.badge}</SidebarMenuBadge>
+                    ) : null}
                   </SidebarMenuItem>
                 )
               })}

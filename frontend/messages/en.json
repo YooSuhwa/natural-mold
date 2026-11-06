@@ -1252,7 +1252,8 @@
       "templates": "Agent Templates",
       "marketplace": "Marketplace",
       "marketplaceExplore": "Explore",
-      "moderation": "Moderation"
+      "moderation": "Moderation",
+      "approvals": "Approvals"
     },
     "section": {
       "capabilities": "Capabilities",
@@ -2150,7 +2151,11 @@
         "resultPolicy": "Result Policy",
         "conversation": "Conversation",
         "maxRunsValue": "Max Runs Value",
-        "autoPauseValue": "Auto Pause Value"
+        "autoPauseValue": "Auto Pause Value",
+        "approvalPolicy": "Tools that need approval",
+        "approvalPolicyInbox": "Wait in the approval inbox",
+        "approvalPolicyBlocked": "Skip them without running",
+        "approvalPolicyHint": "While a run waits in the inbox, this schedule's next firings are skipped. A request ends as rejected after 24 hours."
       },
       "placeholders": {
         "name": "Name",
@@ -6487,6 +6492,11 @@
       "ownershipNew": "You are now the owner of {target}",
       "ownershipPrevious": "Ownership of {target} was transferred",
       "mcpToolReviewNeeded": "Tools on {target} wait for your review",
+      "approvalRequested": "{target} is waiting for your approval",
+      "approvalExpiring": "An approval request of {target} expires soon",
+      "approvalDecided": "An approval request of {target} expired and was rejected",
+      "emergencyStopApplied": "{target} was emergency-stopped",
+      "emergencyStopReleased": "The emergency stop of {target} was released",
       "generic": "You have a new notification"
     }
   },
@@ -6671,5 +6681,108 @@
       "noWorkers": "No job worker has registered. Start the worker service.",
       "heartbeat": "Last heartbeat {time}"
     }
+  },
+  "approvals": {
+    "title": "Approvals",
+    "description": "Decide in one place on the approval requests of runs that stopped to wait, from chats, schedules and the API. Once you decide, the run continues.",
+    "tabs": {
+      "pending": "Waiting",
+      "done": "Handled",
+      "runs": "Run status",
+      "stops": "Emergency stops"
+    },
+    "empty": {
+      "pending": "No approval requests are waiting",
+      "done": "No handled approval requests"
+    },
+    "unknownAgent": "Unknown agent",
+    "source": {
+      "chat": "Chat",
+      "trigger": "Schedule",
+      "api": "API",
+      "subagent": "Subagent"
+    },
+    "status": {
+      "pending": "Waiting",
+      "approved": "Approved",
+      "edited": "Approved with edits",
+      "rejected": "Rejected",
+      "expired": "Expired",
+      "canceled": "Canceled"
+    },
+    "reasons": {
+      "approval_expired": "Ended as rejected after the deadline",
+      "emergency_stop": "Canceled by an emergency stop",
+      "arguments_changed": "Canceled: the tool arguments changed",
+      "no_longer_pending": "The run no longer waits"
+    },
+    "expires": "Expires {when}",
+    "attempt": "Request #{n}",
+    "decisionFor": "Decision for {tool}",
+    "decision": {
+      "approve": "Approve",
+      "edit": "Edit",
+      "reject": "Reject"
+    },
+    "editArgs": "Arguments for {tool} (JSON)",
+    "rejectAll": "Reject all",
+    "submit": "Send decision",
+    "openConversation": "Open conversation",
+    "toast": {
+      "decided": "Decision sent. The run continues"
+    },
+    "errors": {
+      "approval_stale": "This request was already handled or no longer waits",
+      "approval_expired": "This request has expired",
+      "agent_emergency_stopped": "The agent is emergency-stopped, so the run cannot continue",
+      "invalidArgs": "The edited arguments are not a valid JSON object",
+      "generic": "Could not send the decision"
+    },
+    "runs": {
+      "running": "Running",
+      "waiting": "Waiting for a decision",
+      "failed": "Failed",
+      "mine": "Started by me",
+      "ofMyAgent": "My agent",
+      "empty": {
+        "running": "No runs in progress",
+        "waiting": "No runs wait for approval",
+        "failed": "No failed runs"
+      }
+    },
+    "stops": {
+      "empty": "No emergency stops are in effect",
+      "scope": {
+        "agent": "Agent",
+        "user": "All agents of a person",
+        "mcp_server": "MCP server"
+      },
+      "state": {
+        "blocked": "Block received · new runs and calls are blocked",
+        "runs": "Cancellations confirmed {confirmed}/{total}",
+        "rest": "Schedules paused {schedules} · API deployments disabled {deployments} · approval requests canceled {approvals}",
+        "sideEffects": "External actions already made cannot be checked"
+      },
+      "release": "Release",
+      "releaseTitle": "Release the emergency stop of {name}",
+      "releaseDescription": "Give a reason. API deployments come back on; schedules stay paused until their owners resume them.",
+      "released": "Emergency stop released",
+      "releaseForbidden": "Only the owner or a company admin can release it",
+      "releaseFailed": "Could not release the emergency stop"
+    }
+  },
+  "emergencyStop": {
+    "button": "Emergency stop",
+    "title": "Emergency stop of {name}",
+    "description": {
+      "agent": "Blocks new runs, cancels running ones, pauses schedules and API deployments, and cancels waiting approval requests.",
+      "user": "Stops every agent of this person at once.",
+      "mcp_server": "Blocks every call to this MCP server."
+    },
+    "reason": "Reason for the stop",
+    "reasonPlaceholder": "Say why you are stopping it",
+    "confirm": "Stop now",
+    "stopped": "Emergency stop applied",
+    "failed": "Could not apply the emergency stop"
   }
 }

@@ -31,6 +31,7 @@ const baseTrigger: AgentTrigger = {
   max_runs: null,
   end_at: null,
   auto_pause_after_failures: null,
+  approval_policy: 'inbox',
   created_at: '2026-06-17T00:00:00Z',
   updated_at: '2026-06-17T00:00:00Z',
 }
@@ -107,5 +108,15 @@ describe('schedule form state helpers', () => {
       max_runs: null,
       auto_pause_after_failures: null,
     })
+  })
+
+  it('sends the approval policy the schedule chose (plan 17.3)', () => {
+    const request = buildScheduleRequest(state({ type: 'minutes', intervalMinutes: 30 }), {
+      ...baseOptions,
+      approvalPolicy: 'blocked',
+    })
+    expect(request.approval_policy).toBe('blocked')
+    const unset = buildScheduleRequest(state({ type: 'minutes', intervalMinutes: 30 }), baseOptions)
+    expect('approval_policy' in unset).toBe(false)
   })
 })

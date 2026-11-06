@@ -87,7 +87,8 @@ describe('ScheduleForm', () => {
     await user.type(screen.getByLabelText('최대 실행 횟수'), '3')
     await user.click(screen.getByRole('button', { name: '최대 실행 횟수 무제한' }))
 
-    await user.click(screen.getByRole('button', { name: '실패 후 정지 사용' }))
+    // 17.3: a new schedule pauses itself after 10 failures unless turned off.
+    expect(screen.getByLabelText('실패 허용 횟수')).toHaveValue(10)
     await user.clear(screen.getByLabelText('실패 허용 횟수'))
     await user.type(screen.getByLabelText('실패 허용 횟수'), '2')
     await user.click(screen.getByRole('button', { name: '실패 후 정지 사용 안 함' }))
@@ -100,6 +101,25 @@ describe('ScheduleForm', () => {
         max_runs: null,
         auto_pause_after_failures: null,
       }),
+    )
+  })
+
+  it('sends the approval policy, waiting in the inbox by default', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+
+    render(<ScheduleForm onSubmit={onSubmit} onCancel={vi.fn()} />)
+    expect(screen.getByRole('button', { name: '승인함에서 기다리기' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await user.click(screen.getByRole('button', { name: '실행하지 않고 넘어가기' }))
+    await user.click(screen.getByRole('button', { name: '스케줄 생성' }))
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ approval_policy: 'blocked', auto_pause_after_failures: 10 }),
+      ),
     )
   })
 })
