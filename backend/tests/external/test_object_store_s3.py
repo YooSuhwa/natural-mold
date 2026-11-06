@@ -1,6 +1,6 @@
 """The object storage contract on a real S3-compatible server (plan §11.6, D19).
 
-Lane only (``-m integration``) with ``STORAGE_TEST_S3_ENDPOINT`` (and key, secret) set,
+Skipped unless ``STORAGE_TEST_S3_ENDPOINT`` (and key, secret) are set,
 e.g. the bundled SeaweedFS: ``docker compose --profile s3 up s3``.
 """
 
@@ -19,7 +19,6 @@ from app.storage.object_store import S3ObjectStore, _s3_client
 from tests.test_object_store import store_contract
 
 pytestmark = [
-    pytest.mark.integration,
     pytest.mark.skipif(
         not os.environ.get("STORAGE_TEST_S3_ENDPOINT"), reason="needs an S3-compatible server"
     ),
