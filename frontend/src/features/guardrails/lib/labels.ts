@@ -4,7 +4,12 @@ import { useTranslations } from 'next-intl'
 
 import { ApiError } from '@/lib/api/errors'
 import { useOrgErrorMessage } from '@/features/organizations/lib/error-message'
-import type { GuardrailAction, GuardrailStage } from '@/lib/types/guardrails'
+import type {
+  GuardrailAction,
+  GuardrailStage,
+  ToolRiskAction,
+  ToolRiskLevel,
+} from '@/lib/types/guardrails'
 
 export const GUARDRAIL_ACTIONS: readonly GuardrailAction[] = [
   'block',
@@ -20,6 +25,23 @@ export const GUARDRAIL_STAGES: readonly GuardrailStage[] = [
   'tool_result',
   'output',
 ]
+
+export const TOOL_RISK_LEVELS: readonly ToolRiskLevel[] = [
+  'read_only',
+  'write_internal',
+  'external_mutation',
+  'code_execution',
+  'unknown',
+]
+export const TOOL_RISK_ACTIONS: readonly ToolRiskAction[] = ['allow', 'approval', 'block']
+/** The server's defaults (`app/guardrails/tool_risk.py`): read-only runs, the rest asks. */
+export const DEFAULT_TOOL_RISK: Readonly<Record<ToolRiskLevel, ToolRiskAction>> = {
+  read_only: 'allow',
+  write_internal: 'approval',
+  external_mutation: 'approval',
+  code_execution: 'approval',
+  unknown: 'approval',
+}
 
 /** Built-in rule ids get a readable name; a company's own rule shows its id. */
 export function useRuleLabel(): (ruleId: string) => string {

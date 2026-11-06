@@ -37,7 +37,12 @@ async function putPolicy(
   page: Page,
   policyUrl: string,
   csrf: Record<string, string>,
-  data: { mode: string; default_template: string | null; locked_rules: string[] },
+  data: {
+    mode: string
+    default_template: string | null
+    locked_rules: string[]
+    tool_risk?: Record<string, string>
+  },
 ): Promise<void> {
   const current = await apiGetJson(page.request, policyUrl)
   const version = isRecord(current) ? String(current.updated_at) : ''
@@ -131,6 +136,7 @@ test.describe('Company guardrails (company admin)', () => {
       mode: 'default',
       default_template: 'builtin:kr-default',
       locked_rules: ['secrets'],
+      tool_risk: { external_mutation: 'block' },
     })
     const models = await apiGetJson(page.request, `${API_BASE}/api/models`)
     const model = Array.isArray(models) ? models.find(isSeededScriptedModel) : undefined
@@ -153,6 +159,9 @@ test.describe('Company guardrails (company admin)', () => {
       'true',
       { timeout: 20_000 },
     )
+    const toolRisk = card.getByTestId('agent-tool-risk')
+    await expect(toolRisk.getByText('외부 변경')).toBeVisible()
+    await expect(toolRisk.getByText('차단')).toBeVisible()
     await card.getByRole('switch', { name: '이름·주소', exact: true }).click()
     await expect(card.getByRole('switch', { name: '이름·주소', exact: true })).not.toBeChecked()
     await card.screenshot({ path: path.join(CAPTURE_DIR, '06-agent-card.png') })
@@ -168,5 +177,45 @@ test.describe('Company guardrails (company admin)', () => {
     await card.getByRole('button', { name: '끔' }).click()
     await expect(card.getByText(/잠근 규칙 1개는 계속 적용됩니다/)).toBeVisible()
     await card.screenshot({ path: path.join(CAPTURE_DIR, '07-agent-card-off.png') })
+  })
+
+  test('sets the company action per tool risk level', async ({ page }) => {
+    const csrf = await loginApi(page.request)
+    const tenantId = await homeTenant(page)
+    const policyUrl = `${API_BASE}/api/tenants/${tenantId}/guardrails`
+    await putPolicy(page, policyUrl, csrf, {
+      mode: 'open',
+      default_template: null,
+      locked_rules: [],
+      tool_risk: {},
+    })
+
+    await page.setViewportSize({ width: 1280, height: 1900 })
+    await page.goto('/settings/company/guardrails')
+    const external = page.getByRole('group', { name: '외부 변경' })
+    await external.getByRole('button', { name: '차단' }).click({ timeout: 20_000 })
+    await page
+      .getByRole('group', { name: '코드 실행' })
+      .getByRole('button', { name: '허용' })
+      .click()
+    await expect(page.getByRole('button', { name: '기본 조치 저장' })).toBeEnabled()
+    const card = page
+      .getByRole('heading', { name: '도구 위험 등급별 기본 조치' })
+      .locator('xpath=ancestor::section[1]')
+    await card.screenshot({ path: path.join(CAPTURE_DIR, '08-tool-risk.png') })
+    await page.getByRole('button', { name: '기본 조치 저장' }).click()
+
+    await expect
+      .poll(async () => apiGetJson(page.request, policyUrl), { timeout: 15_000 })
+      .toMatchObject({
+        mode: 'open',
+        tool_risk: {
+          read_only: 'allow',
+          write_internal: 'approval',
+          external_mutation: 'block',
+          code_execution: 'allow',
+          unknown: 'approval',
+        },
+      })
   })
 })

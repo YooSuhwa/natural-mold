@@ -5,6 +5,15 @@ export type GuardrailStage = 'llm_send' | 'tool_args' | 'tool_result' | 'output'
 export type GuardrailAction = 'block' | 'redact' | 'hash' | 'pseudonymize' | 'mask' | 'warn'
 export type GuardrailPseudonymStyle = 'tag' | 'natural'
 export type GuardrailTemplateStatus = 'draft' | 'published' | 'archived'
+export type ToolRiskLevel =
+  | 'read_only'
+  | 'write_internal'
+  | 'external_mutation'
+  | 'code_execution'
+  | 'unknown'
+export type ToolRiskAction = 'allow' | 'approval' | 'block'
+/** Every risk level with the company's action (defaults filled in by the server). */
+export type ToolRiskActions = Record<ToolRiskLevel, ToolRiskAction>
 
 export interface GuardrailRule {
   id: string
@@ -29,6 +38,7 @@ export interface GuardrailPolicy {
   mode: GuardrailPolicyMode
   default_template: string | null
   locked_rules: string[]
+  tool_risk: ToolRiskActions
   /** False: the company has not saved a policy; the installation default applies. */
   saved: boolean
   templates: GuardrailTemplateChoice[]
@@ -40,6 +50,8 @@ export interface GuardrailPolicyUpdate {
   mode: GuardrailPolicyMode
   default_template: string | null
   locked_rules: string[]
+  /** Omitted: the saved actions stay. */
+  tool_risk?: ToolRiskActions
 }
 
 export interface GuardrailTemplate {
@@ -81,6 +93,8 @@ export interface AgentGuardrails {
   /** The company default the agent inherits; overrides apply to its rules. */
   policy_default_template: string | null
   locked_rules: string[]
+  /** The company's tool risk actions; the agent cannot change them. */
+  tool_risk: ToolRiskActions
   /** `null`: the next run has no guardrail. */
   effective: GuardrailTemplateChoice | null
   templates: GuardrailTemplateChoice[]

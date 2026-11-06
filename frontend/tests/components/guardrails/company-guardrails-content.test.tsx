@@ -2,6 +2,7 @@ import { render, screen, userEvent, waitFor, within } from '../../test-utils'
 import { toast } from 'sonner'
 import { CompanyGuardrailsContent } from '@/features/guardrails/components/company-guardrails-content'
 import { ApiError } from '@/lib/api/client'
+import { DEFAULT_TOOL_RISK } from '@/features/guardrails/lib/labels'
 import type { GuardrailRule, GuardrailTemplate } from '@/lib/types/guardrails'
 import { makeOrganization } from '../../unit/hooks/organization-fixtures'
 import { orgApiMock } from '../organizations/org-admin-mocks'
@@ -42,6 +43,7 @@ const policy = (overrides = {}) => ({
   mode: 'default',
   default_template: 'builtin:kr-default',
   locked_rules: [],
+  tool_risk: DEFAULT_TOOL_RISK,
   saved: true,
   updated_at: VERSION,
   templates: [
@@ -99,6 +101,29 @@ describe('CompanyGuardrailsContent (회사 가드레일)', () => {
     )
   })
 
+  it('saves the actions per tool risk level with the policy as it is', async () => {
+    orgApiMock.tenantsApi.overview.mockResolvedValue(makeOverview('admin'))
+    guardrailsApi.putPolicy.mockResolvedValue(policy())
+    render(<CompanyGuardrailsContent />)
+
+    const external = await screen.findByRole('group', { name: '외부 변경' })
+    await userEvent.click(within(external).getByRole('button', { name: '차단' }))
+    const readOnly = screen.getByRole('group', { name: '조회' })
+    await userEvent.click(within(readOnly).getByRole('button', { name: '승인 필요' }))
+    await userEvent.click(screen.getByRole('button', { name: '기본 조치 저장' }))
+
+    expect(guardrailsApi.putPolicy).toHaveBeenCalledWith(
+      'tenant-1',
+      {
+        mode: 'default',
+        default_template: 'builtin:kr-default',
+        locked_rules: [],
+        tool_risk: { ...DEFAULT_TOOL_RISK, external_mutation: 'block', read_only: 'approval' },
+      },
+      VERSION,
+    )
+  })
+
   it('maps a guardrail error code to its message', async () => {
     orgApiMock.tenantsApi.overview.mockResolvedValue(makeOverview('admin'))
     guardrailsApi.putPolicy.mockRejectedValue(new ApiError(422, 'GUARDRAIL_TEMPLATE_UNUSABLE', 'x'))
@@ -121,6 +146,12 @@ describe('CompanyGuardrailsContent (회사 가드레일)', () => {
     expect(await screen.findByText(/회사 구성원은 정책을 볼 수만 있습니다/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '강제' })).toBeDisabled()
     expect(screen.queryByRole('button', { name: '정책 저장' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '기본 조치 저장' })).not.toBeInTheDocument()
+    expect(
+      within(screen.getByRole('group', { name: '외부 변경' })).getByRole('button', {
+        name: '차단',
+      }),
+    ).toBeDisabled()
     expect(screen.queryByText('회사 템플릿')).not.toBeInTheDocument()
     expect(guardrailsApi.listTemplates).not.toHaveBeenCalled()
   })
