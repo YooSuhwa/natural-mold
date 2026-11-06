@@ -16,6 +16,8 @@ const guardrailsApi = vi.hoisted(() => ({
   updateTemplate: vi.fn(),
   publishTemplate: vi.fn(),
   archiveTemplate: vi.fn(),
+  listVersions: vi.fn(),
+  revertTemplate: vi.fn(),
 }))
 
 vi.mock(
@@ -177,13 +179,41 @@ describe('CompanyGuardrailsContent (회사 가드레일)', () => {
     )
     await userEvent.click(within(dialog).getByRole('button', { name: '초안 저장' }))
 
-    expect(guardrailsApi.updateTemplate).toHaveBeenCalledWith('tenant-1', 'tpl-1', {
-      name: '고객 상담',
-      description: '',
-      rules: [{ ...DEFAULT_RULES[1], stages: ['llm_send', 'output'] }],
-    })
+    expect(guardrailsApi.updateTemplate).toHaveBeenCalledWith(
+      'tenant-1',
+      'tpl-1',
+      {
+        name: '고객 상담',
+        description: '',
+        rules: [{ ...DEFAULT_RULES[1], stages: ['llm_send', 'output'] }],
+      },
+      VERSION,
+    )
     await userEvent.click(screen.getByRole('button', { name: '고객 상담 게시' }))
-    expect(guardrailsApi.publishTemplate).toHaveBeenCalledWith('tenant-1', 'tpl-1')
+    expect(guardrailsApi.publishTemplate).toHaveBeenCalledWith('tenant-1', 'tpl-1', VERSION)
+  })
+
+  it('reverts a template to an earlier version', async () => {
+    orgApiMock.tenantsApi.overview.mockResolvedValue(makeOverview('admin'))
+    guardrailsApi.listTemplates.mockResolvedValue([
+      template({ status: 'published', published_version: 2 }),
+    ])
+    guardrailsApi.listVersions.mockResolvedValue([
+      { version: 2, rules: DEFAULT_RULES, published_at: VERSION, published_by: null },
+      { version: 1, rules: [DEFAULT_RULES[0]], published_at: VERSION, published_by: null },
+    ])
+    guardrailsApi.revertTemplate.mockResolvedValue(template({ published_version: 3 }))
+    render(<CompanyGuardrailsContent />)
+
+    await userEvent.click(await screen.findByRole('button', { name: '고객 상담 버전' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(await within(dialog).findByText('지금 게시됨')).toBeInTheDocument()
+    expect(
+      within(dialog).queryByRole('button', { name: 'v2 버전으로 되돌리기' }),
+    ).not.toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'v1 버전으로 되돌리기' }))
+
+    expect(guardrailsApi.revertTemplate).toHaveBeenCalledWith('tenant-1', 'tpl-1', 1, VERSION)
   })
 
   it('creates a template from a built-in one', async () => {

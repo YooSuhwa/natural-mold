@@ -31,12 +31,25 @@ export function useGuardrailTemplates(tenantId: string, enabled: boolean) {
   })
 }
 
+export function useGuardrailTemplateVersions(tenantId: string, templateId: string) {
+  return useQuery({
+    queryKey: tenantAdminKeys.guardrailTemplateVersions(tenantId, templateId),
+    queryFn: () => guardrailsApi.listVersions(tenantId, templateId),
+    retry: false,
+  })
+}
+
 export function useUpdateGuardrailPolicy(tenantId: string) {
   return useTenantMutation(
     tenantId,
     ({ data, version }: { data: GuardrailPolicyUpdate; version: string }) =>
       guardrailsApi.putPolicy(tenantId, data, version),
   )
+}
+
+interface TemplateVersion {
+  id: string
+  version: string
 }
 
 export function useGuardrailTemplateMutations(tenantId: string) {
@@ -46,14 +59,19 @@ export function useGuardrailTemplateMutations(tenantId: string) {
     ),
     update: useTenantMutation(
       tenantId,
-      ({ id, data }: { id: string; data: GuardrailTemplateUpdate }) =>
-        guardrailsApi.updateTemplate(tenantId, id, data),
+      ({ id, data, version }: { id: string; data: GuardrailTemplateUpdate; version: string }) =>
+        guardrailsApi.updateTemplate(tenantId, id, data, version),
     ),
-    publish: useTenantMutation(tenantId, (id: string) =>
-      guardrailsApi.publishTemplate(tenantId, id),
+    publish: useTenantMutation(tenantId, ({ id, version }: TemplateVersion) =>
+      guardrailsApi.publishTemplate(tenantId, id, version),
     ),
-    archive: useTenantMutation(tenantId, (id: string) =>
-      guardrailsApi.archiveTemplate(tenantId, id),
+    revert: useTenantMutation(
+      tenantId,
+      ({ id, target, version }: TemplateVersion & { target: number }) =>
+        guardrailsApi.revertTemplate(tenantId, id, target, version),
+    ),
+    archive: useTenantMutation(tenantId, ({ id, version }: TemplateVersion) =>
+      guardrailsApi.archiveTemplate(tenantId, id, version),
     ),
   }
 }

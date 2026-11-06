@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.middleware_registry import get_middleware_registry
+from app.agent_runtime.middleware_registry import get_middleware_registry, is_superseded
 from app.agent_runtime.streaming import format_sse
 from app.authz.builder_scope import builder_checkpointer, resolve_builder_actor
 from app.authz.org_context import OrgContext
@@ -159,7 +159,12 @@ def _get_middlewares_catalog() -> list[dict[str, Any]]:
     deepagents가 자동 추가하는 빌트인 미들웨어는 제외하여
     중복 추가로 인한 오류를 방지한다.
     """
-    return get_middleware_registry(exclude_builtin=True)
+    # Superseded types (``pii`` → guardrails) are not recommended for new agents.
+    return [
+        entry
+        for entry in get_middleware_registry(exclude_builtin=True)
+        if not is_superseded(entry["type"])
+    ]
 
 
 # ---------------------------------------------------------------------------

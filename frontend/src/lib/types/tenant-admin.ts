@@ -25,6 +25,8 @@ export interface RetentionPreview {
   removed_member_conversations: number
   removed_member_memories: number
   audit_events: number
+  /** Guardrail detection rows, deleted on the same period. */
+  guardrail_events?: number
 }
 
 export interface TenantPolicies {

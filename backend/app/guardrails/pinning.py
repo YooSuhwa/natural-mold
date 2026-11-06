@@ -93,3 +93,25 @@ async def pin_run_guardrails(
         run.metadata_json = {**(run.metadata_json or {}), RUN_METADATA_KEY: record}
         await db.commit()
     return _from_snapshot(record)
+
+
+async def run_guardrails(
+    db: AsyncSession,
+    run: ConversationRun,
+    *,
+    tenant_id: uuid.UUID,
+    agent_id: uuid.UUID | None,
+    runtime_profile: str,
+) -> PinnedGuardrails:
+    """What this run was pinned to, else the company policy now (nothing is written).
+
+    The prepared lease reads it inside its own locked transaction: a chat turn was pinned
+    before the lease started; a scheduled or Agent API run resolves here.
+    """
+    record = (run.metadata_json or {}).get(RUN_METADATA_KEY)
+    if isinstance(record, dict):
+        return _from_snapshot(record)
+    return PinnedGuardrails(
+        await resolve(db, tenant_id, agent_id, runtime_profile),
+        await resolve_tool_risk(db, tenant_id, runtime_profile),
+    )

@@ -105,7 +105,7 @@ test.describe('Company guardrails (company admin)', () => {
 
     await page.getByRole('button', { name: `${name} 편집` }).click()
     const editor = page.getByRole('dialog')
-    await editor.getByLabel('처리 방식').nth(3).click()
+    await editor.locator('#guardrail-rule-contacts-action').click()
     await page.getByRole('option', { name: '치환' }).click()
     await capture(page, '04-template-editor.png', false)
     await editor.getByRole('button', { name: '초안 저장' }).click()
@@ -173,7 +173,7 @@ test.describe('Company guardrails (company admin)', () => {
         mode: 'inherit',
         rule_overrides: { people: { enabled: false, action: null } },
       })
-    await expect(card.getByTestId('agent-guardrail-effective')).toContainText('kr-default v3')
+    await expect(card.getByTestId('agent-guardrail-effective')).toContainText('kr-default v4')
     await card.getByRole('button', { name: '끔' }).click()
     await expect(card.getByText(/잠근 규칙 1개는 계속 적용됩니다/)).toBeVisible()
     await card.screenshot({ path: path.join(CAPTURE_DIR, '07-agent-card-off.png') })

@@ -47,7 +47,9 @@ from app.schemas.guardrails import (
     GuardrailTemplateChoice,
     GuardrailTemplateCreate,
     GuardrailTemplateOut,
+    GuardrailTemplateRevert,
     GuardrailTemplateUpdate,
+    GuardrailTemplateVersionOut,
 )
 from app.services import audit_service
 from app.services.tenants.versioning import bump_timestamp, require_current_version
@@ -62,6 +64,7 @@ TEMPLATE_CREATE = "guardrail.template_create"
 TEMPLATE_UPDATE = "guardrail.template_update"
 TEMPLATE_PUBLISH = "guardrail.template_publish"
 TEMPLATE_ARCHIVE = "guardrail.template_archive"
+TEMPLATE_REVERT = "guardrail.template_revert"
 BINDING_UPDATE = "guardrail.binding_update"
 
 
@@ -236,6 +239,12 @@ async def _template(
     return template
 
 
+def _claim_version(template: GuardrailTemplate, mutation: CompanyMutation) -> None:
+    """Reject a stale ``If-Match`` and move the template's version past it."""
+    require_current_version(template.updated_at, mutation.expected_version)
+    template.updated_at = bump_timestamp(template.updated_at)
+
+
 async def _company_admin(mutation: CompanyMutation, context: TenantAdminContext) -> Tenant:
     fresh = await load_tenant_admin_context(
         mutation.db,
@@ -306,6 +315,7 @@ async def update_template(
     template = await _template(db, tenant.id, template_id)
     if template.status == "archived":
         raise ConflictError("GUARDRAIL_TEMPLATE_ARCHIVED", template.name)
+    _claim_version(template, mutation)
     before = {
         "name": template.name,
         "description": template.description,
@@ -342,6 +352,28 @@ async def update_template(
     return _template_out(template)
 
 
+def _publish(
+    mutation: CompanyMutation,
+    tenant_id: uuid.UUID,
+    template: GuardrailTemplate,
+    rules: list[dict[str, Any]],
+) -> int:
+    """Freeze ``rules`` as the template's next version and make it the published one."""
+    version = (template.published_version or 0) + 1
+    mutation.db.add(
+        GuardrailTemplateVersion(
+            tenant_id=tenant_id,
+            template_id=template.id,
+            version=version,
+            rules=rules,
+            published_by=mutation.actor.id,
+        )
+    )
+    template.published_version = version
+    template.status = "published"
+    return version
+
+
 async def publish_template(
     mutation: CompanyMutation, context: TenantAdminContext, template_id: uuid.UUID
 ) -> GuardrailTemplateOut:
@@ -351,20 +383,10 @@ async def publish_template(
     template = await _template(db, tenant.id, template_id)
     if template.status == "archived":
         raise ConflictError("GUARDRAIL_TEMPLATE_ARCHIVED", template.name)
+    _claim_version(template, mutation)
     rules = _validated(template.draft_rules)
-    version = (template.published_version or 0) + 1
-    db.add(
-        GuardrailTemplateVersion(
-            tenant_id=tenant.id,
-            template_id=template.id,
-            version=version,
-            rules=rules,
-            published_by=mutation.actor.id,
-        )
-    )
     before = template.published_version
-    template.published_version = version
-    template.status = "published"
+    version = _publish(mutation, tenant.id, template, rules)
     await _audit(
         db,
         mutation.request,
@@ -386,6 +408,7 @@ async def archive_template(
     db = mutation.db
     tenant = await _company_admin(mutation, context)
     template = await _template(db, tenant.id, template_id)
+    _claim_version(template, mutation)
     policy = guardrail_policy.policy_from_settings(tenant.settings)
     if policy is not None and policy.default_template == company_ref(template.id):
         raise ConflictError("GUARDRAIL_TEMPLATE_IN_USE", template.name)
@@ -400,6 +423,72 @@ async def archive_template(
         ("guardrail_template", template.id, template.name),
         {"status": before},
         {"status": "archived"},
+    )
+    await db.commit()
+    await db.refresh(template)
+    return _template_out(template)
+
+
+async def list_versions(
+    db: AsyncSession, tenant_id: uuid.UUID, template_id: uuid.UUID
+) -> list[GuardrailTemplateVersionOut]:
+    """Published versions, newest first."""
+    template = await _template(db, tenant_id, template_id)
+    rows = await db.scalars(
+        select(GuardrailTemplateVersion)
+        .where(GuardrailTemplateVersion.template_id == template.id)
+        .order_by(GuardrailTemplateVersion.version.desc())
+    )
+    return [
+        GuardrailTemplateVersionOut(
+            version=row.version,
+            rules=[GuardrailRuleOut(**rule) for rule in row.rules],
+            published_at=row.created_at,
+            published_by=row.published_by,
+        )
+        for row in rows
+    ]
+
+
+async def revert_template(
+    mutation: CompanyMutation,
+    context: TenantAdminContext,
+    template_id: uuid.UUID,
+    payload: GuardrailTemplateRevert,
+) -> GuardrailTemplateOut:
+    """Publish an earlier version's rules as the next version; history stays as it was.
+
+    The draft becomes those rules too, so the next edit starts from what is published.
+    Runs already started keep their pinned rules, like any publish.
+    """
+    db = mutation.db
+    tenant = await _company_admin(mutation, context)
+    template = await _template(db, tenant.id, template_id)
+    _claim_version(template, mutation)
+    if template.status == "archived":
+        raise ConflictError("GUARDRAIL_TEMPLATE_ARCHIVED", template.name)
+    source = await db.scalar(
+        select(GuardrailTemplateVersion).where(
+            GuardrailTemplateVersion.template_id == template.id,
+            GuardrailTemplateVersion.version == payload.version,
+        )
+    )
+    if source is None:
+        raise NotFoundError("GUARDRAIL_TEMPLATE_VERSION_NOT_FOUND", str(payload.version))
+    if payload.version == template.published_version:
+        raise ConflictError("GUARDRAIL_TEMPLATE_VERSION_CURRENT", str(payload.version))
+    before = template.published_version
+    template.draft_rules = list(source.rules)
+    version = _publish(mutation, tenant.id, template, list(source.rules))
+    await _audit(
+        db,
+        mutation.request,
+        mutation.actor,
+        tenant.id,
+        TEMPLATE_REVERT,
+        ("guardrail_template", template.id, template.name),
+        {"version": before},
+        {"version": version, "from_version": payload.version},
     )
     await db.commit()
     await db.refresh(template)

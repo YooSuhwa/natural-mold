@@ -143,4 +143,38 @@ describe('AgentGuardrailCard (에이전트 가드레일)', () => {
       ),
     )
   })
+
+  it('offers only block or record for a rule on the user input', async () => {
+    const jailbreak = { ...rule('jailbreak', 'warn'), stages: ['input' as const] }
+    const template = { ...KR_DEFAULT, rules: [jailbreak, ...KR_DEFAULT.rules] }
+    agentGuardrailsApi.get.mockResolvedValue(view({ effective: template, templates: [template] }))
+    render(<AgentGuardrailCard agentId="agent-1" />)
+
+    await userEvent.click(
+      await screen.findByRole('combobox', { name: '지시 무시·탈옥 시도 처리 방식' }),
+    )
+
+    const options = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    expect(options).toEqual(['차단', '기록만'])
+  })
+
+  it('offers approval only for a tool-argument rule on the rule packs', async () => {
+    const args = { ...rule('args-ids', 'warn'), stages: ['tool_args' as const], packs: ['kr'] }
+    const model = {
+      ...rule('model-ids', 'warn'),
+      stages: ['tool_args' as const],
+      packs: ['kr_model'],
+    }
+    const template = { ...KR_DEFAULT, rules: [args, model] }
+    agentGuardrailsApi.get.mockResolvedValue(view({ effective: template, templates: [template] }))
+    render(<AgentGuardrailCard agentId="agent-1" />)
+
+    await userEvent.click(await screen.findByRole('combobox', { name: 'args-ids 처리 방식' }))
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toContain('승인 요청')
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(screen.getByRole('combobox', { name: 'model-ids 처리 방식' }))
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).not.toContain(
+      '승인 요청',
+    )
+  })
 })

@@ -31,6 +31,7 @@ LABELS: dict[str, str] = {
     "IP": "IP 주소",
     "URL": "URL",
     "SECRET": "비밀값",
+    "JAILBREAK": "지시 무시·탈옥 시도",
 }
 _GENERIC_LABEL = "개인정보"
 
@@ -124,7 +125,7 @@ def apply(
         decisions.append(Decision(rule.id, entity, rule.action, start, end))
         pieces.append(text[cursor:start])
         value = text[start:end]
-        if rule.action in ("warn", "block"):
+        if rule.action in ("warn", "block", "approval"):
             pieces.append(value)
         elif rule.action == "pseudonymize":
             pieces.append(pseudonym(entity, value, rule) if pseudonym else f"[{label(entity)}]")
@@ -141,4 +142,13 @@ def block_notice(decisions: tuple[Decision, ...]) -> str:
     return (
         f"가드레일 정책({rules})에 따라 요청을 보내지 않았습니다. "
         f"{entities}이(가) 포함되어 있습니다. 해당 내용을 빼고 다시 시도해 주세요."
+    )
+
+
+def approval_refusal(decisions: tuple[Decision, ...]) -> str:
+    rules = ", ".join(sorted({d.rule for d in decisions if d.action == "approval"}))
+    entities = ", ".join(sorted({label(d.entity) for d in decisions if d.action == "approval"}))
+    return (
+        f"가드레일 정책({rules})에 따라 사용자 승인이 필요하지만 승인할 수 없는 실행이라 "
+        f"도구를 실행하지 않았습니다. 인자에 {entities}이(가) 포함되어 있습니다."
     )

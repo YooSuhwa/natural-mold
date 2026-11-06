@@ -29,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
-from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
+from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY, is_superseded
 from app.authz.assistant_scope import keep_linkable
 from app.authz.company_catalog import model_scope
 from app.authz.org_context import OrgContext
@@ -163,6 +163,7 @@ def build_read_tools(
                 "category": entry["category"],
             }
             for key, entry in MIDDLEWARE_REGISTRY.items()
+            if not is_superseded(key)
         ]
         return json.dumps(items, ensure_ascii=False, indent=2)
 

@@ -95,6 +95,9 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
         "display_name": "PII 보호",
         "description": "개인식별정보(이메일, 신용카드, IP 등)를 감지하고 마스킹합니다",
         "category": "safety",
+        # Guardrails (company/agent settings) replace it; the picker hides superseded types
+        # and a guardrail rule covering the same value takes over at run time.
+        "superseded_by": "guardrails",
         # langchain 1.3 PIIMiddleware는 pii_type 단일값만 받는다(이전엔 자동 다중감지).
         # 기본은 ``email``로 두고, 다중 감지가 필요한 사용자는 미들웨어를 여러 번 등록.
         "config_schema": {
@@ -482,6 +485,11 @@ EXPLICITLY_INSTANTIATED_TYPES: frozenset[str] = frozenset(
 DEEPAGENT_BUILTIN_TYPES: frozenset[str] = (
     DEEPAGENT_AUTO_INJECTED_TYPES | MOLDY_COMPAT_INJECTED_TYPES | EXPLICITLY_INSTANTIATED_TYPES
 )
+
+
+def is_superseded(middleware_type: str) -> bool:
+    """A catalog type replaced by another feature (``pii`` → guardrails); not offered anew."""
+    return bool(MIDDLEWARE_REGISTRY.get(middleware_type, {}).get("superseded_by"))
 
 
 def get_middleware_registry(*, exclude_builtin: bool = False) -> list[dict[str, Any]]:

@@ -13,6 +13,7 @@ import type {
 
 export const GUARDRAIL_ACTIONS: readonly GuardrailAction[] = [
   'block',
+  'approval',
   'redact',
   'hash',
   'pseudonymize',
@@ -20,6 +21,7 @@ export const GUARDRAIL_ACTIONS: readonly GuardrailAction[] = [
   'warn',
 ]
 export const GUARDRAIL_STAGES: readonly GuardrailStage[] = [
+  'input',
   'llm_send',
   'tool_args',
   'tool_result',
@@ -41,6 +43,25 @@ export const DEFAULT_TOOL_RISK: Readonly<Record<ToolRiskLevel, ToolRiskAction>> 
   external_mutation: 'approval',
   code_execution: 'approval',
   unknown: 'approval',
+}
+
+/** The user's message stays as written: an input-stage rule only blocks or records. */
+export const INPUT_ACTIONS: readonly GuardrailAction[] = ['block', 'warn']
+
+/** Approval rides the approval card on resume, so it needs deterministic rule packs. */
+const APPROVAL_PACKS: ReadonlySet<string> = new Set(['common', 'kr'])
+
+/** The actions a rule may take where it checks (server: `templates.rule_from_json`). */
+export function actionsFor(rule: {
+  stages: readonly GuardrailStage[]
+  packs: readonly string[]
+}): readonly GuardrailAction[] {
+  if (rule.stages.includes('input')) return INPUT_ACTIONS
+  const approval =
+    rule.stages.length === 1 &&
+    rule.stages[0] === 'tool_args' &&
+    rule.packs.every((pack) => APPROVAL_PACKS.has(pack))
+  return approval ? GUARDRAIL_ACTIONS : GUARDRAIL_ACTIONS.filter((a) => a !== 'approval')
 }
 
 /** Built-in rule ids get a readable name; a company's own rule shows its id. */

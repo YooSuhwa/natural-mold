@@ -15,6 +15,7 @@ Nothing here is persisted.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,6 +37,9 @@ from app.agent_runtime.runtime_config import PreparedRunLease
 from app.agent_runtime.runtime_snapshot_catalog import RuntimeSnapshotCatalog
 from app.agent_runtime.tool_access_policy import ToolOrigin
 from app.config import settings
+from app.guardrails.events import RunScope
+from app.guardrails.rules import RuleSet
+from app.guardrails.tool_risk import ToolRiskPolicy
 
 Closer = Callable[[], Awaitable[None]]
 
@@ -84,6 +88,17 @@ async def default_lease_checkpointer(
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedGuardrails:
+    """The run's pinned guardrail rules and tool risk actions, and where records go."""
+
+    rules: RuleSet | None
+    tool_risk: ToolRiskPolicy | None
+    tenant_id: uuid.UUID | None
+    scope: RunScope | None
+    interactive: bool
+
+
+@dataclass(frozen=True, slots=True)
 class PreparationInputs:
     thread_id: str
     system_prompt: str
@@ -115,6 +130,8 @@ class PreparationInputs:
     versions: Mapping[str, str] = field(default_factory=dict)
     secret_values: frozenset[str] = field(default_factory=frozenset, repr=False)
     secret_reference_ids: tuple[str, ...] = ()
+    # Guardrail middleware and tool risk actions for the root and every child (plan P1).
+    guardrails: PreparedGuardrails | None = None
     # Transient preparation resources closed before the marker is written.
     transient_closers: tuple[Closer, ...] = ()
 

@@ -53,7 +53,9 @@ function PolicyForm({ scope, policies }: { scope: CompanyScope; policies: Tenant
   const update = useUpdateTenantPolicies(scope.tenantId)
   const [publish, setPublish] = useState(policies.marketplace_tenant_publish)
   const [retention, setRetention] = useState(String(policies.audit_retention_days))
-  const [pendingDelete, setPendingDelete] = useState<number | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<{ audit: number; guardrail: number } | null>(
+    null,
+  )
   const days = Number(retention)
   const retentionValid = Number.isInteger(days) && days >= MIN_RETENTION && days <= MAX_RETENTION
   const dirty =
@@ -69,7 +71,10 @@ function PolicyForm({ scope, policies }: { scope: CompanyScope; policies: Tenant
       {
         onSuccess: (result) => {
           if (result.preview && !confirm) {
-            setPendingDelete(result.preview.audit_events)
+            setPendingDelete({
+              audit: result.preview.audit_events,
+              guardrail: result.preview.guardrail_events ?? 0,
+            })
             return
           }
           setPendingDelete(null)
@@ -133,7 +138,10 @@ function PolicyForm({ scope, policies }: { scope: CompanyScope; policies: Tenant
         open={pendingDelete !== null}
         onOpenChange={(open) => (open ? undefined : setPendingDelete(null))}
         title={t('confirmTitle')}
-        description={t('confirmDescription', { count: pendingDelete ?? 0 })}
+        description={t('confirmDescription', {
+          count: pendingDelete?.audit ?? 0,
+          guardrail: pendingDelete?.guardrail ?? 0,
+        })}
         confirmLabel={t('confirm')}
         isPending={update.isPending}
         onConfirm={() => save(true)}

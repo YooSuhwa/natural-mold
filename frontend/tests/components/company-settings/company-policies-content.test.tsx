@@ -46,7 +46,7 @@ describe('CompanyPoliciesContent (S05 정책·공개 승인)', () => {
   it('lets a company admin change policies, confirm a shortened retention and decide requests', async () => {
     orgApiMock.tenantsApi.overview.mockResolvedValue(makeOverview('admin'))
     api.putPolicies
-      .mockResolvedValueOnce({ ...policies(), preview: { audit_events: 42 } })
+      .mockResolvedValueOnce({ ...policies(), preview: { audit_events: 42, guardrail_events: 7 } })
       .mockResolvedValueOnce(policies({ audit_retention_days: 90 }))
     api.approvePublication.mockResolvedValue({})
     render(<CompanyPoliciesContent />)
@@ -60,7 +60,7 @@ describe('CompanyPoliciesContent (S05 정책·공개 승인)', () => {
       { marketplace_tenant_publish: 'approval', audit_retention_days: 90, confirm: false },
       VERSION,
     )
-    expect(await screen.findByText(/감사 기록 42건/)).toBeInTheDocument()
+    expect(await screen.findByText(/감사 기록 42건과 가드레일 탐지 기록 7건/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '줄이고 저장' }))
     await waitFor(() =>
       expect(api.putPolicies).toHaveBeenLastCalledWith(

@@ -19,8 +19,8 @@ import type {
   ToolRiskActions,
 } from '@/lib/types/guardrails'
 import {
+  actionsFor,
   DEFAULT_TOOL_RISK,
-  GUARDRAIL_ACTIONS,
   TOOL_RISK_LEVELS,
   useGuardrailErrorMessage,
   useRuleLabel,
@@ -270,7 +270,7 @@ function RuleRow({
           <span className="truncate">{t(`action.${action}`)}</span>
         </SelectTrigger>
         <SelectContent>
-          {GUARDRAIL_ACTIONS.map((item) => (
+          {actionsFor(rule).map((item) => (
             <SelectItem key={item} value={item}>
               {t(`action.${item}`)}
             </SelectItem>

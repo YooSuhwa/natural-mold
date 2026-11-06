@@ -21,7 +21,7 @@ from typing import Any
 from app.agent_runtime.lease_model_factory import LeaseModelSpec
 from app.agent_runtime.message_utils import RuntimeMessage, convert_to_langchain_messages
 from app.agent_runtime.prepared_run_input_policy import unsupported
-from app.agent_runtime.prepared_run_inputs import PreparationInputs
+from app.agent_runtime.prepared_run_inputs import PreparationInputs, PreparedGuardrails
 from app.agent_runtime.prepared_run_tool_inputs import (
     PreparedToolSet,
     merged_origins,
@@ -33,6 +33,8 @@ from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_preparation import _without_stored_filesystem_interrupts
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
 from app.agent_runtime.runtime_snapshot_catalog import SnapshotCatalogBuilder
+from app.guardrails.events import RunScope, parse_uuid
+from app.guardrails.run import effective_rules
 from app.storage.paths import run_data_path_or_none
 
 _STORED_SKILL_RULES = (
@@ -75,6 +77,26 @@ class PreparedRunSources:
     is_trigger_mode: bool = False
     secret_reference_ids: tuple[str, ...] = ()
     versions: Mapping[str, str] | None = None
+    run_id: str | None = None
+
+
+def _guardrails(sources: PreparedRunSources) -> PreparedGuardrails | None:
+    cfg = sources.cfg
+    rules = effective_rules(cfg)
+    if rules is None and cfg.tool_risk is None:
+        return None
+    return PreparedGuardrails(
+        rules=rules,
+        tool_risk=cfg.tool_risk,
+        tenant_id=cfg.org_context.tenant_id,
+        scope=RunScope(
+            cfg.org_context,
+            conversation_id=parse_uuid(cfg.thread_id),
+            agent_id=parse_uuid(cfg.agent_id),
+            run_id=sources.run_id,
+        ),
+        interactive=not sources.is_trigger_mode,
+    )
 
 
 def _stored(cfg: AgentConfig) -> bool:
@@ -244,6 +266,7 @@ def build_preparation_inputs(
         memory=memory or None,
         checkpoint_id=cfg.checkpoint_id,
         delta_channels=DELTA_CHANNELS,
+        guardrails=_guardrails(sources),
         versions=dict(sources.versions or {}),
         secret_values=frozenset(cfg.secret_values),
         secret_reference_ids=tuple(

@@ -79,6 +79,21 @@ class GuardrailTemplateUpdate(BaseModel):
     rules: list[dict[str, Any]] | None = None
 
 
+class GuardrailTemplateVersionOut(BaseModel):
+    """One published version; never changes after publishing."""
+
+    version: int
+    rules: list[GuardrailRuleOut]
+    published_at: datetime
+    published_by: uuid.UUID | None
+
+
+class GuardrailTemplateRevert(BaseModel):
+    """Publish an earlier version's rules again, as the next version."""
+
+    version: int = Field(ge=1)
+
+
 class GuardrailRuleOverride(BaseModel):
     enabled: bool = True
     action: Literal["block", "redact", "hash", "pseudonymize", "mask", "warn"] | None = None

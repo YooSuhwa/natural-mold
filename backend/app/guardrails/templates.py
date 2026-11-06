@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, cast, get_args
 
+from app.guardrails.approval import APPROVAL_PACKS
 from app.guardrails.detectors import PACKS
 from app.guardrails.model_pack import MODEL_PACK
 from app.guardrails.rules import Action, Rule, RuleSet, Stage
@@ -21,6 +22,8 @@ _STAGES = frozenset(get_args(Stage))
 _ACTIONS = frozenset(get_args(Action))
 _PACK_NAMES = frozenset(PACKS) | {MODEL_PACK}
 _STYLES = frozenset({"tag", "natural"})
+# The user's message stays as written in the history: input rules block or record only.
+_INPUT_ACTIONS = frozenset({"block", "warn"})
 
 
 class InvalidRulesError(ValueError):
@@ -71,6 +74,13 @@ def rule_from_json(data: Any, index: int) -> Rule:
     style = data.get("pseudonym_style", "tag")
     if style not in _STYLES:
         raise InvalidRulesError(f"rule {rule_id}: pseudonym_style must be tag or natural")
+    if "input" in stages and action not in _INPUT_ACTIONS:
+        raise InvalidRulesError(f"rule {rule_id}: the input stage only blocks or warns")
+    if action == "approval" and (set(stages) != {"tool_args"} or not set(packs) <= APPROVAL_PACKS):
+        raise InvalidRulesError(
+            f"rule {rule_id}: approval applies to tool arguments only and uses the rule packs"
+            f" ({', '.join(sorted(APPROVAL_PACKS))})"
+        )
     restore = data.get("restore_for_tools", False)
     if not isinstance(restore, bool):
         raise InvalidRulesError(f"rule {rule_id}: restore_for_tools must be true or false")

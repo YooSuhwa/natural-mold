@@ -951,7 +951,7 @@
         "save": "Save policies",
         "saved": "Company policies saved.",
         "confirmTitle": "Shorten the retention period?",
-        "confirmDescription": "{count} audit records older than the new period will be deleted at the next cleanup.",
+        "confirmDescription": "{count} audit records and {guardrail} guardrail detection records older than the new period will be deleted at the next cleanup.",
         "confirm": "Shorten and save"
       },
       "publications": {
@@ -2005,6 +2005,7 @@
         "empty": "No items yet.",
         "remove": "Remove",
         "removeNamed": "Remove {name}",
+        "superseded": "Replaced by guardrails. When a guardrail checks the same value, this middleware does not run.",
         "selectToPreview": "Select To Preview",
         "configSchema": "Config Schema",
         "providerOnly": "{provider} only",
@@ -3911,6 +3912,8 @@
       "editShort": "Edit",
       "publishShort": "Publish",
       "archiveShort": "Archive",
+      "versionsShort": "Versions",
+      "versionsFor": "Versions of {name}",
       "edit": "Edit {name}",
       "publish": "Publish {name}",
       "archive": "Archive {name}",
@@ -3919,6 +3922,17 @@
       "archiveTitle": "Archive the {name} template?",
       "archiveDescription": "An archived template can no longer be chosen or edited. Agents that used it run with the company default.",
       "archiveConfirm": "Archive",
+      "versions": {
+        "title": "Versions of {name}",
+        "description": "Published versions never change. Reverting publishes that version's rules again as a new version and makes them the draft. Runs in progress keep their rules.",
+        "current": "Published now",
+        "meta": "{date} · {count} rules",
+        "showRules": "Show rules",
+        "hideRules": "Hide rules",
+        "revert": "Revert to this version",
+        "revertTo": "Revert to v{version}",
+        "reverted": "Published the rules of v{version} as a new version."
+      },
       "createDialog": {
         "title": "New company template",
         "description": "Rules are copied from the template you pick. Adjust them, then publish.",
@@ -3941,15 +3955,19 @@
         "restoreForToolsHint": "Pseudonymized names and addresses are restored in tool arguments.",
         "removeRule": "Remove rule {rule}",
         "needStage": "Choose at least one stage.",
+        "inputActions": "The user input stage allows Block or Record only; Ask approval needs the tool arguments stage alone with the rule packs (common, kr).",
         "needRule": "Keep at least one rule.",
         "save": "Save draft",
         "saved": "Draft saved."
       }
     },
     "rule": {
+      "jailbreak": "Instruction override and jailbreak attempts",
       "secrets": "Secrets (API keys, tokens)",
       "secrets-output": "Secrets in answers",
       "kr-identifiers": "ID numbers (resident, foreigner, passport, license, card, account, health insurance)",
+      "kr-identifiers-output": "ID numbers in answers",
+      "cards": "Card numbers",
       "contacts": "Contacts (phone, email)",
       "people": "Names and addresses",
       "people-output": "Names and addresses in answers",
@@ -3957,6 +3975,7 @@
     },
     "action": {
       "block": "Block",
+      "approval": "Ask approval",
       "redact": "Replace",
       "hash": "Hash",
       "pseudonymize": "Pseudonym",
@@ -3964,6 +3983,7 @@
       "warn": "Record only"
     },
     "stage": {
+      "input": "User input",
       "llm_send": "Sent to the model",
       "tool_args": "Tool arguments",
       "tool_result": "Tool results",
@@ -3986,6 +4006,8 @@
       "GUARDRAIL_TEMPLATE_IN_USE": "The company default template cannot be archived. Change the policy's default first.",
       "GUARDRAIL_TEMPLATE_NAME_TAKEN": "A template with this name already exists.",
       "GUARDRAIL_TEMPLATE_NOT_FOUND": "Template not found.",
+      "GUARDRAIL_TEMPLATE_VERSION_CURRENT": "That version is already the published one.",
+      "GUARDRAIL_TEMPLATE_VERSION_NOT_FOUND": "Version not found.",
       "GUARDRAIL_POLICY_ENFORCED": "The company policy fixes the template.",
       "GUARDRAIL_RULE_LOCKED": "Rules the company locked cannot be changed."
     }

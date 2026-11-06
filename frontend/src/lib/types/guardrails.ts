@@ -1,8 +1,15 @@
 /** Guardrail policy, templates and agent choice (backend `app/schemas/guardrails.py`). */
 
 export type GuardrailPolicyMode = 'off' | 'open' | 'default' | 'enforced'
-export type GuardrailStage = 'llm_send' | 'tool_args' | 'tool_result' | 'output'
-export type GuardrailAction = 'block' | 'redact' | 'hash' | 'pseudonymize' | 'mask' | 'warn'
+export type GuardrailStage = 'input' | 'llm_send' | 'tool_args' | 'tool_result' | 'output'
+export type GuardrailAction =
+  | 'block'
+  | 'approval'
+  | 'redact'
+  | 'hash'
+  | 'pseudonymize'
+  | 'mask'
+  | 'warn'
 export type GuardrailPseudonymStyle = 'tag' | 'natural'
 export type GuardrailTemplateStatus = 'draft' | 'published' | 'archived'
 export type ToolRiskLevel =
@@ -63,6 +70,14 @@ export interface GuardrailTemplate {
   draft_rules: GuardrailRule[]
   published_version: number | null
   updated_at: string
+}
+
+/** One published version; never changes after publishing. */
+export interface GuardrailTemplateVersion {
+  version: number
+  rules: GuardrailRule[]
+  published_at: string
+  published_by: string | null
 }
 
 export interface GuardrailTemplateCreate {

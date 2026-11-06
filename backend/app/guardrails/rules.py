@@ -12,8 +12,10 @@ from dataclasses import dataclass
 from typing import Literal
 
 # output: what the model answers, streamed to the user and stored (plan stage ⑤).
-Stage = Literal["llm_send", "tool_args", "tool_result", "output"]
-Action = Literal["block", "redact", "hash", "pseudonymize", "mask", "warn"]
+# ``input``: the user's new message, before the model (①; block or warn only).
+Stage = Literal["input", "llm_send", "tool_args", "tool_result", "output"]
+# ``approval``: ask the user before the tool runs (③ tool arguments only, rule packs only).
+Action = Literal["block", "approval", "redact", "hash", "pseudonymize", "mask", "warn"]
 
 # The strongest action wins when rules overlap on one span.
 ACTION_STRENGTH: dict[Action, int] = {
@@ -22,7 +24,8 @@ ACTION_STRENGTH: dict[Action, int] = {
     "pseudonymize": 2,
     "hash": 3,
     "redact": 4,
-    "block": 5,
+    "approval": 5,
+    "block": 6,
 }
 # A rule naming ``kr_model`` also accepts what its rules fallback found (model_pack).
 PACK_FAMILIES: dict[str, frozenset[str]] = {"kr_model": frozenset({"kr_model", "kr"})}
@@ -77,6 +80,7 @@ _SEND_OUT: frozenset[Stage] = frozenset({"llm_send", "output"})
 _IN: frozenset[Stage] = frozenset({"llm_send", "tool_args", "tool_result"})
 _OUT: frozenset[Stage] = frozenset({"output"})
 _ALL: frozenset[Stage] = _IN | _OUT
+_INPUT: frozenset[Stage] = frozenset({"input"})
 _IDS = frozenset(
     {"RRN", "FRN", "PASSPORT", "DRIVER_LICENSE", "CARD", "ACCOUNT", "MEDICAL_INSURANCE"}
 )
@@ -88,8 +92,9 @@ BUILTIN_TEMPLATES: dict[str, RuleSet] = {
     # in answers and tool arguments (plan §3.3.1).
     "kr-default": RuleSet(
         "kr-default",
-        3,
+        4,
         (
+            Rule("jailbreak", ("jailbreak",), _INPUT, "warn"),
             Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
             Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
             Rule("kr-identifiers", ("kr_model",), _ALL, "redact", _IDS),
@@ -110,8 +115,9 @@ BUILTIN_TEMPLATES: dict[str, RuleSet] = {
     # kr-default with natural pseudonyms for people (plan §3.3.1).
     "kr-natural": RuleSet(
         "kr-natural",
-        1,
+        2,
         (
+            Rule("jailbreak", ("jailbreak",), _INPUT, "warn"),
             Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
             Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
             Rule("kr-identifiers", ("kr_model",), _ALL, "redact", _IDS),
@@ -130,9 +136,56 @@ BUILTIN_TEMPLATES: dict[str, RuleSet] = {
             Rule("people-output", ("kr_model",), _OUT, "warn", frozenset({"PERSON", "ADDRESS"})),
         ),
     ),
+    # High-sensitivity work (HR, finance, health): identifiers and secrets stop the call
+    # before anything leaves; contacts are replaced; names and addresses become pseudonyms.
+    "kr-strict": RuleSet(
+        "kr-strict",
+        1,
+        (
+            Rule("jailbreak", ("jailbreak",), _INPUT, "block"),
+            Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
+            Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
+            Rule("kr-identifiers", ("kr_model",), _IN, "block", _IDS),
+            Rule("kr-identifiers-output", ("kr_model",), _OUT, "redact", _IDS),
+            Rule(
+                "contacts",
+                ("common", "kr_model"),
+                _SEND_OUT,
+                "redact",
+                frozenset({"PHONE", "EMAIL"}),
+            ),
+            Rule(
+                "people",
+                ("kr_model",),
+                _SEND,
+                "pseudonymize",
+                frozenset({"PERSON", "ADDRESS"}),
+                restore_for_tools=True,
+            ),
+            Rule("people-output", ("kr_model",), _OUT, "warn", frozenset({"PERSON", "ADDRESS"})),
+        ),
+    ),
+    # Language-neutral basics without the Korean packs or the model service: secrets, and
+    # email, card and IP values from the common pack.
+    "common-basic": RuleSet(
+        "common-basic",
+        1,
+        (
+            Rule("jailbreak", ("jailbreak",), _INPUT, "warn"),
+            Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
+            Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
+            Rule("cards", ("common",), _ALL, "redact", frozenset({"CARD"})),
+            Rule("contacts", ("common",), _SEND_OUT, "mask", frozenset({"EMAIL", "IP"})),
+        ),
+    ),
     # Observation mode: every finding recorded, nothing changed.
     "kr-observe": RuleSet(
-        "kr-observe", 2, (Rule("observe", ("common", "kr_model"), _ALL, "warn"),)
+        "kr-observe",
+        3,
+        (
+            Rule("observe", ("common", "kr_model"), _ALL, "warn"),
+            Rule("jailbreak", ("jailbreak",), _INPUT, "warn"),
+        ),
     ),
 }
 

@@ -65,7 +65,7 @@ export function MiddlewaresDialog({
   const available = useMemo(() => {
     const q = query.trim().toLowerCase()
     return allMiddlewares
-      .filter((m) => !selectedTypes.has(m.type))
+      .filter((m) => !selectedTypes.has(m.type) && !m.superseded_by)
       .filter((m) => (category === 'all' ? true : m.category === category))
       .filter((m) =>
         !q
@@ -205,7 +205,12 @@ function SelectedCard({ item, onRemove }: { item: MiddlewareRegistryItem; onRemo
       item={item}
       align="center"
       subtitle={
-        <p className="truncate font-mono moldy-ui-caption text-muted-foreground">{item.type}</p>
+        <>
+          <p className="truncate font-mono moldy-ui-caption text-muted-foreground">{item.type}</p>
+          {item.superseded_by ? (
+            <p className="moldy-ui-caption text-muted-foreground">{t('superseded')}</p>
+          ) : null}
+        </>
       }
       categoryBadgeVariant="secondary"
       action={

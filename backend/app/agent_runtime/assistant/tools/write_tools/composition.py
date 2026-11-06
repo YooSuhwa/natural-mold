@@ -15,7 +15,7 @@ from app.agent_runtime.assistant.tools.write_tools.composition_lifecycle import 
 from app.agent_runtime.assistant.tools.write_tools.context import (
     WriteToolContext,
 )
-from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
+from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY, is_superseded
 from app.authz.assistant_scope import keep_linkable
 from app.authz.scoping import private_scope_predicate
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
@@ -45,7 +45,8 @@ def build_composition_tools(ctx: WriteToolContext) -> list[StructuredTool]:
             for name in middleware_names:
                 if name.lower() in existing:
                     continue
-                if name not in MIDDLEWARE_REGISTRY:
+                # Superseded types (``pii`` → guardrails) are not added anew.
+                if name not in MIDDLEWARE_REGISTRY or is_superseded(name):
                     continue
                 configs.append({"type": name, "params": {}})
                 added.append(name)

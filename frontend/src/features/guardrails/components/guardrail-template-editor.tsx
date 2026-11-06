@@ -21,12 +21,7 @@ import type {
   GuardrailStage,
   GuardrailTemplate,
 } from '@/lib/types/guardrails'
-import {
-  GUARDRAIL_ACTIONS,
-  GUARDRAIL_STAGES,
-  useGuardrailErrorMessage,
-  useRuleLabel,
-} from '../lib/labels'
+import { actionsFor, GUARDRAIL_STAGES, useGuardrailErrorMessage, useRuleLabel } from '../lib/labels'
 
 const STYLES: readonly GuardrailPseudonymStyle[] = ['tag', 'natural']
 
@@ -55,7 +50,8 @@ export function GuardrailTemplateEditor({
   const [rules, setRules] = useState<GuardrailRule[]>(template.draft_rules)
   const [error, setError] = useState<string | null>(null)
   const stageless = rules.some((rule) => rule.stages.length === 0)
-  const valid = name.trim() !== '' && rules.length > 0 && !stageless
+  const badInput = rules.some((rule) => !actionsFor(rule).includes(rule.action))
+  const valid = name.trim() !== '' && rules.length > 0 && !stageless && !badInput
 
   function change(ruleId: string, patch: Partial<GuardrailRule>) {
     setRules((prev) => prev.map((rule) => (rule.id === ruleId ? { ...rule, ...patch } : rule)))
@@ -72,6 +68,7 @@ export function GuardrailTemplateEditor({
       {
         id: template.id,
         data: { name: name.trim(), description: description.trim(), rules },
+        version: template.updated_at,
       },
       {
         onSuccess: () => {
@@ -189,7 +186,7 @@ function RuleEditor({
               <span>{t(`action.${rule.action}`)}</span>
             </SelectTrigger>
             <SelectContent>
-              {GUARDRAIL_ACTIONS.map((action) => (
+              {actionsFor(rule).map((action) => (
                 <SelectItem key={action} value={action}>
                   {t(`action.${action}`)}
                 </SelectItem>
@@ -235,6 +232,9 @@ function RuleEditor({
         {rule.stages.length === 0 ? (
           <p className="text-sm text-destructive">{t('templates.editor.needStage')}</p>
         ) : null}
+        {actionsFor(rule).includes(rule.action) ? null : (
+          <p className="text-sm text-destructive">{t('templates.editor.inputActions')}</p>
+        )}
       </fieldset>
       {rule.action === 'pseudonymize' ? (
         <div className="flex items-start gap-3 text-sm">

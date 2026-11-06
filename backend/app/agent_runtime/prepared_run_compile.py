@@ -21,6 +21,7 @@ from typing import Any
 
 from deepagents import create_deep_agent
 from deepagents.middleware.subagents import SubAgentMiddleware
+from deepagents.middleware.summarization import create_summarization_middleware
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.runnables import RunnableLambda
 
@@ -36,6 +37,8 @@ from app.agent_runtime.prepared_task_middleware import (
     compiled_subagent_entries,
 )
 from app.agent_runtime.prepared_task_tool_handler import PreparedStateProjector
+from app.guardrails.middleware import Guard, guard_stack
+from app.guardrails.tool_risk import ToolRiskPolicy, apply_to_agent
 
 type Middleware = AgentMiddleware[Any, Any, Any]
 type AdmissionFactory = Callable[[], ChildLaunchAdmission]
@@ -95,6 +98,8 @@ def compile_children(
     interrupt_on: dict[str, Any] | None,
     skills: list[str] | None,
     parent_middleware: Sequence[Middleware],
+    guard: Guard | None = None,
+    tool_risk: ToolRiskPolicy | None = None,
 ) -> tuple[Mapping[RunnableKey, Any], Mapping[str, tuple[str, ...]]]:
     """Compile every ``(child_id, variant)`` bottom-up; ``None`` compiler means probe."""
 
@@ -131,12 +136,42 @@ def compile_children(
             head=head,
             tail=tail,
         )
+        spec = _guarded_child(spec, guard=guard, tool_risk=tool_risk, backend=backend)
         surfaces[child.child_id] = spec_tool_names(spec)
         for variant in child.variants:
             runnables[(child.child_id, variant)] = compiler(
                 spec, response_format=child.variant_values[variant]
             )
     return MappingProxyType(runnables), MappingProxyType(surfaces)
+
+
+def _guarded_child(
+    spec: dict[str, Any],
+    *,
+    guard: Guard | None,
+    tool_risk: ToolRiskPolicy | None,
+    backend: Any,
+) -> dict[str, Any]:
+    """The child's tool risk actions and guardrail, as the default path gives each child.
+
+    Tool risk changes the child's tools, so both the probe and the final pass apply it;
+    the guardrail does not change the tool surface and is installed in the final pass.
+    """
+    if tool_risk is not None:
+        [spec] = apply_to_agent(
+            tool_risk, tools=[], interrupt_on=None, middleware=[], subagents=[spec]
+        ).subagents
+    if guard is not None:
+        model = spec["model"]
+        spec = {
+            **spec,
+            "middleware": guard_stack(
+                spec.get("middleware") or [],
+                guard,
+                create_summarizer=lambda: create_summarization_middleware(model, backend),
+            ),
+        }
+    return spec
 
 
 def _as_is(middleware: Sequence[Any] | None, **_kwargs: Any) -> list[Any]:
@@ -162,6 +197,8 @@ def compile_root(
     interrupt_on: dict[str, Any] | None,
     skills: list[str] | None,
     memory: list[str] | None,
+    guard: Guard | None = None,
+    tool_risk: ToolRiskPolicy | None = None,
 ) -> Any:
     """Compile the root with ``[interceptor, *app_middleware]`` as the app slice."""
 
@@ -190,4 +227,6 @@ def compile_root(
         subagents=compiled_subagent_entries(catalog, runnables),  # type: ignore[arg-type]
         bindings=bindings,
         prepared_task_middleware=interceptor,
+        guard=guard,
+        tool_risk=tool_risk,
     )

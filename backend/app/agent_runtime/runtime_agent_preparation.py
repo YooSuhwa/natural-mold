@@ -249,6 +249,7 @@ async def _prepare_agent(
             agent_id=parse_uuid(cfg.agent_id),
             run_id=run_id,
         ),
+        interactive=not is_trigger_mode,
     )
     last_mark = time.perf_counter()
 

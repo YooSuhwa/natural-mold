@@ -54,6 +54,8 @@ class RetentionPreview(BaseModel):
     removed_member_conversations: int = 0
     removed_member_memories: int = 0
     audit_events: int = 0
+    # Guardrail detection rows age out with the audit period (guardrails/events.py).
+    guardrail_events: int = 0
 
 
 class OrgRetentionView(OrgRetention):

@@ -8,6 +8,7 @@ import type {
   GuardrailTemplate,
   GuardrailTemplateCreate,
   GuardrailTemplateUpdate,
+  GuardrailTemplateVersion,
 } from '@/lib/types/guardrails'
 
 const base = (tenantId: string, rest = '') => tenantPath(tenantId, `/guardrails${rest}`)
@@ -29,15 +30,32 @@ export const guardrailsApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateTemplate: (tenantId: string, id: string, data: GuardrailTemplateUpdate) =>
+  /** Template writes carry the template's own version (`updated_at`). */
+  updateTemplate: (tenantId: string, id: string, data: GuardrailTemplateUpdate, version: string) =>
     apiFetch<GuardrailTemplate>(templatePath(tenantId, id), {
       method: 'PATCH',
+      headers: tenantVersionHeader(version),
       body: JSON.stringify(data),
     }),
-  publishTemplate: (tenantId: string, id: string) =>
-    apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/publish'), { method: 'POST' }),
-  archiveTemplate: (tenantId: string, id: string) =>
-    apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/archive'), { method: 'POST' }),
+  publishTemplate: (tenantId: string, id: string, version: string) =>
+    apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/publish'), {
+      method: 'POST',
+      headers: tenantVersionHeader(version),
+    }),
+  listVersions: (tenantId: string, id: string) =>
+    apiFetch<GuardrailTemplateVersion[]>(templatePath(tenantId, id, '/versions')),
+  /** Publishes an earlier version's rules again as the next version. */
+  revertTemplate: (tenantId: string, id: string, target: number, version: string) =>
+    apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/revert'), {
+      method: 'POST',
+      headers: tenantVersionHeader(version),
+      body: JSON.stringify({ version: target }),
+    }),
+  archiveTemplate: (tenantId: string, id: string, version: string) =>
+    apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/archive'), {
+      method: 'POST',
+      headers: tenantVersionHeader(version),
+    }),
 }
 
 const agentPath = (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/guardrails`

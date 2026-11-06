@@ -23,6 +23,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.guardrail_template import AgentGuardrailBinding
 from app.models.organization import Tenant
+from app.services.tenants.versioning import etag
 from tests.authz.d04_support import seed_scope
 from tests.authz.d05_support import TEST_ORG_ID
 from tests.authz.e09_support import MEMBER, TENANT, acting_as, actions, make_admin
@@ -71,6 +72,11 @@ async def _bind(agent_id: uuid.UUID, mode: str, ref: str | None = None, **overri
 async def _resolve(agent_id: uuid.UUID) -> Any:
     async with TestSession() as db:
         return await policy.resolve(db, TEST_TENANT_ID, agent_id, "standard")
+
+
+def _version(template: dict[str, Any]) -> dict[str, str]:
+    """The template's ``If-Match`` header, as the screen sends it."""
+    return {"If-Match": etag(datetime.fromisoformat(template["updated_at"]))}
 
 
 def _ids(rules: Any) -> set[str]:
@@ -128,7 +134,7 @@ async def test_an_agent_template_still_carries_the_locked_rules(db: AsyncSession
 
     rules = await _resolve(agent)
     assert rules.template == "builtin:kr-observe"
-    assert _ids(rules) == {"observe", "secrets"}
+    assert _ids(rules) == {"observe", "jailbreak", "secrets"}
 
 
 async def test_enforced_ignores_an_agent_switching_off(db: AsyncSession) -> None:
@@ -255,20 +261,24 @@ async def test_a_template_is_drafted_published_as_versions_and_archived(
     assert (template["status"], template["published_version"]) == ("draft", None)
     rules = template["draft_rules"]
 
-    bad = await client.patch(f"{TEMPLATES}/{template['id']}", json={"rules": [{"id": "x"}]})
+    url = f"{TEMPLATES}/{template['id']}"
+    bad = await client.patch(url, json={"rules": [{"id": "x"}]}, headers=_version(template))
     assert bad.status_code == 422 and bad.json()["error"]["code"] == "GUARDRAIL_RULES_INVALID"
 
-    first = await client.post(f"{TEMPLATES}/{template['id']}/publish")
+    first = await client.post(f"{url}/publish", headers=_version(template))
     assert first.json()["published_version"] == 1
-    rules[0]["action"] = "redact"
-    await client.patch(f"{TEMPLATES}/{template['id']}", json={"rules": rules})
-    second = await client.post(f"{TEMPLATES}/{template['id']}/publish")
+    secrets = next(rule for rule in rules if rule["id"] == "secrets")
+    secrets["action"] = "redact"
+    stale = await client.patch(url, json={"rules": rules}, headers=_version(template))
+    assert stale.status_code == 409 and stale.json()["error"]["code"] == "stale_version"
+    edited = await client.patch(url, json={"rules": rules}, headers=_version(first.json()))
+    second = await client.post(f"{url}/publish", headers=_version(edited.json()))
     assert second.json()["published_version"] == 2
 
     async with TestSession() as check:
         current = await policy.template_rules(check, TEST_TENANT_ID, template["ref"])
     assert current is not None and current.version == 2
-    assert current.rules[0].action == "redact"
+    assert {r.id: r.action for r in current.rules}["secrets"] == "redact"
 
     etag = (await client.get(POLICY)).headers["ETag"]
     await client.put(
@@ -276,7 +286,7 @@ async def test_a_template_is_drafted_published_as_versions_and_archived(
         json={"mode": "default", "default_template": template["ref"]},
         headers={"If-Match": etag},
     )
-    in_use = await client.post(f"{TEMPLATES}/{template['id']}/archive")
+    in_use = await client.post(f"{url}/archive", headers=_version(second.json()))
     assert in_use.status_code == 409
     names = [e.action for e in await actions(template["id"])]
     assert names == [
@@ -479,3 +489,67 @@ async def test_tool_risk_is_pinned_and_a_resume_keeps_it(db: AsyncSession) -> No
         resumed.tool_risk is not None and resumed.tool_risk.action("external_mutation") == "block"
     )
     assert fresh.tool_risk is None
+
+
+async def test_a_template_write_without_its_version_is_refused(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    await make_admin(db)
+    template = (
+        await client.post(TEMPLATES, json={"name": "버전", "copy_from": "builtin:kr-default"})
+    ).json()
+    url = f"{TEMPLATES}/{template['id']}"
+
+    for response in (
+        await client.patch(url, json={"name": "새 이름"}),
+        await client.post(f"{url}/publish"),
+        await client.post(f"{url}/archive"),
+    ):
+        assert response.status_code == 409, response.text
+        assert response.json()["error"]["code"] == "stale_version"
+
+
+async def test_an_earlier_version_is_published_again_as_the_next_one(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    await make_admin(db)
+    created = (
+        await client.post(TEMPLATES, json={"name": "되돌리기", "copy_from": "builtin:kr-default"})
+    ).json()
+    url = f"{TEMPLATES}/{created['id']}"
+    v1 = (await client.post(f"{url}/publish", headers=_version(created))).json()
+    rules = v1["draft_rules"]
+    next(rule for rule in rules if rule["id"] == "secrets")["action"] = "warn"
+    edited = (await client.patch(url, json={"rules": rules}, headers=_version(v1))).json()
+    v2 = (await client.post(f"{url}/publish", headers=_version(edited))).json()
+
+    current = await client.post(f"{url}/revert", json={"version": 2}, headers=_version(v2))
+    missing = await client.post(f"{url}/revert", json={"version": 9}, headers=_version(v2))
+    reverted = await client.post(f"{url}/revert", json={"version": 1}, headers=_version(v2))
+
+    assert current.status_code == 409
+    assert current.json()["error"]["code"] == "GUARDRAIL_TEMPLATE_VERSION_CURRENT"
+    assert missing.status_code == 404
+    assert reverted.status_code == 200, reverted.text
+    assert reverted.json()["published_version"] == 3
+    secrets = {r["id"]: r["action"] for r in reverted.json()["draft_rules"]}["secrets"]
+    assert secrets == "block"
+    async with TestSession() as check:
+        rules_now = await policy.template_rules(check, TEST_TENANT_ID, created["ref"])
+    assert rules_now is not None and rules_now.version == 3
+    assert {r.id: r.action for r in rules_now.rules}["secrets"] == "block"
+    versions = (await client.get(f"{url}/versions")).json()
+
+    def secrets_action(rules: list[dict[str, Any]]) -> str:
+        return {r["id"]: r["action"] for r in rules}["secrets"]
+
+    assert [(v["version"], secrets_action(v["rules"])) for v in versions] == [
+        (3, "block"),
+        (2, "warn"),
+        (1, "block"),
+    ]
+    [event] = [e for e in await actions(created["id"]) if e.action == "guardrail.template_revert"]
+    assert event.event_metadata == {
+        "before": {"version": 2},
+        "after": {"version": 3, "from_version": 1},
+    }

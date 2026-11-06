@@ -951,7 +951,7 @@
         "save": "정책 저장",
         "saved": "회사 정책을 저장했습니다.",
         "confirmTitle": "보존 기간을 줄일까요?",
-        "confirmDescription": "줄인 기간보다 오래된 감사 기록 {count}건이 다음 정리 때 삭제됩니다.",
+        "confirmDescription": "줄인 기간보다 오래된 감사 기록 {count}건과 가드레일 탐지 기록 {guardrail}건이 다음 정리 때 삭제됩니다.",
         "confirm": "줄이고 저장"
       },
       "publications": {
@@ -2005,6 +2005,7 @@
         "empty": "표시할 미들웨어가 없습니다.",
         "remove": "제거",
         "removeNamed": "{name} 제거",
+        "superseded": "가드레일로 대체됐습니다. 가드레일이 같은 값을 검사하면 이 미들웨어는 실행되지 않습니다.",
         "selectToPreview": "미리보기할 미들웨어를 선택하세요",
         "configSchema": "설정 스키마",
         "providerOnly": "{provider} 전용",
@@ -3911,6 +3912,8 @@
       "editShort": "편집",
       "publishShort": "게시",
       "archiveShort": "보관",
+      "versionsShort": "버전",
+      "versionsFor": "{name} 버전",
       "edit": "{name} 편집",
       "publish": "{name} 게시",
       "archive": "{name} 보관",
@@ -3919,6 +3922,17 @@
       "archiveTitle": "{name} 템플릿을 보관할까요?",
       "archiveDescription": "보관한 템플릿은 새로 고를 수 없고 수정할 수 없습니다. 이 템플릿을 쓰던 에이전트는 회사 기본 템플릿으로 실행됩니다.",
       "archiveConfirm": "보관하기",
+      "versions": {
+        "title": "{name} 버전",
+        "description": "게시한 버전은 바뀌지 않습니다. 예전 버전으로 되돌리면 그 규칙을 새 버전으로 다시 게시하고, 초안도 그 규칙으로 바뀝니다. 진행 중인 실행은 이전 규칙을 유지합니다.",
+        "current": "지금 게시됨",
+        "meta": "{date} · 규칙 {count}개",
+        "showRules": "규칙 보기",
+        "hideRules": "규칙 숨기기",
+        "revert": "이 버전으로 되돌리기",
+        "revertTo": "v{version} 버전으로 되돌리기",
+        "reverted": "v{version}의 규칙을 새 버전으로 게시했습니다."
+      },
       "createDialog": {
         "title": "새 회사 템플릿",
         "description": "규칙은 고른 템플릿에서 복사합니다. 만든 뒤 규칙을 고치고 게시하세요.",
@@ -3941,15 +3955,19 @@
         "restoreForToolsHint": "가명으로 바뀐 이름·주소를 도구 인자에서는 원래 값으로 되돌립니다.",
         "removeRule": "{rule} 규칙 삭제",
         "needStage": "검사 단계를 하나 이상 고르세요.",
+        "inputActions": "사용자 입력 단계는 차단이나 기록만, 승인 요청은 도구 인자 단계 하나에 규칙 묶음(common, kr)으로만 고를 수 있습니다.",
         "needRule": "규칙이 하나 이상 있어야 합니다.",
         "save": "초안 저장",
         "saved": "초안을 저장했습니다."
       }
     },
     "rule": {
+      "jailbreak": "지시 무시·탈옥 시도",
       "secrets": "비밀값(API 키·토큰)",
       "secrets-output": "답변 속 비밀값",
       "kr-identifiers": "식별번호(주민·외국인·여권·면허·카드·계좌·건강보험)",
+      "kr-identifiers-output": "답변 속 식별번호",
+      "cards": "카드번호",
       "contacts": "연락처(전화·이메일)",
       "people": "이름·주소",
       "people-output": "답변 속 이름·주소",
@@ -3957,6 +3975,7 @@
     },
     "action": {
       "block": "차단",
+      "approval": "승인 요청",
       "redact": "치환",
       "hash": "해시",
       "pseudonymize": "가명",
@@ -3964,6 +3983,7 @@
       "warn": "기록만"
     },
     "stage": {
+      "input": "사용자 입력",
       "llm_send": "모델로 보낼 때",
       "tool_args": "도구 인자",
       "tool_result": "도구 결과",
@@ -3986,6 +4006,8 @@
       "GUARDRAIL_TEMPLATE_IN_USE": "회사 기본 템플릿은 보관할 수 없습니다. 먼저 정책의 기본 템플릿을 바꾸세요.",
       "GUARDRAIL_TEMPLATE_NAME_TAKEN": "같은 이름의 템플릿이 이미 있습니다.",
       "GUARDRAIL_TEMPLATE_NOT_FOUND": "템플릿을 찾을 수 없습니다.",
+      "GUARDRAIL_TEMPLATE_VERSION_CURRENT": "이 버전은 이미 게시된 버전입니다.",
+      "GUARDRAIL_TEMPLATE_VERSION_NOT_FOUND": "버전을 찾을 수 없습니다.",
       "GUARDRAIL_POLICY_ENFORCED": "회사 정책이 템플릿을 고정합니다.",
       "GUARDRAIL_RULE_LOCKED": "회사가 잠근 규칙은 바꿀 수 없습니다."
     }

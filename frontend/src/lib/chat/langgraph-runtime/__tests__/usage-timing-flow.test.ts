@@ -39,7 +39,9 @@ describe('usageFromMessage — 스트리밍 timing 병합', () => {
   })
 
   it('enriched 가 없으면 native usage_metadata 만 반환(timing 없음)', () => {
-    const usage = usageFromMessage(asMessage({ usage_metadata: { input_tokens: 5, output_tokens: 1 } }))
+    const usage = usageFromMessage(
+      asMessage({ usage_metadata: { input_tokens: 5, output_tokens: 1 } }),
+    )
     expect(usage?.prompt_tokens).toBe(5)
     expect(usage?.ttft_ms).toBeUndefined()
     expect(usage?.tokens_per_second).toBeUndefined()
@@ -49,7 +51,9 @@ describe('usageFromMessage — 스트리밍 timing 병합', () => {
     const usage = usageFromMessage(
       asMessage({
         usage_metadata: { input_tokens: 10, output_tokens: 2, estimated_cost: 0.9 },
-        additional_kwargs: { metadata: { usage: { prompt_tokens: 10, completion_tokens: 2, estimated_cost: 0.1 } } },
+        additional_kwargs: {
+          metadata: { usage: { prompt_tokens: 10, completion_tokens: 2, estimated_cost: 0.1 } },
+        },
       }),
     )
     expect(usage?.estimated_cost).toBe(0.9)
