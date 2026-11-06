@@ -99,6 +99,31 @@ curl -X POST http://localhost:8001/v1/threads/thr_xxx/runs/wait \
   }'
 ```
 
+## Tools That Need Approval
+
+Nobody watches an API run, so a tool call that needs a person's approval (a risky tool,
+an MCP tool the company marks for approval) follows the deployment's `approval_policy`:
+
+- `blocked` (default): the call is not run; the model gets a
+  `{"status": "blocked", "required_approval": true, ...}` result for it and the run goes on.
+- `inbox`: the native wait endpoints (`/v1/runs/wait`, `/v1/threads/{id}/runs/wait`) pause
+  the run and ask the deployment owner in the Moldy approval inbox. The call answers
+  `"status": "waiting"` with `pending_approvals` (`id`, `tools`, `expires_at`); the run's
+  worker slot is released while it waits. Read the outcome with:
+
+```bash
+curl http://localhost:8001/v1/runs/run_xxx -H "Authorization: Bearer $MOLDY_API_KEY"
+```
+
+  It becomes `succeeded` with `output.answer` once the owner approves (or rejects: the
+  model then answers without that call), or `failed` with `error.code`
+  `APPROVAL_EXPIRED` (no decision in 24 hours) or `APPROVAL_CANCELED` (an emergency stop,
+  or the request was retired). Streams and the compatible endpoints below keep answering
+  BLOCKED: they cannot be read back later. The API key never decides; only the owner does.
+
+Set it in the agent settings API panel or `PATCH /api/agent-api/deployments/{id}` with
+`{"approval_policy": "inbox"}`. `GET /v1/runs/{id}` needs the `read` or `invoke` scope.
+
 ## Compatibility Endpoints
 
 Dify-style chat:
