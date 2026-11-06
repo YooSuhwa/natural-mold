@@ -3810,6 +3810,33 @@
   "guardrails": {
     "title": "Guardrails",
     "description": "Decide how the company's agents handle personal data and secrets.",
+    "agent": {
+      "loading": "Loading guardrail settings…",
+      "loadFailed": "Could not load guardrail settings.",
+      "title": "Guardrails",
+      "policy": {
+        "off": "The company switched guardrails off. This agent is not checked.",
+        "open": "The company leaves it to agents. Choose a template to check this agent.",
+        "default": "Follow the company default, choose another template or switch off. Rules the company locked still apply.",
+        "enforced": "The company enforces its default template. Only unlocked rules can be switched off or given another action."
+      },
+      "mode": {
+        "label": "Apply",
+        "inherit": "Follow company",
+        "template": "Choose template",
+        "off": "Off"
+      },
+      "template": "Template",
+      "locked": "Locked by company",
+      "actionFor": "Action for {rule}",
+      "noDefault": "No company default template, so nothing is checked.",
+      "offNote": "This agent is not checked.",
+      "offLocked": "Even when off, {count} rule(s) locked by the company still apply.",
+      "effective": "Next run with the saved settings: {name} v{version} · {count} rules",
+      "effectiveNone": "With the saved settings, the next run has no guardrail.",
+      "save": "Save guardrails",
+      "saved": "Guardrail settings saved."
+    },
     "policy": {
       "title": "Company policy",
       "description": "Applies to every agent run. Changes apply from the next run; running runs and runs waiting for approval keep their rules.",

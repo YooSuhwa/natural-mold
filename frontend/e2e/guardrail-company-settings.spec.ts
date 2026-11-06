@@ -3,7 +3,17 @@ import path from 'node:path'
 
 import type { Page } from '@playwright/test'
 
-import { API_BASE, apiGetJson, apiJson, isRecord, loginApi, test, expect } from './fixtures'
+import {
+  API_BASE,
+  apiGetJson,
+  apiJson,
+  apiPostJson,
+  isRecord,
+  loginApi,
+  test,
+  expect,
+} from './fixtures'
+import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Company guardrails (guardrail-minimum-plan.md §3.4) on a real backend: the E2E user is
 // its company's admin. Sets the policy, makes a company template, edits and publishes it.
@@ -23,6 +33,23 @@ async function homeTenant(page: Page): Promise<string> {
   return home.tenant_id
 }
 
+async function putPolicy(
+  page: Page,
+  policyUrl: string,
+  csrf: Record<string, string>,
+  data: { mode: string; default_template: string | null; locked_rules: string[] },
+): Promise<void> {
+  const current = await apiGetJson(page.request, policyUrl)
+  const version = isRecord(current) ? String(current.updated_at) : ''
+  await apiJson(
+    await page.request.put(policyUrl, {
+      headers: { ...csrf, 'If-Match': `"${version.replace(/Z$/, '+00:00')}"` },
+      data,
+    }),
+    'set guardrail policy',
+  )
+}
+
 test.describe('Company guardrails (company admin)', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
 
@@ -32,15 +59,11 @@ test.describe('Company guardrails (company admin)', () => {
     const policyUrl = `${API_BASE}/api/tenants/${tenantId}/guardrails`
     const name = `고객 상담 ${Date.now()}`
     // Start from "agents choose" whatever an earlier run left.
-    const current = await apiGetJson(page.request, policyUrl)
-    const version = isRecord(current) ? String(current.updated_at) : ''
-    await apiJson(
-      await page.request.put(policyUrl, {
-        headers: { ...csrf, 'If-Match': `"${version.replace(/Z$/, '+00:00')}"` },
-        data: { mode: 'open', default_template: null, locked_rules: [] },
-      }),
-      'reset guardrail policy',
-    )
+    await putPolicy(page, policyUrl, csrf, {
+      mode: 'open',
+      default_template: null,
+      locked_rules: [],
+    })
     // Tall enough for the settings pane, which scrolls inside the page.
     await page.setViewportSize({ width: 1280, height: 1900 })
 
@@ -98,5 +121,52 @@ test.describe('Company guardrails (company admin)', () => {
     expect(made).toMatchObject({ status: 'published', published_version: 1 })
     const rules = Array.isArray(made?.draft_rules) ? made.draft_rules.filter(isRecord) : []
     expect(rules.find((rule) => rule.id === 'contacts')?.action).toBe('redact')
+  })
+
+  test('an agent keeps the locked rule and switches another one off', async ({ page }) => {
+    const csrf = await loginApi(page.request)
+    const tenantId = await homeTenant(page)
+    const policyUrl = `${API_BASE}/api/tenants/${tenantId}/guardrails`
+    await putPolicy(page, policyUrl, csrf, {
+      mode: 'default',
+      default_template: 'builtin:kr-default',
+      locked_rules: ['secrets'],
+    })
+    const models = await apiGetJson(page.request, `${API_BASE}/api/models`)
+    const model = Array.isArray(models) ? models.find(isSeededScriptedModel) : undefined
+    if (!model) throw new Error('no scripted model')
+    const agent = await apiPostJson(page.request, `${API_BASE}/api/agents`, csrf, {
+      name: `가드레일 에이전트 ${Date.now()}`,
+      system_prompt: 'Guardrail card fixture.',
+      model_id: model.id,
+    })
+    const agentId = isRecord(agent) ? String(agent.id) : ''
+    const bindingUrl = `${API_BASE}/api/agents/${agentId}/guardrails`
+
+    await page.setViewportSize({ width: 1280, height: 1900 })
+    await page.goto(`/agents/${agentId}/settings`)
+    await page.getByRole('tab', { name: '설정', exact: true }).click()
+    const card = page.getByTestId('agent-guardrail-card')
+    await card.scrollIntoViewIfNeeded()
+    await expect(card.getByRole('switch', { name: '비밀값(API 키·토큰)' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+      { timeout: 20_000 },
+    )
+    await card.getByRole('switch', { name: '이름·주소', exact: true }).click()
+    await expect(card.getByRole('switch', { name: '이름·주소', exact: true })).not.toBeChecked()
+    await card.screenshot({ path: path.join(CAPTURE_DIR, '06-agent-card.png') })
+    await card.getByRole('button', { name: '가드레일 저장' }).click()
+
+    await expect
+      .poll(async () => apiGetJson(page.request, bindingUrl), { timeout: 15_000 })
+      .toMatchObject({
+        mode: 'inherit',
+        rule_overrides: { people: { enabled: false, action: null } },
+      })
+    await expect(card.getByTestId('agent-guardrail-effective')).toContainText('kr-default v3')
+    await card.getByRole('button', { name: '끔' }).click()
+    await expect(card.getByText(/잠근 규칙 1개는 계속 적용됩니다/)).toBeVisible()
+    await card.screenshot({ path: path.join(CAPTURE_DIR, '07-agent-card-off.png') })
   })
 })

@@ -8,6 +8,7 @@ import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { RuntimePolicySettings } from '@/components/agent/runtime-policy-settings'
 import { useGenerateAgentImage } from '@/lib/hooks/use-agents'
 import type { AgentIdentityMode, RuntimePolicyV1 } from '@/lib/types'
+import { AgentGuardrailCard } from '@/features/guardrails/components/agent-guardrail-card'
 import { AgentMemorySettingsSection } from './agent-memory-settings-section'
 import { IdentitySettingsSection } from './identity-settings-section'
 
@@ -104,6 +105,7 @@ export function SettingsPanel({
         />
       ) : null}
       <AgentMemorySettingsSection agentId={agentId} />
+      <AgentGuardrailCard agentId={agentId} />
     </div>
   )
 }

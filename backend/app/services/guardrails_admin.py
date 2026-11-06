@@ -435,6 +435,12 @@ async def _binding_out(db: AsyncSession, agent: Agent) -> AgentGuardrailOut:
     )
     binding = _binding_snapshot(await db.get(AgentGuardrailBinding, agent.id))
     effective = await guardrail_policy.resolve(db, agent.tenant_id, agent.id, agent.runtime_profile)
+    choices = await template_choices(db, agent.tenant_id)
+    # Named like the choice it came from, not by its reference.
+    effective_name = next(
+        (item.name for item in choices if effective and item.ref == effective.template),
+        effective.template if effective else "",
+    )
     return AgentGuardrailOut(
         mode=binding["mode"],
         template_ref=binding["template_ref"],
@@ -444,9 +450,10 @@ async def _binding_out(db: AsyncSession, agent: Agent) -> AgentGuardrailOut:
             if isinstance(value, dict)
         },
         policy_mode=policy.mode,  # type: ignore[arg-type]
+        policy_default_template=policy.default_template,
         locked_rules=sorted(policy.locked_rules),
-        effective=_choice(effective, effective.template) if effective else None,
-        templates=await template_choices(db, agent.tenant_id),
+        effective=_choice(effective, effective_name) if effective else None,
+        templates=choices,
     )
 
 

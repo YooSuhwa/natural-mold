@@ -1,6 +1,8 @@
 import { apiFetch } from './client'
 import { tenantPath, tenantVersionHeader } from './tenant-admin'
 import type {
+  AgentGuardrails,
+  AgentGuardrailsUpdate,
   GuardrailPolicy,
   GuardrailPolicyUpdate,
   GuardrailTemplate,
@@ -36,4 +38,13 @@ export const guardrailsApi = {
     apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/publish'), { method: 'POST' }),
   archiveTemplate: (tenantId: string, id: string) =>
     apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/archive'), { method: 'POST' }),
+}
+
+const agentPath = (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/guardrails`
+
+/** An agent's guardrail choice (`agent#can_edit`). */
+export const agentGuardrailsApi = {
+  get: (agentId: string) => apiFetch<AgentGuardrails>(agentPath(agentId)),
+  put: (agentId: string, data: AgentGuardrailsUpdate) =>
+    apiFetch<AgentGuardrails>(agentPath(agentId), { method: 'PUT', body: JSON.stringify(data) }),
 }

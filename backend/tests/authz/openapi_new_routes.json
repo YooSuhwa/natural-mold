@@ -26365,6 +26365,17 @@
           "title": "Mode",
           "type": "string"
         },
+        "policy_default_template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Policy Default Template"
+        },
         "policy_mode": {
           "enum": [
             "off",
@@ -26406,6 +26417,7 @@
         "template_ref",
         "rule_overrides",
         "policy_mode",
+        "policy_default_template",
         "locked_rules",
         "effective",
         "templates"

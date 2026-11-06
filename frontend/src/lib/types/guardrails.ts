@@ -64,3 +64,30 @@ export interface GuardrailTemplateUpdate {
   description?: string
   rules?: GuardrailRule[]
 }
+
+export type AgentGuardrailMode = 'inherit' | 'template' | 'off'
+
+export interface GuardrailRuleOverride {
+  enabled: boolean
+  action: GuardrailAction | null
+}
+
+/** An agent's guardrail choice and what its next run gets (`/api/agents/{id}/guardrails`). */
+export interface AgentGuardrails {
+  mode: AgentGuardrailMode
+  template_ref: string | null
+  rule_overrides: Record<string, GuardrailRuleOverride>
+  policy_mode: GuardrailPolicyMode
+  /** The company default the agent inherits; overrides apply to its rules. */
+  policy_default_template: string | null
+  locked_rules: string[]
+  /** `null`: the next run has no guardrail. */
+  effective: GuardrailTemplateChoice | null
+  templates: GuardrailTemplateChoice[]
+}
+
+export interface AgentGuardrailsUpdate {
+  mode: AgentGuardrailMode
+  template_ref: string | null
+  rule_overrides: Record<string, GuardrailRuleOverride>
+}
