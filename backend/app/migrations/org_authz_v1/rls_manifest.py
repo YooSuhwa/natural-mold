@@ -48,6 +48,7 @@ DIRECT_TENANT: Final = frozenset(
         "daily_spend_user",
         "group_members",
         "groups",
+        "guardrail_events",  # guardrail detection records (company rows)
         "marketplace_installations",
         "marketplace_items",
         "mcp_servers",
