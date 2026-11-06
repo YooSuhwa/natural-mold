@@ -43,6 +43,7 @@ from app.agent_runtime.runtime_preparation_support import (
 )
 from app.agent_runtime.tool_factory import create_builtin_tool
 from app.config import settings
+from app.guardrails.events import RunScope, parse_uuid
 from app.guardrails.run import guard_for
 from app.tenancy.checkpoint_audit import checkpoint_tenant
 
@@ -239,7 +240,16 @@ async def _prepare_agent(
 
         middleware.append(AttachmentInputMiddleware(cfg.attachment_inputs))
     # Appended after the attachment middleware so ② sees the expanded attachment text.
-    guard = guard_for(cfg.runtime_profile, cfg.org_context.tenant_id)
+    guard = guard_for(
+        cfg.runtime_profile,
+        cfg.org_context.tenant_id,
+        RunScope(
+            cfg.org_context,
+            conversation_id=parse_uuid(cfg.thread_id),
+            agent_id=parse_uuid(cfg.agent_id),
+            run_id=run_id,
+        ),
+    )
     last_mark = time.perf_counter()
 
     # 5. 에이전트 빌드 — create_deep_agent + checkpointer

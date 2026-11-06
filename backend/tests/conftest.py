@@ -173,6 +173,12 @@ def _patch_conversation_run_worker_session(monkeypatch):
         "platform_session",
         lambda reason: platform_session(reason, maker=TestSession),
     )
+    from app.database import tenant_session
+    from app.guardrails import events as guardrail_events
+
+    monkeypatch.setattr(
+        guardrail_events, "tenant_session", lambda ctx: tenant_session(ctx, maker=TestSession)
+    )
     model_settings.invalidate()
 
 

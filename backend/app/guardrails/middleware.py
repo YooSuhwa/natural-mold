@@ -40,6 +40,7 @@ from langgraph.types import Command
 
 from app.guardrails.actions import Applied, Decision, apply, block_notice
 from app.guardrails.detectors import Finding
+from app.guardrails.events import EventLog, RunScope, trace
 from app.guardrails.model_pack import detect_texts
 from app.guardrails.rules import RuleSet, Stage
 from app.guardrails.stream import GuardrailStreamTransformer
@@ -145,9 +146,16 @@ class Guard:
 
     rules: RuleSet
     tenant_id: uuid.UUID | None
+    # Where records go (plan §3.5); None writes nothing (tests, previews).
+    scope: RunScope | None = None
     decisions: list[Decision] = field(default_factory=list)
     _cache: OrderedDict[str, list[Finding]] = field(default_factory=OrderedDict)
     _key: bytes | None = None
+    _log: EventLog | None = None
+
+    def __post_init__(self) -> None:
+        if self.scope is not None:
+            self._log = EventLog(self.scope)
 
     @property
     def key(self) -> bytes:
@@ -172,12 +180,15 @@ class Guard:
         self, texts: Sequence[str], stage: Stage, *, record: bool = True
     ) -> list[Applied]:
         """``record=False`` for display copies (the stream) of something already recorded."""
-        results = [
-            apply(text, found, self.rules, stage, self.key)
-            for text, found in zip(texts, await self._findings(texts, stage), strict=True)
-        ]
         if not record:
-            return results
+            return self._apply(texts, stage, await self._findings(texts, stage))
+        run_id = self.scope.run_id if self.scope is not None else None
+        with trace(run_id, stage, self.rules.template) as summary:
+            results = self._apply(texts, stage, await self._findings(texts, stage))
+            summary["decisions"] = sum(len(r.decisions) for r in results)
+            summary["blocked"] = any(r.blocked for r in results)
+        if self._log is not None:
+            self._log.add(self.rules, stage, texts, results, self.key)
         for result in results:
             self.decisions.extend(result.decisions)
         if any(result.decisions for result in results):
@@ -189,6 +200,19 @@ class Guard:
                 sorted({(d.rule, d.entity, d.action) for r in results for d in r.decisions}),
             )
         return results
+
+    def _apply(
+        self, texts: Sequence[str], stage: Stage, findings: list[list[Finding]]
+    ) -> list[Applied]:
+        return [
+            apply(text, found, self.rules, stage, self.key)
+            for text, found in zip(texts, findings, strict=True)
+        ]
+
+    async def flush(self) -> None:
+        """Write this hook's records (best effort)."""
+        if self._log is not None:
+            await self._log.flush()
 
     async def guard_messages(
         self, messages: Sequence[AnyMessage]
@@ -239,13 +263,16 @@ class GuardrailMiddleware(AgentMiddleware):
     async def awrap_model_call(
         self, request: ModelRequest, handler: Callable[[ModelRequest], Awaitable[Any]]
     ) -> Any:
-        response = await self.guard.guard_request(request, handler)
-        if isinstance(response, ExtendedModelResponse):
-            checked = await self._guard_response(response.model_response)
-            return ExtendedModelResponse(model_response=checked, command=response.command)
-        if isinstance(response, ModelResponse):
-            return await self._guard_response(response)
-        return response
+        try:
+            response = await self.guard.guard_request(request, handler)
+            if isinstance(response, ExtendedModelResponse):
+                checked = await self._guard_response(response.model_response)
+                return ExtendedModelResponse(model_response=checked, command=response.command)
+            if isinstance(response, ModelResponse):
+                return await self._guard_response(response)
+            return response
+        finally:
+            await self.guard.flush()
 
     async def _guard_response(self, response: ModelResponse) -> ModelResponse:
         """⑤ The answer as the graph stores it: AI text only (tool-call args go through ③)."""
@@ -279,6 +306,12 @@ class GuardrailMiddleware(AgentMiddleware):
         raise RuntimeError(_SYNC_REFUSAL)
 
     async def awrap_tool_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
+        try:
+            return await self._guard_tool_call(request, handler)
+        finally:
+            await self.guard.flush()
+
+    async def _guard_tool_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
         call = request.tool_call
         leaves = _leaves(call.get("args"))
         results = await self.guard.check([text for _, text in leaves], "tool_args")
@@ -351,9 +384,12 @@ class GuardedSummarizationMiddleware(AgentMiddleware):
     async def awrap_model_call(
         self, request: ModelRequest, handler: Callable[[ModelRequest], Awaitable[Any]]
     ) -> Any:
-        return await self.guard.guard_request(
-            request, lambda guarded: self.inner.awrap_model_call(guarded, handler)
-        )
+        try:
+            return await self.guard.guard_request(
+                request, lambda guarded: self.inner.awrap_model_call(guarded, handler)
+            )
+        finally:
+            await self.guard.flush()
 
 
 class _StreamGuard:

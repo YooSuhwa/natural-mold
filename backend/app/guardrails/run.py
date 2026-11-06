@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from app.config import settings
+from app.guardrails.events import RunScope
 from app.guardrails.middleware import Guard
 from app.guardrails.rules import RuleSet, builtin
 
@@ -28,6 +29,8 @@ def rules_for(runtime_profile: str) -> RuleSet | None:
     return rules
 
 
-def guard_for(runtime_profile: str, tenant_id: uuid.UUID | None) -> Guard | None:
+def guard_for(
+    runtime_profile: str, tenant_id: uuid.UUID | None, scope: RunScope | None = None
+) -> Guard | None:
     rules = rules_for(runtime_profile)
-    return Guard(rules, tenant_id) if rules is not None else None
+    return Guard(rules, tenant_id, scope) if rules is not None else None

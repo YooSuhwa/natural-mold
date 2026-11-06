@@ -171,7 +171,8 @@ deepagents 0.7.32 코드 확인 결과, 아래 경로는 등록만으로는 덮�
 3. `GuardrailMiddleware`(②③④⑤) + 처리 방식 + 탐지 기록 + 스팬. 입력은 규칙 목록(3.3.2절), 첫 시험은 우회 경로(3.4.1절), 이어서 가명 처리(3.3.1절).
    - **3-1 구현됨**: `app/guardrails/{rules,actions,middleware,run}.py`. ②(이번 호출 사본만), ③(차단 시 도구 오류), ④(결과를 모델·저장 전에 처리), 처리 방식 차단·치환·마스킹·해시(회사별 HKDF 키)·경고, 기본 템플릿 `kr-default`·`kr-observe`(`GUARDRAIL_DEFAULT_TEMPLATE`, 기본 꺼짐, 모르는 이름이면 실행 실패), 요약 래퍼와 하위 에이전트 주입, 후속 질문 제안 검사, lease 대체(`guardrail_policy`). 시험 `tests/test_guardrail_middleware.py`(가짜 모델로 실제 에이전트 빌드). 래퍼를 빼면 요약 호출로 주민번호가 나가는 것을 시험으로 확인했다.
    - **3-2a 구현됨(⑤ 출력)**: 단계 `output` 추가(`kr-default` v2: 비밀값·식별번호 치환, 연락처 마스킹, 이름·주소 기록). `GuardrailStreamTransformer`(`app/guardrails/stream.py`)가 v3 프로토콜 이벤트를 내장 변환기보다 먼저 바꾼다. `messages`(텍스트·추론·도구 인자 델타), `tools`(도구 입력·출력), `values`(상태 스냅샷의 AI·도구 메시지). 스트림 텍스트는 128자 앞부분을 붙잡아 두고 128자마다 한 번 검사해 내보내며(탐지 호출 수 제한), 남은 끝부분은 `content-block-finish`의 검사된 전체 텍스트로 나간다(프론트 `@langchain/langgraph-sdk` 조립기가 그 블록으로 교체). 차단 규칙은 안내 문구로 바뀐다. 모델 응답은 그래프가 저장하기 전에 같은 규칙으로 한 번 더 검사한다. 예전 `stream_mode="messages"` 경로는 운영 경로가 아니라 저장 시 검사만 받는다. 시험 `tests/test_guardrail_output_stream.py`(3글자씩 스트리밍하는 모델, Moldy 프로토콜 수집 경로 포함).
-   - 3-2b(다음): 탐지 기록 `guardrail_events`, Langfuse 스팬. 3-3: 가명 처리.
+   - **3-2b 구현됨(기록)**: `guardrail_events`(i11, 회사 RLS `DIRECT_TENANT`, 회사·대화와 함께 삭제). 검사 한 번·단계·규칙·항목·처리마다 한 행: 횟수, 템플릿·버전, 실행·대화·에이전트, 회사 키 HMAC 값 요약(최대 20개)만 남기고 원문·값은 남기지 않는다. 차단은 감사 `guardrail.block`(사유=규칙, 단계·항목·템플릿). 검사마다 Langfuse `as_type="guardrail"` 관찰(`guardrail.<stage>`, 결정 수, 차단 여부, 소요 ms). 기록은 훅마다 모아 한 번에 쓰고 실패해도 실행을 막지 않는다. 스레드가 대화 행이 아니면(API·트리거) 대화 칸을 비운다. 보존 기간 정리 대상 추가는 4단계에서 정책과 함께 한다.
+   - 3-3(다음): 가명 처리.
 4. 회사 정책·템플릿·버전 고정·감사 이벤트.
 5. 위험 등급별 기본 조치(C5 최소)와 lease 경로 대체 실행.
 6. P1(① 입력, 가드레일 카드 화면, 기존 미들웨어 이전).

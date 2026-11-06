@@ -776,3 +776,35 @@ async def test_marketplace_management_writes_audit_without_release_notes(
     metadata_text = str([row.event_metadata for row in rows])
     assert "secret release notes" not in metadata_text
     assert "marketplace skill body" not in metadata_text
+
+
+async def test_guardrail_block_writes_audit_without_the_value(db: AsyncSession) -> None:
+    from app.guardrails.events import RunScope
+    from app.guardrails.middleware import Guard
+    from app.guardrails.rules import BUILTIN_TEMPLATES
+    from tests.authz.unit_scope_fixture import unit_context
+    from tests.conftest import seed_agent
+
+    await seed_agent(db)
+    secret = "sk-abcdefghijklmnopqrstuvwx"
+    guard = Guard(
+        BUILTIN_TEMPLATES["kr-default"],
+        None,
+        RunScope(unit_context(TEST_USER_ID), None, None, "run-audit"),
+    )
+
+    await guard.check([f"키 {secret}"], "llm_send")
+    await guard.flush()
+
+    async with TestSession() as check:
+        events = list(
+            await check.scalars(select(AuditEvent).where(AuditEvent.action == "guardrail.block"))
+        )
+    assert len(events) == 1
+    event = events[0]
+    assert (event.actor_type, event.outcome, event.reason_code) == ("system", "denied", "secrets")
+    assert event.run_id == "run-audit"
+    assert event.event_metadata is not None
+    assert event.event_metadata["stage"] == "llm_send"
+    assert event.event_metadata["entity"] == "SECRET"
+    assert secret not in str(event.event_metadata)
