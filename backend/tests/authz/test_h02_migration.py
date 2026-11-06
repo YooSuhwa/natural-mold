@@ -64,11 +64,14 @@ def test_revision_chain_and_kinds_match_the_model() -> None:
         "h03_audit_tenant_index",
     )
     # Later migrations add kinds on top of h02's list (i16: mcp_tool.review_needed,
-    # i17: the approval inbox kinds).
+    # i17: the approval inbox kinds,
+    # i19: the emergency stop kinds).
     i16, i17 = _later("i16_mcp_tool_review"), _later("i17_approval_requests")
+    i19 = _later("i19_emergency_stops")
     assert i16._KINDS_BEFORE == module._KINDS
     assert (*module._KINDS, i16._NEW_KIND) == i17._KINDS_BEFORE
-    assert (*i17._KINDS_BEFORE, *i17._NEW_KINDS) == NOTIFICATION_KINDS
+    assert (*i17._KINDS_BEFORE, *i17._NEW_KINDS) == i19._KINDS_BEFORE
+    assert (*i19._KINDS_BEFORE, *i19._NEW_KINDS) == NOTIFICATION_KINDS
 
 
 def _later(name: str) -> Any:

@@ -1087,3 +1087,45 @@ async def test_approval_request_audit_records_the_request_the_decision_and_the_e
     assert (expired.actor_type, expired.outcome) == ("system", "denied")
     assert (expired.event_metadata or {})["status"] == "expired"
     assert "ceo@example.com" not in str([e.event_metadata for e in events])
+
+
+@pytest.mark.asyncio
+async def test_emergency_stop_audit_records_who_what_and_how_much_was_stopped(
+    client, db: AsyncSession
+) -> None:
+    """17.4: the stop and its release, with the counts of what they touched."""
+    from tests.test_emergency_stop import _agent_with_work
+
+    _conversation, work = await _agent_with_work(db)
+    stopped = await client.post(
+        "/api/emergency-stops",
+        json={"scope_type": "agent", "scope_id": str(work["agent_id"]), "reason": "오발송"},
+    )
+    await client.post(
+        f"/api/emergency-stops/{stopped.json()['id']}/release", json={"reason": "확인"}
+    )
+
+    async with TestSession() as check:
+        rows = list(
+            await check.scalars(
+                select(AuditEvent)
+                .where(AuditEvent.action.like("emergency_stop.%"))
+                .order_by(AuditEvent.created_at)
+            )
+        )
+    by_action = {row.action: row for row in rows}
+    assert sorted(by_action) == ["emergency_stop.apply", "emergency_stop.release"]
+    applied, released = by_action["emergency_stop.apply"], by_action["emergency_stop.release"]
+    for row in rows:
+        assert (row.actor_type, row.actor_user_id, row.outcome) == ("user", TEST_USER_ID, "success")
+        assert (row.target_type, row.target_id) == ("agent", str(work["agent_id"]))
+        assert row.target_owner_user_id == TEST_USER_ID
+    assert applied.reason_message == "오발송" and released.reason_message == "확인"
+    assert applied.event_metadata == {
+        "stop_id": stopped.json()["id"],
+        "runs_cancel_requested": 1,
+        "schedules_paused": 1,
+        "deployments_disabled": 1,
+        "approvals_canceled": 1,
+        "agents": 1,
+    }

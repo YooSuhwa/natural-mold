@@ -110,3 +110,6 @@ AUTHZ_OUTBOX_RETRY: Final = "authz.outbox_retry"
 APPROVAL_REQUESTED: Final = "approval.requested"
 APPROVAL_DECIDED: Final = "approval.decided"
 APPROVAL_EXPIRED: Final = "approval.expired"
+# Emergency stop (순번 13, 17.4): applied to an agent, a person's agents or an MCP server.
+EMERGENCY_STOP_APPLY: Final = "emergency_stop.apply"
+EMERGENCY_STOP_RELEASE: Final = "emergency_stop.release"

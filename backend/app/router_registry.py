@@ -26,6 +26,7 @@ def include_app_routers(app: FastAPI) -> None:
         conversations,
         credential_bindings,
         credentials,
+        emergency_stops,
         feedback,
         guardrail_model_settings,
         health,
@@ -161,6 +162,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(access_requests.router)
     app.include_router(notifications.router)
     app.include_router(approvals.router)
+    app.include_router(emergency_stops.router)
     app.include_router(credential_bindings.router)
     app.include_router(credential_bindings.mode_router)
     app.include_router(templates.router)

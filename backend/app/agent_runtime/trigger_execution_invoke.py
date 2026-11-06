@@ -23,6 +23,7 @@ from app.agent_runtime.trigger_execution_materialization import (
     TriggerMaterialized,
     TriggerOutcome,
 )
+from app.approvals.emergency import STOPPED_CODE
 from app.config import settings
 from app.database import tenant_session
 from app.exceptions import AppError
@@ -137,6 +138,18 @@ async def invoke_trigger_run(
             ),
         )
     except AppError as exc:
+        if exc.code == STOPPED_CODE:  # 17.4: emergency-stopped since the claim
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=conversation,
+                status="skipped",
+                error_message=exc.message,
+                reason_code=STOPPED_CODE,
+            )
+            await db.refresh(run)
+            return TriggerOutcome(run)
         if exc.code != "quota_exceeded":
             raise
         # H-06: refused before the run row (no write to undo); skipped, never auto-paused.

@@ -8284,6 +8284,141 @@
         ]
       }
     },
+    "/api/emergency-stops": {
+      "get": {
+        "operationId": "list_stops_api_emergency_stops_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "active",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Active",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmergencyStopPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Stops",
+        "tags": [
+          "emergency-stops"
+        ]
+      },
+      "post": {
+        "operationId": "create_stop_api_emergency_stops_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmergencyStopCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmergencyStopView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Stop",
+        "tags": [
+          "emergency-stops"
+        ]
+      }
+    },
+    "/api/emergency-stops/{stop_id}/release": {
+      "post": {
+        "operationId": "release_stop_api_emergency_stops__stop_id__release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stop_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Stop Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmergencyStopRelease"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmergencyStopView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release Stop",
+        "tags": [
+          "emergency-stops"
+        ]
+      }
+    },
     "/api/grants/{grant_id}": {
       "delete": {
         "operationId": "delete_grant_api_grants__grant_id__delete",
@@ -33719,6 +33854,218 @@
       "title": "EditedAction",
       "type": "object"
     },
+    "EmergencyStopCreate": {
+      "properties": {
+        "reason": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "scope_id": {
+          "format": "uuid",
+          "title": "Scope Id",
+          "type": "string"
+        },
+        "scope_type": {
+          "enum": [
+            "agent",
+            "user",
+            "mcp_server"
+          ],
+          "title": "Scope Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope_type",
+        "scope_id",
+        "reason"
+      ],
+      "title": "EmergencyStopCreate",
+      "type": "object"
+    },
+    "EmergencyStopPage": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/EmergencyStopView"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "EmergencyStopPage",
+      "type": "object"
+    },
+    "EmergencyStopRelease": {
+      "properties": {
+        "reason": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "EmergencyStopRelease",
+      "type": "object"
+    },
+    "EmergencyStopState": {
+      "properties": {
+        "approvals_canceled": {
+          "title": "Approvals Canceled",
+          "type": "integer"
+        },
+        "block_received": {
+          "title": "Block Received",
+          "type": "boolean"
+        },
+        "deployments_disabled": {
+          "title": "Deployments Disabled",
+          "type": "integer"
+        },
+        "external_side_effects": {
+          "const": "unknown",
+          "title": "External Side Effects",
+          "type": "string"
+        },
+        "new_calls_blocked": {
+          "title": "New Calls Blocked",
+          "type": "boolean"
+        },
+        "runs_cancel_confirmed": {
+          "title": "Runs Cancel Confirmed",
+          "type": "integer"
+        },
+        "runs_cancel_requested": {
+          "title": "Runs Cancel Requested",
+          "type": "integer"
+        },
+        "schedules_paused": {
+          "title": "Schedules Paused",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "block_received",
+        "new_calls_blocked",
+        "runs_cancel_requested",
+        "runs_cancel_confirmed",
+        "schedules_paused",
+        "deployments_disabled",
+        "approvals_canceled",
+        "external_side_effects"
+      ],
+      "title": "EmergencyStopState",
+      "type": "object"
+    },
+    "EmergencyStopView": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "release_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Release Reason"
+        },
+        "released_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Released At"
+        },
+        "released_by": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Released By"
+        },
+        "scope_id": {
+          "format": "uuid",
+          "title": "Scope Id",
+          "type": "string"
+        },
+        "scope_name": {
+          "title": "Scope Name",
+          "type": "string"
+        },
+        "scope_type": {
+          "title": "Scope Type",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/components/schemas/EmergencyStopState"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "stopped_at": {
+          "format": "date-time",
+          "title": "Stopped At",
+          "type": "string"
+        },
+        "stopped_by": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stopped By"
+        }
+      },
+      "required": [
+        "id",
+        "scope_type",
+        "scope_id",
+        "scope_name",
+        "status",
+        "reason",
+        "stopped_by",
+        "stopped_at",
+        "released_by",
+        "released_at",
+        "release_reason",
+        "state"
+      ],
+      "title": "EmergencyStopView",
+      "type": "object"
+    },
     "ExitResolution": {
       "additionalProperties": false,
       "properties": {
@@ -51039,6 +51386,7 @@
               "type": "null"
             }
           ],
+          "default": 10,
           "title": "Auto Pause After Failures"
         },
         "conversation_policy": {
