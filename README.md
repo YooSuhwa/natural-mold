@@ -277,6 +277,17 @@ STORAGE_BACKEND=s3 docker compose --profile s3 up -d   # with the bundled Seawee
 [docs/docker-quickstart.md](docs/docker-quickstart.md) lists what each profile
 requires.
 
+### MCP gateway and tool review
+
+In the Docker stack (`MCP_GATEWAY_ENABLED=true`) the backend never connects to an
+external MCP server itself. Agent tool calls, MCP Apps, discovery, connection tests,
+health checks and OAuth metadata all go through the `mcp-runtime` relay. The relay lets a
+run call only the tools it selected and holds the server's credentials sealed in
+short-lived tokens. Newly discovered tools wait for a server manager's approval on the
+server detail before agents can use them. A changed definition waits too, and agents keep
+the approved one until then. Server URLs resolve from the `mcp-runtime` container, so a
+server on your machine is `host.docker.internal`, not `localhost`.
+
 ## Local development
 
 Requirements: [uv](https://docs.astral.sh/uv/) (installs Python 3.12),
