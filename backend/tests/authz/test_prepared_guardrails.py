@@ -8,7 +8,7 @@ child, records them in the lease digest, and still falls back for approval rules
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from langchain_core.messages import AIMessage
@@ -203,7 +203,7 @@ async def test_every_compiled_child_gets_the_guardrail_and_tool_risk(
 
     def recording_child(spec: dict[str, Any], **kwargs: Any) -> Any:
         compiled.append(spec)
-        return create_sub_agent(spec, **kwargs)
+        return create_sub_agent(cast(Any, spec), **kwargs)
 
     base_seams = kit.seams
     monkeypatch.setattr(
