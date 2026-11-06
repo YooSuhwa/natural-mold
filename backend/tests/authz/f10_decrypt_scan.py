@@ -24,6 +24,8 @@ STORAGE = frozenset(
         "credentials/tenant_encryption.py",
         # H-08: storage layer of the SSO connection secret (client secret / bind password).
         "auth/sso/secret_box.py",
+        # Storage layer of the guardrail pseudonym map (encrypted conversation values).
+        "guardrails/pseudonyms.py",
     }
 )
 PURPOSES: dict[str, frozenset[str]] = {

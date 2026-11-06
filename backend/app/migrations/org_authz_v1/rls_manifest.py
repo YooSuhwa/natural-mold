@@ -49,6 +49,7 @@ DIRECT_TENANT: Final = frozenset(
         "group_members",
         "groups",
         "guardrail_events",  # guardrail detection records (company rows)
+        "guardrail_pseudonyms",  # conversation pseudonym maps (encrypted values)
         "marketplace_installations",
         "marketplace_items",
         "mcp_servers",

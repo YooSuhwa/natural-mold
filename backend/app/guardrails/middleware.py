@@ -42,6 +42,7 @@ from app.guardrails.actions import Applied, Decision, apply, block_notice
 from app.guardrails.detectors import Finding
 from app.guardrails.events import EventLog, RunScope, trace
 from app.guardrails.model_pack import detect_texts
+from app.guardrails.pseudonyms import Pseudonyms
 from app.guardrails.rules import RuleSet, Stage
 from app.guardrails.stream import GuardrailStreamTransformer
 from app.security import key_provider
@@ -152,10 +153,12 @@ class Guard:
     _cache: OrderedDict[str, list[Finding]] = field(default_factory=OrderedDict)
     _key: bytes | None = None
     _log: EventLog | None = None
+    pseudonyms: Pseudonyms = field(init=False)
 
     def __post_init__(self) -> None:
         if self.scope is not None:
             self._log = EventLog(self.scope)
+        self.pseudonyms = Pseudonyms(lambda: self.key, self.scope)
 
     @property
     def key(self) -> bytes:
@@ -180,6 +183,8 @@ class Guard:
         self, texts: Sequence[str], stage: Stage, *, record: bool = True
     ) -> list[Applied]:
         """``record=False`` for display copies (the stream) of something already recorded."""
+        if any(r.action == "pseudonymize" and stage in r.stages for r in self.rules.rules):
+            await self.pseudonyms.load()
         if not record:
             return self._apply(texts, stage, await self._findings(texts, stage))
         run_id = self.scope.run_id if self.scope is not None else None
@@ -205,14 +210,32 @@ class Guard:
         self, texts: Sequence[str], stage: Stage, findings: list[list[Finding]]
     ) -> list[Applied]:
         return [
-            apply(text, found, self.rules, stage, self.key)
+            apply(text, found, self.rules, stage, self.key, self.pseudonyms.token_for)
             for text, found in zip(texts, findings, strict=True)
         ]
 
     async def flush(self) -> None:
-        """Write this hook's records (best effort)."""
+        """Write this hook's records and new pseudonyms (best effort)."""
         if self._log is not None:
             await self._log.flush()
+        await self.pseudonyms.flush()
+
+    async def restore(self, text: str, *, for_tools: bool = False) -> str:
+        """Pseudonyms back to values: always for the user; for tools only where a rule says so."""
+        await self.pseudonyms.load()
+        if not for_tools:
+            return self.pseudonyms.restore(text)
+        return self.pseudonyms.restore(
+            text, keep=lambda entity: not self._restores_for_tools(entity)
+        )
+
+    def _restores_for_tools(self, entity: str) -> bool:
+        return any(
+            rule.action == "pseudonymize"
+            and rule.restore_for_tools
+            and (rule.entities is None or entity in rule.entities)
+            for rule in self.rules.rules
+        )
 
     async def guard_messages(
         self, messages: Sequence[AnyMessage]
@@ -283,7 +306,9 @@ class GuardrailMiddleware(AgentMiddleware):
                 slots = [
                     (slot, text) for slot, text in _message_texts(0, message) if slot.kind != "arg"
                 ]
-                checked = await self.guard.check([text for _, text in slots], "output")
+                # Pseudonyms the model wrote come back as the values before the output check.
+                restored = [await self.guard.restore(text) for _, text in slots]
+                checked = await self.guard.check(restored, "output")
                 if any(r.blocked for r in checked):
                     notice = block_notice(tuple(d for r in checked for d in r.decisions))
                     message = message.model_copy(update={"content": notice})
@@ -314,7 +339,8 @@ class GuardrailMiddleware(AgentMiddleware):
     async def _guard_tool_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
         call = request.tool_call
         leaves = _leaves(call.get("args"))
-        results = await self.guard.check([text for _, text in leaves], "tool_args")
+        restored = [await self.guard.restore(text, for_tools=True) for _, text in leaves]
+        results = await self.guard.check(restored, "tool_args")
         decisions = tuple(d for r in results for d in r.decisions)
         if any(d.action == "block" for d in decisions):
             return ToolMessage(
@@ -399,7 +425,8 @@ class _StreamGuard:
         self._guard = guard
 
     async def check(self, texts: Sequence[str], stage: Stage) -> list[Applied]:
-        return await self._guard.check(texts, stage, record=False)
+        restored = [await self._guard.restore(text) for text in texts]
+        return await self._guard.check(restored, stage, record=False)
 
 
 def middleware_name(item: Any) -> str | None:

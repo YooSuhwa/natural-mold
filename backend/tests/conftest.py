@@ -175,10 +175,12 @@ def _patch_conversation_run_worker_session(monkeypatch):
     )
     from app.database import tenant_session
     from app.guardrails import events as guardrail_events
+    from app.guardrails import pseudonyms as guardrail_pseudonyms
 
-    monkeypatch.setattr(
-        guardrail_events, "tenant_session", lambda ctx: tenant_session(ctx, maker=TestSession)
-    )
+    for module in (guardrail_events, guardrail_pseudonyms):
+        monkeypatch.setattr(
+            module, "tenant_session", lambda ctx: tenant_session(ctx, maker=TestSession)
+        )
     model_settings.invalidate()
 
 
