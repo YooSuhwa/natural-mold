@@ -63,6 +63,12 @@ x-backend-environment: &backend-environment
   OPENFGA_API_TOKEN: ${OPENFGA_API_TOKEN:-moldy-dev-openfga-token}
   AUTHZ_MODE: ${AUTHZ_MODE:-legacy}
   DB_RLS_ENABLED: ${DB_RLS_ENABLED:-false}
+  # Object storage (app/storage/object_store.py): local disk by default; STORAGE_BACKEND=s3
+  # with the `s3` profile uses the bundled SeaweedFS, or point the URL and keys elsewhere.
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+  STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://s3:8333}
+  STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-moldy}
+  STORAGE_S3_CREATE_BUCKET: ${STORAGE_S3_CREATE_BUCKET:-true}
 
 # Secrets (ENCRYPTION_KEYS, JWT_SECRET, optional LLM keys) may come from
 # backend/.env — the same file the local-dev workflow creates. Optional: without
@@ -160,6 +166,10 @@ services:
             "ENCRYPTION_KEYS": lambda: secrets.token_hex(32),
             "JWT_SECRET": lambda: secrets.token_urlsafe(64),
             "SKILL_SANDBOX_API_KEY": lambda: secrets.token_urlsafe(32),
+            # Keys of the bundled S3 server (`s3` profile); a company S3 set in the
+            # environment takes precedence, like every value in this file.
+            "STORAGE_S3_ACCESS_KEY_ID": lambda: "moldy" + secrets.token_hex(8),
+            "STORAGE_S3_SECRET_ACCESS_KEY": lambda: secrets.token_urlsafe(32),
         }
         lines = open(path).read().splitlines() if os.path.exists(path) else []
         present = {line.split("=", 1)[0] for line in lines if "=" in line}
@@ -309,6 +319,33 @@ services:
       openfga:
         condition: service_healthy
 
+  # Bundled S3-compatible storage (SeaweedFS, Apache-2.0; decision D19), only with
+  # `--profile s3`. Credentials come from init-secrets; it publishes no host port.
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    profiles: ["s3"]
+    entrypoint: *backend-entrypoint
+    command:
+      - sh
+      - -c
+      - |
+        umask 077
+        printf '{"identities":[{"name":"moldy","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$$STORAGE_S3_ACCESS_KEY_ID" "$$STORAGE_S3_SECRET_ACCESS_KEY" > /tmp/s3.json
+        exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json
+    volumes:
+      - s3_data:/data
+      - moldy_runtime:/run/moldy:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8333/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    depends_on:
+      init-secrets:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   # Generic background jobs (app/jobs): a separate process that claims due jobs from the
   # jobs table and runs them in each job's company session. More replicas share the
   # queue safely (FOR UPDATE SKIP LOCKED); a stopped worker's jobs are taken again.
@@ -411,6 +448,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  s3_data:
   postgres_data:
   backend_data:
   openfga_data:

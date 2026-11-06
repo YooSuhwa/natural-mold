@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Final, Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.authz.config import AuthzSettings
@@ -222,6 +223,38 @@ class Settings(AuthzSettings):
     artifact_s3_access_key_id: str = ""
     artifact_s3_secret_access_key: str = ""
 
+    # Object storage for new file kinds (app/storage/object_store.py, plan §11.6). "local":
+    # files under storage_local_root (single server). "s3": an S3-compatible bucket shared
+    # by every backend and worker (the bundled SeaweedFS of the `s3` Compose profile, or the
+    # company's own). The ARTIFACT_S3_* names are read as aliases.
+    storage_backend: Literal["local", "s3"] = "local"
+    storage_local_root: str = "./data/objects"
+    storage_s3_endpoint_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("STORAGE_S3_ENDPOINT_URL", "ARTIFACT_S3_ENDPOINT_URL"),
+    )
+    storage_s3_bucket: str = Field(
+        default="", validation_alias=AliasChoices("STORAGE_S3_BUCKET", "ARTIFACT_S3_BUCKET")
+    )
+    storage_s3_access_key_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("STORAGE_S3_ACCESS_KEY_ID", "ARTIFACT_S3_ACCESS_KEY_ID"),
+    )
+    storage_s3_secret_access_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "STORAGE_S3_SECRET_ACCESS_KEY", "ARTIFACT_S3_SECRET_ACCESS_KEY"
+        ),
+    )
+    storage_s3_region: str = "us-east-1"
+    # Path-style addressing (bucket in the path): SeaweedFS, Ceph RGW and most on-premise
+    # stores need it.
+    storage_s3_path_style: bool = True
+    # "AES256" or "aws:kms" where the store supports server-side encryption; empty: off.
+    storage_s3_server_side_encryption: str = ""
+    # Create the bucket at the first health check (the bundled server starts empty).
+    storage_s3_create_bucket: bool = False
+
     # Builder / Assistant sub-agent model defaults (서비스 내부용)
     builder_model_provider: str = "anthropic"
     builder_model_name: str = "claude-sonnet-4-6"
@@ -357,6 +390,7 @@ _LANE_PATH_DEFAULTS: Final[dict[str, str]] = {
     "artifact_storage_dir": "backend/data/artifacts",
     "agent_image_dir": "backend/data/agents",
     "user_avatar_dir": "backend/data/users",
+    "storage_local_root": "backend/data/objects",
 }
 
 
