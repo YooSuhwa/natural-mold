@@ -122,8 +122,15 @@ services:
     restart: unless-stopped
     # No host ports: FGA API and metrics are available only in the Compose network.
 
+  # postgres:16-alpine plus the pgvector extension (docker/postgres), for the knowledge search
+  # index (feature plan v2 순번 5). Same Alpine base, so existing data volumes stay valid.
   postgres:
-    image: postgres:16-alpine
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+      secrets:
+        - extra_ca
+    image: moldy-postgres:local
     environment:
       POSTGRES_USER: moldy
       POSTGRES_PASSWORD: moldy
