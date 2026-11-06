@@ -2,6 +2,8 @@
 
 Stages covered here:
 
+* ① ``input`` — the user's new message, once per run at the first model call; a block
+  answers with a notice instead of calling the model, a warning is only recorded.
 * ② ``llm_send`` — ``awrap_model_call`` changes only this call's copy of the messages;
   the stored history, checkpoint and screen keep the original values (plan §3.1). A block
   answers with a notice instead of calling the model.
@@ -35,7 +37,13 @@ from langchain.agents.middleware.types import (
     ModelRequest,
     ModelResponse,
 )
-from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    BaseMessage,
+    HumanMessage,
+    ToolMessage,
+)
 from langgraph.types import Command
 
 from app.guardrails.actions import Applied, Decision, apply, block_notice
@@ -154,6 +162,8 @@ class Guard:
     _key: bytes | None = None
     _log: EventLog | None = None
     pseudonyms: Pseudonyms = field(init=False)
+    # ① Human messages already checked this run (a run checks each new message once).
+    _inputs_checked: set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         if self.scope is not None:
@@ -261,11 +271,33 @@ class Guard:
         guarded = [_rebuild(m, changes[i]) if i in changes else m for i, m in enumerate(messages)]
         return guarded, tuple(decisions)
 
+    async def check_input(self, messages: Sequence[AnyMessage]) -> tuple[Decision, ...]:
+        """① The latest user message, once per run, before the model sees anything.
+
+        Checked at the model call (not ``before_agent``) so a block answers the way a
+        blocked request does, through the model node the screen already renders.
+        """
+        if not self.rules.packs_for("input"):
+            return ()
+        human = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
+        if human is None:
+            return ()
+        text = "\n".join(t for _, t in _message_texts(0, human))
+        digest = hashlib.sha256(text.encode()).hexdigest()
+        if not text or digest in self._inputs_checked:
+            return ()
+        self._inputs_checked.add(digest)
+        [result] = await self.check([text], "input")
+        return result.decisions
+
     async def guard_request(
         self,
         request: ModelRequest,
         handler: Callable[[ModelRequest], Awaitable[Any]],
     ) -> Any:
+        attempted = await self.check_input(request.messages)
+        if any(d.action == "block" for d in attempted):
+            return ModelResponse(result=[AIMessage(content=block_notice(attempted))])
         messages, decisions = await self.guard_messages(request.messages)
         if any(d.action == "block" for d in decisions):
             return ModelResponse(result=[AIMessage(content=block_notice(decisions))])

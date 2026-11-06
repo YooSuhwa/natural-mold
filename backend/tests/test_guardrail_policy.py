@@ -134,7 +134,7 @@ async def test_an_agent_template_still_carries_the_locked_rules(db: AsyncSession
 
     rules = await _resolve(agent)
     assert rules.template == "builtin:kr-observe"
-    assert _ids(rules) == {"observe", "secrets"}
+    assert _ids(rules) == {"observe", "jailbreak", "secrets"}
 
 
 async def test_enforced_ignores_an_agent_switching_off(db: AsyncSession) -> None:
@@ -267,7 +267,8 @@ async def test_a_template_is_drafted_published_as_versions_and_archived(
 
     first = await client.post(f"{url}/publish", headers=_version(template))
     assert first.json()["published_version"] == 1
-    rules[0]["action"] = "redact"
+    secrets = next(rule for rule in rules if rule["id"] == "secrets")
+    secrets["action"] = "redact"
     stale = await client.patch(url, json={"rules": rules}, headers=_version(template))
     assert stale.status_code == 409 and stale.json()["error"]["code"] == "stale_version"
     edited = await client.patch(url, json={"rules": rules}, headers=_version(first.json()))
@@ -277,7 +278,7 @@ async def test_a_template_is_drafted_published_as_versions_and_archived(
     async with TestSession() as check:
         current = await policy.template_rules(check, TEST_TENANT_ID, template["ref"])
     assert current is not None and current.version == 2
-    assert current.rules[0].action == "redact"
+    assert {r.id: r.action for r in current.rules}["secrets"] == "redact"
 
     etag = (await client.get(POLICY)).headers["ETag"]
     await client.put(
@@ -518,7 +519,7 @@ async def test_an_earlier_version_is_published_again_as_the_next_one(
     url = f"{TEMPLATES}/{created['id']}"
     v1 = (await client.post(f"{url}/publish", headers=_version(created))).json()
     rules = v1["draft_rules"]
-    rules[0]["action"] = "warn"
+    next(rule for rule in rules if rule["id"] == "secrets")["action"] = "warn"
     edited = (await client.patch(url, json={"rules": rules}, headers=_version(v1))).json()
     v2 = (await client.post(f"{url}/publish", headers=_version(edited))).json()
 
@@ -531,13 +532,18 @@ async def test_an_earlier_version_is_published_again_as_the_next_one(
     assert missing.status_code == 404
     assert reverted.status_code == 200, reverted.text
     assert reverted.json()["published_version"] == 3
-    assert reverted.json()["draft_rules"][0]["action"] == "block"
+    secrets = {r["id"]: r["action"] for r in reverted.json()["draft_rules"]}["secrets"]
+    assert secrets == "block"
     async with TestSession() as check:
         rules_now = await policy.template_rules(check, TEST_TENANT_ID, created["ref"])
     assert rules_now is not None and rules_now.version == 3
-    assert rules_now.rules[0].action == "block"
+    assert {r.id: r.action for r in rules_now.rules}["secrets"] == "block"
     versions = (await client.get(f"{url}/versions")).json()
-    assert [(v["version"], v["rules"][0]["action"]) for v in versions] == [
+
+    def secrets_action(rules: list[dict[str, Any]]) -> str:
+        return {r["id"]: r["action"] for r in rules}["secrets"]
+
+    assert [(v["version"], secrets_action(v["rules"])) for v in versions] == [
         (3, "block"),
         (2, "warn"),
         (1, "block"),

@@ -31,6 +31,7 @@ LABELS: dict[str, str] = {
     "IP": "IP 주소",
     "URL": "URL",
     "SECRET": "비밀값",
+    "JAILBREAK": "지시 무시·탈옥 시도",
 }
 _GENERIC_LABEL = "개인정보"
 

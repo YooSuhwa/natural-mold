@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 # output: what the model answers, streamed to the user and stored (plan stage ⑤).
-Stage = Literal["llm_send", "tool_args", "tool_result", "output"]
+# ``input``: the user's new message, before the model (①; block or warn only).
+Stage = Literal["input", "llm_send", "tool_args", "tool_result", "output"]
 Action = Literal["block", "redact", "hash", "pseudonymize", "mask", "warn"]
 
 # The strongest action wins when rules overlap on one span.
@@ -77,6 +78,7 @@ _SEND_OUT: frozenset[Stage] = frozenset({"llm_send", "output"})
 _IN: frozenset[Stage] = frozenset({"llm_send", "tool_args", "tool_result"})
 _OUT: frozenset[Stage] = frozenset({"output"})
 _ALL: frozenset[Stage] = _IN | _OUT
+_INPUT: frozenset[Stage] = frozenset({"input"})
 _IDS = frozenset(
     {"RRN", "FRN", "PASSPORT", "DRIVER_LICENSE", "CARD", "ACCOUNT", "MEDICAL_INSURANCE"}
 )
@@ -88,8 +90,9 @@ BUILTIN_TEMPLATES: dict[str, RuleSet] = {
     # in answers and tool arguments (plan §3.3.1).
     "kr-default": RuleSet(
         "kr-default",
-        3,
+        4,
         (
+            Rule("jailbreak", ("jailbreak",), _INPUT, "warn"),
             Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
             Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
             Rule("kr-identifiers", ("kr_model",), _ALL, "redact", _IDS),
@@ -110,8 +113,9 @@ BUILTIN_TEMPLATES: dict[str, RuleSet] = {
     # kr-default with natural pseudonyms for people (plan §3.3.1).
     "kr-natural": RuleSet(
         "kr-natural",
-        1,
+        2,
         (
+            Rule("jailbreak", ("jailbreak",), _INPUT, "warn"),
             Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
             Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
             Rule("kr-identifiers", ("kr_model",), _ALL, "redact", _IDS),
@@ -136,6 +140,7 @@ BUILTIN_TEMPLATES: dict[str, RuleSet] = {
         "kr-strict",
         1,
         (
+            Rule("jailbreak", ("jailbreak",), _INPUT, "block"),
             Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
             Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
             Rule("kr-identifiers", ("kr_model",), _IN, "block", _IDS),
@@ -164,6 +169,7 @@ BUILTIN_TEMPLATES: dict[str, RuleSet] = {
         "common-basic",
         1,
         (
+            Rule("jailbreak", ("jailbreak",), _INPUT, "warn"),
             Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
             Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
             Rule("cards", ("common",), _ALL, "redact", frozenset({"CARD"})),
@@ -172,7 +178,12 @@ BUILTIN_TEMPLATES: dict[str, RuleSet] = {
     ),
     # Observation mode: every finding recorded, nothing changed.
     "kr-observe": RuleSet(
-        "kr-observe", 2, (Rule("observe", ("common", "kr_model"), _ALL, "warn"),)
+        "kr-observe",
+        3,
+        (
+            Rule("observe", ("common", "kr_model"), _ALL, "warn"),
+            Rule("jailbreak", ("jailbreak",), _INPUT, "warn"),
+        ),
     ),
 }
 

@@ -20,6 +20,7 @@ export const GUARDRAIL_ACTIONS: readonly GuardrailAction[] = [
   'warn',
 ]
 export const GUARDRAIL_STAGES: readonly GuardrailStage[] = [
+  'input',
   'llm_send',
   'tool_args',
   'tool_result',
@@ -41,6 +42,13 @@ export const DEFAULT_TOOL_RISK: Readonly<Record<ToolRiskLevel, ToolRiskAction>> 
   external_mutation: 'approval',
   code_execution: 'approval',
   unknown: 'approval',
+}
+
+/** The user's message stays as written: an input-stage rule only blocks or records. */
+export const INPUT_ACTIONS: readonly GuardrailAction[] = ['block', 'warn']
+
+export function actionsFor(stages: readonly GuardrailStage[]): readonly GuardrailAction[] {
+  return stages.includes('input') ? INPUT_ACTIONS : GUARDRAIL_ACTIONS
 }
 
 /** Built-in rule ids get a readable name; a company's own rule shows its id. */

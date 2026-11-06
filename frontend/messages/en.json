@@ -3955,12 +3955,14 @@
         "restoreForToolsHint": "Pseudonymized names and addresses are restored in tool arguments.",
         "removeRule": "Remove rule {rule}",
         "needStage": "Choose at least one stage.",
+        "inputActions": "At the user input stage only Block or Record only can be chosen.",
         "needRule": "Keep at least one rule.",
         "save": "Save draft",
         "saved": "Draft saved."
       }
     },
     "rule": {
+      "jailbreak": "Instruction override and jailbreak attempts",
       "secrets": "Secrets (API keys, tokens)",
       "secrets-output": "Secrets in answers",
       "kr-identifiers": "ID numbers (resident, foreigner, passport, license, card, account, health insurance)",
@@ -3980,6 +3982,7 @@
       "warn": "Record only"
     },
     "stage": {
+      "input": "User input",
       "llm_send": "Sent to the model",
       "tool_args": "Tool arguments",
       "tool_result": "Tool results",

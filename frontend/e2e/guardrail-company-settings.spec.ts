@@ -173,7 +173,7 @@ test.describe('Company guardrails (company admin)', () => {
         mode: 'inherit',
         rule_overrides: { people: { enabled: false, action: null } },
       })
-    await expect(card.getByTestId('agent-guardrail-effective')).toContainText('kr-default v3')
+    await expect(card.getByTestId('agent-guardrail-effective')).toContainText('kr-default v4')
     await card.getByRole('button', { name: '끔' }).click()
     await expect(card.getByText(/잠근 규칙 1개는 계속 적용됩니다/)).toBeVisible()
     await card.screenshot({ path: path.join(CAPTURE_DIR, '07-agent-card-off.png') })

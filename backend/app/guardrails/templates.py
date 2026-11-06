@@ -21,6 +21,8 @@ _STAGES = frozenset(get_args(Stage))
 _ACTIONS = frozenset(get_args(Action))
 _PACK_NAMES = frozenset(PACKS) | {MODEL_PACK}
 _STYLES = frozenset({"tag", "natural"})
+# The user's message stays as written in the history: input rules block or record only.
+_INPUT_ACTIONS = frozenset({"block", "warn"})
 
 
 class InvalidRulesError(ValueError):
@@ -71,6 +73,8 @@ def rule_from_json(data: Any, index: int) -> Rule:
     style = data.get("pseudonym_style", "tag")
     if style not in _STYLES:
         raise InvalidRulesError(f"rule {rule_id}: pseudonym_style must be tag or natural")
+    if "input" in stages and action not in _INPUT_ACTIONS:
+        raise InvalidRulesError(f"rule {rule_id}: the input stage only blocks or warns")
     restore = data.get("restore_for_tools", False)
     if not isinstance(restore, bool):
         raise InvalidRulesError(f"rule {rule_id}: restore_for_tools must be true or false")

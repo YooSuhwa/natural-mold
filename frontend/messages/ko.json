@@ -3955,12 +3955,14 @@
         "restoreForToolsHint": "가명으로 바뀐 이름·주소를 도구 인자에서는 원래 값으로 되돌립니다.",
         "removeRule": "{rule} 규칙 삭제",
         "needStage": "검사 단계를 하나 이상 고르세요.",
+        "inputActions": "사용자 입력 단계에서는 차단이나 기록만 고를 수 있습니다.",
         "needRule": "규칙이 하나 이상 있어야 합니다.",
         "save": "초안 저장",
         "saved": "초안을 저장했습니다."
       }
     },
     "rule": {
+      "jailbreak": "지시 무시·탈옥 시도",
       "secrets": "비밀값(API 키·토큰)",
       "secrets-output": "답변 속 비밀값",
       "kr-identifiers": "식별번호(주민·외국인·여권·면허·카드·계좌·건강보험)",
@@ -3980,6 +3982,7 @@
       "warn": "기록만"
     },
     "stage": {
+      "input": "사용자 입력",
       "llm_send": "모델로 보낼 때",
       "tool_args": "도구 인자",
       "tool_result": "도구 결과",

@@ -140,7 +140,11 @@ def apply_overrides(
         if change.get("enabled") is False:
             continue
         action = change.get("action")
-        kept.append(replace(rule, action=action) if action in ACTION_STRENGTH else rule)
+        # The user's message stays as written: an input rule only blocks or warns.
+        allowed = action in ACTION_STRENGTH and (
+            "input" not in rule.stages or action in ("block", "warn")
+        )
+        kept.append(replace(rule, action=action) if allowed else rule)
     return replace(rules, rules=tuple(kept))
 
 

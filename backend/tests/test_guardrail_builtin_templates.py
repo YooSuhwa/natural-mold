@@ -51,7 +51,7 @@ async def test_strict_replaces_contacts_instead_of_masking_them() -> None:
 
 async def test_common_basic_needs_no_korean_pack_and_still_guards_secrets_and_cards() -> None:
     rules = BUILTIN_TEMPLATES["common-basic"]
-    assert {pack for rule in rules.rules for pack in rule.packs} == {"common"}
+    assert not {pack for rule in rules.rules for pack in rule.packs} & {"kr", "kr_model"}
 
     blocked = _model(AIMessage(content="x"))
     await _run(blocked, f"키 {SECRET}", rules=rules)

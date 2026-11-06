@@ -1,7 +1,7 @@
 /** Guardrail policy, templates and agent choice (backend `app/schemas/guardrails.py`). */
 
 export type GuardrailPolicyMode = 'off' | 'open' | 'default' | 'enforced'
-export type GuardrailStage = 'llm_send' | 'tool_args' | 'tool_result' | 'output'
+export type GuardrailStage = 'input' | 'llm_send' | 'tool_args' | 'tool_result' | 'output'
 export type GuardrailAction = 'block' | 'redact' | 'hash' | 'pseudonymize' | 'mask' | 'warn'
 export type GuardrailPseudonymStyle = 'tag' | 'natural'
 export type GuardrailTemplateStatus = 'draft' | 'published' | 'archived'
