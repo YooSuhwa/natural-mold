@@ -185,7 +185,10 @@ export function useMcpWizardController({
         ? await createFromRegistry.mutateAsync(buildMcpRegistryPayload(form))
         : await create.mutateAsync(buildMcpServerPayload(form))
       try {
-        await discover.mutateAsync(server.id)
+        const found = await discover.mutateAsync(server.id)
+        const waiting = found.tools.filter((tool) => tool.review_state === 'pending').length
+        // D11: discovered tools reach agents only after a review on the server's detail.
+        if (waiting > 0) toast.info(t('toast.toolsAwaitReview', { count: waiting }))
       } catch {
         toast.warning(t('toast.importFailedAfterSave'))
       }

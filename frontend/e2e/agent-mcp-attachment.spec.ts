@@ -37,10 +37,30 @@ test('discovered MCP tool attaches, survives reload and detaches from agent sett
       }),
     ).id
     const discovered = z
-      .object({ tools: z.array(idSchema.extend({ name: z.string() })) })
+      .object({
+        tools: z.array(
+          idSchema.extend({
+            name: z.string(),
+            review_state: z.string(),
+            pending_version: z.object({ fingerprint: z.string() }).nullable(),
+          }),
+        ),
+      })
       .parse(await apiPostJson(request, `${API_BASE}/api/mcp-servers/${serverId}/discover`, csrf))
     const weather = discovered.tools.find((tool) => tool.name === 'weather')
-    if (!weather) throw new Error('Local MCP discovery did not return weather')
+    if (!weather?.pending_version) throw new Error('Local MCP discovery did not return weather')
+    // D11: a discovered tool waits for the server manager's review before it can be attached.
+    expect(weather.review_state).toBe('pending')
+    const attachable = z
+      .array(idSchema)
+      .parse(await apiGetJson(request, `${API_BASE}/api/mcp-servers/all-tools`))
+    expect(attachable.map((tool) => tool.id)).not.toContain(weather.id)
+    await apiPostJson(
+      request,
+      `${API_BASE}/api/mcp-servers/${serverId}/tools/${weather.id}/review`,
+      csrf,
+      { decision: 'approve', fingerprint: weather.pending_version.fingerprint },
+    )
     const models = z
       .array(idSchema.extend({ provider: z.string(), model_name: z.string() }))
       .parse(await apiGetJson(request, `${API_BASE}/api/models`))

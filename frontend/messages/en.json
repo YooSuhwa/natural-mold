@@ -3603,6 +3603,7 @@
         "required": "Required",
         "probeFailed": "Operation failed.",
         "importFailedAfterSave": "Operation failed.",
+        "toolsAwaitReview": "{count} tools wait for review. Approve them on the server's detail to attach them to agents.",
         "added": "Added",
         "addFailed": "Operation failed."
       },
