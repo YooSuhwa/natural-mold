@@ -174,6 +174,10 @@ class Settings(AuthzSettings):
     # (app/guardrails/rules.py: kr-default, kr-natural, kr-strict, common-basic, kr-observe).
     # Empty: only agents that chose a template. An unknown name fails the run.
     guardrail_default_template: str = ""
+    # Generic background jobs (app/jobs): the separate worker process's parallel jobs and
+    # how often an idle worker looks for due jobs.
+    jobs_worker_concurrency: int = 2
+    jobs_poll_seconds: float = 2.0
 
     skill_evaluation_enabled: bool = True
     skill_evaluation_max_concurrent: int = 1

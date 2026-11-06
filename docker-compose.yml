@@ -302,6 +302,25 @@ services:
       openfga:
         condition: service_healthy
 
+  # Generic background jobs (app/jobs): a separate process that claims due jobs from the
+  # jobs table and runs them in each job's company session. More replicas share the
+  # queue safely (FOR UPDATE SKIP LOCKED); a stopped worker's jobs are taken again.
+  worker:
+    build: *backend-build
+    entrypoint: *backend-entrypoint
+    command: ["uv", "run", "--no-sync", "python", "-m", "app.jobs.worker"]
+    environment: *backend-environment
+    env_file: *backend-env-file
+    volumes:
+      - backend_data:/app/data
+      - moldy_runtime:/run/moldy:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   backend:
     build: *backend-build
     entrypoint: *backend-entrypoint
