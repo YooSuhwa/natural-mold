@@ -29,10 +29,10 @@ def test_d06_routes_declare_plan_policies() -> None:
         if isinstance(route, APIRoute) and route.endpoint.__module__ in DOMAIN
         for method in route.methods
     }
-    assert len(routes) == 28
+    assert len(routes) == 29
     v1 = {k: p for k, p in routes.items() if " /v1/" in k}
     assert v1.pop("GET /v1/health") == PUBLIC
-    assert len(v1) == 10 and set(v1.values()) == {KEY("can_deploy")}
+    assert len(v1) == 11 and set(v1.values()) == {KEY("can_deploy")}
     assert routes["GET /api/agent-api/deployment-candidates"] == CANDIDATES("agent", "can_deploy")
     assert routes["POST /api/agent-api/keys/{api_key_id}/revoke"] == PRIVATE(
         "agent_api_keys", param="api_key_id"

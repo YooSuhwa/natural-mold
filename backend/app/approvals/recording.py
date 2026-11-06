@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from typing import Any
 
 from sqlalchemy import select
@@ -90,7 +91,7 @@ async def record_interrupted_run(
             db,
             run,
             interrupts,
-            origin=service.RunOrigin(name, base.source, base.trigger_id, base.trigger_run_id),
+            origin=replace(base, agent_name=name),
             secret_values=secret_values,
         )
         unattended = [row for row in rows if row.source != "chat"]
@@ -107,6 +108,38 @@ async def record_interrupted_run_best_effort(
         await record_interrupted_run(run_id, context, secret_values=secret_values)
     except Exception:
         logger.exception("approval request recording failed run_id=%s", run_id)
+
+
+async def waiting_interrupts(conversation_id: uuid.UUID) -> list[service.PendingInterrupt]:
+    """The approval interrupts the conversation's checkpoint is paused on (no questions)."""
+    return [
+        interrupt
+        for interrupt in await checkpoint_interrupts(conversation_id)
+        if service.approval_actions(interrupt.payload) is not None
+    ]
+
+
+async def pause(
+    *,
+    run_id: uuid.UUID,
+    context: OrgContext,
+    interrupts: list[service.PendingInterrupt],
+    origin: service.RunOrigin,
+    secret_values: Iterable[str],
+) -> bool:
+    """An unattended run waits for the inbox (17.3): mark the owned run ``interrupted`` (its
+    worker slot is released, only the checkpoint remains) and record its requests with the
+    envelope (schedule run or API run) that waits; ``False`` if the run is not ours."""
+    from app.services.conversation_run_service import transition_run
+
+    async with tenant_session(context, maker=async_session) as db:
+        run = await db.get(ConversationRun, run_id, with_for_update=True)
+        if run is None or run.status != "running":
+            return False
+        await transition_run(db, run, "interrupted", interrupt_id=interrupts[-1].interrupt_id)
+        await db.commit()
+    await record_interrupted_run(run_id, context, secret_values=secret_values, origin=origin)
+    return True
 
 
 async def claim_resume(
@@ -137,6 +170,8 @@ __all__ = [
     "claim_resume",
     "decision_types",
     "notify_requested",
+    "pause",
     "record_interrupted_run",
     "record_interrupted_run_best_effort",
+    "waiting_interrupts",
 ]

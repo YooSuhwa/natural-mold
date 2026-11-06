@@ -66,6 +66,7 @@ def deployment_to_response(row: AgentDeployment) -> AgentDeploymentResponse:
         allow_background=row.allow_background,
         rate_limit_per_minute=row.rate_limit_per_minute,
         daily_token_limit=row.daily_token_limit,
+        approval_policy="inbox" if row.approval_policy == "inbox" else "blocked",
         runtime_policy=_public_runtime_policy(row.agent),
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -202,6 +203,7 @@ async def create_deployment(
         allow_background=data.allow_background,
         rate_limit_per_minute=data.rate_limit_per_minute,
         daily_token_limit=data.daily_token_limit,
+        approval_policy=data.approval_policy,
     )
     db.add(row)
     await db.commit()
@@ -245,6 +247,8 @@ async def update_deployment(
         row.rate_limit_per_minute = data.rate_limit_per_minute
     if data.daily_token_limit is not None:
         row.daily_token_limit = data.daily_token_limit
+    if data.approval_policy is not None:
+        row.approval_policy = data.approval_policy
     await db.commit()
     await db.refresh(row)
     return row

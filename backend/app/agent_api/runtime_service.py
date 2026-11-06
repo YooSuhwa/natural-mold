@@ -25,6 +25,7 @@ from app.agent_api.run_acceptance import (
 )
 from app.agent_api.run_execution import (
     ApiOwnedExecution,
+    approval_mode,
     build_config_for_run,
     execute_owned_wait,
     mark_run_failed,
@@ -80,7 +81,7 @@ __all__ = ["ApiOwnedExecution", "AgentApiRunInputPayload", "_API_MESSAGES", "ext
 __all__ += ["external_thread_id", "resolve_deployment_for_agent_id", "create_api_conversation"]
 __all__ += ["create_thread", "thread_to_response", "get_thread_for_public_id", "create_run_row"]
 __all__ += ["mark_run_succeeded", "mark_run_failed", "execute_owned_wait", "stream_owned_run"]
-__all__ += ["build_config_for_run", "validate_messages"]
+__all__ += ["build_config_for_run", "validate_messages", "approval_mode"]
 __all__ += [
     "TypeAdapter",
     "PydanticValidationError",

@@ -39,7 +39,9 @@ from app.agent_runtime.trigger_execution_materialization import (
     TriggerOutcome,
     materialize_trigger_run,
 )
-from app.approvals.triggers import TriggerAwaitingApproval, pause, waiting_interrupts
+from app.approvals.recording import pause, waiting_interrupts
+from app.approvals.service import RunOrigin
+from app.approvals.triggers import TriggerAwaitingApproval
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.trigger_scope import require_trigger_actor
 from app.database import SessionTenant, async_session, platform_session, tenant_session
@@ -100,8 +102,11 @@ async def _invoke_trigger(request: _TriggerInvocation) -> str | TriggerAwaitingA
             run_id=request.run_id,
             context=request.config.org_context,
             interrupts=waiting,
-            trigger_id=request.trigger_id,
-            trigger_run_id=request.trigger_run_id,
+            origin=RunOrigin(
+                source="trigger",
+                trigger_id=request.trigger_id,
+                trigger_run_id=request.trigger_run_id,
+            ),
             secret_values=request.config.secret_values,
         )
     ):

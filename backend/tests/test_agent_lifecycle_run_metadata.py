@@ -204,7 +204,7 @@ async def test_foreign_envelope_prevalidation_reads_only_metadata(
         ("completed", "succeeded", "success"),
         ("canceled", "canceled", "canceled"),
         ("failed", "failed", "failed"),
-        ("interrupted", "failed", "waiting"),  # 17.3: the schedule run waits for the inbox
+        ("interrupted", "waiting", "waiting"),  # 17.3: the envelope waits for the inbox
         ("stale", "failed", "failed"),
     ],
 )
