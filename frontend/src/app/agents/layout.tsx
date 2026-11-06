@@ -10,6 +10,8 @@ const AGENT_MESSAGE_NAMESPACES = [
   'usage',
   'credentials',
   'shared',
+  // The agent guardrail card shares rule, action and stage names with company settings.
+  'guardrails',
 ] as const
 
 export default function AgentsLayout({ children }: { children: ReactNode }) {

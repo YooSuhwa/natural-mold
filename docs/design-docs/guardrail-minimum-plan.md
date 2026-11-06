@@ -179,6 +179,7 @@ deepagents 0.7.32 코드 확인 결과, 아래 경로는 등록만으로는 덮�
 4. 회사 정책·템플릿·버전 고정·감사 이벤트.
    - **4-1 구현됨(백엔드)**: 3.4절. i13(세 테이블, 회사 RLS `DIRECT_TENANT`). 시험 `tests/test_guardrail_policy.py`(모드·잠금·변경·API·고정과 재개), `tests/test_guardrail_policy_entry_points.py`(채팅·트리거·Agent API가 회사 정책을 받음). 다음: 4-2 회사 관리 화면(정책·템플릿 편집), 4-3 에이전트 가드레일 카드.
    - **4-2 구현됨(회사 관리 화면)**: 설정 → 회사 → 가드레일(`/settings/company/guardrails`). 구성원은 정책을 읽기만, 회사 관리자는 적용 방식·기본 템플릿·잠근 규칙을 저장하고, 회사 템플릿을 기본 제공·게시 템플릿에서 복사해 만들고 규칙별 처리 방식·검사 단계·가명 옵션을 고친 뒤 게시·보관한다. 규칙이 무엇을 찾는지(묶음·항목)는 복사한 그대로 둔다. 시험 `tests/components/guardrails`, E2E `e2e/guardrail-company-settings.spec.ts`. 이 작업에서 CORS 허용 헤더에 `If-Match`가 빠져 프론트와 백엔드 출처가 다를 때(기본 3000→8001) 버전을 보내는 회사·조직 쓰기가 브라우저에서 모두 막히던 것을 고쳤다.
+   - **4-3 구현됨(에이전트 카드)**: 에이전트 설정 → 설정 탭의 가드레일 카드. 회사 정책 설명, 적용(회사 따름/템플릿 선택/끔), 템플릿 선택, 규칙별 켜기·끄기와 처리 방식(회사 잠금 규칙은 바꿀 수 없음), 끌 때 남는 잠금 규칙 수, 저장된 설정으로 다음 실행이 받는 템플릿·규칙 수. 회사가 끄면 안내만, 강제면 회사 따름만 고를 수 있다. API 응답에 회사 기본 템플릿 참조(`policy_default_template`)를 더했다(끈 규칙을 다시 켤 수 있게 목록을 보여 주기 위해). 시험 `tests/components/guardrails/agent-guardrail-card.test.tsx`, E2E는 `e2e/guardrail-company-settings.spec.ts`의 에이전트 시나리오.
 5. 위험 등급별 기본 조치(C5 최소)와 lease 경로 대체 실행.
 6. P1(① 입력, 가드레일 카드 화면, 기존 미들웨어 이전).
 

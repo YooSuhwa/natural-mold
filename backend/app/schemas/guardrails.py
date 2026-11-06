@@ -83,6 +83,8 @@ class AgentGuardrailOut(BaseModel):
     template_ref: str | None
     rule_overrides: dict[str, GuardrailRuleOverride]
     policy_mode: PolicyMode
+    # The company default the agent inherits (its rules are what overrides apply to).
+    policy_default_template: str | None
     locked_rules: list[str]
     # What the agent's next run gets (None: no guardrail).
     effective: GuardrailTemplateChoice | None

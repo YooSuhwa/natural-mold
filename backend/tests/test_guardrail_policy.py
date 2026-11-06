@@ -302,6 +302,7 @@ async def test_an_agent_chooses_a_template_and_sees_what_its_next_run_gets(
     initial = await client.get(url)
     assert initial.status_code == 200, initial.text
     assert (initial.json()["mode"], initial.json()["effective"]) == ("inherit", None)
+    assert initial.json()["policy_default_template"] is None
 
     saved = await client.put(
         url,
@@ -314,7 +315,7 @@ async def test_an_agent_chooses_a_template_and_sees_what_its_next_run_gets(
 
     assert saved.status_code == 200, saved.text
     effective = saved.json()["effective"]
-    assert effective["ref"] == "builtin:kr-default"
+    assert (effective["ref"], effective["name"]) == ("builtin:kr-default", "kr-default")
     assert "people" not in {rule["id"] for rule in effective["rules"]}
     [event] = [e for e in await actions(agent) if e.action == "guardrail.binding_update"]
     assert event.event_metadata is not None
@@ -330,6 +331,8 @@ async def test_an_enforced_policy_and_locked_rules_cannot_be_undone_by_an_agent(
         mode="enforced", default_template="builtin:kr-default", locked_rules=["secrets"]
     )
 
+    view = await client.get(url)
+    assert view.json()["policy_default_template"] == "builtin:kr-default"
     off = await client.put(url, json={"mode": "off"})
     locked = await client.put(
         url, json={"mode": "inherit", "rule_overrides": {"secrets": {"enabled": False}}}

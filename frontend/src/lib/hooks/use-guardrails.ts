@@ -1,10 +1,12 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { guardrailsApi } from '@/lib/api/guardrails'
+import { agentGuardrailsApi, guardrailsApi } from '@/lib/api/guardrails'
+import { agentQueryKeys } from '@/lib/query-keys/agents'
 import { tenantAdminKeys } from '@/lib/query-keys/tenant-admin'
 import type {
+  AgentGuardrailsUpdate,
   GuardrailPolicyUpdate,
   GuardrailTemplateCreate,
   GuardrailTemplateUpdate,
@@ -54,4 +56,20 @@ export function useGuardrailTemplateMutations(tenantId: string) {
       guardrailsApi.archiveTemplate(tenantId, id),
     ),
   }
+}
+
+export function useAgentGuardrails(agentId: string) {
+  return useQuery({
+    queryKey: agentQueryKeys.guardrails(agentId),
+    queryFn: () => agentGuardrailsApi.get(agentId),
+    retry: false,
+  })
+}
+
+export function useUpdateAgentGuardrails(agentId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: AgentGuardrailsUpdate) => agentGuardrailsApi.put(agentId, data),
+    onSuccess: (result) => queryClient.setQueryData(agentQueryKeys.guardrails(agentId), result),
+  })
 }
