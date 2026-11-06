@@ -65,6 +65,14 @@ export interface GuardrailTemplate {
   updated_at: string
 }
 
+/** One published version; never changes after publishing. */
+export interface GuardrailTemplateVersion {
+  version: number
+  rules: GuardrailRule[]
+  published_at: string
+  published_by: string | null
+}
+
 export interface GuardrailTemplateCreate {
   name: string
   description?: string

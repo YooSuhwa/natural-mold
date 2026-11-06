@@ -15,6 +15,7 @@ import type { GuardrailTemplate, GuardrailTemplateChoice } from '@/lib/types/gua
 import { useGuardrailErrorMessage } from '../lib/labels'
 import { GuardrailTemplateCreateDialog } from './guardrail-template-create-dialog'
 import { GuardrailTemplateEditor } from './guardrail-template-editor'
+import { GuardrailTemplateVersions } from './guardrail-template-versions'
 
 interface GuardrailTemplatesCardProps {
   tenantId: string
@@ -32,9 +33,11 @@ export function GuardrailTemplatesCard({ tenantId, choices }: GuardrailTemplates
   // Ids, not snapshots: the dialogs read the current list after a refetch.
   const [editingId, setEditingId] = useState<string | null>(null)
   const [archivingId, setArchivingId] = useState<string | null>(null)
+  const [versionsId, setVersionsId] = useState<string | null>(null)
   const items = templates.data ?? []
   const editing = items.find((item) => item.id === editingId) ?? null
   const archiving = items.find((item) => item.id === archivingId) ?? null
+  const versionsOf = items.find((item) => item.id === versionsId) ?? null
   const busy = publish.isPending || archive.isPending
 
   function runPublish(template: GuardrailTemplate) {
@@ -96,6 +99,16 @@ export function GuardrailTemplatesCard({ tenantId, choices }: GuardrailTemplates
                   ? t('unpublished')
                   : t('version', { version: template.published_version })}
               </span>
+              {template.published_version === null ? null : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={t('versionsFor', { name: template.name })}
+                  onClick={() => setVersionsId(template.id)}
+                >
+                  {t('versionsShort')}
+                </Button>
+              )}
               {template.status === 'archived' ? null : (
                 <>
                   <Button
@@ -144,6 +157,14 @@ export function GuardrailTemplatesCard({ tenantId, choices }: GuardrailTemplates
           tenantId={tenantId}
           template={editing}
           onClose={() => setEditingId(null)}
+        />
+      ) : null}
+      {versionsOf ? (
+        <GuardrailTemplateVersions
+          key={versionsOf.id}
+          tenantId={tenantId}
+          template={versionsOf}
+          onClose={() => setVersionsId(null)}
         />
       ) : null}
       <DeleteConfirmDialog

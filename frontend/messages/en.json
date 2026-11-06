@@ -3911,6 +3911,8 @@
       "editShort": "Edit",
       "publishShort": "Publish",
       "archiveShort": "Archive",
+      "versionsShort": "Versions",
+      "versionsFor": "Versions of {name}",
       "edit": "Edit {name}",
       "publish": "Publish {name}",
       "archive": "Archive {name}",
@@ -3919,6 +3921,17 @@
       "archiveTitle": "Archive the {name} template?",
       "archiveDescription": "An archived template can no longer be chosen or edited. Agents that used it run with the company default.",
       "archiveConfirm": "Archive",
+      "versions": {
+        "title": "Versions of {name}",
+        "description": "Published versions never change. Reverting publishes that version's rules again as a new version and makes them the draft. Runs in progress keep their rules.",
+        "current": "Published now",
+        "meta": "{date} · {count} rules",
+        "showRules": "Show rules",
+        "hideRules": "Hide rules",
+        "revert": "Revert to this version",
+        "revertTo": "Revert to v{version}",
+        "reverted": "Published the rules of v{version} as a new version."
+      },
       "createDialog": {
         "title": "New company template",
         "description": "Rules are copied from the template you pick. Adjust them, then publish.",
@@ -3986,6 +3999,8 @@
       "GUARDRAIL_TEMPLATE_IN_USE": "The company default template cannot be archived. Change the policy's default first.",
       "GUARDRAIL_TEMPLATE_NAME_TAKEN": "A template with this name already exists.",
       "GUARDRAIL_TEMPLATE_NOT_FOUND": "Template not found.",
+      "GUARDRAIL_TEMPLATE_VERSION_CURRENT": "That version is already the published one.",
+      "GUARDRAIL_TEMPLATE_VERSION_NOT_FOUND": "Version not found.",
       "GUARDRAIL_POLICY_ENFORCED": "The company policy fixes the template.",
       "GUARDRAIL_RULE_LOCKED": "Rules the company locked cannot be changed."
     }

@@ -848,12 +848,21 @@ async def test_guardrail_policy_mutations_write_audit(client, db: AsyncSession, 
         published = await client.post(
             f"{TENANT}/guardrails/templates/{template_id}/publish", headers=version(created.json())
         )
-        archived = await client.post(
-            f"{TENANT}/guardrails/templates/{template_id}/archive",
+        again = await client.post(
+            f"{TENANT}/guardrails/templates/{template_id}/publish",
             headers=version(published.json()),
         )
+        reverted = await client.post(
+            f"{TENANT}/guardrails/templates/{template_id}/revert",
+            json={"version": 1},
+            headers=version(again.json()),
+        )
+        archived = await client.post(
+            f"{TENANT}/guardrails/templates/{template_id}/archive",
+            headers=version(reverted.json()),
+        )
         binding = await client.put(f"/api/agents/{agent.id}/guardrails", json={"mode": "off"})
-    for response in (policy, created, published, archived, binding):
+    for response in (policy, created, published, again, reverted, archived, binding):
         assert response.status_code in (200, 201), response.text
 
     rows = list(
@@ -869,6 +878,7 @@ async def test_guardrail_policy_mutations_write_audit(client, db: AsyncSession, 
         "guardrail.template_create",
         "guardrail.template_publish",
         "guardrail.template_archive",
+        "guardrail.template_revert",
         "guardrail.binding_update",
     }
     for row in rows:
@@ -883,8 +893,10 @@ async def test_guardrail_policy_mutations_write_audit(client, db: AsyncSession, 
     assert after("guardrail.policy_update")["mode"] == "open"
     assert after("guardrail.policy_update")["tool_risk"]["external_mutation"] == "block"
     assert by_action["guardrail.template_create"].target_id == template_id
-    assert after("guardrail.template_publish")["version"] == 1
+    publishes = [row for row in rows if row.action == "guardrail.template_publish"]
+    assert sorted((row.event_metadata or {})["after"]["version"] for row in publishes) == [1, 2]
     assert after("guardrail.template_archive")["status"] == "archived"
+    assert after("guardrail.template_revert") == {"version": 3, "from_version": 1}
     bound = by_action["guardrail.binding_update"]
     assert (bound.target_type, bound.target_id) == ("agent", str(agent.id))
     assert bound.event_metadata == {

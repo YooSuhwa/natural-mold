@@ -20,7 +20,9 @@ from app.schemas.guardrails import (
     GuardrailPolicyUpdate,
     GuardrailTemplateCreate,
     GuardrailTemplateOut,
+    GuardrailTemplateRevert,
     GuardrailTemplateUpdate,
+    GuardrailTemplateVersionOut,
 )
 from app.services import guardrails_admin
 from app.services.tenants.versioning import etag
@@ -134,4 +136,31 @@ async def archive_guardrail_template(
 ) -> GuardrailTemplateOut:
     return await guardrails_admin.archive_template(
         _mutation(db, request, user, if_match), context, template_id
+    )
+
+
+@router.get("/templates/{template_id}/versions", response_model=list[GuardrailTemplateVersionOut])
+@authz_policy(SELF)
+async def list_guardrail_template_versions(
+    template_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    context: TenantAdminContext = Depends(company_context),
+) -> list[GuardrailTemplateVersionOut]:
+    return await guardrails_admin.list_versions(db, context.tenant.id, template_id)
+
+
+@router.post("/templates/{template_id}/revert", response_model=GuardrailTemplateOut)
+@authz_policy(GOVERNANCE)
+async def revert_guardrail_template(
+    template_id: UUID,
+    payload: GuardrailTemplateRevert,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+    context: TenantAdminContext = Depends(company_context),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> GuardrailTemplateOut:
+    return await guardrails_admin.revert_template(
+        _mutation(db, request, user, if_match), context, template_id, payload
     )

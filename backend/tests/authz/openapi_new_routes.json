@@ -20401,6 +20401,142 @@
         ]
       }
     },
+    "/api/tenants/{tenant_id}/guardrails/templates/{template_id}/revert": {
+      "post": {
+        "operationId": "revert_guardrail_template_api_tenants__tenant_id__guardrails_templates__template_id__revert_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardrailTemplateRevert"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revert Guardrail Template",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/templates/{template_id}/versions": {
+      "get": {
+        "operationId": "list_guardrail_template_versions_api_tenants__tenant_id__guardrails_templates__template_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GuardrailTemplateVersionOut"
+                  },
+                  "title": "Response List Guardrail Template Versions Api Tenants  Tenant Id  Guardrails Templates  Template Id  Versions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Guardrail Template Versions",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
     "/api/tenants/{tenant_id}/invitations": {
       "get": {
         "operationId": "get_invitations_api_tenants__tenant_id__invitations_get",
@@ -34119,6 +34255,21 @@
       "title": "GuardrailTemplateOut",
       "type": "object"
     },
+    "GuardrailTemplateRevert": {
+      "description": "Publish an earlier version's rules again, as the next version.",
+      "properties": {
+        "version": {
+          "minimum": 1.0,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "title": "GuardrailTemplateRevert",
+      "type": "object"
+    },
     "GuardrailTemplateUpdate": {
       "properties": {
         "description": {
@@ -34163,6 +34314,47 @@
         }
       },
       "title": "GuardrailTemplateUpdate",
+      "type": "object"
+    },
+    "GuardrailTemplateVersionOut": {
+      "description": "One published version; never changes after publishing.",
+      "properties": {
+        "published_at": {
+          "format": "date-time",
+          "title": "Published At",
+          "type": "string"
+        },
+        "published_by": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published By"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/components/schemas/GuardrailRuleOut"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "rules",
+        "published_at",
+        "published_by"
+      ],
+      "title": "GuardrailTemplateVersionOut",
       "type": "object"
     },
     "HTTPValidationError": {

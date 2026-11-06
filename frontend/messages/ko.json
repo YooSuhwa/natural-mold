@@ -3911,6 +3911,8 @@
       "editShort": "편집",
       "publishShort": "게시",
       "archiveShort": "보관",
+      "versionsShort": "버전",
+      "versionsFor": "{name} 버전",
       "edit": "{name} 편집",
       "publish": "{name} 게시",
       "archive": "{name} 보관",
@@ -3919,6 +3921,17 @@
       "archiveTitle": "{name} 템플릿을 보관할까요?",
       "archiveDescription": "보관한 템플릿은 새로 고를 수 없고 수정할 수 없습니다. 이 템플릿을 쓰던 에이전트는 회사 기본 템플릿으로 실행됩니다.",
       "archiveConfirm": "보관하기",
+      "versions": {
+        "title": "{name} 버전",
+        "description": "게시한 버전은 바뀌지 않습니다. 예전 버전으로 되돌리면 그 규칙을 새 버전으로 다시 게시하고, 초안도 그 규칙으로 바뀝니다. 진행 중인 실행은 이전 규칙을 유지합니다.",
+        "current": "지금 게시됨",
+        "meta": "{date} · 규칙 {count}개",
+        "showRules": "규칙 보기",
+        "hideRules": "규칙 숨기기",
+        "revert": "이 버전으로 되돌리기",
+        "revertTo": "v{version} 버전으로 되돌리기",
+        "reverted": "v{version}의 규칙을 새 버전으로 게시했습니다."
+      },
       "createDialog": {
         "title": "새 회사 템플릿",
         "description": "규칙은 고른 템플릿에서 복사합니다. 만든 뒤 규칙을 고치고 게시하세요.",
@@ -3986,6 +3999,8 @@
       "GUARDRAIL_TEMPLATE_IN_USE": "회사 기본 템플릿은 보관할 수 없습니다. 먼저 정책의 기본 템플릿을 바꾸세요.",
       "GUARDRAIL_TEMPLATE_NAME_TAKEN": "같은 이름의 템플릿이 이미 있습니다.",
       "GUARDRAIL_TEMPLATE_NOT_FOUND": "템플릿을 찾을 수 없습니다.",
+      "GUARDRAIL_TEMPLATE_VERSION_CURRENT": "이 버전은 이미 게시된 버전입니다.",
+      "GUARDRAIL_TEMPLATE_VERSION_NOT_FOUND": "버전을 찾을 수 없습니다.",
       "GUARDRAIL_POLICY_ENFORCED": "회사 정책이 템플릿을 고정합니다.",
       "GUARDRAIL_RULE_LOCKED": "회사가 잠근 규칙은 바꿀 수 없습니다."
     }

@@ -8,6 +8,7 @@ import type {
   GuardrailTemplate,
   GuardrailTemplateCreate,
   GuardrailTemplateUpdate,
+  GuardrailTemplateVersion,
 } from '@/lib/types/guardrails'
 
 const base = (tenantId: string, rest = '') => tenantPath(tenantId, `/guardrails${rest}`)
@@ -40,6 +41,15 @@ export const guardrailsApi = {
     apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/publish'), {
       method: 'POST',
       headers: tenantVersionHeader(version),
+    }),
+  listVersions: (tenantId: string, id: string) =>
+    apiFetch<GuardrailTemplateVersion[]>(templatePath(tenantId, id, '/versions')),
+  /** Publishes an earlier version's rules again as the next version. */
+  revertTemplate: (tenantId: string, id: string, target: number, version: string) =>
+    apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/revert'), {
+      method: 'POST',
+      headers: tenantVersionHeader(version),
+      body: JSON.stringify({ version: target }),
     }),
   archiveTemplate: (tenantId: string, id: string, version: string) =>
     apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/archive'), {

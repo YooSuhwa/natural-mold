@@ -506,3 +506,44 @@ async def test_a_template_write_without_its_version_is_refused(
     ):
         assert response.status_code == 409, response.text
         assert response.json()["error"]["code"] == "stale_version"
+
+
+async def test_an_earlier_version_is_published_again_as_the_next_one(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    await make_admin(db)
+    created = (
+        await client.post(TEMPLATES, json={"name": "되돌리기", "copy_from": "builtin:kr-default"})
+    ).json()
+    url = f"{TEMPLATES}/{created['id']}"
+    v1 = (await client.post(f"{url}/publish", headers=_version(created))).json()
+    rules = v1["draft_rules"]
+    rules[0]["action"] = "warn"
+    edited = (await client.patch(url, json={"rules": rules}, headers=_version(v1))).json()
+    v2 = (await client.post(f"{url}/publish", headers=_version(edited))).json()
+
+    current = await client.post(f"{url}/revert", json={"version": 2}, headers=_version(v2))
+    missing = await client.post(f"{url}/revert", json={"version": 9}, headers=_version(v2))
+    reverted = await client.post(f"{url}/revert", json={"version": 1}, headers=_version(v2))
+
+    assert current.status_code == 409
+    assert current.json()["error"]["code"] == "GUARDRAIL_TEMPLATE_VERSION_CURRENT"
+    assert missing.status_code == 404
+    assert reverted.status_code == 200, reverted.text
+    assert reverted.json()["published_version"] == 3
+    assert reverted.json()["draft_rules"][0]["action"] == "block"
+    async with TestSession() as check:
+        rules_now = await policy.template_rules(check, TEST_TENANT_ID, created["ref"])
+    assert rules_now is not None and rules_now.version == 3
+    assert rules_now.rules[0].action == "block"
+    versions = (await client.get(f"{url}/versions")).json()
+    assert [(v["version"], v["rules"][0]["action"]) for v in versions] == [
+        (3, "block"),
+        (2, "warn"),
+        (1, "block"),
+    ]
+    [event] = [e for e in await actions(created["id"]) if e.action == "guardrail.template_revert"]
+    assert event.event_metadata == {
+        "before": {"version": 2},
+        "after": {"version": 3, "from_version": 1},
+    }

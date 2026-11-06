@@ -15,4 +15,6 @@ export const tenantAdminKeys = {
   guardrails: (tenantId: string) => ['tenant-admin', tenantId, 'guardrails'] as const,
   guardrailTemplates: (tenantId: string) =>
     ['tenant-admin', tenantId, 'guardrail-templates'] as const,
+  guardrailTemplateVersions: (tenantId: string, templateId: string) =>
+    ['tenant-admin', tenantId, 'guardrail-templates', templateId, 'versions'] as const,
 }

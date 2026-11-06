@@ -13,11 +13,7 @@ import {
 import { render, screen, waitFor } from '../../../../tests/test-utils'
 import { AssistantMessageParts } from '@/components/chat/assistant-message-parts'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
-import {
-  ALL_TOOLKIT,
-  BUILDER_TOOLKIT,
-  SETTINGS_TEST_TOOLKIT,
-} from '@/lib/chat/tool-ui-registry'
+import { ALL_TOOLKIT, BUILDER_TOOLKIT, SETTINGS_TEST_TOOLKIT } from '@/lib/chat/tool-ui-registry'
 
 interface SourceMessage {
   readonly id: string

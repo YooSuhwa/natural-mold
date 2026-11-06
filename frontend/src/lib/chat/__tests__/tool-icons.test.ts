@@ -29,7 +29,9 @@ describe('builtinToolIcon', () => {
 describe('toolCallChildLabel', () => {
   it('대표 인자(query/file_path)를 우선', () => {
     expect(toolCallChildLabel({ query: 'react 19' }, undefined)).toBe('react 19')
-    expect(toolCallChildLabel({ file_path: 'src/app/page.tsx' }, undefined)).toBe('src/app/page.tsx')
+    expect(toolCallChildLabel({ file_path: 'src/app/page.tsx' }, undefined)).toBe(
+      'src/app/page.tsx',
+    )
   })
 
   it('대표 인자가 없으면 첫 문자열 인자', () => {

@@ -31,6 +31,14 @@ export function useGuardrailTemplates(tenantId: string, enabled: boolean) {
   })
 }
 
+export function useGuardrailTemplateVersions(tenantId: string, templateId: string) {
+  return useQuery({
+    queryKey: tenantAdminKeys.guardrailTemplateVersions(tenantId, templateId),
+    queryFn: () => guardrailsApi.listVersions(tenantId, templateId),
+    retry: false,
+  })
+}
+
 export function useUpdateGuardrailPolicy(tenantId: string) {
   return useTenantMutation(
     tenantId,
@@ -56,6 +64,11 @@ export function useGuardrailTemplateMutations(tenantId: string) {
     ),
     publish: useTenantMutation(tenantId, ({ id, version }: TemplateVersion) =>
       guardrailsApi.publishTemplate(tenantId, id, version),
+    ),
+    revert: useTenantMutation(
+      tenantId,
+      ({ id, target, version }: TemplateVersion & { target: number }) =>
+        guardrailsApi.revertTemplate(tenantId, id, target, version),
     ),
     archive: useTenantMutation(tenantId, ({ id, version }: TemplateVersion) =>
       guardrailsApi.archiveTemplate(tenantId, id, version),
