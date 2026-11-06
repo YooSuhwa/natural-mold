@@ -1,12 +1,20 @@
 """API control projections require exact private roots throughout their children."""
 
+import uuid
+
 from sqlalchemy import and_, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.models.agent import Agent
-from app.models.agent_api import AgentApiKey, AgentApiKeyDeployment, AgentApiThread, AgentDeployment
+from app.models.agent_api import (
+    AgentApiKey,
+    AgentApiKeyDeployment,
+    AgentApiRun,
+    AgentApiThread,
+    AgentDeployment,
+)
 from app.models.conversation import Conversation
 
 
@@ -33,6 +41,11 @@ def private_api_key_predicate(context: OrgContext) -> ColumnElement[bool]:
         .exists()
     )
     return and_(private_scope_predicate(AgentApiKey, context), ~invalid_child)
+
+
+def api_run_of_key_owner(owner_id: uuid.UUID, tenant_id: uuid.UUID) -> ColumnElement[bool]:
+    """An API run the key's owner started, in the key's company (``GET /v1/runs/{id}``)."""
+    return and_(AgentApiRun.user_id == owner_id, AgentApiRun.tenant_id == tenant_id)
 
 
 def private_api_thread_parents_predicate(context: OrgContext) -> ColumnElement[bool]:

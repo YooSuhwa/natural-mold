@@ -141,7 +141,7 @@ async def test_prepared_run_decides_once_before_the_locked_resolver(
         return await original(*args, **kwargs)
 
     monkeypatch.setattr(prepared_execution.owned, "materialize_prepared_execution", locking)
-    assert "done" in await runtime_service.execute_owned_wait(api.execution)
+    assert "done" in str(await runtime_service.execute_owned_wait(api.execution))
     # Every decision (can_deploy, then F-06's plan) precedes the gateway locks.
     assert at_lock == [len(client.queries)] and at_lock[0] > 1
     deploy = [q for q in client.queries if getattr(q, "relation", None) == "can_deploy"]

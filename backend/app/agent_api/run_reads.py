@@ -15,6 +15,7 @@ from app.agent_api.access import ensure_key_can_access_deployment
 from app.agent_api.dependencies import ApiKeyPrincipal, refresh_api_key_principal
 from app.approvals.api_runs import pending_for
 from app.authz.agent_api_access import require_can_deploy
+from app.authz.agent_api_scope import api_run_of_key_owner
 from app.exceptions import ForbiddenError, NotFoundError
 from app.models.agent_api import AgentApiRun
 from app.schemas.agent_api import AgentRunError, AgentRunPendingApproval, AgentRunResponse
@@ -61,8 +62,7 @@ async def get_run_for_public_id(
             select(AgentApiRun)
             .where(
                 AgentApiRun.public_id == run_id,
-                AgentApiRun.user_id == principal.user_id,
-                AgentApiRun.tenant_id == principal.context.tenant_id,
+                api_run_of_key_owner(principal.user_id, principal.context.tenant_id),
             )
             .options(selectinload(AgentApiRun.deployment), selectinload(AgentApiRun.thread))
             .execution_options(populate_existing=True, autoflush=False)

@@ -50,7 +50,7 @@ def _spy_deployment_reads(monkeypatch: pytest.MonkeyPatch) -> list[str | None]:
 
 async def _run(api: apikit.ApiRun, mode: str) -> str:
     if mode == "wait":
-        return await runtime_service.execute_owned_wait(api.execution)
+        return str(await runtime_service.execute_owned_wait(api.execution))
     chunks = [chunk async for chunk in runtime_service.stream_owned_run(api.execution)]
     return "".join(chunks)
 

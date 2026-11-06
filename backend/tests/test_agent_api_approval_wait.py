@@ -133,6 +133,7 @@ async def test_an_inbox_deployment_answers_waiting_and_asks_its_owner(
     assert run is not None and (run.status, run.is_active) == ("interrupted", False)
     assert note.user_id == TEST_USER_ID and note.payload["source"] == "api"
     assert audit is not None and audit.outcome == "success"
+    assert audit.event_metadata is not None
     assert audit.event_metadata["awaiting_approval"] is True
 
 
@@ -255,6 +256,7 @@ async def test_reading_a_run_needs_its_owner_and_a_read_or_invoke_scope(
     from tests.authz.unit_scope_fixture import unit_context
 
     api_run = await _api_run(body["id"])
+    assert api_run.deployment_id is not None
     _key, stream_only = await api_service.create_api_key(
         db,
         unit_context(TEST_USER_ID),
@@ -313,7 +315,7 @@ async def test_the_deployment_policy_is_set_and_audited(client, db) -> None:
         audit = await check.scalar(
             select(AuditEvent).where(AuditEvent.action == "agent_api.deployment_update")
         )
-    assert audit is not None
+    assert audit is not None and audit.event_metadata is not None
     assert audit.event_metadata["approval_policy"] == "inbox"
     assert audit.event_metadata["changed_fields"] == ["approval_policy"]
 
