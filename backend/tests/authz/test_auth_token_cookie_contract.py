@@ -164,14 +164,38 @@ def test_scanner_allows_identity_reads_and_unrelated_payloads() -> None:
     assert _claim_reads(source) == []
 
 
+# Signs the backend-to-mcp-runtime run token with its own secret; it never decodes a token.
+_SIGN_ONLY = "mcp_runtime/tokens.py"
+
+
 def test_application_reads_only_identity_claims() -> None:
     offenders = {
         path.relative_to(APP_ROOT).as_posix(): reads
         for path in sorted(APP_ROOT.rglob("*.py"))
-        if path.relative_to(APP_ROOT).as_posix() != "auth/jwt.py"
+        if path.relative_to(APP_ROOT).as_posix() not in {"auth/jwt.py", _SIGN_ONLY}
         and (reads := _claim_reads(path.read_text()))
     }
     assert offenders == {}
+
+
+def test_the_runtime_token_module_only_signs() -> None:
+    tree = ast.parse((APP_ROOT / _SIGN_ONLY).read_text())
+    jwt_calls = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "jwt"
+    }
+    imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import | ast.ImportFrom)
+        for alias in node.names
+        if (node.module if isinstance(node, ast.ImportFrom) else alias.name) == "jwt"
+    }
+    assert (jwt_calls, imports) == ({"encode"}, {"jwt"})
 
 
 def _attributes(header: str) -> set[str]:
