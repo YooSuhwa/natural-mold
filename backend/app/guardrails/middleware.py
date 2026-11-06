@@ -210,7 +210,16 @@ class Guard:
         self, texts: Sequence[str], stage: Stage, findings: list[list[Finding]]
     ) -> list[Applied]:
         return [
-            apply(text, found, self.rules, stage, self.key, self.pseudonyms.token_for)
+            apply(
+                text,
+                found,
+                self.rules,
+                stage,
+                self.key,
+                lambda entity, value, rule, text=text: self.pseudonyms.token_for(
+                    entity, value, style=rule.pseudonym_style, context=text
+                ),
+            )
             for text, found in zip(texts, findings, strict=True)
         ]
 
