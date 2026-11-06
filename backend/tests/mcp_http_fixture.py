@@ -18,6 +18,7 @@ import uvicorn
 from fastmcp import FastMCP
 from fastmcp.tools.base import ToolResult
 from mcp.types import TextContent
+from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 
@@ -70,22 +71,40 @@ def _free_port() -> int:
 
 
 @contextmanager
-def serve(server: FastMCP, transport: str = "streamable-http") -> Iterator[tuple[str, RequestLog]]:
-    """Yield the endpoint URL (``/mcp`` or ``/sse``) and the request log."""
-    log = RequestLog()
-    path = "/sse" if transport == "sse" else "/mcp"
-    app: Any = _Recorder(server.http_app(transport=transport, path=path), log)  # type: ignore[arg-type]
+def refusing(status: int, challenge: str) -> Iterator[str]:
+    """An endpoint that answers every request with ``status`` and a ``WWW-Authenticate``."""
+
+    async def refuse(scope: Scope, receive: Receive, send: Send) -> None:
+        response = JSONResponse({}, status_code=status, headers={"WWW-Authenticate": challenge})
+        await response(scope, receive, send)
+
+    with _run(refuse) as base:
+        yield f"{base}/mcp"
+
+
+@contextmanager
+def _run(app: Any) -> Iterator[str]:
     port = _free_port()
-    runner = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    runner = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
     thread = threading.Thread(target=runner.run, daemon=True)
     thread.start()
     deadline = time.monotonic() + 10
     while not runner.started:
         if time.monotonic() > deadline:
-            raise RuntimeError("fixture MCP server did not start")
+            raise RuntimeError("fixture server did not start")
         time.sleep(0.02)
     try:
-        yield f"http://127.0.0.1:{port}{path}", log
+        yield f"http://127.0.0.1:{port}"
     finally:
         runner.should_exit = True
         thread.join(timeout=5)
+
+
+@contextmanager
+def serve(server: FastMCP, transport: str = "streamable-http") -> Iterator[tuple[str, RequestLog]]:
+    """Yield the endpoint URL (``/mcp`` or ``/sse``) and the request log."""
+    log = RequestLog()
+    path = "/sse" if transport == "sse" else "/mcp"
+    app: Any = _Recorder(server.http_app(transport=transport, path=path), log)  # type: ignore[arg-type]
+    with _run(app) as base:
+        yield f"{base}{path}", log

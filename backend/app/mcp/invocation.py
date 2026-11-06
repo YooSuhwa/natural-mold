@@ -30,7 +30,11 @@ async def call_mcp_tool_once(
     try:
         result = await sdk.call_tool(
             sdk.http_transport(
-                transport, url, merged_headers or None, credentialed=credentials is not None
+                transport,
+                url,
+                merged_headers or None,
+                credentialed=credentials is not None,
+                scope=sdk.GatewayScope(tools=(tool_name,)),
             ),
             tool_name,
             arguments,
@@ -67,7 +71,11 @@ async def read_mcp_resource_once(
     try:
         contents = await sdk.read_resource(
             sdk.http_transport(
-                transport, url, merged_headers or None, credentialed=credentials is not None
+                transport,
+                url,
+                merged_headers or None,
+                credentialed=credentials is not None,
+                scope=sdk.GatewayScope(resources=True),
             ),
             resource_uri,
         )

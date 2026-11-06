@@ -9,6 +9,9 @@ dependencies = [
     "fastmcp==4.1.5",
     "pyjwt==2.10.1",
     "uvicorn==0.38.0",
+    # The relay: upstream HTTP (the client FastMCP already uses) and sealed upstreams.
+    "httpx2==2.16.0",
+    "cryptography==50.0.2",
 ]
 
 [project.optional-dependencies]

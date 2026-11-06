@@ -246,3 +246,14 @@ async def non_super_client() -> AsyncIterator[AsyncClient]:
 
 async def test_operators_only(non_super_client: AsyncClient) -> None:
     assert (await non_super_client.get(URL)).status_code == 403
+
+
+async def test_with_the_gateway_on_the_runtime_is_required(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "mcp_gateway_enabled", True)
+
+    found = await status.collect(db)
+
+    runtime = next(c for c in found.components if c.key == "mcp_runtime")
+    assert (runtime.requirement, runtime.verdict) == ("required", "error")

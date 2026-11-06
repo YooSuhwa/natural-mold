@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from app.mcp import gateway
 from app.outbound.client import outbound_http_client
 
 DEFAULT_TIMEOUT = 15.0
@@ -94,6 +95,14 @@ async def get_json(url: str, *, client: httpx.AsyncClient | None = None) -> dict
     return body
 
 
+async def _gateway_json(url: str) -> dict[str, Any]:
+    validate_oauth_url(url)
+    body = await gateway.get_json(url)
+    if not isinstance(body, dict):
+        raise ValueError(f"OAuth metadata response from {url} must be a JSON object")
+    return body
+
+
 async def discover_protected_resource_metadata(
     resource_url: str,
     *,
@@ -110,7 +119,12 @@ async def discover_protected_resource_metadata(
     last_error: Exception | None = None
     for candidate in candidates:
         try:
-            body = await get_json(candidate, client=client)
+            # D10: the MCP server itself is reached only through the gateway when it is on.
+            body = (
+                await _gateway_json(candidate)
+                if client is None and gateway.enabled()
+                else await get_json(candidate, client=client)
+            )
             servers = body.get("authorization_servers")
             if isinstance(servers, list) and all(isinstance(v, str) for v in servers) and servers:
                 return ProtectedResourceMetadata(authorization_servers=servers, raw=body)

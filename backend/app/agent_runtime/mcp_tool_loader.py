@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -84,13 +85,31 @@ def server_inject(plan: _McpPlan, key: str) -> dict[str, dict[str, Any]]:
     return {name: dict(auth) for name, auth in plan.server_tool_auth.get(key, {}).items()}
 
 
+def _uuid_or_none(value: Any) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(str(value)) if value else None
+    except ValueError:
+        return None
+
+
 def server_transport(config: dict[str, Any]) -> Any:
-    """A fresh SDK transport for one planned server (one per session)."""
+    """A fresh SDK transport for one planned server (one per session).
+
+    Through the gateway (D10) the connection may call only the tools this run selected.
+    """
+    identity = config.get("identity") or {}
     return sdk.http_transport(
         str(config.get("transport") or "streamable_http"),
         str(config["url"]),
         config.get("headers") or None,
         credentialed=bool(config.get("credentialed")),
+        scope=sdk.GatewayScope(
+            tools=tuple(sorted(config.get("tools") or ())),
+            actor_id=_uuid_or_none(identity.get("user_id")),
+            tenant_id=_uuid_or_none(identity.get("tenant_id")),
+            org_id=_uuid_or_none(identity.get("org_id")),
+            agent_id=_uuid_or_none(identity.get("agent_id")),
+        ),
     )
 
 
@@ -149,10 +168,15 @@ def _plan_mcp_servers(mcp_configs: list[dict]) -> _McpPlan:
                 "url": url,
                 "headers": headers or None,
                 "credentialed": transport_credentialed(tc),
+                "identity": {
+                    field: tc.get(field) for field in ("user_id", "tenant_id", "org_id", "agent_id")
+                },
+                "tools": [],
             }
             plan.tool_filter[key] = set()
 
         plan.tool_filter[key].add(tool_name)
+        plan.servers[key]["tools"] = sorted(plan.tool_filter[key])
         plan.tool_configs[(key, tool_name)] = tc
 
         auth = tc.get("auth_config")

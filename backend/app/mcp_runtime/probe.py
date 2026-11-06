@@ -56,7 +56,7 @@ async def check_runtime() -> RuntimeHealth:
 
 async def _whoami(url: str, token: str) -> str | None:
     result = await sdk.call_tool(
-        sdk.http_transport("streamable_http", url, {"Authorization": f"Bearer {token}"}),
+        sdk.runtime_transport(url, {"Authorization": f"Bearer {token}"}),
         "whoami",
         {},
         request_timeout=_TIMEOUT,

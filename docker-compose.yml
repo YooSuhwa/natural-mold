@@ -71,6 +71,9 @@ x-backend-environment: &backend-environment
   STORAGE_S3_CREATE_BUCKET: ${STORAGE_S3_CREATE_BUCKET:-true}
   # Shared MCP runtime (mcp-runtime/); empty turns the backend's runtime calls off.
   MCP_RUNTIME_URL: ${MCP_RUNTIME_URL-http://mcp-runtime:8096}
+  # D10: external MCP servers are reached only through the runtime's gateway relay.
+  # Server URLs then resolve from the mcp-runtime container. false connects directly.
+  MCP_GATEWAY_ENABLED: ${MCP_GATEWAY_ENABLED:-true}
   # Install profile the operator's system status checks against (minimal, external_api,
   # gpu, kubernetes, airgapped); it changes no behaviour by itself.
   INSTALL_PROFILE: ${INSTALL_PROFILE:-minimal}

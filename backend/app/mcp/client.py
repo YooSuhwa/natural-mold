@@ -161,6 +161,8 @@ async def connect_and_list(
                 url,
                 merged_headers or None,
                 credentialed=credentials is not None,
+                # A probe lists tools; it calls none.
+                scope=sdk.GatewayScope(actor_id=user_id, tenant_id=tenant_id),
             ),
             request_timeout=_timeout_seconds(),
         )

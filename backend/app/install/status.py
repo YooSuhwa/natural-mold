@@ -170,6 +170,10 @@ async def collect(db: AsyncSession, *, profile_key: ProfileKey | None = None) ->
     }
     results = await asyncio.gather(*(_guarded(k, c) for k, c in network.items()))
     found.update(zip(network, results, strict=True))
+    requirements = dict(profile.requirements)
+    if settings.mcp_gateway_enabled:
+        # D10: with the gateway on, every MCP call goes through the runtime.
+        requirements["mcp_runtime"] = "required"
     components = [
         ComponentStatus(
             component,
@@ -178,7 +182,7 @@ async def collect(db: AsyncSession, *, profile_key: ProfileKey | None = None) ->
             verdict_for(requirement, found[component]),
             found[component].detail,
         )
-        for component, requirement in profile.requirements.items()
+        for component, requirement in requirements.items()
     ]
     verdicts = {c.verdict for c in components}
     overall: Verdict = (

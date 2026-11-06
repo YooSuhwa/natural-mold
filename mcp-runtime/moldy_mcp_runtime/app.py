@@ -3,6 +3,7 @@
 * ``/healthz``: liveness for Compose and the operator's system status.
 * ``/mcp/system/diagnostics``: a ``whoami`` tool that answers with the verified token
   claims, so the backend can check the whole path (sign → call → verify) end to end.
+* ``/relay/...``: the gateway to external MCP servers (``relay.py``, decision D10).
 
 Spore (``/mcp/openapi/{id}``) and Taproot (``/mcp/db/{id}``) servers are added here by their
 own work items; each path checks that the token was made for it. Stateless: no session
@@ -24,6 +25,7 @@ from starlette.routing import Mount, Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from moldy_mcp_runtime import tokens
+from moldy_mcp_runtime.relay import relay
 
 DIAGNOSTICS = "system/diagnostics"
 
@@ -89,6 +91,8 @@ def create_app() -> Starlette:
         routes=[
             Route("/healthz", healthz),
             Mount(f"/mcp/{DIAGNOSTICS}", app=RunTokenMiddleware(diagnostics, server=DIAGNOSTICS)),
+            # The gateway relay to external MCP servers (relay.py checks its own tokens).
+            Mount("/relay", app=relay),
         ],
         lifespan=lifespan,
     )

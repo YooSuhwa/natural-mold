@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import datetime
 import weakref
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -40,6 +40,8 @@ from langchain_core.tools import BaseTool, StructuredTool, ToolException
 from mcp import types as mcp_types
 from pydantic import AnyUrl
 
+from app.mcp import gateway
+from app.mcp.gateway import GatewayScope, GatewayUnavailable
 from app.outbound.client import DEFAULT_TIMEOUT, outbound_http_client
 from app.outbound.destination import OutboundBlockedError
 
@@ -214,12 +216,52 @@ def http_client_factory(
     return factory
 
 
+class _RelayAuth(httpx2.Auth):
+    """A fresh relay token on every request, so a long run never carries an expired one."""
+
+    def __init__(self, relay: gateway.Relay) -> None:
+        self._relay = relay
+
+    def auth_flow(self, request: httpx2.Request) -> Iterator[httpx2.Request]:
+        request.headers["Authorization"] = f"Bearer {self._relay.token()}"
+        yield request
+
+
 def http_transport(
     transport: str,
     url: str,
     headers: Mapping[str, str] | None = None,
     *,
     credentialed: bool = False,
+    scope: GatewayScope | None = None,
+) -> ClientTransport:
+    """A transport to an external MCP server.
+
+    With ``MCP_GATEWAY_ENABLED`` it goes to the runtime's relay instead (decision D10): the
+    upstream URL and ``headers`` are sealed into per-request relay tokens with ``scope``, and
+    nothing connects to the server from here.
+    """
+    if gateway.enabled():
+        relay = gateway.relay(
+            transport, url, headers, credentialed=credentialed, scope=scope or GatewayScope()
+        )
+        return _http_transport(
+            transport, relay.url, None, credentialed=False, auth=_RelayAuth(relay)
+        )
+    return _http_transport(transport, url, headers, credentialed=credentialed)
+
+
+def runtime_transport(url: str, headers: Mapping[str, str]) -> ClientTransport:
+    """A transport to one of the runtime's own servers (never relayed)."""
+    return _http_transport("streamable_http", url, headers, credentialed=False)
+
+
+def _http_transport(
+    transport: str,
+    url: str,
+    headers: Mapping[str, str] | None,
+    *,
+    credentialed: bool,
     auth: httpx2.Auth | None = None,
 ) -> ClientTransport:
     refusals: list[_Refusal] = []
@@ -423,6 +465,8 @@ def jsonable(value: Any) -> Any:
 __all__ = [
     "RESULT_ENVELOPE",
     "CallResult",
+    "GatewayScope",
+    "GatewayUnavailable",
     "HttpxBridge",
     "ServerInfo",
     "ToolDefinition",
@@ -433,6 +477,7 @@ __all__ = [
     "http_transport",
     "jsonable",
     "read_resource",
+    "runtime_transport",
     "session",
     "stdio_transport",
 ]
