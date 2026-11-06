@@ -70,3 +70,25 @@ class InboxDecisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     decisions: list[InboxDecision] = Field(min_length=1, max_length=20)
+
+
+class RunStatusView(BaseModel):
+    """One run in the run status tab (17.2): no way into another person's conversation."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    run_id: uuid.UUID
+    state: Literal["running", "waiting", "failed"]
+    status: str
+    agent_id: uuid.UUID | None
+    agent_name: str
+    source: str | None
+    mine: bool
+    conversation_id: uuid.UUID | None
+    error_code: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+
+class RunStatusPage(BaseModel):
+    items: list[RunStatusView]

@@ -4,6 +4,8 @@
   current organization; newest first (pending: soonest to expire first).
 * ``GET /api/approvals/pending-count``: ``{"count": n}`` for the navigation badge.
 * ``POST /api/approvals/{id}/decision``: one decision per action; resumes the run.
+* ``GET /api/approvals/runs?state=running|waiting|failed``: the run status tab (my runs
+  and my agents' runs).
 
 Another person's request answers 404. A request already decided (here or in the chat),
 expired, or whose run no longer waits with the same arguments answers 409.
@@ -15,11 +17,18 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.approvals import inbox, service
+from app.approvals import inbox, run_status, service
 from app.authz.org_context import OrgContext
 from app.authz.policies import SELF, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
-from app.schemas.approval import ApprovalPage, ApprovalView, InboxDecisionRequest, PendingCount
+from app.schemas.approval import (
+    ApprovalPage,
+    ApprovalView,
+    InboxDecisionRequest,
+    PendingCount,
+    RunStatusPage,
+    RunStatusView,
+)
 
 router = APIRouter(prefix="/api/approvals", tags=["approvals"])
 
@@ -68,3 +77,15 @@ async def decide_approval(
     except inbox.InboxError as exc:
         raise exc.as_app_error() from exc
     return ApprovalView.model_validate(row)
+
+
+@router.get("/runs", response_model=RunStatusPage)
+@authz_policy(SELF)
+async def list_run_status(
+    state: Literal["running", "waiting", "failed"] = "running",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    db: AsyncSession = Depends(get_db),
+    context: OrgContext = Depends(get_org_context),
+) -> RunStatusPage:
+    items = await run_status.list_runs(db, context, state=state, limit=limit)
+    return RunStatusPage(items=[RunStatusView.model_validate(item) for item in items])

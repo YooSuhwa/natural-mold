@@ -3410,6 +3410,66 @@
         ]
       }
     },
+    "/api/approvals/runs": {
+      "get": {
+        "operationId": "list_run_status_api_approvals_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "default": "running",
+              "enum": [
+                "running",
+                "waiting",
+                "failed"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunStatusPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Run Status",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
     "/api/approvals/{approval_id}/decision": {
       "post": {
         "operationId": "decide_approval_api_approvals__approval_id__decision_post",
@@ -44026,6 +44086,131 @@
         "status"
       ],
       "title": "RunMetadata",
+      "type": "object"
+    },
+    "RunStatusPage": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/RunStatusView"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "RunStatusPage",
+      "type": "object"
+    },
+    "RunStatusView": {
+      "description": "One run in the run status tab (17.2): no way into another person's conversation.",
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "agent_name": {
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completed At"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Conversation Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "mine": {
+          "title": "Mine",
+          "type": "boolean"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source"
+        },
+        "state": {
+          "enum": [
+            "running",
+            "waiting",
+            "failed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "state",
+        "status",
+        "agent_id",
+        "agent_name",
+        "source",
+        "mine",
+        "conversation_id",
+        "error_code",
+        "created_at",
+        "completed_at"
+      ],
+      "title": "RunStatusView",
       "type": "object"
     },
     "RuntimePolicySnapshotSource": {
