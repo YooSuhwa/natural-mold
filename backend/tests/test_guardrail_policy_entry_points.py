@@ -22,7 +22,12 @@ from tests.integration._seed import seed_conversation_with_agent
 from tests.test_agent_lifecycle_trigger_runtime import _seed_trigger
 from tests.test_agent_runtime_public_api import _seed_deployed_agent_with_key
 
-POLICY = {"mode": "enforced", "default_template": "builtin:kr-observe", "locked_rules": []}
+POLICY = {
+    "mode": "enforced",
+    "default_template": "builtin:kr-observe",
+    "locked_rules": [],
+    "tool_risk": {"code_execution": "block"},
+}
 
 
 async def _enforce(tenant_id: Any = TEST_TENANT_ID) -> None:
@@ -54,6 +59,7 @@ async def test_a_trigger_run_gets_the_company_policy() -> None:
     [cfg] = seen
     assert cfg.guardrail_resolved
     assert cfg.guardrail_rules.template == "builtin:kr-observe"
+    assert cfg.tool_risk.action("code_execution") == "block"
 
 
 @pytest.mark.anyio
@@ -82,6 +88,7 @@ async def test_an_agent_api_run_gets_the_company_policy(client, db, monkeypatch)
     [cfg] = seen
     assert cfg.guardrail_resolved
     assert cfg.guardrail_rules.template == "builtin:kr-observe"
+    assert cfg.tool_risk.action("code_execution") == "block"
 
 
 async def _chat_run(conversation_id: Any) -> Any:
@@ -133,7 +140,9 @@ async def test_a_chat_run_gets_and_pins_the_company_policy() -> None:
     [run_cfg] = seen
     assert run_cfg.guardrail_resolved
     assert run_cfg.guardrail_rules.template == "builtin:kr-observe"
+    assert run_cfg.tool_risk.action("code_execution") == "block"
     async with TestSession() as db:
         run = await db.get(ConversationRun, run_id)
         assert run is not None and run.metadata_json is not None
         assert run.metadata_json[RUN_METADATA_KEY]["rules"]["template"] == "builtin:kr-observe"
+        assert run.metadata_json[RUN_METADATA_KEY]["tool_risk"]["code_execution"] == "block"

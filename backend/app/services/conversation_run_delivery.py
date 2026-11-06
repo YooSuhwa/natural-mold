@@ -284,7 +284,7 @@ async def _prepare_turn_guardrails(
     *,
     resume: bool,
 ) -> Any:
-    """Resolve and pin the run's guardrail rule set (a resume reuses the pinned one)."""
+    """Resolve and pin the run's guardrail rules and tool risk actions (a resume reuses them)."""
 
     from app.guardrails.events import parse_uuid
     from app.guardrails.pinning import pin_run_guardrails

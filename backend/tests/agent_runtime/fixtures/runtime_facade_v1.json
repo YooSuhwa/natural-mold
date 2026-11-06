@@ -550,6 +550,12 @@
           "name": "guardrail_resolved"
         },
         {
+          "annotation": "ToolRiskPolicy | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "tool_risk"
+        },
+        {
           "annotation": "OrgContext",
           "default": "required",
           "kind": "keyword_only",
@@ -1114,6 +1120,12 @@
           "default": "none",
           "kind": "keyword_only",
           "name": "guard"
+        },
+        {
+          "annotation": "ToolRiskPolicy | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "tool_risk"
         }
       ],
       "return": "Any"

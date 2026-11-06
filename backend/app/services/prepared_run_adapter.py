@@ -162,7 +162,7 @@ class PreparedRunResolver:
             # 1A expands attachment references per model call from live upload rows;
             # the lease has no frozen copy of them yet.
             raise unsupported("attachment_input")
-        if effective_rules(cfg) is not None:
+        if effective_rules(cfg) is not None or cfg.tool_risk is not None:
             # The guardrail middleware is not lease-owned yet (plan §3.2, step 5).
             raise unsupported("guardrail_policy")
         model = lease_model_spec(

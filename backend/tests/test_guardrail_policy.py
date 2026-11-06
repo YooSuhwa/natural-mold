@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.guardrails import policy
 from app.guardrails.pinning import RUN_METADATA_KEY, pin_run_guardrails
+from app.guardrails.tool_risk import DEFAULT_ACTIONS
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.guardrail_template import AgentGuardrailBinding
@@ -214,6 +215,7 @@ async def test_admin_saves_the_policy_with_version_and_audit(
             "mode": "enforced",
             "default_template": "builtin:kr-default",
             "locked_rules": ["secrets"],
+            "tool_risk": dict(DEFAULT_ACTIONS),
         },
     }
 
@@ -388,7 +390,7 @@ async def _pin(
     run_id: uuid.UUID, conversation_id: uuid.UUID, agent: uuid.UUID, resume: bool
 ) -> Any:
     async with TestSession() as db:
-        return await pin_run_guardrails(
+        pinned = await pin_run_guardrails(
             db,
             run_id=run_id,
             conversation_id=conversation_id,
@@ -397,6 +399,7 @@ async def _pin(
             runtime_profile="standard",
             resume=resume,
         )
+        return pinned.rules
 
 
 async def test_a_running_turn_keeps_its_rules_and_the_next_turn_gets_the_new_policy(
@@ -432,3 +435,47 @@ async def test_off_is_pinned_too(db: AsyncSession) -> None:
     resumed = await _pin(await _new_run(db, conversation_id, agent), conversation_id, agent, True)
 
     assert resumed is None
+
+
+async def test_tool_risk_is_pinned_and_a_resume_keeps_it(db: AsyncSession) -> None:
+    agent = await _agent(db)
+    await _set_policy(mode="off", tool_risk={"external_mutation": "block"})
+    conversation_id, first = await _run(db, agent)
+
+    async with TestSession() as session:
+        pinned = await pin_run_guardrails(
+            session,
+            run_id=first,
+            conversation_id=conversation_id,
+            context=unit_context(TEST_USER_ID),
+            agent_id=agent,
+            runtime_profile="standard",
+            resume=False,
+        )
+    assert pinned.tool_risk is not None
+    assert pinned.tool_risk.action("external_mutation") == "block"
+
+    await _set_policy(mode="off")
+    async with TestSession() as session:
+        resumed = await pin_run_guardrails(
+            session,
+            run_id=await _new_run(db, conversation_id, agent),
+            conversation_id=conversation_id,
+            context=unit_context(TEST_USER_ID),
+            agent_id=agent,
+            runtime_profile="standard",
+            resume=True,
+        )
+        fresh = await pin_run_guardrails(
+            session,
+            run_id=await _new_run(db, conversation_id, agent),
+            conversation_id=conversation_id,
+            context=unit_context(TEST_USER_ID),
+            agent_id=agent,
+            runtime_profile="standard",
+            resume=False,
+        )
+    assert (
+        resumed.tool_risk is not None and resumed.tool_risk.action("external_mutation") == "block"
+    )
+    assert fresh.tool_risk is None

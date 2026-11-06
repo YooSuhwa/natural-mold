@@ -33,6 +33,7 @@ from app.agent_runtime.deep_agent_middleware_factory import (
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.runtime.connection_guard_order import order_connection_guard
 from app.guardrails.middleware import Guard, guard_stack
+from app.guardrails.tool_risk import ToolRiskPolicy, apply_to_agent
 
 type _DeepAgentSubagent = SubAgent | CompiledSubAgent | AsyncSubAgent
 
@@ -257,6 +258,7 @@ def build_agent_impl(
     bindings: DeepAgentFactoryBindings,
     prepared_task_middleware: AgentMiddleware | None = None,
     guard: Guard | None = None,
+    tool_risk: ToolRiskPolicy | None = None,
 ) -> Any:
     resolved_backend = backend if backend is not None else StateBackend()
     compatible_middleware = bindings.with_compatibility(
@@ -265,7 +267,7 @@ def build_agent_impl(
         permissions=permissions,
     )
     if prepared_task_middleware is not None:
-        if guard is not None:
+        if guard is not None or tool_risk is not None:
             # Prepared runs fall back to this default path when a guardrail applies.
             raise ValueError("prepared runs do not carry guardrail middleware")
         # Prepared leases: every child is already a compiled base child (including
@@ -288,6 +290,17 @@ def build_agent_impl(
             interrupt_on=interrupt_on,
             skills=skills,
         )
+        if tool_risk is not None:
+            # Company actions per tool risk level, for the root and each child (C5).
+            applied = apply_to_agent(
+                tool_risk,
+                tools=tools,
+                interrupt_on=interrupt_on,
+                middleware=list(compatible_middleware),
+                subagents=compatible_subagents,
+            )
+            tools, interrupt_on = applied.tools, applied.interrupt_on
+            compatible_middleware, compatible_subagents = applied.middleware, applied.subagents
         if guard is not None:
             compatible_middleware, compatible_subagents = _guarded(
                 compatible_middleware, compatible_subagents, guard, model, resolved_backend

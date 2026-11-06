@@ -29,6 +29,7 @@ from app.guardrails.templates import (
     rule_to_json,
     rules_from_json,
 )
+from app.guardrails.tool_risk import DEFAULT_ACTIONS, actions_from_json
 from app.models.agent import Agent
 from app.models.guardrail_template import (
     AgentGuardrailBinding,
@@ -147,6 +148,7 @@ async def policy_view(db: AsyncSession, tenant: Tenant) -> GuardrailPolicyOut:
         mode=effective.mode,  # type: ignore[arg-type]
         default_template=effective.default_template,
         locked_rules=sorted(effective.locked_rules),
+        tool_risk=dict(effective.tool_risk),  # type: ignore[arg-type]
         saved=saved is not None,
         templates=await template_choices(db, tenant.id),
         updated_at=tenant.updated_at,
@@ -173,8 +175,14 @@ async def update_policy(
     if unknown := sorted(set(payload.locked_rules) - known):
         raise ValidationError("GUARDRAIL_LOCKED_RULE_UNKNOWN", ", ".join(unknown))
     before = _policy_snapshot(tenant)
+    previous = guardrail_policy.policy_from_settings(tenant.settings)
+    tool_risk = (
+        actions_from_json(payload.tool_risk)
+        if payload.tool_risk is not None
+        else dict(previous.tool_risk if previous else DEFAULT_ACTIONS)
+    )
     policy = guardrail_policy.CompanyPolicy(
-        payload.mode, payload.default_template, frozenset(payload.locked_rules)
+        payload.mode, payload.default_template, frozenset(payload.locked_rules), tool_risk
     )
     tenant.settings = {
         **(tenant.settings or {}),
@@ -452,6 +460,7 @@ async def _binding_out(db: AsyncSession, agent: Agent) -> AgentGuardrailOut:
         policy_mode=policy.mode,  # type: ignore[arg-type]
         policy_default_template=policy.default_template,
         locked_rules=sorted(policy.locked_rules),
+        tool_risk=dict(policy.tool_risk),  # type: ignore[arg-type]
         effective=_choice(effective, effective_name) if effective else None,
         templates=choices,
     )
