@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from app.guardrails.detectors import Finding
@@ -107,8 +108,15 @@ def _spans(
 
 
 def apply(
-    text: str, findings: list[Finding], rules: RuleSet, stage: Stage, hash_key: bytes
+    text: str,
+    findings: list[Finding],
+    rules: RuleSet,
+    stage: Stage,
+    hash_key: bytes,
+    pseudonym: Callable[[str, str], str] | None = None,
 ) -> Applied:
+    """``pseudonym(entity, value)`` gives the conversation's token; without it a
+    ``pseudonymize`` rule redacts instead (nothing could restore the value)."""
     pieces: list[str] = []
     decisions: list[Decision] = []
     cursor = 0
@@ -116,8 +124,12 @@ def apply(
         decisions.append(Decision(rule.id, entity, rule.action, start, end))
         pieces.append(text[cursor:start])
         value = text[start:end]
-        changes = rule.action not in ("warn", "block")
-        pieces.append(_replacement(value, entity, rule.action, hash_key) if changes else value)
+        if rule.action in ("warn", "block"):
+            pieces.append(value)
+        elif rule.action == "pseudonymize":
+            pieces.append(pseudonym(entity, value) if pseudonym else f"[{label(entity)}]")
+        else:
+            pieces.append(_replacement(value, entity, rule.action, hash_key))
         cursor = end
     pieces.append(text[cursor:])
     return Applied("".join(pieces), tuple(decisions))

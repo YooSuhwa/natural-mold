@@ -41,6 +41,7 @@ from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
 from app.models.guardrail_event import GuardrailEvent
 from app.models.guardrail_model_setting import GuardrailModelSetting
+from app.models.guardrail_pseudonym import GuardrailPseudonym
 from app.models.health_check_history import HealthCheckHistory
 from app.models.marketplace import (
     MarketplaceInstallation,
@@ -151,6 +152,7 @@ __all__ = [
     "DailySpendUser",
     "GuardrailEvent",
     "GuardrailModelSetting",
+    "GuardrailPseudonym",
     "HealthCheckHistory",
     "MarketplaceInstallation",
     "MarketplaceItem",

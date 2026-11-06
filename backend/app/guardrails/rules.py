@@ -13,10 +13,17 @@ from typing import Literal
 
 # output: what the model answers, streamed to the user and stored (plan stage ⑤).
 Stage = Literal["llm_send", "tool_args", "tool_result", "output"]
-Action = Literal["block", "redact", "hash", "mask", "warn"]
+Action = Literal["block", "redact", "hash", "pseudonymize", "mask", "warn"]
 
 # The strongest action wins when rules overlap on one span.
-ACTION_STRENGTH: dict[Action, int] = {"warn": 0, "mask": 1, "hash": 2, "redact": 3, "block": 4}
+ACTION_STRENGTH: dict[Action, int] = {
+    "warn": 0,
+    "mask": 1,
+    "pseudonymize": 2,
+    "hash": 3,
+    "redact": 4,
+    "block": 5,
+}
 # A rule naming ``kr_model`` also accepts what its rules fallback found (model_pack).
 PACK_FAMILIES: dict[str, frozenset[str]] = {"kr_model": frozenset({"kr_model", "kr"})}
 
@@ -29,6 +36,9 @@ class Rule:
     action: Action
     # None: every entity the packs report.
     entities: frozenset[str] | None = None
+    # pseudonymize only: tools get the original value back (a mail tool needs the real
+    # name); False leaves the pseudonym in their arguments (plan §3.3.1).
+    restore_for_tools: bool = False
 
     def matches(self, entity: str, pack: str, stage: Stage) -> bool:
         if stage not in self.stages:
@@ -59,6 +69,7 @@ class RuleSet:
         return best
 
 
+_SEND: frozenset[Stage] = frozenset({"llm_send"})
 _SEND_OUT: frozenset[Stage] = frozenset({"llm_send", "output"})
 _IN: frozenset[Stage] = frozenset({"llm_send", "tool_args", "tool_result"})
 _OUT: frozenset[Stage] = frozenset({"output"})
@@ -70,10 +81,11 @@ _IDS = frozenset(
 BUILTIN_TEMPLATES: dict[str, RuleSet] = {
     # Secrets never leave and are replaced if the model writes one; identifiers are replaced
     # before a model, a tool result or the user sees them; contacts keep their last digits;
-    # names and addresses are recorded only until pseudonymization (plan §3.3.1).
+    # names and addresses reach the model as pseudonyms and come back as the real values
+    # in answers and tool arguments (plan §3.3.1).
     "kr-default": RuleSet(
         "kr-default",
-        2,
+        3,
         (
             Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
             Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
@@ -81,7 +93,15 @@ BUILTIN_TEMPLATES: dict[str, RuleSet] = {
             Rule(
                 "contacts", ("common", "kr_model"), _SEND_OUT, "mask", frozenset({"PHONE", "EMAIL"})
             ),
-            Rule("people", ("kr_model",), _SEND_OUT, "warn", frozenset({"PERSON", "ADDRESS"})),
+            Rule(
+                "people",
+                ("kr_model",),
+                _SEND,
+                "pseudonymize",
+                frozenset({"PERSON", "ADDRESS"}),
+                restore_for_tools=True,
+            ),
+            Rule("people-output", ("kr_model",), _OUT, "warn", frozenset({"PERSON", "ADDRESS"})),
         ),
     ),
     # Observation mode: every finding recorded, nothing changed.
