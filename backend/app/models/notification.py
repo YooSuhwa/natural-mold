@@ -46,6 +46,7 @@ NOTIFICATION_KINDS: Final = (
     "marketplace.publish_decided",
     "usage.limit_warning",
     "agent_memo.proposal",
+    "mcp_tool.review_needed",
 )
 KIND_CHECK: Final = "kind IN (" + ",".join(f"'{kind}'" for kind in NOTIFICATION_KINDS) + ")"
 _TABLE = "notifications"

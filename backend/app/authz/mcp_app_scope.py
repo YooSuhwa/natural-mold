@@ -124,6 +124,7 @@ async def linked_tool(
             McpTool.server_id == server_id,
             McpTool.name == tool_name,
             McpTool.enabled.is_(True),
+            McpTool.review_state == "approved",
             private_scope_predicate(Agent, context),
             Agent.archived_at.is_(None),
             McpServer.status != "disabled",

@@ -556,3 +556,73 @@ async def test_mcp_connect_and_list_stdio_requires_command() -> None:
     result = await mcp_client.connect_and_list(transport="stdio", url=None)
     assert result["success"] is False
     assert "command" in (result["error"] or "").lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("state", "fingerprint", "expected"),
+    [
+        ("pending", None, None),
+        ("rejected", None, None),
+        ("approved", None, {"approved_definition": None}),
+        (
+            "approved",
+            "f" * 64,
+            {
+                "approved_definition": {
+                    "description": "budget",
+                    "input_schema": {"type": "object"},
+                    "annotations": {"readOnlyHint": True},
+                }
+            },
+        ),
+    ],
+)
+async def test_build_tools_config_only_runs_reviewed_mcp_tools(
+    db: AsyncSession, state: str, fingerprint: str | None, expected: dict | None
+) -> None:
+    """D11: pending and rejected tools never reach a run, even when an agent links them."""
+    model = await _seed_user_and_model(db)
+    agent = Agent(
+        user_id=TEST_USER_ID,
+        name="MCP Agent",
+        system_prompt="hi",
+        model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+    )
+    server = McpServer(
+        user_id=TEST_USER_ID,
+        name="Budget",
+        transport="streamable_http",
+        url="https://mcp.example.com/mcp",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+    )
+    db.add_all([agent, server])
+    await db.flush()
+    mcp_tool = McpTool(
+        server_id=server.id,
+        name="get_budget",
+        description="budget",
+        input_schema={"type": "object"},
+        annotations_json={"readOnlyHint": True},
+        review_state=state,
+        approved_fingerprint=fingerprint,
+    )
+    db.add(mcp_tool)
+    await db.flush()
+    db.add(AgentMcpToolLink(agent_id=agent.id, mcp_tool_id=mcp_tool.id))
+    await db.commit()
+
+    fetched = await chat_service.get_agent_with_tools(db, agent.id, unit_context(TEST_USER_ID))
+    assert fetched is not None
+    configs = await chat_service.build_tools_config(
+        fetched, db=db, context=unit_context(TEST_USER_ID)
+    )
+
+    if expected is None:
+        assert configs == []
+    else:
+        [entry] = configs
+        assert entry["mcp_approved_definition"] == expected["approved_definition"]

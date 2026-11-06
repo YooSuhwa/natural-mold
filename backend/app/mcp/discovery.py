@@ -1,4 +1,4 @@
-"""MCP tool discovery — connect, list, upsert into ``mcp_tools``."""
+"""MCP tool discovery — connect, list, upsert into ``mcp_tools`` (reviewed: app.mcp.review)."""
 
 from __future__ import annotations
 
@@ -9,10 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.mcp_probe_scope import require_mcp_probe_scope
+from app.authz.notifications import Target, notify, resource_link, resource_managers
+from app.mcp import review
 from app.mcp.auth import resolve_mcp_auth
 from app.mcp.client import connect_and_list
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
+
+REVIEW_NEEDED_KIND = "mcp_tool.review_needed"
 
 
 async def _probe(db: AsyncSession, server: McpServer) -> dict[str, Any]:
@@ -42,8 +46,34 @@ async def _probe(db: AsyncSession, server: McpServer) -> dict[str, Any]:
     )
 
 
+async def _server_tools(db: AsyncSession, server: McpServer) -> list[McpTool]:
+    rows = await db.execute(select(McpTool).where(McpTool.server_id == server.id))
+    return list(rows.scalars().all())
+
+
+async def notify_review_needed(db: AsyncSession, server: McpServer, tools: list[McpTool]) -> None:
+    """Tell the server's managers that tools wait for their review (company servers)."""
+    if not tools or server.org_id is None or server.tenant_id is None:
+        return
+    managers = await resource_managers(db, server.org_id, "mcp_server", server.id, mode="enforce")
+    await notify(
+        db,
+        kind=REVIEW_NEEDED_KIND,
+        recipients=sorted(managers),
+        tenant_id=server.tenant_id,
+        org_id=server.org_id,
+        target=Target("mcp_server", server.id, server.name),
+        payload={"tool_count": len(tools)},
+        link=resource_link("mcp_server", server.id),
+    )
+
+
 async def test_server(db: AsyncSession, server: McpServer) -> dict[str, Any]:
-    """Connectivity probe — updates ``status`` / ``last_pinged_at`` only."""
+    """Connectivity probe: ``status``/``last_pinged_at``, and review flags on known tools.
+
+    A changed definition of an existing tool waits for review (``app.mcp.review``); new tools
+    are added only by ``discover_tools``.
+    """
 
     probe = await _probe(db, server)
     server.last_pinged_at = datetime.now(UTC).replace(tzinfo=None)
@@ -51,6 +81,9 @@ async def test_server(db: AsyncSession, server: McpServer) -> dict[str, Any]:
         server.status = "connected"
         server.last_tool_count = len(probe["tools"])
         server.last_error = None
+        observed = review.observe(await _server_tools(db, server), probe["tools"], server.url)
+        await db.flush()
+        await notify_review_needed(db, server, list(observed.flagged))
     else:
         # If the error mentions auth/401/403, mark auth_needed; otherwise
         # mark unreachable.
@@ -81,35 +114,22 @@ async def discover_tools(
     if not probe["success"]:
         return probe, []
 
-    existing = (
-        (await db.execute(select(McpTool).where(McpTool.server_id == server.id))).scalars().all()
-    )
-    by_name = {t.name: t for t in existing}
-
-    now = datetime.now(UTC).replace(tzinfo=None)
-    seen_names: set[str] = set()
+    by_name = {t.name: t for t in await _server_tools(db, server)}
+    added: list[McpTool] = []
     persisted: list[McpTool] = []
     for descriptor in probe["tools"]:
         name = descriptor["name"]
-        seen_names.add(name)
         row = by_name.get(name)
         if row is None:
-            row = McpTool(
-                server_id=server.id,
-                name=name,
-                description=descriptor.get("description") or None,
-                input_schema=descriptor.get("input_schema") or {},
-                metadata_json=descriptor.get("metadata") or {},
-                enabled=True,
-                last_seen_at=now,
+            # D11: a newly discovered tool is hidden until a server manager approves it.
+            row = review.new_pending_tool(
+                server.id, name, review.Definition.from_descriptor(descriptor), server.url
             )
             db.add(row)
-        else:
-            row.description = descriptor.get("description") or row.description
-            row.input_schema = descriptor.get("input_schema") or {}
-            row.metadata_json = descriptor.get("metadata") or {}
-            row.last_seen_at = now
+            added.append(row)
         persisted.append(row)
+    await db.flush()
+    await notify_review_needed(db, server, added)
 
     # Tools no longer reported by the server are NOT deleted — they may still
     # be linked to agents (``agent_mcp_tools``). Their stale state can be

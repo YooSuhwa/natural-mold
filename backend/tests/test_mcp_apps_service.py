@@ -322,6 +322,19 @@ async def test_authorize_binding_hides_cross_user_and_rejects_stale_or_revoked(
     assert stale.value.code == "mcp_app_context_stale"
 
     seeded.origin.metadata_json = {"ui": {"resourceUri": "ui://weather/dashboard"}}
+    seeded.origin.review_state = "pending"  # D11: an unreviewed tool takes no app calls
+    await db.flush()
+    with pytest.raises(McpAppsError) as unreviewed:
+        await mcp_apps_service.authorize_binding(
+            db,
+            conversation_id=seeded.conversation.id,
+            run_id=seeded.run.id,
+            tool_call_id="tool-call-1",
+            context=unit_context(TEST_USER_ID),
+        )
+    assert unreviewed.value.status_code == 403
+
+    seeded.origin.review_state = "approved"
     seeded.origin.enabled = False
     await db.flush()
     with pytest.raises(McpAppsError) as revoked:

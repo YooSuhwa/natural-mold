@@ -90,7 +90,7 @@ async def _tool_snapshot_for_server(
             await db.execute(
                 select(McpTool)
                 .where(McpTool.server_id == server_id)
-                .where(McpTool.enabled.is_(True))
+                .where(McpTool.enabled.is_(True), McpTool.review_state == "approved")
                 .order_by(McpTool.name.asc())
             )
         )

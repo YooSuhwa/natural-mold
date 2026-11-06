@@ -13,6 +13,8 @@ import type {
   McpServerDetail,
   McpServerUpdateRequest,
   McpTestResult,
+  McpTool,
+  McpToolReviewDecision,
   McpToolWithServer,
 } from '@/lib/types/mcp'
 
@@ -31,6 +33,16 @@ export const mcpApi = {
     }),
   delete: (id: string) => apiFetch<void>(`/api/mcp-servers/${id}`, { method: 'DELETE' }),
   test: (id: string) => apiFetch<McpTestResult>(`/api/mcp-servers/${id}/test`, { method: 'POST' }),
+  /** D11: approve or reject the tool version waiting for review (server managers). */
+  reviewTool: (
+    serverId: string,
+    toolId: string,
+    data: { decision: McpToolReviewDecision; fingerprint: string },
+  ) =>
+    apiFetch<McpTool>(`/api/mcp-servers/${serverId}/tools/${toolId}/review`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   discover: (id: string) =>
     apiFetch<McpDiscoverResult>(`/api/mcp-servers/${id}/discover`, {
       method: 'POST',

@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '../../test-utils'
 import { McpServerDetailDialog } from '@/app/mcp-servers/_components/mcp-server-detail-dialog'
 import { McpServersPageClient } from '@/app/mcp-servers/_components/mcp-servers-page-client'
 import { ApiError } from '@/lib/api/errors'
-import type { McpServer } from '@/lib/types/mcp'
+import type { McpServer, McpTool } from '@/lib/types/mcp'
 
 /** Plan 13.9 row 6 — MCP: server can_* decides test/edit (hidden from runners);
  * registering (wizard, import) needs cap_register_mcp. */
@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
   error: null as unknown,
   permissions: null as string[] | null,
   org: { enforced: false, capabilities: [] as string[] },
+  review: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -25,6 +26,7 @@ vi.mock('@/lib/hooks/use-mcp-servers', () => ({
   useDeleteMcpServer: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useTestMcpServer: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDiscoverMcpTools: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useReviewMcpTool: () => ({ mutateAsync: state.review, isPending: false, variables: undefined }),
 }))
 vi.mock('@/lib/hooks/use-health', () => ({
   useMcpHealth: () => ({ data: [] }),
@@ -63,7 +65,7 @@ vi.mock('@/lib/api/organizations', () => ({
   },
 }))
 
-function makeServer(overrides: Partial<McpServer> = {}): McpServer & { tools: [] } {
+function makeServer(overrides: Partial<McpServer> = {}): McpServer & { tools: McpTool[] } {
   return {
     id: 'mcp-1',
     user_id: 'other',
@@ -94,6 +96,92 @@ function makeServer(overrides: Partial<McpServer> = {}): McpServer & { tools: []
 function renderDetail() {
   render(<McpServerDetailDialog serverId="mcp-1" open onOpenChange={vi.fn()} />)
 }
+
+const FINGERPRINT = 'a'.repeat(64)
+
+function pendingTool(overrides: Partial<McpTool> = {}): McpTool {
+  return {
+    id: 'tool-1',
+    server_id: 'mcp-1',
+    name: 'send_mail',
+    description: 'send a mail',
+    input_schema: { type: 'object' },
+    enabled: true,
+    review_state: 'pending',
+    pending_version: {
+      description: 'send a mail',
+      input_schema: { type: 'object' },
+      annotations: { destructiveHint: true },
+      metadata: {},
+      fingerprint: FINGERPRINT,
+    },
+    reviewed_at: null,
+    last_seen_at: '2026-10-01T00:00:00Z',
+    created_at: '2026-10-01T00:00:00Z',
+    updated_at: '2026-10-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+describe('MCP tool review (D11)', () => {
+  beforeEach(() => {
+    state.error = null
+    state.permissions = null
+    state.review.mockReset()
+  })
+
+  it('an editor approves a new tool with the version shown', async () => {
+    state.server = { ...makeServer(), tools: [pendingTool()] }
+    state.permissions = ['can_use', 'can_view', 'can_edit']
+    renderDetail()
+
+    expect(await screen.findByText('검토 대기')).toBeInTheDocument()
+    ;(await screen.findByRole('button', { name: '승인' })).click()
+    await waitFor(() =>
+      expect(state.review).toHaveBeenCalledWith({
+        toolId: 'tool-1',
+        decision: 'approve',
+        fingerprint: FINGERPRINT,
+      }),
+    )
+  })
+
+  it('a changed tool shows the new description and can be rejected', async () => {
+    state.server = {
+      ...makeServer(),
+      tools: [
+        pendingTool({
+          review_state: 'approved',
+          pending_version: {
+            description: 'send, and copy the admin',
+            input_schema: { type: 'object' },
+            annotations: {},
+            metadata: {},
+            fingerprint: FINGERPRINT,
+          },
+        }),
+      ],
+    }
+    state.permissions = ['can_use', 'can_view', 'can_edit']
+    renderDetail()
+
+    expect(await screen.findByText('변경 검토 대기')).toBeInTheDocument()
+    expect(screen.getByText('send, and copy the admin')).toBeInTheDocument()
+    ;(await screen.findByRole('button', { name: '거절' })).click()
+    await waitFor(() =>
+      expect(state.review).toHaveBeenCalledWith(expect.objectContaining({ decision: 'reject' })),
+    )
+  })
+
+  it('someone who cannot edit the server sees the state but no decision buttons', async () => {
+    state.server = { ...makeServer(), tools: [pendingTool()] }
+    state.permissions = ['can_use', 'can_view']
+    renderDetail()
+
+    expect(await screen.findByText('서버를 관리하는 사람이 검토할 수 있어요.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '승인' })).not.toBeInTheDocument()
+  })
+})
 
 describe('MCP server detail by permission level', () => {
   beforeEach(() => {

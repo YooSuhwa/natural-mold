@@ -263,7 +263,7 @@ async def get_tools_catalog(db: AsyncSession, context: OrgContext) -> list[dict[
             McpServer.name.label("server_name"),
         )
         .join(McpServer, McpServer.id == McpTool.server_id)
-        .where(private_scope_predicate(McpServer, context))
+        .where(private_scope_predicate(McpServer, context), McpTool.review_state == "approved")
     )
     items.extend(
         {

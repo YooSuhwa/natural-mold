@@ -30,6 +30,7 @@ from app.authz.scoping import private_scope_predicate, private_scoped
 from app.authz.service import AuthzService
 from app.credentials.run_resolution import RunCredentialResolver
 from app.credentials.run_subject import subject_for_agent
+from app.mcp import review
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation import Conversation
@@ -229,7 +230,7 @@ async def build_tools_config(
 
     for mcp_link in plan.mcp_tool_links if plan is not None else agent.mcp_tool_links:
         mcp_tool = mcp_link.mcp_tool
-        if mcp_tool is None or not mcp_tool.enabled or mcp_tool.server is None:
+        if mcp_tool is None or not review.is_usable(mcp_tool) or mcp_tool.server is None:
             continue
         server = mcp_tool.server
         resolution = await resolver.mcp(server)
@@ -247,6 +248,9 @@ async def build_tools_config(
                 "mcp_server_id": str(server.id),
                 "mcp_tool_id": str(mcp_tool.id),
                 "mcp_tool_name": mcp_tool.name,
+                # D11: the model is shown the reviewed definition, not what the server
+                # lists now (a changed version waits for review).
+                "mcp_approved_definition": review.approved_definition(mcp_tool),
                 "org_id": str(context.org_id),
                 "mcp_transport_headers": resolution.headers,
                 "credentials": resolution.credentials,

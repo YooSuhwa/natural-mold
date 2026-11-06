@@ -32,7 +32,9 @@ from app.credentials.allowed_hosts import remember_server_host, require_credenti
 from app.credentials.validation import require_credential_use
 from app.dependencies import CurrentUser
 from app.error_codes import mcp_server_not_found
+from app.exceptions import ConflictError, NotFoundError
 from app.mcp import discovery as mcp_discovery  # noqa: F401 - patch surface (tests)
+from app.mcp import review
 from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
@@ -180,6 +182,8 @@ async def list_all_tools(
             context,
         )
     )
+    # D11: only reviewed tools can be attached (pending ones show on the server screen).
+    stmt = stmt.where(McpTool.review_state == "approved")
     rows = [
         (tool, server_name)
         for tool, server_name in (
@@ -610,3 +614,62 @@ async def record_import_audit(
             "overwrite": overwrite,
         },
     )
+
+
+# -- Tool review (D11, app.mcp.review) -------------------------------------------------
+
+
+async def review_tool(
+    db: AsyncSession,
+    *,
+    server: McpServer,
+    tool_id: uuid.UUID,
+    decision: review.Decision,
+    fingerprint: str,
+    user: CurrentUser,
+    request: Request,
+) -> McpTool:
+    """A server manager approves or rejects the version waiting for review (audited)."""
+    tool = await db.scalar(
+        select(McpTool).where(McpTool.id == tool_id, McpTool.server_id == server.id)
+    )
+    if tool is None:
+        raise NotFoundError("MCP_TOOL_NOT_FOUND", "MCP tool not found")
+    before = tool.review_state
+    try:
+        applied = review.decide(
+            tool,
+            decision,
+            reviewer_id=user.id,
+            server_url=server.url,
+            expected_fingerprint=fingerprint,
+        )
+    except review.ReviewConflict as exc:
+        await record_server_audit(
+            db,
+            user=user,
+            request=request,
+            action="mcp_tool.review",
+            server=server,
+            outcome="denied",
+            reason_code="mcp_tool_review_conflict",
+            metadata={"tool_name": tool.name, "decision": decision},
+        )
+        await db.commit()
+        raise ConflictError("MCP_TOOL_REVIEW_CONFLICT", str(exc)) from exc
+    await record_server_audit(
+        db,
+        user=user,
+        request=request,
+        action="mcp_tool.review",
+        server=server,
+        metadata={
+            "tool_name": tool.name,
+            "decision": decision,
+            "fingerprint": applied,
+            "state_before": before,
+            "state_after": tool.review_state,
+        },
+    )
+    await db.flush()
+    return tool

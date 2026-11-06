@@ -15,6 +15,7 @@ export type NotificationKind =
   | 'marketplace.publish_decided'
   | 'usage.limit_warning'
   | 'agent_memo.proposal'
+  | 'mcp_tool.review_needed'
 
 /** `accessible: false` — the recipient lost access; the server withholds id and name. */
 export interface NotificationTarget {

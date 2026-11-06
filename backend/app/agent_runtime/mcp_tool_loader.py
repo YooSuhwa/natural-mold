@@ -166,6 +166,27 @@ def _plan_mcp_servers(mcp_configs: list[dict]) -> _McpPlan:
     return plan
 
 
+def _apply_approved_definition(tool: BaseTool, config: dict[str, Any]) -> None:
+    """D11: show the model the reviewed description, schema and annotations.
+
+    A server that changed a tool since its review keeps being described by the approved
+    version until a manager reviews the change (``app.mcp.review``); risk levels read the
+    approved annotations too.
+    """
+    approved = config.get("mcp_approved_definition")
+    if not isinstance(approved, dict):
+        return
+    tool.description = str(approved.get("description") or "")
+    schema = approved.get("input_schema")
+    if isinstance(schema, dict) and schema:
+        tool.args_schema = json.loads(json.dumps(schema))  # a copy: auth keys are hidden next
+    metadata = dict(getattr(tool, "metadata", None) or {})
+    for hint in [k for k in metadata if k.endswith("Hint") or k == "title"]:
+        metadata.pop(hint)
+    metadata.update(approved.get("annotations") or {})
+    tool.metadata = metadata
+
+
 def _wrap_selected_tool(
     t: BaseTool,
     key: str,
@@ -179,6 +200,7 @@ def _wrap_selected_tool(
     """Hide auth params, attach risk/UI metadata and the retry wrapper (``None`` = hidden)."""
     from app.agent_runtime.mcp_cache import MCPToolWithRetry
 
+    _apply_approved_definition(t, plan.tool_configs.get((key, t.name), {}))
     _hide_auth_params_from_schema(t, plan.auth_param_keys if auth_keys is None else auth_keys)
     risk_config = dict(plan.tool_configs.get((key, t.name), {}))
     risk_config.setdefault("definition_key", "mcp")

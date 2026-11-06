@@ -29,7 +29,7 @@ from app.error_codes import (
     credential_not_found,
     unknown_registry_entry,
 )
-from app.mcp import discovery
+from app.mcp import discovery, review
 from app.mcp.auth import resolve_mcp_auth
 from app.mcp.client import connect_and_list
 from app.models.mcp_server import McpServer
@@ -51,7 +51,9 @@ from app.schemas.mcp import (
     McpServerResponse,
     McpServerUpdate,
     McpTestResponse,
+    McpToolPendingVersion,
     McpToolResponse,
+    McpToolReviewRequest,
     McpToolWithServerResponse,
 )
 from app.services import mcp_registry as mcp_registry_service
@@ -106,7 +108,8 @@ def _merged(changes: list[LifecycleChange]) -> LifecycleChange:
     return LifecycleChange(tuple(i for change in changes for i in change.outbox_ids))
 
 
-def _tool_to_response(tool: McpTool) -> McpToolResponse:
+def _tool_to_response(tool: McpTool, server_url: str | None = None) -> McpToolResponse:
+    pending = review.pending_view(tool, server_url)
     return McpToolResponse(
         id=tool.id,
         server_id=tool.server_id,
@@ -114,6 +117,9 @@ def _tool_to_response(tool: McpTool) -> McpToolResponse:
         description=tool.description,
         input_schema=tool.input_schema or {},
         enabled=tool.enabled,
+        review_state=tool.review_state,  # type: ignore[arg-type]  # CHECK-constrained
+        pending_version=McpToolPendingVersion(**pending) if pending else None,
+        reviewed_at=tool.reviewed_at,
         last_seen_at=getattr(tool, "last_seen_at", None),
         created_at=tool.created_at,
         updated_at=tool.updated_at,
@@ -448,7 +454,7 @@ async def get_server(
     base = _server_to_response(server, server.id in await secret_readers(authz, context, [server]))
     return McpServerDetailResponse(
         **base.model_dump(),
-        tools=[_tool_to_response(t) for t in tools],
+        tools=[_tool_to_response(t, server.url) for t in tools],
     )
 
 
@@ -591,9 +597,41 @@ async def discover_server_tools(
     return McpDiscoverResponse(
         success=probe["success"],
         status=server.status,
-        tools=[_tool_to_response(t) for t in tools],
+        tools=[_tool_to_response(t, server.url) for t in tools],
         error=probe.get("error"),
     )
+
+
+@router.post("/{server_id}/tools/{tool_id}/review", response_model=McpToolResponse)
+@authz_policy(RES("mcp_server", "can_edit", param="server_id", min_visible="can_use"))
+async def review_server_tool(
+    server_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    body: McpToolReviewRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+) -> McpToolResponse:
+    """Approve or reject the tool version waiting for review (D11). Server managers only."""
+    server = await mcp_service.load_owned(
+        db, server_id, context, authz=authz, permission="can_edit"
+    )
+    tool = await mcp_service.review_tool(
+        db,
+        server=server,
+        tool_id=tool_id,
+        decision=body.decision,
+        fingerprint=body.fingerprint,
+        user=user,
+        request=request,
+    )
+    await db.commit()
+    await db.refresh(tool)
+    await mcp_service.invalidate_runtime_mcp_cache()
+    return _tool_to_response(tool, server.url)
 
 
 # -- Registry catalog --------------------------------------------------------

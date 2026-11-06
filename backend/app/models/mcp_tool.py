@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -45,6 +45,10 @@ class McpTool(Base):
     __tablename__ = "mcp_tools"
     __table_args__ = (
         UniqueConstraint("server_id", "name", name="uq_mcp_tools_server_name"),
+        CheckConstraint(
+            "review_state IN ('pending', 'approved', 'rejected')",
+            name="ck_mcp_tools_review_state",
+        ),
         {"extend_existing": True},
     )
 
@@ -65,7 +69,25 @@ class McpTool(Base):
     # are retained by app.mcp.client; transport/auth metadata never enters it.
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=dict)
 
+    # MCP tool annotations as the server sent them (wire names; tools/risk.py reads them).
+    annotations_json: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=dict)
+
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # i16 review (app/mcp/review.py, decision D11). ``pending``: discovered, hidden until a
+    # server manager approves it. ``approved``: usable; a changed live definition waits in
+    # ``pending_definition`` while agents keep the approved one. ``rejected``: hidden.
+    review_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="approved", server_default="approved"
+    )
+    approved_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pending_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pending_definition: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    rejected_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     # M26: refreshed by every successful discovery. The row is preserved when
     # a tool disappears between runs so the UI can flag it as ``stale`` instead

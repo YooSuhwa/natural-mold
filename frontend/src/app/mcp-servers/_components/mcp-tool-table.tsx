@@ -16,6 +16,11 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { formatDisplayDateTime } from '@/lib/utils/display-format'
+import type {
+  McpToolPendingVersion,
+  McpToolReviewDecision,
+  McpToolReviewState,
+} from '@/lib/types/mcp'
 
 const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -32,6 +37,9 @@ interface McpToolLike {
   /** ISO timestamp of the last successful discovery. Persisted tools only —
    *  preview rows (probe results) leave this undefined. */
   last_seen_at?: string | null
+  /** D11 review (persisted tools only). */
+  review_state?: McpToolReviewState
+  pending_version?: McpToolPendingVersion | null
 }
 
 interface McpToolTableProps {
@@ -39,6 +47,106 @@ interface McpToolTableProps {
   /** Optional toggler — local state in wizard mode. */
   selected?: Set<string>
   onToggle?: (toolName: string) => void
+  /** Server managers: approve or reject the version waiting for review. */
+  onReview?: (toolId: string, decision: McpToolReviewDecision, fingerprint: string) => void
+  /** The tool whose decision is being sent (its buttons are disabled). */
+  reviewingToolId?: string | null
+}
+
+function ReviewBadge({ tool }: { tool: McpToolLike }) {
+  const t = useTranslations('mcp.toolTable.review')
+  if (tool.review_state === 'pending') {
+    return (
+      <span
+        className="moldy-status-warn moldy-status-soft rounded-full px-1.5 py-0.5 moldy-ui-micro font-medium"
+        data-review="pending"
+      >
+        {t('pending')}
+      </span>
+    )
+  }
+  if (tool.review_state === 'rejected') {
+    return (
+      <span
+        className="rounded-full bg-muted px-1.5 py-0.5 moldy-ui-micro font-medium text-muted-foreground"
+        data-review="rejected"
+      >
+        {t('rejected')}
+      </span>
+    )
+  }
+  if (tool.pending_version) {
+    return (
+      <span
+        className="moldy-status-warn moldy-status-soft rounded-full px-1.5 py-0.5 moldy-ui-micro font-medium"
+        data-review="changed"
+      >
+        {t('changed')}
+      </span>
+    )
+  }
+  return null
+}
+
+function ReviewRow({
+  tool,
+  colSpan,
+  onReview,
+  busy,
+}: {
+  tool: McpToolLike & { id: string; pending_version: McpToolPendingVersion }
+  colSpan: number
+  onReview?: McpToolTableProps['onReview']
+  busy: boolean
+}) {
+  const t = useTranslations('mcp.toolTable.review')
+  const pending = tool.pending_version
+  const isNew = tool.review_state !== 'approved'
+  return (
+    <TableRow data-review-row={tool.name}>
+      <TableCell colSpan={colSpan} className="bg-muted/30">
+        <div className="space-y-2 text-xs">
+          <p className="text-muted-foreground">{isNew ? t('newHelp') : t('changedHelp')}</p>
+          {!isNew ? (
+            <div className="space-y-1">
+              <p className="font-medium">{t('newDescription')}</p>
+              <p className="whitespace-pre-wrap break-words">{pending.description || '—'}</p>
+            </div>
+          ) : null}
+          <pre className="max-h-48 overflow-auto rounded border bg-background p-2 font-mono moldy-ui-caption">
+            {JSON.stringify(
+              { input_schema: pending.input_schema, annotations: pending.annotations },
+              null,
+              2,
+            )}
+          </pre>
+          {onReview ? (
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="h-7 px-2 text-xs"
+                disabled={busy}
+                onClick={() => onReview(tool.id, 'approve', pending.fingerprint)}
+              >
+                {t('approve')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs"
+                disabled={busy}
+                onClick={() => onReview(tool.id, 'reject', pending.fingerprint)}
+              >
+                {t('reject')}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-muted-foreground">{t('managersOnly')}</p>
+          )}
+        </div>
+      </TableCell>
+    </TableRow>
+  )
 }
 
 function ExpandableDescription({ text }: { text: string | null | undefined }) {
@@ -71,7 +179,13 @@ function isPersistedTool(tool: McpToolLike): boolean {
   return typeof tool.id === 'string' && tool.id.length > 0
 }
 
-export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
+export function McpToolTable({
+  tools,
+  selected,
+  onToggle,
+  onReview,
+  reviewingToolId = null,
+}: McpToolTableProps) {
   const t = useTranslations('mcp.toolTable')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
@@ -125,6 +239,7 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                   <TableCell className="break-words font-medium">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span>{tool.name}</span>
+                      {persisted ? <ReviewBadge tool={tool} /> : null}
                       {disabled ? (
                         <span className="rounded-full bg-muted px-1.5 py-0.5 moldy-ui-micro font-medium text-muted-foreground">
                           {t('disabled')}
@@ -169,6 +284,14 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                     )}
                   </TableCell>
                 </TableRow>
+                {persisted && tool.id && tool.pending_version ? (
+                  <ReviewRow
+                    tool={{ ...tool, id: tool.id, pending_version: tool.pending_version }}
+                    colSpan={onToggle ? 4 : 3}
+                    onReview={onReview}
+                    busy={reviewingToolId === tool.id}
+                  />
+                ) : null}
                 {showSchema && hasSchema ? (
                   <TableRow>
                     <TableCell colSpan={onToggle ? 4 : 3} className="bg-muted/30 p-0">
