@@ -249,7 +249,9 @@ async def _prepare_agent(
             agent_id=parse_uuid(cfg.agent_id),
             run_id=run_id,
         ),
-        interactive=not is_trigger_mode,
+        # Approval rules ride interrupt_on in every run; an unattended run waits or
+        # answers BLOCKED for them (app/approvals/unattended.py).
+        interactive=True,
     )
     last_mark = time.perf_counter()
 
@@ -273,6 +275,7 @@ async def _prepare_agent(
         runtime_policy=cfg.runtime_policy,
         guard=guard,
         tool_risk=cfg.tool_risk,
+        unattended=components.unattended,
     )
     timings["build_agent_ms"] = int((time.perf_counter() - build_started) * 1000)
     last_mark = time.perf_counter()

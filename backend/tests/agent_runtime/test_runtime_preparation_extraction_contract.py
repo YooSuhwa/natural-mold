@@ -182,7 +182,8 @@ async def test_preparation_bindings_are_resolved_at_call_time(
     assert "<i>" not in trigger.system_prompt
     assert "memory-context" in calls
     assert "interrupt:True:False" in calls
-    assert "interrupt:False:True" in calls
+    # 17.3: a trigger builds the attended policy too, then applies it unattended.
+    assert "interrupt:False:False" in calls
 
 
 @pytest.mark.asyncio

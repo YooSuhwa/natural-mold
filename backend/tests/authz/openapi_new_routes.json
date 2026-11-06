@@ -51021,6 +51021,15 @@
     },
     "TriggerCreate": {
       "properties": {
+        "approval_policy": {
+          "default": "inbox",
+          "enum": [
+            "inbox",
+            "blocked"
+          ],
+          "title": "Approval Policy",
+          "type": "string"
+        },
         "auto_pause_after_failures": {
           "anyOf": [
             {
@@ -51139,6 +51148,11 @@
             }
           ],
           "title": "Agent Name"
+        },
+        "approval_policy": {
+          "default": "inbox",
+          "title": "Approval Policy",
+          "type": "string"
         },
         "auto_pause_after_failures": {
           "anyOf": [
@@ -51594,6 +51608,21 @@
     },
     "TriggerUpdate": {
       "properties": {
+        "approval_policy": {
+          "anyOf": [
+            {
+              "enum": [
+                "inbox",
+                "blocked"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Policy"
+        },
         "auto_pause_after_failures": {
           "anyOf": [
             {

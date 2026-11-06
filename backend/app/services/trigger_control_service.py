@@ -131,6 +131,7 @@ async def create_trigger(
             data.auto_pause_after_failures,
             "auto_pause_after_failures",
         ),
+        approval_policy=data.approval_policy,
     )
     db.add(trigger)
     await db.commit()
@@ -205,6 +206,8 @@ async def update_trigger(
             data.auto_pause_after_failures,
             "auto_pause_after_failures",
         )
+    if data.approval_policy is not None:
+        trigger.approval_policy = data.approval_policy
 
     await db.commit()
     await db.refresh(trigger)

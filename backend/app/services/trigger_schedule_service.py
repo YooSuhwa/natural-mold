@@ -148,7 +148,8 @@ async def find_in_flight_run(db: AsyncSession, trigger_id: uuid.UUID) -> AgentTr
         select(AgentTriggerRun)
         .where(
             AgentTriggerRun.trigger_id == trigger_id,
-            AgentTriggerRun.status.in_(("queued", "running", "canceling")),
+            # A run waiting for the approval inbox holds the next firing back (17.3).
+            AgentTriggerRun.status.in_(("queued", "running", "canceling", "waiting")),
         )
         .order_by(AgentTriggerRun.started_at.desc())
         .limit(1)

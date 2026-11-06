@@ -8,8 +8,9 @@ therefore detects with the rule packs only (``common``, ``kr``: no service call,
 → same answer) on the arguments as the model wrote them. A tool that already asks for
 approval every time keeps its own entry.
 
-Where nobody can approve (scheduled runs: no ``interrupt_on``), ``GuardrailMiddleware``
-refuses such a call instead.
+A run nobody watches carries these entries too and waits for the approval inbox or answers
+BLOCKED (``app/approvals/unattended.py``). ``GuardrailMiddleware`` refuses a call it finds a
+value in that the predicate did not (a value only found after restoring pseudonyms).
 """
 
 from __future__ import annotations

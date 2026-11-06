@@ -46,6 +46,7 @@ def _trigger_metadata(trigger: AgentTrigger) -> dict[str, object]:
         "input_message_length": len(trigger.input_message or ""),
         "max_runs": trigger.max_runs,
         "auto_pause_after_failures": trigger.auto_pause_after_failures,
+        "approval_policy": trigger.approval_policy,
     }
 
 

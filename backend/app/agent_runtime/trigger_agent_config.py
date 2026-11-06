@@ -33,6 +33,8 @@ class TriggerConfigSource:
     fallback_chain: list[dict[str, Any]] | None
     access_plan: RuntimeAccessPlan | None = None  # F-06: children follow the parent plan
     llm_credential_scope: str | None = None
+    # The schedule's approval policy (17.3): "inbox" waits for a decision, else BLOCKED.
+    approval_policy: str = "blocked"
 
 
 def build_trigger_agent_config(source: TriggerConfigSource) -> AgentConfig:
@@ -70,4 +72,5 @@ def build_trigger_agent_config(source: TriggerConfigSource) -> AgentConfig:
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
         access_plan=source.access_plan,
+        unattended_approval="wait" if source.approval_policy == "inbox" else "block",
     )

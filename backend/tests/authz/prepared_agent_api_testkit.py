@@ -28,6 +28,7 @@ from app.config import settings
 from app.models.agent_api import AgentApiKey, AgentApiRun
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.organization import Tenant
 from app.schemas.agent_api import AgentApiKeyCreate, AgentDeploymentCreate
 from app.services import agent_invocation_service
 from tests.authz import prepared_adapter_testkit as akit
@@ -69,6 +70,15 @@ async def seed_api_run(
     akit.patch_keys(monkeypatch)
     monkeypatch.setattr(agent_invocation_service, "resolve_llm_api_key_for_agent", _root_key)
     seeded = await akit.seed(db, with_child=with_child)
+    # The fixture's MCP tool is an external change, which an API call never waits for
+    # (순번 13, 17.3: such a call runs unleased and answers BLOCKED). The company allows
+    # that level here so these tests keep exercising the lease.
+    tenant = await db.get(Tenant, seeded.graph.context.tenant_id)
+    assert tenant is not None
+    tenant.settings = {
+        **(tenant.settings or {}),
+        "guardrails": {"mode": "off", "tool_risk": {"external_mutation": "allow"}},
+    }
     chat_run = await db.get(ConversationRun, seeded.run_id)
     assert chat_run is not None
     chat_run.status, chat_run.is_active = "completed", False

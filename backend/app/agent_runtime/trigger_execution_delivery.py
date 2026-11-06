@@ -36,3 +36,25 @@ async def deliver_trigger_success(
         trigger.run_count,
     )
     return run
+
+
+async def deliver_trigger_waiting(
+    db: AsyncSession, trigger_id: str, materialized: TriggerMaterialized
+) -> AgentTriggerRun:
+    """17.3: the run waits for the approval inbox; its resume ends the schedule run."""
+    trigger, run, conversation = materialized.trigger, materialized.run, materialized.conversation
+    await trigger_service.finish_trigger_run(
+        db,
+        trigger=trigger,
+        run=run,
+        conversation=conversation,
+        status="waiting",
+        output_preview="승인 대기 중",
+        thread_id=str(conversation.id),
+    )
+    run.finished_at = None
+    run.duration_ms = None
+    await db.commit()
+    await db.refresh(run)
+    logger.info("Trigger %s waits for an approval decision", trigger_id)
+    return run

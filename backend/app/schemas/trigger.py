@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -18,6 +18,8 @@ class TriggerCreate(BaseModel):
     max_runs: int | None = None
     end_at: datetime | None = None
     auto_pause_after_failures: int | None = None
+    # 17.3 / D27: what a call needing approval does in this schedule's runs.
+    approval_policy: Literal["inbox", "blocked"] = "inbox"
 
 
 class TriggerUpdate(BaseModel):
@@ -32,6 +34,7 @@ class TriggerUpdate(BaseModel):
     max_runs: int | None = None
     end_at: datetime | None = None
     auto_pause_after_failures: int | None = None
+    approval_policy: Literal["inbox", "blocked"] | None = None
 
 
 class TriggerResponse(BaseModel):
@@ -55,6 +58,7 @@ class TriggerResponse(BaseModel):
     max_runs: int | None
     end_at: datetime | None
     auto_pause_after_failures: int | None
+    approval_policy: str = "inbox"
     created_at: datetime
     updated_at: datetime
     agent_name: str | None = None

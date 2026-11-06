@@ -18,7 +18,10 @@ conversation with chat attachments needs the attachment-input middleware, which
 reads the upload rows and files per model call; the lease does not carry them.
 ``guardrail_policy``: a run whose guardrail rules ask for approval before a tool runs; those
 rules are ``interrupt_on`` predicates, which frozen inputs cannot hold. Other rules and tool
-risk actions are compiled into the lease (``prepared_run_compile``).
+risk actions are compiled into the lease (``prepared_run_compile``). ``unattended_approval``: a
+run nobody watches (schedule, Agent API) with a call that needs approval; that call waits for
+the approval inbox or answers BLOCKED (``app/approvals/unattended.py``), which the lease does
+not carry.
 
 Substitution (not degradation): the legacy default reliability middleware
 ``ModelRetryMiddleware`` is not installed; lease-owned models retry inside
@@ -63,6 +66,7 @@ LEGACY_FALLBACK_REASONS: frozenset[str] = frozenset(
         "child_model_missing",
         "child_skills",
         "guardrail_policy",
+        "unattended_approval",
         "llm_credential_missing",
         "memory_tools",
         "middleware",

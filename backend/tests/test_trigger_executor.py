@@ -571,45 +571,39 @@ async def test_execute_trigger_with_tools_config():
 
 
 @pytest.mark.asyncio
-async def test_execute_trigger_blocks_external_mutation_tool():
-    """Scheduled runs must not auto-execute tools that require live approval."""
+@pytest.mark.parametrize(("policy", "mode"), [("inbox", "wait"), ("blocked", "block")])
+async def test_a_tool_needing_approval_no_longer_fails_the_whole_schedule_run(
+    policy: str, mode: str
+):
+    """17.3: the run starts; only the call that needs approval waits or is BLOCKED."""
     trigger_id, _ = await _seed_full_setup(
         with_tools=True,
         tool_definition_key="gmail_send",
         tool_name="Gmail Send",
     )
+    async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        trigger.approval_policy = policy
+        await db.commit()
 
     with (
         patch(
             "app.agent_runtime.trigger_executor.execute_agent_invoke",
-            return_value="should not run",
+            return_value="메일은 승인 뒤 보냅니다",
         ) as mock_invoke,
-        patch(
-            "app.agent_runtime.trigger_executor.async_session",
-            TestSession,
-        ),
+        patch("app.agent_runtime.trigger_executor.async_session", TestSession),
     ):
         from app.agent_runtime.trigger_executor import execute_trigger
 
         await execute_trigger(str(trigger_id))
 
-    mock_invoke.assert_not_called()
+    [call] = mock_invoke.call_args_list
+    assert call.args[0].unattended_approval == mode
     async with TestSession() as db:
-        from app.models.agent_trigger_run import AgentTriggerRun
-
         trigger = await db.get(AgentTrigger, trigger_id)
         assert trigger is not None
-        assert trigger.run_count == 0
-        assert trigger.last_status == "failed"
-        assert "tool risk policy" in (trigger.last_error or "")
-        assert "Gmail Send" in (trigger.last_error or "")
-
-        result = await db.execute(
-            select(AgentTriggerRun).where(AgentTriggerRun.trigger_id == trigger_id)
-        )
-        run = result.scalar_one()
-        assert run.status == "failed"
-        assert "Gmail Send" in (run.error_message or "")
+        assert (trigger.last_status, trigger.run_count) == ("success", 1)
 
 
 @pytest.mark.asyncio

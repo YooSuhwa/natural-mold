@@ -156,6 +156,10 @@ class AgentConfig:
     # Company actions per tool risk level (guardrails/tool_risk.py), resolved and pinned
     # with the rules. ``None``: every level keeps its default.
     tool_risk: ToolRiskPolicy | None = None
+    # A tool call that needs approval in a run nobody watches (순번 13, 17.3): "wait" pauses
+    # for the approval inbox, "block" answers a BLOCKED result. ``None``: a chat asks in
+    # the conversation and an invoke (schedule, Agent API wait) blocks.
+    unattended_approval: Literal["wait", "block"] | None = None
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,
@@ -182,6 +186,8 @@ class RuntimeComponents:
     memory_sources: list[str] | None
     permissions: list[FilesystemPermission]
     interrupt_on: dict[str, Any] | None
+    # 17.3: a run nobody watches applies ``interrupt_on`` as inbox waits or BLOCKED results.
+    unattended: Literal["wait", "block"] | None = None
 
 
 ToolAccessClass = Literal[

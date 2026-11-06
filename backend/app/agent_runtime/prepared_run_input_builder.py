@@ -33,9 +33,12 @@ from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_preparation import _without_stored_filesystem_interrupts
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
 from app.agent_runtime.runtime_snapshot_catalog import SnapshotCatalogBuilder
+from app.approvals.unattended import strip_builtin_defaults
 from app.guardrails.events import RunScope, parse_uuid
 from app.guardrails.run import effective_rules
+from app.guardrails.tool_risk import interrupts_for
 from app.storage.paths import run_data_path_or_none
+from app.tools.risk import risk_from_tool_config, unattended_interrupt_policy
 
 _STORED_SKILL_RULES = (
     "\n\n## 스킬 사용 규칙\n"
@@ -158,6 +161,44 @@ def _interrupts(
     return _without_stored_filesystem_interrupts(policy) if stored else policy
 
 
+def _refuse_unattended_approvals(
+    sources: PreparedRunSources,
+    bindings: RuntimePreparationBindings,
+    root: PreparedToolSet,
+    children: Sequence[PreparedToolSet],
+) -> None:
+    """A run nobody watches with a call needing approval runs unleased (순번 13, 17.3).
+
+    Its approvals wait for the inbox or answer BLOCKED (``app/approvals/unattended.py``),
+    which the frozen lease inputs do not carry.
+    """
+    cfg = sources.cfg
+    pairs = [
+        (cfg.middleware_configs, root),
+        *(
+            (child.middleware_configs, tools)
+            for child, tools in zip(sources.children, children, strict=True)
+        ),
+    ]
+    for configs, tools in pairs:
+        attended = bindings.build_interrupt_on_policy(
+            list(configs or []) or None,
+            list(tools.tools),
+            include_ask_user=False,
+            is_trigger_mode=False,
+        )
+        policy: Any = unattended_interrupt_policy(attended)
+        if cfg.tool_risk is not None:
+            policy = interrupts_for(policy, tools.tools, cfg.tool_risk)
+        if strip_builtin_defaults(policy if isinstance(policy, dict) else None):
+            raise unsupported("unattended_approval")
+    for config in root.mcp_configs:
+        risk = risk_from_tool_config(dict(config))
+        allowed = cfg.tool_risk is not None and cfg.tool_risk.action(risk.risk_level) != "approval"
+        if risk.requires_approval and not allowed:
+            raise unsupported("unattended_approval")
+
+
 def _child_specs(
     sources: PreparedRunSources, bindings: RuntimePreparationBindings
 ) -> tuple[list[dict[str, Any]], dict[str, frozenset[str]], list[PreparedToolSet]]:
@@ -233,6 +274,8 @@ def build_preparation_inputs(
         ask_user_tool=None if trigger else bindings.ask_user_tool,
     )
     children, child_tools, child_sets = _child_specs(sources, bindings)
+    if trigger or cfg.unattended_approval is not None:
+        _refuse_unattended_approvals(sources, bindings, root_tools, child_sets)
     output = sources.run_root / "output"
     output.mkdir(parents=True, exist_ok=True)
     conversation_prefix = f"/conversations/{cfg.thread_id}"

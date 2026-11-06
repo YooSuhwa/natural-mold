@@ -39,6 +39,7 @@ from app.agent_runtime.runtime_subagent_normalization import _SUMMARIZATION_MIDD
 from app.agent_runtime.runtime_summarization_policy import (
     create_stored_summarization_middleware,
 )
+from app.approvals.unattended import UnattendedMode
 from app.guardrails.middleware import Guard
 from app.guardrails.tool_risk import ToolRiskPolicy
 
@@ -223,6 +224,7 @@ def build_agent(
     runtime_policy: ResolvedRuntimePolicy | None = None,
     guard: Guard | None = None,
     tool_risk: ToolRiskPolicy | None = None,
+    unattended: UnattendedMode | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
     effective_permissions = permissions
@@ -272,4 +274,5 @@ def build_agent(
         bindings=bindings,
         guard=guard,
         tool_risk=tool_risk,
+        unattended=unattended,
     )

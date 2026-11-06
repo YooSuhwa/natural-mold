@@ -76,6 +76,7 @@ def _compiled_nodes(components: RuntimeComponents, *, name: str) -> list[JSONVal
         components.system_prompt,
         middleware=components.middleware or None,
         interrupt_on=components.interrupt_on,
+        unattended=components.unattended,
         backend=components.backend,
         skills=components.skills_sources,
         memory=components.memory_sources,

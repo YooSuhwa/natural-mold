@@ -283,6 +283,18 @@ def interrupt_policy_for_tool(tool: BaseTool) -> dict[str, Any]:
     return {tool.name: {"allowed_decisions": list(risk.allowed_decisions)}}
 
 
+def unattended_interrupt_policy(policy: dict[str, Any] | None) -> dict[str, Any]:
+    """The approvals of a run nobody watches (feature plan v2 순번 13, 17.3).
+
+    Every tool that asks for approval is listed (a company ``allow`` action removed its
+    entry already): the run then waits in the approval inbox or answers a BLOCKED result
+    for that call alone.
+    ``ask_user`` has nobody to ask. Deep Agents' own file tools at their default entry are
+    dropped later, after the company actions (``app.approvals.unattended``).
+    """
+    return {name: entry for name, entry in (policy or {}).items() if name != "ask_user"}
+
+
 def merge_interrupt_policies(
     base: dict[str, Any], explicit: dict[str, Any] | None
 ) -> dict[str, Any]:

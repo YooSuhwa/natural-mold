@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, CheckConstraint, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -12,7 +12,12 @@ from app.models.resource_scope import RequiredOrgScope, resource_scope_constrain
 
 class AgentTrigger(RequiredOrgScope, Base):
     __tablename__ = "agent_triggers"
-    __table_args__ = resource_scope_constraints("agent_triggers", system=False)
+    __table_args__ = (
+        *resource_scope_constraints("agent_triggers", system=False),
+        CheckConstraint(
+            "approval_policy IN ('inbox', 'blocked')", name="ck_agent_triggers_approval_policy"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(
@@ -47,6 +52,10 @@ class AgentTrigger(RequiredOrgScope, Base):
     max_runs: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_at: Mapped[datetime | None] = mapped_column(nullable=True)
     auto_pause_after_failures: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 17.3 / D27: a call needing approval waits in the inbox ("inbox") or is BLOCKED.
+    approval_policy: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="inbox", server_default="inbox"
+    )
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False
     )

@@ -97,6 +97,7 @@ async def mark_run_failed(
 
 
 async def execute_owned_wait(request: ApiOwnedExecution) -> str:
+    request.config.unattended_approval = "block"  # 17.3: an API call never waits for a person
     if settings.prepared_run_lease_enabled:
         prepared = await _prepared().materialize_api_run(request, "invoke")
         if prepared is not None:
@@ -118,6 +119,7 @@ async def execute_owned_wait(request: ApiOwnedExecution) -> str:
 
 
 async def stream_owned_run(request: ApiOwnedExecution) -> AsyncGenerator[str, None]:
+    request.config.unattended_approval = "block"  # 17.3: an API call never waits for a person
     if settings.prepared_run_lease_enabled:
         prepared = await _prepared().materialize_api_run(request, "stream")
         if prepared is not None:

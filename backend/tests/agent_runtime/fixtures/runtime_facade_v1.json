@@ -556,6 +556,12 @@
           "name": "tool_risk"
         },
         {
+          "annotation": "Literal['wait', 'block'] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "unattended_approval"
+        },
+        {
           "annotation": "OrgContext",
           "default": "required",
           "kind": "keyword_only",
@@ -653,6 +659,12 @@
           "default": "required",
           "kind": "positional_or_keyword",
           "name": "interrupt_on"
+        },
+        {
+          "annotation": "Literal['wait', 'block'] | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "unattended"
         }
       ],
       "return": "None"
@@ -1126,6 +1138,12 @@
           "default": "none",
           "kind": "keyword_only",
           "name": "tool_risk"
+        },
+        {
+          "annotation": "UnattendedMode | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "unattended"
         }
       ],
       "return": "Any"

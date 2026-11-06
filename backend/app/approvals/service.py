@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
-from sqlalchemy import func, select, update
+from sqlalchemy import ColumnElement, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_redaction import redact_protocol_data
@@ -30,6 +30,7 @@ from app.authz.audit_actions import (
     APPROVAL_EXPIRED,
     APPROVAL_REQUESTED,
 )
+from app.authz.org_context import OrgContext
 from app.config import settings
 from app.models.approval_request import ApprovalRequest
 from app.models.conversation_run import ConversationRun
@@ -347,6 +348,38 @@ async def pending_for_run(db: AsyncSession, run_id: uuid.UUID) -> list[ApprovalR
     )
 
 
+def _mine(context: OrgContext) -> tuple[ColumnElement[bool], ...]:
+    """The caller's requests to decide in the current organization (or the company's)."""
+    return (
+        ApprovalRequest.decider_user_id == context.user_id,
+        or_(ApprovalRequest.org_id == context.org_id, ApprovalRequest.org_id.is_(None)),
+    )
+
+
+async def list_for_decider(
+    db: AsyncSession, context: OrgContext, *, pending: bool, limit: int
+) -> list[ApprovalRequest]:
+    query = select(ApprovalRequest).where(*_mine(context))
+    if pending:
+        query = query.where(ApprovalRequest.status == "pending").order_by(
+            ApprovalRequest.expires_at
+        )
+    else:
+        query = query.where(ApprovalRequest.status != "pending").order_by(
+            ApprovalRequest.decided_at.desc().nulls_last(), ApprovalRequest.created_at.desc()
+        )
+    return list((await db.execute(query.limit(limit))).scalars())
+
+
+async def pending_count(db: AsyncSession, context: OrgContext) -> int:
+    count = await db.scalar(
+        select(func.count())
+        .select_from(ApprovalRequest)
+        .where(*_mine(context), ApprovalRequest.status == "pending")
+    )
+    return int(count or 0)
+
+
 async def _audit(
     db: AsyncSession, row: ApprovalRequest, action: str, *, outcome: str, actor_type: str
 ) -> None:
@@ -391,6 +424,8 @@ __all__ = [
     "digest",
     "due_for_expiry",
     "due_for_notice",
+    "list_for_decider",
+    "pending_count",
     "pending_for_run",
     "record_pending",
 ]

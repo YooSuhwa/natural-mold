@@ -4,8 +4,9 @@
 to ``allow`` (no approval), ``approval`` (the approval card; an agent cannot switch it
 off) or ``block`` (the model never gets the tool and a call is refused). Without a saved
 choice a level keeps today's behaviour: read-only tools run, every other level needs
-approval. Scheduled runs keep their own rule (tools that are not trigger-safe stop the
-run), except that a company-blocked tool no longer counts: it is not run at all.
+approval. Runs nobody watches (schedules, Agent API) apply the same approvals unattended:
+the call waits for the approval inbox or answers BLOCKED (``app/approvals/unattended.py``);
+a company-blocked tool is not run at all.
 
 The policy applies to the root agent and every declarative child (``apply_to_agent``).
 """
