@@ -38,6 +38,7 @@ from langchain_core.messages.content import (
 )
 from langchain_core.tools import BaseTool, StructuredTool, ToolException
 from mcp import types as mcp_types
+from mcp.shared.exceptions import MCPError
 from pydantic import AnyUrl
 
 from app.mcp import gateway
@@ -89,6 +90,14 @@ class ToolDefinition:
         if self.meta is not None:
             metadata["_meta"] = self.meta
         return metadata or None
+
+
+# The relay's own JSON-RPC error for a call the run may not make (mcp-runtime relay.py).
+GATEWAY_REFUSED_CODE = -32001
+
+
+class GatewayRefused(Exception):
+    """The gateway refused this call for this run: re-sending it changes nothing."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -345,7 +354,12 @@ async def call_tool(
     request_timeout: float | None = None,
 ) -> CallResult:
     async with session(transport, request_timeout=request_timeout) as client:
-        result = await client.call_tool(name, arguments, raise_on_error=False)
+        try:
+            result = await client.call_tool(name, arguments, raise_on_error=False)
+        except MCPError as exc:
+            if exc.error.code == GATEWAY_REFUSED_CODE:
+                raise GatewayRefused(exc.error.message) from None
+            raise
     return CallResult(
         content=list(result.content),
         structured_content=result.structured_content,
@@ -465,6 +479,7 @@ def jsonable(value: Any) -> Any:
 __all__ = [
     "RESULT_ENVELOPE",
     "CallResult",
+    "GatewayRefused",
     "GatewayScope",
     "GatewayUnavailable",
     "HttpxBridge",

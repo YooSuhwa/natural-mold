@@ -17,7 +17,7 @@ from app.agent_runtime.mcp_auth_errors import McpAuthError, classify_mcp_error
 from app.agent_runtime.mcp_destination import split_blocked, transport_credentialed
 from app.agent_runtime.mcp_tool_cache import identity_cache_key
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
-from app.mcp import sdk
+from app.mcp import decisions, gateway, sdk
 from app.mcp.apps import normalize_tool_ui_meta, tool_allows_visibility
 from app.tools.risk import attach_tool_risk, mcp_tool_risk
 
@@ -240,6 +240,11 @@ def _wrap_selected_tool(
         return None
     tool_config = plan.tool_configs.get((key, t.name))
     app_context = mcp_app_context(tool_config, tool_ui_meta)
+    risk = mcp_tool_risk(
+        t.name,
+        metadata=metadata if isinstance(metadata, dict) else None,
+        config=risk_config,
+    )
     wrapped = MCPToolWithRetry(
         t,
         max_retries=max_retries,
@@ -248,15 +253,11 @@ def _wrap_selected_tool(
         mcp_app_context=app_context,
         binding_recorder=(record_mcp_app_binding if app_context is not None else None),
         auth_context=McpAuthContext.from_config(tool_config or {}),
-    )
-    return attach_tool_risk(
-        wrapped,
-        mcp_tool_risk(
-            wrapped.name,
-            metadata=metadata if isinstance(metadata, dict) else None,
-            config=risk_config,
+        decision_context=decisions.DecisionContext.from_config(
+            tool_config or {}, risk_level=str(risk.risk_level.value), gateway=gateway.enabled()
         ),
     )
+    return attach_tool_risk(wrapped, risk)
 
 
 def _disambiguate(collected: list[tuple[BaseTool, str]]) -> list[BaseTool]:

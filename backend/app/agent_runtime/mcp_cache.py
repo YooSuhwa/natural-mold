@@ -24,9 +24,11 @@ from app.agent_runtime.mcp_auth_errors import McpAuthError, classify_mcp_error
 from app.agent_runtime.mcp_cache_invalidation import register_mcp_cache_invalidation
 from app.agent_runtime.mcp_tool_cache import clear_mcp_tool_cache, get_cached_mcp_tools
 from app.agent_runtime.protocol_redaction import redact_protocol_data
+from app.mcp import decisions
 from app.mcp.apps import sanitize_result_meta, sanitize_result_payload
+from app.mcp.decisions import DecisionContext
 from app.mcp.domain import McpAppRuntimeContext
-from app.mcp.sdk import RESULT_ENVELOPE
+from app.mcp.sdk import RESULT_ENVELOPE, GatewayRefused
 from app.schemas.mcp_apps import McpAppArtifact
 
 logger = logging.getLogger(__name__)
@@ -58,6 +60,7 @@ class MCPToolWithRetry(BaseTool):
     _mcp_app_context: McpAppRuntimeContext | None = PrivateAttr(default=None)
     _binding_recorder: BindingRecorder | None = PrivateAttr(default=None)
     _auth_context: McpAuthContext | None = PrivateAttr(default=None)
+    _decision_context: DecisionContext | None = PrivateAttr(default=None)
 
     def __init__(
         self,
@@ -69,6 +72,7 @@ class MCPToolWithRetry(BaseTool):
         mcp_app_context: McpAppRuntimeContext | None = None,
         binding_recorder: BindingRecorder | None = None,
         auth_context: McpAuthContext | None = None,
+        decision_context: DecisionContext | None = None,
     ) -> None:
         super().__init__(
             name=original_tool.name,
@@ -85,6 +89,7 @@ class MCPToolWithRetry(BaseTool):
         self._mcp_app_context = mcp_app_context
         self._binding_recorder = binding_recorder
         self._auth_context = auth_context
+        self._decision_context = decision_context
 
     async def ainvoke(
         self,
@@ -128,6 +133,17 @@ class MCPToolWithRetry(BaseTool):
     ) -> Any:
         last_error: BaseException | None = None
         payload = kwargs if kwargs else (args[0] if args and isinstance(args[0], dict) else {})
+
+        async def decided(outcome: decisions.Outcome, reason: str | None, attempts: int) -> None:
+            await decisions.record(
+                self._decision_context,
+                outcome=outcome,
+                reason_code=reason,
+                arguments=payload,
+                attempts=attempts,
+                run_id=_ACTIVE_RUN_ID.get(),
+            )
+
         for attempt in range(self._max_retries):
             try:
                 original_input: Any = payload
@@ -157,11 +173,21 @@ class MCPToolWithRetry(BaseTool):
                     )
                     if app_artifact is not None:
                         artifact = {**(artifact or {}), "mcp_app": app_artifact}
+                    await decided("success", None, attempt + 1)
                     return result.content, artifact
+                await decided("success", None, attempt + 1)
                 return result
+            except GatewayRefused as refused:
+                # The gateway refused it for this run (D10): re-sending changes nothing.
+                await decided("denied", "mcp_gateway_refused", attempt + 1)
+                message = f"[MCP Tool Error] {self.name}: {refused}"
+                return (
+                    (message, None) if self.response_format == "content_and_artifact" else message
+                )
             except Exception as exc:  # noqa: BLE001
                 auth_error = classify_mcp_error(exc)
                 if auth_error is not None:  # 401/403: never re-sent, typed for the runtime
+                    await decided("denied", "mcp_auth_required", attempt + 1)
                     # ``from None``: the httpx error carries the request URL; keep it out
                     # of any later traceback/exc_info log (kind/status stay on the error).
                     raise auth_error from None
@@ -169,6 +195,7 @@ class MCPToolWithRetry(BaseTool):
                 if attempt + 1 < self._max_retries and self._retry_delay > 0:
                     await asyncio.sleep(self._retry_delay)
         assert last_error is not None  # noqa: S101 — retry-loop invariant (type narrowing)
+        await decided("failure", f"mcp_error:{type(last_error).__name__}", self._max_retries)
         message = f"[MCP Tool Error] {self.name}: {type(last_error).__name__}: {last_error}"
         return (message, None) if self.response_format == "content_and_artifact" else message
 

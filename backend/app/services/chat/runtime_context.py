@@ -251,6 +251,7 @@ async def build_tools_config(
                 # D11: the model is shown the reviewed definition, not what the server
                 # lists now (a changed version waits for review).
                 "mcp_approved_definition": review.approved_definition(mcp_tool),
+                "mcp_reviewed_fingerprint": mcp_tool.approved_fingerprint,
                 "org_id": str(context.org_id),
                 "mcp_transport_headers": resolution.headers,
                 "credentials": resolution.credentials,
