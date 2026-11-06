@@ -31,6 +31,7 @@ DIRECT_TENANT: Final = frozenset(
         "agent_api_runs",  # I-07 tenant_id: runs outlive their deployment
         "agent_blueprints",
         "agent_deployments",
+        "agent_guardrail_bindings",  # an agent's guardrail choice
         "agent_purge_receipts",
         "agent_trigger_runs",  # I-07 tenant_id: runs outlive their trigger
         "agent_triggers",
@@ -50,6 +51,8 @@ DIRECT_TENANT: Final = frozenset(
         "groups",
         "guardrail_events",  # guardrail detection records (company rows)
         "guardrail_pseudonyms",  # conversation pseudonym maps (encrypted values)
+        "guardrail_template_versions",  # published company templates (immutable)
+        "guardrail_templates",  # company guardrail templates (drafts)
         "marketplace_installations",
         "marketplace_items",
         "mcp_servers",

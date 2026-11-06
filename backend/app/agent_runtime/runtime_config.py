@@ -17,6 +17,7 @@ from app.config import settings
 if TYPE_CHECKING:
     from app.agent_runtime.attachment_inputs import AttachmentInputs
     from app.authz.runtime_access_planner import RuntimeAccessPlan
+    from app.guardrails.rules import RuleSet
 
 _configured_data_root = Path(settings.data_root)
 _DATA_DIR = (
@@ -147,6 +148,10 @@ class AgentConfig:
     # 1A: this conversation's attachment files and the model's vision support, loaded
     # by the run worker so preparation stays DB-free. ``None``: no attachments.
     attachment_inputs: AttachmentInputs | None = None
+    # Guardrail rule set resolved from the company policy at the run's entry and pinned on
+    # the run (guardrails/policy.py). ``guardrail_resolved=False``: the installation default.
+    guardrail_rules: RuleSet | None = None
+    guardrail_resolved: bool = False
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,

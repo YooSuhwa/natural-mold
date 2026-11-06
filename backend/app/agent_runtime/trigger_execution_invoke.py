@@ -26,6 +26,7 @@ from app.agent_runtime.trigger_execution_materialization import (
 from app.config import settings
 from app.database import tenant_session
 from app.exceptions import AppError
+from app.guardrails.policy import resolve as resolve_guardrails
 from app.models.agent import Agent
 from app.services import trigger_service
 
@@ -93,6 +94,11 @@ async def invoke_trigger_run(
             access_plan=materialized.access_plan,
         )
     )
+    # The company guardrail policy at the trigger run's start (guardrails/policy.py).
+    cfg.guardrail_rules = await resolve_guardrails(
+        db, context.tenant_id, agent.id, agent.runtime_profile
+    )
+    cfg.guardrail_resolved = True
     await db.flush()
     # Task 10 I18: a prepared trigger resolves children under the materialization
     # locks; the legacy child config is deferred to the unsupported fallback.

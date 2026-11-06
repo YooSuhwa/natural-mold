@@ -808,3 +808,63 @@ async def test_guardrail_block_writes_audit_without_the_value(db: AsyncSession) 
     assert event.event_metadata["stage"] == "llm_send"
     assert event.event_metadata["entity"] == "SECRET"
     assert secret not in str(event.event_metadata)
+
+
+@pytest.mark.asyncio
+async def test_guardrail_policy_mutations_write_audit(client, db: AsyncSession, test_app) -> None:
+    from tests.authz.d04_support import seed_scope
+    from tests.authz.d05_support import TEST_ORG_ID
+    from tests.authz.e09_support import MEMBER, TENANT, acting_as, make_admin
+    from tests.authz.unit_scope_fixture import TEST_TENANT_ID
+    from tests.conftest import seed_agent
+
+    await seed_scope(db)
+    await make_admin(db)
+    _, _, agent = await seed_agent(db)
+    await db.commit()
+    with acting_as(test_app, MEMBER, TEST_ORG_ID):
+        etag = (await client.get(f"{TENANT}/guardrails")).headers["ETag"]
+        policy = await client.put(
+            f"{TENANT}/guardrails",
+            json={"mode": "open", "default_template": "builtin:kr-observe"},
+            headers={"If-Match": etag},
+        )
+        created = await client.post(
+            f"{TENANT}/guardrails/templates",
+            json={"name": "상담", "copy_from": "builtin:kr-default"},
+        )
+        template_id = created.json()["id"]
+        published = await client.post(f"{TENANT}/guardrails/templates/{template_id}/publish")
+        archived = await client.post(f"{TENANT}/guardrails/templates/{template_id}/archive")
+        binding = await client.put(f"/api/agents/{agent.id}/guardrails", json={"mode": "off"})
+    for response in (policy, created, published, archived, binding):
+        assert response.status_code in (200, 201), response.text
+
+    rows = list(
+        await db.scalars(
+            select(AuditEvent)
+            .where(AuditEvent.action.like("guardrail.%"))
+            .order_by(AuditEvent.created_at, AuditEvent.id)
+        )
+    )
+    by_action = {row.action: row for row in rows}
+    assert set(by_action) == {
+        "guardrail.policy_update",
+        "guardrail.template_create",
+        "guardrail.template_publish",
+        "guardrail.template_archive",
+        "guardrail.binding_update",
+    }
+    for row in rows:
+        assert (row.actor_type, row.actor_user_id, row.outcome) == ("user", TEST_USER_ID, "success")
+        assert row.tenant_id == TEST_TENANT_ID
+    assert by_action["guardrail.policy_update"].event_metadata["after"]["mode"] == "open"
+    assert by_action["guardrail.template_create"].target_id == template_id
+    assert by_action["guardrail.template_publish"].event_metadata["after"]["version"] == 1
+    assert by_action["guardrail.template_archive"].event_metadata["after"]["status"] == "archived"
+    bound = by_action["guardrail.binding_update"]
+    assert (bound.target_type, bound.target_id) == ("agent", str(agent.id))
+    assert bound.event_metadata == {
+        "before": {"mode": "inherit", "template_ref": None, "rule_overrides": {}},
+        "after": {"mode": "off", "template_ref": None, "rule_overrides": {}},
+    }

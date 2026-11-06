@@ -44,7 +44,7 @@ from app.agent_runtime.runtime_preparation_support import (
 from app.agent_runtime.tool_factory import create_builtin_tool
 from app.config import settings
 from app.guardrails.events import RunScope, parse_uuid
-from app.guardrails.run import guard_for
+from app.guardrails.run import effective_rules, guard_for
 from app.tenancy.checkpoint_audit import checkpoint_tenant
 
 # Preserve the facade's logger name for ``agent_prepare_timing`` records.
@@ -241,7 +241,7 @@ async def _prepare_agent(
         middleware.append(AttachmentInputMiddleware(cfg.attachment_inputs))
     # Appended after the attachment middleware so ② sees the expanded attachment text.
     guard = guard_for(
-        cfg.runtime_profile,
+        effective_rules(cfg),
         cfg.org_context.tenant_id,
         RunScope(
             cfg.org_context,

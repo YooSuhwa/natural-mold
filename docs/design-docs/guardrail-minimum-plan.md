@@ -112,10 +112,10 @@ K-PII-Bench 3,000건 측정(엄격 span)에서 **ko-pii 플러그인 + Presidio 
 
 ### 3.4 정책, 버전, 실행 고정
 
-- 회사 정책: `tenant.settings`의 가드레일 항목(모드 off/open/default/enforced, 기본 템플릿, 규칙별 allow_off/locked/hidden, 위험 등급별 기본 조치). 기존 회사 정책 API(`/api/tenants/{id}/policies`, If-Match 버전)를 넓힌다.
-- 템플릿: 기본 제공 템플릿은 코드에 두고, 회사 템플릿은 `guardrail_templates`(draft/published, version) 테이블. 게시는 시험 세트 통과 후.
-- 에이전트 적용: `agent_guardrail_bindings`(none/all/per_stage, 템플릿 버전, 끈 규칙).
-- **실행 고정(ADR-024 §4)**: 실행 접수 때 적용될 회사 정책 버전과 템플릿 버전을 실행 기록(`conversation_runs.metadata_json["guardrails"]`)에 남기고, 진행 중 실행·승인 대기·재개는 그 버전을 쓴다. 정책 변경은 다음 실행부터.
+- 회사 정책: `tenants.settings["guardrails"]` = `{mode, default_template, locked_rules}`. 모드는 `off`(회사 에이전트 전부 끔), `open`(템플릿을 고른 에이전트만), `default`(고르지 않은 에이전트는 기본 템플릿, 다른 템플릿·끄기 가능), `enforced`(모든 에이전트가 기본 템플릿). 잠근 규칙(`locked_rules`)은 에이전트가 다른 템플릿을 고르거나 끄거나 처리 방식을 바꿔도 남는다. 회사가 정책을 저장하지 않았으면 설치 기본값(`GUARDRAIL_DEFAULT_TEMPLATE`)이 `default`(잠금 없음)로, 비어 있으면 `open`으로 동작한다. API는 `/api/tenants/{id}/guardrails`(구성원 읽기, `can_manage_tenant` 변경, If-Match 버전). 위험 등급별 기본 조치는 5단계.
+- 템플릿: 참조는 `builtin:<이름>`(코드) 또는 `company:<uuid>`. 회사 템플릿은 `guardrail_templates`(초안 규칙, draft/published/archived)와 `guardrail_template_versions`(게시할 때마다 버전+1, 게시본은 바뀌지 않음). 규칙은 저장할 때 한 번 검증한다(`app/guardrails/templates.py`). 회사 기본 템플릿은 보관할 수 없다. 게시 전 시험 세트 통과는 아직 넣지 않았다.
+- 에이전트 적용: `agent_guardrail_bindings`(모드 `inherit`/`template`/`off`, 템플릿 참조, 규칙별 끄기·처리 방식 변경). API `/api/agents/{id}/guardrails`(`agent#can_edit`). `enforced`에서 `inherit` 외 모드, 잠근 규칙의 변경은 409. 응답에 다음 실행이 받을 규칙(`effective`)을 보여 준다. 해석은 `app/guardrails/policy.py`의 `resolve` 하나이며, 기본 템플릿을 쓸 수 없으면 검사 없이 실행하지 않고 실패한다.
+- **실행 고정(ADR-024 §4)**: 채팅 실행은 접수 후 시작 전에 해석한 규칙 전체(꺼짐이면 `null`)를 `conversation_runs.metadata_json["guardrails"]`에 남기고(`app/guardrails/pinning.py`), 승인 응답으로 재개하는 실행은 같은 대화의 마지막 고정값을 그대로 쓴다. 트리거·Agent API·후속 질문 제안은 실행 시작 때 해석한다. 정책 변경은 다음 실행부터. 감사 `guardrail.policy_update`, `.template_create`/`_update`/`_publish`/`_archive`, `.binding_update`(전후 값).
 - 판정 모델이 없으면 정규식·사전 규칙만 실행하고, 모델이 필요한 규칙은 "판정 모델 미설정"으로 표시한다.
 
 ### 3.4.1 미들웨어를 거치지 않는 경로 (3단계 첫 시험)
@@ -177,6 +177,7 @@ deepagents 0.7.32 코드 확인 결과, 아래 경로는 등록만으로는 덮�
    - 복원 범위(결정적 시험, `tests/test_guardrail_natural_pseudonyms.py`): 전체 이름 + 조사(은/는/이/가/에게/의)·직함은 복원, 이름만 쓴 형태(`준호 씨`, `준호님`)는 단어로 설 때만 복원, 다른 단어 안의 이름 부분은 그대로, 성만 쓴 형태(`김 과장`)는 누구인지 알 수 없어 복원하지 않는다. 실제 LLM이 가명을 어떻게 바꿔 쓰는지(복원율)는 실제 모델로 측정해야 하며 아직 하지 않았다.
    - 이름만 쓴 형태의 경계는 조사·호칭·문장부호 목록(`pseudonyms._FOLLOWERS`)으로 판단한다. 나중 항목: 형태소 분석기(Kiwi `kiwipiepy`, LGPL v3)로 경계를 품사로 판단하고, 받침이 안 맞는 경우의 조사 교정과 규칙 묶음의 이름 후보(고유명사) 보강을 K-PII-Bench와 실제 LLM 답변 복원율로 비교한 뒤 도입을 정한다. Nori(Apache 2.0)는 Lucene(Java) 기반이라 Python 백엔드에서 직접 쓰기 어렵다.
 4. 회사 정책·템플릿·버전 고정·감사 이벤트.
+   - **4-1 구현됨(백엔드)**: 3.4절. i13(세 테이블, 회사 RLS `DIRECT_TENANT`). 시험 `tests/test_guardrail_policy.py`(모드·잠금·변경·API·고정과 재개), `tests/test_guardrail_policy_entry_points.py`(채팅·트리거·Agent API가 회사 정책을 받음). 다음: 4-2 회사 관리 화면(정책·템플릿 편집), 4-3 에이전트 가드레일 카드.
 5. 위험 등급별 기본 조치(C5 최소)와 lease 경로 대체 실행.
 6. P1(① 입력, 가드레일 카드 화면, 기존 미들웨어 이전).
 

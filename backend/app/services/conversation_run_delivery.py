@@ -274,3 +274,28 @@ async def _backfill_turn_attachments(
             context=target.context,
         )
         await session.commit()
+
+
+async def _prepare_turn_guardrails(
+    run_id: uuid.UUID,
+    target: WorkerConversationTarget,
+    agent_id: str | None,
+    runtime_profile: str,
+    *,
+    resume: bool,
+) -> Any:
+    """Resolve and pin the run's guardrail rule set (a resume reuses the pinned one)."""
+
+    from app.guardrails.events import parse_uuid
+    from app.guardrails.pinning import pin_run_guardrails
+
+    async with _tenant_session(target.context) as session:
+        return await pin_run_guardrails(
+            session,
+            run_id=run_id,
+            conversation_id=target.conversation_id,
+            context=target.context,
+            agent_id=parse_uuid(agent_id),
+            runtime_profile=runtime_profile,
+            resume=resume,
+        )

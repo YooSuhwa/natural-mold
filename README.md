@@ -240,7 +240,7 @@ section 5.
 ### Guardrail Korean model
 
 The stack also runs `pii-detector`, the Korean personal-data model the guardrails
-will use (no guardrail middleware is applied to chats yet). `pii-model-fetch`
+use (the `kr_model` pack). `pii-model-fetch`
 downloads the pinned schift-ko-pii-v7 files (about 160 MB) from Hugging Face on
 the first start and checks their hashes. Without the model, or while the service
 is down, the backend checks with the ko-pii rules instead.
@@ -328,7 +328,7 @@ important settings:
 | `SKILL_SANDBOX_CPU`, `SKILL_SANDBOX_MEMORY` | `1`, `512Mi` | Limits per sandbox. |
 | `GUARDRAIL_PII_MODEL_URL` | empty (`http://pii-detector:8095` in the Docker stack) | Guardrail Korean model service; the default for Settings → Guardrail model. Empty, or the service failing, uses the ko-pii rules instead. |
 | `GUARDRAIL_PII_MODEL_API_KEY`, `GUARDRAIL_PII_MODEL_TIMEOUT_SECONDS` | empty, `15` | Bearer key, only if the service sets `PII_DETECTOR_API_KEY`; request timeout. |
-| `GUARDRAIL_DEFAULT_TEMPLATE` | empty | Built-in guardrail template applied to every standard agent run until company policies exist: `kr-default` (block secrets, replace Korean identifiers, mask contacts, send names and addresses to the model as pseudonyms and restore them in answers), `kr-natural` (the same with made-up Korean names instead of tags) or `kr-observe` (record only). Empty turns guardrails off; an unknown name fails the run. |
+| `GUARDRAIL_DEFAULT_TEMPLATE` | empty | Built-in guardrail template applied to every standard agent run until company policies exist: `kr-default` (block secrets, replace Korean identifiers, mask contacts, send names and addresses to the model as pseudonyms and restore them in answers), `kr-natural` (the same with made-up Korean names instead of tags) or `kr-observe` (record only). It applies to companies that have not saved a guardrail policy (`/api/tenants/{id}/guardrails`); agents can choose another template or switch off. Empty: such companies run guardrails only for agents that chose a template. An unknown name fails the run. |
 | `MOLDY_BUILD_EXTRA_CA` | empty | Root `.env`, Docker only: a CA bundle the `pii-detector` image build trusts, for networks that inspect TLS. Not kept in the image. |
 
 LLM keys are best added in the UI. In development, `OPENAI_API_KEY`,

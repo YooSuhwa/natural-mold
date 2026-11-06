@@ -53,6 +53,7 @@ from app.services.conversation_run_delivery import (
     _backfill_turn_attachments,
     _parse_sse_chunk,
     _prepare_turn_attachment_inputs,
+    _prepare_turn_guardrails,
     _publish_error,
     _publish_message_end,
     _publish_stale,
@@ -240,7 +241,7 @@ __all__ += ["thread_branch_service", "record_conversation_run_audit", "has_inter
 __all__ += ["interrupt_id_from_events", "persist_run_metrics_and_usage", "OwnerTerminalDelivery"]
 __all__ += ["select", "SQLAlchemyError", "event_names", "get_checkpointer"]
 __all__ += ["_activate_latest_branch_leaf_if_needed", "_audit_action_for_terminal_status"]
-__all__ += ["_prepare_turn_attachment_inputs"]
+__all__ += ["_prepare_turn_attachment_inputs", "_prepare_turn_guardrails"]
 __all__ += ["_backfill_turn_attachments", "_parse_sse_chunk", "_publish_error", "_publish_stale"]
 __all__ += ["_publish_message_end", "_publish_yielded_chunk_if_needed", "_record_run_audit"]
 __all__ += ["_redact_run_error_message", "_trace_status_for_run", "_run_conversation"]

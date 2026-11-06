@@ -42,6 +42,11 @@ from app.models.daily_spend_user import DailySpendUser
 from app.models.guardrail_event import GuardrailEvent
 from app.models.guardrail_model_setting import GuardrailModelSetting
 from app.models.guardrail_pseudonym import GuardrailPseudonym
+from app.models.guardrail_template import (
+    AgentGuardrailBinding,
+    GuardrailTemplate,
+    GuardrailTemplateVersion,
+)
 from app.models.health_check_history import HealthCheckHistory
 from app.models.marketplace import (
     MarketplaceInstallation,
@@ -98,6 +103,7 @@ from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
 
 __all__ = [
+    "AgentGuardrailBinding",
     "Organization",
     "OrganizationMember",
     "OrganizationRoleGrant",
@@ -153,6 +159,8 @@ __all__ = [
     "GuardrailEvent",
     "GuardrailModelSetting",
     "GuardrailPseudonym",
+    "GuardrailTemplate",
+    "GuardrailTemplateVersion",
     "HealthCheckHistory",
     "MarketplaceInstallation",
     "MarketplaceItem",
