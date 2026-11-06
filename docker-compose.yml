@@ -69,6 +69,8 @@ x-backend-environment: &backend-environment
   STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://s3:8333}
   STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-moldy}
   STORAGE_S3_CREATE_BUCKET: ${STORAGE_S3_CREATE_BUCKET:-true}
+  # Shared MCP runtime (mcp-runtime/); empty turns the backend's runtime calls off.
+  MCP_RUNTIME_URL: ${MCP_RUNTIME_URL-http://mcp-runtime:8096}
 
 # Secrets (ENCRYPTION_KEYS, JWT_SECRET, optional LLM keys) may come from
 # backend/.env — the same file the local-dev workflow creates. Optional: without
@@ -170,6 +172,8 @@ services:
             # environment takes precedence, like every value in this file.
             "STORAGE_S3_ACCESS_KEY_ID": lambda: "moldy" + secrets.token_hex(8),
             "STORAGE_S3_SECRET_ACCESS_KEY": lambda: secrets.token_urlsafe(32),
+            # Run tokens between the backend and mcp-runtime; never JWT_SECRET.
+            "MCP_RUNTIME_TOKEN_SECRET": lambda: secrets.token_urlsafe(48),
         }
         lines = open(path).read().splitlines() if os.path.exists(path) else []
         present = {line.split("=", 1)[0] for line in lines if "=" in line}
@@ -341,6 +345,44 @@ services:
       timeout: 5s
       retries: 30
       start_period: 20s
+    depends_on:
+      init-secrets:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Shared MCP runtime (mcp-runtime/, plan §7.3, decision D09): serves Moldy-defined MCP
+  # servers (Spore, Taproot) behind run tokens the backend signs. Stateless; no host port.
+  # It reads only MCP_RUNTIME_TOKEN_SECRET from the generated secrets, not the session key.
+  mcp-runtime:
+    build:
+      context: .
+      dockerfile: mcp-runtime/Dockerfile
+      secrets:
+        - extra_ca
+    image: moldy-mcp-runtime:local
+    # Root only to read the root-only secrets file, then the server runs as uid 1000.
+    user: "0:0"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -eu
+        MCP_RUNTIME_TOKEN_SECRET="$$(sed -n 's/^MCP_RUNTIME_TOKEN_SECRET=//p' /run/moldy/secrets.env)"
+        export MCP_RUNTIME_TOKEN_SECRET
+        exec setpriv --reuid=1000 --regid=1000 --init-groups "$$@"
+      - mcp-runtime
+    command: ["python", "-m", "moldy_mcp_runtime"]
+    volumes:
+      - moldy_runtime:/run/moldy:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/healthz', timeout=4)
+      interval: 5s
+      timeout: 5s
+      retries: 20
     depends_on:
       init-secrets:
         condition: service_completed_successfully

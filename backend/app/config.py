@@ -255,6 +255,11 @@ class Settings(AuthzSettings):
     # Create the bucket at the first health check (the bundled server starts empty).
     storage_s3_create_bucket: bool = False
 
+    # Shared MCP runtime (mcp-runtime/, plan §7.3): its base URL inside the network and the
+    # secret it shares with the backend for run tokens (never JWT_SECRET). Empty URL: off.
+    mcp_runtime_url: str = ""
+    mcp_runtime_token_secret: str = ""
+
     # Builder / Assistant sub-agent model defaults (서비스 내부용)
     builder_model_provider: str = "anthropic"
     builder_model_name: str = "claude-sonnet-4-6"
