@@ -19116,6 +19116,27 @@
         ]
       }
     },
+    "/api/system/status": {
+      "get": {
+        "operationId": "get_system_status_api_system_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get System Status",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/api/templates": {
       "get": {
         "operationId": "list_templates_api_templates_get",
@@ -29769,6 +29790,63 @@
         "status"
       ],
       "title": "CompanySharedCredentialResponse",
+      "type": "object"
+    },
+    "ComponentStatusOut": {
+      "properties": {
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "found": {
+          "enum": [
+            "ok",
+            "off",
+            "error"
+          ],
+          "title": "Found",
+          "type": "string"
+        },
+        "key": {
+          "enum": [
+            "database",
+            "pgvector",
+            "worker",
+            "object_store",
+            "mcp_runtime",
+            "pii_detector",
+            "skill_sandbox"
+          ],
+          "title": "Key",
+          "type": "string"
+        },
+        "requirement": {
+          "enum": [
+            "required",
+            "recommended",
+            "optional"
+          ],
+          "title": "Requirement",
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "ok",
+            "warning",
+            "error"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "requirement",
+        "found",
+        "verdict",
+        "detail"
+      ],
+      "title": "ComponentStatusOut",
       "type": "object"
     },
     "ConversationAgentBrief": {
@@ -41980,6 +42058,34 @@
       "title": "PublishSkillIn",
       "type": "object"
     },
+    "QueueOut": {
+      "properties": {
+        "failed_last_day": {
+          "title": "Failed Last Day",
+          "type": "integer"
+        },
+        "overdue": {
+          "title": "Overdue",
+          "type": "integer"
+        },
+        "queued": {
+          "title": "Queued",
+          "type": "integer"
+        },
+        "running": {
+          "title": "Running",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "queued",
+        "running",
+        "overdue",
+        "failed_last_day"
+      ],
+      "title": "QueueOut",
+      "type": "object"
+    },
     "ReadAllResult": {
       "properties": {
         "updated": {
@@ -46725,6 +46831,62 @@
         }
       },
       "title": "SystemLlmSettingUpdate",
+      "type": "object"
+    },
+    "SystemStatusOut": {
+      "properties": {
+        "checked_at": {
+          "format": "date-time",
+          "title": "Checked At",
+          "type": "string"
+        },
+        "components": {
+          "items": {
+            "$ref": "#/components/schemas/ComponentStatusOut"
+          },
+          "title": "Components",
+          "type": "array"
+        },
+        "profile": {
+          "enum": [
+            "minimal",
+            "external_api",
+            "gpu",
+            "kubernetes",
+            "airgapped"
+          ],
+          "title": "Profile",
+          "type": "string"
+        },
+        "queue": {
+          "$ref": "#/components/schemas/QueueOut"
+        },
+        "verdict": {
+          "enum": [
+            "ok",
+            "warning",
+            "error"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "workers": {
+          "items": {
+            "$ref": "#/components/schemas/WorkerOut"
+          },
+          "title": "Workers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "profile",
+        "verdict",
+        "components",
+        "workers",
+        "queue",
+        "checked_at"
+      ],
+      "title": "SystemStatusOut",
       "type": "object"
     },
     "TemplateResponse": {
@@ -51756,6 +51918,49 @@
         "type"
       ],
       "title": "ValidationError",
+      "type": "object"
+    },
+    "WorkerOut": {
+      "properties": {
+        "heartbeat_at": {
+          "format": "date-time",
+          "title": "Heartbeat At",
+          "type": "string"
+        },
+        "hostname": {
+          "title": "Hostname",
+          "type": "string"
+        },
+        "job_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Job Types",
+          "type": "array"
+        },
+        "live": {
+          "title": "Live",
+          "type": "boolean"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "worker_id": {
+          "title": "Worker Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "worker_id",
+        "hostname",
+        "job_types",
+        "started_at",
+        "heartbeat_at",
+        "live"
+      ],
+      "title": "WorkerOut",
       "type": "object"
     },
     "app__models__conversation_run_input__JsonValue-Input": {

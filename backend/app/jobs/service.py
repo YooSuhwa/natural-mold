@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -326,3 +326,37 @@ async def forget_worker(db: AsyncSession, worker_id: str) -> None:
 def heartbeat_age(row: JobWorker, *, at: datetime | None = None) -> timedelta:
     beat = _aware(row.heartbeat_at) or now()
     return (at or now()) - beat
+
+
+@dataclass(frozen=True, slots=True)
+class QueueSummary:
+    queued: int
+    running: int
+    overdue: int  # queued and due for longer than OVERDUE
+    failed_last_day: int
+
+
+OVERDUE: Final = timedelta(minutes=1)
+
+
+async def workers(db: AsyncSession) -> list[JobWorker]:
+    """Every worker heartbeat row, newest beat first (platform session)."""
+    rows = await db.execute(select(JobWorker).order_by(JobWorker.heartbeat_at.desc()))
+    return list(rows.scalars())
+
+
+async def queue_summary(db: AsyncSession, *, at: datetime | None = None) -> QueueSummary:
+    """Counts across every company (platform session): what the operator status shows."""
+    moment = at or now()
+    rows = await db.execute(
+        select(
+            func.count().filter(Job.state == "queued"),
+            func.count().filter(Job.state == "running"),
+            func.count().filter(and_(Job.state == "queued", Job.run_after < moment - OVERDUE)),
+            func.count().filter(
+                and_(Job.state == "failed", Job.finished_at >= moment - timedelta(days=1))
+            ),
+        )
+    )
+    queued, running, overdue, failed = rows.one()
+    return QueueSummary(int(queued), int(running), int(overdue), int(failed))

@@ -260,6 +260,13 @@ class Settings(AuthzSettings):
     mcp_runtime_url: str = ""
     mcp_runtime_token_secret: str = ""
 
+    # Install profile (plan §11, decision D49): which services this installation is expected
+    # to run. The operator's system status checks the components against it; it changes no
+    # behaviour by itself. Resource budgets per profile are set after measurement.
+    install_profile: Literal["minimal", "external_api", "gpu", "kubernetes", "airgapped"] = (
+        "minimal"
+    )
+
     # Builder / Assistant sub-agent model defaults (서비스 내부용)
     builder_model_provider: str = "anthropic"
     builder_model_name: str = "claude-sonnet-4-6"

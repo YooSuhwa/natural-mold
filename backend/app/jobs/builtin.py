@@ -1,7 +1,7 @@
 """Built-in job types.
 
-``system.probe`` does nothing but report back; the operator's system status enqueues it
-to show that a worker picks jobs up and can write in a company session.
+``system.probe`` does nothing but report back: enqueue it in a company to check end to end
+that a worker picks jobs up and can write in that company's session.
 """
 
 from __future__ import annotations
