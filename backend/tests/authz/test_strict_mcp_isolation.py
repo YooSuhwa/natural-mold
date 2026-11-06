@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 from typing import Any
 
 import pytest
 from langchain_core.tools import BaseTool, StructuredTool
 
 from app.agent_runtime.mcp_preparation import McpPreparationError, prepare_mcp_tools
-from app.agent_runtime.mcp_tool_loader import _AuthInjectorInterceptor
 
 PATH_SECRET = "sk-path-secret-123"
 
@@ -24,15 +22,6 @@ def _config(name: str, url: str, token: str) -> dict[str, Any]:
     }
 
 
-@dataclass
-class _Request:
-    name: str
-    args: dict[str, Any]
-
-    def override(self, *, args: dict[str, Any]) -> _Request:
-        return replace(self, args=args)
-
-
 def _tool(name: str, calls: list[str], *, fail: bool = False) -> BaseTool:
     async def call(**_kwargs: Any) -> str:
         calls.append(name)
@@ -45,11 +34,11 @@ def _tool(name: str, calls: list[str], *, fail: bool = False) -> BaseTool:
 
 @pytest.mark.asyncio
 async def test_auth_injection_is_scoped_per_server_and_names_are_opaque() -> None:
-    interceptors: dict[str, list[Any]] = {}
+    injected: dict[str, dict[str, Any]] = {}
     calls: list[str] = []
 
-    async def discover(key: str, config: dict, chain: list) -> list[BaseTool]:
-        interceptors[config["url"]] = chain
+    async def discover(key: str, config: dict, inject: dict) -> list[BaseTool]:
+        injected[config["url"]] = inject
         return [_tool("search", calls)]
 
     configs = [
@@ -60,16 +49,11 @@ async def test_auth_injection_is_scoped_per_server_and_names_are_opaque() -> Non
         configs, per_server_timeout=1.0, total_timeout=2.0, discover=discover
     )
 
-    for config in configs:
-        chain = interceptors[config["mcp_server_url"]]
-        injector = next(i for i in chain if isinstance(i, _AuthInjectorInterceptor))
-        seen: list[dict[str, Any]] = []
-
-        async def handler(request: _Request, sink: list = seen) -> None:
-            sink.append(request.args)
-
-        await injector(_Request("search", {"q": "x"}), handler)
-        assert seen == [{"api_token": config["auth_config"]["api_token"], "q": "x"}]
+    # Each server is handed only its own argument auth (app.mcp.sdk merges it per call).
+    assert injected == {
+        config["mcp_server_url"]: {"search": {"api_token": config["auth_config"]["api_token"]}}
+        for config in configs
+    }
     names = sorted(item.tool_name for item in prepared.tools)
     assert len(set(names)) == 2 and all(n.startswith("srv_") for n in names)
     assert {item.mcp_tool_name for item in prepared.tools} == {"search"}
@@ -81,7 +65,7 @@ async def test_auth_injection_is_scoped_per_server_and_names_are_opaque() -> Non
 async def test_failed_call_is_sent_exactly_once() -> None:
     calls: list[str] = []
 
-    async def discover(_key: str, _config: dict, _chain: list) -> list[BaseTool]:
+    async def discover(_key: str, _config: dict, _inject: dict) -> list[BaseTool]:
         return [_tool("write", calls, fail=True)]
 
     prepared = await prepare_mcp_tools(
@@ -98,7 +82,7 @@ async def test_failed_call_is_sent_exactly_once() -> None:
 
 @pytest.mark.asyncio
 async def test_url_secret_never_reaches_failure_reason() -> None:
-    async def discover(_key: str, _config: dict, _chain: list) -> list[BaseTool]:
+    async def discover(_key: str, _config: dict, _inject: dict) -> list[BaseTool]:
         raise ConnectionError(f"refused {PATH_SECRET}")
 
     with pytest.raises(McpPreparationError) as error:

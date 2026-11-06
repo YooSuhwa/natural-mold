@@ -17,6 +17,8 @@ class McpToolDescriptor:
     description: str = ""
     input_schema: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # MCP tool annotations (readOnlyHint, destructiveHint, ...), as the server sent them.
+    annotations: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

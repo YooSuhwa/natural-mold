@@ -1,4 +1,7 @@
-"""Mock streamable-HTTP MCP server on an ``httpx.MockTransport`` (F-12 tests)."""
+"""Mock streamable-HTTP MCP server on an ``httpx.MockTransport`` (F-12 tests).
+
+It answers through the SDK's real client and the ``app.mcp.sdk`` bridge.
+"""
 
 from __future__ import annotations
 
@@ -61,20 +64,16 @@ class MockMcpServer:
             return _result(body["id"], {"content": [{"type": "text", "text": "posted"}]})
         return httpx.Response(400)
 
-    def options(self) -> dict[str, Any]:
-        def factory(
-            headers: dict[str, str] | None = None,
-            timeout: httpx.Timeout | None = None,
-            auth: httpx.Auth | None = None,
-        ) -> httpx.AsyncClient:
+    def install(self, monkeypatch: Any) -> None:
+        """Route the SDK's guarded client (``app.mcp.sdk``) to this mock server."""
+
+        def client(**options: Any) -> httpx.AsyncClient:
             return httpx.AsyncClient(
                 transport=httpx.MockTransport(self.handle),
-                headers=headers,
-                timeout=timeout or httpx.Timeout(5.0),
-                auth=auth,
+                timeout=options.get("timeout") or httpx.Timeout(5.0),
             )
 
-        return {"httpx_client_factory": factory}
+        monkeypatch.setattr("app.mcp.sdk.outbound_http_client", client)
 
     def calls(self, method: str) -> int:
         return sum(1 for name, _ in self.requests if name == method)

@@ -36,14 +36,11 @@ def _tool(name: str) -> StructuredTool:
 async def discoveries(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     seen: list[dict[str, Any]] = []
 
-    class FakeClient:
-        def __init__(self, servers: dict[str, Any], **kwargs: Any) -> None:
-            seen.append({"servers": servers, **kwargs})
+    async def load(config: dict[str, Any], inject: Any, request_timeout: float) -> list[Any]:
+        seen.append({"config": config, "inject": inject})
+        return [_tool("post_message")]
 
-        async def get_tools(self) -> list[StructuredTool]:
-            return [_tool("post_message")]
-
-    monkeypatch.setattr("langchain_mcp_adapters.client.MultiServerMCPClient", FakeClient)
+    monkeypatch.setattr("app.agent_runtime.mcp_tool_loader.load_server_tools", load)
     await mcp_cache.clear_mcp_tool_cache()
     return seen
 
@@ -74,7 +71,7 @@ async def test_injected_auth_arguments_never_cross_users(discoveries) -> None:
     await _build(auth_config={"api_key": "user-b"}, **common)
 
     assert len(discoveries) == 2
-    injected = [d["tool_interceptors"][0].tool_auth for d in discoveries]
+    injected = [d["inject"] for d in discoveries]
     assert injected == [
         {"post_message": {"api_key": "user-a"}},
         {"post_message": {"api_key": "user-b"}},

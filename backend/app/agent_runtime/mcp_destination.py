@@ -6,7 +6,8 @@ a host in the credential's ``allowed_hosts`` (empty: owner's own runs only) and,
 an OAuth token issued for an MCP resource, that resource's canonical origin
 (``token_destination_allowed``, F-15). Blocked tools become stubs that return the
 reason; the connection is never opened. The transport itself is an
-``outbound_http_client`` that stays https-only and refuses cross-host redirects.
+``outbound_http_client`` that stays https-only; the SDK follows redirects only within the
+server's origin.
 """
 
 from __future__ import annotations
@@ -17,7 +18,6 @@ from typing import Any
 from langchain_core.tools import BaseTool, StructuredTool
 
 from app.credentials.mcp_oauth_spec import token_destination_allowed
-from app.outbound.client import credentialed_mcp_options
 from app.outbound.destination import CredentialDestination, OutboundBlockedError, check_destination
 from app.tools.risk import attach_tool_risk, mcp_tool_risk
 
@@ -64,10 +64,10 @@ def split_blocked(configs: list[dict]) -> tuple[list[dict], list[BaseTool]]:
     return allowed, stubs
 
 
-def transport_options(config: dict[str, Any]) -> dict[str, Any]:
-    """Extra MCP connection options for a credentialed config."""
+def transport_credentialed(config: dict[str, Any]) -> bool:
+    """A credentialed config connects https only (``app.mcp.sdk.http_client_factory``)."""
 
-    return credentialed_mcp_options(config.get("credential_destination") is not None)
+    return config.get("credential_destination") is not None
 
 
-__all__ = ["mcp_destination_error", "split_blocked", "transport_options"]
+__all__ = ["mcp_destination_error", "split_blocked", "transport_credentialed"]

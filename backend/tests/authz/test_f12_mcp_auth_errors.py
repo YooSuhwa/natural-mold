@@ -1,8 +1,7 @@
 """F-12 (plan 11.4, 11.4.1, 11.5): MCP 401/403 are typed and kept apart from transport errors.
 
 Done-when: "401·403과 전송 오류 구분 테스트". The end-to-end cases run the real
-langchain-mcp-adapters / MCP SDK streamable-HTTP client against a mocked httpx
-transport.
+MCP SDK streamable-HTTP client (``app.mcp.sdk``) against a mocked httpx transport.
 """
 
 from __future__ import annotations
@@ -71,7 +70,7 @@ async def _tools(monkeypatch: pytest.MonkeyPatch, server: MockMcpServer, **overr
     from app.agent_runtime import mcp_tool_loader
 
     await mcp_cache.clear_mcp_tool_cache()
-    monkeypatch.setattr(mcp_tool_loader, "transport_options", lambda _config: server.options())
+    server.install(monkeypatch)
     tools = await mcp_tool_loader._build_mcp_tools([mcp_config(**overrides)])
     assert [tool.name for tool in tools] == ["post_message"]
     return tools[0]

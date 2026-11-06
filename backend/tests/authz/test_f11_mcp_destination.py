@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,10 +16,10 @@ from app.config import settings
 from app.credentials import mcp_oauth_discovery
 from app.credentials.allowed_hosts import default_allowed_hosts
 from app.credentials.creation import CredentialCreation
+from app.mcp import sdk
 from app.models.credential import Credential
 from app.outbound import client as outbound_client
 from app.outbound import transport as outbound_transport
-from app.outbound.client import mcp_http_client_factory
 from app.outbound.destination import OutboundBlockedError, owner_own_run
 from app.schemas.mcp import McpServerCreate, McpServerUpdate
 from app.services import mcp_service
@@ -73,17 +74,38 @@ async def test_blocked_mcp_tools_become_stubs_and_never_connect() -> None:
 def test_credentialed_mcp_connections_use_the_guarded_client_factory() -> None:
     plan = _plan_mcp_servers([_config(hosts=["mcp.example.com"])])
     [server] = plan.servers.values()
-    assert server["httpx_client_factory"] is mcp_http_client_factory
+    assert server["credentialed"] is True
     bare = {"name": "x", "mcp_tool_name": "x", "mcp_server_url": "http://localhost:9/mcp"}
     [plain] = _plan_mcp_servers([bare]).servers.values()
-    assert "httpx_client_factory" not in plain
+    assert plain["credentialed"] is False
 
 
 async def test_the_mcp_client_factory_is_https_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "app_env", "production")
-    async with mcp_http_client_factory(headers={"Authorization": "Bearer t"}) as client:
+    factory = sdk.http_client_factory(credentialed=True)
+    async with factory(headers={"Authorization": "Bearer t"}) as client:
         with pytest.raises(OutboundBlockedError, match="https"):
             await client.post("http://mcp.example.com/mcp")
+
+
+async def test_a_credentialed_mcp_client_never_follows_a_redirect_to_another_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def moved(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "mcp.example.com":
+            return httpx.Response(307, headers={"location": "https://evil.example.net/mcp"})
+        return httpx.Response(200, json={"leaked": True})
+
+    monkeypatch.setattr(
+        sdk,
+        "outbound_http_client",
+        lambda **_: httpx.AsyncClient(transport=httpx.MockTransport(moved)),
+    )
+    async with sdk.http_client_factory(credentialed=True)(follow_redirects=True) as client:
+        with pytest.raises(OutboundBlockedError, match="another host"):
+            await client.post("https://mcp.example.com/mcp")
+    async with sdk.http_client_factory(credentialed=False)(follow_redirects=True) as client:
+        assert (await client.post("https://mcp.example.com/mcp")).status_code == 200
 
 
 def test_owner_own_run_needs_a_chat_by_the_owner_on_their_account() -> None:

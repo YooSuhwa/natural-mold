@@ -26,11 +26,12 @@ from app.agent_runtime.mcp_tool_cache import clear_mcp_tool_cache, get_cached_mc
 from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.mcp.apps import sanitize_result_meta, sanitize_result_payload
 from app.mcp.domain import McpAppRuntimeContext
+from app.mcp.sdk import RESULT_ENVELOPE
 from app.schemas.mcp_apps import McpAppArtifact
 
 logger = logging.getLogger(__name__)
 
-_MCP_RESULT_ENVELOPE = "__moldy_mcp_result__"
+_MCP_RESULT_ENVELOPE = RESULT_ENVELOPE
 _ACTIVE_TOOL_CALL_ID: ContextVar[str | None] = ContextVar("moldy_mcp_tool_call_id", default=None)
 _ACTIVE_RUN_ID: ContextVar[str | None] = ContextVar("moldy_mcp_run_id", default=None)
 BindingRecorder = Callable[

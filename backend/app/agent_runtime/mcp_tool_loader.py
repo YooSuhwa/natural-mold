@@ -10,16 +10,13 @@ from urllib.parse import urlparse
 
 from langchain_core.tools import BaseTool, StructuredTool
 
-from app.agent_runtime.mcp_app_runtime import (
-    ResultMetaInterceptor,
-    mcp_app_context,
-    record_mcp_app_binding,
-)
+from app.agent_runtime.mcp_app_runtime import mcp_app_context, record_mcp_app_binding
 from app.agent_runtime.mcp_auth_context import McpAuthContext
 from app.agent_runtime.mcp_auth_errors import McpAuthError, classify_mcp_error
-from app.agent_runtime.mcp_destination import split_blocked, transport_options
+from app.agent_runtime.mcp_destination import split_blocked, transport_credentialed
 from app.agent_runtime.mcp_tool_cache import identity_cache_key
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
+from app.mcp import sdk
 from app.mcp.apps import normalize_tool_ui_meta, tool_allows_visibility
 from app.tools.risk import attach_tool_risk, mcp_tool_risk
 
@@ -40,24 +37,6 @@ def _url_to_server_key(url: str) -> str:
     parsed = urlparse(url)
     key = parsed.netloc + parsed.path.rstrip("/")
     return key.replace(".", "_").replace(":", "_").replace("/", "_")
-
-
-class _AuthInjectorInterceptor:
-    """MCP 도구 호출 시 auth_config 값을 arguments에 자동 주입.
-
-    langchain-mcp-adapters의 ToolCallInterceptor 프로토콜을 구현.
-    MCP 서버로 JSON-RPC tools/call 전송 직전에 request.args를 수정한다.
-    """
-
-    def __init__(self, tool_auth: dict[str, dict]) -> None:
-        self.tool_auth = tool_auth  # tool_name → auth_config
-
-    async def __call__(self, request: Any, handler: Any) -> Any:
-        auth = self.tool_auth.get(request.name)
-        if auth:
-            merged = {**auth, **request.args}
-            request = request.override(args=merged)
-        return await handler(request)
 
 
 def _hide_auth_params_from_schema(tool: BaseTool, auth_keys: set[str]) -> None:
@@ -100,13 +79,37 @@ def _create_mcp_auth_stub(name: str, error: McpAuthError, config: dict[str, Any]
     return attach_tool_risk(wrapped, mcp_tool_risk(name))
 
 
-def server_interceptors(plan: _McpPlan, key: str) -> list[Any]:
+def server_inject(plan: _McpPlan, key: str) -> dict[str, dict[str, Any]]:
     """Only this server's ``auth_config`` is injected (the cache key covers it)."""
-    auth = plan.server_tool_auth.get(key)
-    interceptors: list[Any] = [ResultMetaInterceptor()]
-    if auth:
-        interceptors.insert(0, _AuthInjectorInterceptor(dict(auth)))
-    return interceptors
+    return {name: dict(auth) for name, auth in plan.server_tool_auth.get(key, {}).items()}
+
+
+def server_transport(config: dict[str, Any]) -> Any:
+    """A fresh SDK transport for one planned server (one per session)."""
+    return sdk.http_transport(
+        str(config.get("transport") or "streamable_http"),
+        str(config["url"]),
+        config.get("headers") or None,
+        credentialed=bool(config.get("credentialed")),
+    )
+
+
+async def load_server_tools(
+    config: dict[str, Any], inject: dict[str, dict[str, Any]], request_timeout: float
+) -> list[BaseTool]:
+    """List one server's tools and adapt them; each tool call opens its own session."""
+    _server, definitions = await sdk.discover(
+        server_transport(config), request_timeout=request_timeout
+    )
+    return [
+        sdk.as_langchain_tool(
+            definition,
+            lambda config=config: server_transport(config),
+            inject=inject.get(definition.name),
+            request_timeout=request_timeout,
+        )
+        for definition in definitions
+    ]
 
 
 @dataclass(slots=True)
@@ -145,7 +148,7 @@ def _plan_mcp_servers(mcp_configs: list[dict]) -> _McpPlan:
                 "transport": "streamable_http",
                 "url": url,
                 "headers": headers or None,
-                **transport_options(tc),
+                "credentialed": transport_credentialed(tc),
             }
             plan.tool_filter[key] = set()
 
@@ -225,12 +228,10 @@ def _disambiguate(collected: list[tuple[BaseTool, str]]) -> list[BaseTool]:
 
 
 async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
-    """MCP 도구를 langchain-mcp-adapters로 생성."""
+    """MCP 도구를 서버별로 불러와 감싼다 (app.mcp.sdk)."""
     assert_pre_marker("_build_mcp_tools")
     if not mcp_configs:
         return []
-
-    from langchain_mcp_adapters.client import MultiServerMCPClient
 
     mcp_configs, blocked = split_blocked(mcp_configs)  # 11.9 credential destinations
     plan = _plan_mcp_servers(mcp_configs)
@@ -241,6 +242,7 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
     from app.agent_runtime.mcp_cache import get_cached_mcp_tools
     from app.config import settings as _settings
 
+    timeout = float(_settings.mcp_connection_timeout)
     for key, config in plan.servers.items():
         server_configs = [tc for (k, _), tc in plan.tool_configs.items() if k == key]
         identity_key, cache_tags = identity_cache_key(
@@ -253,13 +255,9 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
                 cache_key: str = key,
                 server_config: dict[str, Any] = config,
             ) -> list[BaseTool]:
-                client = MultiServerMCPClient(
-                    {cache_key: server_config},  # type: ignore[arg-type]  # dict는 Connection TypedDict 호환
-                    tool_interceptors=server_interceptors(plan, cache_key),  # type: ignore[arg-type]
-                )
                 return await asyncio.wait_for(
-                    client.get_tools(),
-                    timeout=_settings.mcp_connection_timeout,
+                    load_server_tools(server_config, server_inject(plan, cache_key), timeout),
+                    timeout=timeout,
                 )
 
             server_tools = await get_cached_mcp_tools(
