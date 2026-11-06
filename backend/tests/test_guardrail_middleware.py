@@ -288,10 +288,14 @@ class _FakeDb:
     def __init__(self, profile: str) -> None:
         self.profile = profile
 
-    async def get(self, _model: Any, _id: Any) -> Any:
+    async def get(self, model: Any, key: Any) -> Any:
         from types import SimpleNamespace
 
-        return SimpleNamespace(runtime_profile=self.profile)
+        from app.models.guardrail_template import AgentGuardrailBinding
+
+        if model is AgentGuardrailBinding:
+            return None  # no agent choice: the installation default applies
+        return SimpleNamespace(id=key, runtime_profile=self.profile, settings={})
 
 
 @pytest.mark.parametrize(

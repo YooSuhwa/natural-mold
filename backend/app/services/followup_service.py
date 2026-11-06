@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.conversation_scope import resolve_conversation_actor
 from app.config import settings
+from app.guardrails.policy import resolve
 from app.guardrails.run import guard_for
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -109,7 +110,12 @@ async def _guarded_transcript(
     The suggestion call is outside the agent, so its middleware does not see it.
     """
     agent = await db.get(Agent, conversation.agent_id) if conversation.agent_id else None
-    guard = guard_for(agent.runtime_profile, conversation.tenant_id) if agent else None
+    rules = (
+        await resolve(db, conversation.tenant_id, agent.id, agent.runtime_profile)
+        if agent
+        else None
+    )
+    guard = guard_for(rules, conversation.tenant_id)
     if guard is None:
         return transcript
     [checked] = await guard.check([transcript], "llm_send")

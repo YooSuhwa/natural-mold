@@ -1,8 +1,14 @@
-"""Which guardrail a run gets (until company policy and agent bindings: plan §6 step 4)."""
+"""Which guardrail a run gets.
+
+Runs whose entry resolved the company policy carry the result on ``AgentConfig``
+(``guardrail_resolved``; ``policy.resolve``, pinned on the run). Anything else falls back
+to the installation default (``GUARDRAIL_DEFAULT_TEMPLATE``) so it is never less guarded.
+"""
 
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from app.config import settings
 from app.guardrails.events import RunScope
@@ -29,8 +35,14 @@ def rules_for(runtime_profile: str) -> RuleSet | None:
     return rules
 
 
+def effective_rules(cfg: Any) -> RuleSet | None:
+    """The run's rule set: the resolved company policy, else the installation default."""
+    if getattr(cfg, "guardrail_resolved", False):
+        return cfg.guardrail_rules
+    return rules_for(cfg.runtime_profile)
+
+
 def guard_for(
-    runtime_profile: str, tenant_id: uuid.UUID | None, scope: RunScope | None = None
+    rules: RuleSet | None, tenant_id: uuid.UUID | None, scope: RunScope | None = None
 ) -> Guard | None:
-    rules = rules_for(runtime_profile)
     return Guard(rules, tenant_id, scope) if rules is not None else None

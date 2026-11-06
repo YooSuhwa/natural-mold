@@ -2336,6 +2336,100 @@
         ]
       }
     },
+    "/api/agents/{agent_id}/guardrails": {
+      "get": {
+        "operationId": "get_agent_guardrails_api_agents__agent_id__guardrails_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGuardrailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Guardrails",
+        "tags": [
+          "agents"
+        ]
+      },
+      "put": {
+        "operationId": "put_agent_guardrails_api_agents__agent_id__guardrails_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentGuardrailUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGuardrailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Agent Guardrails",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/api/agents/{agent_id}/image": {
       "get": {
         "operationId": "get_agent_image_api_agents__agent_id__image_get",
@@ -19882,6 +19976,383 @@
         ]
       }
     },
+    "/api/tenants/{tenant_id}/guardrails": {
+      "get": {
+        "operationId": "get_guardrail_policy_api_tenants__tenant_id__guardrails_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Guardrail Policy",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "put": {
+        "operationId": "put_guardrail_policy_api_tenants__tenant_id__guardrails_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardrailPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Guardrail Policy",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/templates": {
+      "get": {
+        "operationId": "list_guardrail_templates_api_tenants__tenant_id__guardrails_templates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GuardrailTemplateOut"
+                  },
+                  "title": "Response List Guardrail Templates Api Tenants  Tenant Id  Guardrails Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Guardrail Templates",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "post": {
+        "operationId": "create_guardrail_template_api_tenants__tenant_id__guardrails_templates_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardrailTemplateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Guardrail Template",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/templates/{template_id}": {
+      "patch": {
+        "operationId": "update_guardrail_template_api_tenants__tenant_id__guardrails_templates__template_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardrailTemplateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Guardrail Template",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/templates/{template_id}/archive": {
+      "post": {
+        "operationId": "archive_guardrail_template_api_tenants__tenant_id__guardrails_templates__template_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Guardrail Template",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/templates/{template_id}/publish": {
+      "post": {
+        "operationId": "publish_guardrail_template_api_tenants__tenant_id__guardrails_templates__template_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Guardrail Template",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
     "/api/tenants/{tenant_id}/invitations": {
       "get": {
         "operationId": "get_invitations_api_tenants__tenant_id__invitations_get",
@@ -25864,6 +26335,120 @@
         }
       },
       "title": "AgentDeploymentUpdate",
+      "type": "object"
+    },
+    "AgentGuardrailOut": {
+      "properties": {
+        "effective": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/GuardrailTemplateChoice"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "locked_rules": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Locked Rules",
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "inherit",
+            "template",
+            "off"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "policy_mode": {
+          "enum": [
+            "off",
+            "open",
+            "default",
+            "enforced"
+          ],
+          "title": "Policy Mode",
+          "type": "string"
+        },
+        "rule_overrides": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/GuardrailRuleOverride"
+          },
+          "title": "Rule Overrides",
+          "type": "object"
+        },
+        "template_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Template Ref"
+        },
+        "templates": {
+          "items": {
+            "$ref": "#/components/schemas/GuardrailTemplateChoice"
+          },
+          "title": "Templates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "mode",
+        "template_ref",
+        "rule_overrides",
+        "policy_mode",
+        "locked_rules",
+        "effective",
+        "templates"
+      ],
+      "title": "AgentGuardrailOut",
+      "type": "object"
+    },
+    "AgentGuardrailUpdate": {
+      "properties": {
+        "mode": {
+          "enum": [
+            "inherit",
+            "template",
+            "off"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "rule_overrides": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/GuardrailRuleOverride"
+          },
+          "maxProperties": 40,
+          "title": "Rule Overrides",
+          "type": "object"
+        },
+        "template_ref": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Template Ref"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "AgentGuardrailUpdate",
       "type": "object"
     },
     "AgentLifecycleMetadataResponse": {
@@ -33059,6 +33644,393 @@
         "enabled"
       ],
       "title": "GuardrailModelSettingUpdate",
+      "type": "object"
+    },
+    "GuardrailPolicyOut": {
+      "properties": {
+        "default_template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Template"
+        },
+        "locked_rules": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Locked Rules",
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "off",
+            "open",
+            "default",
+            "enforced"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "saved": {
+          "title": "Saved",
+          "type": "boolean"
+        },
+        "templates": {
+          "items": {
+            "$ref": "#/components/schemas/GuardrailTemplateChoice"
+          },
+          "title": "Templates",
+          "type": "array"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "default_template",
+        "locked_rules",
+        "saved",
+        "templates",
+        "updated_at"
+      ],
+      "title": "GuardrailPolicyOut",
+      "type": "object"
+    },
+    "GuardrailPolicyUpdate": {
+      "properties": {
+        "default_template": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Template"
+        },
+        "locked_rules": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 40,
+          "title": "Locked Rules",
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "off",
+            "open",
+            "default",
+            "enforced"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "GuardrailPolicyUpdate",
+      "type": "object"
+    },
+    "GuardrailRuleOut": {
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "entities": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Entities"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "packs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Packs",
+          "type": "array"
+        },
+        "pseudonym_style": {
+          "title": "Pseudonym Style",
+          "type": "string"
+        },
+        "restore_for_tools": {
+          "title": "Restore For Tools",
+          "type": "boolean"
+        },
+        "stages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Stages",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "packs",
+        "stages",
+        "action",
+        "entities",
+        "restore_for_tools",
+        "pseudonym_style"
+      ],
+      "title": "GuardrailRuleOut",
+      "type": "object"
+    },
+    "GuardrailRuleOverride": {
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "enum": [
+                "block",
+                "redact",
+                "hash",
+                "pseudonymize",
+                "mask",
+                "warn"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Action"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "GuardrailRuleOverride",
+      "type": "object"
+    },
+    "GuardrailTemplateChoice": {
+      "description": "A template a policy or an agent can point at.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "builtin",
+            "company"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/components/schemas/GuardrailRuleOut"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ref",
+        "name",
+        "kind",
+        "version",
+        "rules"
+      ],
+      "title": "GuardrailTemplateChoice",
+      "type": "object"
+    },
+    "GuardrailTemplateCreate": {
+      "properties": {
+        "copy_from": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Copy From"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Description",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "rules": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rules"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "GuardrailTemplateCreate",
+      "type": "object"
+    },
+    "GuardrailTemplateOut": {
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "draft_rules": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Draft Rules",
+          "type": "array"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "published_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published Version"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "published",
+            "archived"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "ref",
+        "name",
+        "description",
+        "status",
+        "draft_rules",
+        "published_version",
+        "updated_at"
+      ],
+      "title": "GuardrailTemplateOut",
+      "type": "object"
+    },
+    "GuardrailTemplateUpdate": {
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "rules": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rules"
+        }
+      },
+      "title": "GuardrailTemplateUpdate",
       "type": "object"
     },
     "HTTPValidationError": {

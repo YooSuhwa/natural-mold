@@ -11,6 +11,7 @@ def include_app_routers(app: FastAPI) -> None:
         admin_authz,
         agent_api,
         agent_blueprints,
+        agent_guardrails,
         agent_memo,
         agent_readiness,
         agent_runtime_api,
@@ -72,6 +73,7 @@ def include_app_routers(app: FastAPI) -> None:
         tenant_audit,
         tenant_catalog,
         tenant_credentials,
+        tenant_guardrails,
         tenant_invitations,
         tenant_members,
         tenant_models,
@@ -169,6 +171,8 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(skill_revisions.router)
     app.include_router(system_llm_settings.router)
     app.include_router(guardrail_model_settings.router)
+    app.include_router(tenant_guardrails.router)
+    app.include_router(agent_guardrails.router)
     app.include_router(tools.router)
     app.include_router(triggers.router)
     app.include_router(uploads.router)

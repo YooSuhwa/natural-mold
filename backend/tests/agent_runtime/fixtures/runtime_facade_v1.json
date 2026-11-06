@@ -538,6 +538,18 @@
           "name": "attachment_inputs"
         },
         {
+          "annotation": "RuleSet | None",
+          "default": "none",
+          "kind": "positional_or_keyword",
+          "name": "guardrail_rules"
+        },
+        {
+          "annotation": "bool",
+          "default": "value:bool",
+          "kind": "positional_or_keyword",
+          "name": "guardrail_resolved"
+        },
+        {
           "annotation": "OrgContext",
           "default": "required",
           "kind": "keyword_only",

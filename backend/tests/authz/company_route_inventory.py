@@ -155,6 +155,17 @@ U01_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"GET {_A}/{{tenant_id}}/limits": CompanyRoute("SUPER", 200, False),
     f"GET {_A}/{{tenant_id}}/deletion": CompanyRoute("SUPER", 200, False),
 }
+# Guardrail policy and templates (guardrail-minimum-plan.md §3.4).
+_GR: Final = f"{_T}/guardrails"
+GUARDRAIL_ROUTES: Final[dict[str, CompanyRoute]] = {
+    f"GET {_GR}": CompanyRoute("SELF", 200, False),
+    f"PUT {_GR}": CompanyRoute("GOVERNANCE", 200, True),
+    f"GET {_GR}/templates": CompanyRoute("SELF", 200, False),
+    f"POST {_GR}/templates": CompanyRoute("GOVERNANCE", 201, False),
+    f"PATCH {_GR}/templates/{{template_id}}": CompanyRoute("GOVERNANCE", 200, False),
+    f"POST {_GR}/templates/{{template_id}}/publish": CompanyRoute("GOVERNANCE", 200, False),
+    f"POST {_GR}/templates/{{template_id}}/archive": CompanyRoute("GOVERNANCE", 200, False),
+}
 # File downloads stream the archive and have no JSON response model.
 FILE_ROUTES: Final = frozenset({f"GET {_A}/{{tenant_id}}/exports/{{export_id}}/download"})
 COMPANY_ROUTES: Final = {
@@ -169,6 +180,7 @@ COMPANY_ROUTES: Final = {
     **H04_ROUTES,
     **I07_ROUTES,
     **U01_ROUTES,
+    **GUARDRAIL_ROUTES,
 }
 # Later-task paths from the contract's route-level crosswalk (rows 7-8, 24-35, 38-57),
 # owned by C05/E07/E08/E09/H03. Matched app-wide by path, with parameter

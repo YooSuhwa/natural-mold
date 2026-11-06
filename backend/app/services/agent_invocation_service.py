@@ -31,6 +31,7 @@ from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import ConflictError, ValidationError
+from app.guardrails.policy import resolve as resolve_guardrails
 from app.models.agent import Agent
 from app.models.model import Model
 from app.services import chat_service
@@ -249,6 +250,11 @@ async def build_agent_config_for_loaded_agent(
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
     )
+    # The company guardrail policy at this run's start (guardrails/policy.py).
+    cfg.guardrail_rules = await resolve_guardrails(
+        db, context.tenant_id, agent.id, agent.runtime_profile
+    )
+    cfg.guardrail_resolved = True
     if include_subagents:
         cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
             agent,

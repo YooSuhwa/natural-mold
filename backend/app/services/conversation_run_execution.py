@@ -89,6 +89,14 @@ async def _run_conversation(
         )
         if attachment_inputs is not None:
             cfg = dataclasses.replace(cfg, attachment_inputs=attachment_inputs)
+        guardrail_rules = await worker_attr("_prepare_turn_guardrails")(
+            run_id,
+            WorkerConversationTarget(conversation_id, cfg.org_context),
+            cfg.agent_id,
+            cfg.runtime_profile,
+            resume=moldy_source == "resume",
+        )
+        cfg = dataclasses.replace(cfg, guardrail_rules=guardrail_rules, guardrail_resolved=True)
         start = await prepared_start.start_owned_run(
             _execution_target(run_id, conversation_id, cfg),
             prepared_start.OwnedRunInputs(cfg, user, input_payload, executor_fn, config_transform),
