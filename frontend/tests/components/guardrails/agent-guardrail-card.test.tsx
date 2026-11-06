@@ -1,5 +1,6 @@
 import { render, screen, userEvent, waitFor, within } from '../../test-utils'
 import { AgentGuardrailCard } from '@/features/guardrails/components/agent-guardrail-card'
+import { DEFAULT_TOOL_RISK } from '@/features/guardrails/lib/labels'
 import type { AgentGuardrails, GuardrailRule } from '@/lib/types/guardrails'
 
 const agentGuardrailsApi = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }))
@@ -36,6 +37,7 @@ const view = (overrides: Partial<AgentGuardrails> = {}): AgentGuardrails => ({
   policy_mode: 'default',
   policy_default_template: KR_DEFAULT.ref,
   locked_rules: ['secrets'],
+  tool_risk: DEFAULT_TOOL_RISK,
   effective: KR_DEFAULT,
   templates: [KR_DEFAULT, KR_OBSERVE],
   ...overrides,
@@ -112,14 +114,23 @@ describe('AgentGuardrailCard (에이전트 가드레일)', () => {
     )
   })
 
-  it('shows only a note when the company switched guardrails off', async () => {
-    agentGuardrailsApi.get.mockResolvedValue(view({ policy_mode: 'off', effective: null }))
+  it('shows only a note when the company switched guardrails off, and the tool actions', async () => {
+    agentGuardrailsApi.get.mockResolvedValue(
+      view({
+        policy_mode: 'off',
+        effective: null,
+        tool_risk: { ...DEFAULT_TOOL_RISK, external_mutation: 'block' },
+      }),
+    )
     render(<AgentGuardrailCard agentId="agent-1" />)
 
     expect(
       await screen.findByText('회사가 가드레일을 껐습니다. 이 에이전트는 검사하지 않습니다.'),
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '가드레일 저장' })).not.toBeInTheDocument()
+    const actions = screen.getByTestId('agent-tool-risk')
+    expect(within(actions).getByText('외부 변경').nextSibling).toHaveTextContent('차단')
+    expect(within(actions).getByText('조회').nextSibling).toHaveTextContent('허용')
   })
 
   it('shows what the next run gets from the saved settings', async () => {

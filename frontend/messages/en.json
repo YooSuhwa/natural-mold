@@ -3835,7 +3835,39 @@
       "effective": "Next run with the saved settings: {name} v{version} · {count} rules",
       "effectiveNone": "With the saved settings, the next run has no guardrail.",
       "save": "Save guardrails",
+      "toolRisk": {
+        "title": "Tool risk actions (company policy)",
+        "note": "Set by the company; this agent cannot change them."
+      },
       "saved": "Guardrail settings saved."
+    },
+    "toolRisk": {
+      "title": "Default action per tool risk level",
+      "description": "Allow the tools agents use, require approval or block them, by risk level. Applies to every agent whatever the detection mode, and agent settings cannot change it. Changes apply from the next run.",
+      "readOnly": "Company members can only view this. A company admin changes it.",
+      "level": {
+        "read_only": "Read-only",
+        "write_internal": "Internal write",
+        "external_mutation": "External change",
+        "code_execution": "Code execution",
+        "unknown": "Unknown"
+      },
+      "levelHint": {
+        "read_only": "Tools that change nothing, such as search and reading",
+        "write_internal": "Tools that change content inside Moldy, such as writing or editing files",
+        "external_mutation": "Tools with effects outside, such as sending email, external HTTP calls and MCP tools",
+        "code_execution": "Tools that run code, such as skill or command execution",
+        "unknown": "Tools whose risk level is unknown"
+      },
+      "action": {
+        "allow": "Allow",
+        "approval": "Approval",
+        "block": "Block"
+      },
+      "default": "Default",
+      "triggerNote": "Scheduled runs have nobody to approve, so a run with non-read-only tools still stops. Blocked tools are not run, so they are left out of that check.",
+      "save": "Save default actions",
+      "saved": "Default actions per tool risk level saved."
     },
     "policy": {
       "title": "Company policy",

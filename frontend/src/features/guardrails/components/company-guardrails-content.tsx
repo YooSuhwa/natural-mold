@@ -11,6 +11,7 @@ import {
 import { useGuardrailPolicy } from '@/lib/hooks/use-guardrails'
 import { GuardrailPolicyForm } from './guardrail-policy-form'
 import { GuardrailTemplatesCard } from './guardrail-templates-card'
+import { GuardrailToolRiskForm } from './guardrail-tool-risk-form'
 
 /** Company guardrails: members read the policy, company admins edit it and the templates. */
 export function CompanyGuardrailsContent() {
@@ -32,6 +33,12 @@ function GuardrailsBody({ scope }: { scope: CompanyScope }) {
     <div className="space-y-4">
       <GuardrailPolicyForm
         key={policy.data.updated_at}
+        tenantId={scope.tenantId}
+        policy={policy.data}
+        readOnly={!scope.isAdmin}
+      />
+      <GuardrailToolRiskForm
+        key={`tool-risk-${policy.data.updated_at}`}
         tenantId={scope.tenantId}
         policy={policy.data}
         readOnly={!scope.isAdmin}

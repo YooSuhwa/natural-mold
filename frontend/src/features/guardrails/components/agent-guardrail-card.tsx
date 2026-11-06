@@ -16,8 +16,15 @@ import type {
   GuardrailAction,
   GuardrailRule,
   GuardrailRuleOverride,
+  ToolRiskActions,
 } from '@/lib/types/guardrails'
-import { GUARDRAIL_ACTIONS, useGuardrailErrorMessage, useRuleLabel } from '../lib/labels'
+import {
+  DEFAULT_TOOL_RISK,
+  GUARDRAIL_ACTIONS,
+  TOOL_RISK_LEVELS,
+  useGuardrailErrorMessage,
+  useRuleLabel,
+} from '../lib/labels'
 
 const MODES: readonly AgentGuardrailMode[] = ['inherit', 'template', 'off']
 
@@ -197,6 +204,7 @@ function AgentGuardrailForm({ agentId, saved }: { agentId: string; saved: AgentG
           </div>
         </div>
       )}
+      <ToolRiskSummary actions={saved.tool_risk} />
     </section>
   )
 }
@@ -270,5 +278,26 @@ function RuleRow({
         </SelectContent>
       </Select>
     </li>
+  )
+}
+
+/** The company's tool risk actions, read-only here (C5). */
+function ToolRiskSummary({ actions }: { actions: ToolRiskActions }) {
+  const t = useTranslations('guardrails')
+  return (
+    <div className="mt-3 space-y-1.5 border-t border-border pt-3" data-testid="agent-tool-risk">
+      <div className="text-xs font-medium text-muted-foreground">{t('agent.toolRisk.title')}</div>
+      <ul className="space-y-1">
+        {TOOL_RISK_LEVELS.map((level) => (
+          <li key={level} className="flex items-center gap-2 text-sm">
+            <span className="min-w-0 flex-1">{t(`toolRisk.level.${level}`)}</span>
+            <Badge variant={actions[level] === DEFAULT_TOOL_RISK[level] ? 'outline' : 'secondary'}>
+              {t(`toolRisk.action.${actions[level]}`)}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs leading-5 text-muted-foreground">{t('agent.toolRisk.note')}</p>
+    </div>
   )
 }
