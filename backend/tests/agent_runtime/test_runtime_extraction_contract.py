@@ -64,7 +64,8 @@ def test_factory_legacy_wrappers_keep_exact_signatures() -> None:
             "'list[str] | None' = None, memory: 'list[str] | None' = None, permissions: "
             "'list[FilesystemPermission] | None' = None, name: 'str | None' = None, "
             "subagents: 'list[dict[str, Any]] | None' = None, runtime_policy: "
-            "'ResolvedRuntimePolicy | None' = None, guard: 'Guard | None' = None) -> 'Any'"
+            "'ResolvedRuntimePolicy | None' = None, guard: 'Guard | None' = None, "
+            "tool_risk: 'ToolRiskPolicy | None' = None) -> 'Any'"
         ),
     }
 

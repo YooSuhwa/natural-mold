@@ -9,6 +9,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 PolicyMode = Literal["off", "open", "default", "enforced"]
+RiskLevel = Literal["read_only", "write_internal", "external_mutation", "code_execution", "unknown"]
+RiskAction = Literal["allow", "approval", "block"]
 BindingMode = Literal["inherit", "template", "off"]
 
 
@@ -36,6 +38,8 @@ class GuardrailPolicyOut(BaseModel):
     mode: PolicyMode
     default_template: str | None
     locked_rules: list[str]
+    # Every tool risk level with the company's action (defaults filled in).
+    tool_risk: dict[RiskLevel, RiskAction]
     # False: the company has not saved a policy; the installation default applies.
     saved: bool
     templates: list[GuardrailTemplateChoice]
@@ -46,6 +50,8 @@ class GuardrailPolicyUpdate(BaseModel):
     mode: PolicyMode
     default_template: str | None = Field(default=None, max_length=80)
     locked_rules: list[str] = Field(default_factory=list, max_length=40)
+    # Omitted: the saved tool risk actions stay as they are.
+    tool_risk: dict[RiskLevel, RiskAction] | None = None
 
 
 class GuardrailTemplateOut(BaseModel):
@@ -86,6 +92,8 @@ class AgentGuardrailOut(BaseModel):
     # The company default the agent inherits (its rules are what overrides apply to).
     policy_default_template: str | None
     locked_rules: list[str]
+    # The company's tool risk actions, which the agent cannot change.
+    tool_risk: dict[RiskLevel, RiskAction]
     # What the agent's next run gets (None: no guardrail).
     effective: GuardrailTemplateChoice | None
     templates: list[GuardrailTemplateChoice]

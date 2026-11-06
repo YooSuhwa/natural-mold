@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass, replace
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from typing import Any, Final
 
 from sqlalchemy import select
@@ -28,6 +29,13 @@ from app.config import settings
 from app.guardrails.rules import ACTION_STRENGTH, Rule, RuleSet, builtin
 from app.guardrails.run import UnknownGuardrailTemplateError
 from app.guardrails.templates import BUILTIN_PREFIX, parse_ref, rules_from_json
+from app.guardrails.tool_risk import (
+    DEFAULT_ACTIONS,
+    InvalidToolRiskError,
+    ToolRiskPolicy,
+    actions_from_json,
+    policy_from_actions,
+)
 from app.models.guardrail_template import (
     AgentGuardrailBinding,
     GuardrailTemplate,
@@ -50,6 +58,8 @@ class CompanyPolicy:
     mode: str
     default_template: str | None = None
     locked_rules: frozenset[str] = frozenset()
+    # Risk level → allow / approval / block (tool_risk.py); every level present.
+    tool_risk: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_ACTIONS))
 
 
 def policy_from_settings(values: dict[str, Any] | None) -> CompanyPolicy | None:
@@ -57,10 +67,16 @@ def policy_from_settings(values: dict[str, Any] | None) -> CompanyPolicy | None:
     if not isinstance(raw, dict) or raw.get("mode") not in MODES:
         return None
     locked = raw.get("locked_rules") or []
+    try:
+        tool_risk = actions_from_json(raw.get("tool_risk"))
+    except InvalidToolRiskError:
+        # Only the policy API writes this and it validates; anything else is unreadable.
+        raise GuardrailPolicyError("the stored tool risk policy is not valid") from None
     return CompanyPolicy(
         raw["mode"],
         raw.get("default_template") or None,
         frozenset(str(rule) for rule in locked if isinstance(rule, str)),
+        tool_risk,
     )
 
 
@@ -69,6 +85,7 @@ def policy_to_settings(policy: CompanyPolicy) -> dict[str, Any]:
         "mode": policy.mode,
         "default_template": policy.default_template,
         "locked_rules": sorted(policy.locked_rules),
+        "tool_risk": dict(policy.tool_risk),
     }
 
 
@@ -174,3 +191,18 @@ async def _default(db: AsyncSession, tenant_id: uuid.UUID, policy: CompanyPolicy
     if rules is None:
         raise GuardrailPolicyError(f"guardrail template {policy.default_template!r} is not usable")
     return rules
+
+
+async def resolve_tool_risk(
+    db: AsyncSession, tenant_id: uuid.UUID, runtime_profile: str
+) -> ToolRiskPolicy | None:
+    """The company's tool risk actions for a run; ``None`` when all keep their default.
+
+    Unlike detection rules this does not depend on the guardrail mode: approval and
+    blocking of risky tools hold even when the company switched detection off.
+    """
+    if runtime_profile != "standard":
+        return None
+    tenant = await db.get(Tenant, tenant_id)
+    saved = policy_from_settings(tenant.settings if tenant else None)
+    return policy_from_actions(saved.tool_risk) if saved else None

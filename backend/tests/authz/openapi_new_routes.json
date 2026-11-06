@@ -26410,6 +26410,27 @@
           },
           "title": "Templates",
           "type": "array"
+        },
+        "tool_risk": {
+          "additionalProperties": {
+            "enum": [
+              "allow",
+              "approval",
+              "block"
+            ],
+            "type": "string"
+          },
+          "propertyNames": {
+            "enum": [
+              "read_only",
+              "write_internal",
+              "external_mutation",
+              "code_execution",
+              "unknown"
+            ]
+          },
+          "title": "Tool Risk",
+          "type": "object"
         }
       },
       "required": [
@@ -26419,6 +26440,7 @@
         "policy_mode",
         "policy_default_template",
         "locked_rules",
+        "tool_risk",
         "effective",
         "templates"
       ],
@@ -33699,6 +33721,27 @@
           "title": "Templates",
           "type": "array"
         },
+        "tool_risk": {
+          "additionalProperties": {
+            "enum": [
+              "allow",
+              "approval",
+              "block"
+            ],
+            "type": "string"
+          },
+          "propertyNames": {
+            "enum": [
+              "read_only",
+              "write_internal",
+              "external_mutation",
+              "code_execution",
+              "unknown"
+            ]
+          },
+          "title": "Tool Risk",
+          "type": "object"
+        },
         "updated_at": {
           "format": "date-time",
           "title": "Updated At",
@@ -33709,6 +33752,7 @@
         "mode",
         "default_template",
         "locked_rules",
+        "tool_risk",
         "saved",
         "templates",
         "updated_at"
@@ -33747,6 +33791,34 @@
           ],
           "title": "Mode",
           "type": "string"
+        },
+        "tool_risk": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "enum": [
+                  "allow",
+                  "approval",
+                  "block"
+                ],
+                "type": "string"
+              },
+              "propertyNames": {
+                "enum": [
+                  "read_only",
+                  "write_internal",
+                  "external_mutation",
+                  "code_execution",
+                  "unknown"
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tool Risk"
         }
       },
       "required": [

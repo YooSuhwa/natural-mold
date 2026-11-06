@@ -826,7 +826,11 @@ async def test_guardrail_policy_mutations_write_audit(client, db: AsyncSession, 
         etag = (await client.get(f"{TENANT}/guardrails")).headers["ETag"]
         policy = await client.put(
             f"{TENANT}/guardrails",
-            json={"mode": "open", "default_template": "builtin:kr-observe"},
+            json={
+                "mode": "open",
+                "default_template": "builtin:kr-observe",
+                "tool_risk": {"external_mutation": "block"},
+            },
             headers={"If-Match": etag},
         )
         created = await client.post(
@@ -865,6 +869,7 @@ async def test_guardrail_policy_mutations_write_audit(client, db: AsyncSession, 
         return metadata["after"]
 
     assert after("guardrail.policy_update")["mode"] == "open"
+    assert after("guardrail.policy_update")["tool_risk"]["external_mutation"] == "block"
     assert by_action["guardrail.template_create"].target_id == template_id
     assert after("guardrail.template_publish")["version"] == 1
     assert after("guardrail.template_archive")["status"] == "archived"

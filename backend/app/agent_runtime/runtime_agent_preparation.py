@@ -271,6 +271,7 @@ async def _prepare_agent(
         subagents=cfg.subagents_config,
         runtime_policy=cfg.runtime_policy,
         guard=guard,
+        tool_risk=cfg.tool_risk,
     )
     timings["build_agent_ms"] = int((time.perf_counter() - build_started) * 1000)
     last_mark = time.perf_counter()

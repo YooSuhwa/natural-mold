@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from app.agent_runtime.attachment_inputs import AttachmentInputs
     from app.authz.runtime_access_planner import RuntimeAccessPlan
     from app.guardrails.rules import RuleSet
+    from app.guardrails.tool_risk import ToolRiskPolicy
 
 _configured_data_root = Path(settings.data_root)
 _DATA_DIR = (
@@ -152,6 +153,9 @@ class AgentConfig:
     # the run (guardrails/policy.py). ``guardrail_resolved=False``: the installation default.
     guardrail_rules: RuleSet | None = None
     guardrail_resolved: bool = False
+    # Company actions per tool risk level (guardrails/tool_risk.py), resolved and pinned
+    # with the rules. ``None``: every level keeps its default.
+    tool_risk: ToolRiskPolicy | None = None
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,
