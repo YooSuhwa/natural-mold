@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.agent import Agent
 from app.models.audit_event import AuditEvent
 from app.models.conversation import Conversation
+from app.models.guardrail_event import GuardrailEvent
 from app.models.memory import MemoryRecord
 from app.models.organization import OrganizationMember
 from app.services import agent_purge_cleanup
@@ -170,3 +171,39 @@ async def test_company_audit_rows_past_the_period_are_deleted(db: AsyncSession) 
     assert not await exists(AuditEvent, old.id)
     assert await exists(AuditEvent, recent.id)
     assert await exists(AuditEvent, platform.id)  # no company: never swept here
+
+
+def _detection(days: int) -> GuardrailEvent:
+    return GuardrailEvent(
+        tenant_id=TEST_TENANT_ID,
+        template="builtin:kr-default",
+        template_version=3,
+        stage="llm_send",
+        rule="kr-identifiers",
+        entity="RRN",
+        action="redact",
+        count=1,
+        value_digests=[],
+        created_at=days_ago(days).replace(tzinfo=None),
+    )
+
+
+async def test_guardrail_detections_age_out_with_the_audit_period(db: AsyncSession) -> None:
+    old, recent = _detection(366), _detection(300)
+    db.add_all([old, recent])
+    await db.commit()
+
+    results = await sweep()
+
+    assert results[TEST_TENANT_ID].guardrail_events == 1
+    assert results[TEST_TENANT_ID].audit_events == 0
+    assert not await exists(GuardrailEvent, old.id)
+    assert await exists(GuardrailEvent, recent.id)
+    [record] = [
+        e
+        for e in (
+            await db.scalars(select(AuditEvent).where(AuditEvent.action == "retention.purge"))
+        )
+        if e.target_type == "tenant"
+    ]
+    assert record.event_metadata == {"guardrail_events": 1}

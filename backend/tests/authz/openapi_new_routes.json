@@ -42531,6 +42531,11 @@
           "title": "Conversations",
           "type": "integer"
         },
+        "guardrail_events": {
+          "default": 0,
+          "title": "Guardrail Events",
+          "type": "integer"
+        },
         "removed_member_conversations": {
           "default": 0,
           "title": "Removed Member Conversations",

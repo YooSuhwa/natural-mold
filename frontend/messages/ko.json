@@ -951,7 +951,7 @@
         "save": "정책 저장",
         "saved": "회사 정책을 저장했습니다.",
         "confirmTitle": "보존 기간을 줄일까요?",
-        "confirmDescription": "줄인 기간보다 오래된 감사 기록 {count}건이 다음 정리 때 삭제됩니다.",
+        "confirmDescription": "줄인 기간보다 오래된 감사 기록 {count}건과 가드레일 탐지 기록 {guardrail}건이 다음 정리 때 삭제됩니다.",
         "confirm": "줄이고 저장"
       },
       "publications": {

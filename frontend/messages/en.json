@@ -951,7 +951,7 @@
         "save": "Save policies",
         "saved": "Company policies saved.",
         "confirmTitle": "Shorten the retention period?",
-        "confirmDescription": "{count} audit records older than the new period will be deleted at the next cleanup.",
+        "confirmDescription": "{count} audit records and {guardrail} guardrail detection records older than the new period will be deleted at the next cleanup.",
         "confirm": "Shorten and save"
       },
       "publications": {

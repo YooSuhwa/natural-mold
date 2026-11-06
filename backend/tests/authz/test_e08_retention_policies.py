@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.dependencies import CurrentUser
 from app.models.audit_event import AuditEvent
+from app.models.guardrail_event import GuardrailEvent
 from app.models.organization import Organization
 from app.schemas.retention import org_retention
 from tests.authz.e01_support import OTHER_USER_ID, add_agent
@@ -116,6 +117,20 @@ async def test_company_audit_retention_shortening_needs_confirmation(
             created_at=days_ago(120).replace(tzinfo=None),
         )
     )
+    db.add(
+        GuardrailEvent(
+            tenant_id=TEST_TENANT_ID,
+            template="builtin:kr-default",
+            template_version=3,
+            stage="llm_send",
+            rule="secrets",
+            entity="SECRET",
+            action="block",
+            count=1,
+            value_digests=[],
+            created_at=days_ago(120).replace(tzinfo=None),
+        )
+    )
     await db.commit()
     preview = await _put(client, {**APPROVAL, "audit_retention_days": 90}, POLICIES)
     assert preview.status_code == 200, preview.text
@@ -125,6 +140,7 @@ async def test_company_audit_retention_shortening_needs_confirmation(
         "removed_member_conversations": 0,
         "removed_member_memories": 0,
         "audit_events": 1,
+        "guardrail_events": 1,
     }
     assert preview.json()["audit_retention_days"] == 365
     confirmed = await _put(

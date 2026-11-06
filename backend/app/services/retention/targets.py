@@ -16,6 +16,7 @@ from sqlalchemy.sql import Select
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.audit_event import AuditEvent
 from app.models.conversation import Conversation
+from app.models.guardrail_event import GuardrailEvent
 from app.models.memory import MemoryProposal, MemoryRecord
 from app.models.organization import OrganizationMember
 from app.schemas.retention import OrgRetention, RetentionPreview
@@ -96,6 +97,14 @@ def expired_audit(tenant_id: UUID, days: int, now: datetime) -> Select[tuple[UUI
     return select(AuditEvent.id).where(
         AuditEvent.tenant_id == tenant_id,
         AuditEvent.created_at < cutoff(now, days).replace(tzinfo=None),
+    )
+
+
+def expired_guardrail_events(tenant_id: UUID, days: int, now: datetime) -> Select[tuple[UUID]]:
+    """Guardrail detection rows, on the company audit period (they are its security record)."""
+    return select(GuardrailEvent.id).where(
+        GuardrailEvent.tenant_id == tenant_id,
+        GuardrailEvent.created_at < cutoff(now, days).replace(tzinfo=None),
     )
 
 

@@ -20,7 +20,7 @@ from app.models.organization import Tenant
 from app.schemas.retention import AUDIT_SETTING, RetentionPreview, audit_retention_days
 from app.schemas.tenant_publication import TenantPolicies, TenantPoliciesUpdate
 from app.services import audit_service
-from app.services.retention.targets import count, expired_audit
+from app.services.retention.targets import count, expired_audit, expired_guardrail_events
 from app.services.tenants.versioning import bump_timestamp, require_current_version, utc_timestamp
 from app.tenancy.admin_context import (
     TenantAdminContext,
@@ -81,8 +81,12 @@ async def update_tenant_policies(
     if publish[0] == publish[1] and days[0] == days[1]:
         return tenant_policies(tenant)
     if days[1] < days[0] and not payload.confirm:
-        expired = await count(db, expired_audit(tenant.id, days[1], datetime.now(UTC)))
-        result = tenant_policies(tenant, RetentionPreview(audit_events=expired))
+        now = datetime.now(UTC)
+        expired = await count(db, expired_audit(tenant.id, days[1], now))
+        guardrail = await count(db, expired_guardrail_events(tenant.id, days[1], now))
+        result = tenant_policies(
+            tenant, RetentionPreview(audit_events=expired, guardrail_events=guardrail)
+        )
         await db.rollback()
         return result
     try:

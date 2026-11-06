@@ -6,7 +6,8 @@ organization purge contract exists): idle conversations past ``conversation_days
 ``removed_member_days`` (each conversation is deleted under the member row lock with
 the member predicate re-checked, so a re-add during the sweep keeps everything not yet
 deleted, and the data comes back with the membership), then agents in the trash past
-``agent_trash_days``. Per company: audit rows past ``audit_retention_days``; no action
+``agent_trash_days``. Per company: audit rows and guardrail detection rows past
+``audit_retention_days``; no action
 is exempt, ``retention.purge`` rows age out like the rest. Bulk deletes run in chunks
 of ``CHUNK`` ids. Each non-empty result is recorded as ``retention.purge`` with the
 counts. Leadership is re-checked before each organization.
@@ -28,6 +29,7 @@ from app.authz import audit_actions
 from app.authz.tenant_org_write_locks import lock_member_rows
 from app.models.audit_event import AuditEvent
 from app.models.conversation import Conversation
+from app.models.guardrail_event import GuardrailEvent
 from app.models.memory import MemoryProposal, MemoryRecord
 from app.models.organization import Organization, Tenant
 from app.schemas.retention import RetentionPreview, audit_retention_days, org_retention
@@ -67,7 +69,9 @@ async def _ids(db: AsyncSession, query: Select[tuple[UUID]]) -> list[UUID]:
 
 
 async def delete_in_chunks(
-    db: AsyncSession, model: type[AuditEvent | MemoryRecord | MemoryProposal], query: Select
+    db: AsyncSession,
+    model: type[AuditEvent | GuardrailEvent | MemoryRecord | MemoryProposal],
+    query: Select,
 ) -> int:
     """Delete what ``query`` (a ``model.id`` selection) selects, ``CHUNK`` ids per commit.
 
@@ -177,8 +181,11 @@ async def sweep_tenant(request: SweepRequest, tenant_id: UUID) -> dict[UUID, Ret
     expired = await delete_in_chunks(
         db, AuditEvent, targets.expired_audit(tenant_id, days, request.now)
     )
-    if expired:
-        counts = RetentionPreview(audit_events=expired)
+    guardrail = await delete_in_chunks(
+        db, GuardrailEvent, targets.expired_guardrail_events(tenant_id, days, request.now)
+    )
+    if expired or guardrail:
+        counts = RetentionPreview(audit_events=expired, guardrail_events=guardrail)
         results[tenant_id] = counts
         await _record(db, company, counts)
     return results
