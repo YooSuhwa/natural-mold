@@ -2,6 +2,7 @@
 
 import { CopyIcon, KeyRoundIcon, Loader2Icon, RocketIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { useId } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,7 +12,11 @@ import {
   useAgentDeploymentCandidates,
   useAgentDeployments,
   useCreateAgentDeployment,
+  useUpdateAgentDeployment,
 } from '@/lib/hooks/use-agent-api'
+import type { DeploymentApprovalPolicy } from '@/lib/types'
+
+const APPROVAL_POLICIES: readonly DeploymentApprovalPolicy[] = ['blocked', 'inbox']
 
 interface ApiPanelProps {
   agentId: string
@@ -24,6 +29,8 @@ export function ApiPanel({ agentId, agentName }: ApiPanelProps) {
   const deployments = useAgentDeployments()
   const apiKeys = useAgentApiKeys()
   const createDeployment = useCreateAgentDeployment()
+  const updateDeployment = useUpdateAgentDeployment()
+  const approvalLabelId = useId()
 
   const deployment = (deployments.data ?? []).find((item) => item.agent_id === agentId)
   const candidate = (candidates.data ?? []).find((item) => item.agent_id === agentId)
@@ -40,6 +47,12 @@ export function ApiPanel({ agentId, agentName }: ApiPanelProps) {
   async function copy(value: string) {
     await navigator.clipboard.writeText(value)
     toast.success(t('copied'))
+  }
+
+  async function setApprovalPolicy(policy: DeploymentApprovalPolicy) {
+    if (!deployment || deployment.approval_policy === policy) return
+    await updateDeployment.mutateAsync({ id: deployment.id, data: { approval_policy: policy } })
+    toast.success(t('approvalPolicySaved'))
   }
 
   async function deploy() {
@@ -90,6 +103,33 @@ export function ApiPanel({ agentId, agentName }: ApiPanelProps) {
               copyAriaLabel={t('copy')}
               onCopy={copy}
             />
+            <div className="moldy-muted-panel space-y-2 p-3">
+              <p id={approvalLabelId} className="text-xs font-medium text-muted-foreground">
+                {t('approvalPolicy')}
+              </p>
+              <div className="flex flex-wrap gap-2" role="group" aria-labelledby={approvalLabelId}>
+                {APPROVAL_POLICIES.map((policy) => (
+                  <Button
+                    key={policy}
+                    type="button"
+                    size="xs"
+                    variant={deployment.approval_policy === policy ? 'default' : 'outline'}
+                    aria-pressed={deployment.approval_policy === policy}
+                    disabled={updateDeployment.isPending}
+                    onClick={() => setApprovalPolicy(policy)}
+                  >
+                    {t(policy === 'inbox' ? 'approvalPolicyInbox' : 'approvalPolicyBlocked')}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  deployment.approval_policy === 'inbox'
+                    ? 'approvalPolicyInboxHint'
+                    : 'approvalPolicyBlockedHint',
+                )}
+              </p>
+            </div>
             <div className="moldy-muted-panel flex items-center justify-between gap-3 p-3">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-muted-foreground">{t('limits')}</p>

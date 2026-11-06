@@ -2,6 +2,8 @@ import type { RuntimePolicyV1 } from './runtime-policy'
 
 export type AgentApiScope = 'invoke' | 'stream' | 'background' | 'read'
 export type AgentDeploymentIneligibleReasonCode = 'fixed_identity_required'
+/** What a tool call needing approval does: BLOCKED, or wait for the owner's inbox. */
+export type DeploymentApprovalPolicy = 'blocked' | 'inbox'
 
 export interface AgentDeployment {
   id: string
@@ -13,6 +15,7 @@ export interface AgentDeployment {
   allow_background: boolean
   rate_limit_per_minute: number | null
   daily_token_limit: number | null
+  approval_policy: DeploymentApprovalPolicy
   /** Agent-owned portable policy only; no execution snapshot or provenance. */
   runtime_policy: RuntimePolicyV1 | null
   created_at: string
@@ -76,6 +79,7 @@ export interface AgentDeploymentCreateRequest {
   allow_background?: boolean
   rate_limit_per_minute?: number | null
   daily_token_limit?: number | null
+  approval_policy?: DeploymentApprovalPolicy
 }
 
 /** Only fields accepted by the deployment PATCH endpoint. */
@@ -85,4 +89,5 @@ export interface AgentDeploymentUpdateRequest {
   allow_background?: boolean
   rate_limit_per_minute?: number | null
   daily_token_limit?: number | null
+  approval_policy?: DeploymentApprovalPolicy
 }
