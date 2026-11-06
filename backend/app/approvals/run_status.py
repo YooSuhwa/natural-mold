@@ -14,9 +14,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Final, Literal
 
-from sqlalchemy import exists, or_, select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.approval_scope import runs_started_or_owned
 from app.authz.org_context import OrgContext
 from app.models.agent import Agent
 from app.models.approval_request import ApprovalRequest
@@ -59,8 +60,7 @@ async def list_runs(
             select(ConversationRun, Agent.name, Agent.user_id)
             .outerjoin(Agent, Agent.id == ConversationRun.agent_id)
             .where(
-                ConversationRun.tenant_id == context.tenant_id,
-                or_(ConversationRun.user_id == context.user_id, Agent.user_id == context.user_id),
+                runs_started_or_owned(context),
                 _state_filter(state),
             )
             .order_by(ConversationRun.created_at.desc())

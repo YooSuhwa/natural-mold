@@ -29,6 +29,7 @@ from typing import Any, Final
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.approval_scope import agents_of_person
 from app.authz.audit_actions import EMERGENCY_STOP_APPLY, EMERGENCY_STOP_RELEASE
 from app.authz.notifications import Target, notify
 from app.authz.org_context import OrgContext
@@ -101,11 +102,7 @@ async def _target(
         if member is None or user is None:
             raise _not_found()
         agents = tuple(
-            await db.scalars(
-                select(Agent.id).where(
-                    Agent.user_id == scope_id, Agent.tenant_id == context.tenant_id
-                )
-            )
+            await db.scalars(select(Agent.id).where(agents_of_person(context.tenant_id, scope_id)))
         )
         return _Target(user.display_name or user.name, scope_id, None, agents, (scope_id,))
     if scope_type == "mcp_server":

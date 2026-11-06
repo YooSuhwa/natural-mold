@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.approval_scope import schedules_of_person
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.scoping import private_scope_predicate, private_scoped
@@ -106,8 +107,7 @@ async def _ensure_under_schedule_limit(db: AsyncSession, context: OrgContext) ->
         select(func.count())
         .select_from(AgentTrigger)
         .where(
-            AgentTrigger.user_id == context.user_id,
-            AgentTrigger.tenant_id == context.tenant_id,
+            schedules_of_person(context),
             AgentTrigger.status != "completed",
         )
     )
