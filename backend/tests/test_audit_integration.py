@@ -812,6 +812,9 @@ async def test_guardrail_block_writes_audit_without_the_value(db: AsyncSession) 
 
 @pytest.mark.asyncio
 async def test_guardrail_policy_mutations_write_audit(client, db: AsyncSession, test_app) -> None:
+    from datetime import datetime
+
+    from app.services.tenants.versioning import etag as version_tag
     from tests.authz.d04_support import seed_scope
     from tests.authz.d05_support import TEST_ORG_ID
     from tests.authz.e09_support import MEMBER, TENANT, acting_as, make_admin
@@ -838,8 +841,17 @@ async def test_guardrail_policy_mutations_write_audit(client, db: AsyncSession, 
             json={"name": "상담", "copy_from": "builtin:kr-default"},
         )
         template_id = created.json()["id"]
-        published = await client.post(f"{TENANT}/guardrails/templates/{template_id}/publish")
-        archived = await client.post(f"{TENANT}/guardrails/templates/{template_id}/archive")
+
+        def version(body: dict) -> dict[str, str]:
+            return {"If-Match": version_tag(datetime.fromisoformat(body["updated_at"]))}
+
+        published = await client.post(
+            f"{TENANT}/guardrails/templates/{template_id}/publish", headers=version(created.json())
+        )
+        archived = await client.post(
+            f"{TENANT}/guardrails/templates/{template_id}/archive",
+            headers=version(published.json()),
+        )
         binding = await client.put(f"/api/agents/{agent.id}/guardrails", json={"mode": "off"})
     for response in (policy, created, published, archived, binding):
         assert response.status_code in (200, 201), response.text

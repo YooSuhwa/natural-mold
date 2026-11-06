@@ -29,15 +29,23 @@ export const guardrailsApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateTemplate: (tenantId: string, id: string, data: GuardrailTemplateUpdate) =>
+  /** Template writes carry the template's own version (`updated_at`). */
+  updateTemplate: (tenantId: string, id: string, data: GuardrailTemplateUpdate, version: string) =>
     apiFetch<GuardrailTemplate>(templatePath(tenantId, id), {
       method: 'PATCH',
+      headers: tenantVersionHeader(version),
       body: JSON.stringify(data),
     }),
-  publishTemplate: (tenantId: string, id: string) =>
-    apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/publish'), { method: 'POST' }),
-  archiveTemplate: (tenantId: string, id: string) =>
-    apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/archive'), { method: 'POST' }),
+  publishTemplate: (tenantId: string, id: string, version: string) =>
+    apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/publish'), {
+      method: 'POST',
+      headers: tenantVersionHeader(version),
+    }),
+  archiveTemplate: (tenantId: string, id: string, version: string) =>
+    apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/archive'), {
+      method: 'POST',
+      headers: tenantVersionHeader(version),
+    }),
 }
 
 const agentPath = (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/guardrails`

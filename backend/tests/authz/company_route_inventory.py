@@ -162,9 +162,9 @@ GUARDRAIL_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"PUT {_GR}": CompanyRoute("GOVERNANCE", 200, True),
     f"GET {_GR}/templates": CompanyRoute("SELF", 200, False),
     f"POST {_GR}/templates": CompanyRoute("GOVERNANCE", 201, False),
-    f"PATCH {_GR}/templates/{{template_id}}": CompanyRoute("GOVERNANCE", 200, False),
-    f"POST {_GR}/templates/{{template_id}}/publish": CompanyRoute("GOVERNANCE", 200, False),
-    f"POST {_GR}/templates/{{template_id}}/archive": CompanyRoute("GOVERNANCE", 200, False),
+    f"PATCH {_GR}/templates/{{template_id}}": CompanyRoute("GOVERNANCE", 200, True),
+    f"POST {_GR}/templates/{{template_id}}/publish": CompanyRoute("GOVERNANCE", 200, True),
+    f"POST {_GR}/templates/{{template_id}}/archive": CompanyRoute("GOVERNANCE", 200, True),
 }
 # File downloads stream the archive and have no JSON response model.
 FILE_ROUTES: Final = frozenset({f"GET {_A}/{{tenant_id}}/exports/{{export_id}}/download"})

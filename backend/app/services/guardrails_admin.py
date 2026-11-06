@@ -236,6 +236,12 @@ async def _template(
     return template
 
 
+def _claim_version(template: GuardrailTemplate, mutation: CompanyMutation) -> None:
+    """Reject a stale ``If-Match`` and move the template's version past it."""
+    require_current_version(template.updated_at, mutation.expected_version)
+    template.updated_at = bump_timestamp(template.updated_at)
+
+
 async def _company_admin(mutation: CompanyMutation, context: TenantAdminContext) -> Tenant:
     fresh = await load_tenant_admin_context(
         mutation.db,
@@ -306,6 +312,7 @@ async def update_template(
     template = await _template(db, tenant.id, template_id)
     if template.status == "archived":
         raise ConflictError("GUARDRAIL_TEMPLATE_ARCHIVED", template.name)
+    _claim_version(template, mutation)
     before = {
         "name": template.name,
         "description": template.description,
@@ -351,6 +358,7 @@ async def publish_template(
     template = await _template(db, tenant.id, template_id)
     if template.status == "archived":
         raise ConflictError("GUARDRAIL_TEMPLATE_ARCHIVED", template.name)
+    _claim_version(template, mutation)
     rules = _validated(template.draft_rules)
     version = (template.published_version or 0) + 1
     db.add(
@@ -386,6 +394,7 @@ async def archive_template(
     db = mutation.db
     tenant = await _company_admin(mutation, context)
     template = await _template(db, tenant.id, template_id)
+    _claim_version(template, mutation)
     policy = guardrail_policy.policy_from_settings(tenant.settings)
     if policy is not None and policy.default_template == company_ref(template.id):
         raise ConflictError("GUARDRAIL_TEMPLATE_IN_USE", template.name)

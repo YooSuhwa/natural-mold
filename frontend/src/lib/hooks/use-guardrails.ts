@@ -39,6 +39,11 @@ export function useUpdateGuardrailPolicy(tenantId: string) {
   )
 }
 
+interface TemplateVersion {
+  id: string
+  version: string
+}
+
 export function useGuardrailTemplateMutations(tenantId: string) {
   return {
     create: useTenantMutation(tenantId, (data: GuardrailTemplateCreate) =>
@@ -46,14 +51,14 @@ export function useGuardrailTemplateMutations(tenantId: string) {
     ),
     update: useTenantMutation(
       tenantId,
-      ({ id, data }: { id: string; data: GuardrailTemplateUpdate }) =>
-        guardrailsApi.updateTemplate(tenantId, id, data),
+      ({ id, data, version }: { id: string; data: GuardrailTemplateUpdate; version: string }) =>
+        guardrailsApi.updateTemplate(tenantId, id, data, version),
     ),
-    publish: useTenantMutation(tenantId, (id: string) =>
-      guardrailsApi.publishTemplate(tenantId, id),
+    publish: useTenantMutation(tenantId, ({ id, version }: TemplateVersion) =>
+      guardrailsApi.publishTemplate(tenantId, id, version),
     ),
-    archive: useTenantMutation(tenantId, (id: string) =>
-      guardrailsApi.archiveTemplate(tenantId, id),
+    archive: useTenantMutation(tenantId, ({ id, version }: TemplateVersion) =>
+      guardrailsApi.archiveTemplate(tenantId, id, version),
     ),
   }
 }

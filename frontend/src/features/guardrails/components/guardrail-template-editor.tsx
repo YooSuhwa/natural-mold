@@ -72,6 +72,7 @@ export function GuardrailTemplateEditor({
       {
         id: template.id,
         data: { name: name.trim(), description: description.trim(), rules },
+        version: template.updated_at,
       },
       {
         onSuccess: () => {

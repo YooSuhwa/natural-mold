@@ -38,20 +38,26 @@ export function GuardrailTemplatesCard({ tenantId, choices }: GuardrailTemplates
   const busy = publish.isPending || archive.isPending
 
   function runPublish(template: GuardrailTemplate) {
-    publish.mutate(template.id, {
-      onSuccess: () => toast.success(t('published')),
-      onError: (err) => toast.error(errorMessage(err)),
-    })
+    publish.mutate(
+      { id: template.id, version: template.updated_at },
+      {
+        onSuccess: () => toast.success(t('published')),
+        onError: (err) => toast.error(errorMessage(err)),
+      },
+    )
   }
 
   function runArchive(template: GuardrailTemplate) {
-    archive.mutate(template.id, {
-      onSuccess: () => {
-        setArchivingId(null)
-        toast.success(t('archived'))
+    archive.mutate(
+      { id: template.id, version: template.updated_at },
+      {
+        onSuccess: () => {
+          setArchivingId(null)
+          toast.success(t('archived'))
+        },
+        onError: (err) => toast.error(errorMessage(err)),
       },
-      onError: (err) => toast.error(errorMessage(err)),
-    })
+    )
   }
 
   return (

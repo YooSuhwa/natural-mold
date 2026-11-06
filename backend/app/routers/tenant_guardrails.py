@@ -2,7 +2,8 @@
 
 ``/api/tenants/{tenant_id}/guardrails``: company members read, ``can_manage_tenant``
 writes; the policy shares the tenant ``updated_at`` ``If-Match`` with the other company
-policies. Templates are drafts until published; a published version never changes.
+policies, and template writes check the template's own ``updated_at``. Templates are drafts
+until published; a published version never changes.
 """
 
 from uuid import UUID
@@ -97,9 +98,10 @@ async def update_guardrail_template(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
     context: TenantAdminContext = Depends(company_context),
+    if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> GuardrailTemplateOut:
     return await guardrails_admin.update_template(
-        _mutation(db, request, user), context, template_id, payload
+        _mutation(db, request, user, if_match), context, template_id, payload
     )
 
 
@@ -112,9 +114,10 @@ async def publish_guardrail_template(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
     context: TenantAdminContext = Depends(company_context),
+    if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> GuardrailTemplateOut:
     return await guardrails_admin.publish_template(
-        _mutation(db, request, user), context, template_id
+        _mutation(db, request, user, if_match), context, template_id
     )
 
 
@@ -127,7 +130,8 @@ async def archive_guardrail_template(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
     context: TenantAdminContext = Depends(company_context),
+    if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> GuardrailTemplateOut:
     return await guardrails_admin.archive_template(
-        _mutation(db, request, user), context, template_id
+        _mutation(db, request, user, if_match), context, template_id
     )
