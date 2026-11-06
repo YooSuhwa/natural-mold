@@ -36,6 +36,7 @@ DIRECT_TENANT: Final = frozenset(
         "agent_trigger_runs",  # I-07 tenant_id: runs outlive their trigger
         "agent_triggers",
         "agents",
+        "approval_requests",  # approval inbox (app/approvals)
         "audit_events",
         "authz_revocations",
         "builder_sessions",

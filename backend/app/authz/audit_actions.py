@@ -106,3 +106,7 @@ AUTH_SSO_LINK: Final = "auth.sso_link"
 # H-04 operator sync screen (14.3, S27): platform events, no company scope.
 AUTHZ_RECONCILE_RUN: Final = "authz.reconcile_run"
 AUTHZ_OUTBOX_RETRY: Final = "authz.outbox_retry"
+# Approval inbox (feature plan v2 순번 13, 17.2): a request made, decided once, expired.
+APPROVAL_REQUESTED: Final = "approval.requested"
+APPROVAL_DECIDED: Final = "approval.decided"
+APPROVAL_EXPIRED: Final = "approval.expired"

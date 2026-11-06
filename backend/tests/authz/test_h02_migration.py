@@ -5,6 +5,7 @@ import uuid
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 from alembic.migration import MigrationContext
@@ -62,13 +63,20 @@ def test_revision_chain_and_kinds_match_the_model() -> None:
         "h02_notifications",
         "h03_audit_tenant_index",
     )
-    # Later migrations add kinds on top of h02's list (i16: mcp_tool.review_needed).
-    spec = importlib.util.spec_from_file_location("i16_test", VERSIONS / "i16_mcp_tool_review.py")
-    assert spec is not None and spec.loader is not None
-    i16 = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(i16)
+    # Later migrations add kinds on top of h02's list (i16: mcp_tool.review_needed,
+    # i17: the approval inbox kinds).
+    i16, i17 = _later("i16_mcp_tool_review"), _later("i17_approval_requests")
     assert i16._KINDS_BEFORE == module._KINDS
-    assert (*module._KINDS, i16._NEW_KIND) == NOTIFICATION_KINDS
+    assert (*module._KINDS, i16._NEW_KIND) == i17._KINDS_BEFORE
+    assert (*i17._KINDS_BEFORE, *i17._NEW_KINDS) == NOTIFICATION_KINDS
+
+
+def _later(name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(f"{name}_test", VERSIONS / f"{name}.py")
+    assert spec is not None and spec.loader is not None
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded
 
 
 def test_kinds_are_checked_and_company_rows_have_no_org(lane) -> None:

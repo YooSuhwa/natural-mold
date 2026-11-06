@@ -17,6 +17,7 @@ from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.run_metrics_types import TerminalRunState
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.stream_error_messages import public_stream_error_message
+from app.approvals.recording import record_interrupted_run_best_effort
 from app.authz.worker_conversation_scope import WorkerConversationTarget
 from app.dependencies import CurrentUser
 from app.services import conversation_stream_service as stream_service
@@ -286,6 +287,11 @@ async def _run_conversation(
             # reconciled inside the subsequent locked transition before queue dispatch.
             if final_status == "interrupted":
                 effective_status = await _finalize_run_status()
+                if effective_status == "interrupted":
+                    # The approval inbox's row for each approval interrupt (17.2).
+                    await record_interrupted_run_best_effort(
+                        run_id, cfg.org_context, secret_values=cfg.secret_values
+                    )
 
             await _finalize_trace_for_status(effective_status)
 

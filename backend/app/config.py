@@ -265,6 +265,12 @@ class Settings(AuthzSettings):
     # fails MCP calls; there is no direct fallback. Needs MCP_RUNTIME_URL and its secret.
     mcp_gateway_enabled: bool = False
 
+    # Approval inbox (feature plan v2 순번 13, 17.2): how long a request waits for a
+    # decision before it ends as rejected ("승인 만료"), and how early the decider hears
+    # that it is about to expire.
+    approval_ttl_minutes: int = Field(default=24 * 60, ge=5)
+    approval_expiring_notice_minutes: int = Field(default=60, ge=1)
+
     # Install profile (plan §11, decision D49): which services this installation is expected
     # to run. The operator's system status checks the components against it; it changes no
     # behaviour by itself. Resource budgets per profile are set after measurement.

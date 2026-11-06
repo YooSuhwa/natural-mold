@@ -17,6 +17,7 @@ from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.agent_user_preference import AgentUserPreference
+from app.models.approval_request import ApprovalRequest
 from app.models.audit_event import AuditEvent
 from app.models.authz import AuthzOutbox, AuthzRevocation, AuthzShadowDiff, ResourceGrant
 from app.models.authz_reconcile_run import AuthzReconcileRun
@@ -133,6 +134,7 @@ __all__ = [
     "AgentToolLink",
     "AgentTrigger",
     "AgentTriggerRun",
+    "ApprovalRequest",
     "AgentUserPreference",
     "AccessRequest",
     "AuditEvent",
