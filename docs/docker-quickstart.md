@@ -25,11 +25,11 @@ docker compose ps
 
 | 서비스 | 종류 | 하는 일 |
 |--------|------|---------|
-| `postgres` | 상시 | Moldy DB (PostgreSQL 16) |
+| `postgres` | 상시 | Moldy DB. PostgreSQL 16에 pgvector 0.8.1을 넣은 이미지(`docker/postgres`, `moldy-postgres:local`)를 빌드해 씁니다 |
 | `openfga-postgres` | 상시 | OpenFGA 전용 DB. 호스트 포트 없음 |
 | `openfga-migrate` | 1회 | OpenFGA 스키마 마이그레이션 |
 | `openfga` | 상시 | 권한 판정 서버. 호스트 포트 없음 |
-| `init-secrets` | 1회 | `ENCRYPTION_KEYS`, `JWT_SECRET`, `SKILL_SANDBOX_API_KEY`를 생성해 `moldy_runtime` 볼륨에 저장. 두 번째 실행부터는 기존 값을 재사용하고, 파일에 없는 키만 추가 |
+| `init-secrets` | 1회 | `ENCRYPTION_KEYS`, `JWT_SECRET`, `SKILL_SANDBOX_API_KEY`, `STORAGE_S3_*` 키, `MCP_RUNTIME_TOKEN_SECRET`을 생성해 `moldy_runtime` 볼륨에 저장. 두 번째 실행부터는 기존 값을 재사용하고, 파일에 없는 키만 추가 |
 | `skill-sandbox-image` | 1회 | 스킬 샌드박스가 쓰는 이미지 `moldy-skill-sandbox:local`을 빌드(Python 3.12, Node 22, skill-node 패키지, curl, git) |
 | `opensandbox` | 상시 | 스킬 실행 샌드박스 서버(OpenSandbox). 호스트 포트 없음. 아래 "스킬 실행 샌드박스" 참고 |
 | `pii-model-fetch` | 1회 | 가드레일 한국어 모델(schift-ko-pii-v7, 고정 리비전)을 `pii_model` 볼륨에 내려받음. 이미 있으면 재사용. 받지 못해도 `Exited (0)`으로 끝남 |
@@ -37,6 +37,9 @@ docker compose ps
 | `migrate` | 1회 | `alembic upgrade head` |
 | `authz-bootstrap` | 1회 | `python -m app.authz.cli bootstrap`으로 store와 모델을 준비하고, store ID와 model ID를 `moldy_runtime` 볼륨에 고정 |
 | `backend` | 상시 | FastAPI(uvicorn). `GET /api/health`로 상태 확인 |
+| `worker` | 상시 | 백그라운드 작업 실행기(`python -m app.jobs.worker`). 문서 색인처럼 오래 걸리는 작업을 대기열에서 꺼내 실행합니다 |
+| `mcp-runtime` | 상시 | Moldy가 정의하는 MCP 서버를 돌리는 공용 런타임(`mcp-runtime/`). 백엔드가 서명한 실행 토큰이 있어야 호출됩니다. 호스트 포트 없음 |
+| `s3` | 선택 | `--profile s3`로만 뜨는 S3 호환 저장소(SeaweedFS). 아래 "설치 프로필과 시스템 구성" 참고 |
 | `frontend` | 상시 | Next.js |
 
 1회성 서비스는 `docker compose ps -a`에서 `Exited (0)`으로 보이면 정상입니다.
@@ -81,6 +84,35 @@ docker compose ps
 - 운영자는 웹 UI의 **설정 → 가드레일 모델**(`/settings/guardrail-model`)에서 모델을 켜고 끄고, 주소를 바꾸고, 연결 테스트를 할 수 있습니다. 저장한 값이 환경변수보다 우선하고, "기본값으로 되돌리기"를 누르면 환경변수 값으로 돌아갑니다.
 - 모델 없이 규칙 묶음만 쓰려면 위 화면에서 끄거나, `GUARDRAIL_PII_MODEL_URL= docker compose up -d`로 띄웁니다.
 - 처리 시간: Apple Silicon의 Docker Desktop에서 문서당 약 60 ms(스레드 1개, 동시 2건)입니다.
+
+### 설치 프로필과 시스템 구성
+
+설치 프로필은 이 설치가 어떤 구성 요소를 갖춰야 하는지 정합니다. 루트 `.env`의
+`INSTALL_PROFILE`로 고르고, 기본값은 `minimal`입니다. 프로필은 기대치일 뿐 서비스를 켜거나 끄지
+않습니다. 운영자는 **설정 → 시스템 구성**(`/settings/system-status`)에서 각 구성 요소를 실제로
+호출해 본 결과를 프로필 기준으로 봅니다. 필수 요소가 꺼졌거나 응답하지 않으면 "문제", 권장 요소면
+"주의"입니다.
+
+| 프로필 | 필수 | 권장 |
+|--------|------|------|
+| `minimal` 최소 단일 서버 | DB, worker, 파일 저장소(로컬 볼륨 가능) | pgvector |
+| `external_api` 외부 모델 API | 위와 같음 | pgvector, MCP 런타임 |
+| `gpu` 사내 GPU | 위와 같음 | pgvector, MCP 런타임, 한국어 개인정보 모델 |
+| `kubernetes` Kubernetes 격리 | 위에 더해 S3 호환 저장소, pgvector, MCP 런타임, 스킬 격리 실행 | |
+| `airgapped` 망 분리 | 위에 더해 pgvector | MCP 런타임, 한국어 개인정보 모델, 스킬 격리 실행 |
+
+프로필별 CPU, GPU, RAM, 저장소 예산은 측정한 뒤 정합니다(기획서 D49).
+
+파일 저장소는 기본이 로컬 볼륨(`STORAGE_BACKEND=local`)입니다. 서버 여러 대가 파일을 함께 써야
+하면 S3 호환 저장소로 바꿉니다.
+
+```bash
+STORAGE_BACKEND=s3 docker compose --profile s3 up -d    # 함께 든 SeaweedFS 사용
+```
+
+회사 저장소(Ceph RGW, MinIO, 클라우드 S3)를 쓰려면 `STORAGE_S3_ENDPOINT_URL`, `STORAGE_S3_BUCKET`,
+`STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY`를 지정하고 `--profile s3`는 뺍니다.
+지금은 새 저장소 계층만 이 설정을 따르고, 기존 첨부와 산출물 파일은 아직 로컬에 둡니다(B3에서 전환).
 
 ## 3. 접속 주소
 
