@@ -47,11 +47,67 @@ _SURNAMES = "김이박최정강조윤장임한오서신권황안송류홍"
 # Given names by whether the last syllable has a final consonant; chosen to be rare as
 # ordinary words, so a given-name-only restore does not hit unrelated text.
 _GIVEN = {
-    False: ("준호", "서아", "예주", "하루", "지호", "도우", "시아", "유채", "태오", "수호"),
+    False: ("준호", "서아", "예주", "지호", "도우", "시아", "태오", "윤서", "서후", "아라"),
     True: ("지훈", "현준", "서진", "민준", "하린", "예린", "도현", "유진", "태윤", "가온"),
 }
 _HANGUL = re.compile(r"[가-힣]{2,4}")
-_WORD_END = r"(?=씨|님|에게|이|가|은|는|을|를|과|와|의|도|만|[\s,.!?)]|$)"
+# What may follow a given name standing as a word: particles (longest first, for reading;
+# the lookahead only needs a prefix), honorifics, copulas, space or punctuation. Anything
+# else (``준호박``) is another word and is left alone.
+_FOLLOWERS = (
+    "에게서",
+    "한테서",
+    "이라고",
+    "이라는",
+    "이에요",
+    "입니다",
+    "에게",
+    "에서",
+    "한테",
+    "께서",
+    "이랑",
+    "하고",
+    "처럼",
+    "같이",
+    "까지",
+    "부터",
+    "보다",
+    "마저",
+    "조차",
+    "밖에",
+    "라고",
+    "라는",
+    "이고",
+    "이며",
+    "이나",
+    "이든",
+    "이야",
+    "예요",
+    "으로",
+    "이요",
+    "씨",
+    "님",
+    "께",
+    "랑",
+    "로",
+    "와",
+    "과",
+    "의",
+    "도",
+    "만",
+    "은",
+    "는",
+    "이",
+    "가",
+    "을",
+    "를",
+    "나",
+    "야",
+    "아",
+    "에",
+    "요",
+)
+_WORD_END = "(?=" + "|".join(_FOLLOWERS) + r"|[\s,.!?)\]'\"’”:;~]|$)"
 
 
 def has_batchim(syllable: str) -> bool:

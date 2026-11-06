@@ -160,3 +160,44 @@ async def test_a_streamed_natural_pseudonym_is_restored() -> None:
     deltas, finished = _streamed_text(events)
     assert finished == "김민수 과장에게 전달했습니다."
     assert "김준호" not in deltas
+
+
+@pytest.mark.parametrize(
+    "follower",
+    [
+        "한테",
+        "한테서",
+        "에서",
+        "에게서",
+        "께",
+        "께서",
+        "랑",
+        "하고",
+        "처럼",
+        "까지",
+        "부터",
+        "보다",
+        "라고",
+        "라는",
+        "예요",
+        "로",
+        "도",
+        "만",
+        "”",
+        "~",
+        ":",
+    ],
+)
+def test_a_given_name_before_any_particle_or_punctuation_is_restored(follower: str) -> None:
+    names = _map()
+    alias = names.token_for("PERSON", "김민수", style="natural", context="김민수")
+
+    assert names.restore(f"{alias[1:]}{follower}") == f"민수{follower}"
+
+
+def test_no_pool_name_is_an_everyday_word_with_a_particle() -> None:
+    # A given-name-only restore must not hit ordinary text: "하루에", "수호하다" were removed.
+    from app.guardrails.pseudonyms import _GIVEN
+
+    everyday = {"하루", "수호", "유채", "지원", "수빈", "우주"}
+    assert not everyday & {name for names in _GIVEN.values() for name in names}
