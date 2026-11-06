@@ -130,6 +130,46 @@ BUILTIN_TEMPLATES: dict[str, RuleSet] = {
             Rule("people-output", ("kr_model",), _OUT, "warn", frozenset({"PERSON", "ADDRESS"})),
         ),
     ),
+    # High-sensitivity work (HR, finance, health): identifiers and secrets stop the call
+    # before anything leaves; contacts are replaced; names and addresses become pseudonyms.
+    "kr-strict": RuleSet(
+        "kr-strict",
+        1,
+        (
+            Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
+            Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
+            Rule("kr-identifiers", ("kr_model",), _IN, "block", _IDS),
+            Rule("kr-identifiers-output", ("kr_model",), _OUT, "redact", _IDS),
+            Rule(
+                "contacts",
+                ("common", "kr_model"),
+                _SEND_OUT,
+                "redact",
+                frozenset({"PHONE", "EMAIL"}),
+            ),
+            Rule(
+                "people",
+                ("kr_model",),
+                _SEND,
+                "pseudonymize",
+                frozenset({"PERSON", "ADDRESS"}),
+                restore_for_tools=True,
+            ),
+            Rule("people-output", ("kr_model",), _OUT, "warn", frozenset({"PERSON", "ADDRESS"})),
+        ),
+    ),
+    # Language-neutral basics without the Korean packs or the model service: secrets, and
+    # email, card and IP values from the common pack.
+    "common-basic": RuleSet(
+        "common-basic",
+        1,
+        (
+            Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
+            Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
+            Rule("cards", ("common",), _ALL, "redact", frozenset({"CARD"})),
+            Rule("contacts", ("common",), _SEND_OUT, "mask", frozenset({"EMAIL", "IP"})),
+        ),
+    ),
     # Observation mode: every finding recorded, nothing changed.
     "kr-observe": RuleSet(
         "kr-observe", 2, (Rule("observe", ("common", "kr_model"), _ALL, "warn"),)

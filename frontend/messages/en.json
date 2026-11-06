@@ -3963,6 +3963,8 @@
       "secrets": "Secrets (API keys, tokens)",
       "secrets-output": "Secrets in answers",
       "kr-identifiers": "ID numbers (resident, foreigner, passport, license, card, account, health insurance)",
+      "kr-identifiers-output": "ID numbers in answers",
+      "cards": "Card numbers",
       "contacts": "Contacts (phone, email)",
       "people": "Names and addresses",
       "people-output": "Names and addresses in answers",

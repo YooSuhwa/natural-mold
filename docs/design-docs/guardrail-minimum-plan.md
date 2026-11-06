@@ -183,6 +183,7 @@ deepagents 0.7.32 코드 확인 결과, 아래 경로는 등록만으로는 덮�
 5. 위험 등급별 기본 조치(C5 최소)와 lease 경로 대체 실행.
    - **5-1 구현됨(백엔드)**: `tenants.settings["guardrails"]["tool_risk"]` = 위험 등급(`read_only`, `write_internal`, `external_mutation`, `code_execution`, `unknown`)별 `allow`/`approval`/`block`. 저장하지 않은 등급은 지금 동작(조회 허용, 나머지 승인 필요). `app/guardrails/tool_risk.py`가 루트와 선언형 하위 에이전트마다 적용한다: 차단 등급 도구는 도구 목록에서 빼고 `ToolRiskMiddleware`가 모델 요청에서 숨기고 호출을 거부한다(Deep Agents 자체 도구 `write_file`/`edit_file`=내부 쓰기, `execute`=코드 실행 포함). 승인 필요는 승인 항목을 넣고(에이전트 설정으로 끌 수 없음), 허용은 기본 승인만 뺀다(에이전트가 직접 건 승인은 남김). 탐지 모드와 무관하게 적용되고, 표준 에이전트만 대상이다. 규칙과 함께 실행에 고정(`metadata_json["guardrails"]["tool_risk"]`)되어 재개는 고정값을 쓴다. 트리거·Agent API도 시작 때 해석한다. 트리거는 기존 규칙(트리거 안전하지 않은 도구가 있으면 실행 중단)을 유지하되 회사가 차단한 도구는 실행되지 않으므로 세지 않는다. 정책 PUT에서 `tool_risk`를 빼면 저장된 값을 유지한다(4-2 화면 호환). 시험 `tests/test_guardrail_tool_risk.py`. 5-2: 회사 화면 칸, 에이전트 카드 표시.
    - **5-2 구현됨(화면)**: 회사 가드레일 화면의 "도구 위험 등급별 기본 조치" 카드(등급별 허용·승인 필요·차단, 기본값 표시, 트리거 안내, 구성원은 읽기만; 저장 시 모드·템플릿은 현재 값 그대로 보냄). 에이전트 카드 아래에 회사가 정한 등급별 조치를 읽기 전용으로 표시(회사가 탐지를 꺼도 보임). 시험 `tests/components/guardrails`, E2E `e2e/guardrail-company-settings.spec.ts` 도구 위험 시나리오.
+   - **기본 템플릿 5종(P1)**: `kr-default`, `kr-natural`, `kr-strict`(식별번호·비밀값은 보내기 전에 차단, 연락처 치환, 이름·주소 가명), `common-basic`(언어 무관: 비밀값, 카드번호, 이메일·IP만; 한국 묶음·판정 모델 없이 동작), `kr-observe`. 시험 `tests/test_guardrail_builtin_templates.py`.
    - 미룸: ③ 단계 규칙의 "승인 요청" 조치(검사 중 승인 카드와 재개 흐름이 새로 필요), lease 경로 지원(`PREPARED_RUN_LEASE_ENABLED` 기본 꺼짐, 첨부와 함께).
 6. P1(① 입력, 가드레일 카드 화면, 기존 미들웨어 이전).
 

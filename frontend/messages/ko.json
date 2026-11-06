@@ -3963,6 +3963,8 @@
       "secrets": "비밀값(API 키·토큰)",
       "secrets-output": "답변 속 비밀값",
       "kr-identifiers": "식별번호(주민·외국인·여권·면허·카드·계좌·건강보험)",
+      "kr-identifiers-output": "답변 속 식별번호",
+      "cards": "카드번호",
       "contacts": "연락처(전화·이메일)",
       "people": "이름·주소",
       "people-output": "답변 속 이름·주소",
