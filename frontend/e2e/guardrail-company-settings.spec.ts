@@ -105,7 +105,7 @@ test.describe('Company guardrails (company admin)', () => {
 
     await page.getByRole('button', { name: `${name} 편집` }).click()
     const editor = page.getByRole('dialog')
-    await editor.getByLabel('처리 방식').nth(3).click()
+    await editor.locator('#guardrail-rule-contacts-action').click()
     await page.getByRole('option', { name: '치환' }).click()
     await capture(page, '04-template-editor.png', false)
     await editor.getByRole('button', { name: '초안 저장' }).click()
