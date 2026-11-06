@@ -2005,6 +2005,7 @@
         "empty": "No items yet.",
         "remove": "Remove",
         "removeNamed": "Remove {name}",
+        "superseded": "Replaced by guardrails. When a guardrail checks the same value, this middleware does not run.",
         "selectToPreview": "Select To Preview",
         "configSchema": "Config Schema",
         "providerOnly": "{provider} only",

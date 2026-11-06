@@ -2005,6 +2005,7 @@
         "empty": "표시할 미들웨어가 없습니다.",
         "remove": "제거",
         "removeNamed": "{name} 제거",
+        "superseded": "가드레일로 대체됐습니다. 가드레일이 같은 값을 검사하면 이 미들웨어는 실행되지 않습니다.",
         "selectToPreview": "미리보기할 미들웨어를 선택하세요",
         "configSchema": "설정 스키마",
         "providerOnly": "{provider} 전용",

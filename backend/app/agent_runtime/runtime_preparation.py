@@ -18,6 +18,8 @@ from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.agent_runtime.runtime_policy_capabilities import STORED_RESERVED_TOOL_NAMES
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
+from app.guardrails.legacy import covered_by_guardrails
+from app.guardrails.run import effective_rules
 
 _STORED_FILESYSTEM_INTERRUPT_NAMES = frozenset(
     {"delete", "execute", "execute_in_skill", "shell", "write_file", "edit_file"}
@@ -129,10 +131,13 @@ async def prepare_runtime_components_impl(
     configured_middleware_types = {
         str(config.get("type")) for config in (cfg.middleware_configs or []) if config.get("type")
     }
+    rules = effective_rules(cfg)
     filtered_middleware = [
         config
         for config in (cfg.middleware_configs or [])
         if config.get("type") not in bindings.deepagent_builtin_types
+        # The old PII middleware steps aside where the guardrail checks the same value.
+        and not covered_by_guardrails(config, rules)
     ]
     resolved_middleware = bindings.resolve_middleware_model_params(
         filtered_middleware,
