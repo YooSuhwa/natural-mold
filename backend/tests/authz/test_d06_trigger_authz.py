@@ -25,7 +25,7 @@ from tests.test_triggers import _create_agent, _create_model
 USER = f"user:{TEST_USER_ID}"
 TRIGGER = {
     "trigger_type": "interval",
-    "schedule_config": {"interval_minutes": 10},
+    "schedule_config": {"interval_minutes": 30},
     "input_message": "run",
 }
 

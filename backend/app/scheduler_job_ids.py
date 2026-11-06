@@ -25,3 +25,4 @@ class LeaderSchedulerJobId(StrEnum):
     RETENTION_SWEEP = "retention_sweep"
     TENANT_PURGE = "tenant_purge"
     TENANT_EXPORT_GC = "tenant_export_gc"
+    APPROVAL_SWEEP = "approval_sweep"

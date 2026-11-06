@@ -36,6 +36,7 @@ DIRECT_TENANT: Final = frozenset(
         "agent_trigger_runs",  # I-07 tenant_id: runs outlive their trigger
         "agent_triggers",
         "agents",
+        "approval_requests",  # approval inbox (app/approvals)
         "audit_events",
         "authz_revocations",
         "builder_sessions",
@@ -47,6 +48,7 @@ DIRECT_TENANT: Final = frozenset(
         "daily_spend_agent",
         "daily_spend_model",
         "daily_spend_user",
+        "emergency_stops",  # 순번 13 emergency stop (app/approvals/emergency.py)
         "group_members",
         "groups",
         "guardrail_events",  # guardrail detection records (company rows)

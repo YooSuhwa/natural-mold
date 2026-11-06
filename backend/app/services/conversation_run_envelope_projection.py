@@ -43,6 +43,8 @@ def trigger_status_for_run(status: str) -> str:
         "canceling": "canceling",
         "completed": "success",
         "canceled": "canceled",
+        # 17.3: paused for the approval inbox; the resumed run settles it.
+        "interrupted": "waiting",
     }.get(status, "failed")
 
 

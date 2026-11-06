@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl'
 import { ArrowLeftIcon, Loader2Icon, Trash2Icon } from 'lucide-react'
 
+import { EmergencyStopButton } from '@/features/approvals/components/emergency-stop-button'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { useAgentAccess } from '@/components/agent/agent-access-context'
 import { ResourceShareButton } from '@/components/sharing/resource-share-button'
@@ -82,6 +83,9 @@ export function SettingsHeader({
             resourceName={agentName}
             myPermissions={myPermissions}
           />
+        ) : null}
+        {access.canDelete ? (
+          <EmergencyStopButton scope="agent" targetId={agentId} targetName={agentName} />
         ) : null}
         {access.canDelete ? (
           <Button

@@ -30,12 +30,16 @@ from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 from app.agent_runtime.subagents import build_subagents_config
 from app.agent_runtime.trigger_execution_claim import claim_trigger_run
-from app.agent_runtime.trigger_execution_delivery import deliver_trigger_success
+from app.agent_runtime.trigger_execution_delivery import (
+    deliver_trigger_success,
+    deliver_trigger_waiting,
+)
 from app.agent_runtime.trigger_execution_invoke import invoke_trigger_run
 from app.agent_runtime.trigger_execution_materialization import (
     TriggerOutcome,
     materialize_trigger_run,
 )
+from app.approvals.triggers import TriggerAwaitingApproval, pause, waiting_interrupts
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.trigger_scope import require_trigger_actor
 from app.database import SessionTenant, async_session, platform_session, tenant_session
@@ -63,6 +67,8 @@ class _TriggerInvocation:
     config: AgentConfig
     input_message: str
     run_id: uuid.UUID
+    trigger_id: uuid.UUID | None = None
+    trigger_run_id: uuid.UUID | None = None
 
 
 async def _configure_trigger_subagents(request: _TriggerSubagentBuild) -> None:
@@ -76,13 +82,31 @@ async def _configure_trigger_subagents(request: _TriggerSubagentBuild) -> None:
     request.config.subagent_display_names = display_names
 
 
-async def _invoke_trigger(request: _TriggerInvocation) -> str:
-    return await execute_agent_invoke(
+async def _invoke_trigger(request: _TriggerInvocation) -> str | TriggerAwaitingApproval:
+    output = await execute_agent_invoke(
         request.config,
         [{"role": "user", "content": request.input_message}],
         run_id=str(request.run_id),
         moldy_source="trigger",
     )
+    if request.config.unattended_approval != "wait" or request.trigger_run_id is None:
+        return output
+    # 17.3: the graph paused on an approval; the run releases its slot and waits.
+    waiting = await waiting_interrupts(uuid.UUID(request.config.thread_id))
+    if (
+        waiting
+        and request.trigger_id is not None
+        and await pause(
+            run_id=request.run_id,
+            context=request.config.org_context,
+            interrupts=waiting,
+            trigger_id=request.trigger_id,
+            trigger_run_id=request.trigger_run_id,
+            secret_values=request.config.secret_values,
+        )
+    ):
+        return TriggerAwaitingApproval(waiting[-1].interrupt_id, output)
+    return output
 
 
 async def _resolve_fallback_chain(db, fallback_list):
@@ -156,6 +180,8 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
         invoked = await invoke_trigger_run(db, trigger_id, materialized)
         if isinstance(invoked, TriggerOutcome):
             return invoked.run
+        if isinstance(invoked.output, TriggerAwaitingApproval):
+            return await deliver_trigger_waiting(db, trigger_id, materialized)
         return await deliver_trigger_success(db, trigger_id, materialized, invoked.output)
 
 

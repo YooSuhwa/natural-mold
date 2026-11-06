@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_event import AuditEvent
+from app.models.conversation_run import ConversationRun
 from app.models.credential import Credential
 from app.models.model import Model
 from app.models.user import User
@@ -512,7 +513,7 @@ async def test_trigger_mutations_write_audit_without_input_message(
         json={
             "name": "Audit Trigger",
             "trigger_type": "interval",
-            "schedule_config": {"interval_minutes": 10},
+            "schedule_config": {"interval_minutes": 30},
             "input_message": "secret scheduled instruction",
         },
     )
@@ -1007,3 +1008,124 @@ async def test_mcp_tool_call_decision_writes_audit_without_argument_values(
     assert event.event_metadata["risk_level"] == "destructive"
     assert event.event_metadata["argument_names"] == ["to"]
     assert "ceo@example.com" not in str(event.event_metadata)
+
+
+@pytest.mark.asyncio
+async def test_approval_request_audit_records_the_request_the_decision_and_the_expiry(
+    db: AsyncSession,
+) -> None:
+    """17.2 approval record: requester, decider, decision number, args hash; never args."""
+    from datetime import timedelta
+
+    from app.approvals import service
+    from tests.authz.g03_support import approval_payload, seed_conversation, seed_interrupted
+
+    conversation = await seed_conversation(db)
+    payload = approval_payload()
+    payload["action_requests"][1]["args"] = {"to": "ceo@example.com"}
+    runs = []
+    for _ in range(2):
+        run = await db.get(ConversationRun, await seed_interrupted(db, conversation, payload))
+        assert run is not None
+        run.tenant_id, run.org_id, run.run_source = (
+            conversation.tenant_id,
+            conversation.org_id,
+            "TRIGGER",
+        )
+        runs.append(run)
+    await db.commit()
+    rows = []
+    for run in runs:
+        rows += await service.record_pending(
+            db, run, [service.PendingInterrupt("intr-1", payload)], origin=service.RunOrigin("A")
+        )
+    rows[1].expires_at = service.now() - timedelta(seconds=1)
+    await db.commit()
+    await service.claim(
+        db,
+        service.Claim(runs[0].id, {"intr-1": ["approve", "reject"]}, "inbox", TEST_USER_ID),
+    )
+    await service.claim(
+        db, service.Claim(runs[1].id, {"intr-1": ["reject", "reject"]}, "expiry", None)
+    )
+    await db.commit()
+
+    async with TestSession() as check:
+        events = list(
+            await check.scalars(
+                select(AuditEvent)
+                .where(AuditEvent.action.like("approval.%"))
+                .order_by(AuditEvent.created_at)
+            )
+        )
+    by_action: dict[str, list[AuditEvent]] = {}
+    for event in events:
+        by_action.setdefault(event.action, []).append(event)
+    assert sorted(by_action) == ["approval.decided", "approval.expired", "approval.requested"]
+    assert len(by_action["approval.requested"]) == 2
+    requested = by_action["approval.requested"][0]
+    assert (requested.actor_type, requested.outcome, requested.target_type) == (
+        "system",
+        "success",
+        "approval_request",
+    )
+    assert requested.target_name_snapshot == "execute_in_skill, send_email"
+    assert requested.target_owner_user_id == TEST_USER_ID
+    [decided] = by_action["approval.decided"]
+    assert (decided.actor_type, decided.actor_user_id, decided.outcome) == (
+        "user",
+        TEST_USER_ID,
+        "success",
+    )
+    assert decided.target_id == str(rows[0].id) and decided.run_id == str(runs[0].id)
+    metadata = decided.event_metadata or {}
+    assert metadata["channel"] == "inbox" and metadata["decision_no"] == 1
+    assert metadata["decisions"] == ["approve", "reject"] and metadata["source"] == "trigger"
+    assert metadata["args_digest"] == service.args_digest(payload)
+    assert metadata["decider_user_id"] == str(TEST_USER_ID)
+    [expired] = by_action["approval.expired"]
+    assert (expired.actor_type, expired.outcome) == ("system", "denied")
+    assert (expired.event_metadata or {})["status"] == "expired"
+    assert "ceo@example.com" not in str([e.event_metadata for e in events])
+
+
+@pytest.mark.asyncio
+async def test_emergency_stop_audit_records_who_what_and_how_much_was_stopped(
+    client, db: AsyncSession
+) -> None:
+    """17.4: the stop and its release, with the counts of what they touched."""
+    from tests.test_emergency_stop import _agent_with_work
+
+    _conversation, work = await _agent_with_work(db)
+    stopped = await client.post(
+        "/api/emergency-stops",
+        json={"scope_type": "agent", "scope_id": str(work["agent_id"]), "reason": "오발송"},
+    )
+    await client.post(
+        f"/api/emergency-stops/{stopped.json()['id']}/release", json={"reason": "확인"}
+    )
+
+    async with TestSession() as check:
+        rows = list(
+            await check.scalars(
+                select(AuditEvent)
+                .where(AuditEvent.action.like("emergency_stop.%"))
+                .order_by(AuditEvent.created_at)
+            )
+        )
+    by_action = {row.action: row for row in rows}
+    assert sorted(by_action) == ["emergency_stop.apply", "emergency_stop.release"]
+    applied, released = by_action["emergency_stop.apply"], by_action["emergency_stop.release"]
+    for row in rows:
+        assert (row.actor_type, row.actor_user_id, row.outcome) == ("user", TEST_USER_ID, "success")
+        assert (row.target_type, row.target_id) == ("agent", str(work["agent_id"]))
+        assert row.target_owner_user_id == TEST_USER_ID
+    assert applied.reason_message == "오발송" and released.reason_message == "확인"
+    assert applied.event_metadata == {
+        "stop_id": stopped.json()["id"],
+        "runs_cancel_requested": 1,
+        "schedules_paused": 1,
+        "deployments_disabled": 1,
+        "approvals_canceled": 1,
+        "agents": 1,
+    }

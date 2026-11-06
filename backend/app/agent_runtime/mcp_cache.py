@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from typing import Any
@@ -125,6 +126,18 @@ class MCPToolWithRetry(BaseTool):
             _ACTIVE_RUN_ID.reset(run_token)
             _ACTIVE_TOOL_CALL_ID.reset(call_token)
 
+    async def _server_stopped(self) -> bool:
+        context = self._decision_context
+        if context is None or not context.server_id:
+            return False
+        from app.approvals.emergency import server_stopped
+
+        try:
+            return await server_stopped(context.tenant_id, uuid.UUID(context.server_id))
+        except Exception:  # noqa: BLE001 - unknown stop state: refuse the call
+            logger.warning("emergency stop check failed for MCP server %s", context.server_id)
+            return True
+
     async def _arun(
         self,
         *args: Any,
@@ -144,6 +157,11 @@ class MCPToolWithRetry(BaseTool):
                 run_id=_ACTIVE_RUN_ID.get(),
             )
 
+        if await self._server_stopped():
+            # 17.4: an emergency-stopped MCP server takes no call.
+            await decided("denied", "emergency_stop", 0)
+            message = f"[MCP Tool Error] {self.name}: this MCP server is emergency-stopped"
+            return (message, None) if self.response_format == "content_and_artifact" else message
         for attempt in range(self._max_retries):
             try:
                 original_input: Any = payload

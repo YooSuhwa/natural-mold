@@ -118,7 +118,7 @@
       "model",
       "tools"
     ],
-    "interrupt_tools": [],
+    "interrupt_tools": ["edit_file", "execute", "write_file"],
     "memory_sources": ["/agents/profile-agent/AGENTS.md"],
     "middleware": ["retry", "provider"],
     "permissions": {"conversation_write": "allow", "runtime_read": "deny"},

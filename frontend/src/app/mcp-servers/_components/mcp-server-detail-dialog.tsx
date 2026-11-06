@@ -1,5 +1,6 @@
 'use client'
 
+import { EmergencyStopButton } from '@/features/approvals/components/emergency-stop-button'
 import { PermissionsLoadError } from '@/components/shared/permissions-load-error'
 import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
@@ -184,6 +185,13 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
                 >
                   <RefreshCw className="size-3.5" /> {t('refreshTools')}
                 </Button>
+                {canDelete && !server.is_system ? (
+                  <EmergencyStopButton
+                    scope="mcp_server"
+                    targetId={server.id}
+                    targetName={server.name}
+                  />
+                ) : null}
               </div>
             ) : null}
 

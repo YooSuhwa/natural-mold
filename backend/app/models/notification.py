@@ -47,6 +47,11 @@ NOTIFICATION_KINDS: Final = (
     "usage.limit_warning",
     "agent_memo.proposal",
     "mcp_tool.review_needed",
+    "approval.requested",
+    "approval.expiring",
+    "approval.decided",
+    "emergency_stop.applied",
+    "emergency_stop.released",
 )
 KIND_CHECK: Final = "kind IN (" + ",".join(f"'{kind}'" for kind in NOTIFICATION_KINDS) + ")"
 _TABLE = "notifications"

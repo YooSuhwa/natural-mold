@@ -122,7 +122,11 @@ async def test_hitl_middleware_not_injected_in_trigger_mode(
     mock_build: MagicMock,
     mock_checkpointer: MagicMock,
 ):
-    """execute_agent_invoke (is_trigger_mode=True) → HiTL 강제 차단."""
+    """execute_agent_invoke (is_trigger_mode=True): no HiTL middleware, nobody to ask.
+
+    The approval policy still reaches the builder, with the unattended mode that turns it
+    into BLOCKED results (or inbox waits for a schedule that chose them; 17.3).
+    """
     from app.agent_runtime.agent_stream_runner import execute_agent_invoke
 
     mock_model_factory.return_value = MagicMock()
@@ -154,7 +158,9 @@ async def test_hitl_middleware_not_injected_in_trigger_mode(
     assert _hitl_instances(middleware) == [], (
         "트리거 모드에서는 HumanInTheLoopMiddleware 가 주입되면 안 됨"
     )
-    assert build_kwargs["interrupt_on"] is None
+    assert build_kwargs["unattended"] == "block"
+    assert "send_email" in build_kwargs["interrupt_on"]
+    assert "ask_user" not in build_kwargs["interrupt_on"]
     tool_names = [tool.name for tool in mock_build.call_args.args[1]]
     assert "ask_user" not in tool_names
 

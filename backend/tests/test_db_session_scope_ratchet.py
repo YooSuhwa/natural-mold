@@ -42,6 +42,8 @@ PLATFORM_REASONS: dict[str, str] = {
     "scheduler.run_sweep": "8.9 scheduler: stale-run sweep is platform",
     "scheduler.credential_rotation": "8.9 encryption keys: instance key rotation",
     "scheduler.health_check": "8.9 health checks: health_check_history is platform-write (I-06)",
+    "scheduler.approval_expiry": "순번 13 approvals: lists due requests of every company; "
+    "each is handled in its own company session",
     "scheduler.mcp_health": "8.9 MCP poll: lists companies, polls catalog rows (I-06)",
     "marketplace.k_skill_sync": "8.9 marketplace system items, K-skill sync",
     # TODO(8.9 company overrides): once system_llm_settings gains tenant rows,

@@ -32,6 +32,7 @@ from app.agent_runtime.deep_agent_middleware_factory import (
 )
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.runtime.connection_guard_order import order_connection_guard
+from app.approvals.unattended import UnattendedMode, apply_unattended
 from app.guardrails.approval import has_approval_rules, with_approvals
 from app.guardrails.middleware import Guard, guard_stack
 from app.guardrails.tool_risk import ToolRiskPolicy, apply_to_agent
@@ -274,6 +275,7 @@ def build_agent_impl(
     prepared_task_middleware: AgentMiddleware | None = None,
     guard: Guard | None = None,
     tool_risk: ToolRiskPolicy | None = None,
+    unattended: UnattendedMode | None = None,
 ) -> Any:
     resolved_backend = backend if backend is not None else StateBackend()
     compatible_middleware = bindings.with_compatibility(
@@ -341,6 +343,14 @@ def build_agent_impl(
         if guard is not None:
             compatible_middleware, compatible_subagents = _guarded(
                 compatible_middleware, compatible_subagents, guard, model, resolved_backend
+            )
+        if unattended is not None:
+            # Nobody watches the run: approvals wait for the inbox or answer BLOCKED (17.3).
+            interrupt_on, compatible_middleware, compatible_subagents = apply_unattended(
+                unattended,
+                interrupt_on=interrupt_on,
+                middleware=list(compatible_middleware),
+                subagents=compatible_subagents,
             )
     return bindings.create_deep_agent(
         model=model,

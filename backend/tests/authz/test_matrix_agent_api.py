@@ -29,7 +29,7 @@ __all__ = ["matrix"]  # fixture re-export
 DEPLOY = RES("agent", "can_deploy", param="agent_id", min_visible="can_run")
 TRIGGER = {
     "trigger_type": "interval",
-    "schedule_config": {"interval_minutes": 10},
+    "schedule_config": {"interval_minutes": 30},
     "input_message": "run",
 }
 

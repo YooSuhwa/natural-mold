@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from langchain_core.messages import BaseMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.approvals.recording import claim_resume
+from app.approvals.service import ApprovalStale
 from app.authz.conversation_scope import require_conversation_agent_id
 from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
@@ -113,12 +115,13 @@ async def _handle_input_respond_command(
     *,
     conversation: Conversation,
     command: AgentCommandRequest,
-    request: Request,
+    request: Request | None,
     db: AsyncSession,
     user: CurrentUser,
     context: OrgContext,
     start_run: StartConversationRun,
     executor_fn: AgentStreamExecutor,
+    approval_channel: str = "chat",
 ) -> JSONResponse:
     resume = build_resume_payload(command.params)
     if not resume.interrupt_id:
@@ -220,6 +223,24 @@ async def _handle_input_respond_command(
         if exc.status_code == 409:
             return command_error(command, code="MULTITASK_REJECTED", message=str(exc.detail))
         raise
+    try:
+        # One decision per approval request (17.2): the inbox may have decided first.
+        await claim_resume(
+            db,
+            parent_run_id=parent_run.id,
+            responses={item.interrupt_id: item.response for item in resume.submitted},
+            actor_id=user.id,
+            resumed_run_id=accepted.run_id,
+            channel=approval_channel,
+        )
+    except ApprovalStale as exc:
+        await db.rollback()
+        return command_error(
+            command,
+            code="STALE_INTERRUPT",
+            message=f"the approval request is already {exc.status}",
+            status_code=409,
+        )
     await chat_service.touch_conversation(db, conversation.id, context)
     await record_conversation_audit(
         db,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -9,6 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
@@ -19,6 +20,9 @@ VALID_TRIGGER_TYPES = {"interval", "cron", "one_time"}
 VALID_STATUSES = {"active", "paused", "completed", "error"}
 VALID_CONVERSATION_POLICIES = {"schedule_thread", "new_per_run", "selected_conversation"}
 REQUIRES_FIXED_IDENTITY_MESSAGE = "agent identity_mode must be fixed for trigger execution"
+# 17.3 schedule rules: shared by validation and the router's error mapping.
+TOO_FREQUENT_MESSAGE = "schedule repeats more often than the minimum interval"
+LIMIT_MESSAGE = "schedule limit per user reached"
 
 
 def _now() -> datetime:
@@ -57,6 +61,21 @@ def _validate_conversation_policy(policy: str | None) -> str:
     return value
 
 
+def _shortest_cron_gap_minutes(trigger: CronTrigger, *, fires: int = 64) -> float:
+    """The shortest gap between the next ``fires`` firings (a day has at most 96 at 15m)."""
+    previous: datetime | None = None
+    current = trigger.get_next_fire_time(None, datetime.now(trigger.timezone))
+    shortest = float("inf")
+    for _ in range(fires):
+        if current is None:
+            break
+        if previous is not None:
+            shortest = min(shortest, (current - previous).total_seconds() / 60)
+        previous = current
+        current = trigger.get_next_fire_time(current, current + timedelta(microseconds=1))
+    return shortest
+
+
 def normalize_schedule_config(
     trigger_type: str,
     schedule_config: dict[str, Any],
@@ -77,6 +96,8 @@ def normalize_schedule_config(
         minutes = int(raw_minutes)
         if minutes < 1:
             raise ValueError("interval_minutes must be >= 1")
+        if minutes < settings.trigger_min_interval_minutes:
+            raise ValueError(TOO_FREQUENT_MESSAGE)
         return {"interval_minutes": minutes}, tz
 
     if trigger_type == "cron":
@@ -84,7 +105,10 @@ def normalize_schedule_config(
         if not isinstance(expr, str) or not expr.strip():
             raise ValueError("cron_expression is required")
         expr = expr.strip()
-        CronTrigger.from_crontab(expr, timezone=ZoneInfo(tz))
+        if _shortest_cron_gap_minutes(CronTrigger.from_crontab(expr, timezone=ZoneInfo(tz))) < (
+            settings.trigger_min_interval_minutes
+        ):
+            raise ValueError(TOO_FREQUENT_MESSAGE)
         return {"cron_expression": expr}, tz
 
     scheduled_at = _parse_datetime(
@@ -148,7 +172,8 @@ async def find_in_flight_run(db: AsyncSession, trigger_id: uuid.UUID) -> AgentTr
         select(AgentTriggerRun)
         .where(
             AgentTriggerRun.trigger_id == trigger_id,
-            AgentTriggerRun.status.in_(("queued", "running", "canceling")),
+            # A run waiting for the approval inbox holds the next firing back (17.3).
+            AgentTriggerRun.status.in_(("queued", "running", "canceling", "waiting")),
         )
         .order_by(AgentTriggerRun.started_at.desc())
         .limit(1)

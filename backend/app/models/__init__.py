@@ -17,6 +17,7 @@ from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.agent_user_preference import AgentUserPreference
+from app.models.approval_request import ApprovalRequest
 from app.models.audit_event import AuditEvent
 from app.models.authz import AuthzOutbox, AuthzRevocation, AuthzShadowDiff, ResourceGrant
 from app.models.authz_reconcile_run import AuthzReconcileRun
@@ -39,6 +40,7 @@ from app.models.credential_oauth_state import CredentialOAuthState
 from app.models.daily_spend_agent import DailySpendAgent
 from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
+from app.models.emergency_stop import EmergencyStop
 from app.models.guardrail_event import GuardrailEvent
 from app.models.guardrail_model_setting import GuardrailModelSetting
 from app.models.guardrail_pseudonym import GuardrailPseudonym
@@ -133,6 +135,8 @@ __all__ = [
     "AgentToolLink",
     "AgentTrigger",
     "AgentTriggerRun",
+    "ApprovalRequest",
+    "EmergencyStop",
     "AgentUserPreference",
     "AccessRequest",
     "AuditEvent",

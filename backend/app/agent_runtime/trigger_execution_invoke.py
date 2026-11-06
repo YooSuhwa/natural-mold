@@ -23,6 +23,7 @@ from app.agent_runtime.trigger_execution_materialization import (
     TriggerMaterialized,
     TriggerOutcome,
 )
+from app.approvals.emergency import STOPPED_CODE
 from app.config import settings
 from app.database import tenant_session
 from app.exceptions import AppError
@@ -93,6 +94,7 @@ async def invoke_trigger_run(
             llm_credential_scope=llm_credential_scope,
             fallback_chain=fallback_chain,
             access_plan=materialized.access_plan,
+            approval_policy=trigger.approval_policy,
         )
     )
     # The company guardrail policy at the trigger run's start (guardrails/policy.py).
@@ -104,7 +106,7 @@ async def invoke_trigger_run(
     await db.flush()
     # Task 10 I18: a prepared trigger resolves children under the materialization
     # locks; the legacy child config is deferred to the unsupported fallback.
-    prepared = settings.prepared_run_lease_enabled
+    prepared = settings.prepared_run_lease_enabled and not materialized.needs_approval
     if not prepared:
         try:
             await _configure_legacy_children(db, agent, cfg)
@@ -136,6 +138,18 @@ async def invoke_trigger_run(
             ),
         )
     except AppError as exc:
+        if exc.code == STOPPED_CODE:  # 17.4: emergency-stopped since the claim
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=conversation,
+                status="skipped",
+                error_message=exc.message,
+                reason_code=STOPPED_CODE,
+            )
+            await db.refresh(run)
+            return TriggerOutcome(run)
         if exc.code != "quota_exceeded":
             raise
         # H-06: refused before the run row (no write to undo); skipped, never auto-paused.
@@ -151,9 +165,11 @@ async def invoke_trigger_run(
         return TriggerOutcome(run)
     await db.commit()
 
-    async def invoke() -> str:
+    async def invoke() -> Any:
         return await _executor_attr("_invoke_trigger")(
-            _executor_attr("_TriggerInvocation")(cfg, trigger.input_message, accepted.run_id)
+            _executor_attr("_TriggerInvocation")(
+                cfg, trigger.input_message, accepted.run_id, trigger.id, run.id
+            )
         )
 
     ownership = trigger_service.RuntimeOwnershipRequest(
@@ -163,7 +179,7 @@ async def invoke_trigger_run(
         context=context,
     )
 
-    async def legacy_fallback() -> str:
+    async def legacy_fallback() -> Any:
         async with tenant_session(context, maker=_executor_attr("async_session")) as child_db:
             await _configure_legacy_children(child_db, agent, cfg)
         return await invoke()

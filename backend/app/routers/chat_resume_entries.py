@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import registry as broker_registry
+from app.approvals.recording import claim_resume
+from app.approvals.service import ApprovalStale
 from app.authz.conversation_scope import load_private_conversation
 from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
@@ -255,6 +257,21 @@ async def resume_message(
             allow_legacy_resume=legacy_interrupt_trace is not None,
         ),
     )
+    if parent_run is not None and interrupt_id is not None:
+        try:
+            # One decision per approval request (17.2): the inbox may have decided first.
+            await claim_resume(
+                db,
+                parent_run_id=parent_run.id,
+                responses={interrupt_id: resume_payload},
+                actor_id=user.id,
+                resumed_run_id=accepted.run_id,
+            )
+        except ApprovalStale as exc:
+            await db.rollback()
+            raise HTTPException(
+                status_code=409, detail=f"The approval request is already {exc.status}"
+            ) from exc
     await chat_service.touch_conversation(db, conversation_id, context)
     await record_conversation_audit(
         db,

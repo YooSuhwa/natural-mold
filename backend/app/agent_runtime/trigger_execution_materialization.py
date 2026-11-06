@@ -27,7 +27,6 @@ from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
 from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import chat_service, trigger_service
-from app.tools.risk import format_trigger_block_reason
 
 logger = logging.getLogger("app.agent_runtime.trigger_executor")
 
@@ -52,6 +51,9 @@ class TriggerMaterialized:
     conversation: Conversation
     runtime_policy: ResolvedRuntimePolicy
     access_plan: RuntimeAccessPlan | None = None
+    # Tools that need a person (17.3): their calls wait for the inbox or answer BLOCKED,
+    # which only the unleased path carries (``unattended_approval`` lease fallback).
+    needs_approval: bool = False
 
 
 async def materialize_trigger_run(
@@ -156,20 +158,6 @@ async def materialize_trigger_run(
         if claim.agent_skills is not None
         else chat_service.build_agent_skills(agent, context)
     )
-    if blocked_tools:
-        reason = format_trigger_block_reason(blocked_tools)
-        logger.warning("Trigger %s blocked: %s", trigger_id, reason)
-        await trigger_service.finish_trigger_run(
-            db,
-            trigger=trigger,
-            run=run,
-            conversation=None,
-            status="failed",
-            error_message=reason,
-        )
-        await db.refresh(run)
-        return TriggerOutcome(run)
-
     conversation = await trigger_service.resolve_schedule_conversation(db, trigger, context)
     await db.flush()
     agent = await chat_service.get_agent_with_tools(db, trigger.agent_id, context)
@@ -204,4 +192,5 @@ async def materialize_trigger_run(
         conversation,
         runtime_policy,
         claim.access_plan,
+        needs_approval=bool(blocked_tools),
     )

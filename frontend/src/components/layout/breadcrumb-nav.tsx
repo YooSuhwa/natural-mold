@@ -25,6 +25,7 @@ const ROUTE_LABELS: Record<string, string> = {
   audit: 'appSettings.nav.audit',
   credentials: 'sidebar.nav.credentials',
   'mcp-servers': 'sidebar.nav.mcpServers',
+  approvals: 'sidebar.nav.approvals',
   marketplace: 'sidebar.nav.marketplace',
   moderation: 'sidebar.nav.moderation',
   company: 'nav.company',

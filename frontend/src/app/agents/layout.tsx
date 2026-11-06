@@ -12,6 +12,8 @@ const AGENT_MESSAGE_NAMESPACES = [
   'shared',
   // The agent guardrail card shares rule, action and stage names with company settings.
   'guardrails',
+  // The emergency stop button of the agent settings (plan 17.4).
+  'emergencyStop',
 ] as const
 
 export default function AgentsLayout({ children }: { children: ReactNode }) {

@@ -25,15 +25,19 @@ import {
 } from '@/components/ui/select'
 import type { AgentTrigger, Conversation, TriggerCreateRequest } from '@/lib/types'
 import {
+  DEFAULT_AUTO_PAUSE_AFTER_FAILURES,
   INTERVAL_OPTIONS,
   WEEKDAY_CRON,
   WEEKDAY_KEYS,
   buildScheduleRequest,
   getDefaultScheduleFormState,
   parseTriggerToForm,
+  type ApprovalPolicy,
   type ConversationPolicy,
   type ScheduleType,
 } from '@/features/schedules/lib/schedule-form-state'
+
+const APPROVAL_POLICIES: readonly ApprovalPolicy[] = ['inbox', 'blocked']
 
 interface ScheduleFormProps {
   agentId?: string
@@ -192,6 +196,7 @@ export function ScheduleForm({
   isEdit,
 }: ScheduleFormProps) {
   const t = useTranslations('agent.schedule')
+  const approvalPolicyLabelId = useId()
   const conversationsAgentId = agentId ?? trigger?.agent_id ?? ''
   const { data: conversations = [] } = useConversations(conversationsAgentId)
 
@@ -203,9 +208,12 @@ export function ScheduleForm({
   const [targetConversationId, setTargetConversationId] = useState('')
   const [maxRuns, setMaxRuns] = useState('')
   const [endAt, setEndAt] = useState('')
-  const [autoPauseAfterFailures, setAutoPauseAfterFailures] = useState('')
+  const [autoPauseAfterFailures, setAutoPauseAfterFailures] = useState(
+    DEFAULT_AUTO_PAUSE_AFTER_FAILURES,
+  )
   const [maxRunsLimited, setMaxRunsLimited] = useState(false)
-  const [autoPauseEnabled, setAutoPauseEnabled] = useState(false)
+  const [autoPauseEnabled, setAutoPauseEnabled] = useState(true)
+  const [approvalPolicy, setApprovalPolicy] = useState<ApprovalPolicy>('inbox')
 
   const typeOptions: { value: ScheduleType; label: string; icon: typeof ClockIcon }[] = [
     { value: 'minutes', label: t('types.minutes'), icon: TYPE_ICONS.minutes },
@@ -237,6 +245,7 @@ export function ScheduleForm({
       )
       setMaxRunsLimited(!!trigger.max_runs)
       setAutoPauseEnabled(!!trigger.auto_pause_after_failures)
+      setApprovalPolicy(trigger.approval_policy === 'blocked' ? 'blocked' : 'inbox')
     } else {
       setForm(getDefaultScheduleFormState())
       setScheduleName('')
@@ -245,9 +254,10 @@ export function ScheduleForm({
       setTargetConversationId('')
       setMaxRuns('')
       setEndAt('')
-      setAutoPauseAfterFailures('')
+      setAutoPauseAfterFailures(DEFAULT_AUTO_PAUSE_AFTER_FAILURES)
       setMaxRunsLimited(false)
-      setAutoPauseEnabled(false)
+      setAutoPauseEnabled(true)
+      setApprovalPolicy('inbox')
     }
   }, [trigger])
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -272,6 +282,7 @@ export function ScheduleForm({
       autoPauseAfterFailures,
       maxRunsLimited,
       autoPauseEnabled,
+      approvalPolicy,
     })
   }
 
@@ -567,6 +578,34 @@ export function ScheduleForm({
                 value={endAt}
                 onChange={(e) => setEndAt(e.target.value)}
               />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <span className="text-xs font-medium" id={approvalPolicyLabelId}>
+                {t('labels.approvalPolicy')}
+              </span>
+              <div
+                className="flex flex-wrap gap-2"
+                role="group"
+                aria-labelledby={approvalPolicyLabelId}
+              >
+                {APPROVAL_POLICIES.map((policy) => (
+                  <Button
+                    key={policy}
+                    type="button"
+                    size="xs"
+                    variant={approvalPolicy === policy ? 'default' : 'outline'}
+                    aria-pressed={approvalPolicy === policy}
+                    onClick={() => setApprovalPolicy(policy)}
+                  >
+                    {t(
+                      policy === 'inbox'
+                        ? 'labels.approvalPolicyInbox'
+                        : 'labels.approvalPolicyBlocked',
+                    )}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">{t('labels.approvalPolicyHint')}</p>
             </div>
           </div>
         </section>

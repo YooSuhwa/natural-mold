@@ -562,6 +562,7 @@ async def test_prepare_agent_installs_the_middleware_only_with_inputs(
         system_prompt="p",
         middleware=["existing"],
         interrupt_on=None,
+        unattended=None,
         backend=None,
         skills_sources=None,
         memory_sources=None,

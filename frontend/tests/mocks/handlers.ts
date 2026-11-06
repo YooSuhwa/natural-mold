@@ -29,6 +29,7 @@ const API_BASE = 'http://localhost:8001'
 
 export const handlers = [
   // ── Organizations (sidebar switcher; empty list renders nothing) ──
+  http.get(`${API_BASE}/api/approvals/pending-count`, () => HttpResponse.json({ count: 0 })),
   http.get(`${API_BASE}/api/me/organizations`, () => {
     return HttpResponse.json([])
   }),

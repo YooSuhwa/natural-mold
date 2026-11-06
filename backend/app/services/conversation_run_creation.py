@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
+from app.approvals.emergency import refuse_run
 from app.authz.conversation_run_scope import private_run_predicate
 from app.authz.execution_lock_cursor import ExecutionProofError, LockClass
 from app.authz.org_context import OrgContext
@@ -178,6 +179,8 @@ async def create_run_from_locked_proof(
     conversation = proof.cursor.held_row(LockClass.CONVERSATION, conversation_id)
     if not isinstance(conversation, Conversation) or conversation.agent_id != agent_id:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    # 17.4: nothing new runs for an emergency-stopped agent (resumes included).
+    await refuse_run(db, tenant_id=conversation.tenant_id, agent_id=agent_id)
 
     try:
         _, _, runtime_policy = await ensure_conversation_runtime_policy_from_locked_proof(

@@ -20,6 +20,7 @@ from app.agent_runtime.runtime_policy_capabilities import STORED_RESERVED_TOOL_N
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
 from app.guardrails.legacy import covered_by_guardrails
 from app.guardrails.run import effective_rules
+from app.tools.risk import unattended_interrupt_policy
 
 _STORED_FILESYSTEM_INTERRUPT_NAMES = frozenset(
     {"delete", "execute", "execute_in_skill", "shell", "write_file", "edit_file"}
@@ -248,8 +249,12 @@ async def prepare_runtime_components_impl(
         cfg.middleware_configs,
         langchain_tools,
         include_ask_user=any(tool.name == "ask_user" for tool in langchain_tools),
-        is_trigger_mode=is_trigger_mode,
+        is_trigger_mode=False,
     )
+    if is_trigger_mode:
+        # Nobody watches: the approvals go to the inbox or answer BLOCKED (17.3), which
+        # the agent builder applies from the run's unattended mode.
+        interrupt_on = unattended_interrupt_policy(interrupt_on)
     if stored_policy:
         interrupt_on = _without_stored_filesystem_interrupts(interrupt_on)
     mark_timing("skills_filesystem_ms")
@@ -271,4 +276,5 @@ async def prepare_runtime_components_impl(
         memory_sources=memory_sources,
         permissions=permissions,
         interrupt_on=interrupt_on,
+        unattended=cfg.unattended_approval or ("block" if is_trigger_mode else None),
     )

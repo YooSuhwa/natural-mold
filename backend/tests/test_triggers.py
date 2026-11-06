@@ -65,7 +65,7 @@ async def test_create_trigger_rejects_per_user_agent(client: AsyncClient):
         f"/api/agents/{agent_id}/triggers",
         json={
             "trigger_type": "interval",
-            "schedule_config": {"interval_minutes": 10},
+            "schedule_config": {"interval_minutes": 30},
             "input_message": "run",
         },
     )
@@ -84,14 +84,14 @@ async def test_trigger_crud(client: AsyncClient):
         f"/api/agents/{agent_id}/triggers",
         json={
             "trigger_type": "interval",
-            "schedule_config": {"interval_minutes": 10},
+            "schedule_config": {"interval_minutes": 30},
             "input_message": "한글과컴퓨터 최신 뉴스 검색해줘",
         },
     )
     assert resp.status_code == 201
     trigger = resp.json()
     assert trigger["trigger_type"] == "interval"
-    assert trigger["schedule_config"]["interval_minutes"] == 10
+    assert trigger["schedule_config"]["interval_minutes"] == 30
     assert trigger["status"] == "active"
     trigger_id = trigger["id"]
 
@@ -127,7 +127,7 @@ async def test_trigger_guardrails_are_persisted(client: AsyncClient):
         json={
             "name": "제한 있는 스케줄",
             "trigger_type": "interval",
-            "schedule_config": {"interval_minutes": 10},
+            "schedule_config": {"interval_minutes": 30},
             "input_message": "상태 확인",
             "max_runs": 3,
             "auto_pause_after_failures": 2,
@@ -159,7 +159,7 @@ async def test_trigger_selected_conversation_policy_is_persisted(client: AsyncCl
         json={
             "name": "기존 세션에 쓰기",
             "trigger_type": "interval",
-            "schedule_config": {"interval_minutes": 10},
+            "schedule_config": {"interval_minutes": 30},
             "input_message": "상태 확인",
             "conversation_policy": "selected_conversation",
             "target_conversation_id": conversation_id,
@@ -287,7 +287,7 @@ async def test_update_trigger_reactivate(client: AsyncClient):
         f"/api/agents/{agent_id}/triggers",
         json={
             "trigger_type": "interval",
-            "schedule_config": {"interval_minutes": 10},
+            "schedule_config": {"interval_minutes": 30},
             "input_message": "test",
         },
     )
@@ -319,7 +319,7 @@ async def test_update_trigger_schedule_change(client: AsyncClient):
         f"/api/agents/{agent_id}/triggers",
         json={
             "trigger_type": "interval",
-            "schedule_config": {"interval_minutes": 10},
+            "schedule_config": {"interval_minutes": 30},
             "input_message": "test",
         },
     )
@@ -424,7 +424,7 @@ async def test_create_trigger_rejects_hidden_runtime_agent(
         f"/api/agents/{agent.id}/triggers",
         json={
             "trigger_type": "interval",
-            "schedule_config": {"interval_minutes": 10},
+            "schedule_config": {"interval_minutes": 30},
             "input_message": "run",
         },
     )

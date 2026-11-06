@@ -1252,7 +1252,8 @@
       "templates": "에이전트 템플릿",
       "marketplace": "마켓플레이스",
       "marketplaceExplore": "둘러보기",
-      "moderation": "운영자 관리"
+      "moderation": "운영자 관리",
+      "approvals": "승인함"
     },
     "section": {
       "capabilities": "기능",
@@ -2150,7 +2151,11 @@
         "resultPolicy": "결과 저장 방식",
         "conversation": "기존 대화 선택",
         "maxRunsValue": "최대 실행 횟수",
-        "autoPauseValue": "실패 허용 횟수"
+        "autoPauseValue": "실패 허용 횟수",
+        "approvalPolicy": "승인이 필요한 도구",
+        "approvalPolicyInbox": "승인함에서 기다리기",
+        "approvalPolicyBlocked": "실행하지 않고 넘어가기",
+        "approvalPolicyHint": "승인함에서 기다리면 결정할 때까지 이 예약의 다음 실행은 건너뛰어요. 요청은 24시간 뒤 거절로 끝나요."
       },
       "placeholders": {
         "name": "예: 매일 아침 뉴스 요약",
@@ -6487,6 +6492,11 @@
       "ownershipNew": "{target}의 소유자가 되었어요",
       "ownershipPrevious": "{target}의 소유권이 이전됐어요",
       "mcpToolReviewNeeded": "{target}에 검토할 도구가 있어요",
+      "approvalRequested": "{target}이(가) 승인을 기다려요",
+      "approvalExpiring": "{target}의 승인 요청이 곧 만료돼요",
+      "approvalDecided": "{target}의 승인 요청이 만료되어 거절됐어요",
+      "emergencyStopApplied": "{target}이(가) 긴급 중지됐어요",
+      "emergencyStopReleased": "{target}의 긴급 중지가 해제됐어요",
       "generic": "새 알림이 있어요"
     }
   },
@@ -6671,5 +6681,108 @@
       "noWorkers": "등록된 작업 실행기가 없습니다. worker 서비스를 띄워 주세요.",
       "heartbeat": "마지막 응답 {time}"
     }
+  },
+  "approvals": {
+    "title": "승인함",
+    "description": "대화, 예약, API에서 실행이 멈추고 기다리는 승인 요청을 한곳에서 결정해요. 결정하면 멈춘 실행이 이어서 진행돼요.",
+    "tabs": {
+      "pending": "승인 대기",
+      "done": "처리됨",
+      "runs": "실행 현황",
+      "stops": "긴급 중지"
+    },
+    "empty": {
+      "pending": "기다리는 승인 요청이 없어요",
+      "done": "처리한 승인 요청이 없어요"
+    },
+    "unknownAgent": "알 수 없는 에이전트",
+    "source": {
+      "chat": "대화",
+      "trigger": "예약",
+      "api": "API",
+      "subagent": "하위 에이전트"
+    },
+    "status": {
+      "pending": "대기",
+      "approved": "승인됨",
+      "edited": "수정 후 승인됨",
+      "rejected": "거절됨",
+      "expired": "승인 만료",
+      "canceled": "취소됨"
+    },
+    "reasons": {
+      "approval_expired": "기한이 지나 거절로 끝났어요",
+      "emergency_stop": "긴급 중지로 취소됐어요",
+      "arguments_changed": "도구 인자가 바뀌어 취소됐어요",
+      "no_longer_pending": "실행이 더 이상 기다리지 않아요"
+    },
+    "expires": "{when} 만료",
+    "attempt": "{n}번째 요청",
+    "decisionFor": "{tool} 결정",
+    "decision": {
+      "approve": "승인",
+      "edit": "수정",
+      "reject": "거절"
+    },
+    "editArgs": "{tool}에 보낼 인자(JSON)",
+    "rejectAll": "모두 거절",
+    "submit": "결정 보내기",
+    "openConversation": "대화 열기",
+    "toast": {
+      "decided": "결정을 보냈어요. 실행이 이어서 진행돼요"
+    },
+    "errors": {
+      "approval_stale": "이미 처리됐거나 더 이상 기다리지 않는 요청이에요",
+      "approval_expired": "기한이 지난 요청이에요",
+      "agent_emergency_stopped": "긴급 중지된 에이전트라 실행을 이어갈 수 없어요",
+      "invalidArgs": "수정한 인자가 올바른 JSON 객체가 아니에요",
+      "generic": "결정을 보내지 못했어요"
+    },
+    "runs": {
+      "running": "진행 중",
+      "waiting": "결정 기다림",
+      "failed": "실패",
+      "mine": "내가 시작함",
+      "ofMyAgent": "내 에이전트",
+      "empty": {
+        "running": "진행 중인 실행이 없어요",
+        "waiting": "승인을 기다리는 실행이 없어요",
+        "failed": "실패한 실행이 없어요"
+      }
+    },
+    "stops": {
+      "empty": "걸려 있는 긴급 중지가 없어요",
+      "scope": {
+        "agent": "에이전트",
+        "user": "사용자의 모든 에이전트",
+        "mcp_server": "MCP 서버"
+      },
+      "state": {
+        "blocked": "차단 접수 · 새 실행과 호출 차단 중",
+        "runs": "실행 취소 확인 {confirmed}/{total}",
+        "rest": "예약 정지 {schedules} · API 배포 정지 {deployments} · 승인 요청 취소 {approvals}",
+        "sideEffects": "이미 일어난 외부 작업은 확인할 수 없어요"
+      },
+      "release": "해제",
+      "releaseTitle": "{name} 긴급 중지 해제",
+      "releaseDescription": "해제 사유를 남겨 주세요. API 배포는 다시 켜지고, 예약은 소유자가 직접 다시 시작해요.",
+      "released": "긴급 중지를 해제했어요",
+      "releaseForbidden": "해제는 소유자나 회사 관리자만 할 수 있어요",
+      "releaseFailed": "긴급 중지를 해제하지 못했어요"
+    }
+  },
+  "emergencyStop": {
+    "button": "긴급 중지",
+    "title": "{name} 긴급 중지",
+    "description": {
+      "agent": "새 실행을 막고, 진행 중인 실행을 취소하고, 예약과 API 배포를 멈추고, 기다리는 승인 요청을 취소해요.",
+      "user": "이 사람의 모든 에이전트를 한 번에 멈춰요.",
+      "mcp_server": "이 MCP 서버로 가는 모든 호출을 막아요."
+    },
+    "reason": "중지 사유",
+    "reasonPlaceholder": "왜 멈추는지 적어 주세요",
+    "confirm": "지금 중지",
+    "stopped": "긴급 중지했어요",
+    "failed": "긴급 중지하지 못했어요"
   }
 }

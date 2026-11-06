@@ -288,6 +288,19 @@ server detail before agents can use them. A changed definition waits too, and ag
 the approved one until then. Server URLs resolve from the `mcp-runtime` container, so a
 server on your machine is `host.docker.internal`, not `localhost`.
 
+### Approval inbox, unattended runs and emergency stop
+
+A tool call that needs approval stops the run, in a chat or anywhere else, and the
+request also lands in the approval inbox (`/approvals`), where whoever decides first wins.
+Requests expire after 24 hours (`APPROVAL_TTL_MINUTES`) and end as rejected. Schedules
+choose what such a call does in their runs: wait in the inbox (the default for new
+schedules) or get a BLOCKED result and carry on (existing schedules start with this).
+Agent API calls always get the BLOCKED result. Schedules repeat at most every 15 minutes,
+one person keeps at most 20 of them, and a new one pauses itself after 10 failures in a
+row. An emergency stop of an agent, of a person's agents or of an MCP server blocks new
+runs and calls at once, cancels what is running, pauses the schedules, disables the API
+deployments and cancels the pending approvals; releasing it needs a reason.
+
 ## Local development
 
 Requirements: [uv](https://docs.astral.sh/uv/) (installs Python 3.12),

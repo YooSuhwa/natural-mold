@@ -3,19 +3,23 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.approval_scope import schedules_of_person
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.scoping import private_scope_predicate, private_scoped
+from app.config import settings
 from app.error_codes import trigger_not_found
 from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.conversation import Conversation
+from app.models.organization import Tenant
 from app.schemas.trigger import TriggerCreate, TriggerUpdate
 from app.services.trigger_schedule_service import (
+    LIMIT_MESSAGE,
     REQUIRES_FIXED_IDENTITY_MESSAGE,
     VALID_STATUSES,
     _default_name,
@@ -92,6 +96,25 @@ async def _validate_target_conversation(
     return target_conversation_id
 
 
+async def _ensure_under_schedule_limit(db: AsyncSession, context: OrgContext) -> None:
+    """17.3: one person keeps at most N schedules in a company (finished ones do not count)."""
+    tenant = await db.get(Tenant, context.tenant_id)
+    configured = ((tenant.settings or {}).get("schedules") or {}) if tenant else {}
+    limit = configured.get("max_per_user") if isinstance(configured, dict) else None
+    if not isinstance(limit, int) or limit < 1:
+        limit = settings.trigger_max_per_user
+    count = await db.scalar(
+        select(func.count())
+        .select_from(AgentTrigger)
+        .where(
+            schedules_of_person(context),
+            AgentTrigger.status != "completed",
+        )
+    )
+    if int(count or 0) >= limit:
+        raise ValueError(LIMIT_MESSAGE)
+
+
 async def create_trigger(
     db: AsyncSession,
     agent_id: uuid.UUID,
@@ -99,6 +122,7 @@ async def create_trigger(
     data: TriggerCreate,
 ) -> AgentTrigger:
     await _ensure_agent_fixed_for_trigger(db, agent_id, context)
+    await _ensure_under_schedule_limit(db, context)
     schedule_config, timezone = normalize_schedule_config(
         data.trigger_type,
         data.schedule_config,
@@ -131,6 +155,7 @@ async def create_trigger(
             data.auto_pause_after_failures,
             "auto_pause_after_failures",
         ),
+        approval_policy=data.approval_policy,
     )
     db.add(trigger)
     await db.commit()
@@ -205,6 +230,8 @@ async def update_trigger(
             data.auto_pause_after_failures,
             "auto_pause_after_failures",
         )
+    if data.approval_policy is not None:
+        trigger.approval_policy = data.approval_policy
 
     await db.commit()
     await db.refresh(trigger)

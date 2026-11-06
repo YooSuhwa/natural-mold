@@ -697,7 +697,7 @@ async def test_create_cron_schedule_interval(db: AsyncSession, patch_write_sessi
             "schedule_type": "interval",
             "name": "10분 모니터링",
             "message": "상태 확인",
-            "interval_minutes": 10,
+            "interval_minutes": 30,
             "timezone": "Asia/Seoul",
             "conversation_policy": "schedule_thread",
             "max_runs": 3,
@@ -710,7 +710,7 @@ async def test_create_cron_schedule_interval(db: AsyncSession, patch_write_sessi
     assert trigger is not None
     assert trigger.name == "10분 모니터링"
     assert trigger.trigger_type == "interval"
-    assert trigger.schedule_config == {"interval_minutes": 10}
+    assert trigger.schedule_config == {"interval_minutes": 30}
     assert trigger.timezone == "Asia/Seoul"
     assert trigger.conversation_policy == "schedule_thread"
     assert trigger.max_runs == 3

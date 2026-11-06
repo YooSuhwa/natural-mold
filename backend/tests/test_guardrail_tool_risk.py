@@ -344,6 +344,7 @@ async def test_a_run_builds_its_agent_with_the_pinned_tool_risk(
         system_prompt="p",
         middleware=[],
         interrupt_on=None,
+        unattended=None,
         backend=None,
         skills_sources=None,
         memory_sources=None,

@@ -106,3 +106,10 @@ AUTH_SSO_LINK: Final = "auth.sso_link"
 # H-04 operator sync screen (14.3, S27): platform events, no company scope.
 AUTHZ_RECONCILE_RUN: Final = "authz.reconcile_run"
 AUTHZ_OUTBOX_RETRY: Final = "authz.outbox_retry"
+# Approval inbox (feature plan v2 순번 13, 17.2): a request made, decided once, expired.
+APPROVAL_REQUESTED: Final = "approval.requested"
+APPROVAL_DECIDED: Final = "approval.decided"
+APPROVAL_EXPIRED: Final = "approval.expired"
+# Emergency stop (순번 13, 17.4): applied to an agent, a person's agents or an MCP server.
+EMERGENCY_STOP_APPLY: Final = "emergency_stop.apply"
+EMERGENCY_STOP_RELEASE: Final = "emergency_stop.release"
