@@ -12,4 +12,7 @@ export const tenantAdminKeys = {
   credentials: (tenantId: string) => ['tenant-admin', tenantId, 'credentials'] as const,
   catalog: (tenantId: string) => ['tenant-admin', tenantId, 'catalog-policy'] as const,
   llm: (tenantId: string) => ['tenant-admin', tenantId, 'llm-settings'] as const,
+  guardrails: (tenantId: string) => ['tenant-admin', tenantId, 'guardrails'] as const,
+  guardrailTemplates: (tenantId: string) =>
+    ['tenant-admin', tenantId, 'guardrail-templates'] as const,
 }

@@ -3807,6 +3807,130 @@
       "saveFailed": "Operation failed."
     }
   },
+  "guardrails": {
+    "title": "Guardrails",
+    "description": "Decide how the company's agents handle personal data and secrets.",
+    "policy": {
+      "title": "Company policy",
+      "description": "Applies to every agent run. Changes apply from the next run; running runs and runs waiting for approval keep their rules.",
+      "readOnly": "Company members can only view the policy. A company admin changes it.",
+      "notSaved": "No company policy saved yet; the installation default applies.",
+      "mode": {
+        "label": "How it applies",
+        "off": "Off",
+        "open": "Agents choose",
+        "default": "Company default",
+        "enforced": "Enforced",
+        "offDescription": "Guardrails are off for every agent in the company.",
+        "openDescription": "Only agents that chose a template are checked.",
+        "defaultDescription": "Agents get the company default and may choose another template or switch off. Locked rules still apply.",
+        "enforcedDescription": "Every agent gets the company default and cannot change it. Unlocked rules can still be switched off or given another action."
+      },
+      "defaultTemplate": "Default template",
+      "defaultTemplateHint": "Required for Company default and Enforced.",
+      "noTemplate": "None",
+      "locked": {
+        "label": "Locked rules",
+        "description": "Locked rules keep applying when an agent picks another template, switches guardrails off or changes an action.",
+        "empty": "Choose a default template to lock its rules."
+      },
+      "save": "Save policy",
+      "saved": "Guardrail policy saved."
+    },
+    "templates": {
+      "title": "Company templates",
+      "description": "Copy a built-in template to make a company template. Each publish creates a new version; only published versions can be used by agents and the policy.",
+      "create": "New template",
+      "empty": "No company templates yet.",
+      "status": {
+        "draft": "Draft",
+        "published": "Published",
+        "archived": "Archived"
+      },
+      "version": "v{version}",
+      "unpublished": "Not published",
+      "editShort": "Edit",
+      "publishShort": "Publish",
+      "archiveShort": "Archive",
+      "edit": "Edit {name}",
+      "publish": "Publish {name}",
+      "archive": "Archive {name}",
+      "published": "Template published.",
+      "archived": "Template archived.",
+      "archiveTitle": "Archive the {name} template?",
+      "archiveDescription": "An archived template can no longer be chosen or edited. Agents that used it run with the company default.",
+      "archiveConfirm": "Archive",
+      "createDialog": {
+        "title": "New company template",
+        "description": "Rules are copied from the template you pick. Adjust them, then publish.",
+        "name": "Name",
+        "templateDescription": "Description",
+        "copyFrom": "Copy from",
+        "submit": "Create",
+        "created": "Template created."
+      },
+      "editor": {
+        "title": "Edit {name}",
+        "description": "Saving the draft does not change any agent. Publish to apply it.",
+        "name": "Name",
+        "templateDescription": "Description",
+        "rules": "Rules",
+        "action": "Action",
+        "stages": "Checked at",
+        "style": "Pseudonym form",
+        "restoreForTools": "Give tools the real values",
+        "restoreForToolsHint": "Pseudonymized names and addresses are restored in tool arguments.",
+        "removeRule": "Remove rule {rule}",
+        "needStage": "Choose at least one stage.",
+        "needRule": "Keep at least one rule.",
+        "save": "Save draft",
+        "saved": "Draft saved."
+      }
+    },
+    "rule": {
+      "secrets": "Secrets (API keys, tokens)",
+      "secrets-output": "Secrets in answers",
+      "kr-identifiers": "ID numbers (resident, foreigner, passport, license, card, account, health insurance)",
+      "contacts": "Contacts (phone, email)",
+      "people": "Names and addresses",
+      "people-output": "Names and addresses in answers",
+      "observe": "Record everything"
+    },
+    "action": {
+      "block": "Block",
+      "redact": "Replace",
+      "hash": "Hash",
+      "pseudonymize": "Pseudonym",
+      "mask": "Partly hide",
+      "warn": "Record only"
+    },
+    "stage": {
+      "llm_send": "Sent to the model",
+      "tool_args": "Tool arguments",
+      "tool_result": "Tool results",
+      "output": "Answers"
+    },
+    "style": {
+      "tag": "Tag (<<PERSON_1>>)",
+      "natural": "Natural name"
+    },
+    "templateKind": {
+      "builtin": "Built-in",
+      "company": "Company"
+    },
+    "errors": {
+      "GUARDRAIL_DEFAULT_TEMPLATE_REQUIRED": "Company default and Enforced need a default template.",
+      "GUARDRAIL_TEMPLATE_UNUSABLE": "The chosen template cannot be used. Check that it is published.",
+      "GUARDRAIL_LOCKED_RULE_UNKNOWN": "A locked rule is not in the default template.",
+      "GUARDRAIL_RULES_INVALID": "The rule settings are not valid.",
+      "GUARDRAIL_TEMPLATE_ARCHIVED": "An archived template cannot be changed.",
+      "GUARDRAIL_TEMPLATE_IN_USE": "The company default template cannot be archived. Change the policy's default first.",
+      "GUARDRAIL_TEMPLATE_NAME_TAKEN": "A template with this name already exists.",
+      "GUARDRAIL_TEMPLATE_NOT_FOUND": "Template not found.",
+      "GUARDRAIL_POLICY_ENFORCED": "The company policy fixes the template.",
+      "GUARDRAIL_RULE_LOCKED": "Rules the company locked cannot be changed."
+    }
+  },
   "guardrailModel": {
     "title": "Guardrail model",
     "description": "Set the model service the guardrails use to find Korean personal data (names, addresses and more). When it is off or does not answer, the rules (ko-pii) check instead; the check is never skipped.",
@@ -5528,6 +5652,7 @@
       "makeTeam": "Invite people to make it a team",
       "companyMembers": "Company members",
       "companyPolicies": "Company policies",
+      "companyGuardrails": "Guardrails",
       "companyModels": "Models and LLM settings",
       "platformTenants": "Companies",
       "organizationCatalog": "Catalog policy"

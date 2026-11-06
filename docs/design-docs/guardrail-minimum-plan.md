@@ -178,6 +178,7 @@ deepagents 0.7.32 코드 확인 결과, 아래 경로는 등록만으로는 덮�
    - 이름만 쓴 형태의 경계는 조사·호칭·문장부호 목록(`pseudonyms._FOLLOWERS`)으로 판단한다. 나중 항목: 형태소 분석기(Kiwi `kiwipiepy`, LGPL v3)로 경계를 품사로 판단하고, 받침이 안 맞는 경우의 조사 교정과 규칙 묶음의 이름 후보(고유명사) 보강을 K-PII-Bench와 실제 LLM 답변 복원율로 비교한 뒤 도입을 정한다. Nori(Apache 2.0)는 Lucene(Java) 기반이라 Python 백엔드에서 직접 쓰기 어렵다.
 4. 회사 정책·템플릿·버전 고정·감사 이벤트.
    - **4-1 구현됨(백엔드)**: 3.4절. i13(세 테이블, 회사 RLS `DIRECT_TENANT`). 시험 `tests/test_guardrail_policy.py`(모드·잠금·변경·API·고정과 재개), `tests/test_guardrail_policy_entry_points.py`(채팅·트리거·Agent API가 회사 정책을 받음). 다음: 4-2 회사 관리 화면(정책·템플릿 편집), 4-3 에이전트 가드레일 카드.
+   - **4-2 구현됨(회사 관리 화면)**: 설정 → 회사 → 가드레일(`/settings/company/guardrails`). 구성원은 정책을 읽기만, 회사 관리자는 적용 방식·기본 템플릿·잠근 규칙을 저장하고, 회사 템플릿을 기본 제공·게시 템플릿에서 복사해 만들고 규칙별 처리 방식·검사 단계·가명 옵션을 고친 뒤 게시·보관한다. 규칙이 무엇을 찾는지(묶음·항목)는 복사한 그대로 둔다. 시험 `tests/components/guardrails`, E2E `e2e/guardrail-company-settings.spec.ts`. 이 작업에서 CORS 허용 헤더에 `If-Match`가 빠져 프론트와 백엔드 출처가 다를 때(기본 3000→8001) 버전을 보내는 회사·조직 쓰기가 브라우저에서 모두 막히던 것을 고쳤다.
 5. 위험 등급별 기본 조치(C5 최소)와 lease 경로 대체 실행.
 6. P1(① 입력, 가드레일 카드 화면, 기존 미들웨어 이전).
 
