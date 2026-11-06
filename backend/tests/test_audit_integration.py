@@ -330,6 +330,60 @@ async def test_mcp_probe_writes_audit_with_outcome(client, db: AsyncSession, mon
 
 
 @pytest.mark.asyncio
+async def test_mcp_tool_review_writes_audit_with_decision_and_states(
+    client, db: AsyncSession, monkeypatch
+) -> None:
+    """D11 tool review: action, outcome, the decided version and the state change."""
+
+    async def _probe(**_) -> dict:
+        tool = {"name": "send", "description": "send", "input_schema": {"type": "object"}}
+        return {"success": True, "server_info": {}, "tools": [tool], "error": None}
+
+    monkeypatch.setattr("app.mcp.discovery.connect_and_list", _probe)
+    created = await client.post(
+        "/api/mcp-servers",
+        json={
+            "name": "Review MCP",
+            "transport": "streamable_http",
+            "url": "https://mcp.example.com",
+        },
+    )
+    assert created.status_code == 201, created.text
+    server_id = created.json()["id"]
+    [tool] = (await client.post(f"/api/mcp-servers/{server_id}/discover")).json()["tools"]
+    fingerprint = tool["pending_version"]["fingerprint"]
+    review_url = f"/api/mcp-servers/{server_id}/tools/{tool['id']}/review"
+
+    stale = await client.post(review_url, json={"decision": "approve", "fingerprint": "0" * 64})
+    assert stale.status_code == 409
+    approved = await client.post(
+        review_url, json={"decision": "approve", "fingerprint": fingerprint}
+    )
+    assert approved.status_code == 200, approved.text
+
+    rows = (
+        (await db.execute(select(AuditEvent).where(AuditEvent.action == "mcp_tool.review")))
+        .scalars()
+        .all()
+    )
+    by_outcome = {row.outcome: row for row in rows}
+    assert set(by_outcome) == {"success", "denied"}
+    ok, denied = by_outcome["success"], by_outcome["denied"]
+    assert (ok.target_type, str(ok.target_id)) == ("mcp_server", server_id)
+    assert ok.reason_code is None
+    assert ok.event_metadata is not None
+    assert ok.event_metadata["tool_name"] == "send"
+    assert ok.event_metadata["decision"] == "approve"
+    assert ok.event_metadata["fingerprint"] == fingerprint
+    assert (ok.event_metadata["state_before"], ok.event_metadata["state_after"]) == (
+        "pending",
+        "approved",
+    )
+    assert denied.reason_code == "mcp_tool_review_conflict"
+    assert denied.event_metadata is not None and denied.event_metadata["decision"] == "approve"
+
+
+@pytest.mark.asyncio
 async def test_mcp_import_writes_audit_with_error_metadata(client, db: AsyncSession) -> None:
     """import 감사의 부분 실패(success + reason_code)/전량 실패(failure) 판정 잠금."""
 
@@ -903,3 +957,53 @@ async def test_guardrail_policy_mutations_write_audit(client, db: AsyncSession, 
         "before": {"mode": "inherit", "template_ref": None, "rule_overrides": {}},
         "after": {"mode": "off", "template_ref": None, "rule_overrides": {}},
     }
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_call_decision_writes_audit_without_argument_values(
+    db: AsyncSession,
+) -> None:
+    """D10 decision record: actor, tool, outcome, reviewed version; argument names only."""
+    from app.mcp import decisions
+    from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
+    from tests.conftest import seed_agent
+
+    await seed_agent(db)
+    await db.commit()
+    context = decisions.DecisionContext.from_config(
+        {
+            "tenant_id": str(TEST_TENANT_ID),
+            "org_id": str(TEST_ORG_ID),
+            "user_id": str(TEST_USER_ID),
+            "mcp_tool_id": "22222222-2222-2222-2222-222222222222",
+            "mcp_tool_name": "send",
+            "mcp_reviewed_fingerprint": "a" * 64,
+        },
+        risk_level="destructive",
+        gateway=True,
+    )
+    await decisions.record(
+        context,
+        outcome="denied",
+        reason_code="mcp_gateway_refused",
+        arguments={"to": "ceo@example.com"},
+        attempts=1,
+        run_id="run-decision",
+    )
+
+    async with TestSession() as check:
+        [event] = list(
+            await check.scalars(select(AuditEvent).where(AuditEvent.action == "mcp.tool_call"))
+        )
+    assert (event.outcome, event.reason_code, event.run_id) == (
+        "denied",
+        "mcp_gateway_refused",
+        "run-decision",
+    )
+    assert (event.target_type, event.target_name_snapshot) == ("mcp_tool", "send")
+    assert event.actor_user_id == TEST_USER_ID
+    assert event.event_metadata is not None
+    assert event.event_metadata["reviewed_fingerprint"] == "a" * 64
+    assert event.event_metadata["risk_level"] == "destructive"
+    assert event.event_metadata["argument_names"] == ["to"]
+    assert "ceo@example.com" not in str(event.event_metadata)

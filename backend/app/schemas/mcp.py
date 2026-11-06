@@ -54,6 +54,16 @@ class McpServerUpdate(BaseModel):
     status: Status | None = None
 
 
+class McpToolPendingVersion(BaseModel):
+    """A tool definition waiting for a server manager's review (app.mcp.review)."""
+
+    description: str = ""
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    annotations: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    fingerprint: str
+
+
 class McpToolResponse(BaseModel):
     id: uuid.UUID
     server_id: uuid.UUID
@@ -61,9 +71,20 @@ class McpToolResponse(BaseModel):
     description: str | None = None
     input_schema: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
+    # D11: ``pending`` tools are hidden from agents until approved; an approved tool with
+    # ``pending_version`` keeps its approved definition until the change is reviewed.
+    review_state: Literal["pending", "approved", "rejected"] = "approved"
+    pending_version: McpToolPendingVersion | None = None
+    reviewed_at: datetime | None = None
     last_seen_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class McpToolReviewRequest(BaseModel):
+    decision: Literal["approve", "reject"]
+    # The version the manager looked at; a newer one arriving in between is a conflict.
+    fingerprint: str = Field(min_length=64, max_length=64)
 
 
 class McpServerResponse(BaseModel):

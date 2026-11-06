@@ -496,128 +496,42 @@ async def test_owned_conv_with_agent_saves_one_roundtrip() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mcp_connect_and_list_interpolates_credentials() -> None:
-    """The MCP probe runs ``resolve_deep`` against the credential payload so
-    ``Authorization: Bearer ${credential.token}`` is hydrated before it hits
-    the wire."""
+async def test_mcp_connect_and_list_interpolates_credentials(monkeypatch) -> None:
+    from tests.authz.f12_mock_mcp import MockMcpServer
 
-    captured_headers: dict[str, str] = {}
+    server = MockMcpServer()
+    server.install(monkeypatch)
 
-    class _FakeServerInfo:
-        name = "fake"
-        version = "1"
-
-    class _FakeInitResult:
-        serverInfo = _FakeServerInfo()
-
-    class _FakeTool:
-        name = "echo"
-        description = "echoes"
-        inputSchema = {"type": "object"}
-
-    class _FakeToolsResult:
-        tools = [_FakeTool()]
-
-    class _FakeSession:
-        def __init__(self, *_args, **_kwargs) -> None:
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_exc) -> None:
-            return None
-
-        async def initialize(self):
-            return _FakeInitResult()
-
-        async def list_tools(self):
-            return _FakeToolsResult()
-
-    def _fake_streamable(url, headers=None, **_options):
-        captured_headers["url"] = url
-        captured_headers.update(headers or {})
-
-        class _Conn:
-            async def __aenter__(self):
-                return (None, None, None)
-
-            async def __aexit__(self, *_exc):
-                return None
-
-        return _Conn()
-
-    with (
-        patch("mcp.client.session.ClientSession", _FakeSession),
-        patch("mcp.client.streamable_http.streamablehttp_client", _fake_streamable),
-    ):
-        result = await mcp_client.connect_and_list(
-            transport="streamable_http",
-            url="https://mcp.example.com/api",
-            headers={"Authorization": "=Bearer {{ $credentials.token }}"},
-            credentials={"token": "secret-token"},
-        )
+    result = await mcp_client.connect_and_list(
+        transport="streamable_http",
+        url="https://mcp.example.com/api",
+        headers={"Authorization": "=Bearer {{ $credentials.token }}"},
+        credentials={"token": "secret-token"},
+    )
 
     assert result["success"] is True
-    assert result["server_info"]["name"] == "fake"
-    assert captured_headers["Authorization"] == "Bearer secret-token"
+    assert result["server_info"]["name"] == "mock"
+    assert [t["name"] for t in result["tools"]] == ["post_message"]
+    assert {h.get("authorization") for _, h in server.requests} == {"Bearer secret-token"}
 
 
 @pytest.mark.asyncio
-async def test_mcp_connect_and_list_auto_injects_mcp_secret_header() -> None:
-    captured_headers: dict[str, str] = {}
+async def test_mcp_connect_and_list_auto_injects_mcp_secret_header(monkeypatch) -> None:
+    from tests.authz.f12_mock_mcp import MockMcpServer
 
-    class _FakeServerInfo:
-        name = "fake"
-        version = "1"
+    server = MockMcpServer()
+    server.install(monkeypatch)
 
-    class _FakeInitResult:
-        serverInfo = _FakeServerInfo()
-
-    class _FakeToolsResult:
-        tools = []
-
-    class _FakeSession:
-        def __init__(self, *_args, **_kwargs) -> None:
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_exc) -> None:
-            return None
-
-        async def initialize(self):
-            return _FakeInitResult()
-
-        async def list_tools(self):
-            return _FakeToolsResult()
-
-    def _fake_streamable(_url, headers=None, **_options):
-        captured_headers.update(headers or {})
-
-        class _Conn:
-            async def __aenter__(self):
-                return (None, None, None)
-
-            async def __aexit__(self, *_exc):
-                return None
-
-        return _Conn()
-
-    with (
-        patch("mcp.client.session.ClientSession", _FakeSession),
-        patch("mcp.client.streamable_http.streamablehttp_client", _fake_streamable),
-    ):
-        result = await mcp_client.connect_and_list(
-            transport="streamable_http",
-            url="https://mcp.example.com/api",
-            headers={},
-            credentials={"secret": "per-user-secret"},
-        )
+    result = await mcp_client.connect_and_list(
+        transport="streamable_http",
+        url="https://mcp.example.com/api",
+        headers={},
+        credentials={"secret": "per-user-secret"},
+    )
 
     assert result["success"] is True
-    assert captured_headers == {"X-Moldy-Credential": "per-user-secret"}
+    assert {h.get("x-moldy-credential") for _, h in server.requests} == {"per-user-secret"}
+    assert all("authorization" not in h for _, h in server.requests)
 
 
 @pytest.mark.asyncio
@@ -642,3 +556,73 @@ async def test_mcp_connect_and_list_stdio_requires_command() -> None:
     result = await mcp_client.connect_and_list(transport="stdio", url=None)
     assert result["success"] is False
     assert "command" in (result["error"] or "").lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("state", "fingerprint", "expected"),
+    [
+        ("pending", None, None),
+        ("rejected", None, None),
+        ("approved", None, {"approved_definition": None}),
+        (
+            "approved",
+            "f" * 64,
+            {
+                "approved_definition": {
+                    "description": "budget",
+                    "input_schema": {"type": "object"},
+                    "annotations": {"readOnlyHint": True},
+                }
+            },
+        ),
+    ],
+)
+async def test_build_tools_config_only_runs_reviewed_mcp_tools(
+    db: AsyncSession, state: str, fingerprint: str | None, expected: dict | None
+) -> None:
+    """D11: pending and rejected tools never reach a run, even when an agent links them."""
+    model = await _seed_user_and_model(db)
+    agent = Agent(
+        user_id=TEST_USER_ID,
+        name="MCP Agent",
+        system_prompt="hi",
+        model_id=model.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+    )
+    server = McpServer(
+        user_id=TEST_USER_ID,
+        name="Budget",
+        transport="streamable_http",
+        url="https://mcp.example.com/mcp",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+    )
+    db.add_all([agent, server])
+    await db.flush()
+    mcp_tool = McpTool(
+        server_id=server.id,
+        name="get_budget",
+        description="budget",
+        input_schema={"type": "object"},
+        annotations_json={"readOnlyHint": True},
+        review_state=state,
+        approved_fingerprint=fingerprint,
+    )
+    db.add(mcp_tool)
+    await db.flush()
+    db.add(AgentMcpToolLink(agent_id=agent.id, mcp_tool_id=mcp_tool.id))
+    await db.commit()
+
+    fetched = await chat_service.get_agent_with_tools(db, agent.id, unit_context(TEST_USER_ID))
+    assert fetched is not None
+    configs = await chat_service.build_tools_config(
+        fetched, db=db, context=unit_context(TEST_USER_ID)
+    )
+
+    if expected is None:
+        assert configs == []
+    else:
+        [entry] = configs
+        assert entry["mcp_approved_definition"] == expected["approved_definition"]

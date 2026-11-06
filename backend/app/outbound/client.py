@@ -98,29 +98,6 @@ def outbound_http_client(
     )
 
 
-def mcp_http_client_factory(
-    headers: dict[str, str] | None = None,
-    timeout: httpx.Timeout | None = None,
-    auth: httpx.Auth | None = None,
-) -> httpx.AsyncClient:
-    """MCP SDK ``httpx_client_factory`` for credentialed remote MCP transports."""
-
-    return outbound_http_client(
-        timeout=timeout or httpx.Timeout(DEFAULT_TIMEOUT),
-        https_only=True,
-        follow_redirects=True,  # the MCP SDK default
-        same_host_redirects=True,
-        headers=headers,
-        auth=auth,
-    )
-
-
-def credentialed_mcp_options(credentialed: bool) -> dict[str, Any]:
-    """``streamablehttp_client``/``sse_client`` kwargs for a credentialed connection."""
-
-    return {"httpx_client_factory": mcp_http_client_factory} if credentialed else {}
-
-
 def outbound_sync_http_client(*, timeout: float | httpx.Timeout = DEFAULT_TIMEOUT) -> httpx.Client:
     """Sync twin for SDKs that need one (model clients): same trust store and proxies."""
 
@@ -134,8 +111,6 @@ def outbound_sync_http_client(*, timeout: float | httpx.Timeout = DEFAULT_TIMEOU
 
 __all__ = [
     "DEFAULT_TIMEOUT",
-    "credentialed_mcp_options",
-    "mcp_http_client_factory",
     "outbound_http_client",
     "outbound_sync_http_client",
 ]

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -32,17 +31,11 @@ async def test_build_mcp_tools_reuses_cached_server_tools(monkeypatch) -> None:
     await mcp_cache.clear_mcp_tool_cache()
     calls: list[dict[str, Any]] = []
 
-    class FakeMCPClient:
-        def __init__(self, servers: dict[str, Any], **kwargs: Any) -> None:
-            calls.append({"servers": servers, "kwargs": kwargs})
+    async def load(config: dict[str, Any], inject: Any, request_timeout: float) -> list[Any]:
+        calls.append({"config": config, "inject": inject})
+        return [_tool("echo")]
 
-        async def get_tools(self):
-            return [_tool("echo")]
-
-    monkeypatch.setattr(
-        "langchain_mcp_adapters.client.MultiServerMCPClient",
-        FakeMCPClient,
-    )
+    monkeypatch.setattr("app.agent_runtime.mcp_tool_loader.load_server_tools", load)
 
     configs = [
         {
@@ -300,28 +293,30 @@ async def test_mcp_app_binding_is_minted_from_actual_toolnode_call() -> None:
     }
 
 
-@pytest.mark.asyncio
-async def test_result_meta_interceptor_carries_bounded_meta_in_adapter_artifact() -> None:
-    from mcp.types import CallToolResult, TextContent
+def test_result_meta_travels_in_the_envelope_mcp_cache_unwraps() -> None:
+    from mcp.types import TextContent
 
-    from app.agent_runtime.mcp_app_runtime import ResultMetaInterceptor
     from app.agent_runtime.mcp_cache import _MCP_RESULT_ENVELOPE
+    from app.mcp import sdk
 
-    async def _handler(_request: Any) -> CallToolResult:
-        return CallToolResult(
-            content=[TextContent(type="text", text="sunny")],
-            structuredContent={"temperature": 72},
-            _meta={"viewUUID": "view-1"},
-        )
+    result = sdk.CallResult(
+        content=[TextContent(type="text", text="sunny")],
+        structured_content={"temperature": 72},
+        meta={"viewUUID": "view-1"},
+        is_error=False,
+    )
 
-    result = await ResultMetaInterceptor()(SimpleNamespace(), _handler)
-
-    assert result.structuredContent == {
-        _MCP_RESULT_ENVELOPE: {
-            "structured_content": {"temperature": 72},
-            "result_meta": {"viewUUID": "view-1"},
+    assert sdk._artifact(result) == {
+        "structured_content": {
+            _MCP_RESULT_ENVELOPE: {
+                "structured_content": {"temperature": 72},
+                "result_meta": {"viewUUID": "view-1"},
+            }
         }
     }
+    assert sdk._artifact(
+        sdk.CallResult(content=[], structured_content={"t": 1}, meta=None, is_error=False)
+    ) == {"structured_content": {"t": 1}}
 
 
 @pytest.mark.asyncio
@@ -337,17 +332,10 @@ async def test_build_mcp_tools_uses_live_apps_metadata_and_hides_app_only_tool(
     app_only = _tool("refresh_weather")
     app_only.metadata = {"_meta": {"ui": {"visibility": ["app"]}}}
 
-    class FakeMCPClient:
-        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-            pass
+    async def load(*_args: Any) -> list[StructuredTool]:
+        return [visible, app_only]
 
-        async def get_tools(self) -> list[StructuredTool]:
-            return [visible, app_only]
-
-    monkeypatch.setattr(
-        "langchain_mcp_adapters.client.MultiServerMCPClient",
-        FakeMCPClient,
-    )
+    monkeypatch.setattr("app.agent_runtime.mcp_tool_loader.load_server_tools", load)
     ids = [str(uuid.uuid4()) for _ in range(6)]
     base = {
         "definition_key": "mcp",

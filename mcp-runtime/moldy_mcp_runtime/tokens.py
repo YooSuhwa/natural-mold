@@ -7,12 +7,18 @@ pin the same issuer, audience, claims and five-minute ceiling.
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import uuid
 from dataclasses import dataclass
 from typing import Any, Final
 
 import jwt
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 ISSUER: Final = "moldy-backend"
 AUDIENCE: Final = "moldy-mcp-runtime"
@@ -46,6 +52,8 @@ class RunClaims:
     org_id: str
     server: str
     token_id: str
+    # Relay tokens only: the sealed upstream (``open_upstream``).
+    upstream: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -95,4 +103,33 @@ def verify(token: str, *, server: str, key: str | None = None) -> RunClaims:
         org_id=str(claims["org_id"]),
         server=str(claims["server"]),
         token_id=str(claims["jti"]),
+        upstream=str(claims["upstream"]) if isinstance(claims.get("upstream"), str) else None,
     )
+
+
+# --- sealed upstream (relay tokens) --------------------------------------------------
+# The backend seals the upstream server's URL and headers (credentials included) so they
+# are never readable in the token: AES-256-GCM, a key derived from the shared secret
+# (HKDF-SHA256, its own ``info``), the token id as associated data. Same scheme as
+# ``app.mcp_runtime.tokens`` in the backend.
+_RELAY_INFO: Final = b"moldy-mcp-relay-v1"
+_NONCE_BYTES: Final = 12
+
+
+def _relay_key(key: str | None) -> bytes:
+    return HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=_RELAY_INFO).derive(
+        (key or secret()).encode()
+    )
+
+
+def open_upstream(blob: str, token_id: str, key: str | None = None) -> dict[str, Any]:
+    try:
+        raw = base64.urlsafe_b64decode(blob + "=" * (-len(blob) % 4))
+        nonce, sealed = raw[:_NONCE_BYTES], raw[_NONCE_BYTES:]
+        opened = AESGCM(_relay_key(key)).decrypt(nonce, sealed, token_id.encode())
+        value = json.loads(opened)
+    except (ValueError, InvalidTag) as exc:
+        raise TokenError("invalid upstream") from exc
+    if not isinstance(value, dict):
+        raise TokenError("invalid upstream")
+    return value

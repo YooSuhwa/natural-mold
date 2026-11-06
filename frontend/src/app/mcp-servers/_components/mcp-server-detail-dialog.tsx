@@ -18,9 +18,11 @@ import { CredentialModeControl } from '@/components/readiness/credential-mode-co
 import { useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { McpHealthSection } from './mcp-health-section'
 import { McpToolTable } from './mcp-tool-table'
+import type { McpToolReviewDecision } from '@/lib/types/mcp'
 import {
   useDeleteMcpServer,
   useDiscoverMcpTools,
+  useReviewMcpTool,
   useMcpServer,
   useTestMcpServer,
   useUpdateMcpServer,
@@ -45,6 +47,7 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
   const remove = useDeleteMcpServer()
   const test = useTestMcpServer()
   const discover = useDiscoverMcpTools()
+  const review = useReviewMcpTool(serverId ?? '')
   const [confirming, setConfirming] = useState(false)
   const errorMessage = useApiErrorMessage()
   const rows = useMemo(() => (server ? [server] : []), [server])
@@ -84,6 +87,20 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
       }
     } catch (e) {
       toast.error(errorMessage(e, e instanceof Error ? e.message : t('toast.discoveryFailed')))
+    }
+  }
+
+  async function handleReview(
+    toolId: string,
+    decision: McpToolReviewDecision,
+    fingerprint: string,
+  ) {
+    try {
+      await review.mutateAsync({ toolId, decision, fingerprint })
+      toast.success(decision === 'approve' ? t('toast.toolApproved') : t('toast.toolRejected'))
+    } catch (e) {
+      // 409: the server changed the tool again; the refreshed row shows the newer version.
+      toast.error(errorMessage(e, t('toast.reviewFailed')))
     }
   }
 
@@ -204,7 +221,11 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {t('importedTools', { count: server.tools.length })}
               </h3>
-              <McpToolTable tools={server.tools} />
+              <McpToolTable
+                tools={server.tools}
+                onReview={canEdit ? handleReview : undefined}
+                reviewingToolId={review.isPending ? (review.variables?.toolId ?? null) : null}
+              />
             </div>
           </DialogShell.Body>
           <DialogShell.Footer>

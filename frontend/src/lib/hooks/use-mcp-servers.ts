@@ -10,6 +10,7 @@ import type {
   McpProbeRequest,
   McpServerCreateRequest,
   McpServerUpdateRequest,
+  McpToolReviewDecision,
 } from '@/lib/types/mcp'
 
 export function useMcpServers() {
@@ -74,6 +75,21 @@ export function useDiscoverMcpTools() {
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: mcpServerQueryKeys.all })
       qc.invalidateQueries({ queryKey: mcpServerQueryKeys.detail(id) })
+    },
+  })
+}
+
+export function useReviewMcpTool(serverId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { toolId: string; decision: McpToolReviewDecision; fingerprint: string }) =>
+      mcpApi.reviewTool(serverId, input.toolId, {
+        decision: input.decision,
+        fingerprint: input.fingerprint,
+      }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: mcpServerQueryKeys.detail(serverId) })
+      qc.invalidateQueries({ queryKey: mcpServerQueryKeys.allTools })
     },
   })
 }

@@ -62,7 +62,13 @@ def test_revision_chain_and_kinds_match_the_model() -> None:
         "h02_notifications",
         "h03_audit_tenant_index",
     )
-    assert module._KINDS == NOTIFICATION_KINDS
+    # Later migrations add kinds on top of h02's list (i16: mcp_tool.review_needed).
+    spec = importlib.util.spec_from_file_location("i16_test", VERSIONS / "i16_mcp_tool_review.py")
+    assert spec is not None and spec.loader is not None
+    i16 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(i16)
+    assert i16._KINDS_BEFORE == module._KINDS
+    assert (*module._KINDS, i16._NEW_KIND) == NOTIFICATION_KINDS
 
 
 def test_kinds_are_checked_and_company_rows_have_no_org(lane) -> None:

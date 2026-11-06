@@ -50,7 +50,7 @@ class FakeServer:
 
         return StructuredTool.from_function(coroutine=call, name=name, description=name)
 
-    async def discover(self, _key: str, _config: dict, _interceptors: list) -> list[BaseTool]:
+    async def discover(self, _key: str, _config: dict, _inject: dict) -> list[BaseTool]:
         self.discoveries += 1
         async with self._session():
             if self.delay:
@@ -127,11 +127,11 @@ async def test_each_selected_server_is_discovered_exactly_once() -> None:
     configs = [_config("search", "https://mcp.test/a"), _config("search2", "https://mcp.test/b")]
     calls: list[str] = []
 
-    async def discover(key: str, config: dict, interceptors: list) -> list[BaseTool]:
+    async def discover(key: str, config: dict, inject: dict) -> list[BaseTool]:
         calls.append(config["url"])
         names = ("search",) if config["url"].endswith("/a") else ("search2",)
         server = FakeServer(names)
-        return await server.discover(key, config, interceptors)
+        return await server.discover(key, config, inject)
 
     prepared = await prepare_mcp_tools(
         configs, per_server_timeout=1.0, total_timeout=2.0, discover=discover

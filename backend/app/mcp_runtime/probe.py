@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import Final
 
 from app.config import settings
+from app.mcp import sdk
 from app.mcp_runtime import tokens
 from app.outbound.client import outbound_http_client
 
@@ -55,20 +55,13 @@ async def check_runtime() -> RuntimeHealth:
 
 
 async def _whoami(url: str, token: str) -> str | None:
-    from mcp import ClientSession
-    from mcp.client.streamable_http import streamablehttp_client
-
-    async with (
-        streamablehttp_client(
-            url,
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=timedelta(seconds=_TIMEOUT),
-        ) as (read, write, _),
-        ClientSession(read, write) as session,
-    ):
-        await session.initialize()
-        result = await session.call_tool("whoami", {})
-    content = result.structuredContent or {}
+    result = await sdk.call_tool(
+        sdk.runtime_transport(url, {"Authorization": f"Bearer {token}"}),
+        "whoami",
+        {},
+        request_timeout=_TIMEOUT,
+    )
+    content = result.structured_content or {}
     # FastMCP wraps a non-object return in {"result": ...}; whoami returns an object.
     value = content.get("run_id") if isinstance(content, dict) else None
     return str(value) if value else None

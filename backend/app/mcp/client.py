@@ -2,11 +2,8 @@
 
 Three transports supported:
 
-* ``streamable_http`` — uses ``mcp.client.streamable_http.streamablehttp_client``
-* ``sse`` — same path as ``streamable_http`` (the MCP SDK exposes both via the
-  same client; the registry entry decides which URL shape is sent)
-* ``stdio`` — launches a local subprocess using
-  ``mcp.client.stdio.stdio_client`` with ``command`` / ``args`` / ``env_vars``
+* ``streamable_http`` and ``sse`` — over the network (``app.mcp.sdk``)
+* ``stdio`` — launches a local subprocess with ``command`` / ``args`` / ``env_vars``
   pulled from the :class:`McpServer` row
 
 Authentication tokens injected into headers / env_vars come from the
@@ -26,9 +23,9 @@ from typing import Any
 from app.config import settings
 from app.credentials.interpolation import resolve_deep
 from app.hooks import HookContext, HookResult, hooks
+from app.mcp import sdk
 from app.mcp.apps import normalize_tool_ui_meta
 from app.mcp.domain import McpServerInfo, McpToolDescriptor
-from app.outbound.client import credentialed_mcp_options
 
 MOLDY_CREDENTIAL_HEADER = "X-Moldy-Credential"
 
@@ -155,59 +152,21 @@ async def connect_and_list(
         return result
 
     merged_headers = build_headers(headers, credentials)
-
     try:
-        # Imported lazily so the test suite can monkey-patch the symbols on this
-        # module without forcing the heavy SDK import at collection time.
-        from mcp.client.session import ClientSession
-        from mcp.client.streamable_http import streamablehttp_client
-    except ImportError as exc:  # pragma: no cover — runtime dep present in pyproject
-        result = {
-            "success": False,
-            "server_info": {},
-            "tools": [],
-            "error": f"mcp client SDK unavailable: {exc}",
-        }
-        if hook_ctx is not None:
-            await hooks.run_post(
-                hook_ctx,
-                HookResult(duration_ms=int((time.monotonic() - started) * 1000)),
-            )
-        return result
-
-    try:
-        async with (
-            streamablehttp_client(
+        server, tools = await sdk.discover(
+            # Both network transports are probed over Streamable HTTP, as before the SDK
+            # move; the runtime loaders connect the same way.
+            sdk.http_transport(
+                "streamable_http",
                 url,
-                headers=merged_headers or None,
-                **credentialed_mcp_options(credentials is not None),
-            ) as (read, write, _),
-            ClientSession(read, write) as session,
-        ):
-            init_result = await session.initialize()
-            tools_result = await session.list_tools()
-
-            info = McpServerInfo()
-            if init_result.serverInfo is not None:
-                info = McpServerInfo(
-                    name=init_result.serverInfo.name,
-                    version=init_result.serverInfo.version,
-                )
-            descriptors = [
-                McpToolDescriptor(
-                    name=t.name,
-                    description=t.description or "",
-                    input_schema=dict(t.inputSchema or {}),
-                    metadata=normalize_tool_ui_meta(getattr(t, "meta", None)) or {},
-                )
-                for t in tools_result.tools
-            ]
-            result = {
-                "success": True,
-                "server_info": asdict(info),
-                "tools": [asdict(d) for d in descriptors],
-                "error": None,
-            }
+                merged_headers or None,
+                credentialed=credentials is not None,
+                # A probe lists tools; it calls none.
+                scope=sdk.GatewayScope(actor_id=user_id, tenant_id=tenant_id),
+            ),
+            request_timeout=_timeout_seconds(),
+        )
+        result = _probe_result(server, tools)
     except Exception as exc:  # noqa: BLE001 — surface as soft error to the UI
         if hook_ctx is not None:
             await hooks.run_failure(hook_ctx, exc)
@@ -229,6 +188,30 @@ async def connect_and_list(
     return result
 
 
+def _timeout_seconds() -> float:
+    return float(max(int(getattr(settings, "mcp_connection_timeout", 10)), 1))
+
+
+def _probe_result(server: sdk.ServerInfo, tools: list[sdk.ToolDefinition]) -> dict[str, Any]:
+    info = McpServerInfo(name=server.name, version=server.version)
+    descriptors = [
+        McpToolDescriptor(
+            name=t.name,
+            description=t.description,
+            input_schema=dict(t.input_schema),
+            metadata=normalize_tool_ui_meta(t.meta) or {},
+            annotations=dict(t.annotations),
+        )
+        for t in tools
+    ]
+    return {
+        "success": True,
+        "server_info": asdict(info),
+        "tools": [asdict(d) for d in descriptors],
+        "error": None,
+    }
+
+
 async def _connect_stdio(
     *,
     command: str | None,
@@ -236,12 +219,7 @@ async def _connect_stdio(
     env_vars: dict[str, Any] | None,
     credentials: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Run an MCP probe over a local stdio child process.
-
-    Wraps the SDK ``stdio_client`` in :func:`asyncio.wait_for` so a stuck
-    server (e.g. waiting on missing env vars) can't hang the request handler.
-    Timeout is taken from ``settings.mcp_connection_timeout``.
-    """
+    """Run an MCP probe over a local stdio child process (bounded by the connect timeout)."""
 
     if not command:
         return {
@@ -251,67 +229,23 @@ async def _connect_stdio(
             "error": "stdio transport requires command",
         }
 
-    try:
-        # Lazy import so the heavy SDK isn't pulled in at module load time
-        # (matches the streamable_http branch). The same path lets tests
-        # monkeypatch the symbol on this module.
-        from mcp.client.session import ClientSession
-        from mcp.client.stdio import StdioServerParameters, stdio_client
-    except ImportError as exc:  # pragma: no cover — runtime dep present
-        return {
-            "success": False,
-            "server_info": {},
-            "tools": [],
-            "error": f"mcp client SDK unavailable: {exc}",
-        }
-
     resolved_env = build_env_vars(env_vars, credentials)
-    server_params = StdioServerParameters(
-        command=command,
-        args=[str(a) for a in (args or [])],
-        env=resolved_env or None,
-    )
-
-    timeout_s = max(int(getattr(settings, "mcp_connection_timeout", 10)), 1)
-
-    async def _run() -> dict[str, Any]:
-        async with (
-            stdio_client(server_params) as (read, write),
-            ClientSession(read, write) as session,
-        ):
-            init_result = await session.initialize()
-            tools_result = await session.list_tools()
-
-            info = McpServerInfo()
-            if init_result.serverInfo is not None:
-                info = McpServerInfo(
-                    name=init_result.serverInfo.name,
-                    version=init_result.serverInfo.version,
-                )
-            descriptors = [
-                McpToolDescriptor(
-                    name=t.name,
-                    description=t.description or "",
-                    input_schema=dict(t.inputSchema or {}),
-                    metadata=normalize_tool_ui_meta(getattr(t, "meta", None)) or {},
-                )
-                for t in tools_result.tools
-            ]
-            return {
-                "success": True,
-                "server_info": asdict(info),
-                "tools": [asdict(d) for d in descriptors],
-                "error": None,
-            }
-
+    timeout_s = _timeout_seconds()
     try:
-        return await asyncio.wait_for(_run(), timeout=timeout_s)
+        server, tools = await asyncio.wait_for(
+            sdk.discover(
+                sdk.stdio_transport(command, [str(a) for a in (args or [])], resolved_env),
+                request_timeout=timeout_s,
+            ),
+            timeout=timeout_s,
+        )
+        return _probe_result(server, tools)
     except TimeoutError:
         return {
             "success": False,
             "server_info": {},
             "tools": [],
-            "error": f"stdio probe timed out after {timeout_s}s",
+            "error": f"stdio probe timed out after {int(timeout_s)}s",
         }
     except Exception as exc:  # noqa: BLE001 — soft error to UI
         return {

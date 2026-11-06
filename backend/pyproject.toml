@@ -31,8 +31,10 @@ dependencies = [
     "langchain-google-genai>=4.3.7,<5.0",
     # LangGraph persistence
     "langgraph-checkpoint-postgres>=3.0,<4.0",
-    # MCP
-    "mcp",
+    # MCP (decision D12): FastMCP 4 through langchain's own MCP adapter, the same FastMCP
+    # minor version as mcp-runtime/.
+    "mcp>=2.3,<3",
+    "fastmcp==4.1.5",
     # HTTP client (custom tool calls, MCP)
     "httpx>=0.27",
     # Builtin tools
@@ -52,7 +54,6 @@ dependencies = [
     "python-frontmatter>=1.1.0",
     "pillow>=12.2.0",
     "deepagents==0.7.32",
-    "langchain-mcp-adapters>=0.2.2,<0.3.0",
     "psycopg-binary>=3.3.3",
     "truststore>=0.10.4",
     # Rate limiting (public share endpoints)

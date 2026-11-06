@@ -269,6 +269,7 @@ trigger_executor           → 스케줄 트리거 (invoke 모드, ask_user/HiTL
 ```
 
 - 도구 타입: `builtin:*` (web_search, web_scraper, current_datetime), `registry`(Tool 모델의 definition_key 기반), `mcp`(AgentMcpToolLink)
+- MCP 클라이언트: MCP SDK(mcp 2.x, FastMCP 4)는 **`app/mcp/sdk.py`에서만** import한다(D12, `tests/test_mcp_sdk_boundary.py`). `MCP_GATEWAY_ENABLED`이면 외부 MCP 연결은 전부 mcp-runtime `/relay`로 가고(D10, `app/mcp/gateway.py`), 새로 발견되거나 바뀐 도구는 서버 관리자 승인 전까지 에이전트에 보이지 않는다(D11, `app/mcp/review.py`). 호출 판정은 `mcp.tool_call` 감사로 남는다(`app/mcp/decisions.py`).
 - Skill 시스템: 선택된 skill만 `/runtime/<thread_id>/.../skills/` 가상 경로에 노출한다. LLM은 `read_file`로 `SKILL.md`를 먼저 읽고 지시를 따른다.
 - Skill subprocess 실행: **`execute_in_skill` 도구**는 `skill_executor.py`에 있으며 Python 스크립트 allowlist, timeout, output dir, credential env injection, redaction 계약을 사용한다.
 - HiTL 기본 인터럽트: `execute_in_skill`처럼 위험 메타데이터가 있는 도구는 별도 미들웨어 설정 없이 **기본 `interrupt_on` 정책**이 붙는다 (`runtime_component_builder._default_interrupt_on_from_tools`). 즉 skill을 붙인 에이전트는 도구 실행 전 승인 카드에서 멈춘다 — HiTL을 켜려고 `middleware_configs`를 직접 짤 필요 없다 (명시 `human_in_the_loop` 설정은 정책 override일 뿐). 트리거 모드에서만 HiTL이 꺼진다.

@@ -1,4 +1,7 @@
-"""MCP Apps metadata/result bridging for runtime MCP tools."""
+"""MCP Apps metadata/result bridging for runtime MCP tools.
+
+Result ``_meta`` reaches ``mcp_cache`` in the ``app.mcp.sdk`` result envelope.
+"""
 
 from __future__ import annotations
 
@@ -8,28 +11,6 @@ from typing import Any
 from app.authz.org_context import OrgContext
 from app.mcp.apps_binding_store import record_runtime_binding
 from app.mcp.domain import McpAppRuntimeContext
-
-
-class ResultMetaInterceptor:
-    """Carry result metadata through the adapter's structured artifact seam."""
-
-    async def __call__(self, request: Any, handler: Any) -> Any:
-        result = await handler(request)
-        result_meta = getattr(result, "meta", None)
-        if result_meta is None or not hasattr(result, "model_copy"):
-            return result
-        from app.agent_runtime.mcp_cache import _MCP_RESULT_ENVELOPE
-
-        return result.model_copy(
-            update={
-                "structuredContent": {
-                    _MCP_RESULT_ENVELOPE: {
-                        "structured_content": getattr(result, "structuredContent", None),
-                        "result_meta": result_meta,
-                    }
-                }
-            }
-        )
 
 
 def mcp_app_context(
@@ -85,4 +66,4 @@ async def record_mcp_app_binding(
     )
 
 
-__all__ = ["ResultMetaInterceptor", "mcp_app_context", "record_mcp_app_binding"]
+__all__ = ["mcp_app_context", "record_mcp_app_binding"]

@@ -32,6 +32,21 @@ export interface McpServer {
   updated_at: string
 }
 
+/** A tool definition waiting for a server manager's review (backend app/mcp/review.py). */
+export interface McpToolPendingVersion {
+  description: string
+  input_schema: Record<string, unknown>
+  annotations: Record<string, unknown>
+  metadata: Record<string, unknown>
+  /** The version the manager reviews; sent back so a newer one is not approved unseen. */
+  fingerprint: string
+}
+
+/** D11: `pending` and `rejected` tools are hidden from agents. */
+export type McpToolReviewState = 'pending' | 'approved' | 'rejected'
+
+export type McpToolReviewDecision = 'approve' | 'reject'
+
 export interface McpTool {
   id: string
   server_id: string
@@ -39,6 +54,10 @@ export interface McpTool {
   description: string | null
   input_schema: Record<string, unknown>
   enabled: boolean
+  review_state: McpToolReviewState
+  /** Set on a new tool, or on an approved tool whose server changed it. */
+  pending_version: McpToolPendingVersion | null
+  reviewed_at: string | null
   // S17 backend addition — null until first discovery run, refreshed each
   // probe so we can flag stale (unseen) tools without deleting their row.
   last_seen_at: string | null

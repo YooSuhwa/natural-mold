@@ -58,3 +58,15 @@ describe('notificationText grant.received', () => {
     }
   })
 })
+
+describe('notificationText mcp_tool.review_needed', () => {
+  it('names the server whose tools wait for review', () => {
+    const note = grant({
+      kind: 'mcp_tool.review_needed',
+      target: { type: 'mcp_server', id: 's-1', name: '사내 메일', accessible: true },
+      actor: null,
+      payload: { tool_count: 2 },
+    })
+    expect(notificationText(note, t)).toBe('사내 메일에 검토할 도구가 있어요')
+  })
+})

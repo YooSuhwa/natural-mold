@@ -89,7 +89,7 @@ class _HangingServer(kit.FakeMcpServer):
         super().__init__()
         self.started = asyncio.Event()
 
-    async def discover(self, _key: str, _config: dict, _interceptors: list) -> list[BaseTool]:
+    async def discover(self, _key: str, _config: dict, _inject: dict) -> list[BaseTool]:
         self.discoveries += 1
         self.started.set()
         await asyncio.sleep(60)

@@ -38,7 +38,7 @@ docker compose ps
 | `authz-bootstrap` | 1회 | `python -m app.authz.cli bootstrap`으로 store와 모델을 준비하고, store ID와 model ID를 `moldy_runtime` 볼륨에 고정 |
 | `backend` | 상시 | FastAPI(uvicorn). `GET /api/health`로 상태 확인 |
 | `worker` | 상시 | 백그라운드 작업 실행기(`python -m app.jobs.worker`). 문서 색인처럼 오래 걸리는 작업을 대기열에서 꺼내 실행합니다 |
-| `mcp-runtime` | 상시 | Moldy가 정의하는 MCP 서버를 돌리는 공용 런타임(`mcp-runtime/`). 백엔드가 서명한 실행 토큰이 있어야 호출됩니다. 호스트 포트 없음 |
+| `mcp-runtime` | 상시 | MCP 게이트웨이이자 Moldy가 정의하는 MCP 서버의 공용 런타임(`mcp-runtime/`). 외부 MCP 서버 호출은 모두 이 서비스의 relay를 거칩니다. 백엔드가 서명한 실행 토큰이 있어야 호출됩니다. 호스트 포트 없음. 아래 "MCP 게이트웨이와 도구 검토" 참고 |
 | `s3` | 선택 | `--profile s3`로만 뜨는 S3 호환 저장소(SeaweedFS). 아래 "설치 프로필과 시스템 구성" 참고 |
 | `frontend` | 상시 | Next.js |
 
@@ -113,6 +113,25 @@ STORAGE_BACKEND=s3 docker compose --profile s3 up -d    # 함께 든 SeaweedFS �
 회사 저장소(Ceph RGW, MinIO, 클라우드 S3)를 쓰려면 `STORAGE_S3_ENDPOINT_URL`, `STORAGE_S3_BUCKET`,
 `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY`를 지정하고 `--profile s3`는 뺍니다.
 지금은 새 저장소 계층만 이 설정을 따르고, 기존 첨부와 산출물 파일은 아직 로컬에 둡니다(B3에서 전환).
+
+### MCP 게이트웨이와 도구 검토
+
+기본 설정(`MCP_GATEWAY_ENABLED=true`)에서는 백엔드가 외부 MCP 서버에 직접 접속하지 않습니다.
+에이전트의 도구 호출, MCP Apps 후속 호출과 자원 읽기, 도구 탐색, 연결 테스트, 상태 점검, MCP 서버의
+OAuth 메타데이터 조회가 모두 `mcp-runtime`의 relay(`/relay/...`)를 거칩니다.
+
+- 서버 주소와 인증 헤더는 요청마다 새로 서명한 relay 토큰 안에 암호화되어 전달됩니다. relay는 그 실행이
+  고른 도구만 호출하게 하고, 그 밖의 `tools/call`은 서버에 보내지 않고 거절합니다.
+- 리다이렉트는 따르지 않습니다. 자격 증명이 있는 연결은 https만 씁니다(`CREDENTIAL_HTTP_ALLOWED_HOSTS` 예외).
+  링크 로컬과 메타데이터 주소는 막습니다.
+- 서버 주소는 `mcp-runtime` 컨테이너 기준으로 해석됩니다. 호스트에서 띄운 MCP 서버는 `localhost`가 아니라
+  `host.docker.internal` 같은 주소로 등록해야 합니다.
+- `mcp-runtime`이 응답하지 않으면 MCP 호출은 실패합니다. 직접 접속으로 대신하지 않습니다. 끄려면
+  `MCP_GATEWAY_ENABLED=false docker compose up -d`입니다.
+- 새로 발견된 도구는 "검토 대기"로 들어가고, 서버 관리자가 서버 상세에서 승인해야 에이전트에 연결됩니다.
+  이미 승인된 도구의 설명이나 입력 형식, 주석이 바뀌면 바뀐 버전이 검토 대기로 표시됩니다. 그동안 에이전트는
+  이전에 승인한 버전만 봅니다. 승인과 거절은 감사 기록(`mcp_tool.review`)에 남습니다. MCP 도구 호출 하나하나의
+  판정도 감사 기록(`mcp.tool_call`)에 남습니다.
 
 ## 3. 접속 주소
 

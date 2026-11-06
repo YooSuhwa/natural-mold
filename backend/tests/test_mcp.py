@@ -483,94 +483,28 @@ def test_build_headers_skips_when_empty() -> None:
 
 
 @pytest.mark.asyncio
-async def test_connect_and_list_stdio_invokes_sdk(monkeypatch) -> None:
-    """``transport='stdio'`` must run through ``stdio_client`` instead of
-    returning the legacy "unsupported" error."""
+async def test_connect_and_list_stdio_invokes_sdk() -> None:
+    """``transport='stdio'`` launches the command and lists its tools over stdio."""
+    import sys
+    from pathlib import Path
 
-    captured: dict[str, Any] = {}
-
-    class _StubInit:
-        serverInfo = type("SI", (), {"name": "stub", "version": "0.0.1"})()
-
-    class _StubTool:
-        name = "ping"
-        description = "ping"
-        inputSchema = {"type": "object"}
-        meta = {
-            "ui": {
-                "resourceUri": "ui://ping/dashboard",
-                "visibility": ["model", "app"],
-                "unknown": "drop",
-            },
-            "Authorization": "drop",
-        }
-
-    class _StubTools:
-        tools = [_StubTool()]
-
-    class _StubSession:
-        def __init__(self, *_args, **_kwargs) -> None:
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_a) -> None:
-            return None
-
-        async def initialize(self):
-            return _StubInit()
-
-        async def list_tools(self):
-            return _StubTools()
-
-    class _StubStdioCtx:
-        def __init__(self, params) -> None:
-            captured["params"] = params
-
-        async def __aenter__(self):
-            return ("read", "write")
-
-        async def __aexit__(self, *_a) -> None:
-            return None
-
-    def _stub_stdio_client(params):
-        return _StubStdioCtx(params)
-
-    # Monkey-patch via the lazy import path used inside _connect_stdio.
-    import mcp.client.session as _session_mod
-    import mcp.client.stdio as _stdio_mod
-
-    monkeypatch.setattr(_stdio_mod, "stdio_client", _stub_stdio_client)
-    monkeypatch.setattr(_session_mod, "ClientSession", _StubSession)
-
+    script = Path(__file__).parent / "fixtures" / "mcp_stdio_ping_server.py"
     result = await mcp_client.connect_and_list(
         transport="stdio",
         url=None,
-        command="echo",
-        args=["hi"],
+        command=sys.executable,
+        args=[str(script)],
         env_vars={"FOO": "bar"},
     )
 
-    assert result["success"] is True
-    assert result["tools"] == [
-        {
-            "name": "ping",
-            "description": "ping",
-            "input_schema": {"type": "object"},
-            "metadata": {
-                "ui": {
-                    "resourceUri": "ui://ping/dashboard",
-                    "visibility": ["model", "app"],
-                }
-            },
-        }
-    ]
-    # StdioServerParameters carries the resolved command/args/env so the SDK
-    # spawns the right child process.
-    assert captured["params"].command == "echo"
-    assert captured["params"].args == ["hi"]
-    assert captured["params"].env == {"FOO": "bar"}
+    assert result["success"] is True, result["error"]
+    assert result["server_info"] == {"name": "stub", "version": "0.0.1"}
+    [tool] = result["tools"]
+    # The resolved env reached the child; tool _meta keeps only the known ui keys.
+    assert (tool["name"], tool["description"]) == ("ping", "ping bar")
+    assert tool["metadata"] == {
+        "ui": {"resourceUri": "ui://ping/dashboard", "visibility": ["model", "app"]}
+    }
 
 
 @pytest.mark.asyncio

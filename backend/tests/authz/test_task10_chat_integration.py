@@ -279,7 +279,7 @@ async def test_native_chat_four_tool_classes_dispatch_only_through_archived_leas
 class _SlowServer(kit.FakeMcpServer):
     open_sessions: int = 0
 
-    async def discover(self, key: str, config: dict, interceptors: list) -> list[BaseTool]:
+    async def discover(self, key: str, config: dict, inject: dict) -> list[BaseTool]:
         self.discoveries += 1
         self.open_sessions += 1
         try:

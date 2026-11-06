@@ -259,6 +259,11 @@ class Settings(AuthzSettings):
     # secret it shares with the backend for run tokens (never JWT_SECRET). Empty URL: off.
     mcp_runtime_url: str = ""
     mcp_runtime_token_secret: str = ""
+    # Decision D10: when on, every connection to an external MCP server (agent calls,
+    # MCP Apps, discovery, connection tests, the health poll) goes through the runtime's
+    # gateway relay, and nothing connects to those servers directly. A gateway outage then
+    # fails MCP calls; there is no direct fallback. Needs MCP_RUNTIME_URL and its secret.
+    mcp_gateway_enabled: bool = False
 
     # Install profile (plan §11, decision D49): which services this installation is expected
     # to run. The operator's system status checks the components against it; it changes no

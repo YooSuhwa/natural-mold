@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 APP_URI = "ui://weather/dashboard"
 APP_HTML = """<!doctype html><html><body>
@@ -40,14 +40,8 @@ document.querySelector('#refresh').addEventListener('click', async () => {
 </script></body></html>"""
 
 
-def build_server(*, port: int) -> FastMCP:
-    server = FastMCP(
-        "Moldy MCP Apps fixture",
-        host="127.0.0.1",
-        port=port,
-        stateless_http=True,
-        json_response=True,
-    )
+def build_server() -> FastMCP:
+    server = FastMCP("Moldy MCP Apps fixture")
 
     @server.tool(meta={"ui": {"resourceUri": APP_URI}})
     def weather(city: str = "Seoul") -> dict[str, object]:
@@ -77,7 +71,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
-    build_server(port=args.port).run(transport="streamable-http")
+    build_server().run(
+        transport="streamable-http",
+        host="127.0.0.1",
+        port=args.port,
+        stateless_http=True,
+        json_response=True,
+        show_banner=False,
+    )
 
 
 if __name__ == "__main__":

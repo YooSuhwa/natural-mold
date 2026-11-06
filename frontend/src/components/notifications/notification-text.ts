@@ -48,6 +48,8 @@ export function notificationText(item: NotificationView, t: Translate): string {
         : t('kinds.grantReceivedNoActor', values)
     case 'trigger.blocked':
       return t('kinds.triggerBlocked', values)
+    case 'mcp_tool.review_needed':
+      return t('kinds.mcpToolReviewNeeded', values)
     case 'connection.owner_needed':
       return t('kinds.ownerNeeded', values)
     case 'delegation.broken':

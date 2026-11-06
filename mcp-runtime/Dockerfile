@@ -11,6 +11,7 @@ RUN --mount=type=secret,id=extra_ca,required=false \
       && export PIP_CERT=/tmp/ca.pem; \
     fi \
  && pip install --no-cache-dir "fastmcp==4.1.5" "pyjwt==2.10.1" "uvicorn==0.38.0" \
+      "httpx2==2.16.0" "cryptography==50.0.2" \
  && rm -f /tmp/ca.pem
 
 RUN useradd --uid 1000 --create-home runtime

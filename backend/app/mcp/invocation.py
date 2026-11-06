@@ -1,37 +1,15 @@
-"""One-shot MCP tool invocation helpers."""
+"""One-shot MCP tool invocation helpers (MCP Apps follow-up calls and resource reads)."""
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from typing import Any
 
-from pydantic import AnyUrl
-
+from app.mcp import sdk
 from app.mcp.client import build_headers
-from app.outbound.client import credentialed_mcp_options
 
 
 def _jsonable(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, AnyUrl):
-        return str(value)
-    if isinstance(value, list):
-        return [_jsonable(v) for v in value]
-    if isinstance(value, tuple):
-        return [_jsonable(v) for v in value]
-    if isinstance(value, dict):
-        return {str(k): _jsonable(v) for k, v in value.items()}
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        try:
-            return _jsonable(model_dump(by_alias=True, exclude_none=True))
-        except TypeError:
-            return _jsonable(model_dump())
-    if hasattr(value, "__dict__"):
-        return _jsonable(vars(value))
-    return str(value)
+    return sdk.jsonable(value)
 
 
 async def call_mcp_tool_once(
@@ -49,24 +27,26 @@ async def call_mcp_tool_once(
         return {"success": False, "error": "url is required"}
 
     merged_headers = build_headers(headers, credentials)
-
     try:
-        async with _open_http_session(
-            transport, url, merged_headers, credentials is not None
-        ) as session:
-            await session.initialize()
-            result = await session.call_tool(tool_name, arguments=arguments)
-            structured = getattr(result, "structuredContent", None)
-            if structured is None:
-                structured = getattr(result, "structured_content", None)
-            return {
-                "success": True,
-                "content": _jsonable(getattr(result, "content", None)),
-                "structured_content": _jsonable(structured),
-                "meta": _jsonable(getattr(result, "meta", None)),
-            }
+        result = await sdk.call_tool(
+            sdk.http_transport(
+                transport,
+                url,
+                merged_headers or None,
+                credentialed=credentials is not None,
+                scope=sdk.GatewayScope(tools=(tool_name,)),
+            ),
+            tool_name,
+            arguments,
+        )
     except Exception as exc:  # noqa: BLE001
         return {"success": False, "error": str(exc)}
+    return {
+        "success": True,
+        "content": _jsonable(result.content),
+        "structured_content": _jsonable(result.structured_content),
+        "meta": _jsonable(result.meta),
+    }
 
 
 async def read_mcp_resource_once(
@@ -89,47 +69,19 @@ async def read_mcp_resource_once(
 
     merged_headers = build_headers(headers, credentials)
     try:
-        async with _open_http_session(
-            transport, url, merged_headers, credentials is not None
-        ) as session:
-            await session.initialize()
-            result = await session.read_resource(resource_uri)
-            return {
-                "success": True,
-                "contents": _jsonable(getattr(result, "contents", None)),
-            }
+        contents = await sdk.read_resource(
+            sdk.http_transport(
+                transport,
+                url,
+                merged_headers or None,
+                credentialed=credentials is not None,
+                scope=sdk.GatewayScope(resources=True),
+            ),
+            resource_uri,
+        )
     except Exception as exc:  # noqa: BLE001
         return {"success": False, "error": str(exc)}
-
-
-@asynccontextmanager
-async def _open_http_session(
-    transport: str,
-    url: str,
-    headers: dict[str, Any],
-    credentialed: bool = False,
-) -> AsyncIterator[Any]:
-    from mcp.client.session import ClientSession
-
-    options = credentialed_mcp_options(credentialed)  # 11.9: https only, same-host redirects
-
-    if transport == "sse":
-        from mcp.client.sse import sse_client
-
-        async with (
-            sse_client(url, headers=headers or None, **options) as (read, write),
-            ClientSession(read, write) as session,
-        ):
-            yield session
-        return
-
-    from mcp.client.streamable_http import streamablehttp_client
-
-    async with (
-        streamablehttp_client(url, headers=headers or None, **options) as (read, write, _),
-        ClientSession(read, write) as session,
-    ):
-        yield session
+    return {"success": True, "contents": _jsonable(contents)}
 
 
 __all__ = ["call_mcp_tool_once", "read_mcp_resource_once"]

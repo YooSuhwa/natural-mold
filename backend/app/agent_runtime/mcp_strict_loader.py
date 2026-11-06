@@ -22,16 +22,18 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
-from app.agent_runtime.mcp_app_runtime import ResultMetaInterceptor
+from app.agent_runtime import mcp_tool_loader
 from app.agent_runtime.mcp_tool_loader import (
-    _AuthInjectorInterceptor,
-    _McpPlan,
     _plan_mcp_servers,
     _wrap_selected_tool,
+    server_inject,
 )
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 
-DiscoverTools = Callable[[str, dict[str, Any], list[Any]], Awaitable[list[BaseTool]]]
+# (server key, server config, argument auth by tool name) -> adapted tools
+DiscoverTools = Callable[
+    [str, dict[str, Any], dict[str, dict[str, Any]]], Awaitable[list[BaseTool]]
+]
 
 
 class McpStrictLoadError(RuntimeError):
@@ -54,25 +56,15 @@ def opaque_server_id(server_key: str) -> str:
     return "srv_" + hashlib.sha256(server_key.encode()).hexdigest()[:16]
 
 
-def _server_interceptors(plan: _McpPlan, key: str) -> list[Any]:
-    auth = plan.server_tool_auth.get(key)
-    interceptors: list[Any] = [ResultMetaInterceptor()]
-    if auth:
-        interceptors.insert(0, _AuthInjectorInterceptor(dict(auth)))
-    return interceptors
-
-
 async def default_discover(
-    key: str, server_config: dict[str, Any], interceptors: list[Any]
+    key: str, server_config: dict[str, Any], inject: dict[str, dict[str, Any]]
 ) -> list[BaseTool]:
-    from langchain_mcp_adapters.client import MultiServerMCPClient
+    """One transient session lists the tools; each later call opens its own session."""
+    from app.config import settings
 
-    client = MultiServerMCPClient(
-        {key: server_config},  # type: ignore[arg-type]  # dict는 Connection TypedDict 호환
-        tool_interceptors=interceptors,  # type: ignore[arg-type]
+    return await mcp_tool_loader.load_server_tools(
+        server_config, inject, float(settings.mcp_connection_timeout)
     )
-    # ``get_tools`` opens one transient session, lists tools and closes it.
-    return await client.get_tools(server_name=key)
 
 
 def _disambiguate(loaded: list[StrictMcpTool]) -> None:
@@ -97,7 +89,7 @@ async def load_selected_mcp_tools_strict(
         server_auth = plan.server_tool_auth.get(key, {})
         auth_keys = {name for auth in server_auth.values() for name in auth}
         try:
-            server_tools = await discover(key, config, _server_interceptors(plan, key))
+            server_tools = await discover(key, config, server_inject(plan, key))
         except Exception as error:  # noqa: BLE001 - every failure aborts preparation
             raise McpStrictLoadError(f"discovery:{server_id}") from error
         found = {t.name: t for t in server_tools if t.name in plan.tool_filter[key]}

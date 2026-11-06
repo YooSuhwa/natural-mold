@@ -10775,6 +10775,70 @@
         ]
       }
     },
+    "/api/mcp-servers/{server_id}/tools/{tool_id}/review": {
+      "post": {
+        "description": "Approve or reject the tool version waiting for review (D11). Server managers only.",
+        "operationId": "review_server_tool_api_mcp_servers__server_id__tools__tool_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpToolReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpToolResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Server Tool",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
     "/api/me/active-org": {
       "post": {
         "operationId": "set_active_organization_api_me_active_org_post",
@@ -37807,6 +37871,40 @@
       "title": "McpToolBrief",
       "type": "object"
     },
+    "McpToolPendingVersion": {
+      "description": "A tool definition waiting for a server manager's review (app.mcp.review).",
+      "properties": {
+        "annotations": {
+          "additionalProperties": true,
+          "title": "Annotations",
+          "type": "object"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "fingerprint": {
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "input_schema": {
+          "additionalProperties": true,
+          "title": "Input Schema",
+          "type": "object"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "fingerprint"
+      ],
+      "title": "McpToolPendingVersion",
+      "type": "object"
+    },
     "McpToolResponse": {
       "properties": {
         "created_at": {
@@ -37856,6 +37954,38 @@
           "title": "Name",
           "type": "string"
         },
+        "pending_version": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/McpToolPendingVersion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "review_state": {
+          "default": "approved",
+          "enum": [
+            "pending",
+            "approved",
+            "rejected"
+          ],
+          "title": "Review State",
+          "type": "string"
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reviewed At"
+        },
         "server_id": {
           "format": "uuid",
           "title": "Server Id",
@@ -37875,6 +38005,30 @@
         "updated_at"
       ],
       "title": "McpToolResponse",
+      "type": "object"
+    },
+    "McpToolReviewRequest": {
+      "properties": {
+        "decision": {
+          "enum": [
+            "approve",
+            "reject"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "fingerprint": {
+          "maxLength": 64,
+          "minLength": 64,
+          "title": "Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision",
+        "fingerprint"
+      ],
+      "title": "McpToolReviewRequest",
       "type": "object"
     },
     "McpToolWithServerResponse": {

@@ -3523,6 +3523,9 @@
     },
     "detail": {
       "toast": {
+        "toolApproved": "Tool approved",
+        "toolRejected": "Tool change rejected",
+        "reviewFailed": "The review was not saved. Refresh the list and check again.",
         "connected": "Connected and found {count} tools",
         "connectionFailed": "Operation failed.",
         "testFailed": "Operation failed.",
@@ -3558,7 +3561,18 @@
       "disabled": "Inactive",
       "stale": "Stale",
       "lastSeen": "Last seen {date}",
-      "neverSeen": "Never Seen"
+      "neverSeen": "Never seen by a discovery probe",
+      "review": {
+        "pending": "Waiting for review",
+        "changed": "Change waiting for review",
+        "rejected": "Rejected",
+        "newHelp": "A newly discovered tool. Agents cannot see or attach it until it is approved.",
+        "changedHelp": "The server changed this tool. Until the change is approved, agents only see the description and input format approved before.",
+        "newDescription": "New description",
+        "approve": "Approve",
+        "reject": "Reject",
+        "managersOnly": "People who manage this server can review it."
+      }
     },
     "importDialog": {
       "title": "Import Dialog",
@@ -3589,6 +3603,7 @@
         "required": "Required",
         "probeFailed": "Operation failed.",
         "importFailedAfterSave": "Operation failed.",
+        "toolsAwaitReview": "{count} tools wait for review. Approve them on the server's detail to attach them to agents.",
         "added": "Added",
         "addFailed": "Operation failed."
       },
@@ -6471,6 +6486,7 @@
       "delegationBroken": "A connection of {target} broke ({reason})",
       "ownershipNew": "You are now the owner of {target}",
       "ownershipPrevious": "Ownership of {target} was transferred",
+      "mcpToolReviewNeeded": "Tools on {target} wait for your review",
       "generic": "You have a new notification"
     }
   },

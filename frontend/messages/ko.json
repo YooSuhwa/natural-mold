@@ -3523,6 +3523,9 @@
     },
     "detail": {
       "toast": {
+        "toolApproved": "도구를 승인했어요",
+        "toolRejected": "도구 변경을 거절했어요",
+        "reviewFailed": "검토를 저장하지 못했어요. 목록을 새로 고친 뒤 다시 확인해 주세요.",
         "connected": "연결되었습니다 ({count}개 도구)",
         "connectionFailed": "연결에 실패했습니다",
         "testFailed": "테스트에 실패했습니다",
@@ -3558,7 +3561,18 @@
       "disabled": "비활성",
       "stale": "오래됨",
       "lastSeen": "마지막 확인: {date}",
-      "neverSeen": "탐색 프로브에서 확인된 적이 없습니다"
+      "neverSeen": "탐색 프로브에서 확인된 적이 없습니다",
+      "review": {
+        "pending": "검토 대기",
+        "changed": "변경 검토 대기",
+        "rejected": "거절됨",
+        "newHelp": "새로 발견된 도구예요. 승인하기 전까지 에이전트에 보이지 않고 연결할 수도 없어요.",
+        "changedHelp": "서버가 이 도구를 바꿨어요. 승인하기 전까지 에이전트는 이전에 승인한 설명과 입력 형식만 봐요.",
+        "newDescription": "바뀐 설명",
+        "approve": "승인",
+        "reject": "거절",
+        "managersOnly": "서버를 관리하는 사람이 검토할 수 있어요."
+      }
     },
     "importDialog": {
       "title": "MCP 서버 불러오기",
@@ -3589,6 +3603,7 @@
         "required": "필수 항목을 먼저 입력하세요",
         "probeFailed": "프로브에 실패했습니다",
         "importFailedAfterSave": "서버는 추가됐지만 도구 가져오기에 실패했습니다. 상세 페이지에서 다시 시도하세요.",
+        "toolsAwaitReview": "도구 {count}개가 검토를 기다려요. 서버 상세에서 승인하면 에이전트에 연결할 수 있어요.",
         "added": "MCP 서버가 추가되었습니다",
         "addFailed": "서버 추가에 실패했습니다"
       },
@@ -6471,6 +6486,7 @@
       "delegationBroken": "{target}의 연결 하나가 끊겼어요 ({reason})",
       "ownershipNew": "{target}의 소유자가 되었어요",
       "ownershipPrevious": "{target}의 소유권이 이전됐어요",
+      "mcpToolReviewNeeded": "{target}에 검토할 도구가 있어요",
       "generic": "새 알림이 있어요"
     }
   },
