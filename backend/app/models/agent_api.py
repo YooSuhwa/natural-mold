@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import JSON, CheckConstraint, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -23,6 +23,9 @@ class AgentDeployment(RequiredOrgScope, Base):
         UniqueConstraint("agent_id", name="uq_agent_deployments_agent_id"),
         Index("ix_agent_deployments_user_id", "user_id"),
         Index("ix_agent_deployments_status", "status"),
+        CheckConstraint(
+            "approval_policy IN ('inbox', 'blocked')", name="ck_agent_deployments_approval_policy"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -38,6 +41,10 @@ class AgentDeployment(RequiredOrgScope, Base):
     allow_background: Mapped[bool] = mapped_column(default=False, nullable=False)
     rate_limit_per_minute: Mapped[int | None] = mapped_column(nullable=True)
     daily_token_limit: Mapped[int | None] = mapped_column(nullable=True)
+    # 17.3: a call needing approval is BLOCKED ("blocked") or waits in the inbox ("inbox").
+    approval_policy: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="blocked", server_default="blocked"
+    )
     created_at: Mapped[datetime] = mapped_column(default=utc_now_naive, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         default=utc_now_naive, onupdate=utc_now_naive, nullable=False

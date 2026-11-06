@@ -11,11 +11,13 @@ from sqlalchemy.orm import selectinload
 
 from app.agent_api import runtime_service
 from app.agent_api.dependencies import ApiKeyPrincipal, get_api_key_principal
+from app.agent_api.run_reads import get_run_for_public_id, run_response
 from app.agent_api.sse_adapter import (
     adapt_internal_stream,
     adapt_internal_stream_to_openai,
     format_openai_data_sse,
 )
+from app.approvals.api_runs import ApiAwaitingApproval
 from app.authz.agent_api_access import bind_agent_api_authz, deployable_agent_ids
 from app.authz.agent_api_scope import private_deployment_predicate
 from app.authz.policies import KEY, PUBLIC, authz_policy
@@ -279,32 +281,53 @@ async def get_thread(
     return runtime_service.thread_to_response(thread)
 
 
-@router.post("/runs/wait", response_model=AgentRunResponse)
-@authz_policy(KEY())
-async def run_wait(
+async def _run_wait_response(
+    *,
     request: AgentRunRequest,
-    db: AsyncSession = Depends(get_db),
-    principal: ApiKeyPrincipal = Depends(get_api_key_principal),
+    db: AsyncSession,
+    principal: ApiKeyPrincipal,
+    thread_id: str | None,
+    native: bool,
 ) -> AgentRunResponse:
+    """A blocking run. Only the native endpoints (``native``) may answer ``waiting`` for an
+    inbox deployment (17.3); the compatible ones have no way to read the outcome later."""
     deployment = await runtime_service.resolve_deployment_for_agent_id(
         db,
         principal,
         request.agent_id,
         required_scope="invoke",
     )
+    if thread_id is not None:
+        thread = await runtime_service.get_thread_for_public_id(
+            db,
+            principal=principal,
+            thread_id=thread_id,
+        )
+        if thread.deployment_id != deployment.id:
+            raise AppError(
+                code="AGENT_API_THREAD_AGENT_MISMATCH",
+                message="thread does not belong to this agent",
+                status=409,
+            )
+    else:
+        thread = None
     messages = runtime_service.validate_messages(request)
-    conversation = await runtime_service.create_api_conversation(
-        db,
-        deployment,
-        principal=principal,
-        title="API run",
+    conversation = (
+        thread.conversation
+        if thread is not None
+        else await runtime_service.create_api_conversation(
+            db,
+            deployment,
+            principal=principal,
+            title="API run",
+        )
     )
     cfg = await runtime_service.build_config_for_run(
         db,
         principal=principal,
         deployment=deployment,
         conversation=conversation,
-        external_user=request.user,
+        external_user=(thread.external_user if thread is not None else None) or request.user,
         required_scope="invoke",
     )
     run = await runtime_service.create_run_row(
@@ -312,7 +335,7 @@ async def run_wait(
         principal=principal,
         deployment=deployment,
         conversation_id=conversation.id,
-        thread_id=None,
+        thread_id=thread.id if thread is not None else None,
         mode="wait",
         input_payload={"messages": messages},
         metadata=request.metadata,
@@ -328,22 +351,25 @@ async def run_wait(
         public_run_id=run.public_id,
         config=cfg,
         messages=messages,
+        api_run_id=run.id,
+        approval=runtime_service.approval_mode(deployment, native_wait=native),
     )
+    action = "agent_api.thread_run_wait" if thread is not None else "agent_api.run_wait"
     try:
-        answer = await runtime_service.execute_owned_wait(owned_execution)
-        run = await runtime_service.mark_run_succeeded(
-            db,
-            run,
-            output={"answer": answer},
-        )
+        outcome = await runtime_service.execute_owned_wait(owned_execution)
+        if isinstance(outcome, ApiAwaitingApproval):
+            await db.refresh(run)  # ``waiting``: the resumed run settles it
+        else:
+            run = await runtime_service.mark_run_succeeded(db, run, output={"answer": outcome})
         await _record_agent_api_run_audit(
             db,
             principal=principal,
             deployment=deployment,
             request=request,
             run=run,
-            action="agent_api.run_wait",
+            action=action,
             outcome="success",
+            metadata={"awaiting_approval": True} if run.status == "waiting" else None,
         )
         await db.commit()
     except Exception as exc:
@@ -353,21 +379,46 @@ async def run_wait(
             deployment=deployment,
             request=request,
             run=run,
-            action="agent_api.run_wait",
+            action=action,
             outcome="failure",
             reason_code=(exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"),
             reason_message=getattr(exc, "message", str(exc)),
         )
         await db.commit()
         await _mark_wait_run_failed_and_raise(db, run, exc)
-    return AgentRunResponse(
-        id=run.public_id,
-        thread_id=None,
+    return await run_response(
+        db,
+        run,
         agent_id=deployment.public_id,
-        status=run.status,
-        output=run.output,
-        created_at=run.created_at,
-        finished_at=run.finished_at,
+        thread_id=thread.public_id if thread is not None else None,
+    )
+
+
+@router.post("/runs/wait", response_model=AgentRunResponse)
+@authz_policy(KEY())
+async def run_wait(
+    request: AgentRunRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: ApiKeyPrincipal = Depends(get_api_key_principal),
+) -> AgentRunResponse:
+    return await _run_wait_response(
+        request=request, db=db, principal=principal, thread_id=None, native=True
+    )
+
+
+@router.get("/runs/{run_id}", response_model=AgentRunResponse)
+@authz_policy(KEY())
+async def get_run(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+    principal: ApiKeyPrincipal = Depends(get_api_key_principal),
+) -> AgentRunResponse:
+    run = await get_run_for_public_id(db, principal=principal, run_id=run_id)
+    return await run_response(
+        db,
+        run,
+        agent_id=run.deployment_public_id_snapshot,
+        thread_id=run.thread.public_id if run.thread is not None else None,
     )
 
 
@@ -596,89 +647,8 @@ async def thread_run_wait(
     db: AsyncSession = Depends(get_db),
     principal: ApiKeyPrincipal = Depends(get_api_key_principal),
 ) -> AgentRunResponse:
-    deployment = await runtime_service.resolve_deployment_for_agent_id(
-        db,
-        principal,
-        request.agent_id,
-        required_scope="invoke",
-    )
-    thread = await runtime_service.get_thread_for_public_id(
-        db,
-        principal=principal,
-        thread_id=thread_id,
-    )
-    if thread.deployment_id != deployment.id:
-        raise AppError(
-            code="AGENT_API_THREAD_AGENT_MISMATCH",
-            message="thread does not belong to this agent",
-            status=409,
-        )
-    messages = runtime_service.validate_messages(request)
-    cfg = await runtime_service.build_config_for_run(
-        db,
-        principal=principal,
-        deployment=deployment,
-        conversation=thread.conversation,
-        external_user=thread.external_user or request.user,
-        required_scope="invoke",
-    )
-    run = await runtime_service.create_run_row(
-        db,
-        principal=principal,
-        deployment=deployment,
-        conversation_id=thread.conversation_id,
-        thread_id=thread.id,
-        mode="wait",
-        input_payload={"messages": messages},
-        metadata=request.metadata,
-    )
-    await db.refresh(run)
-    if run.conversation_run_id is None or run.conversation_id is None:
-        raise RuntimeError("accepted API run is missing durable ownership")
-    owned_execution = runtime_service.ApiOwnedExecution(
-        conversation_run_id=run.conversation_run_id,
-        conversation_id=run.conversation_id,
-        root_agent_id=deployment.agent_id,
-        context=principal.context,
-        public_run_id=run.public_id,
-        config=cfg,
-        messages=messages,
-    )
-    try:
-        answer = await runtime_service.execute_owned_wait(owned_execution)
-        run = await runtime_service.mark_run_succeeded(db, run, output={"answer": answer})
-        await _record_agent_api_run_audit(
-            db,
-            principal=principal,
-            deployment=deployment,
-            request=request,
-            run=run,
-            action="agent_api.thread_run_wait",
-            outcome="success",
-        )
-        await db.commit()
-    except Exception as exc:
-        await _record_agent_api_run_audit(
-            db,
-            principal=principal,
-            deployment=deployment,
-            request=request,
-            run=run,
-            action="agent_api.thread_run_wait",
-            outcome="failure",
-            reason_code=(exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"),
-            reason_message=getattr(exc, "message", str(exc)),
-        )
-        await db.commit()
-        await _mark_wait_run_failed_and_raise(db, run, exc)
-    return AgentRunResponse(
-        id=run.public_id,
-        thread_id=thread.public_id,
-        agent_id=deployment.public_id,
-        status=run.status,
-        output=run.output,
-        created_at=run.created_at,
-        finished_at=run.finished_at,
+    return await _run_wait_response(
+        request=request, db=db, principal=principal, thread_id=thread_id, native=True
     )
 
 
@@ -727,7 +697,13 @@ async def dify_chat_messages(
         return await run_stream(request, db, principal)
 
     if conversation_id:
-        run = await thread_run_wait(str(conversation_id), request, db, principal)
+        run = await _run_wait_response(
+            request=request,
+            db=db,
+            principal=principal,
+            thread_id=str(conversation_id),
+            native=False,
+        )
         thread_id = str(conversation_id)
     else:
         thread = await create_thread(
@@ -738,7 +714,9 @@ async def dify_chat_messages(
             db,
             principal,
         )
-        run = await thread_run_wait(thread.id, request, db, principal)
+        run = await _run_wait_response(
+            request=request, db=db, principal=principal, thread_id=thread.id, native=False
+        )
         thread_id = thread.id
     return {
         "answer": (run.output or {}).get("answer", ""),
@@ -767,7 +745,9 @@ async def dify_workflow_run(
     )
     if str(payload.get("response_mode") or "blocking") == "streaming":
         return await run_stream(request, db, principal)
-    run = await run_wait(request, db, principal)
+    run = await _run_wait_response(
+        request=request, db=db, principal=principal, thread_id=None, native=False
+    )
     return {
         "workflow_run_id": run.id,
         "task_id": run.id,
@@ -805,7 +785,9 @@ async def openai_chat_completions(
             principal=principal,
             model=model,
         )
-    run = await run_wait(request, db, principal)
+    run = await _run_wait_response(
+        request=request, db=db, principal=principal, thread_id=None, native=False
+    )
     answer = (run.output or {}).get("answer", "")
     return {
         "id": run.id,

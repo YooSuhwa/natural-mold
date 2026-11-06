@@ -55,6 +55,7 @@ async def _record_deployment_audit(
             "allow_background": row.allow_background,
             "rate_limit_per_minute": row.rate_limit_per_minute,
             "daily_token_limit": row.daily_token_limit,
+            "approval_policy": row.approval_policy,
             **(metadata or {}),
         },
     )

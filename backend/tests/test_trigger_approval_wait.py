@@ -180,3 +180,21 @@ async def test_a_blocked_schedule_never_waits(monkeypatch: pytest.MonkeyPatch) -
 
     _trigger, run, _conversation_run, approvals = await _rows(trigger_id)
     assert run.status == "success" and approvals == []
+
+
+@pytest.mark.asyncio
+async def test_a_request_retired_without_a_decision_ends_the_schedule_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing resumes a canceled request, so the run must not wait (and hold the schedule)."""
+    from app.approvals import inbox
+
+    trigger_id = await _paused_schedule_run(monkeypatch)
+    *_, [row] = await _rows(trigger_id)
+
+    async with TestSession() as db:
+        await inbox.close(db, row, "arguments_changed")
+
+    trigger, run, *_ = await _rows(trigger_id)
+    assert (run.status, run.reason_code) == ("failed", "arguments_changed")
+    assert trigger.failure_count == 1 and run.finished_at is not None

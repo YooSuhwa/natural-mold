@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.approvals import service
 from app.approvals.recording import INBOX_LINK
+from app.approvals.waiters import abandon_best_effort
 from app.authz.conversation_scope import load_private_conversation
 from app.authz.notifications import Target, notify
 from app.authz.org_context import OrgContext
@@ -88,6 +89,8 @@ async def close(db: AsyncSession, row: ApprovalRequest, reason: str) -> None:
         .execution_options(synchronize_session=False)
     )
     await db.commit()
+    # Nothing resumes: the schedule or API run waiting on it ends instead of waiting forever.
+    await abandon_best_effort(SessionTenant(row.tenant_id), [row.id])
 
 
 def _check_decisions(row: ApprovalRequest, decisions: Sequence[Mapping[str, Any]]) -> None:

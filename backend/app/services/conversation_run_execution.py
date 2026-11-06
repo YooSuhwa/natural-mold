@@ -18,7 +18,7 @@ from app.agent_runtime.run_metrics_types import TerminalRunState
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.stream_error_messages import public_stream_error_message
 from app.approvals.recording import record_interrupted_run_best_effort
-from app.approvals.triggers import settle_best_effort
+from app.approvals.waiters import settle_best_effort
 from app.authz.worker_conversation_scope import WorkerConversationTarget
 from app.dependencies import CurrentUser
 from app.services import conversation_stream_service as stream_service
@@ -299,8 +299,10 @@ async def _run_conversation(
             if final_status != "interrupted":
                 effective_status = await _finalize_run_status()
             if moldy_source == "resume":
-                # A scheduled run that waited for the inbox ends with its resume (17.3).
-                await settle_best_effort(run_id, effective_status, cfg.org_context)
+                # A schedule or API run that waited for the inbox ends with its resume (17.3).
+                await settle_best_effort(
+                    run_id, effective_status, cfg.org_context, cfg.secret_values
+                )
 
             if attachment_ids:
                 # M1 — stamp this send's uploads with the user message id the read

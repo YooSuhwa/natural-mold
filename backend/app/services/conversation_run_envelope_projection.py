@@ -33,6 +33,8 @@ def api_status_for_run(status: str) -> str:
         "canceling": "canceling",
         "completed": "succeeded",
         "canceled": "canceled",
+        # 17.3: paused for the deployment owner's inbox; the resumed run settles it.
+        "interrupted": "waiting",
     }.get(status, "failed")
 
 

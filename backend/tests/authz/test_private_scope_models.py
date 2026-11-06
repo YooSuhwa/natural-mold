@@ -18,6 +18,7 @@ _B08_ADDED_COLUMN_NULLABILITY = {
     "credentials": {"allowed_hosts": True},
     "agents": {"llm_credential_delegated_by": True},  # F-01 (m86)
     "agent_triggers": {"approval_policy": False},  # 순번 13 (i18, plan 17.3)
+    "agent_deployments": {"approval_policy": False},  # 순번 21 (i20, plan 17.3)
 }
 _B08_ADDED_COLUMNS = {name: set(columns) for name, columns in _B08_ADDED_COLUMN_NULLABILITY.items()}
 _B08_NULLABILITY_CHANGES = {

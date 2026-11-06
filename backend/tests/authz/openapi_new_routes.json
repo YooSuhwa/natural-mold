@@ -24921,6 +24921,48 @@
         ]
       }
     },
+    "/v1/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_v1_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "agent-runtime-api"
+        ]
+      }
+    },
     "/v1/threads": {
       "post": {
         "operationId": "create_thread_v1_threads_post",
@@ -26869,6 +26911,15 @@
           "title": "Allow Streaming",
           "type": "boolean"
         },
+        "approval_policy": {
+          "default": "blocked",
+          "enum": [
+            "inbox",
+            "blocked"
+          ],
+          "title": "Approval Policy",
+          "type": "string"
+        },
         "daily_token_limit": {
           "anyOf": [
             {
@@ -26919,6 +26970,14 @@
         "allow_streaming": {
           "title": "Allow Streaming",
           "type": "boolean"
+        },
+        "approval_policy": {
+          "enum": [
+            "inbox",
+            "blocked"
+          ],
+          "title": "Approval Policy",
+          "type": "string"
         },
         "created_at": {
           "format": "date-time",
@@ -26986,6 +27045,7 @@
         "allow_background",
         "rate_limit_per_minute",
         "daily_token_limit",
+        "approval_policy",
         "runtime_policy",
         "created_at",
         "updated_at"
@@ -27017,6 +27077,21 @@
             }
           ],
           "title": "Allow Streaming"
+        },
+        "approval_policy": {
+          "anyOf": [
+            {
+              "enum": [
+                "inbox",
+                "blocked"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Policy"
         },
         "daily_token_limit": {
           "anyOf": [
@@ -28035,6 +28110,30 @@
       "title": "AgentRestoreResponse",
       "type": "object"
     },
+    "AgentRunError": {
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "AgentRunError",
+      "type": "object"
+    },
     "AgentRunInput": {
       "properties": {
         "messages": {
@@ -28050,6 +28149,35 @@
         "messages"
       ],
       "title": "AgentRunInput",
+      "type": "object"
+    },
+    "AgentRunPendingApproval": {
+      "description": "A tool call the deployment owner must approve in Moldy before the run goes on.",
+      "properties": {
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tools",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "tools",
+        "expires_at"
+      ],
+      "title": "AgentRunPendingApproval",
       "type": "object"
     },
     "AgentRunRequest": {
@@ -28110,6 +28238,16 @@
           "title": "Created At",
           "type": "string"
         },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AgentRunError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "finished_at": {
           "anyOf": [
             {
@@ -28137,6 +28275,13 @@
             }
           ],
           "title": "Output"
+        },
+        "pending_approvals": {
+          "items": {
+            "$ref": "#/components/schemas/AgentRunPendingApproval"
+          },
+          "title": "Pending Approvals",
+          "type": "array"
         },
         "status": {
           "title": "Status",

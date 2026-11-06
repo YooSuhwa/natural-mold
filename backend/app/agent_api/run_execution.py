@@ -4,7 +4,6 @@ import uuid
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from dataclasses import dataclass
-from functools import partial
 from typing import Any, Literal
 
 from sqlalchemy import select
@@ -18,6 +17,9 @@ from app.agent_runtime.run_error_codes import inherited_envelope_code
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 from app.agent_runtime.streaming import StreamErrorRecord
+from app.approvals import recording
+from app.approvals.api_runs import ApiAwaitingApproval
+from app.approvals.service import RunOrigin
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scoped
 from app.config import settings
@@ -61,6 +63,15 @@ class ApiOwnedExecution:
     public_run_id: str
     config: AgentConfig
     messages: list[RuntimeMessage]
+    # 17.3: the Agent API run row, and what a call needing approval does: ``block`` answers
+    # BLOCKED; ``wait`` (a native wait call of an inbox deployment) pauses for the inbox.
+    api_run_id: uuid.UUID | None = None
+    approval: Literal["wait", "block"] = "block"
+
+
+def approval_mode(deployment: AgentDeployment, *, native_wait: bool) -> Literal["wait", "block"]:
+    """Only the native wait endpoints can answer ``waiting``; everything else blocks."""
+    return "wait" if native_wait and deployment.approval_policy == "inbox" else "block"
 
 
 async def mark_run_succeeded(
@@ -96,9 +107,11 @@ async def mark_run_failed(
     return run
 
 
-async def execute_owned_wait(request: ApiOwnedExecution) -> str:
-    request.config.unattended_approval = "block"  # 17.3: an API call never waits for a person
+async def execute_owned_wait(request: ApiOwnedExecution) -> str | ApiAwaitingApproval:
+    request.config.unattended_approval = request.approval
     if settings.prepared_run_lease_enabled:
+        # A call needing approval refuses the lease (legacy path below), so a leased run
+        # never waits.
         prepared = await _prepared().materialize_api_run(request, "invoke")
         if prepared is not None:
             return await _prepared().execute_prepared_wait(request, prepared)
@@ -108,18 +121,33 @@ async def execute_owned_wait(request: ApiOwnedExecution) -> str:
         request.root_agent_id,
         request.context,
     )
-    operation = partial(
-        _runtime_attr("execute_agent_invoke"),
-        request.config,
-        request.messages,
-        run_id=request.public_run_id,
-        moldy_source="api",
-    )
+
+    async def operation() -> str | ApiAwaitingApproval:
+        answer = await _runtime_attr("execute_agent_invoke")(
+            request.config,
+            request.messages,
+            run_id=request.public_run_id,
+            moldy_source="api",
+        )
+        if request.approval != "wait":
+            return answer
+        # 17.3: the graph paused on an approval; the run releases its slot and waits.
+        waiting = await recording.waiting_interrupts(request.conversation_id)
+        if waiting and await recording.pause(
+            run_id=request.conversation_run_id,
+            context=request.context,
+            interrupts=waiting,
+            origin=RunOrigin(source="api", api_run_id=request.api_run_id),
+            secret_values=request.config.secret_values,
+        ):
+            return ApiAwaitingApproval(waiting[-1].interrupt_id)
+        return answer
+
     return await run_owned_execution(ownership, operation)
 
 
 async def stream_owned_run(request: ApiOwnedExecution) -> AsyncGenerator[str, None]:
-    request.config.unattended_approval = "block"  # 17.3: an API call never waits for a person
+    request.config.unattended_approval = "block"  # 17.3: a stream never waits for a person
     if settings.prepared_run_lease_enabled:
         prepared = await _prepared().materialize_api_run(request, "stream")
         if prepared is not None:
@@ -201,7 +229,7 @@ async def build_config_for_run(
     agent = await chat_service.get_agent_with_tools(db, deployment.agent_id, principal.context)
     if agent is None:
         raise NotFoundError("AGENT_NOT_FOUND", "agent not found")
-    return await _runtime_attr("build_agent_config_for_loaded_agent")(
+    cfg = await _runtime_attr("build_agent_config_for_loaded_agent")(
         db,
         agent,
         context=principal.context,
@@ -215,3 +243,7 @@ async def build_config_for_run(
         runtime_policy=runtime_policy,
         **({} if include_subagents else {"include_subagents": False}),
     )
+    # 17.3: nobody watches an API run. The leased path reads this too, so a call needing
+    # approval refuses the lease; the wait endpoints may then switch it to ``wait``.
+    cfg.unattended_approval = "block"
+    return cfg

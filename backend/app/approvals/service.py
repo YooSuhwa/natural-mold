@@ -126,12 +126,13 @@ class PendingInterrupt:
 
 @dataclass(frozen=True, slots=True)
 class RunOrigin:
-    """What the run is for: where it came from and which schedule run waits on it."""
+    """What the run is for: where it came from and which schedule or API run waits on it."""
 
     agent_name: str = ""
     source: str | None = None
     trigger_id: uuid.UUID | None = None
     trigger_run_id: uuid.UUID | None = None
+    api_run_id: uuid.UUID | None = None
 
 
 async def _inherited(db: AsyncSession, run: ConversationRun) -> ApprovalRequest | None:
@@ -163,6 +164,7 @@ async def record_pending(
     )
     trigger_id = origin.trigger_id or (parent.trigger_id if parent else None)
     trigger_run_id = origin.trigger_run_id or (parent.trigger_run_id if parent else None)
+    api_run_id = origin.api_run_id or (parent.api_run_id if parent else None)
     created: list[ApprovalRequest] = []
     for interrupt in interrupts:
         if approval_actions(interrupt.payload) is None:
@@ -196,6 +198,7 @@ async def record_pending(
             source=source,
             trigger_id=trigger_id,
             trigger_run_id=trigger_run_id,
+            api_run_id=api_run_id,
             subject_user_id=run.user_id,
             requester_user_id=run.on_behalf_of_user_id or run.user_id,
             decider_user_id=run.user_id,

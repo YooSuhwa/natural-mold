@@ -29,6 +29,7 @@ from typing import Any, Final
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.approvals.waiters import abandon_best_effort
 from app.authz.approval_scope import agents_of_person
 from app.authz.audit_actions import EMERGENCY_STOP_APPLY, EMERGENCY_STOP_RELEASE
 from app.authz.notifications import Target, notify
@@ -178,9 +179,9 @@ async def _disable_deployments(db: AsyncSession, agent_ids: Sequence[uuid.UUID])
     return [str(deployment.id) for deployment in deployments]
 
 
-async def _cancel_approvals(db: AsyncSession, agent_ids: Sequence[uuid.UUID]) -> int:
+async def _cancel_approvals(db: AsyncSession, agent_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
     if not agent_ids:
-        return 0
+        return []
     result = await db.execute(
         update(ApprovalRequest)
         .where(ApprovalRequest.agent_id.in_(agent_ids), ApprovalRequest.status == "pending")
@@ -191,9 +192,10 @@ async def _cancel_approvals(db: AsyncSession, agent_ids: Sequence[uuid.UUID]) ->
             decided_at=now(),
             decision_no=ApprovalRequest.decision_no + 1,
         )
+        .returning(ApprovalRequest.id)
         .execution_options(synchronize_session=False)
     )
-    return int(result.rowcount or 0)  # type: ignore[attr-defined]
+    return list(result.scalars())
 
 
 async def _sync_schedules(db: AsyncSession, trigger_ids: Sequence[str]) -> None:
@@ -290,14 +292,17 @@ async def stop(
     await db.flush()  # the block itself, before anything else is touched
     agents = target.agent_ids
     trigger_ids = await _pause_schedules(db, agents)
+    run_ids = await _cancel_runs(db, agents)
+    deployment_ids = await _disable_deployments(db, agents)
+    canceled = await _cancel_approvals(db, agents)
     row.effects = {
         "owner_id": str(target.owner_id) if target.owner_id else None,
         "owners": [str(owner) for owner in target.owners],
         "agent_ids": [str(agent) for agent in agents],
-        "run_ids": await _cancel_runs(db, agents),
+        "run_ids": run_ids,
         "trigger_ids": trigger_ids,
-        "deployment_ids": await _disable_deployments(db, agents),
-        "approvals_canceled": await _cancel_approvals(db, agents),
+        "deployment_ids": deployment_ids,
+        "approvals_canceled": len(canceled),
     }
     await db.flush()
     await _audit(db, row, EMERGENCY_STOP_APPLY, context)
@@ -305,6 +310,8 @@ async def stop(
     await db.commit()
     _cancel_local_tasks(row.effects["run_ids"])
     await _sync_schedules(db, trigger_ids)
+    # Nothing resumes a canceled request: the runs waiting on them end now.
+    await abandon_best_effort(SessionTenant(context.tenant_id), canceled)
     await db.refresh(row)
     return row
 

@@ -102,6 +102,14 @@ class ApprovalRequest(Identity, Timestamps, Base):
             name="fk_approval_requests_trigger_run_id_agent_trigger_runs",
         )
     )
+    # The Agent API run that waits on this request (a deployment with the inbox policy).
+    api_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "agent_api_runs.id",
+            ondelete="SET NULL",
+            name="fk_approval_requests_api_run_id_agent_api_runs",
+        )
+    )
     # The run's subject (the person the run acts for) and the person who decides. Step 1
     # has no decider rules (17.2 "결정자"), so the decider is the subject.
     subject_user_id: Mapped[UUID] = mapped_column(

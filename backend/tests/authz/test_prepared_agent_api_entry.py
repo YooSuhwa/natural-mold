@@ -254,3 +254,24 @@ async def test_revocation_before_marker_is_opaque_with_zero_provider_calls(
     assert state.run.error_code == (None if gateway_denied else "AGENT_API_KEY_REVOKED")
     assert all(envelope.status != "succeeded" for envelope in state.envelopes)
     assert get_prepared_run_registry().state(api.execution.conversation_run_id) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["wait", "stream"])
+async def test_an_api_call_needing_approval_never_takes_the_lease(
+    db: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    """17.3: nobody watches an API run, so its approval calls answer BLOCKED (legacy path).
+
+    The leased stream used to keep the interactive approval interrupt instead."""
+    from app.models.organization import Tenant
+
+    apikit.enable(monkeypatch)
+    api = await apikit.seed_api_run(db, tmp_path, monkeypatch, mode=mode)
+    tenant = await db.get(Tenant, api.seeded.graph.context.tenant_id)
+    assert tenant is not None
+    tenant.settings = {**(tenant.settings or {}), "guardrails": {"mode": "off"}}
+    await db.commit()
+
+    scope = "invoke" if mode == "wait" else "stream"
+    assert await prepared_execution.materialize_api_run(api.execution, scope) is None

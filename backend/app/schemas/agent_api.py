@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.agent_runtime.runtime_policy import RuntimePolicyV1
 
 AgentApiScope = Literal["invoke", "stream", "background", "read"]
+# 17.3: a call needing approval is BLOCKED, or waits for the deployment owner's inbox.
+ApprovalPolicy = Literal["inbox", "blocked"]
 AgentDeploymentIneligibleReasonCode = Literal["fixed_identity_required"]
 
 
@@ -20,6 +22,7 @@ class AgentDeploymentCreate(BaseModel):
     allow_background: bool = False
     rate_limit_per_minute: int | None = Field(default=None, ge=1, le=600)
     daily_token_limit: int | None = Field(default=None, ge=1)
+    approval_policy: ApprovalPolicy = "blocked"
 
 
 class AgentDeploymentUpdate(BaseModel):
@@ -30,6 +33,7 @@ class AgentDeploymentUpdate(BaseModel):
     allow_background: bool | None = None
     rate_limit_per_minute: int | None = Field(default=None, ge=1, le=600)
     daily_token_limit: int | None = Field(default=None, ge=1)
+    approval_policy: ApprovalPolicy | None = None
 
 
 class AgentDeploymentResponse(BaseModel):
@@ -42,6 +46,7 @@ class AgentDeploymentResponse(BaseModel):
     allow_background: bool
     rate_limit_per_minute: int | None
     daily_token_limit: int | None
+    approval_policy: ApprovalPolicy
     runtime_policy: RuntimePolicyV1 | None
     created_at: datetime
     updated_at: datetime
@@ -134,11 +139,27 @@ class AgentRunRequest(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class AgentRunPendingApproval(BaseModel):
+    """A tool call the deployment owner must approve in Moldy before the run goes on."""
+
+    id: uuid.UUID
+    tools: list[str]
+    expires_at: datetime
+
+
+class AgentRunError(BaseModel):
+    code: str
+    message: str | None = None
+
+
 class AgentRunResponse(BaseModel):
     id: str
     thread_id: str | None
     agent_id: str
+    # pending | running | waiting (approval) | succeeded | failed | canceling | canceled
     status: str
     output: dict[str, Any] | None = None
     created_at: datetime
     finished_at: datetime | None = None
+    pending_approvals: list[AgentRunPendingApproval] = Field(default_factory=list)
+    error: AgentRunError | None = None
