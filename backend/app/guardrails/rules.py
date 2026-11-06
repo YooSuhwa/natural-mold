@@ -39,6 +39,9 @@ class Rule:
     # pseudonymize only: tools get the original value back (a mail tool needs the real
     # name); False leaves the pseudonym in their arguments (plan §3.3.1).
     restore_for_tools: bool = False
+    # pseudonymize only: "tag" (<<PERSON_1>>, default) or "natural" (a made-up Korean name
+    # with the same final consonant, so particles stay right; other entities stay tags).
+    pseudonym_style: Literal["tag", "natural"] = "tag"
 
     def matches(self, entity: str, pack: str, stage: Stage) -> bool:
         if stage not in self.stages:
@@ -100,6 +103,29 @@ BUILTIN_TEMPLATES: dict[str, RuleSet] = {
                 "pseudonymize",
                 frozenset({"PERSON", "ADDRESS"}),
                 restore_for_tools=True,
+            ),
+            Rule("people-output", ("kr_model",), _OUT, "warn", frozenset({"PERSON", "ADDRESS"})),
+        ),
+    ),
+    # kr-default with natural pseudonyms for people (plan §3.3.1).
+    "kr-natural": RuleSet(
+        "kr-natural",
+        1,
+        (
+            Rule("secrets", ("common",), _IN, "block", frozenset({"SECRET"})),
+            Rule("secrets-output", ("common",), _OUT, "redact", frozenset({"SECRET"})),
+            Rule("kr-identifiers", ("kr_model",), _ALL, "redact", _IDS),
+            Rule(
+                "contacts", ("common", "kr_model"), _SEND_OUT, "mask", frozenset({"PHONE", "EMAIL"})
+            ),
+            Rule(
+                "people",
+                ("kr_model",),
+                _SEND,
+                "pseudonymize",
+                frozenset({"PERSON", "ADDRESS"}),
+                restore_for_tools=True,
+                pseudonym_style="natural",
             ),
             Rule("people-output", ("kr_model",), _OUT, "warn", frozenset({"PERSON", "ADDRESS"})),
         ),

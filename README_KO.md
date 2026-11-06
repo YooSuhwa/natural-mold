@@ -284,7 +284,7 @@ pnpm dev
 | `SKILL_SANDBOX_CPU`, `SKILL_SANDBOX_MEMORY` | `1`, `512Mi` | 샌드박스 하나의 한도. |
 | `GUARDRAIL_PII_MODEL_URL` | 빈 값 (Docker 스택은 `http://pii-detector:8095`) | 가드레일 한국어 모델 서비스. 설정 → 가드레일 모델의 기본값입니다. 비어 있거나 서비스가 실패하면 ko-pii 규칙으로 대신 검사합니다. |
 | `GUARDRAIL_PII_MODEL_API_KEY`, `GUARDRAIL_PII_MODEL_TIMEOUT_SECONDS` | 빈 값, `15` | 서비스가 `PII_DETECTOR_API_KEY`를 설정했을 때만 쓰는 키, 요청 시간 제한. |
-| `GUARDRAIL_DEFAULT_TEMPLATE` | 빈 값 | 회사 정책이 생기기 전까지 모든 일반 에이전트 실행에 적용할 기본 가드레일 템플릿. `kr-default`(비밀값 차단, 한국 식별번호 치환, 연락처 마스킹, 이름·주소는 모델에 가명으로 보내고 답변에서 복원) 또는 `kr-observe`(기록만). 빈 값이면 끔, 모르는 이름이면 실행이 실패합니다. |
+| `GUARDRAIL_DEFAULT_TEMPLATE` | 빈 값 | 회사 정책이 생기기 전까지 모든 일반 에이전트 실행에 적용할 기본 가드레일 템플릿. `kr-default`(비밀값 차단, 한국 식별번호 치환, 연락처 마스킹, 이름·주소는 모델에 가명으로 보내고 답변에서 복원), `kr-natural`(같은 규칙에 표지 대신 지어낸 한국 이름) 또는 `kr-observe`(기록만). 빈 값이면 끔, 모르는 이름이면 실행이 실패합니다. |
 | `MOLDY_BUILD_EXTRA_CA` | 빈 값 | 루트 `.env`, Docker 전용. TLS를 검사하는 망에서 `pii-detector` 이미지 빌드가 신뢰할 CA 묶음. 이미지에 남지 않습니다. |
 
 LLM 키는 화면에서 등록하는 것을 권장합니다. 개발 환경에서는 `OPENAI_API_KEY`,

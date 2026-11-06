@@ -113,9 +113,9 @@ def apply(
     rules: RuleSet,
     stage: Stage,
     hash_key: bytes,
-    pseudonym: Callable[[str, str], str] | None = None,
+    pseudonym: Callable[[str, str, Rule], str] | None = None,
 ) -> Applied:
-    """``pseudonym(entity, value)`` gives the conversation's token; without it a
+    """``pseudonym(entity, value, rule)`` gives the conversation's pseudonym; without it a
     ``pseudonymize`` rule redacts instead (nothing could restore the value)."""
     pieces: list[str] = []
     decisions: list[Decision] = []
@@ -127,7 +127,7 @@ def apply(
         if rule.action in ("warn", "block"):
             pieces.append(value)
         elif rule.action == "pseudonymize":
-            pieces.append(pseudonym(entity, value) if pseudonym else f"[{label(entity)}]")
+            pieces.append(pseudonym(entity, value, rule) if pseudonym else f"[{label(entity)}]")
         else:
             pieces.append(_replacement(value, entity, rule.action, hash_key))
         cursor = end

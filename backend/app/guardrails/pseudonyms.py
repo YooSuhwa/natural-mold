@@ -8,6 +8,13 @@ Without a conversation row (API or trigger threads) the map lives for the run on
 
 A token the map never issued (the model invented ``<<PERSON_9>>``) is left as it is and
 counted, never guessed.
+
+Natural style (rule ``pseudonym_style="natural"``, people only) uses a made-up Korean name
+instead: same length, and the last syllable has a final consonant (batchim) exactly when the
+original's does, so a particle the model attaches (은/는, 이/가) is still right after restore.
+A candidate that already appears in the text, the map or the conversation's values is
+skipped. Restore swaps the full name, and the given name alone when it stands as a word
+(``준호 씨``); a surname alone is too ambiguous to restore.
 """
 
 from __future__ import annotations
@@ -36,6 +43,32 @@ def token(entity: str, number: int) -> str:
     return f"<<{entity}_{number}>>"
 
 
+_SURNAMES = "김이박최정강조윤장임한오서신권황안송류홍"
+# Given names by whether the last syllable has a final consonant; chosen to be rare as
+# ordinary words, so a given-name-only restore does not hit unrelated text.
+_GIVEN = {
+    False: ("준호", "서아", "예주", "하루", "지호", "도우", "시아", "유채", "태오", "수호"),
+    True: ("지훈", "현준", "서진", "민준", "하린", "예린", "도현", "유진", "태윤", "가온"),
+}
+_HANGUL = re.compile(r"[가-힣]{2,4}")
+_WORD_END = r"(?=씨|님|에게|이|가|은|는|을|를|과|와|의|도|만|[\s,.!?)]|$)"
+
+
+def has_batchim(syllable: str) -> bool:
+    return (ord(syllable) - 0xAC00) % 28 != 0
+
+
+def natural_candidates(value: str) -> list[str]:
+    """Made-up names shaped like ``value`` (2-3 syllables), in a stable order."""
+    batchim = has_batchim(value[-1])
+    given = _GIVEN[batchim]
+    if len(value) == 3:  # noqa: PLR2004
+        return [s + g for g in given for s in _SURNAMES]
+    if len(value) == 2:  # noqa: PLR2004
+        return [s + g[-1] for g in given for s in _SURNAMES]
+    return []
+
+
 @dataclass
 class Pseudonyms:
     key: Callable[[], bytes]
@@ -45,6 +78,7 @@ class Pseudonyms:
     entities: dict[str, str] = field(default_factory=dict)  # token -> entity
     counters: Counter[str] = field(default_factory=Counter)
     invented: int = 0
+    natural: dict[str, str] = field(default_factory=dict)  # natural pseudonym -> value
     _new: list[tuple[str, str, str, str]] = field(default_factory=list)
     _loaded: bool = False
 
@@ -82,20 +116,43 @@ class Pseudonyms:
         match = TOKEN.fullmatch(tok)
         if match:
             self.counters[entity] = max(self.counters[entity], int(match.group(2)))
+        else:
+            self.natural[tok] = value
 
-    def token_for(self, entity: str, value: str) -> str:
+    def token_for(self, entity: str, value: str, *, style: str = "tag", context: str = "") -> str:
+        if value in self.natural:
+            # Already a pseudonym: a second pass (summarizer, then the main guard) or the
+            # model's own answer in the history must not pseudonymize it again.
+            return value
         digest = value_digest(self.key(), entity, value)
         existing = self.by_digest.get(digest)
         if existing is not None:
             return existing
-        self.counters[entity] += 1
-        tok = token(entity, self.counters[entity])
+        tok = self._natural(value, context) if style == "natural" and entity == "PERSON" else None
+        if tok is None:
+            self.counters[entity] += 1
+            tok = token(entity, self.counters[entity])
         self._remember(tok, entity, digest, value)
         self._new.append((tok, entity, digest, value))
         return tok
 
+    def _natural(self, value: str, context: str) -> str | None:
+        if not _HANGUL.fullmatch(value):
+            return None
+        taken = set(self.by_token) | set(self.by_token.values()) | {value}
+        # Given names in use too: a given-name-only restore must point at one person.
+        given = {name[1:] for name in taken if len(name) == 3}  # noqa: PLR2004
+        for candidate in natural_candidates(value):
+            if candidate in taken or candidate in context:
+                continue
+            if len(candidate) == 3 and (candidate[1:] in given or candidate[1:] in context):  # noqa: PLR2004
+                continue
+            return candidate
+        return None
+
     def restore(self, text: str, *, keep: Callable[[str], bool] = lambda _entity: False) -> str:
         """``text`` with every issued token back to its value, except entities ``keep`` keeps."""
+        text = self._restore_natural(text, keep)
         if "<<" not in text:
             return text
 
@@ -108,6 +165,17 @@ class Pseudonyms:
             return tok if keep(self.entities[tok]) else value
 
         return TOKEN.sub(swap, text)
+
+    def _restore_natural(self, text: str, keep: Callable[[str], bool]) -> str:
+        if not self.natural:
+            return text
+        for alias, value in sorted(self.natural.items(), key=lambda kv: -len(kv[0])):
+            if keep(self.entities[alias]):
+                continue
+            text = text.replace(alias, value)
+            if len(alias) == 3 and len(value) == 3:  # noqa: PLR2004 - given name alone
+                text = re.sub(rf"(?<![가-힣]){alias[1:]}{_WORD_END}", value[1:], text)
+        return text
 
     async def flush(self) -> None:
         """Write the tokens issued since the last flush (best effort)."""
