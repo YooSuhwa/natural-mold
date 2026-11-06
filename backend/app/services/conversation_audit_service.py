@@ -18,7 +18,7 @@ async def record_conversation_audit(
     db: AsyncSession,
     *,
     user: CurrentUser,
-    request: Request,
+    request: Request | None,
     action: str,
     conversation_id: uuid.UUID,
     agent_id: uuid.UUID | None = None,

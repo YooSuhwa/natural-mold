@@ -730,6 +730,31 @@ _BROKER_EVICTION_INTERVAL_SECONDS = 60
 _BROKER_EVICTION_TTL_SECONDS = 300
 
 CONVERSATION_RUN_STALE_SWEEP_JOB_ID = "conversation_run_stale_sweep"
+APPROVAL_SWEEP_JOB_ID = "approval_sweep"
+
+
+async def sweep_approvals() -> None:
+    """Approval inbox (순번 13): expiring notices, then expired requests end as rejected."""
+    from app.approvals.inbox import sweep
+
+    await sweep()
+
+
+def register_approval_sweep_job() -> None:
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        return
+    scheduler.add_job(
+        _leader_job_runner(),
+        IntervalTrigger(seconds=60),
+        id=APPROVAL_SWEEP_JOB_ID,
+        args=[LeaderSchedulerJobId.APPROVAL_SWEEP],
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+
+
 CONVERSATION_QUEUE_RECOVERY_JOB_ID = "conversation_queue_recovery"
 
 

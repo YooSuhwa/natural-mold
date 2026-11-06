@@ -124,8 +124,9 @@ async def _views(
         payload = {k: v for k, v in (row.payload or {}).items() if k != "target_name"}
         target, link = None, row.link
         if row.target_type is not None:
-            # H-06 usage warnings name the recipient's own limit, not a shared resource.
-            own = row.target_type == "usage_limit"
+            # H-06 usage warnings name the recipient's own limit, not a shared resource;
+            # approval notices go only to the request's own decider (17.2).
+            own = row.target_type in {"usage_limit", "approval_request"}
             key = f"{row.target_type}:{row.target_id}"
             disclosed = row.kind == "grant.received" and key in shared
             visible = own or key in kept or disclosed

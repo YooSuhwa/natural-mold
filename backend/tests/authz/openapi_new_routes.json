@@ -3330,6 +3330,139 @@
         ]
       }
     },
+    "/api/approvals": {
+      "get": {
+        "operationId": "list_approvals_api_approvals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "enum": [
+                "pending",
+                "done"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Approvals",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/approvals/pending-count": {
+      "get": {
+        "operationId": "pending_count_api_approvals_pending_count_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingCount"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Pending Count",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/approvals/{approval_id}/decision": {
+      "post": {
+        "operationId": "decide_approval_api_approvals__approval_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Approval Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Approval",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
     "/api/artifacts": {
       "get": {
         "operationId": "list_artifact_library_api_artifacts_get",
@@ -28474,6 +28607,192 @@
       "title": "AgentUpdate",
       "type": "object"
     },
+    "ApprovalAction": {
+      "properties": {
+        "allowed_decisions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Decisions",
+          "type": "array"
+        },
+        "args": {
+          "title": "Args"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ApprovalAction",
+      "type": "object"
+    },
+    "ApprovalPage": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/ApprovalView"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ApprovalPage",
+      "type": "object"
+    },
+    "ApprovalView": {
+      "description": "What the decider needs to decide; never the conversation itself.",
+      "properties": {
+        "actions": {
+          "items": {
+            "$ref": "#/components/schemas/ApprovalAction"
+          },
+          "title": "Actions",
+          "type": "array"
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "agent_name": {
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "attempt": {
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "channel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Channel"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "decided_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Decided At"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "policy_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Policy Version"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "trigger_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trigger Id"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "source",
+        "agent_id",
+        "agent_name",
+        "conversation_id",
+        "trigger_id",
+        "actions",
+        "attempt",
+        "policy_version",
+        "channel",
+        "reason",
+        "created_at",
+        "expires_at",
+        "decided_at"
+      ],
+      "title": "ApprovalView",
+      "type": "object"
+    },
     "ArtifactFavoriteUpdate": {
       "properties": {
         "is_favorite": {
@@ -33385,6 +33704,21 @@
       "title": "EditMessageRequest",
       "type": "object"
     },
+    "EditedAction": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        }
+      },
+      "required": [
+        "args"
+      ],
+      "title": "EditedAction",
+      "type": "object"
+    },
     "ExitResolution": {
       "additionalProperties": false,
       "properties": {
@@ -34864,6 +35198,66 @@
         }
       },
       "title": "HistoryRequest",
+      "type": "object"
+    },
+    "InboxDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "edited_action": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/EditedAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message"
+        },
+        "type": {
+          "enum": [
+            "approve",
+            "edit",
+            "reject"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "InboxDecision",
+      "type": "object"
+    },
+    "InboxDecisionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "decisions": {
+          "items": {
+            "$ref": "#/components/schemas/InboxDecision"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Decisions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "decisions"
+      ],
+      "title": "InboxDecisionRequest",
       "type": "object"
     },
     "InputRespondEntry": {
@@ -41176,6 +41570,19 @@
         "previous_owner_id"
       ],
       "title": "OwnershipTransferResult",
+      "type": "object"
+    },
+    "PendingCount": {
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "title": "PendingCount",
       "type": "object"
     },
     "PinConversationSummaryRequest": {

@@ -38,6 +38,7 @@ from app.services import audit_service
 # Run principal source (``ConversationRun.run_source``) → approval source (17.3 rows).
 _SOURCES: Final = {"CHAT": "chat", "TRIGGER": "trigger", "API": "api", "SUBAGENT": "subagent"}
 _NOT_APPROVALS: Final = frozenset({"ask_user"})
+_REASONS: Final = {"expiry": "approval_expired", "emergency_stop": "emergency_stop"}
 
 
 class ApprovalStale(Exception):
@@ -52,7 +53,7 @@ def now() -> datetime:
     return datetime.now(UTC)
 
 
-def _aware(value: datetime) -> datetime:
+def aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
@@ -280,14 +281,14 @@ async def claim(db: AsyncSession, request: Claim) -> list[ApprovalRequest]:
                 decision_no=ApprovalRequest.decision_no + 1,
                 resumed_run_id=request.resumed_run_id,
                 edited_args_digest=(request.edited_digests or {}).get(row.interrupt_id),
-                reason=request.reason,
+                reason=request.reason or _REASONS.get(request.channel),
             )
             .execution_options(synchronize_session=False)
         )
         if result.rowcount != 1:  # type: ignore[attr-defined]
             await db.refresh(row)
             current = row.status
-            if current == "pending" and _aware(row.expires_at) <= stamp:
+            if current == "pending" and aware(row.expires_at) <= stamp:
                 current = "expired"
             raise ApprovalStale(current)
         await db.refresh(row)

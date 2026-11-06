@@ -16,6 +16,7 @@ def include_app_routers(app: FastAPI) -> None:
         agent_readiness,
         agent_runtime_api,
         agents,
+        approvals,
         artifacts,
         assistant,
         audit,
@@ -159,6 +160,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(resource_permissions.router)
     app.include_router(access_requests.router)
     app.include_router(notifications.router)
+    app.include_router(approvals.router)
     app.include_router(credential_bindings.router)
     app.include_router(credential_bindings.mode_router)
     app.include_router(templates.router)

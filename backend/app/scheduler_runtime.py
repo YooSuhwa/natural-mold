@@ -31,6 +31,7 @@ from app.scheduler import (
     poll_mcp_servers_health,
     recover_conversation_queue,
     refresh_token_gc_run,
+    register_approval_sweep_job,
     register_authz_jobs,
     register_broker_eviction_job,
     register_catalog_update_job,
@@ -51,6 +52,7 @@ from app.scheduler import (
     scheduler_leader_is_healthy,
     skill_draft_gc_run,
     stop_scheduler,
+    sweep_approvals,
     sweep_stale_conversation_runs,
     try_acquire_scheduler_leader,
     update_model_catalog,
@@ -105,6 +107,8 @@ async def run_leader_scheduler_job(job_id: LeaderSchedulerJobId) -> None:
             | LeaderSchedulerJobId.AUTHZ_DELEGATION_VALIDATE
         ):
             await authz_job_run(job_id)
+        case LeaderSchedulerJobId.APPROVAL_SWEEP:
+            await sweep_approvals()
         case LeaderSchedulerJobId.RETENTION_SWEEP:
             await retention_sweep_run()
         case LeaderSchedulerJobId.TENANT_PURGE:
@@ -195,6 +199,7 @@ async def activate_scheduler() -> None:
     register_retention_sweep_job()
     register_tenant_purge_job()
     register_tenant_export_gc_job()
+    register_approval_sweep_job()
     trigger_count = await reconcile_trigger_jobs()
     if scheduler_was_started:
         scheduler.resume()

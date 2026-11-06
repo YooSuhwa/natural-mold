@@ -115,7 +115,7 @@ async def _handle_input_respond_command(
     *,
     conversation: Conversation,
     command: AgentCommandRequest,
-    request: Request,
+    request: Request | None,
     db: AsyncSession,
     user: CurrentUser,
     context: OrgContext,

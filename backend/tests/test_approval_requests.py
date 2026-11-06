@@ -84,7 +84,7 @@ async def test_only_approval_interrupts_get_a_row_with_masked_arguments(db: Asyn
     assert SECRET not in str(row.actions)
     assert row.actions[1]["args"]["to"] == "a@example.com"
     assert row.args_digest == service.args_digest(payload)  # of the real arguments
-    expires = service._aware(row.expires_at) - service.now()
+    expires = service.aware(row.expires_at) - service.now()
     assert timedelta(hours=23) < expires <= timedelta(hours=24)
     # Recording twice (a retried hook) adds nothing.
     assert await _record(db, run, service.PendingInterrupt("intr-1", payload)) == []
