@@ -858,10 +858,16 @@ async def test_guardrail_policy_mutations_write_audit(client, db: AsyncSession, 
     for row in rows:
         assert (row.actor_type, row.actor_user_id, row.outcome) == ("user", TEST_USER_ID, "success")
         assert row.tenant_id == TEST_TENANT_ID
-    assert by_action["guardrail.policy_update"].event_metadata["after"]["mode"] == "open"
+
+    def after(action: str) -> dict:
+        metadata = by_action[action].event_metadata
+        assert metadata is not None
+        return metadata["after"]
+
+    assert after("guardrail.policy_update")["mode"] == "open"
     assert by_action["guardrail.template_create"].target_id == template_id
-    assert by_action["guardrail.template_publish"].event_metadata["after"]["version"] == 1
-    assert by_action["guardrail.template_archive"].event_metadata["after"]["status"] == "archived"
+    assert after("guardrail.template_publish")["version"] == 1
+    assert after("guardrail.template_archive")["status"] == "archived"
     bound = by_action["guardrail.binding_update"]
     assert (bound.target_type, bound.target_id) == ("agent", str(agent.id))
     assert bound.event_metadata == {
