@@ -16,6 +16,8 @@ from app.error_codes import (
     agent_not_found,
     invalid_schedule_config,
     invalid_trigger_type,
+    schedule_limit_reached,
+    schedule_too_frequent,
     trigger_already_running,
     trigger_not_found,
 )
@@ -28,6 +30,7 @@ from app.schemas.trigger import (
     TriggerUpdate,
 )
 from app.services import audit_service, trigger_service
+from app.services.trigger_schedule_service import LIMIT_MESSAGE, TOO_FREQUENT_MESSAGE
 
 router = APIRouter(tags=["triggers"])
 # Triggers are PRIVATE; create/update/run-now also re-check agent#can_run (plan 9.1, D-06).
@@ -88,6 +91,10 @@ def _map_trigger_validation(exc: ValueError) -> None:
         raise agent_identity_requires_fixed() from exc
     if "trigger_type" in str(exc):
         raise invalid_trigger_type() from exc
+    if str(exc) == TOO_FREQUENT_MESSAGE:
+        raise schedule_too_frequent() from exc
+    if str(exc) == LIMIT_MESSAGE:
+        raise schedule_limit_reached() from exc
     raise invalid_schedule_config() from exc
 
 

@@ -52,7 +52,7 @@ async def _targets(db: AsyncSession, context: OrgContext) -> WriterTargets:
         context,
         TriggerCreate(
             trigger_type="interval",
-            schedule_config={"interval_minutes": 10},
+            schedule_config={"interval_minutes": 30},
             input_message="Fixture",
         ),
     )

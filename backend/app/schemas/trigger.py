@@ -17,7 +17,8 @@ class TriggerCreate(BaseModel):
     target_conversation_id: uuid.UUID | None = None
     max_runs: int | None = None
     end_at: datetime | None = None
-    auto_pause_after_failures: int | None = None
+    # 17.3: consecutive failures pause a schedule by default (``null``: never).
+    auto_pause_after_failures: int | None = 10
     # 17.3 / D27: what a call needing approval does in this schedule's runs.
     approval_policy: Literal["inbox", "blocked"] = "inbox"
 

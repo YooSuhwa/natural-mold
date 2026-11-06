@@ -168,6 +168,17 @@ def invalid_schedule_config() -> ValidationError:
     )
 
 
+def schedule_too_frequent() -> ValidationError:
+    return ValidationError(
+        "SCHEDULE_TOO_FREQUENT",
+        "예약은 최소 15분 간격으로만 실행할 수 있습니다",
+    )
+
+
+def schedule_limit_reached() -> ConflictError:
+    return ConflictError("SCHEDULE_LIMIT_REACHED", "만들 수 있는 예약 수를 모두 사용했습니다")
+
+
 def agent_identity_requires_fixed() -> ValidationError:
     return ValidationError(
         "AGENT_IDENTITY_REQUIRES_FIXED",

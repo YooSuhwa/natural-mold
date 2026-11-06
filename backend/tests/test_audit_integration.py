@@ -513,7 +513,7 @@ async def test_trigger_mutations_write_audit_without_input_message(
         json={
             "name": "Audit Trigger",
             "trigger_type": "interval",
-            "schedule_config": {"interval_minutes": 10},
+            "schedule_config": {"interval_minutes": 30},
             "input_message": "secret scheduled instruction",
         },
     )
