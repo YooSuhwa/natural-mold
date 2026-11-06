@@ -1245,6 +1245,7 @@
       "systemCredentials": "System Credentials",
       "systemLlm": "System LLM Settings",
       "guardrailModel": "Guardrail model",
+      "systemStatus": "System status",
       "skills": "Skills",
       "schedules": "Schedules",
       "usage": "Usage",
@@ -5720,6 +5721,7 @@
       "systemCredentials": "System Credentials",
       "systemLlm": "System LLM Settings",
       "guardrailModel": "Guardrail model",
+      "systemStatus": "System status",
       "authzSync": "Authorization Sync",
       "adminAudit": "All Activity",
       "organization": "Organization",
@@ -6039,6 +6041,7 @@
     "systemCredentials": "System Credentials",
     "systemLlm": "System LLM Settings",
     "guardrailModel": "Guardrail model",
+    "systemStatus": "System status",
     "skills": "Skills",
     "create": "Create",
     "createAgent": "Create Agent",
@@ -6577,6 +6580,80 @@
       "connect": "Connect",
       "reconnectNote": "Reconnect this on the credentials screen, then try again.",
       "openCredentials": "Open credentials"
+    }
+  },
+  "systemStatus": {
+    "title": "System status",
+    "description": "Checks which components this installation runs against its install profile. Re-checked every 30 seconds.",
+    "loading": "Loading…",
+    "refresh": "Check again",
+    "loadError": "Could not load the system status.",
+    "checkedAt": "Checked {time}",
+    "profileHint": "The profile is set with the INSTALL_PROFILE environment variable.",
+    "summary": {
+      "ok": "Every required component is working.",
+      "warning": "A recommended component is off or not answering.",
+      "error": "A required component has a problem."
+    },
+    "verdict": {
+      "ok": "OK",
+      "warning": "Attention",
+      "error": "Problem"
+    },
+    "found": {
+      "ok": "Running",
+      "off": "Off",
+      "error": "Failing"
+    },
+    "requirement": {
+      "required": "Required",
+      "recommended": "Recommended",
+      "optional": "Optional"
+    },
+    "component": {
+      "database": "Database",
+      "pgvector": "Vector search (pgvector)",
+      "worker": "Job worker",
+      "object_store": "File storage",
+      "mcp_runtime": "MCP runtime",
+      "pii_detector": "Korean personal data model",
+      "skill_sandbox": "Isolated skill runs"
+    },
+    "profile": {
+      "minimal": {
+        "name": "Minimal single server",
+        "description": "One server with local volume storage. Anything beyond the core is turned on when needed."
+      },
+      "external_api": {
+        "name": "External model APIs",
+        "description": "Models are called through provider APIs; Moldy-defined MCP servers run in the shared runtime."
+      },
+      "gpu": {
+        "name": "Company GPUs",
+        "description": "Models run on the company's own GPUs, with the Korean personal data model next to them."
+      },
+      "kubernetes": {
+        "name": "Kubernetes isolation",
+        "description": "Replicas share files, so S3-compatible storage, the MCP runtime and isolated skill runs are required."
+      },
+      "airgapped": {
+        "name": "Air-gapped",
+        "description": "Runs without an outside network; detection and skill runs stay inside."
+      }
+    },
+    "components": {
+      "title": "Components",
+      "description": "What each component answered when it was called."
+    },
+    "jobs": {
+      "title": "Background jobs",
+      "description": "The job queue across every company, and the job workers.",
+      "queued": "Queued",
+      "running": "Running",
+      "overdue": "Waiting over a minute",
+      "failed_last_day": "Failed in 24 hours",
+      "noWorkers": "No job worker has registered. Start the worker service.",
+      "heartbeat": "Last heartbeat {time}"
     }
   }
 }

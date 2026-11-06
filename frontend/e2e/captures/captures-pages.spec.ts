@@ -44,6 +44,7 @@ const OPERATOR_PAGES: ReadonlyArray<readonly [string, string]> = [
   ['/settings/system-credentials', '41-system-credentials.png'],
   ['/settings/admin-audit', '42-admin-audit.png'],
   ['/settings/marketplace-admin', '43-marketplace-admin.png'],
+  ['/settings/system-status', '44-system-status.png'],
 ]
 
 async function tourCapture(page: Page, url: string, file: string): Promise<void> {

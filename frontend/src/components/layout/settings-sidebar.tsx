@@ -15,6 +15,7 @@ import {
   KeyRoundIcon,
   MonitorCogIcon,
   RefreshCwIcon,
+  ServerCogIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
   StoreIcon,
@@ -150,6 +151,11 @@ export function SettingsSidebar() {
               href: '/settings/guardrail-model',
               label: tSettings('nav.guardrailModel'),
               icon: ShieldCheckIcon,
+            },
+            {
+              href: '/settings/system-status',
+              label: tSettings('nav.systemStatus'),
+              icon: ServerCogIcon,
             },
             {
               href: '/settings/admin-audit',

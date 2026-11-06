@@ -38,6 +38,7 @@ const ROUTE_LABELS: Record<string, string> = {
   'system-credentials': 'nav.systemCredentials',
   'system-llm': 'nav.systemLlm',
   'guardrail-model': 'nav.guardrailModel',
+  'system-status': 'nav.systemStatus',
   skills: 'nav.skills',
   // 스킬 스튜디오 탭 세그먼트 (Phase 2) — settings는 기존 라벨 재사용.
   evaluation: 'nav.skillEvaluation',
