@@ -12,6 +12,8 @@ The active organization authorization program follows the supplied
 - [조직·권한·공유 실행 기록](active/org-authz-progress.md) — approved 2026-10-10; P0–P7 and P8 implementation merged in PR #314 (2026-10-19); I-01–I-05 operations and U-05 pending deployment.
 - [개인 테넌트·회사 키·공유 공백 실행 계획](active/personal-tenant-sharing-plan.md) — approved 2026-10-21 (Q1–Q8 recommendations accepted); implementation in progress.
 
+- [순번 15 메모리 정책 상세 기획](active/memory-policy-plan.md) — draft v3 2026-11-07 (two independent reviews, two rounds); decisions Q1/Q2/Q3/Q5/Q8 pending.
+
 ## Completed
 
 - [백로그 C — credentials list N+1 복호화 제거](completed/backlog-c-field-keys-cache.md) — implemented; current field_keys cache verified 2026-09-08.
