@@ -97,6 +97,24 @@ def test_collector_unions_git_states(checker: Path, git_repo: tuple[Path, str]) 
 
 
 @pytest.mark.parametrize("checker", CHECKERS)
+def test_collector_leaves_separate_projects_to_their_own_checks(
+    checker: Path, git_repo: tuple[Path, str]
+) -> None:
+    # Given a backend path and a path in mcp-runtime (its own dependencies and CI job).
+    repo, base = git_repo
+    _write(repo, "backend/app/x.py")
+    _write(repo, "mcp-runtime/moldy_mcp_runtime/x.py")
+    _write(repo, "mcp-runtimes/x.py")
+
+    # When a checker collects.
+    result = _run(checker, repo, base)
+
+    # Then only the exact project folder is left out.
+    assert result.returncode == 0
+    assert "selected=2" in result.stdout
+
+
+@pytest.mark.parametrize("checker", CHECKERS)
 def test_collector_deduplicates_git_states(checker: Path, git_repo: tuple[Path, str]) -> None:
     # Given one path changed in the commit, index, and worktree.
     repo, base = git_repo

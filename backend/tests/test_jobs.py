@@ -113,7 +113,8 @@ async def test_a_failure_is_retried_later_then_fails_after_the_last_attempt() ->
     await _run_all(worker)
     queued = await _job(job_id)
     assert (queued.state, queued.attempts, queued.error_code) == ("queued", 1, "handler_error")
-    assert service._aware(queued.run_after) > service.now()  # noqa: SLF001 - backoff
+    due = service._aware(queued.run_after)  # noqa: SLF001
+    assert due is not None and due > service.now()  # backoff
     await _run_all(worker)
     assert CALLS == ["try 1"]  # not due yet
 

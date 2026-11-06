@@ -201,6 +201,7 @@ jobs:
           uv pip install -e ".[dev]"
           .venv/bin/ruff check .
           .venv/bin/ruff format --check .
+          .venv/bin/pyright
           .venv/bin/python -m pytest -q
       - name: Start mcp-runtime
         working-directory: mcp-runtime
