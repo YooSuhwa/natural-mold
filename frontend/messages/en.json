@@ -3955,7 +3955,7 @@
         "restoreForToolsHint": "Pseudonymized names and addresses are restored in tool arguments.",
         "removeRule": "Remove rule {rule}",
         "needStage": "Choose at least one stage.",
-        "inputActions": "At the user input stage only Block or Record only can be chosen.",
+        "inputActions": "The user input stage allows Block or Record only; Ask approval needs the tool arguments stage alone with the rule packs (common, kr).",
         "needRule": "Keep at least one rule.",
         "save": "Save draft",
         "saved": "Draft saved."
@@ -3975,6 +3975,7 @@
     },
     "action": {
       "block": "Block",
+      "approval": "Ask approval",
       "redact": "Replace",
       "hash": "Hash",
       "pseudonymize": "Pseudonym",

@@ -50,7 +50,7 @@ export function GuardrailTemplateEditor({
   const [rules, setRules] = useState<GuardrailRule[]>(template.draft_rules)
   const [error, setError] = useState<string | null>(null)
   const stageless = rules.some((rule) => rule.stages.length === 0)
-  const badInput = rules.some((rule) => !actionsFor(rule.stages).includes(rule.action))
+  const badInput = rules.some((rule) => !actionsFor(rule).includes(rule.action))
   const valid = name.trim() !== '' && rules.length > 0 && !stageless && !badInput
 
   function change(ruleId: string, patch: Partial<GuardrailRule>) {
@@ -186,7 +186,7 @@ function RuleEditor({
               <span>{t(`action.${rule.action}`)}</span>
             </SelectTrigger>
             <SelectContent>
-              {actionsFor(rule.stages).map((action) => (
+              {actionsFor(rule).map((action) => (
                 <SelectItem key={action} value={action}>
                   {t(`action.${action}`)}
                 </SelectItem>
@@ -232,7 +232,7 @@ function RuleEditor({
         {rule.stages.length === 0 ? (
           <p className="text-sm text-destructive">{t('templates.editor.needStage')}</p>
         ) : null}
-        {actionsFor(rule.stages).includes(rule.action) ? null : (
+        {actionsFor(rule).includes(rule.action) ? null : (
           <p className="text-sm text-destructive">{t('templates.editor.inputActions')}</p>
         )}
       </fieldset>

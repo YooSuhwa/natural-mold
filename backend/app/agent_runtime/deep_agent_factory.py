@@ -32,6 +32,7 @@ from app.agent_runtime.deep_agent_middleware_factory import (
 )
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.runtime.connection_guard_order import order_connection_guard
+from app.guardrails.approval import has_approval_rules, with_approvals
 from app.guardrails.middleware import Guard, guard_stack
 from app.guardrails.tool_risk import ToolRiskPolicy, apply_to_agent
 
@@ -224,6 +225,20 @@ def _guarded(
     return guarded_root, children
 
 
+def _with_child_approvals(
+    subagents: list[dict[str, Any]], parent: dict[str, Any], guard: Guard
+) -> list[dict[str, Any]]:
+    children: list[dict[str, Any]] = []
+    for spec in subagents:
+        own = spec.get("interrupt_on", parent)
+        if "runnable" in spec or "graph_id" in spec or not isinstance(own, dict):
+            children.append(spec)
+            continue
+        tools = list(spec.get("tools") or [])
+        children.append({**spec, "interrupt_on": with_approvals(own, tools, guard.rules)})
+    return children
+
+
 def _agent_permissions(
     middleware: Sequence[Any], permissions: list[FilesystemPermission] | None
 ) -> list[FilesystemPermission] | None:
@@ -301,6 +316,10 @@ def build_agent_impl(
             )
             tools, interrupt_on = applied.tools, applied.interrupt_on
             compatible_middleware, compatible_subagents = applied.middleware, applied.subagents
+        if guard is not None and has_approval_rules(guard.rules) and isinstance(interrupt_on, dict):
+            # Rules that ask before a tool runs ride the standard approval path (③).
+            interrupt_on = with_approvals(interrupt_on, tools, guard.rules)
+            compatible_subagents = _with_child_approvals(compatible_subagents, interrupt_on, guard)
         if guard is not None:
             compatible_middleware, compatible_subagents = _guarded(
                 compatible_middleware, compatible_subagents, guard, model, resolved_backend

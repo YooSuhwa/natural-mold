@@ -46,7 +46,8 @@ from langchain_core.messages import (
 )
 from langgraph.types import Command
 
-from app.guardrails.actions import Applied, Decision, apply, block_notice
+from app.guardrails.actions import Applied, Decision, apply, approval_refusal, block_notice
+from app.guardrails.approval import approval_entities
 from app.guardrails.detectors import Finding
 from app.guardrails.events import EventLog, RunScope, trace
 from app.guardrails.model_pack import detect_texts
@@ -157,6 +158,8 @@ class Guard:
     tenant_id: uuid.UUID | None
     # Where records go (plan §3.5); None writes nothing (tests, previews).
     scope: RunScope | None = None
+    # False where nobody can answer an approval (scheduled runs): approval rules refuse.
+    interactive: bool = True
     decisions: list[Decision] = field(default_factory=list)
     _cache: OrderedDict[str, list[Finding]] = field(default_factory=OrderedDict)
     _key: bytes | None = None
@@ -386,6 +389,16 @@ class GuardrailMiddleware(AgentMiddleware):
         if any(d.action == "block" for d in decisions):
             return ToolMessage(
                 content=block_notice(decisions) + " 같은 인자로 다시 시도하지 마세요.",
+                tool_call_id=call["id"],
+                name=call.get("name"),
+                status="error",
+            )
+        if any(d.action == "approval" for d in decisions) and not (
+            self.guard.interactive and approval_entities(self.guard.rules, call.get("args"))
+        ):
+            # Nobody approved this call: a scheduled run, or a value only found here.
+            return ToolMessage(
+                content=approval_refusal(decisions),
                 tool_call_id=call["id"],
                 name=call.get("name"),
                 status="error",

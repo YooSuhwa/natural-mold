@@ -270,7 +270,7 @@ function RuleRow({
           <span className="truncate">{t(`action.${action}`)}</span>
         </SelectTrigger>
         <SelectContent>
-          {actionsFor(rule.stages).map((item) => (
+          {actionsFor(rule).map((item) => (
             <SelectItem key={item} value={item}>
               {t(`action.${item}`)}
             </SelectItem>

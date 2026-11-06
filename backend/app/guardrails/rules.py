@@ -14,7 +14,8 @@ from typing import Literal
 # output: what the model answers, streamed to the user and stored (plan stage ⑤).
 # ``input``: the user's new message, before the model (①; block or warn only).
 Stage = Literal["input", "llm_send", "tool_args", "tool_result", "output"]
-Action = Literal["block", "redact", "hash", "pseudonymize", "mask", "warn"]
+# ``approval``: ask the user before the tool runs (③ tool arguments only, rule packs only).
+Action = Literal["block", "approval", "redact", "hash", "pseudonymize", "mask", "warn"]
 
 # The strongest action wins when rules overlap on one span.
 ACTION_STRENGTH: dict[Action, int] = {
@@ -23,7 +24,8 @@ ACTION_STRENGTH: dict[Action, int] = {
     "pseudonymize": 2,
     "hash": 3,
     "redact": 4,
-    "block": 5,
+    "approval": 5,
+    "block": 6,
 }
 # A rule naming ``kr_model`` also accepts what its rules fallback found (model_pack).
 PACK_FAMILIES: dict[str, frozenset[str]] = {"kr_model": frozenset({"kr_model", "kr"})}

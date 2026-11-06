@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, cast, get_args
 
+from app.guardrails.approval import APPROVAL_PACKS
 from app.guardrails.detectors import PACKS
 from app.guardrails.model_pack import MODEL_PACK
 from app.guardrails.rules import Action, Rule, RuleSet, Stage
@@ -75,6 +76,11 @@ def rule_from_json(data: Any, index: int) -> Rule:
         raise InvalidRulesError(f"rule {rule_id}: pseudonym_style must be tag or natural")
     if "input" in stages and action not in _INPUT_ACTIONS:
         raise InvalidRulesError(f"rule {rule_id}: the input stage only blocks or warns")
+    if action == "approval" and (set(stages) != {"tool_args"} or not set(packs) <= APPROVAL_PACKS):
+        raise InvalidRulesError(
+            f"rule {rule_id}: approval applies to tool arguments only and uses the rule packs"
+            f" ({', '.join(sorted(APPROVAL_PACKS))})"
+        )
     restore = data.get("restore_for_tools", False)
     if not isinstance(restore, bool):
         raise InvalidRulesError(f"rule {rule_id}: restore_for_tools must be true or false")

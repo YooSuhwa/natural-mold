@@ -2,7 +2,14 @@
 
 export type GuardrailPolicyMode = 'off' | 'open' | 'default' | 'enforced'
 export type GuardrailStage = 'input' | 'llm_send' | 'tool_args' | 'tool_result' | 'output'
-export type GuardrailAction = 'block' | 'redact' | 'hash' | 'pseudonymize' | 'mask' | 'warn'
+export type GuardrailAction =
+  | 'block'
+  | 'approval'
+  | 'redact'
+  | 'hash'
+  | 'pseudonymize'
+  | 'mask'
+  | 'warn'
 export type GuardrailPseudonymStyle = 'tag' | 'natural'
 export type GuardrailTemplateStatus = 'draft' | 'published' | 'archived'
 export type ToolRiskLevel =

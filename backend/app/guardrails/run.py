@@ -43,6 +43,13 @@ def effective_rules(cfg: Any) -> RuleSet | None:
 
 
 def guard_for(
-    rules: RuleSet | None, tenant_id: uuid.UUID | None, scope: RunScope | None = None
+    rules: RuleSet | None,
+    tenant_id: uuid.UUID | None,
+    scope: RunScope | None = None,
+    *,
+    interactive: bool = True,
 ) -> Guard | None:
-    return Guard(rules, tenant_id, scope) if rules is not None else None
+    """``interactive=False`` for runs nobody can approve (scheduled runs)."""
+    if rules is None:
+        return None
+    return Guard(rules, tenant_id, scope, interactive=interactive)

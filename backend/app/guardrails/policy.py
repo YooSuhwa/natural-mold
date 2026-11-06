@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.guardrails.approval import APPROVAL_PACKS
 from app.guardrails.rules import ACTION_STRENGTH, Rule, RuleSet, builtin
 from app.guardrails.run import UnknownGuardrailTemplateError
 from app.guardrails.templates import BUILTIN_PREFIX, parse_ref, rules_from_json
@@ -141,8 +142,14 @@ def apply_overrides(
             continue
         action = change.get("action")
         # The user's message stays as written: an input rule only blocks or warns.
-        allowed = action in ACTION_STRENGTH and (
-            "input" not in rule.stages or action in ("block", "warn")
+        allowed = (
+            action in ACTION_STRENGTH
+            and ("input" not in rule.stages or action in ("block", "warn"))
+            # Approval follows the template rule's constraints (approval.py).
+            and (
+                action != "approval"
+                or (rule.stages == {"tool_args"} and set(rule.packs) <= APPROVAL_PACKS)
+            )
         )
         kept.append(replace(rule, action=action) if allowed else rule)
     return replace(rules, rules=tuple(kept))
