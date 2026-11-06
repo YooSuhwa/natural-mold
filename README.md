@@ -260,6 +260,23 @@ the company CA file so the image build can reach the PyTorch CPU index. Copying
 a downloaded model in by hand is described in
 [docs/docker-quickstart.md](docs/docker-quickstart.md).
 
+### Install profiles and system status
+
+`INSTALL_PROFILE` in the root `.env` (`minimal` by default; also `external_api`,
+`gpu`, `kubernetes`, `airgapped`) says which components this installation is
+expected to run. It switches nothing on or off. Operators see every component
+(database, pgvector, job worker, file storage, MCP runtime, Korean model, skill
+sandbox) checked against it under **Settings → System status**
+(`/settings/system-status`). The stack also runs the job `worker` and the shared
+`mcp-runtime`. File storage stays on the local volume unless you choose S3:
+
+```bash
+STORAGE_BACKEND=s3 docker compose --profile s3 up -d   # with the bundled SeaweedFS
+```
+
+[docs/docker-quickstart.md](docs/docker-quickstart.md) lists what each profile
+requires.
+
 ## Local development
 
 Requirements: [uv](https://docs.astral.sh/uv/) (installs Python 3.12),

@@ -1245,6 +1245,7 @@
       "systemCredentials": "시스템 자격증명",
       "systemLlm": "시스템 LLM 설정",
       "guardrailModel": "가드레일 모델",
+      "systemStatus": "시스템 구성",
       "skills": "스킬",
       "schedules": "스케줄",
       "usage": "사용량",
@@ -5720,6 +5721,7 @@
       "systemCredentials": "시스템 자격증명",
       "systemLlm": "시스템 LLM 설정",
       "guardrailModel": "가드레일 모델",
+      "systemStatus": "시스템 구성",
       "authzSync": "권한 동기화",
       "adminAudit": "전체 활동 기록",
       "organization": "조직",
@@ -6039,6 +6041,7 @@
     "systemCredentials": "시스템 자격증명",
     "systemLlm": "시스템 LLM 설정",
     "guardrailModel": "가드레일 모델",
+    "systemStatus": "시스템 구성",
     "skills": "스킬",
     "create": "새로 만들기",
     "createAgent": "에이전트 만들기",
@@ -6577,6 +6580,80 @@
       "connect": "연결하기",
       "reconnectNote": "이 연결은 자격증명 화면에서 다시 연결한 뒤 다시 시도하세요.",
       "openCredentials": "자격증명 열기"
+    }
+  },
+  "systemStatus": {
+    "title": "시스템 구성",
+    "description": "이 설치가 어떤 구성 요소로 돌아가는지 설치 프로필 기준으로 확인합니다. 30초마다 다시 확인합니다.",
+    "loading": "불러오는 중…",
+    "refresh": "다시 확인",
+    "loadError": "시스템 상태를 불러오지 못했습니다.",
+    "checkedAt": "{time}에 확인",
+    "profileHint": "프로필은 INSTALL_PROFILE 환경 변수로 정합니다.",
+    "summary": {
+      "ok": "필요한 구성 요소가 모두 정상입니다.",
+      "warning": "권장 구성 요소 중 꺼졌거나 응답하지 않는 것이 있습니다.",
+      "error": "필수 구성 요소에 문제가 있습니다."
+    },
+    "verdict": {
+      "ok": "정상",
+      "warning": "주의",
+      "error": "문제"
+    },
+    "found": {
+      "ok": "동작 중",
+      "off": "꺼짐",
+      "error": "응답 오류"
+    },
+    "requirement": {
+      "required": "필수",
+      "recommended": "권장",
+      "optional": "선택"
+    },
+    "component": {
+      "database": "데이터베이스",
+      "pgvector": "벡터 검색(pgvector)",
+      "worker": "작업 실행기(worker)",
+      "object_store": "파일 저장소",
+      "mcp_runtime": "MCP 런타임",
+      "pii_detector": "한국어 개인정보 탐지 모델",
+      "skill_sandbox": "스킬 격리 실행"
+    },
+    "profile": {
+      "minimal": {
+        "name": "최소 단일 서버",
+        "description": "서버 한 대에 로컬 볼륨 저장소를 씁니다. 핵심 구성 외에는 필요할 때 켭니다."
+      },
+      "external_api": {
+        "name": "외부 모델 API",
+        "description": "모델은 외부 API로 호출하고, Moldy가 만든 MCP 서버는 공용 런타임에서 돌립니다."
+      },
+      "gpu": {
+        "name": "사내 GPU",
+        "description": "사내 GPU에서 모델을 돌리고, 한국어 개인정보 탐지 모델도 함께 둡니다."
+      },
+      "kubernetes": {
+        "name": "Kubernetes 격리",
+        "description": "여러 복제본이 파일을 함께 쓰므로 S3 호환 저장소, MCP 런타임, 스킬 격리 실행이 필수입니다."
+      },
+      "airgapped": {
+        "name": "망 분리",
+        "description": "바깥 네트워크 없이 동작합니다. 탐지와 스킬 실행을 안에서 처리합니다."
+      }
+    },
+    "components": {
+      "title": "구성 요소",
+      "description": "각 구성 요소를 실제로 호출해 확인한 결과입니다."
+    },
+    "jobs": {
+      "title": "백그라운드 작업",
+      "description": "모든 회사의 작업 대기열과 작업 실행기 상태입니다.",
+      "queued": "대기",
+      "running": "실행 중",
+      "overdue": "1분 넘게 대기",
+      "failed_last_day": "최근 24시간 실패",
+      "noWorkers": "등록된 작업 실행기가 없습니다. worker 서비스를 띄워 주세요.",
+      "heartbeat": "마지막 응답 {time}"
     }
   }
 }

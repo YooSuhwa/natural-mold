@@ -29,6 +29,7 @@ def include_app_routers(app: FastAPI) -> None:
         guardrail_model_settings,
         health,
         invitation_accept,
+        jobs,
         marketplace,
         marketplace_acl,
         marketplace_tenant_publication,
@@ -69,6 +70,7 @@ def include_app_routers(app: FastAPI) -> None:
         skill_uploads,
         skills,
         system_llm_settings,
+        system_status,
         templates,
         tenant_audit,
         tenant_catalog,
@@ -173,6 +175,8 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(guardrail_model_settings.router)
     app.include_router(tenant_guardrails.router)
     app.include_router(agent_guardrails.router)
+    app.include_router(jobs.router)
+    app.include_router(system_status.router)
     app.include_router(tools.router)
     app.include_router(triggers.router)
     app.include_router(uploads.router)

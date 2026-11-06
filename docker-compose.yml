@@ -63,6 +63,17 @@ x-backend-environment: &backend-environment
   OPENFGA_API_TOKEN: ${OPENFGA_API_TOKEN:-moldy-dev-openfga-token}
   AUTHZ_MODE: ${AUTHZ_MODE:-legacy}
   DB_RLS_ENABLED: ${DB_RLS_ENABLED:-false}
+  # Object storage (app/storage/object_store.py): local disk by default; STORAGE_BACKEND=s3
+  # with the `s3` profile uses the bundled SeaweedFS, or point the URL and keys elsewhere.
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+  STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://s3:8333}
+  STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-moldy}
+  STORAGE_S3_CREATE_BUCKET: ${STORAGE_S3_CREATE_BUCKET:-true}
+  # Shared MCP runtime (mcp-runtime/); empty turns the backend's runtime calls off.
+  MCP_RUNTIME_URL: ${MCP_RUNTIME_URL-http://mcp-runtime:8096}
+  # Install profile the operator's system status checks against (minimal, external_api,
+  # gpu, kubernetes, airgapped); it changes no behaviour by itself.
+  INSTALL_PROFILE: ${INSTALL_PROFILE:-minimal}
 
 # Secrets (ENCRYPTION_KEYS, JWT_SECRET, optional LLM keys) may come from
 # backend/.env — the same file the local-dev workflow creates. Optional: without
@@ -122,8 +133,15 @@ services:
     restart: unless-stopped
     # No host ports: FGA API and metrics are available only in the Compose network.
 
+  # postgres:16-alpine plus the pgvector extension (docker/postgres), for the knowledge search
+  # index (feature plan v2 순번 5). Same Alpine base, so existing data volumes stay valid.
   postgres:
-    image: postgres:16-alpine
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+      secrets:
+        - extra_ca
+    image: moldy-postgres:local
     environment:
       POSTGRES_USER: moldy
       POSTGRES_PASSWORD: moldy
@@ -153,6 +171,12 @@ services:
             "ENCRYPTION_KEYS": lambda: secrets.token_hex(32),
             "JWT_SECRET": lambda: secrets.token_urlsafe(64),
             "SKILL_SANDBOX_API_KEY": lambda: secrets.token_urlsafe(32),
+            # Keys of the bundled S3 server (`s3` profile); a company S3 set in the
+            # environment takes precedence, like every value in this file.
+            "STORAGE_S3_ACCESS_KEY_ID": lambda: "moldy" + secrets.token_hex(8),
+            "STORAGE_S3_SECRET_ACCESS_KEY": lambda: secrets.token_urlsafe(32),
+            # Run tokens between the backend and mcp-runtime; never JWT_SECRET.
+            "MCP_RUNTIME_TOKEN_SECRET": lambda: secrets.token_urlsafe(48),
         }
         lines = open(path).read().splitlines() if os.path.exists(path) else []
         present = {line.split("=", 1)[0] for line in lines if "=" in line}
@@ -302,6 +326,90 @@ services:
       openfga:
         condition: service_healthy
 
+  # Bundled S3-compatible storage (SeaweedFS, Apache-2.0; decision D19), only with
+  # `--profile s3`. Credentials come from init-secrets; it publishes no host port.
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    profiles: ["s3"]
+    entrypoint: *backend-entrypoint
+    command:
+      - sh
+      - -c
+      - |
+        umask 077
+        printf '{"identities":[{"name":"moldy","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$$STORAGE_S3_ACCESS_KEY_ID" "$$STORAGE_S3_SECRET_ACCESS_KEY" > /tmp/s3.json
+        exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json
+    volumes:
+      - s3_data:/data
+      - moldy_runtime:/run/moldy:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8333/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    depends_on:
+      init-secrets:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Shared MCP runtime (mcp-runtime/, plan §7.3, decision D09): serves Moldy-defined MCP
+  # servers (Spore, Taproot) behind run tokens the backend signs. Stateless; no host port.
+  # It reads only MCP_RUNTIME_TOKEN_SECRET from the generated secrets, not the session key.
+  mcp-runtime:
+    build:
+      context: .
+      dockerfile: mcp-runtime/Dockerfile
+      secrets:
+        - extra_ca
+    image: moldy-mcp-runtime:local
+    # Root only to read the root-only secrets file, then the server runs as uid 1000.
+    user: "0:0"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -eu
+        MCP_RUNTIME_TOKEN_SECRET="$$(sed -n 's/^MCP_RUNTIME_TOKEN_SECRET=//p' /run/moldy/secrets.env)"
+        export MCP_RUNTIME_TOKEN_SECRET
+        exec setpriv --reuid=1000 --regid=1000 --init-groups "$$@"
+      - mcp-runtime
+    command: ["python", "-m", "moldy_mcp_runtime"]
+    volumes:
+      - moldy_runtime:/run/moldy:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/healthz', timeout=4)
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      init-secrets:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Generic background jobs (app/jobs): a separate process that claims due jobs from the
+  # jobs table and runs them in each job's company session. More replicas share the
+  # queue safely (FOR UPDATE SKIP LOCKED); a stopped worker's jobs are taken again.
+  worker:
+    build: *backend-build
+    entrypoint: *backend-entrypoint
+    command: ["uv", "run", "--no-sync", "python", "-m", "app.jobs.worker"]
+    environment: *backend-environment
+    env_file: *backend-env-file
+    volumes:
+      - backend_data:/app/data
+      - moldy_runtime:/run/moldy:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   backend:
     build: *backend-build
     entrypoint: *backend-entrypoint
@@ -385,6 +493,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  s3_data:
   postgres_data:
   backend_data:
   openfga_data:

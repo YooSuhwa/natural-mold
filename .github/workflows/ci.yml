@@ -177,6 +177,55 @@ jobs:
       - name: pyright
         run: uv run pyright
 
+  external-services:
+    runs-on: ubuntu-latest
+    # The shared MCP runtime's own tests, then the backend against a real runtime and a
+    # real S3-compatible server (tests/external/ skips without them).
+    timeout-minutes: 20
+    env:
+      MCP_RUNTIME_TEST_URL: http://127.0.0.1:8096
+      MCP_RUNTIME_TEST_SECRET: ci-only-runtime-secret-of-at-least-32-bytes
+      STORAGE_TEST_S3_ENDPOINT: http://127.0.0.1:8333
+      STORAGE_TEST_S3_KEY: ci-access
+      STORAGE_TEST_S3_SECRET: ci-secret-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: mcp-runtime tests
+        working-directory: mcp-runtime
+        run: |
+          uv venv --python 3.12
+          uv pip install -e ".[dev]"
+          .venv/bin/ruff check .
+          .venv/bin/ruff format --check .
+          .venv/bin/pyright
+          .venv/bin/python -m pytest -q
+      - name: Start mcp-runtime
+        working-directory: mcp-runtime
+        run: |
+          MCP_RUNTIME_TOKEN_SECRET="$MCP_RUNTIME_TEST_SECRET" nohup .venv/bin/python -m moldy_mcp_runtime > "$RUNNER_TEMP/runtime.log" 2>&1 &
+      - name: Start SeaweedFS
+        run: |
+          printf '{"identities":[{"name":"ci","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$STORAGE_TEST_S3_KEY" "$STORAGE_TEST_S3_SECRET" > "$RUNNER_TEMP/s3.json"
+          docker run -d --name ci-s3 -p 8333:8333 -v "$RUNNER_TEMP/s3.json:/etc/s3.json:ro" chrislusf/seaweedfs:4.48 server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/s3.json
+      - name: Wait for both services
+        run: |
+          for _ in $(seq 60); do
+            if curl -fsS http://127.0.0.1:8096/healthz >/dev/null && curl -fsS http://127.0.0.1:8333/healthz >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/runtime.log"; docker logs ci-s3; exit 1
+      - run: uv sync --frozen --all-extras
+        working-directory: backend
+      - name: Backend against the real services (no skips allowed)
+        working-directory: backend
+        run: |
+          uv run pytest -q -rs tests/external | tee "$RUNNER_TEMP/external.txt"
+          ! grep -q "skipped" "$RUNNER_TEMP/external.txt"
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

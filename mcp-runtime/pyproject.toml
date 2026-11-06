@@ -1,0 +1,30 @@
+[project]
+name = "moldy-mcp-runtime"
+version = "0.1.0"
+description = "Moldy's shared MCP runtime: serves Moldy-defined MCP servers behind run-scoped signed tokens"
+requires-python = ">=3.12,<3.13"
+# Pinned like the image (Dockerfile). FastMCP 4.x needs mcp>=2.3, which is why this runs as
+# its own service: the backend stays on mcp 1.x until the gateway step (decision D12).
+dependencies = [
+    "fastmcp==4.1.5",
+    "pyjwt==2.10.1",
+    "uvicorn==0.38.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.4.2", "pytest-asyncio==1.2.0", "httpx>=0.28,<1", "ruff==0.16.5", "pyright==1.1.408"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"
+include = ["moldy_mcp_runtime", "tests"]

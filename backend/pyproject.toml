@@ -72,6 +72,7 @@ dependencies = [
     "opensandbox>=1.2,<2",
     # Guardrail Korean detector pack. Pinned to what schift-ko-pii 0.6.0 requires.
     "ko-pii==1.15.2",
+    "boto3>=1.40,<2",
 ]
 
 [project.optional-dependencies]

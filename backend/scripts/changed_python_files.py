@@ -14,6 +14,8 @@ from typing import Final
 BASE_PATTERN: Final = re.compile(r"[0-9a-fA-F]{7,40}\Z")
 PYTHON_SUFFIXES: Final = frozenset({".py", ".pyi"})
 GIT_TIMEOUT_SECONDS: Final = 30
+# Separate Python projects with their own dependencies and CI checks (not the backend's).
+SEPARATE_PROJECTS: Final = frozenset({"mcp-runtime"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,7 +132,7 @@ def _parse_untracked(raw: bytes) -> list[str]:
 
 def _regular_contained_python(repo: Path, relative: str) -> Path | None:
     pure = PurePosixPath(relative)
-    if pure.suffix not in PYTHON_SUFFIXES:
+    if pure.suffix not in PYTHON_SUFFIXES or pure.parts[0] in SEPARATE_PROJECTS:
         return None
     current = repo
     for part in pure.parts:

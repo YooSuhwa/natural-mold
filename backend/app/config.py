@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Final, Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.authz.config import AuthzSettings
@@ -174,6 +175,10 @@ class Settings(AuthzSettings):
     # (app/guardrails/rules.py: kr-default, kr-natural, kr-strict, common-basic, kr-observe).
     # Empty: only agents that chose a template. An unknown name fails the run.
     guardrail_default_template: str = ""
+    # Generic background jobs (app/jobs): the separate worker process's parallel jobs and
+    # how often an idle worker looks for due jobs.
+    jobs_worker_concurrency: int = 2
+    jobs_poll_seconds: float = 2.0
 
     skill_evaluation_enabled: bool = True
     skill_evaluation_max_concurrent: int = 1
@@ -217,6 +222,50 @@ class Settings(AuthzSettings):
     artifact_s3_bucket: str = ""
     artifact_s3_access_key_id: str = ""
     artifact_s3_secret_access_key: str = ""
+
+    # Object storage for new file kinds (app/storage/object_store.py, plan §11.6). "local":
+    # files under storage_local_root (single server). "s3": an S3-compatible bucket shared
+    # by every backend and worker (the bundled SeaweedFS of the `s3` Compose profile, or the
+    # company's own). The ARTIFACT_S3_* names are read as aliases.
+    storage_backend: Literal["local", "s3"] = "local"
+    storage_local_root: str = "./data/objects"
+    storage_s3_endpoint_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("STORAGE_S3_ENDPOINT_URL", "ARTIFACT_S3_ENDPOINT_URL"),
+    )
+    storage_s3_bucket: str = Field(
+        default="", validation_alias=AliasChoices("STORAGE_S3_BUCKET", "ARTIFACT_S3_BUCKET")
+    )
+    storage_s3_access_key_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("STORAGE_S3_ACCESS_KEY_ID", "ARTIFACT_S3_ACCESS_KEY_ID"),
+    )
+    storage_s3_secret_access_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "STORAGE_S3_SECRET_ACCESS_KEY", "ARTIFACT_S3_SECRET_ACCESS_KEY"
+        ),
+    )
+    storage_s3_region: str = "us-east-1"
+    # Path-style addressing (bucket in the path): SeaweedFS, Ceph RGW and most on-premise
+    # stores need it.
+    storage_s3_path_style: bool = True
+    # "AES256" or "aws:kms" where the store supports server-side encryption; empty: off.
+    storage_s3_server_side_encryption: str = ""
+    # Create the bucket at the first health check (the bundled server starts empty).
+    storage_s3_create_bucket: bool = False
+
+    # Shared MCP runtime (mcp-runtime/, plan §7.3): its base URL inside the network and the
+    # secret it shares with the backend for run tokens (never JWT_SECRET). Empty URL: off.
+    mcp_runtime_url: str = ""
+    mcp_runtime_token_secret: str = ""
+
+    # Install profile (plan §11, decision D49): which services this installation is expected
+    # to run. The operator's system status checks the components against it; it changes no
+    # behaviour by itself. Resource budgets per profile are set after measurement.
+    install_profile: Literal["minimal", "external_api", "gpu", "kubernetes", "airgapped"] = (
+        "minimal"
+    )
 
     # Builder / Assistant sub-agent model defaults (서비스 내부용)
     builder_model_provider: str = "anthropic"
@@ -353,6 +402,7 @@ _LANE_PATH_DEFAULTS: Final[dict[str, str]] = {
     "artifact_storage_dir": "backend/data/artifacts",
     "agent_image_dir": "backend/data/agents",
     "user_avatar_dir": "backend/data/users",
+    "storage_local_root": "backend/data/objects",
 }
 
 

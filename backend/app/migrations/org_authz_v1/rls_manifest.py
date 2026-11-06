@@ -53,6 +53,7 @@ DIRECT_TENANT: Final = frozenset(
         "guardrail_pseudonyms",  # conversation pseudonym maps (encrypted values)
         "guardrail_template_versions",  # published company templates (immutable)
         "guardrail_templates",  # company guardrail templates (drafts)
+        "jobs",  # generic background jobs (app/jobs)
         "marketplace_installations",
         "marketplace_items",
         "mcp_servers",
@@ -101,6 +102,7 @@ PLATFORM_ONLY: Final = frozenset(
         "authz_reconcile_runs",
         "authz_shadow_diffs",
         "guardrail_model_settings",  # operator's guardrail model service choice
+        "job_workers",  # running background worker processes and their heartbeats
         # Historical migration artefacts that may still exist physically.
         "_m11_dedup_connection_snapshot",
         "_m11_dedup_tool_remap",
