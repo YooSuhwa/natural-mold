@@ -47,6 +47,7 @@ describe('BreadcrumbNav (org-authz routes)', () => {
   it('labels every settings route of the organization and company screens', () => {
     expect(trail('/settings/company')).toEqual(['설정', '회사'])
     expect(trail('/settings/company/policies')).toEqual(['설정', '회사', '회사 정책'])
+    expect(trail('/settings/company/guardrails')).toEqual(['설정', '회사', '가드레일'])
     expect(trail('/settings/company/members')).toEqual(['설정', '회사', '회사 구성원'])
     expect(trail('/settings/company/models')).toEqual(['설정', '회사', '모델과 LLM 설정'])
     expect(trail('/settings/company/sso')).toEqual(['설정', '회사', 'SSO와 도메인'])

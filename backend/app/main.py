@@ -253,6 +253,9 @@ def create_app() -> FastAPI:
             "Authorization",
             "X-Api-Key",
             "X-CSRF-Token",
+            # Company and organization writes send their version (``If-Match``); without it
+            # the browser's preflight fails every such write from another origin.
+            "If-Match",
         ],
         # W3-out — cross-origin (3000 → 8001) 에서 frontend 가 SSE stream 의
         # ``X-Run-Id`` (resume 식별자) / ``X-Resume-Mode`` (관찰성) 를 읽으려면

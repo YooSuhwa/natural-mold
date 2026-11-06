@@ -19,12 +19,17 @@ describe('companyNavItems', () => {
   })
 
   it('narrows entries by company role', () => {
-    expect(hrefs('member')).toEqual(['/settings/company/policies'])
-    expect(hrefs('auditor')).toEqual(['/settings/company', '/settings/company/policies'])
+    expect(hrefs('member')).toEqual(['/settings/company/policies', '/settings/company/guardrails'])
+    expect(hrefs('auditor')).toEqual([
+      '/settings/company',
+      '/settings/company/policies',
+      '/settings/company/guardrails',
+    ])
     expect(hrefs('admin')).toEqual([
       '/settings/company',
       '/settings/company/members',
       '/settings/company/policies',
+      '/settings/company/guardrails',
       '/settings/company/models',
       '/settings/company/sso',
     ])

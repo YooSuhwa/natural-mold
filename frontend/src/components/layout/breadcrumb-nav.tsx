@@ -55,6 +55,7 @@ const ROUTE_LABELS: Record<string, string> = {
 const SCOPED_LABELS: Record<string, string> = {
   'company/members': 'appSettings.nav.companyMembers',
   'company/policies': 'appSettings.nav.companyPolicies',
+  'company/guardrails': 'appSettings.nav.companyGuardrails',
   'company/models': 'appSettings.nav.companyModels',
   'company/sso': 'appSettings.nav.companySso',
   'organization/members': 'appSettings.nav.organizationMembers',
