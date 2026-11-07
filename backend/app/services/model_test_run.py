@@ -31,7 +31,7 @@ from app.credentials.boundary import open_values
 from app.dependencies import CurrentUser
 from app.schemas.model import ModelTestPreviewRequest
 from app.services import model_service
-from app.services.model_test import run_model_test
+from app.services.model_test import run_embedding_test, run_model_test
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,14 +54,23 @@ async def probe_registered_model(
         await model_service.load_model(db, model_id, context, authz), user
     )
     cred = await model_test_credential(db, model, credential_id, context, authz)
-    result = await run_model_test(
-        provider=model.provider,
-        model_name=model.model_name,
-        base_url=model.base_url,
-        credential_data=await open_values(cred, "probe"),
-        cost_per_input_token=model.cost_per_input_token,
-        cost_per_output_token=model.cost_per_output_token,
-    )
+    if model.kind == "embedding":  # memory plan Q14: embed a text instead of chatting
+        result = await run_embedding_test(
+            provider=model.provider,
+            model_name=model.model_name,
+            base_url=model.base_url,
+            credential_data=await open_values(cred, "probe"),
+            dimensions=model.embedding_dimensions,
+        )
+    else:
+        result = await run_model_test(
+            provider=model.provider,
+            model_name=model.model_name,
+            base_url=model.base_url,
+            credential_data=await open_values(cred, "probe"),
+            cost_per_input_token=model.cost_per_input_token,
+            cost_per_output_token=model.cost_per_output_token,
+        )
     metadata = {
         "model_id": str(model.id),
         "provider": model.provider,
@@ -78,12 +87,21 @@ async def probe_preview_model(
     authz: AuthzService,
 ) -> ModelProbe:
     cred = await load_owned_credential(db, payload.credential_id, context, authz)
-    result = await run_model_test(
-        provider=payload.provider,
-        model_name=payload.model_name,
-        base_url=payload.base_url,
-        credential_data=await open_values(cred, "probe"),
-    )
+    if payload.kind == "embedding":
+        result = await run_embedding_test(
+            provider=payload.provider,
+            model_name=payload.model_name,
+            base_url=payload.base_url,
+            credential_data=await open_values(cred, "probe"),
+            dimensions=payload.embedding_dimensions,
+        )
+    else:
+        result = await run_model_test(
+            provider=payload.provider,
+            model_name=payload.model_name,
+            base_url=payload.base_url,
+            credential_data=await open_values(cred, "probe"),
+        )
     metadata = {"preview": True, "provider": payload.provider, "model_name": payload.model_name}
     return ModelProbe(cred.id, result.to_dict(), metadata)
 

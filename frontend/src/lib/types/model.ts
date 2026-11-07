@@ -185,4 +185,7 @@ export interface ModelTestPreviewRequest {
   model_name: string
   base_url?: string | null
   credential_id: string
+  /** An embedding model is tested by embedding one text at this width (Q14). */
+  kind?: ModelKind
+  embedding_dimensions?: number | null
 }

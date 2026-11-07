@@ -7,6 +7,7 @@ const hooks = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
   discover: vi.fn(),
+  test: vi.fn(),
 }))
 
 vi.mock('@/lib/hooks/use-models', () => ({
@@ -14,7 +15,7 @@ vi.mock('@/lib/hooks/use-models', () => ({
   useUpdateModel: () => ({ mutateAsync: hooks.update, isPending: false }),
   useDeleteModel: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDiscoverModels: () => ({ mutateAsync: hooks.discover, isPending: false }),
-  useTestModel: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useTestModel: () => ({ mutateAsync: hooks.test, isPending: false }),
 }))
 vi.mock('@/lib/hooks/use-credentials', () => ({
   useCredentials: () => ({
@@ -52,8 +53,19 @@ describe('model kind selector (Q14)', () => {
 
     const dimensions = screen.getByLabelText(/차원/)
     expect(dimensions).toHaveValue(1024)
-    // The chat connection test does not apply to an embedding model.
-    expect(screen.queryByTestId('custom-test-button')).not.toBeInTheDocument()
+    // An embedding model is tested by embedding one text at the chosen width.
+    hooks.test.mockResolvedValue({ success: true, response: 'vector of 1024 dimensions' })
+    await userEvent.click(screen.getByTestId('custom-test-button'))
+    await waitFor(() =>
+      expect(hooks.test).toHaveBeenCalledWith({
+        mode: 'preview',
+        payload: expect.objectContaining({
+          model_name: 'text-embedding-3-large',
+          kind: 'embedding',
+          embedding_dimensions: 1024,
+        }),
+      }),
+    )
 
     const save = screen.getByRole('button', { name: '모델 저장' })
     await userEvent.clear(dimensions)
@@ -120,7 +132,7 @@ describe('model kind selector (Q14)', () => {
     )
     const list = await screen.findByRole('list')
     await userEvent.click(within(list).getByRole('checkbox'))
-    expect(within(list).queryByRole('button', { name: /테스트/ })).not.toBeInTheDocument()
+    expect(within(list).getByRole('button', { name: /테스트/ })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '선택 항목 저장' }))
     await waitFor(() =>
       expect(hooks.create).toHaveBeenCalledWith(

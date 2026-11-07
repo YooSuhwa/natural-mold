@@ -8,6 +8,7 @@ glue: classification, curl rendering, audit-log emission, masking.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import uuid
 from decimal import Decimal
@@ -526,3 +527,99 @@ def test_curl_command_format_is_shell_safe() -> None:
     assert curl.startswith("curl -X POST '")
     # ``-d`` block carries the JSON body — match a JSON-ish opener.
     assert re.search(r"-d '\{", curl) is not None
+
+
+# ---------------------------------------------------------------------------
+# Embedding models (memory plan Q14): embed one text instead of chatting
+# ---------------------------------------------------------------------------
+
+
+def _embedding_reply(width: int, status: int = 200) -> httpx.MockTransport:
+    def reply(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/embeddings")
+        assert request.headers["Authorization"] == "Bearer sk-embed"
+        body = json.loads(request.content)
+        assert body["input"] == ["연결 확인"] and body["dimensions"] == 1024
+        if status != 200:
+            return httpx.Response(status, json={"error": {"message": "invalid api key"}})
+        return httpx.Response(
+            200,
+            json={
+                "model": body["model"],
+                "data": [{"index": 0, "embedding": [0.1] * width}],
+                "usage": {"prompt_tokens": 3},
+            },
+        )
+
+    return httpx.MockTransport(reply)
+
+
+@pytest.mark.asyncio
+async def test_an_embedding_test_checks_the_returned_width() -> None:
+    from app.services.model_test import run_embedding_test
+
+    common = {
+        "provider": "openai_compatible",
+        "model_name": "text-embedding-3-large",
+        "base_url": "http://litellm.test/v1",
+        "credential_data": {"api_key": "sk-embed"},
+        "dimensions": 1024,
+    }
+    ok = await run_embedding_test(**common, transport=_embedding_reply(1024))
+    assert ok.success and ok.response == "vector of 1024 dimensions" and ok.tokens_in == 3
+    assert ok.raw_response == {"model": "text-embedding-3-large", "dimensions": 1024}
+    assert "sk-embed" not in json.dumps(ok.to_dict()) and "${API_KEY}" in (ok.curl_command or "")
+
+    wrong = await run_embedding_test(**common, transport=_embedding_reply(3072))
+    assert not wrong.success and wrong.error is not None
+    assert wrong.error.message == "asked for 1024 dimensions, the model returned 3072"
+
+    denied = await run_embedding_test(**common, transport=_embedding_reply(0, status=401))
+    assert not denied.success and denied.error is not None and denied.error.kind == "auth"
+
+    other = await run_embedding_test(**{**common, "provider": "anthropic"})
+    assert not other.success and other.error is not None and "OpenAI-shaped" in other.error.message
+
+
+@pytest.mark.asyncio
+async def test_router_tests_an_embedding_model_by_embedding(
+    client: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import model_test_run
+    from app.services.model_test import ModelTestResult
+
+    cred_id = await _create_credential(db)
+    m = Model(
+        provider="openai",
+        model_name="text-embedding-3-large",
+        display_name="Embedding",
+        kind="embedding",
+        embedding_dimensions=1024,
+    )
+    db.add(m)
+    await db.commit()
+    seen: dict = {}
+
+    async def fake(**kwargs):
+        seen.update(kwargs)
+        return ModelTestResult(success=True, response="vector of 1024 dimensions")
+
+    monkeypatch.setattr(model_test_run, "run_embedding_test", fake)
+    response = await client.post(f"/api/models/{m.id}/test", params={"credential_id": str(cred_id)})
+    assert response.status_code == 200, response.text
+    assert response.json()["response"] == "vector of 1024 dimensions"
+    assert (seen["model_name"], seen["dimensions"]) == ("text-embedding-3-large", 1024)
+
+    seen.clear()
+    preview = await client.post(
+        "/api/models/test-preview",
+        json={
+            "provider": "openai",
+            "model_name": "text-embedding-3-small",
+            "credential_id": str(cred_id),
+            "kind": "embedding",
+            "embedding_dimensions": 512,
+        },
+    )
+    assert preview.status_code == 200, preview.text
+    assert (seen["model_name"], seen["dimensions"]) == ("text-embedding-3-small", 512)
