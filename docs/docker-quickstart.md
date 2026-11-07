@@ -40,6 +40,7 @@ docker compose ps
 | `worker` | 상시 | 백그라운드 작업 실행기(`python -m app.jobs.worker`). 문서 색인처럼 오래 걸리는 작업을 대기열에서 꺼내 실행합니다 |
 | `mcp-runtime` | 상시 | MCP 게이트웨이이자 Moldy가 정의하는 MCP 서버의 공용 런타임(`mcp-runtime/`). 외부 MCP 서버 호출은 모두 이 서비스의 relay를 거칩니다. 백엔드가 서명한 실행 토큰이 있어야 호출됩니다. 호스트 포트 없음. 아래 "MCP 게이트웨이와 도구 검토" 참고 |
 | `s3` | 선택 | `--profile s3`로만 뜨는 S3 호환 저장소(SeaweedFS). 아래 "설치 프로필과 시스템 구성" 참고 |
+| `opensearch` | 선택 | `--profile search`로만 뜨는 OpenSearch + Nori 한국어 분석기. 기억 검색의 낱말 분석에만 씁니다(색인과 기억 내용은 두지 않음). 켜려면 `OPENSEARCH_URL=http://opensearch:9200`. 없으면 조사·어미 목록으로 대신합니다 |
 | `frontend` | 상시 | Next.js |
 
 1회성 서비스는 `docker compose ps -a`에서 `Exited (0)`으로 보이면 정상입니다.
