@@ -67,7 +67,7 @@ def _person(lab: RlsLab, tenant: UUID) -> OrgContext:
             {"id": org, "tenant": tenant, "slug": f"o-{org.hex[:10]}"},
         )
         connection.execute(
-            sa.insert(User.__table__).values(
+            sa.insert(User).values(
                 id=user, email=f"{user.hex[:10]}@test.com", name="P", is_active=True
             )
         )
@@ -79,7 +79,7 @@ def _memories(lab: RlsLab, who: OrgContext, texts: list[str]) -> list[UUID]:
     with lab.admin.begin() as connection:
         for record_id, text in zip(ids, texts, strict=True):
             connection.execute(
-                sa.insert(MemoryRecord.__table__).values(
+                sa.insert(MemoryRecord).values(
                     id=record_id,
                     org_id=who.org_id,
                     tenant_id=who.tenant_id,
@@ -100,7 +100,7 @@ async def test_another_company_sees_none_of_the_recall_rows(lab: RlsLab, app_mak
     scoped = {"org_id": a.org_id, "tenant_id": a.tenant_id, "user_id": a.user_id}
     with lab.admin.begin() as connection:
         connection.execute(
-            sa.insert(MemoryEmbedding.__table__).values(
+            sa.insert(MemoryEmbedding).values(
                 id=uuid4(),
                 org_id=a.org_id,
                 tenant_id=a.tenant_id,
@@ -113,17 +113,17 @@ async def test_another_company_sees_none_of_the_recall_rows(lab: RlsLab, app_mak
             )
         )
         connection.execute(
-            sa.insert(MemoryRecallRun.__table__).values(
+            sa.insert(MemoryRecallRun).values(
                 id=uuid4(), run_id="run-a", mode="fresh", tokens=1, dropped=0, **scoped
             )
         )
         connection.execute(
-            sa.insert(MemoryRecall.__table__).values(
+            sa.insert(MemoryRecall).values(
                 id=uuid4(), run_id="run-a", record_id=record_id, path="auto", **scoped
             )
         )
         connection.execute(
-            sa.insert(MemoryProfileDoc.__table__).values(
+            sa.insert(MemoryProfileDoc).values(
                 id=uuid4(), kind="user_profile", lines=[{"id": "1", "text": "x"}], **scoped
             )
         )
