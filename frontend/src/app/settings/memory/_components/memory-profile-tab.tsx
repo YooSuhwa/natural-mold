@@ -8,12 +8,21 @@ import { toast } from 'sonner'
 import { SettingsSectionCard } from '@/components/shared/settings-section-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useMemoryProfiles, useUpdateMemoryProfile } from '@/lib/hooks/use-memory'
-import type { MemoryProfile, MemoryProfileLineInput, MemoryProfileLineOrigin } from '@/lib/types'
+import { useTriggers } from '@/lib/hooks/use-triggers'
+import {
+  MEMORY_PROFILE_SECTIONS,
+  type MemoryProfile,
+  type MemoryProfileLineInput,
+  type MemoryProfileLineOrigin,
+  type MemoryProfileSection,
+} from '@/lib/types'
 import { SelectField, type MemoryAgentOption } from './memory-form-fields'
 
 const NONE_AGENT = '__none__'
+const NONE_TRIGGER = '__none__'
 /** Mirrors the backend's per-line limit (`MEMORY_PROFILE_LINE_TOO_LONG`). */
 const LINE_MAX_CHARS = 300
 
@@ -26,6 +35,12 @@ interface DraftLine {
   savedText: string | null
   origin: MemoryProfileLineOrigin
   readable: boolean
+  /** Trigger memos only (Q13); `null` for the other documents. */
+  section: MemoryProfileSection | null
+}
+
+function lineSection(profile: MemoryProfile, section?: MemoryProfileSection | null) {
+  return profile.kind === 'trigger_memo' ? (section ?? 'basics') : null
 }
 
 function toDraft(profile: MemoryProfile): DraftLine[] {
@@ -36,6 +51,7 @@ function toDraft(profile: MemoryProfile): DraftLine[] {
     savedText: line.text,
     origin: line.origin,
     readable: line.readable,
+    section: lineSection(profile, line.section),
   }))
 }
 
@@ -51,14 +67,22 @@ function isDirty(draft: DraftLine[], profile: MemoryProfile): boolean {
   if (draft.length !== profile.lines.length) return true
   return draft.some((line, index) => {
     const saved = profile.lines[index]
-    return line.id !== saved.id || line.text !== saved.text
+    return (
+      line.id !== saved.id ||
+      line.text !== saved.text ||
+      line.section !== lineSection(profile, saved.section)
+    )
   })
 }
 
 /** Payload lines: blank drafts are dropped; saved lines keep their id (5.12). */
 function profileLinesPayload(draft: DraftLine[]): MemoryProfileLineInput[] {
   return draft
-    .map((line) => ({ id: line.id, text: line.text.trim() }))
+    .map((line) => ({
+      id: line.id,
+      text: line.text.trim(),
+      ...(line.section ? { section: line.section } : {}),
+    }))
     .filter((line) => line.text.length > 0)
 }
 
@@ -99,8 +123,56 @@ export function MemoryProfileTab({ agents }: { agents: MemoryAgentOption[] }) {
           {agentId ? <WorkMemoSection key={agentId} agentId={agentId} /> : null}
         </div>
       </SettingsSectionCard>
+      {agentId ? <TriggerMemoCard key={agentId} agentId={agentId} /> : null}
     </div>
   )
+}
+
+/** 예약 메모 (Q13): one schedule's memo, read only by that schedule's runs. */
+function TriggerMemoCard({ agentId }: { agentId: string }) {
+  const t = useTranslations('appSettings.memory.profile')
+  const triggers = useTriggers(agentId)
+  const [triggerId, setTriggerId] = useState<string | null>(null)
+  const list = triggers.data ?? []
+  return (
+    <SettingsSectionCard title={t('triggerTitle')} description={t('triggerDescription')}>
+      <div className="space-y-4">
+        {list.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {triggers.isLoading ? t('loading') : t('triggerEmpty')}
+          </p>
+        ) : (
+          <SelectField
+            id="memory-profile-trigger"
+            label={t('triggerLabel')}
+            value={triggerId ?? NONE_TRIGGER}
+            options={[
+              { value: NONE_TRIGGER, label: t('triggerNone') },
+              ...list.map((trigger) => ({ value: trigger.id, label: trigger.name })),
+            ]}
+            onChange={(value) => setTriggerId(value === NONE_TRIGGER ? null : value)}
+          />
+        )}
+        {triggerId ? (
+          <TriggerMemoSection key={triggerId} agentId={agentId} triggerId={triggerId} />
+        ) : null}
+      </div>
+    </SettingsSectionCard>
+  )
+}
+
+function TriggerMemoSection({ agentId, triggerId }: { agentId: string; triggerId: string }) {
+  const t = useTranslations('appSettings.memory.profile')
+  const profiles = useMemoryProfiles(agentId, triggerId)
+  const memo = profiles.data?.trigger_memo
+  if (!memo) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {profiles.isLoading ? t('loading') : t('loadFailed')}
+      </p>
+    )
+  }
+  return <ProfileEditor profile={memo} agentId={agentId} triggerId={triggerId} />
 }
 
 function WorkMemoSection({ agentId }: { agentId: string }) {
@@ -117,7 +189,15 @@ function WorkMemoSection({ agentId }: { agentId: string }) {
   return <ProfileEditor profile={workMemo} agentId={agentId} />
 }
 
-function ProfileEditor({ profile, agentId }: { profile: MemoryProfile; agentId: string | null }) {
+function ProfileEditor({
+  profile,
+  agentId,
+  triggerId = null,
+}: {
+  profile: MemoryProfile
+  agentId: string | null
+  triggerId?: string | null
+}) {
   const t = useTranslations('appSettings.memory.profile')
   const save = useUpdateMemoryProfile()
   const [seed, setSeed] = useState(profile)
@@ -141,6 +221,10 @@ function ProfileEditor({ profile, agentId }: { profile: MemoryProfile; agentId: 
     setDraft((lines) => lines.map((line) => (line.key === key ? { ...line, text } : line)))
   }
 
+  function updateSection(key: string, section: MemoryProfileSection) {
+    setDraft((lines) => lines.map((line) => (line.key === key ? { ...line, section } : line)))
+  }
+
   function removeLine(key: string) {
     setDraft((lines) => lines.filter((line) => line.key !== key))
   }
@@ -155,6 +239,7 @@ function ProfileEditor({ profile, agentId }: { profile: MemoryProfile; agentId: 
         savedText: null,
         origin: 'user',
         readable: true,
+        section: lineSection(profile),
       },
     ])
     setNextKey((value) => value + 1)
@@ -164,7 +249,12 @@ function ProfileEditor({ profile, agentId }: { profile: MemoryProfile; agentId: 
     try {
       const saved = await save.mutateAsync({
         kind: profile.kind,
-        data: { agent_id: agentId, lines: profileLinesPayload(draft), version: seed.version },
+        data: {
+          agent_id: agentId,
+          ...(triggerId ? { trigger_id: triggerId } : {}),
+          lines: profileLinesPayload(draft),
+          version: seed.version,
+        },
       })
       setSeed(saved)
       setDraft(toDraft(saved))
@@ -223,6 +313,29 @@ function ProfileEditor({ profile, agentId }: { profile: MemoryProfile; agentId: 
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{t(`origin.${origin}`)}</Badge>
+                  {line.section ? (
+                    <Select
+                      value={line.section}
+                      onValueChange={(next) =>
+                        next && updateSection(line.key, next as MemoryProfileSection)
+                      }
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        aria-label={t('sectionLabel', { index: index + 1 })}
+                        data-testid="memory-profile-line-section"
+                      >
+                        <span>{t(`section.${line.section}`)}</span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MEMORY_PROFILE_SECTIONS.map((section) => (
+                          <SelectItem key={section} value={section}>
+                            {t(`section.${section}`)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
                   {skipped ? (
                     <Badge variant="destructive" data-testid="memory-profile-line-unreadable">
                       {t('unreadable')}

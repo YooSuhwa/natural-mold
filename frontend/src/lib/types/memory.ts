@@ -264,15 +264,22 @@ export interface MemoryProposalSource {
   provenance: 'confirmed' | 'agent' | 'outside' | 'legacy'
 }
 
-/** A profile line a consolidation proposal adds or removes (plan 15, 5.12). */
+/**
+ * A profile line a consolidation proposal adds or removes (plan 15, 5.12), or a schedule
+ * run's new "최근 상태" for its trigger memo (`replace_section`, Q13).
+ */
 export interface MemoryProfileChange {
-  op: 'add' | 'remove'
+  op: 'add' | 'remove' | 'replace_section'
   kind: MemoryProfileKind
   agent_id: string | null
   line_id?: string | null
-  text: string
+  text?: string
   /** Source memory ids. */
-  sources: string[]
+  sources?: string[]
+  trigger_id?: string
+  /** `replace_section`: the new "recent" lines and the tips it adds. */
+  recent?: string[]
+  tips?: string[]
 }
 
 export interface MemoryBulkApproveSkip {
@@ -336,10 +343,16 @@ export interface MemoryEventPayload {
   source_run_id?: string | null
 }
 
-/** Plan 15 (5.12) profile documents: 내 프로필 and one agent's 작업 메모. */
-export type MemoryProfileKind = 'user_profile' | 'work_memo'
-/** `user` = the person wrote it, `pinned` = 프로필에 올림, `consolidation` = 정리 작업. */
-export type MemoryProfileLineOrigin = 'user' | 'pinned' | 'consolidation'
+/** Plan 15 (5.12) profile documents: 내 프로필, one agent's 작업 메모, one schedule's 예약 메모. */
+export type MemoryProfileKind = 'user_profile' | 'work_memo' | 'trigger_memo'
+/**
+ * `user` = the person wrote it, `pinned` = 프로필에 올림, `consolidation` = 정리 작업,
+ * `schedule` = a schedule run's approved proposal.
+ */
+export type MemoryProfileLineOrigin = 'user' | 'pinned' | 'consolidation' | 'schedule'
+/** A trigger memo's fixed sections (Q13). */
+export type MemoryProfileSection = 'recent' | 'basics' | 'tips'
+export const MEMORY_PROFILE_SECTIONS: readonly MemoryProfileSection[] = ['recent', 'basics', 'tips']
 
 export interface MemoryProfileLine {
   id: string
@@ -349,11 +362,14 @@ export interface MemoryProfileLine {
   sources: string[]
   /** `false`: a source memory was revoked or deleted, so runs skip the line. */
   readable: boolean
+  /** Trigger memos only. */
+  section?: MemoryProfileSection | null
 }
 
 export interface MemoryProfile {
   kind: MemoryProfileKind
   agent_id: string | null
+  trigger_id?: string | null
   lines: MemoryProfileLine[]
   tokens: number
   budget_tokens: number
@@ -363,16 +379,19 @@ export interface MemoryProfile {
 export interface MemoryProfiles {
   user_profile: MemoryProfile
   work_memo: MemoryProfile | null
+  trigger_memo?: MemoryProfile | null
 }
 
 /** A kept line sends its `id` with unchanged text; edited or new lines become the person's own. */
 export interface MemoryProfileLineInput {
   id?: string | null
   text: string
+  section?: MemoryProfileSection | null
 }
 
 export interface MemoryProfileUpdate {
   agent_id?: string | null
+  trigger_id?: string | null
   lines: MemoryProfileLineInput[]
   /** The version the person edited (`MEMORY_PROFILE_CHANGED` when the server has a newer one). */
   version?: number

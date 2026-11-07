@@ -11312,6 +11312,23 @@
               ],
               "title": "Agent Id"
             }
+          },
+          {
+            "in": "query",
+            "name": "trigger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trigger Id"
+            }
           }
         ],
         "responses": {
@@ -11353,7 +11370,8 @@
             "schema": {
               "enum": [
                 "user_profile",
-                "work_memo"
+                "work_memo",
+                "trigger_memo"
               ],
               "title": "Kind",
               "type": "string"
@@ -40457,6 +40475,22 @@
           ],
           "title": "Id"
         },
+        "section": {
+          "anyOf": [
+            {
+              "enum": [
+                "recent",
+                "basics",
+                "tips"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Section"
+        },
         "text": {
           "maxLength": 300,
           "minLength": 1,
@@ -40480,7 +40514,8 @@
           "enum": [
             "user",
             "pinned",
-            "consolidation"
+            "consolidation",
+            "schedule"
           ],
           "title": "Origin",
           "type": "string"
@@ -40488,6 +40523,22 @@
         "readable": {
           "title": "Readable",
           "type": "boolean"
+        },
+        "section": {
+          "anyOf": [
+            {
+              "enum": [
+                "recent",
+                "basics",
+                "tips"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Section"
         },
         "sources": {
           "items": {
@@ -40531,7 +40582,8 @@
         "kind": {
           "enum": [
             "user_profile",
-            "work_memo"
+            "work_memo",
+            "trigger_memo"
           ],
           "title": "Kind",
           "type": "string"
@@ -40546,6 +40598,18 @@
         "tokens": {
           "title": "Tokens",
           "type": "integer"
+        },
+        "trigger_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trigger Id"
         },
         "version": {
           "title": "Version",
@@ -40584,6 +40648,18 @@
           "title": "Lines",
           "type": "array"
         },
+        "trigger_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trigger Id"
+        },
         "version": {
           "anyOf": [
             {
@@ -40602,6 +40678,16 @@
     },
     "MemoryProfilesOut": {
       "properties": {
+        "trigger_memo": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MemoryProfileOut"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "user_profile": {
           "$ref": "#/components/schemas/MemoryProfileOut"
         },

@@ -396,10 +396,13 @@ class MemoryProfileLineIn(BaseModel):
 
     id: str | None = Field(default=None, max_length=64)
     text: str = Field(min_length=1, max_length=300)
+    # A schedule memo's section (Q13); other documents leave it out.
+    section: Literal["recent", "basics", "tips"] | None = None
 
 
 class MemoryProfileUpdate(BaseModel):
     agent_id: uuid.UUID | None = None
+    trigger_id: uuid.UUID | None = None
     lines: list[MemoryProfileLineIn] = Field(default_factory=list, max_length=60)
     # The version the person edited; a newer one on the server refuses the write.
     version: int | None = Field(default=None, ge=0)
@@ -408,15 +411,17 @@ class MemoryProfileUpdate(BaseModel):
 class MemoryProfileLineOut(BaseModel):
     id: str
     text: str
-    origin: Literal["user", "pinned", "consolidation"]
+    origin: Literal["user", "pinned", "consolidation", "schedule"]
     sources: list[str] = Field(default_factory=list)
     # False: a source was revoked or deleted, so runs skip the line.
     readable: bool
+    section: Literal["recent", "basics", "tips"] | None = None
 
 
 class MemoryProfileOut(BaseModel):
-    kind: Literal["user_profile", "work_memo"]
+    kind: Literal["user_profile", "work_memo", "trigger_memo"]
     agent_id: uuid.UUID | None = None
+    trigger_id: uuid.UUID | None = None
     lines: list[MemoryProfileLineOut]
     tokens: int
     budget_tokens: int
@@ -426,6 +431,7 @@ class MemoryProfileOut(BaseModel):
 class MemoryProfilesOut(BaseModel):
     user_profile: MemoryProfileOut
     work_memo: MemoryProfileOut | None = None
+    trigger_memo: MemoryProfileOut | None = None
 
 
 class MemoryRecallPreviewIn(BaseModel):

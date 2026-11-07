@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.audit_actions import MEMORY_CONSOLIDATION_RUN
 from app.authz.memory_scope import memory_owned_by, private_memory_record_predicate
 from app.authz.org_context import OrgContext
+from app.exceptions import NotFoundError
 from app.jobs import registry
 from app.jobs import service as jobs
 from app.jobs.context import JobContext
@@ -686,7 +687,10 @@ async def apply_proposal(db: AsyncSession, context: OrgContext, proposal: Memory
             db, row, "revoke", context.user_id, reason="consolidation: does not match its source"
         )
     elif proposal.action == "profile":
-        await memory_profile.apply_change(db, context, proposal.profile_change or {})
+        try:
+            await memory_profile.apply_change(db, context, proposal.profile_change or {})
+        except NotFoundError:
+            raise StaleProposal from None  # the schedule of a trigger memo is gone
     else:
         raise ValueError(f"not a consolidation action: {proposal.action}")
     proposal.status, proposal.resolved_at = "approved", now
@@ -859,7 +863,7 @@ async def system_model_call(context: OrgContext) -> ModelCall:
     return call
 
 
-async def _book_usage(
+async def book_job_usage(
     db: AsyncSession, context: OrgContext, model_name: str, outcome: Outcome
 ) -> None:
     if outcome.tokens_in == 0 and outcome.tokens_out == 0:
@@ -897,7 +901,7 @@ async def _book_usage(
     )
 
 
-async def _limited(db: AsyncSession, context: OrgContext) -> bool:
+async def usage_limited(db: AsyncSession, context: OrgContext) -> bool:
     from app.tenancy.limits import Subject, UsageLimits
 
     subject = Subject(context.tenant_id, context.org_id, context.user_id, None)
@@ -913,12 +917,12 @@ async def _run_job(job: JobContext) -> dict[str, Any]:
     )
     agent_id = uuid.UUID(str(payload["agent_id"])) if payload.get("agent_id") else None
     async with job.session() as db:
-        if await _limited(db, context):
+        if await usage_limited(db, context):
             return {"outcome": "skipped", "reason": "usage_limit"}
         call = await system_model_call(context)
         job.check_canceled()
         outcome = await run_consolidation(db, context, agent_id=agent_id, model_call=call)
-        await _book_usage(db, context, getattr(call, "model_name", "system"), outcome)
+        await book_job_usage(db, context, getattr(call, "model_name", "system"), outcome)
     return {
         "outcome": outcome.outcome,
         "proposed": outcome.proposed,
@@ -942,6 +946,8 @@ __all__ = [
     "StaleProposal",
     "apply_proposal",
     "auto_applies",
+    "book_job_usage",
+    "usage_limited",
     "bulk_eligible",
     "check",
     "enabled_axes",

@@ -57,6 +57,10 @@ vi.mock('@/lib/hooks/use-agents', () => ({
   useAgents: () => ({ data: [{ id: 'agent-1', name: '리서치 에이전트' }], isLoading: false }),
 }))
 
+vi.mock('@/lib/hooks/use-triggers', () => ({
+  useTriggers: () => ({ data: [{ id: 'trigger-1', name: '월간 매출 보고' }], isLoading: false }),
+}))
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const SETTINGS: UserMemorySettings = {
@@ -262,6 +266,16 @@ const PROFILE_ADD = makeProposal({
   },
   bulk_block: 'marked',
 })
+
+/** A select option takes pointer input only once its popup finished opening. */
+async function pickOption(option: HTMLElement) {
+  await waitFor(() => {
+    for (let node: HTMLElement | null = option; node; node = node.parentElement) {
+      expect(window.getComputedStyle(node).pointerEvents).not.toBe('none')
+    }
+  })
+  await userEvent.click(option)
+}
 
 async function openApprovalsTab() {
   render(<MemorySettingsPage />)
@@ -581,7 +595,7 @@ describe('memory settings page', () => {
     await userEvent.click(await screen.findByTestId('memory-profile-agent-trigger'))
     await userEvent.click(await screen.findByTestId('memory-profile-agent-option-agent-1'))
     const editor = await screen.findByTestId('memory-profile-editor-work_memo')
-    expect(api.getProfiles).toHaveBeenCalledWith('agent-1')
+    expect(api.getProfiles).toHaveBeenCalledWith('agent-1', null)
     await userEvent.click(within(editor).getByTestId('memory-profile-add-line'))
     await userEvent.type(within(editor).getByLabelText('1번째 줄'), '주간 보고는 금요일')
     await userEvent.click(within(editor).getByTestId('memory-profile-save-work_memo'))
@@ -590,6 +604,67 @@ describe('memory settings page', () => {
         agent_id: 'agent-1',
         lines: [{ id: null, text: '주간 보고는 금요일' }],
         version: 0,
+      }),
+    )
+  })
+
+  it('edits a schedule memo by section and saves it with its schedule id', async () => {
+    const memo: MemoryProfile = {
+      kind: 'trigger_memo',
+      agent_id: 'agent-1',
+      trigger_id: 'trigger-1',
+      lines: [
+        {
+          id: 'l-1',
+          text: '3월분 보고 완료',
+          origin: 'schedule',
+          sources: [],
+          readable: true,
+          section: 'recent',
+        },
+      ],
+      tokens: 6,
+      budget_tokens: 1500,
+      version: 2,
+    }
+    api.getProfiles.mockImplementation(
+      async (agentId?: string | null, triggerId?: string | null) => ({
+        user_profile: USER_PROFILE,
+        work_memo: null,
+        trigger_memo: agentId && triggerId ? memo : null,
+      }),
+    )
+    api.updateProfile.mockResolvedValue({ ...memo, version: 3 })
+    render(<MemorySettingsPage />)
+    await userEvent.click(await screen.findByRole('tab', { name: '내 프로필' }))
+    await userEvent.click(await screen.findByTestId('memory-profile-agent-trigger'))
+    await pickOption(await screen.findByTestId('memory-profile-agent-option-agent-1'))
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull())
+    await userEvent.click(await screen.findByTestId('memory-profile-trigger-trigger'))
+    await pickOption(await screen.findByTestId('memory-profile-trigger-option-trigger-1'))
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull())
+
+    const editor = await screen.findByTestId('memory-profile-editor-trigger_memo')
+    expect(api.getProfiles).toHaveBeenCalledWith('agent-1', 'trigger-1')
+    expect(within(editor).getByText('예약 실행')).toBeInTheDocument()
+    expect(within(editor).getByTestId('memory-profile-tokens-trigger_memo')).toHaveTextContent(
+      '6/1500',
+    )
+    await userEvent.click(within(editor).getByTestId('memory-profile-add-line'))
+    await userEvent.type(within(editor).getByLabelText('2번째 줄'), '결과는 #sales로 보낸다')
+    await userEvent.click(within(editor).getByLabelText('2번째 줄의 절'))
+    await pickOption(await screen.findByRole('option', { name: '실전 요령' }))
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull())
+    await userEvent.click(within(editor).getByTestId('memory-profile-save-trigger_memo'))
+    await waitFor(() =>
+      expect(api.updateProfile).toHaveBeenCalledWith('trigger_memo', {
+        agent_id: 'agent-1',
+        trigger_id: 'trigger-1',
+        lines: [
+          { id: 'l-1', text: '3월분 보고 완료', section: 'recent' },
+          { id: null, text: '결과는 #sales로 보낸다', section: 'tips' },
+        ],
+        version: 2,
       }),
     )
   })
@@ -821,6 +896,39 @@ describe('memory settings page', () => {
       expect(within(profile).getByTestId('memory-proposal-flag-needs_review')).toHaveTextContent(
         '확인 필요',
       )
+    })
+
+    it('shows a schedule memo proposal as the new recent status and tips', async () => {
+      api.listProposals.mockResolvedValue([
+        makeProposal({
+          id: 'p-trigger',
+          action: 'profile',
+          origin: 'agent_inferred',
+          flags: { trigger_memo: true },
+          content: '4월 자료가 아직 없다',
+          source_ids: [],
+          sources: [],
+          profile_change: {
+            op: 'replace_section',
+            kind: 'trigger_memo',
+            agent_id: 'agent-1',
+            trigger_id: 'trigger-1',
+            recent: ['4월 자료가 아직 없다'],
+            tips: ['자료가 없으면 기다린다'],
+          },
+          bulk_block: null,
+        }),
+      ])
+      await openApprovalsTab()
+      const card = await screen.findByTestId('memory-proposal-p-trigger')
+      expect(within(card).getByText('예약 메모 최근 상태')).toBeInTheDocument()
+      expect(within(card).getByTestId('memory-proposal-before-p-trigger')).toHaveTextContent(
+        '최근 상태’ 절 전체가 이 줄들로 바뀝니다',
+      )
+      const after = within(card).getByTestId('memory-proposal-trigger-memo-p-trigger')
+      expect(within(after).getByText('4월 자료가 아직 없다')).toBeInTheDocument()
+      expect(within(after).getByText('자료가 없으면 기다린다')).toBeInTheDocument()
+      expect(within(card).queryByTestId('memory-proposal-flag-trigger_memo')).toBeNull()
     })
 
     it('offers editing only for new memories', async () => {

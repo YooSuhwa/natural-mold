@@ -45,6 +45,9 @@ class Worker:
         from app.services.memory_consolidation import register_jobs as register_consolidation
 
         register_consolidation()
+        from app.services.memory_trigger_memo import register_jobs as register_trigger_memo
+
+        register_trigger_memo()
         self.worker_id = worker_id or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
         self.concurrency = concurrency
         self.poll_seconds = poll_seconds

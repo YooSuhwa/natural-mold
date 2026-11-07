@@ -569,44 +569,58 @@ def _profile_out(view: memory_profile.ProfileView) -> MemoryProfileOut:
     return MemoryProfileOut(
         kind=view.kind,
         agent_id=view.agent_id,
+        trigger_id=view.trigger_id,
         lines=[
             MemoryProfileLineOut(
                 id=line.id,
                 text=line.text,
                 origin=line.origin
-                if line.origin in ("user", "pinned", "consolidation")
+                if line.origin in ("user", "pinned", "consolidation", "schedule")
                 else "user",
                 sources=list(line.sources),
                 readable=line.id in view.readable,
+                section=_section_out(line.section) if view.kind == "trigger_memo" else None,
             )
             for line in view.lines
         ],
         tokens=view.tokens,
-        budget_tokens=memory_profile.PROFILE_BUDGET_TOKENS,
+        budget_tokens=view.budget,
         version=view.version,
     )
+
+
+def _section_out(value: str | None) -> Literal["recent", "basics", "tips"]:
+    return value if value in ("recent", "tips") else "basics"  # type: ignore[return-value]
 
 
 @router.get("/api/me/memory-profile", response_model=MemoryProfilesOut)
 @authz_policy(PRIVATE("memory_profile_docs"))
 async def get_memory_profile(
     agent_id: uuid.UUID | None = Query(default=None),
+    trigger_id: uuid.UUID | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
 ) -> MemoryProfilesOut:
     user_view = await memory_profile.view(db, context, "user_profile", None)
-    work = None
+    work = trigger = None
     if agent_id is not None:
         await memory_profile.agent_for(db, context, "work_memo", agent_id)
         work = _profile_out(await memory_profile.view(db, context, "work_memo", agent_id))
-    return MemoryProfilesOut(user_profile=_profile_out(user_view), work_memo=work)
+    if trigger_id is not None:
+        owner = await memory_profile.trigger_agent(db, context, trigger_id)
+        trigger = _profile_out(
+            await memory_profile.view(db, context, "trigger_memo", owner, trigger_id)
+        )
+    return MemoryProfilesOut(
+        user_profile=_profile_out(user_view), work_memo=work, trigger_memo=trigger
+    )
 
 
 @router.put("/api/me/memory-profile/{kind}", response_model=MemoryProfileOut)
 @authz_policy(PRIVATE("memory_profile_docs"))
 async def update_memory_profile(
-    kind: Literal["user_profile", "work_memo"],
+    kind: Literal["user_profile", "work_memo", "trigger_memo"],
     payload: MemoryProfileUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
@@ -618,8 +632,9 @@ async def update_memory_profile(
         context,
         kind=kind,
         agent_id=payload.agent_id,
-        texts=[(line.id, line.text) for line in payload.lines],
+        texts=[(line.id, line.text, line.section) for line in payload.lines],
         expected_version=payload.version,
+        trigger_id=payload.trigger_id,
     )
     return _profile_out(view)
 
