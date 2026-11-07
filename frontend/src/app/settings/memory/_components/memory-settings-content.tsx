@@ -4,11 +4,18 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 
 import { SettingsSectionCard } from '@/components/shared/settings-section-card'
+import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAgents } from '@/lib/hooks/use-agents'
-import { useMemories, useMemoryPolicy, useUserMemorySettings } from '@/lib/hooks/use-memory'
+import {
+  useMemories,
+  useMemoryPolicy,
+  useMemoryProposals,
+  useUserMemorySettings,
+} from '@/lib/hooks/use-memory'
 import type { UserMemorySettings } from '@/lib/types'
 import { MemoryActivityTab } from './memory-activity-tab'
+import { MemoryApprovalsTab } from './memory-approvals-tab'
 import { MemoryFirstUseNotice } from './memory-first-use-notice'
 import type { MemoryAgentOption } from './memory-form-fields'
 import { MemoryOverviewTab } from './memory-overview-tab'
@@ -17,12 +24,20 @@ import { MemoryRecallPreviewTab } from './memory-recall-preview-tab'
 import { MemoryRecordsTab } from './memory-records-tab'
 import { MemorySettingsTab } from './memory-settings-tab'
 
-const TABS = ['overview', 'profile', 'memories', 'preview', 'activity', 'settings'] as const
+const TABS = [
+  'overview',
+  'approvals',
+  'profile',
+  'memories',
+  'preview',
+  'activity',
+  'settings',
+] as const
 type MemoryTab = (typeof TABS)[number]
 
 /**
- * `/settings/memory` (plan 15, 5.9): 개요 / 내 프로필 / 기억 / 회상 미리 보기 / 활동 / 설정. Only the person's own
- * memories, and the same screens for company and personal tenants (Q9).
+ * `/settings/memory` (plan 15, 5.9): 개요 / 승인 대기 / 내 프로필 / 기억 / 회상 미리 보기 / 활동 /
+ * 설정. Only the person's own memories, and the same screens for company and personal tenants (Q9).
  */
 export function MemorySettingsContent() {
   const t = useTranslations('appSettings.memory')
@@ -53,6 +68,7 @@ function MemoryTabs({ settings }: { settings: UserMemorySettings }) {
   const { data: agentsData, isLoading: agentsLoading } = useAgents()
   const agents: MemoryAgentOption[] = (agentsData ?? []).map(({ id, name }) => ({ id, name }))
   const activeMemories = useMemories({ status: 'active' })
+  const pendingCount = useMemoryProposals('pending').data?.length ?? 0
   const showFirstUse =
     settings.approval_mode === null &&
     !activeMemories.isLoading &&
@@ -66,11 +82,19 @@ function MemoryTabs({ settings }: { settings: UserMemorySettings }) {
           {TABS.map((value) => (
             <TabsTrigger key={value} value={value} className="px-4 py-2">
               {t(`tabs.${value}`)}
+              {value === 'approvals' && pendingCount > 0 ? (
+                <Badge variant="secondary" data-testid="memory-approvals-count">
+                  {pendingCount}
+                </Badge>
+              ) : null}
             </TabsTrigger>
           ))}
         </TabsList>
         <TabsContent value="overview" className="pt-2">
           <MemoryOverviewTab settings={settings} policy={policy} />
+        </TabsContent>
+        <TabsContent value="approvals" className="pt-2">
+          <MemoryApprovalsTab agents={agents} />
         </TabsContent>
         <TabsContent value="profile" className="pt-2">
           <MemoryProfileTab agents={agents} />

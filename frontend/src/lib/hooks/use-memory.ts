@@ -17,6 +17,7 @@ import type {
   MemoryRecordUpdate,
   MemoryScopeDelete,
   MemoryScopeQuery,
+  MemoryTenantPolicyValues,
   MemoryVectorUpdate,
   UserMemorySettingsUpdate,
 } from '@/lib/types/memory'
@@ -35,6 +36,7 @@ export const memoryKeys = {
   profilesAll: ['memory', 'profiles'] as const,
   profiles: (agentId: string | null) => ['memory', 'profiles', agentId] as const,
   vector: ['memory', 'vector'] as const,
+  tenantPolicy: ['memory', 'tenant-policy'] as const,
   scopeCount: (query: MemoryScopeQuery) =>
     ['memory', 'scope-count', query.scope, query.agentId ?? null] as const,
 }
@@ -128,11 +130,26 @@ export function useDeleteMemory() {
   })
 }
 
+/** A stale proposal (a source changed) is expired by the server, so the queue refetches. */
+function refetchIfStale(qc: QueryClient, error: unknown) {
+  if (error instanceof ApiError && error.code === 'MEMORY_PROPOSAL_STALE') invalidateMemory(qc)
+}
+
 export function useApproveMemoryProposal() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => memoryApi.approveProposal(id),
     onSuccess: () => invalidateMemory(qc),
+    onError: (error) => refetchIfStale(qc, error),
+  })
+}
+
+/** Approves the unmarked ones; the server skips the rest with a reason (plan 15, 5.6). */
+export function useBulkApproveMemoryProposals() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ids: string[]) => memoryApi.bulkApproveProposals(ids),
+    onSettled: () => invalidateMemory(qc),
   })
 }
 
@@ -150,6 +167,7 @@ export function useEditAndApproveMemoryProposal() {
     mutationFn: ({ id, data }: { id: string; data: MemoryProposalEditApprove }) =>
       memoryApi.editAndApproveProposal(id, data),
     onSuccess: () => invalidateMemory(qc),
+    onError: (error) => refetchIfStale(qc, error),
   })
 }
 
@@ -291,6 +309,28 @@ export function useUpdateMemoryVector() {
     onSuccess: (status) => {
       qc.setQueryData(memoryKeys.vector, status)
       void qc.invalidateQueries({ queryKey: memoryKeys.vector })
+    },
+  })
+}
+
+/** The tenant memory policy (company admins; a personal tenant's owner) (plan 15, Q9). */
+export function useMemoryTenantPolicy() {
+  return useQuery({
+    queryKey: memoryKeys.tenantPolicy,
+    queryFn: memoryApi.getTenantPolicy,
+    staleTime: 30_000,
+  })
+}
+
+export function useUpdateMemoryTenantPolicy() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: MemoryTenantPolicyValues) => memoryApi.updateTenantPolicy(data),
+    onSuccess: (policy) => {
+      qc.setQueryData(memoryKeys.tenantPolicy, policy)
+      // The person's effective mode and allowed modes follow the tenant's.
+      void qc.invalidateQueries({ queryKey: memoryKeys.tenantPolicy })
+      void qc.invalidateQueries({ queryKey: memoryKeys.policy })
     },
   })
 }

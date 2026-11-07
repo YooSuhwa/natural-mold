@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import type { MemoryProposalSource } from '@/lib/types'
 
 import {
   addMemoryToolResultIfSupported,
@@ -75,6 +76,11 @@ describe('memory tool UI result bridge', () => {
       flags: {},
       action: 'create',
       record_id: null,
+      target_record_id: null,
+      source_ids: null,
+      profile_change: null,
+      sources: [] as MemoryProposalSource[],
+      bulk_block: null,
     } as const
 
     expect(memoryResultFromProposal({ ...baseProposal, status: 'pending' })).toMatchObject({

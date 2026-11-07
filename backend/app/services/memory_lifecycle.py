@@ -105,6 +105,10 @@ async def revoke(
     record.revoke_reason = reason
     record.updated_at = now
     await memory_service.record_revision(db, record, "revoke", context.user_id, reason=reason)
+    # 5.6: what consolidation derived from it carries the mark until a person looks again.
+    derived = select(MemorySource.record_id).where(MemorySource.source_record_id == record.id)
+    for row in await db.scalars(select(MemoryRecord).where(MemoryRecord.id.in_(derived))):
+        row.flags = {**(row.flags or {}), "source_revoked": True}
     await _audit(db, context, MEMORY_RECORD_REVOKE, target=record.id, scope=record.scope)
     await db.commit()
     await db.refresh(record)

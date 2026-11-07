@@ -178,6 +178,8 @@ export type MemoryActivityAction =
   | 'memory.proposal_approve'
   | 'memory.proposal_reject'
   | 'memory.export'
+  | 'memory.consolidation_run'
+  | 'memory.tenant_policy_update'
 
 /** One of the person's own memory audit events; never carries memory text. */
 export interface MemoryActivity {
@@ -221,9 +223,84 @@ export interface MemoryProposal {
   topic: string | null
   origin: MemoryOrigin
   sensitivity: MemorySensitivity
+  /** Keys like `consolidation`, `needs_review`, `replaces_confirmed`, `auto_applied`. */
   flags: Record<string, unknown>
-  action: string
+  action: MemoryProposalAction
   record_id: string | null
+  /** Plan 15 (5.6): what a consolidation proposal changes, for the before/after view. */
+  target_record_id: string | null
+  source_ids: string[] | null
+  /** Set for `action: 'profile'`. */
+  profile_change: MemoryProfileChange | null
+  /** The memories it changes, as they are now (the "before" side). */
+  sources: MemoryProposalSource[]
+  /** Why it cannot be approved in bulk; `null` = it can. */
+  bulk_block: MemoryProposalBulkBlock | null
+}
+
+export type MemoryProposalAction =
+  | 'create'
+  | 'update'
+  | 'supersede'
+  | 'merge'
+  | 'pin'
+  | 'expire'
+  | 'revoke'
+  | 'profile'
+
+export type MemoryProposalBulkBlock =
+  | 'contradiction'
+  | 'marked'
+  | 'replaces_confirmed'
+  | 'not_pending'
+
+export interface MemoryProposalSource {
+  id: string
+  content: string
+  status: string
+  kind: string
+  /** Server read-time origin label (e.g. "사람이 확인함"). */
+  /** Read-time origin of the memory (plan 15, 5.4-8). */
+  provenance: 'confirmed' | 'agent' | 'outside' | 'legacy'
+}
+
+/** A profile line a consolidation proposal adds or removes (plan 15, 5.12). */
+export interface MemoryProfileChange {
+  op: 'add' | 'remove'
+  kind: MemoryProfileKind
+  agent_id: string | null
+  line_id?: string | null
+  text: string
+  /** Source memory ids. */
+  sources: string[]
+}
+
+export interface MemoryBulkApproveSkip {
+  id: string
+  /** A `MemoryProposalBulkBlock`, `not_found`, or a lowered error code. */
+  reason: string
+}
+
+export interface MemoryBulkApproveResult {
+  approved: string[]
+  skipped: MemoryBulkApproveSkip[]
+}
+
+/** `GET/PUT /api/me/memory-tenant-policy` values (plan 15, 5.11, Q9). */
+export interface MemoryTenantPolicyValues {
+  default_mode: MemoryApprovalMode
+  allowed_modes: MemoryApprovalMode[]
+  consolidation_enabled: boolean
+  channel_personal_memory: boolean
+  contacts_allowed: boolean
+}
+
+/** Company and personal tenants share the keys; only `defaults` differ (Q9). */
+export interface MemoryTenantPolicy {
+  tenant_kind: MemoryTenantKind
+  values: MemoryTenantPolicyValues
+  defaults: MemoryTenantPolicyValues
+  can_manage: boolean
 }
 
 export type MemoryProposalStatusFilter = 'pending' | 'approved' | 'rejected' | 'all'
@@ -244,7 +321,8 @@ export interface MemoryProposalEditApprove {
 
 export interface MemoryProposalApproval {
   proposal: MemoryProposal
-  memory: MemoryRecord
+  /** `null` for a profile line change (no memory row is made or changed). */
+  memory: MemoryRecord | null
 }
 
 export interface MemoryEventPayload {

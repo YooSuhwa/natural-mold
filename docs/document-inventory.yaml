@@ -244,6 +244,10 @@ documents:
     lifecycle: decision-record
     status: accepted
     index: adr
+  - path: docs/design-docs/adr-025-memory-tiers-and-run-paths.md
+    lifecycle: decision-record
+    status: accepted
+    index: adr
   - path: docs/design-docs/agent-edit-workbench.md
     lifecycle: completed-plan
     status: completed

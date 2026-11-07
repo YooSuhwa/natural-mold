@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import PlainTextResponse
@@ -23,7 +23,10 @@ from app.schemas.memory import (
     AgentMemorySettingsUpdate,
     ApprovalAxes,
     MemoryActivityOut,
+    MemoryBulkApprove,
+    MemoryBulkApproveOut,
     MemoryBulkDelete,
+    MemoryBulkSkip,
     MemoryDeletionReceipt,
     MemoryPolicyOut,
     MemoryProfileLineOut,
@@ -34,6 +37,7 @@ from app.schemas.memory import (
     MemoryProposalCreate,
     MemoryProposalEditApprove,
     MemoryProposalOut,
+    MemoryProposalSourceOut,
     MemoryRecallPreviewIn,
     MemoryRecallPreviewItem,
     MemoryRecallPreviewOut,
@@ -42,6 +46,8 @@ from app.schemas.memory import (
     MemoryRecordUpdate,
     MemoryRevisionOut,
     MemoryRevoke,
+    MemoryTenantPolicyOut,
+    MemoryTenantPolicyValues,
     MemoryVectorModelOut,
     MemoryVectorStatusOut,
     MemoryVectorUpdate,
@@ -49,10 +55,12 @@ from app.schemas.memory import (
     UserMemorySettingsUpdate,
 )
 from app.services import (
+    memory_consolidation,
     memory_lifecycle,
     memory_profile,
     memory_recall,
     memory_service,
+    memory_tenant_policy,
     memory_vectors,
     memory_writes,
 )
@@ -379,7 +387,68 @@ async def list_memory_proposals(
     context: OrgContext = Depends(get_org_context),
 ) -> list[MemoryProposalOut]:
     proposals = await memory_service.list_memory_proposals(db, context=context, status=status)
-    return [MemoryProposalOut.model_validate(proposal) for proposal in proposals]
+    return await _proposals_out(db, context, proposals)
+
+
+async def _proposals_out(
+    db: AsyncSession, context: OrgContext, proposals: list[Any]
+) -> list[MemoryProposalOut]:
+    """Proposals with the memories they change and whether they may be approved in bulk."""
+    sources = await memory_consolidation.proposal_sources(db, context, proposals)
+    out = []
+    for proposal in proposals:
+        view = MemoryProposalOut.model_validate(proposal)
+        view.sources = [
+            MemoryProposalSourceOut(
+                id=s.id,
+                content=s.content,
+                status=s.status,
+                kind=s.kind,
+                provenance=s.provenance,
+            )
+            for s in sources.get(proposal.id, [])
+        ]
+        view.bulk_block = memory_consolidation.bulk_eligible(proposal)
+        out.append(view)
+    return out
+
+
+@router.post("/api/memory-proposals/bulk-approve", response_model=MemoryBulkApproveOut)
+@authz_policy(PRIVATE("memory_proposals"))
+async def bulk_approve_memory_proposals(
+    payload: MemoryBulkApprove,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+) -> MemoryBulkApproveOut:
+    """Approve the unmarked ones (5.6): a marked, contradicting or person-replacing
+    proposal is skipped with its reason and waits for a decision of its own."""
+    approved: list[uuid.UUID] = []
+    skipped: list[MemoryBulkSkip] = []
+    for proposal_id in dict.fromkeys(payload.ids):
+        proposal = await memory_service.get_memory_proposal(
+            db, proposal_id=proposal_id, context=context
+        )
+        if proposal is None:
+            skipped.append(MemoryBulkSkip(id=proposal_id, reason="not_found"))
+            continue
+        blocked = memory_consolidation.bulk_eligible(proposal)
+        if blocked is not None:
+            skipped.append(MemoryBulkSkip(id=proposal_id, reason=blocked))
+            continue
+        try:
+            done = await memory_service.approve_memory_proposal(
+                db, proposal_id=proposal_id, context=context
+            )
+        except ValidationError as exc:
+            skipped.append(MemoryBulkSkip(id=proposal_id, reason=exc.code.lower()))
+            continue
+        if done is None:
+            skipped.append(MemoryBulkSkip(id=proposal_id, reason="not_pending"))
+        else:
+            approved.append(proposal_id)
+    return MemoryBulkApproveOut(approved=approved, skipped=skipped)
 
 
 @router.post("/api/memory-proposals", response_model=MemoryProposalOut, status_code=201)
@@ -441,7 +510,7 @@ async def approve_memory_proposal(
     proposal, memory = approved
     return MemoryProposalApprovalOut(
         proposal=MemoryProposalOut.model_validate(proposal),
-        memory=MemoryRecordOut.model_validate(memory),
+        memory=MemoryRecordOut.model_validate(memory) if memory is not None else None,
     )
 
 
@@ -470,7 +539,7 @@ async def edit_and_approve_memory_proposal(
     proposal, memory = approved
     return MemoryProposalApprovalOut(
         proposal=MemoryProposalOut.model_validate(proposal),
-        memory=MemoryRecordOut.model_validate(memory),
+        memory=MemoryRecordOut.model_validate(memory) if memory is not None else None,
     )
 
 
@@ -707,3 +776,42 @@ async def put_memory_vector(
         drop_vectors=payload.drop_vectors,
     )
     return _vector_out(result, can_manage=True)
+
+
+# Plan 15 (Q9, 5.11, 5.6): the company memory policy (company admins; a personal owner).
+
+
+def _tenant_policy_out(tenant: Any, *, can_manage: bool) -> MemoryTenantPolicyOut:
+    return MemoryTenantPolicyOut(
+        tenant_kind=tenant_kind(tenant.settings),
+        values=MemoryTenantPolicyValues(**memory_tenant_policy.values(tenant.settings)),
+        defaults=MemoryTenantPolicyValues(**memory_tenant_policy.defaults(tenant.settings)),
+        can_manage=can_manage,
+    )
+
+
+@router.get("/api/me/memory-tenant-policy", response_model=MemoryTenantPolicyOut)
+@authz_policy(PRIVATE("memory_records"))
+async def get_memory_tenant_policy(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+) -> MemoryTenantPolicyOut:
+    admin = await load_tenant_admin_context(db, user, TenantAdminTarget(context.tenant_id))
+    return _tenant_policy_out(admin.tenant, can_manage="can_manage_tenant" in admin.permissions)
+
+
+@router.put("/api/me/memory-tenant-policy", response_model=MemoryTenantPolicyOut)
+@authz_policy(PRIVATE("memory_records"))
+async def put_memory_tenant_policy(
+    payload: MemoryTenantPolicyValues,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+) -> MemoryTenantPolicyOut:
+    admin = await load_tenant_admin_context(
+        db, user, TenantAdminTarget(context.tenant_id, permission="can_manage_tenant")
+    )
+    await memory_tenant_policy.update(db, admin.tenant, context, payload.model_dump())
+    return _tenant_policy_out(admin.tenant, can_manage=True)

@@ -158,15 +158,19 @@ function MemoryToolCard({
               },
             })
           : await approve.mutateAsync(view.id)
-      const next: MemoryToolResult = {
-        memory_event: 'memory_saved',
-        id: response.memory.id,
-        scope: response.memory.scope,
-        content: response.memory.content,
-        reason: response.memory.reason,
-        agent_id: response.memory.agent_id,
-        conversation_id: response.memory.source_conversation_id,
-      }
+      const memory = response.memory
+      // `memory` is null only for profile line changes, which this card never shows.
+      const next: MemoryToolResult = memory
+        ? {
+            memory_event: 'memory_saved',
+            id: memory.id,
+            scope: memory.scope,
+            content: memory.content,
+            reason: memory.reason,
+            agent_id: memory.agent_id,
+            conversation_id: memory.source_conversation_id,
+          }
+        : { ...view, memory_event: 'memory_saved' }
       setDraft({ sourceContent: next.content, content: next.content })
       setResolved(next)
       setEditing(false)

@@ -6,7 +6,9 @@ import type {
   MemoryVectorStatus,
   MemoryPolicy,
   MemoryProfile,
+  MemoryProposal,
   MemoryRecallPreview,
+  MemoryTenantPolicy,
   MemoryRecord,
   UserMemorySettings,
 } from '@/lib/types'
@@ -32,6 +34,13 @@ const api = vi.hoisted(() => ({
   previewRecall: vi.fn(),
   getVectorStatus: vi.fn(),
   updateVector: vi.fn(),
+  listProposals: vi.fn(),
+  approveProposal: vi.fn(),
+  rejectProposal: vi.fn(),
+  editAndApproveProposal: vi.fn(),
+  bulkApproveProposals: vi.fn(),
+  getTenantPolicy: vi.fn(),
+  updateTenantPolicy: vi.fn(),
 }))
 
 const session = vi.hoisted(() => ({ user: { id: 'user-1', is_super_user: false } }))
@@ -151,6 +160,114 @@ function vectorStatus(overrides: Partial<MemoryVectorStatus> = {}): MemoryVector
   }
 }
 
+const TENANT_VALUES: MemoryTenantPolicy['values'] = {
+  default_mode: 'approve_all',
+  allowed_modes: ['off', 'read_only', 'approve_all', 'partial_auto', 'auto_notify', 'custom'],
+  consolidation_enabled: false,
+  channel_personal_memory: false,
+  contacts_allowed: true,
+}
+
+function tenantPolicy(overrides: Partial<MemoryTenantPolicy> = {}): MemoryTenantPolicy {
+  return {
+    tenant_kind: 'company',
+    values: TENANT_VALUES,
+    defaults: TENANT_VALUES,
+    can_manage: true,
+    ...overrides,
+  }
+}
+
+function makeProposal(overrides: Partial<MemoryProposal> = {}): MemoryProposal {
+  return {
+    id: 'proposal-1',
+    user_id: 'user-1',
+    agent_id: null,
+    conversation_id: null,
+    source_run_id: null,
+    scope: 'user',
+    content: '회의는 오후에 잡습니다.',
+    reason: null,
+    status: 'pending',
+    created_at: '2026-06-03T00:00:00Z',
+    resolved_at: null,
+    kind: 'preference',
+    subject: 'self',
+    topic: null,
+    origin: 'agent_inferred',
+    sensitivity: 'normal',
+    flags: {},
+    action: 'create',
+    record_id: null,
+    target_record_id: null,
+    source_ids: null,
+    profile_change: null,
+    sources: [],
+    bulk_block: null,
+    ...overrides,
+  }
+}
+
+const SOURCE_A = {
+  id: 'm-a',
+  content: '보고서는 표로 씁니다.',
+  status: 'active',
+  kind: 'preference',
+  provenance: 'confirmed',
+}
+const SOURCE_B = {
+  id: 'm-b',
+  content: '표에는 출처를 답니다.',
+  status: 'active',
+  kind: 'preference',
+  provenance: 'agent',
+}
+
+const CREATE = makeProposal({ id: 'p-create' })
+const MERGE = makeProposal({
+  id: 'p-merge',
+  action: 'merge',
+  origin: 'consolidation',
+  flags: { consolidation: true },
+  content: '보고서는 표로 씁니다. 표에는 출처를 답니다.',
+  reason: '같은 주제의 기억을 합칩니다.',
+  source_ids: ['m-a', 'm-b'],
+  sources: [SOURCE_A, SOURCE_B],
+})
+const SUPERSEDE = makeProposal({
+  id: 'p-supersede',
+  action: 'supersede',
+  origin: 'consolidation',
+  flags: { consolidation: true, replaces_confirmed: true },
+  content: '보고서는 글머리표로 씁니다.',
+  target_record_id: 'm-a',
+  source_ids: ['m-a'],
+  sources: [SOURCE_A],
+  bulk_block: 'contradiction',
+})
+const PROFILE_ADD = makeProposal({
+  id: 'p-profile',
+  action: 'profile',
+  origin: 'consolidation',
+  flags: { consolidation: true, needs_review: true },
+  content: '보고서는 표로 씁니다.',
+  source_ids: ['m-a'],
+  sources: [SOURCE_A],
+  profile_change: {
+    op: 'add',
+    kind: 'user_profile',
+    agent_id: null,
+    text: '보고서는 표로 씁니다.',
+    sources: ['m-a'],
+  },
+  bulk_block: 'marked',
+})
+
+async function openApprovalsTab() {
+  render(<MemorySettingsPage />)
+  await userEvent.click(await screen.findByRole('tab', { name: /승인 대기/ }))
+}
+
 async function openSettingsTab() {
   render(<MemorySettingsPage />)
   await userEvent.click(await screen.findByRole('tab', { name: '설정' }))
@@ -198,13 +315,23 @@ describe('memory settings page', () => {
     api.restore.mockResolvedValue({ ...REVOKED, status: 'active' })
     api.delete.mockResolvedValue(undefined)
     api.getVectorStatus.mockResolvedValue(vectorStatus())
+    api.listProposals.mockResolvedValue([])
+    api.getTenantPolicy.mockResolvedValue(tenantPolicy())
     session.user = { id: 'user-1', is_super_user: false }
   })
 
   it('renders the tabs and each tab content', async () => {
     render(<MemorySettingsPage />)
 
-    for (const name of ['개요', '내 프로필', '기억', '회상 미리 보기', '활동', '설정']) {
+    for (const name of [
+      '개요',
+      '승인 대기',
+      '내 프로필',
+      '기억',
+      '회상 미리 보기',
+      '활동',
+      '설정',
+    ]) {
       expect(await screen.findByRole('tab', { name })).toBeInTheDocument()
     }
     expect(await screen.findByTestId('overview-mode-approve_all')).toBeInTheDocument()
@@ -649,6 +776,174 @@ describe('memory settings page', () => {
           model_id: null,
           confirm_count: 0,
           drop_vectors: true,
+        }),
+      )
+    })
+  })
+
+  describe('approval queue', () => {
+    beforeEach(() => {
+      api.listProposals.mockResolvedValue([CREATE, MERGE, SUPERSEDE, PROFILE_ADD])
+    })
+
+    it('shows the pending count and each change as before and after', async () => {
+      await openApprovalsTab()
+      expect(api.listProposals).toHaveBeenCalledWith('pending')
+      expect(screen.getByTestId('memory-approvals-count')).toHaveTextContent('4')
+
+      const merge = await screen.findByTestId('memory-proposal-p-merge')
+      expect(within(merge).getByText('합치기')).toBeInTheDocument()
+      const mergeBefore = within(merge).getByTestId('memory-proposal-before-p-merge')
+      expect(within(mergeBefore).getByText('보고서는 표로 씁니다.')).toBeInTheDocument()
+      expect(within(mergeBefore).getByText('표에는 출처를 답니다.')).toBeInTheDocument()
+      expect(within(merge).getByTestId('memory-proposal-after-p-merge')).toHaveTextContent(
+        '보고서는 표로 씁니다. 표에는 출처를 답니다.',
+      )
+      expect(within(merge).getByText('이유: 같은 주제의 기억을 합칩니다.')).toBeInTheDocument()
+      expect(within(merge).getByText('정리로 만듦')).toBeInTheDocument()
+
+      const supersede = screen.getByTestId('memory-proposal-p-supersede')
+      const old = within(supersede).getByText('보고서는 표로 씁니다.')
+      expect(old.tagName).toBe('DEL')
+      expect(within(supersede).getByTestId('memory-proposal-after-p-supersede')).toHaveTextContent(
+        '보고서는 글머리표로 씁니다.',
+      )
+      expect(
+        within(supersede).getByTestId('memory-proposal-flag-replaces_confirmed'),
+      ).toHaveTextContent('확인한 기억을 바꿈')
+
+      const profile = screen.getByTestId('memory-proposal-p-profile')
+      expect(within(profile).getByText('프로필 줄 추가')).toBeInTheDocument()
+      const after = within(profile).getByTestId('memory-proposal-after-p-profile')
+      expect(after).toHaveTextContent('내 프로필에 이 줄을 더합니다.')
+      expect(within(after).getByText('근거 기억')).toBeInTheDocument()
+      expect(within(after).getByText('사람이 확인함')).toBeInTheDocument()
+      expect(within(profile).getByTestId('memory-proposal-flag-needs_review')).toHaveTextContent(
+        '확인 필요',
+      )
+    })
+
+    it('offers editing only for new memories', async () => {
+      await openApprovalsTab()
+      await screen.findByTestId('memory-proposal-p-merge')
+      expect(screen.getByTestId('memory-proposal-edit-p-create')).toBeInTheDocument()
+      for (const id of ['p-merge', 'p-supersede', 'p-profile']) {
+        expect(screen.queryByTestId(`memory-proposal-edit-${id}`)).not.toBeInTheDocument()
+      }
+    })
+
+    it('bulk-approves only eligible proposals and reports what was skipped', async () => {
+      api.bulkApproveProposals.mockResolvedValue({
+        approved: ['p-create'],
+        skipped: [{ id: 'p-merge', reason: 'memory_proposal_stale' }],
+      })
+      await openApprovalsTab()
+      await screen.findByTestId('memory-proposal-p-merge')
+      expect(screen.getByTestId('memory-approvals-excluded')).toHaveTextContent(
+        '2개는 일괄 승인에서 빠집니다.',
+      )
+      expect(screen.getByTestId('memory-proposal-select-p-supersede')).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      )
+      expect(screen.getByTestId('memory-proposal-blocked-p-supersede')).toHaveTextContent(
+        '일괄 승인 제외: 모순·대체 판정이라 하나씩 결정합니다',
+      )
+      expect(screen.getByTestId('memory-proposal-blocked-p-profile')).toHaveTextContent(
+        '표시가 붙어 하나씩 결정합니다',
+      )
+
+      await userEvent.click(screen.getByTestId('memory-approvals-select-all'))
+      const submit = screen.getByTestId('memory-approvals-bulk-submit')
+      expect(submit).toHaveTextContent('선택 항목 일괄 승인 (2)')
+      await userEvent.click(submit)
+
+      await waitFor(() => expect(api.bulkApproveProposals).toHaveBeenCalledTimes(1))
+      expect(api.bulkApproveProposals.mock.calls[0][0]).toEqual(['p-create', 'p-merge'])
+      const skipped = await screen.findByTestId('memory-approvals-skipped')
+      expect(skipped).toHaveTextContent('건너뛴 항목 1개')
+      expect(skipped).toHaveTextContent('근거 기억이 바뀌어 만료되었습니다')
+    })
+
+    it('shows the server message and refetches when a proposal went stale', async () => {
+      const { toast } = await import('sonner')
+      api.approveProposal.mockRejectedValue(
+        new ApiError(
+          422,
+          'MEMORY_PROPOSAL_STALE',
+          '근거 기억이 바뀌어 이 제안은 더 쓸 수 없습니다',
+        ),
+      )
+      await openApprovalsTab()
+      await screen.findByTestId('memory-proposal-p-merge')
+      const calls = api.listProposals.mock.calls.length
+
+      await userEvent.click(screen.getByTestId('memory-proposal-approve-p-merge'))
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith('근거 기억이 바뀌어 이 제안은 더 쓸 수 없습니다'),
+      )
+      await waitFor(() => expect(api.listProposals.mock.calls.length).toBeGreaterThan(calls))
+    })
+
+    it('shows an empty state when nothing waits', async () => {
+      api.listProposals.mockResolvedValue([])
+      await openApprovalsTab()
+      expect(await screen.findByText('승인을 기다리는 제안이 없습니다')).toBeInTheDocument()
+      expect(screen.queryByTestId('memory-approvals-count')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('tenant memory policy', () => {
+    it('is read-only with defaults noted when the person cannot manage it', async () => {
+      api.getTenantPolicy.mockResolvedValue(
+        tenantPolicy({
+          can_manage: false,
+          values: { ...TENANT_VALUES, consolidation_enabled: true },
+        }),
+      )
+      await openSettingsTab()
+      const card = await screen.findByTestId('tenant-policy-read-only')
+      expect(within(card).getByText('회사 관리자가 바꿉니다.')).toBeInTheDocument()
+      expect(screen.getByText('회사 메모리 정책')).toBeInTheDocument()
+      expect(
+        within(card).getByTestId('tenant-policy-default-consolidation_enabled'),
+      ).toHaveTextContent('기본값: 끔')
+      expect(
+        within(card).queryByTestId('tenant-policy-default-default_mode'),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByTestId('tenant-policy-save')).not.toBeInTheDocument()
+    })
+
+    it('limits the default mode to allowed modes and saves the whole policy', async () => {
+      api.getTenantPolicy.mockResolvedValue(tenantPolicy({ tenant_kind: 'personal' }))
+      api.updateTenantPolicy.mockImplementation(async (values: MemoryTenantPolicy['values']) =>
+        tenantPolicy({ tenant_kind: 'personal', values }),
+      )
+      await openSettingsTab()
+      await screen.findByTestId('tenant-policy-form')
+      expect(screen.getByText('개인 테넌트 메모리 정책')).toBeInTheDocument()
+      expect(screen.getByTestId('tenant-policy-save')).toBeDisabled()
+
+      // Dropping the current default moves the default to an allowed mode.
+      await userEvent.click(screen.getByTestId('tenant-policy-allowed-approve_all'))
+      await userEvent.click(screen.getByTestId('tenant-policy-allowed-auto_notify'))
+      await userEvent.click(screen.getByTestId('tenant-policy-default-mode-trigger'))
+      const options = (await screen.findAllByRole('option')).map((option) => option.textContent)
+      expect(options).toEqual(['메모리 끄기', '읽기만', '일부 자동', '직접 고르기'])
+      await userEvent.click(screen.getByRole('option', { name: '일부 자동' }))
+      expect(screen.getByTestId('tenant-policy-default-default_mode')).toHaveTextContent(
+        '기본값: 모두 승인',
+      )
+      await userEvent.click(screen.getByTestId('tenant-policy-consolidation_enabled'))
+
+      await userEvent.click(screen.getByTestId('tenant-policy-save'))
+      await waitFor(() =>
+        expect(api.updateTenantPolicy).toHaveBeenCalledWith({
+          default_mode: 'partial_auto',
+          allowed_modes: ['off', 'read_only', 'partial_auto', 'custom'],
+          consolidation_enabled: true,
+          channel_personal_memory: false,
+          contacts_allowed: true,
         }),
       )
     })

@@ -30,6 +30,7 @@ import type {
 } from '@/lib/types'
 import { ApprovalModeChooser } from './approval-mode-chooser'
 import { MemoryBulkDeleteFlow } from './memory-bulk-delete'
+import { MemoryTenantPolicyCard } from './memory-tenant-policy-card'
 import { MemoryVectorCard } from './memory-vector-card'
 import {
   MemoryScopeFields,
@@ -66,6 +67,7 @@ export function MemorySettingsTab({
         )}
       </SettingsSectionCard>
       <ConsolidationCard settings={settings} policy={policy} />
+      <MemoryTenantPolicyCard />
       <MemoryVectorCard />
       <PolicyCard
         key={JSON.stringify(LEGACY_FIELDS.map((field) => settings[field]))}

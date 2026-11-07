@@ -58,6 +58,8 @@ export function notificationText(item: NotificationView, t: Translate): string {
       return t('kinds.emergencyStopApplied', values)
     case 'emergency_stop.released':
       return t('kinds.emergencyStopReleased', values)
+    case 'memory.consolidation_stopped':
+      return t('kinds.memoryConsolidationStopped', values)
     case 'mcp_tool.review_needed':
       return t('kinds.mcpToolReviewNeeded', values)
     case 'connection.owner_needed':

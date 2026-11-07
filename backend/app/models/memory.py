@@ -39,7 +39,18 @@ MEMORY_SUBJECTS = ("self", "other")
 MEMORY_ORIGINS = ("user_stated", "agent_inferred", "legacy", "consolidation", "tool_derived")
 MEMORY_SENSITIVITIES = ("normal", "contact", "sensitive")
 MEMORY_APPROVAL_CHANNELS = ("direct", "proposal", "auto_policy")
-MEMORY_PROPOSAL_ACTIONS = ("create", "update", "supersede", "merge", "pin", "expire")
+# ``revoke``: consolidation found the memory does not match its source conversation (5.6);
+# ``profile``: a profile document line to add or remove (``profile_change``, 5.12).
+MEMORY_PROPOSAL_ACTIONS = (
+    "create",
+    "update",
+    "supersede",
+    "merge",
+    "pin",
+    "expire",
+    "revoke",
+    "profile",
+)
 MEMORY_REVISION_ACTIONS = (
     "create",
     "update",
@@ -262,6 +273,7 @@ class MemoryProposal(RequiredOrgScope, Base):
         CheckConstraint(
             "scope in ('user', 'agent', 'agent_memo')", name="ck_memory_proposals_scope"
         ),
+        CheckConstraint(_in("action", MEMORY_PROPOSAL_ACTIONS), name="ck_memory_proposals_action"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -321,6 +333,9 @@ class MemoryProposal(RequiredOrgScope, Base):
         ForeignKey("memory_records.id", ondelete="SET NULL"), nullable=True
     )
     source_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # ``action = 'profile'``: ``{"op": add|remove, "kind", "agent_id", "line_id", "text",
+    # "sources"}`` (plan 15, 5.12).
+    profile_change: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class MemoryRevision(RequiredOrgScope, Base):
@@ -536,3 +551,32 @@ class MemoryProfileDoc(RequiredOrgScope, Base):
     updated_at: Mapped[datetime] = mapped_column(
         default=_now_naive, onupdate=_now_naive, nullable=False
     )
+
+
+class MemoryConsolidationRun(RequiredOrgScope, Base):
+    """One consolidation run of a person's scope (plan 15, 5.6): counts only, no text."""
+
+    __tablename__ = "memory_consolidation_runs"
+    __table_args__ = (
+        *resource_scope_constraints("memory_consolidation_runs", system=False),
+        CheckConstraint(
+            "outcome IN ('ok', 'failed', 'stopped')", name="ck_memory_consolidation_runs_outcome"
+        ),
+        Index("ix_memory_consolidation_runs_scope", "user_id", "agent_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), nullable=True
+    )
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)
+    proposed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    applied: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    dropped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)

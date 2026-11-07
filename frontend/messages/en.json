@@ -5937,6 +5937,120 @@
         "pinFailed": "Could not add it to your profile.",
         "unpinFailed": "Could not remove it from your profile."
       },
+      "approvals": {
+        "provenance": {
+          "confirmed": "Confirmed by a person",
+          "agent": "Written by an agent",
+          "outside": "From outside content",
+          "legacy": "Earlier record, unconfirmed"
+        },
+        "title": "Pending approval",
+        "description": "Memory changes proposed by agents and consolidation. Compare before and after, then approve or reject.",
+        "loading": "Loading pending proposals.",
+        "retry": "Try again",
+        "emptyTitle": "Nothing is waiting for approval",
+        "emptyDescription": "When an agent or consolidation proposes a memory change, it shows up here.",
+        "action": {
+          "create": "New memory",
+          "update": "Edit",
+          "supersede": "Replace",
+          "merge": "Merge",
+          "pin": "Add to profile",
+          "expire": "Expire",
+          "revoke": "Revoke",
+          "profileAdd": "Add profile line",
+          "profileRemove": "Remove profile line",
+          "unknown": "Memory change"
+        },
+        "before": "Now",
+        "after": "After",
+        "sources": "Source memories",
+        "missingSource": "The original memory could not be found.",
+        "subjectOther": "About another person",
+        "reason": "Reason: {reason}",
+        "profileTarget": {
+          "user_profile": "My profile",
+          "work_memo": "Work memo"
+        },
+        "outcome": {
+          "expire": "Expires past its date. Recall leaves it out from the next run.",
+          "revoke": "Revokes it. Runs stop using it from the next run.",
+          "pin": "Adds it to your profile.",
+          "profileAdd": "Adds this line to {target}.",
+          "profileRemove": "Removes this line from {target}."
+        },
+        "approve": "Approve",
+        "reject": "Reject",
+        "editApprove": "Edit and approve",
+        "editContent": "Content to approve",
+        "cancelEdit": "Cancel",
+        "saveEdit": "Approve with edits",
+        "toast": {
+          "approved": "Approved.",
+          "rejected": "Rejected.",
+          "failed": "Could not complete the action."
+        },
+        "bulk": {
+          "selectAll": "Select every item that can be approved in bulk",
+          "selectItem": "Include in bulk approval",
+          "submit": "Approve selected ({count})",
+          "excluded": "{count} cannot be approved in bulk. Decide them one by one.",
+          "blocked": "Not in bulk approval: {reason}",
+          "done": "Approved {count}.",
+          "skippedTitle": "{count} skipped",
+          "failed": "Could not approve in bulk."
+        },
+        "bulkBlock": {
+          "contradiction": "A contradiction or replacement is decided on its own",
+          "marked": "Marked items are decided on their own",
+          "replaces_confirmed": "Changes a memory a person confirmed",
+          "not_pending": "Already decided",
+          "not_found": "Not found",
+          "memory_proposal_stale": "A source memory changed, so it expired",
+          "other": "Another reason ({reason})"
+        }
+      },
+      "tenantPolicy": {
+        "title": {
+          "company": "Company memory policy",
+          "personal": "Personal tenant memory policy"
+        },
+        "description": "Applies to everyone in this tenant. Company and personal tenants share the same settings; only the defaults differ.",
+        "loading": "Loading the memory policy.",
+        "loadFailed": "Could not load the memory policy.",
+        "retry": "Try again",
+        "fields": {
+          "default_mode": {
+            "label": "Default approval mode",
+            "help": "Applies to people who have not chosen a mode. Only allowed modes can be chosen."
+          },
+          "allowed_modes": {
+            "label": "Allowed approval modes",
+            "help": "The modes people may choose. Keep at least one."
+          },
+          "consolidation_enabled": {
+            "label": "Memory consolidation",
+            "help": "When on, background consolidation runs for everyone who has not turned it off."
+          },
+          "channel_personal_memory": {
+            "label": "Personal memory in 1:1 channels",
+            "help": "Lets runs in 1:1 messenger channels use personal memory."
+          },
+          "contacts_allowed": {
+            "label": "Allow contact memories",
+            "help": "Allows memories that hold contacts such as phone numbers or emails."
+          }
+        },
+        "on": "On",
+        "off": "Off",
+        "defaultValue": "Default: {value}",
+        "readOnly": "A company admin changes this.",
+        "save": "Save policy",
+        "saved": "Memory policy saved.",
+        "failed": "Could not save the memory policy.",
+        "defaultNotAllowed": "The default mode must be one of the allowed modes.",
+        "forbidden": "You do not have permission to change this policy."
+      },
       "tabs": {
         "label": "Memory sections",
         "overview": "Overview",
@@ -5944,7 +6058,8 @@
         "activity": "Activity",
         "settings": "Settings",
         "profile": "My profile",
-        "preview": "Recall preview"
+        "preview": "Recall preview",
+        "approvals": "Pending approval"
       },
       "firstUse": {
         "title": "Your personal memory is shared by all your agents",
@@ -6063,6 +6178,10 @@
         "contact": "Contact",
         "review_later": "Review later",
         "source_deleted": "Source deleted",
+        "consolidation": "Consolidation proposal",
+        "needs_review": "Needs review",
+        "replaces_confirmed": "Replaces a confirmed memory",
+        "auto_applied": "Applied automatically",
         "unknown": "Flag: {flag}"
       },
       "revokeDialog": {
@@ -6113,6 +6232,8 @@
           "proposal_approve": "Proposal approved",
           "proposal_reject": "Proposal rejected",
           "export": "Exported",
+          "consolidation_run": "Consolidation run",
+          "tenant_policy_update": "Memory policy changed",
           "unknown": "Other memory action"
         },
         "counts": {
@@ -6120,8 +6241,18 @@
           "records": "{count} memories",
           "proposals": "{count} proposals",
           "revisions_removed": "{count} history entries removed",
-          "proposals_cleared": "{count} proposals cleared"
-        }
+          "proposals_cleared": "{count} proposals cleared",
+          "proposed": "{count} proposed",
+          "applied": "{count} applied",
+          "dropped": "{count} dropped"
+        },
+        "outcome": {
+          "ok": "Done",
+          "failed": "Failed",
+          "stopped": "Stopped",
+          "skipped": "Skipped"
+        },
+        "changed": "Changed: {keys}"
       },
       "scopeSelect": {
         "label": "Scope",
@@ -6903,6 +7034,7 @@
       "approvalDecided": "An approval request of {target} expired and was rejected",
       "emergencyStopApplied": "{target} was emergency-stopped",
       "emergencyStopReleased": "The emergency stop of {target} was released",
+      "memoryConsolidationStopped": "Memory consolidation stopped after failing three times in 24 hours",
       "generic": "You have a new notification"
     }
   },

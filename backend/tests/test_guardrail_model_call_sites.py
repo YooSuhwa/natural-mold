@@ -37,6 +37,8 @@ REVIEWED: dict[str, str] = {
     "marketplace/evaluation_preparation.py": "left out: skill evaluation (author's test cases)",
     "services/model_test.py": "left out: fixed test prompt, no user content",
     "agent_runtime/prepared_run_inputs.py": "lease runs: a guardrail falls back to default",
+    "services/memory_consolidation.py": "left out: the person's own checked memories in, "
+    "ids and actions out (plan 15, 5.6)",
 }
 
 
