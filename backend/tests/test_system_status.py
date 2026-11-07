@@ -197,6 +197,26 @@ async def test_a_detector_that_answers_is_ok(
     assert (pii.found, pii.verdict, pii.detail) == ("ok", "ok", "kanana (12 ms)")
 
 
+async def test_nori_is_optional_and_reported_when_configured(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plan 15 (5.4-11): no OpenSearch is fine (suffix list); a configured one must answer."""
+    from app.text import korean_terms
+
+    found = await status.collect(db)
+    nori = next(c for c in found.components if c.key == "opensearch")
+    assert (nori.found, nori.requirement, nori.verdict) == ("off", "optional", "ok")
+
+    async def down() -> tuple[bool, str]:
+        return False, "no Nori analysis (is analysis-nori installed?)"
+
+    monkeypatch.setattr(settings, "opensearch_url", "http://opensearch:9200")
+    monkeypatch.setattr(korean_terms, "probe", down)
+    found = await status.collect(db)
+    nori = next(c for c in found.components if c.key == "opensearch")
+    assert (nori.found, nori.verdict) == ("error", "warning")
+
+
 @pytest.mark.parametrize(
     ("requirement", "found", "verdict"),
     [

@@ -29,6 +29,8 @@ LEASE_TOOL_GUARD = "app.agent_runtime.lease_bound_tool.LeaseBoundToolMiddleware"
 PREPARED_TASK_DISPATCH = "app.agent_runtime.prepared_task_middleware.PreparedTaskDispatchMiddleware"
 FILESYSTEM_MIDDLEWARE = "deepagents.middleware.filesystem.FilesystemMiddleware"
 EMPTY_CONTENT_RETRY = "app.agent_runtime.runtime.reliability.EmptyContentRetryMiddleware"
+# Adds the run's one-off recall message to the model request; the root only (plan 15).
+MEMORY_RECALL = "app.agent_runtime.runtime.memory_recall_middleware.MemoryRecallMiddleware"
 
 LEASE_MIDDLEWARE_ALLOWLIST: frozenset[str] = frozenset(
     {
@@ -47,6 +49,7 @@ LEASE_MIDDLEWARE_ALLOWLIST: frozenset[str] = frozenset(
         # Re-calls the model handler, so every retry is a normal lease send that
         # opens its own fresh provider permit (``LeaseSendGuard``).
         EMPTY_CONTENT_RETRY,
+        MEMORY_RECALL,
     }
 )
 INNER_TOOL_WRAPPERS: frozenset[str] = frozenset({FILESYSTEM_MIDDLEWARE})

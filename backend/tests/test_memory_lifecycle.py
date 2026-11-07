@@ -15,6 +15,8 @@ from app.agent_runtime.runtime.memory_context import load_memory_context_in
 from app.agent_runtime.runtime_config import AgentConfig
 from app.exceptions import ValidationError
 from app.models.audit_event import AuditEvent
+from app.models.conversation import Conversation
+from app.models.conversation_run import ConversationRun
 from app.models.memory import (
     MemoryErasure,
     MemoryProposal,
@@ -57,22 +59,42 @@ def _cfg(agent_id: uuid.UUID) -> AgentConfig:
     )
 
 
+async def _recalled(db: AsyncSession, agent_id: uuid.UUID, question: str) -> str:
+    """The recall block a fresh chat run asking ``question`` gets (PR-B2, 5.4)."""
+    conversation_id = await db.scalar(select(Conversation.id))
+    run = ConversationRun(
+        conversation_id=conversation_id,
+        agent_id=agent_id,
+        user_id=TEST_USER_ID,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        status="running",
+        source="start",
+        run_source="CHAT",
+        input_preview=question,
+    )
+    db.add(run)
+    await db.commit()
+    cfg = _cfg(agent_id)
+    cfg.memory_run_id = str(run.id)
+    await load_memory_context_in(cfg, db)
+    return cfg.memory_recall_block or ""
+
+
 @pytest.mark.asyncio
-async def test_a_revoked_memory_leaves_the_prompt_and_comes_back_on_restore(
+async def test_a_revoked_memory_leaves_recall_and_comes_back_on_restore(
     db: AsyncSession,
 ) -> None:
     agent_id, _ = await _seed_agent(db)
     record = await _save(db)
     context = unit_context(TEST_USER_ID)
     assert await memory_lifecycle.revoke(db, context=context, memory_id=record.id, reason="틀림")
-    prompt, _ = await load_memory_context_in(_cfg(agent_id), db)
-    assert TEXT not in prompt
+    assert TEXT not in await _recalled(db, agent_id, "회의록 요약은 어떻게 써?")
     revoked = await db.get(MemoryRecord, record.id)
     assert revoked is not None and revoked.content == TEXT  # kept for a second look
     restored = await memory_lifecycle.restore(db, context=context, memory_id=record.id)
     assert restored is not None and restored.status == "active"
-    prompt, _ = await load_memory_context_in(_cfg(agent_id), db)
-    assert TEXT in prompt
+    assert TEXT in await _recalled(db, agent_id, "회의록 요약은 어떻게 써?")
     actions = [
         r.action
         for r in await db.scalars(select(MemoryRevision).order_by(MemoryRevision.created_at))
@@ -278,5 +300,4 @@ async def test_a_legacy_memory_the_checks_refuse_never_reaches_a_run(db: AsyncSe
         )
     )
     await db.commit()
-    prompt, _ = await load_memory_context_in(_cfg(agent_id), db)
-    assert "legacy blocked 3141" not in prompt
+    assert "legacy blocked 3141" not in await _recalled(db, agent_id, "legacy blocked 3141")

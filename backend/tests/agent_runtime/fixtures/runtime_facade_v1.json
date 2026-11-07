@@ -578,6 +578,24 @@
           "default": "value:str",
           "kind": "keyword_only",
           "name": "run_path"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "memory_run_id"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "memory_recall_block"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "memory_search_scopes"
         }
       ],
       "return": "None"

@@ -37,14 +37,16 @@ from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.exceptions import ValidationError
 from app.models.memory import (
+    MemoryEmbedding,
     MemoryErasure,
     MemoryProposal,
+    MemoryRecall,
     MemoryRecord,
     MemoryRevision,
     MemorySource,
 )
 from app.schemas.memory import MemoryDeletionReceipt
-from app.services import audit_service, memory_service
+from app.services import audit_service, memory_profile, memory_service
 from app.services.memory_digest import memory_digest
 
 REVOKED_KEEP_DAYS = 30
@@ -227,6 +229,10 @@ async def purge_records(
     )
     # Explicit deletes: SQLite test databases do not enforce ON DELETE CASCADE.
     await db.execute(delete(MemoryRevision).where(MemoryRevision.record_id.in_(ids)))
+    await db.execute(delete(MemoryEmbedding).where(MemoryEmbedding.record_id.in_(ids)))
+    await db.execute(delete(MemoryRecall).where(MemoryRecall.record_id.in_(ids)))
+    # A profile line citing a deleted memory goes with it (5.12).
+    await memory_profile.drop_sources(db, rows)
     await db.execute(
         delete(MemorySource).where(
             or_(MemorySource.record_id.in_(ids), MemorySource.source_record_id.in_(ids))

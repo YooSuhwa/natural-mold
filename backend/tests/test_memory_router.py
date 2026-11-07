@@ -253,3 +253,73 @@ async def test_memory_proposal_approve_edit_and_reject(
     )
     assert reject_response.status_code == 200
     assert reject_response.json()["status"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_profile_routes_round_trip_and_refuse_over_budget(client: AsyncClient) -> None:
+    empty = await client.get("/api/me/memory-profile")
+    assert empty.status_code == 200
+    assert empty.json()["user_profile"]["lines"] == [] and empty.json()["work_memo"] is None
+    saved = await client.put(
+        "/api/me/memory-profile/user_profile",
+        json={"lines": [{"text": "존댓말로 답한다"}], "version": 0},
+    )
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert body["version"] == 1 and body["budget_tokens"] == 800 and body["tokens"] > 0
+    line = body["lines"][0]
+    assert (line["origin"], line["readable"]) == ("user", True)
+    stale = await client.put(
+        "/api/me/memory-profile/user_profile", json={"lines": [], "version": 0}
+    )
+    assert stale.status_code == 422 and stale.json()["error"]["code"] == "MEMORY_PROFILE_CHANGED"
+    too_long = await client.put(
+        "/api/me/memory-profile/user_profile",
+        json={"lines": [{"text": f"{i} " + "가" * 290} for i in range(3)]},
+    )
+    assert too_long.status_code == 422
+    assert too_long.json()["error"]["code"] == "MEMORY_PROFILE_TOO_LONG"
+    missing_agent = await client.put(
+        "/api/me/memory-profile/work_memo", json={"lines": [{"text": "x"}]}
+    )
+    assert missing_agent.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_work_memo_needs_a_reachable_agent(client: AsyncClient, db: AsyncSession) -> None:
+    agent_id, _ = await _seed_agent(db)
+    saved = await client.put(
+        "/api/me/memory-profile/work_memo",
+        json={"agent_id": str(agent_id), "lines": [{"text": "표는 마크다운으로"}]},
+    )
+    assert saved.status_code == 200, saved.text
+    both = await client.get(f"/api/me/memory-profile?agent_id={agent_id}")
+    assert both.json()["work_memo"]["lines"][0]["text"] == "표는 마크다운으로"
+    unknown = await client.get(f"/api/me/memory-profile?agent_id={uuid.uuid4()}")
+    assert unknown.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_recall_preview_shows_what_would_go_in_and_records_nothing(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    from sqlalchemy import func, select
+
+    from app.models.memory import MemoryRecall, MemoryRecallRun
+
+    created = await client.post(
+        "/api/memories", json={"scope": "user", "content": "배포 전에는 세션 설정을 확인한다"}
+    )
+    assert created.status_code == 201
+    preview = await client.post(
+        "/api/me/memory-recall-preview", json={"message": "세션을 확인했나요?"}
+    )
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["mode"] == "fresh" and body["vector"] == "off" and body["analyzer"] == "suffix"
+    assert [(i["id"], i["included"]) for i in body["items"]] == [(created.json()["id"], True)]
+    assert 0 < body["tokens"] <= body["budget_tokens"] == 1500
+    greeting = await client.post("/api/me/memory-recall-preview", json={"message": "안녕"})
+    assert greeting.json()["mode"] == "skipped" and greeting.json()["items"] == []
+    for model in (MemoryRecall, MemoryRecallRun):
+        assert await db.scalar(select(func.count()).select_from(model)) == 0

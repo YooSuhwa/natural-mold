@@ -216,6 +216,13 @@ async def _audit(
     )
 
 
+async def _index(db: AsyncSession, context: OrgContext, record: MemoryRecord) -> None:
+    """Keyword terms now, the vector in the background (plan 15, 5.4-11, 5.5)."""
+    from app.services import memory_index  # it imports the recall module
+
+    await memory_index.on_saved(db, context, record)
+
+
 def _store_path(scope: str) -> str:
     return "/memories/user/profile.md" if scope == "user" else "/memories/agent/AGENTS.md"
 
@@ -498,6 +505,7 @@ async def create_memory_record(
     record.approval_channel = applied.approval_channel
     db.add(record)
     await db.flush()
+    await _index(db, context, record)
     await record_revision(
         db, record, "create", context.user_id, after=record.content, run_path=run_path
     )
@@ -652,6 +660,7 @@ async def update_memory_record(
         await record_revision(
             db, record, "update", context.user_id, before=before, after=record.content
         )
+        await _index(db, context, record)
     await _audit(
         db,
         context,
@@ -864,6 +873,7 @@ async def approve_memory_proposal(
     proposal.resolved_at = _now_naive()
     db.add(record)
     await db.flush()
+    await _index(db, context, record)
     proposal.record_id = record.id
     await record_revision(
         db, record, "approve", context.user_id, after=record.content, reason="proposal"
@@ -937,3 +947,76 @@ def memory_write(**fields: Any) -> Any:
     from app.services import memory_writes
 
     return memory_writes.MemoryWrite(**fields)
+
+
+# Plan 15 (PR-B2) read side, for the agent runtime (it may import only this module).
+
+
+async def run_profile(
+    db: AsyncSession,
+    *,
+    context: OrgContext,
+    agent_id: uuid.UUID | None,
+    user_scope: bool,
+    agent_scope: bool,
+) -> Any:
+    """``memory_profile.for_run``: the profile documents this run's path may read."""
+    from app.services import memory_profile
+
+    return await memory_profile.for_run(
+        db, context, agent_id=agent_id, user_scope=user_scope, agent_scope=agent_scope
+    )
+
+
+async def run_recall(
+    session_factory: Any,
+    *,
+    context: OrgContext,
+    run_id: str,
+    scopes: str,
+    agent_id: uuid.UUID | None,
+    exclude: frozenset[uuid.UUID],
+) -> Any:
+    """``memory_recall.timed_recall_for_run`` (its own session, one time limit)."""
+    from app.services import memory_recall
+
+    return await memory_recall.timed_recall_for_run(
+        session_factory,
+        context,
+        run_id=run_id,
+        filters=memory_recall.Filters(scopes=scopes, agent_id=agent_id, exclude=exclude),
+    )
+
+
+async def search_memories(
+    db: AsyncSession,
+    *,
+    context: OrgContext,
+    queries: list[str],
+    scopes: str,
+    agent_id: uuid.UUID | None,
+    kind: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    include_history: bool = False,
+    limit: int = 5,
+    run_id: str | None = None,
+) -> list[Any]:
+    """``memory_recall.search`` (``search_memory``)."""
+    from app.services import memory_recall
+
+    return await memory_recall.search(
+        db,
+        context,
+        queries=queries,
+        filters=memory_recall.Filters(
+            scopes=scopes,
+            agent_id=agent_id,
+            kind=kind,
+            since=since,
+            until=until,
+            include_history=include_history,
+        ),
+        limit=limit,
+        run_id=run_id,
+    )

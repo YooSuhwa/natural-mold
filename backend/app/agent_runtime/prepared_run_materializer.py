@@ -186,7 +186,7 @@ async def materialize_prepared_lease(
         probe = compile_root(
             runnables=probe_runnables,
             admission_factory=refused_admission,
-            app_middleware=inputs.custom_middleware,
+            app_middleware=(*inputs.custom_middleware, *inputs.root_middleware),
             checkpointer=None,
             tool_risk=tool_risk,
             **root_common,
@@ -242,7 +242,7 @@ async def materialize_prepared_lease(
         root = compile_root(
             runnables=runnables,
             admission_factory=lambda: admission,
-            app_middleware=(guards[ROOT_PATH], *inputs.custom_middleware),
+            app_middleware=(guards[ROOT_PATH], *inputs.custom_middleware, *inputs.root_middleware),
             checkpointer=saver,
             guard=guard,
             tool_risk=tool_risk,

@@ -223,6 +223,25 @@ def redact_memory_content(method: str, data: Any) -> Any:
         return _redact_tool_event(data)
     if method == "custom":
         return _redact_custom_event(data)
+    if method == "messages":
+        return _redact_memory_tool_messages(data)
+    return data
+
+
+# Tools whose *result* is the person's memory text (plan 15, 5.4-9): persisted and shared
+# surfaces keep the call but not what it returned.
+MEMORY_RESULT_TOOL_NAMES: Final = frozenset({"search_memory"})
+_RESULT_KEYS: Final = ("output", "result", "content")
+
+
+def _redact_memory_tool_messages(data: Any) -> Any:
+    if isinstance(data, Mapping):
+        kind = _text(data.get("type"))
+        if kind in {"tool", "ToolMessage"} and _text(data.get("name")) in MEMORY_RESULT_TOOL_NAMES:
+            return {**dict(data), "content": REDACTED_MEMORY_FIELD}
+        return data
+    if isinstance(data, list | tuple):
+        return [_redact_memory_tool_messages(item) for item in data]
     return data
 
 
@@ -353,6 +372,11 @@ def _redact_tool_event(data: Any) -> Any:
     if not isinstance(data, Mapping):
         return data
     tool_name = _text(data.get("name") or data.get("tool_name") or data.get("tool"))
+    if tool_name in MEMORY_RESULT_TOOL_NAMES:
+        return {
+            **dict(data),
+            **{key: REDACTED_MEMORY_FIELD for key in _RESULT_KEYS if data.get(key) is not None},
+        }
     if tool_name not in MEMORY_TOOL_NAMES:
         return data
 

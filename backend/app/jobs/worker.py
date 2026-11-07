@@ -39,6 +39,9 @@ class Worker:
         maker: Callable[[], Any] | None = None,
     ) -> None:
         builtin.register_builtin()
+        from app.services.memory_index import register_jobs as register_memory_jobs
+
+        register_memory_jobs()
         self.worker_id = worker_id or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
         self.concurrency = concurrency
         self.poll_seconds = poll_seconds

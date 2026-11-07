@@ -329,6 +329,29 @@ services:
       openfga:
         condition: service_healthy
 
+  # Korean text analysis for memory recall (Nori; memory-policy-plan 5.4-11), only with
+  # `--profile search`, then OPENSEARCH_URL=http://opensearch:9200. Analysis only: no index,
+  # no memory text. Without it the backend uses its particle and ending suffix list.
+  opensearch:
+    build:
+      context: .
+      dockerfile: docker/opensearch/Dockerfile
+      secrets:
+        - extra_ca
+    image: moldy-opensearch:local
+    profiles: ["search"]
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
   # Bundled S3-compatible storage (SeaweedFS, Apache-2.0; decision D19), only with
   # `--profile s3`. Credentials come from init-secrets; it publishes no host port.
   s3:
@@ -433,6 +456,8 @@ services:
       SKILL_SANDBOX_IMAGE: moldy-skill-sandbox:local
       # Empty runs the guardrail Korean rules pack only.
       GUARDRAIL_PII_MODEL_URL: ${GUARDRAIL_PII_MODEL_URL-http://pii-detector:8095}
+      # Empty uses the suffix list for Korean memory terms (`--profile search` adds Nori).
+      OPENSEARCH_URL: ${OPENSEARCH_URL-}
     env_file: *backend-env-file
     volumes:
       # Persist skills, uploads, artifacts, and agent images across recreation.

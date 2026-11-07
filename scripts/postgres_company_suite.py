@@ -43,6 +43,7 @@ COMPANY_ADMINISTRATION_MODULES: Final[tuple[str, ...]] = (
     "tests/authz/test_personal_tenant_rls_postgres_integration.py",
     "tests/authz/test_legacy_upgrade_http_integration.py",
     "tests/integration/test_jobs_postgres.py",
+    "tests/integration/test_memory_recall_postgres.py",
 )
 # Selected B04/B05/B08 nodes the company claims depend on (plan Task 14 legacy registry).
 COMPANY_ADMINISTRATION_LEGACY_NODES: Final[tuple[str, ...]] = (

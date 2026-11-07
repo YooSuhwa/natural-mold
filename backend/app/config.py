@@ -255,6 +255,19 @@ class Settings(AuthzSettings):
     # Create the bucket at the first health check (the bundled server starts empty).
     storage_s3_create_bucket: bool = False
 
+    # Korean text analysis (plan 15, 5.4-11): OpenSearch with the analysis-nori plugin,
+    # used only to analyze text (the memory index stays in Postgres). Empty URL, a failure
+    # or a reply slower than the limit: the particle and ending suffix list instead.
+    opensearch_url: str = ""
+    opensearch_username: str = ""
+    opensearch_password: str = ""
+    korean_analyze_timeout_ms: int = 50
+    # Memory recall (plan 15, 5.4-5.5): vector width asked of the ``embedding`` system
+    # model, how long one query embedding may take, and the recall database time limit.
+    memory_embedding_dimensions: int = 1024
+    memory_embedding_timeout_seconds: float = 1.0
+    memory_recall_statement_timeout_ms: int = 300
+
     # Shared MCP runtime (mcp-runtime/, plan §7.3): its base URL inside the network and the
     # secret it shares with the backend for run tokens (never JWT_SECRET). Empty URL: off.
     mcp_runtime_url: str = ""

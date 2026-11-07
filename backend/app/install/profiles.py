@@ -18,6 +18,7 @@ ComponentKey = Literal[
     "mcp_runtime",
     "pii_detector",
     "skill_sandbox",
+    "opensearch",
 ]
 Requirement = Literal["required", "recommended", "optional"]
 
@@ -29,6 +30,8 @@ COMPONENTS: Final[tuple[ComponentKey, ...]] = (
     "mcp_runtime",
     "pii_detector",
     "skill_sandbox",
+    # Nori Korean analysis for memory recall (plan 15, 5.4-11); the suffix list without it.
+    "opensearch",
 )
 
 

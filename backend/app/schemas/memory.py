@@ -341,3 +341,75 @@ class MemoryActivityOut(BaseModel):
     target_id: str | None = None
     created_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+# Plan 15 (PR-B2): profile documents (5.12) and the recall preview (5.9).
+
+
+class MemoryProfileLineIn(BaseModel):
+    """``id`` keeps an existing line (and its sources) when its text is unchanged."""
+
+    id: str | None = Field(default=None, max_length=64)
+    text: str = Field(min_length=1, max_length=300)
+
+
+class MemoryProfileUpdate(BaseModel):
+    agent_id: uuid.UUID | None = None
+    lines: list[MemoryProfileLineIn] = Field(default_factory=list, max_length=60)
+    # The version the person edited; a newer one on the server refuses the write.
+    version: int | None = Field(default=None, ge=0)
+
+
+class MemoryProfileLineOut(BaseModel):
+    id: str
+    text: str
+    origin: Literal["user", "pinned", "consolidation"]
+    sources: list[str] = Field(default_factory=list)
+    # False: a source was revoked or deleted, so runs skip the line.
+    readable: bool
+
+
+class MemoryProfileOut(BaseModel):
+    kind: Literal["user_profile", "work_memo"]
+    agent_id: uuid.UUID | None = None
+    lines: list[MemoryProfileLineOut]
+    tokens: int
+    budget_tokens: int
+    version: int
+
+
+class MemoryProfilesOut(BaseModel):
+    user_profile: MemoryProfileOut
+    work_memo: MemoryProfileOut | None = None
+
+
+class MemoryRecallPreviewIn(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    agent_id: uuid.UUID | None = None
+    # Earlier user messages of the imagined conversation, latest first (at most two).
+    previous: list[str] = Field(default_factory=list, max_length=2)
+
+
+class MemoryRecallPreviewItem(BaseModel):
+    id: uuid.UUID
+    scope: str
+    kind: str
+    content: str
+    keyword: float
+    cosine: float | None = None
+    search: float
+    final: float
+    included: bool
+    # Why a passing memory stays out: the token budget or its scope's ceiling.
+    left_out: Literal["budget", "scope_cap"] | None = None
+
+
+class MemoryRecallPreviewOut(BaseModel):
+    mode: Literal["fresh", "skipped", "reference"]
+    analyzer: str
+    # on: vectors used; unmeasured: a model without a measured floor; off: no model.
+    vector: Literal["on", "unmeasured", "off"]
+    profile_lines: list[str] = Field(default_factory=list)
+    items: list[MemoryRecallPreviewItem] = Field(default_factory=list)
+    tokens: int = 0
+    budget_tokens: int
