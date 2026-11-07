@@ -84,4 +84,47 @@ describe('MemoryRecallChip', () => {
     expect(screen.getByText('scopeUser')).toBeInTheDocument()
     expect(screen.getByText('scopeAgent')).toBeInTheDocument()
   })
+
+  it('brief마다 경로(프로필/자동/도구)를 보이고, 경로 없는 옛 brief는 자동으로 본다', async () => {
+    const user = userEvent.setup()
+    memoriesQueryMock.current = { data: [] }
+    const store = createStore()
+    store.set(chatMemoryRecallAtom, {
+      'conv-1': [
+        // 사람이 직접 쓴 프로필 줄: 근거 기억이 없어 id가 없다.
+        { lineId: 'line-1', scope: 'user', content: '이름은 지수', path: 'profile' },
+        { id: 'm2', scope: 'agent', content: '보고서는 표로', path: 'auto' },
+        { id: 'm3', scope: 'user', content: 'KTX 선호', path: 'tool' },
+        // PR-B2 이전에 영속된 brief (path 없음).
+        { id: 'm4', scope: 'user', content: '옛 회상' },
+      ],
+    })
+    const { container } = renderChip(store)
+    await user.click(screen.getByText('title'))
+    expect(screen.getByText('이름은 지수')).toBeInTheDocument()
+    expect(screen.getByText('옛 회상')).toBeInTheDocument()
+    const paths = Array.from(
+      container.querySelectorAll('[data-moldy-memory-recall-path]'),
+      (node) => node.textContent,
+    )
+    expect(paths).toEqual(['path.profile', 'path.auto', 'path.tool', 'path.auto'])
+  })
+
+  it('리로드된 프로필 brief는 id가 있으면 조인하고 id가 없으면 비공개로 둔다', async () => {
+    const user = userEvent.setup()
+    memoriesQueryMock.current = {
+      data: [{ id: 'm-src', scope: 'user', content: '회의는 오후' }],
+    }
+    const store = createStore()
+    store.set(chatMemoryRecallAtom, {
+      'conv-1': [
+        { id: 'm-src', lineId: 'line-1', scope: 'user', content: '<redacted>', path: 'profile' },
+        { lineId: 'line-2', scope: 'user', content: '<redacted>', path: 'profile' },
+      ],
+    })
+    renderChip(store)
+    await user.click(screen.getByText('title'))
+    expect(screen.getByText('회의는 오후')).toBeInTheDocument()
+    expect(screen.getByText('hiddenContent')).toBeInTheDocument()
+  })
 })

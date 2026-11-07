@@ -185,7 +185,7 @@ export interface CatalogOverride {
   enabled: boolean
 }
 
-export type SystemLlmRole = 'text_primary' | 'text_fallback' | 'image'
+export type SystemLlmRole = 'text_primary' | 'text_fallback' | 'image' | 'embedding'
 
 export interface TenantLlmSetting {
   role: SystemLlmRole

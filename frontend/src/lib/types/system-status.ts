@@ -17,6 +17,7 @@ export const SYSTEM_COMPONENTS = [
   'mcp_runtime',
   'pii_detector',
   'skill_sandbox',
+  'opensearch',
 ] as const
 export type SystemComponent = (typeof SYSTEM_COMPONENTS)[number]
 

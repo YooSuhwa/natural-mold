@@ -5,6 +5,7 @@ import { useChannelEffect, type AnyStream, type Event } from '@langchain/react'
 import { useSetAtom } from 'jotai'
 import {
   setConversationMemoryRecallAtom,
+  type MemoryRecallPath,
   type RecalledMemoryBrief,
 } from '@/lib/stores/chat-memory-recall'
 
@@ -49,6 +50,10 @@ function payloadCandidate(data: unknown): unknown {
   return data
 }
 
+function recallPath(value: unknown): MemoryRecallPath | undefined {
+  return value === 'profile' || value === 'auto' || value === 'tool' ? value : undefined
+}
+
 function parseRecalledMemories(value: unknown): RecalledMemoryBrief[] | null {
   if (!isRecord(value) || !Array.isArray(value.memories)) return null
   const briefs: RecalledMemoryBrief[] = []
@@ -59,8 +64,10 @@ function parseRecalledMemories(value: unknown): RecalledMemoryBrief[] | null {
     if (!scope || !content) continue
     briefs.push({
       id: textValue(entry.id),
+      lineId: textValue(entry.line_id),
       scope,
       content,
+      path: recallPath(entry.path),
     })
   }
   return briefs.length > 0 ? briefs : null

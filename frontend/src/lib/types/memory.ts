@@ -257,3 +257,80 @@ export interface MemoryEventPayload {
   conversation_id?: string | null
   source_run_id?: string | null
 }
+
+/** Plan 15 (5.12) profile documents: 내 프로필 and one agent's 작업 메모. */
+export type MemoryProfileKind = 'user_profile' | 'work_memo'
+/** `user` = the person wrote it, `pinned` = 프로필에 올림, `consolidation` = 정리 작업. */
+export type MemoryProfileLineOrigin = 'user' | 'pinned' | 'consolidation'
+
+export interface MemoryProfileLine {
+  id: string
+  text: string
+  origin: MemoryProfileLineOrigin
+  /** Source memory ids. */
+  sources: string[]
+  /** `false`: a source memory was revoked or deleted, so runs skip the line. */
+  readable: boolean
+}
+
+export interface MemoryProfile {
+  kind: MemoryProfileKind
+  agent_id: string | null
+  lines: MemoryProfileLine[]
+  tokens: number
+  budget_tokens: number
+  version: number
+}
+
+export interface MemoryProfiles {
+  user_profile: MemoryProfile
+  work_memo: MemoryProfile | null
+}
+
+/** A kept line sends its `id` with unchanged text; edited or new lines become the person's own. */
+export interface MemoryProfileLineInput {
+  id?: string | null
+  text: string
+}
+
+export interface MemoryProfileUpdate {
+  agent_id?: string | null
+  lines: MemoryProfileLineInput[]
+  /** The version the person edited (`MEMORY_PROFILE_CHANGED` when the server has a newer one). */
+  version?: number
+}
+
+export interface MemoryRecallPreviewRequest {
+  message: string
+  agent_id?: string | null
+  /** Earlier user messages, latest first (at most two). */
+  previous?: string[]
+}
+
+export type MemoryRecallMode = 'fresh' | 'skipped' | 'reference'
+export type MemoryRecallVector = 'on' | 'unmeasured' | 'off'
+
+export interface MemoryRecallPreviewItem {
+  id: string
+  scope: string
+  kind: string
+  content: string
+  keyword: number
+  cosine: number | null
+  search: number
+  final: number
+  included: boolean
+  left_out: 'budget' | 'scope_cap' | null
+}
+
+/** `POST /api/me/memory-recall-preview`: what a chat run would recall now (nothing recorded). */
+export interface MemoryRecallPreview {
+  mode: MemoryRecallMode
+  /** `nori`, `suffix`, or `''` when nothing was searched. */
+  analyzer: string
+  vector: MemoryRecallVector
+  profile_lines: string[]
+  items: MemoryRecallPreviewItem[]
+  tokens: number
+  budget_tokens: number
+}

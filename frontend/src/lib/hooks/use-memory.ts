@@ -2,13 +2,17 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
+import { ApiError } from '@/lib/api/client'
 import { memoryApi, memoryExportPath, type MemoryListParams } from '@/lib/api/memory'
 import { downloadApiFile } from '@/lib/hooks/use-api-object-url'
 import type {
   AgentMemorySettingsUpdate,
   MemoryExportFormat,
+  MemoryProfileKind,
+  MemoryProfileUpdate,
   MemoryProposalEditApprove,
   MemoryProposalStatusFilter,
+  MemoryRecallPreviewRequest,
   MemoryRecordCreate,
   MemoryRecordUpdate,
   MemoryScopeDelete,
@@ -27,6 +31,8 @@ export const memoryKeys = {
   revisions: (memoryId: string) => ['memory', 'revisions', memoryId] as const,
   activity: ['memory', 'activity'] as const,
   proposals: (status: MemoryProposalStatusFilter) => ['memory', 'proposals', status] as const,
+  profilesAll: ['memory', 'profiles'] as const,
+  profiles: (agentId: string | null) => ['memory', 'profiles', agentId] as const,
   scopeCount: (query: MemoryScopeQuery) =>
     ['memory', 'scope-count', query.scope, query.agentId ?? null] as const,
 }
@@ -218,5 +224,46 @@ export function useExportMemories() {
     mutationFn: ({ format, query }: { format: MemoryExportFormat; query: MemoryScopeQuery }) =>
       downloadApiFile(memoryExportPath(format, query), EXPORT_FILENAMES[format]),
     onSuccess: () => qc.invalidateQueries({ queryKey: memoryKeys.activity }),
+  })
+}
+
+/** 내 프로필, plus that agent's 작업 메모 when `agentId` is given (plan 15, 5.12). */
+export function useMemoryProfiles(agentId: string | null) {
+  return useQuery({
+    queryKey: memoryKeys.profiles(agentId),
+    queryFn: () => memoryApi.getProfiles(agentId),
+    staleTime: 10_000,
+  })
+}
+
+/** Profile saves and pins change both the profile documents and the records' `pinned`. */
+export function useUpdateMemoryProfile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ kind, data }: { kind: MemoryProfileKind; data: MemoryProfileUpdate }) =>
+      memoryApi.updateProfile(kind, data),
+    onSuccess: () => invalidateMemory(qc),
+    // A version conflict means the cached document is stale; fetch the newer one.
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === 'MEMORY_PROFILE_CHANGED') {
+        qc.invalidateQueries({ queryKey: memoryKeys.profilesAll })
+      }
+    },
+  })
+}
+
+export function usePinMemory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) =>
+      pinned ? memoryApi.pin(id) : memoryApi.unpin(id),
+    onSuccess: () => invalidateMemory(qc),
+  })
+}
+
+/** A dry run of chat recall; it records nothing, so nothing is invalidated. */
+export function useMemoryRecallPreview() {
+  return useMutation({
+    mutationFn: (data: MemoryRecallPreviewRequest) => memoryApi.previewRecall(data),
   })
 }

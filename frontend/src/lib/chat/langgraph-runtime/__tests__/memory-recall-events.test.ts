@@ -77,4 +77,39 @@ describe('protocolMemoryRecall', () => {
       }),
     ).toBeNull()
   })
+
+  it('경로와 프로필 줄 id를 읽고, id가 null인 프로필 brief와 경로 없는 옛 brief도 받는다', () => {
+    const parsed = protocolMemoryRecall({
+      method: 'custom',
+      params: {
+        data: {
+          name: 'moldy.memory_recalled',
+          payload: {
+            memories: [
+              {
+                id: null,
+                line_id: 'line-1',
+                scope: 'user',
+                content: '이름은 지수',
+                path: 'profile',
+              },
+              { id: 'm2', scope: 'agent', content: '표로 정리', path: 'auto' },
+              { id: 'm3', scope: 'user', content: 'KTX', path: 'tool' },
+              { id: 'm4', scope: 'user', content: '옛 회상' },
+              { id: 'm5', scope: 'user', content: '모르는 경로', path: 'mystery' },
+            ],
+          },
+        },
+      },
+    })
+    expect(parsed).toEqual([
+      { lineId: 'line-1', scope: 'user', content: '이름은 지수', path: 'profile' },
+      { id: 'm2', scope: 'agent', content: '표로 정리', path: 'auto' },
+      { id: 'm3', scope: 'user', content: 'KTX', path: 'tool' },
+      { id: 'm4', scope: 'user', content: '옛 회상' },
+      { id: 'm5', scope: 'user', content: '모르는 경로' },
+    ])
+    expect(parsed?.[0].id).toBeUndefined()
+    expect(parsed?.[3].path).toBeUndefined()
+  })
 })

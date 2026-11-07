@@ -6,11 +6,17 @@ import type {
   MemoryDeletionReceipt,
   MemoryExportFormat,
   MemoryPolicy,
+  MemoryProfile,
+  MemoryProfileKind,
+  MemoryProfiles,
+  MemoryProfileUpdate,
   MemoryProposal,
   MemoryProposalApproval,
   MemoryProposalCreate,
   MemoryProposalEditApprove,
   MemoryProposalStatusFilter,
+  MemoryRecallPreview,
+  MemoryRecallPreviewRequest,
   MemoryRecord,
   MemoryRecordCreate,
   MemoryRecordUpdate,
@@ -118,6 +124,24 @@ export const memoryApi = {
     }),
   editAndApproveProposal: (proposalId: string, data: MemoryProposalEditApprove) =>
     apiFetch<MemoryProposalApproval>(`/api/memory-proposals/${proposalId}/edit-and-approve`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getProfiles: (agentId?: string | null) =>
+    apiFetch<MemoryProfiles>(
+      `/api/me/memory-profile${agentId ? `?agent_id=${encodeURIComponent(agentId)}` : ''}`,
+    ),
+  updateProfile: (kind: MemoryProfileKind, data: MemoryProfileUpdate) =>
+    apiFetch<MemoryProfile>(`/api/me/memory-profile/${kind}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  pin: (memoryId: string) =>
+    apiFetch<MemoryProfile>(`/api/memories/${memoryId}/pin`, { method: 'POST' }),
+  unpin: (memoryId: string) =>
+    apiFetch<MemoryProfile>(`/api/memories/${memoryId}/pin`, { method: 'DELETE' }),
+  previewRecall: (data: MemoryRecallPreviewRequest) =>
+    apiFetch<MemoryRecallPreview>('/api/me/memory-recall-preview', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

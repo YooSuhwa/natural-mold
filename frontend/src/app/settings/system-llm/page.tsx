@@ -33,7 +33,7 @@ const LLM_CREDENTIAL_KEYS = SYSTEM_LLM_CREDENTIAL_KEYS as readonly string[]
 
 /**
  * System LLM Settings — operators pick a System Credential + model for each
- * role slot (text_primary / text_fallback / image). super_user only:
+ * role slot (text_primary / text_fallback / image / embedding). super_user only:
  * Builder/Assistant/image generation read these at runtime (ADR-019, no .env
  * fallback). Credential registration stays on the System Credentials screen.
  *

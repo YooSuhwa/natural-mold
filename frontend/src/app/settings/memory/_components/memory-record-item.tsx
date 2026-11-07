@@ -9,6 +9,8 @@ import {
   HistoryIcon,
   Loader2Icon,
   PencilIcon,
+  PinIcon,
+  PinOffIcon,
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
@@ -25,6 +27,7 @@ import { ApiError } from '@/lib/api/client'
 import {
   useDeleteMemory,
   useMemoryRevisions,
+  usePinMemory,
   useRestoreMemory,
   useRevokeMemory,
   useUpdateMemory,
@@ -50,6 +53,7 @@ export function MemoryRecordItem({
   const update = useUpdateMemory()
   const remove = useDeleteMemory()
   const restore = useRestoreMemory()
+  const pin = usePinMemory()
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [revoking, setRevoking] = useState(false)
@@ -95,6 +99,20 @@ export function MemoryRecordItem({
     }
   }
 
+  async function handlePin() {
+    const pinned = !memory.pinned
+    try {
+      await pin.mutateAsync({ id: memory.id, pinned })
+      toast.success(t(pinned ? 'toast.pinned' : 'toast.unpinned'))
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message
+          ? error.message
+          : t(pinned ? 'toast.pinFailed' : 'toast.unpinFailed'),
+      )
+    }
+  }
+
   const flags = activeFlags(memory)
 
   return (
@@ -109,6 +127,11 @@ export function MemoryRecordItem({
             <Badge variant="outline">{t(`scope.${memory.scope}`)}</Badge>
             {agentName ? <Badge variant="outline">{agentName}</Badge> : null}
             <Badge variant="outline">{t(`origin.${memory.origin}`)}</Badge>
+            {memory.pinned ? (
+              <Badge variant="secondary" data-testid="memory-pinned-badge">
+                {t('list.pinnedBadge')}
+              </Badge>
+            ) : null}
             {memory.approval_channel ? (
               <Badge variant="outline">
                 {t.has(`channel.${memory.approval_channel}`)
@@ -209,6 +232,22 @@ export function MemoryRecordItem({
                     data-testid="memory-edit-button"
                   >
                     <PencilIcon className="size-4" aria-hidden />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => void handlePin()}
+                    disabled={pin.isPending}
+                    aria-label={t(memory.pinned ? 'list.unpin' : 'list.pin')}
+                    title={t(memory.pinned ? 'list.unpin' : 'list.pin')}
+                    data-testid="memory-pin-button"
+                  >
+                    {memory.pinned ? (
+                      <PinOffIcon className="size-4" aria-hidden />
+                    ) : (
+                      <PinIcon className="size-4" aria-hidden />
+                    )}
                   </Button>
                   <Button
                     type="button"
