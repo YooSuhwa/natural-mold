@@ -465,3 +465,33 @@ async def test_person_confirmed_memories_are_never_merged_alone_or_with_agent_on
     for row in (a, b):
         await db.refresh(row)
         assert row.status == "active"
+
+
+@pytest.mark.asyncio
+async def test_scheduling_never_commits_or_loses_the_memory_being_saved(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """It runs inside the save: no settings insert, and a failure only skips scheduling."""
+    await _seed_agent(db)
+    tenant = await db.get(Tenant, TEST_TENANT_ID)
+    assert tenant is not None
+    tenant.settings = {"memory": {"consolidation_enabled": True}}
+    await db.commit()
+    context = unit_context(TEST_USER_ID)
+    assert await db.get(UserMemorySettings, TEST_USER_ID) is None
+    record = _record("저장 중인 기억")
+    db.add(record)
+    await db.flush()
+    await mc.maybe_schedule(db, context, record)
+    assert await db.get(UserMemorySettings, TEST_USER_ID) is None  # read, not inserted
+
+    async def broken(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("scheduling down")
+
+    monkeypatch.setattr(mc, "_schedule", broken)
+    saved = await memory_service.create_memory_record(
+        db,
+        context=context,
+        payload=memory_service.MemoryRecordCreate(scope="user", content="그래도 저장된다"),
+    )
+    assert saved is not None and saved.content == "그래도 저장된다"
