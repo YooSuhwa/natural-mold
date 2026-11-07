@@ -261,3 +261,22 @@ async def test_restore_runs_the_checks_again(db: AsyncSession) -> None:
     await db.commit()
     with pytest.raises(ValidationError):
         await memory_lifecycle.restore(db, context=unit_context(TEST_USER_ID), memory_id=legacy.id)
+
+
+@pytest.mark.asyncio
+async def test_a_legacy_memory_the_checks_refuse_never_reaches_a_run(db: AsyncSession) -> None:
+    agent_id, _ = await _seed_agent(db)
+    db.add(
+        MemoryRecord(
+            org_id=TEST_ORG_ID,
+            tenant_id=TEST_TENANT_ID,
+            user_id=TEST_USER_ID,
+            scope="user",
+            content="legacy blocked 3141",
+            store_path="/memories/user",
+            flags={"legacy_rejected": "MEMORY_PII_RRN"},
+        )
+    )
+    await db.commit()
+    prompt, _ = await load_memory_context_in(_cfg(agent_id), db)
+    assert "legacy blocked 3141" not in prompt

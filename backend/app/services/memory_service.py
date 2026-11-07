@@ -592,7 +592,10 @@ async def list_runtime_memory_records(
         .limit(RUNTIME_MEMORY_MAX_RECORDS)
         .execution_options(populate_existing=True, autoflush=False)
     )
-    records = list(result.scalars().all())
+    # Q7: a pre-plan memory the checks would now refuse waits for the person; runs skip it.
+    records = [
+        row for row in result.scalars().all() if not (row.flags or {}).get("legacy_rejected")
+    ]
     records.reverse()
     return records
 

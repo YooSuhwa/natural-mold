@@ -94,6 +94,45 @@ def _record_fk(table: str, column: str, ondelete: str) -> sa.ForeignKeyConstrain
     )
 
 
+def _scan_legacy_records() -> None:
+    """Q7: existing memories keep their text; what the checks would now catch is marked.
+
+    Flags and sensitivity only (nothing is deleted); a record the checks would reject is
+    marked ``legacy_rejected`` with its reason so the person can review it on the memory
+    screen. Runs in batches by id so a large table is not loaded at once.
+    """
+    from app.services.memory_checks import check_memory_text
+
+    bind = op.get_bind()
+    records = sa.table(
+        "memory_records",
+        sa.column("id", sa.Uuid()),
+        sa.column("content", sa.Text()),
+        sa.column("flags", sa.JSON()),
+        sa.column("sensitivity", sa.String()),
+    )
+    last = None
+    while True:
+        query = sa.select(records.c.id, records.c.content).order_by(records.c.id).limit(500)
+        if last is not None:
+            query = query.where(records.c.id > last)
+        rows = bind.execute(query).all()
+        if not rows:
+            return
+        for row in rows:
+            result = check_memory_text(row.content or "")
+            flags = dict.fromkeys(result.flags, True)
+            if result.rejected is not None:
+                flags = {"legacy_rejected": result.rejected}
+            if flags or result.sensitivity != "normal":
+                bind.execute(
+                    records.update()
+                    .where(records.c.id == row.id)
+                    .values(flags=flags, sensitivity=result.sensitivity)
+                )
+        last = rows[-1].id
+
+
 def upgrade() -> None:
     with op.batch_alter_table("memory_records") as batch:
         for column in _shape_columns():
@@ -230,6 +269,8 @@ def upgrade() -> None:
     op.create_index(
         "ix_memory_erasures_user_digest", "memory_erasures", ["user_id", "content_digest"]
     )
+
+    _scan_legacy_records()
 
     bind = op.get_bind()
     if bind.dialect.name != "postgresql":
