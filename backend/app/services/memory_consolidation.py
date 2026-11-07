@@ -274,8 +274,9 @@ SYSTEM_PROMPT: Final = """당신은 한 사람의 기억 목록을 정리하는 
  "notes":{"m2":"한 줄 이유"}}"""
 
 
-def render_inputs(inputs: Inputs) -> str:
-    out = ["## 기억"]
+def render_inputs(inputs: Inputs, today: str | None = None) -> str:
+    # Today's date: expiry is judged against it (5.6 "기한 지난 기억 만료").
+    out = [f"오늘은 {today or _now().date().isoformat()}입니다.", "## 기억"]
     for sid, row in inputs.records.items():
         dated = row.updated_at.date().isoformat() if row.updated_at else ""
         out.append(f"{sid} | {row.kind} | {provenance(row)} | {dated} | {_safe(row.content)}")
