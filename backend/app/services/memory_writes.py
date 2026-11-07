@@ -36,6 +36,7 @@ from app.services.memory_policy import (
     tenant_memory_policy,
 )
 from app.services.memory_service import MemoryShape, WriteChannel
+from app.services.memory_settings_reads import peek_user_settings
 
 WriteResultKind = Literal["saved", "proposed", "duplicate", "rejected"]
 
@@ -112,8 +113,15 @@ async def _duplicate(
     return next((row for row in rows if content_fingerprint(row.content) == wanted), None)
 
 
-async def _mode(db: AsyncSession, context: OrgContext, agent_id: uuid.UUID | None):
-    settings = await memory_service.get_user_settings(db, context.user_id)
+async def _mode(
+    db: AsyncSession, context: OrgContext, agent_id: uuid.UUID | None, *, peek: bool = False
+):
+    # ``peek``: read-or-default without inserting or committing (inside another write).
+    settings = (
+        await peek_user_settings(db, context.user_id)
+        if peek
+        else await memory_service.get_user_settings(db, context.user_id)
+    )
     tenant = tenant_memory_policy(await _tenant_settings(db, context.tenant_id))
     mode = effective_mode(
         memory_enabled=settings.memory_enabled,

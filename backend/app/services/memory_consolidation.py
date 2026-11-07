@@ -89,12 +89,15 @@ async def enabled_axes(
     """The person's ``consolidation`` and ``profile`` axes, or ``None`` when consolidation
     is off for the company, for the person, or by their approval mode (Q3, 5.11)."""
     from app.services import memory_writes  # it imports the recall stack
+    from app.services.memory_settings_reads import peek_user_settings
 
     tenant = tenant_memory_policy(await memory_writes.tenant_settings_for(db, context.tenant_id))
-    settings = await memory_service.get_user_settings(db, context.user_id)
+    # Read only: this runs inside a memory write, which must not be committed or rolled
+    # back halfway by a settings insert.
+    settings = await peek_user_settings(db, context.user_id)
     if not tenant.consolidation_enabled or not settings.consolidation_enabled:
         return None
-    _mode, axes, _tenant = await memory_writes.mode_for(db, context, agent_id)
+    _mode, axes, _tenant = await memory_writes.mode_for(db, context, agent_id, peek=True)
     if axes.get("consolidation") == "off" and axes.get("profile") == "off":
         return None
     return {
@@ -129,7 +132,18 @@ def stopped(runs: Sequence[MemoryConsolidationRun], now: datetime) -> bool:
 
 
 async def maybe_schedule(db: AsyncSession, context: OrgContext, record: MemoryRecord) -> None:
-    """After a memory is saved: queue the scope's run once five new memories wait."""
+    """After a memory is saved: queue the scope's run once five new memories wait.
+
+    Inside the save's transaction, in a savepoint: a failure here never loses the memory.
+    """
+    try:
+        async with db.begin_nested():
+            await _schedule(db, context, record)
+    except Exception:  # noqa: BLE001 - scheduling is best effort; the next save tries again
+        logger.warning("memory consolidation scheduling failed", exc_info=True)
+
+
+async def _schedule(db: AsyncSession, context: OrgContext, record: MemoryRecord) -> None:
     agent_id = record.agent_id if record.scope == "agent" else None
     if agent_id is not None:
         profile = await db.scalar(select(Agent.runtime_profile).where(Agent.id == agent_id))
