@@ -88,3 +88,16 @@ describe('notificationText approval inbox and emergency stop', () => {
     expect(notificationText(note, t)).toBe(text)
   })
 })
+
+describe('notificationText memory.consolidation_stopped', () => {
+  it('says consolidation stopped after repeated failures', () => {
+    const item = grant({
+      kind: 'memory.consolidation_stopped',
+      actor: null,
+      target: { type: 'memory_scope', id: 'u-1', name: null, accessible: true },
+      payload: { agent_id: null },
+      link: '/settings/memory',
+    })
+    expect(notificationText(item, t)).toBe('기억 정리가 24시간 안에 세 번 실패해 멈췄어요')
+  })
+})

@@ -21,6 +21,7 @@ export type NotificationKind =
   | 'approval.decided'
   | 'emergency_stop.applied'
   | 'emergency_stop.released'
+  | 'memory.consolidation_stopped'
 
 /** `accessible: false` — the recipient lost access; the server withholds id and name. */
 export interface NotificationTarget {

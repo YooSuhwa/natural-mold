@@ -3,6 +3,7 @@ import type {
   AgentMemorySettings,
   AgentMemorySettingsUpdate,
   MemoryActivity,
+  MemoryBulkApproveResult,
   MemoryDeletionReceipt,
   MemoryExportFormat,
   MemoryPolicy,
@@ -26,6 +27,8 @@ import type {
   MemoryScopeFilter,
   MemoryScopeQuery,
   MemoryStatusFilter,
+  MemoryTenantPolicy,
+  MemoryTenantPolicyValues,
   MemoryVectorStatus,
   MemoryVectorUpdate,
   UserMemorySettings,
@@ -120,6 +123,11 @@ export const memoryApi = {
     apiFetch<MemoryProposalApproval>(`/api/memory-proposals/${proposalId}/approve`, {
       method: 'POST',
     }),
+  bulkApproveProposals: (ids: string[]) =>
+    apiFetch<MemoryBulkApproveResult>('/api/memory-proposals/bulk-approve', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
   rejectProposal: (proposalId: string) =>
     apiFetch<MemoryProposal>(`/api/memory-proposals/${proposalId}/reject`, {
       method: 'POST',
@@ -145,6 +153,12 @@ export const memoryApi = {
   previewRecall: (data: MemoryRecallPreviewRequest) =>
     apiFetch<MemoryRecallPreview>('/api/me/memory-recall-preview', {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getTenantPolicy: () => apiFetch<MemoryTenantPolicy>('/api/me/memory-tenant-policy'),
+  updateTenantPolicy: (data: MemoryTenantPolicyValues) =>
+    apiFetch<MemoryTenantPolicy>('/api/me/memory-tenant-policy', {
+      method: 'PUT',
       body: JSON.stringify(data),
     }),
   getVectorStatus: () => apiFetch<MemoryVectorStatus>('/api/me/memory-vector'),
