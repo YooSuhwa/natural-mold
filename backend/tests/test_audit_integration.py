@@ -1161,6 +1161,12 @@ async def test_personal_memory_mutations_write_audit_without_text(
         .all()
     )
     by_target = {(row.action, row.target_id): row for row in rows}
+
+    def meta(action: str, target: str) -> dict:
+        metadata = by_target[(action, target)].event_metadata
+        assert metadata is not None
+        return metadata
+
     expected = {
         ("memory.record_create", memory_id): "memory_record",
         ("memory.record_update", memory_id): "memory_record",
@@ -1170,18 +1176,18 @@ async def test_personal_memory_mutations_write_audit_without_text(
         ("memory.proposal_create", rejected_id): "memory_proposal",
         ("memory.proposal_reject", rejected_id): "memory_proposal",
     }
-    for key, target_type in expected.items():
-        row = by_target[key]
+    for (action, target), target_type in expected.items():
+        row = by_target[(action, target)]
         assert row.target_type == target_type
         assert row.outcome == "success"
         assert str(row.actor_user_id) == str(TEST_USER_ID)
-        assert row.event_metadata["scope"] == "user"
-    create_row = by_target[("memory.record_create", memory_id)]
-    assert create_row.event_metadata["channel"] == "direct"
-    assert create_row.event_metadata["length"] == len(secret)
-    assert by_target[("memory.record_update", memory_id)].event_metadata["fields"] == ["content"]
-    approve_row = by_target[("memory.proposal_approve", approved_id)]
-    assert approve_row.event_metadata["record_id"] == record_id
-    assert approve_row.event_metadata["edited"] is False
+        assert meta(action, target)["scope"] == "user"
+    created = meta("memory.record_create", memory_id)
+    assert created["channel"] == "direct"
+    assert created["length"] == len(secret)
+    assert meta("memory.record_update", memory_id)["fields"] == ["content"]
+    approved = meta("memory.proposal_approve", approved_id)
+    assert approved["record_id"] == record_id
+    assert approved["edited"] is False
     assert secret not in str([row.event_metadata for row in rows])
     assert "비밀" not in str([row.target_name_snapshot for row in rows])
