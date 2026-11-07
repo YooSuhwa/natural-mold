@@ -413,3 +413,36 @@ class MemoryRecallPreviewOut(BaseModel):
     items: list[MemoryRecallPreviewItem] = Field(default_factory=list)
     tokens: int = 0
     budget_tokens: int
+
+
+# Plan 15 Q14: the company's memory vector model.
+
+
+class MemoryVectorModelOut(BaseModel):
+    id: uuid.UUID
+    display_name: str
+    model_name: str
+    provider: str
+    dimensions: int
+    source: Literal["platform", "company"]
+
+
+class MemoryVectorStatusOut(BaseModel):
+    model: MemoryVectorModelOut | None = None
+    candidates: list[MemoryVectorModelOut] = Field(default_factory=list)
+    total: int
+    embedded: int
+    other_vectors: int
+    job_state: str | None = None
+    job_progress: int | None = None
+    # False: the chosen model has no measured floor, so recall still uses keywords only.
+    floor_measured: bool
+    can_manage: bool
+
+
+class MemoryVectorUpdate(BaseModel):
+    model_id: uuid.UUID | None = None
+    # The number of memories the screen said would be embedded again.
+    confirm_count: int = Field(ge=0)
+    # Turning off: also remove the stored vectors (kept by default).
+    drop_vectors: bool = False

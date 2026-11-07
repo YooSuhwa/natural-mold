@@ -46,6 +46,8 @@ def model_view(model: Model, tier: CompanyTier) -> TenantModelView:
         provider=model.provider,
         model_name=model.model_name,
         display_name=model.display_name,
+        kind=model.kind,
+        embedding_dimensions=model.embedding_dimensions,
         base_url=model.base_url,
         is_default=model.is_default,
         is_visible=model.is_visible,
@@ -94,6 +96,7 @@ async def _check_fields(db: AsyncSession, tenant: Tenant, model: Model) -> None:
         raise AppError(
             code="validation_error", message="cannot mark a hidden model as default", status=422
         )
+    model_service.check_kind(model.kind, model.embedding_dimensions, is_default=model.is_default)
     credential = model.default_credential_id
     if credential is not None and await setting_credential(db, credential, tenant=tenant) is None:
         raise authorization_error("not_found")

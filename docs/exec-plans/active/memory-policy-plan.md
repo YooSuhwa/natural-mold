@@ -619,6 +619,16 @@ Aside가 영향을 받았다고 밝힌 오픈소스 메모리다. 문서와 코�
 5. 프론트엔드: 모델 등록 화면의 종류 선택, 메모리 설정의 벡터 모델 카드(끔/선택, 현재 상태, 교체 확인창)
 6. 시험: 종류별 목록 분리, 모델 없으면 켜기 거부, 교체 시 재임베딩·이전 벡터 삭제, 확인 개수 불일치 거부, 기준 미측정 모델은 키워드만
 
+**B2.5 구현 기록 (2026-11-07, PR `feature/memory-embedding-model`)**
+
+- 마이그레이션 `i23_model_kind`: `models.kind`(`chat`/`embedding`, 기존 행은 `chat`)와 `embedding_dimensions`(1~4096). 임베딩 모델은 차원이 있어야 하고 기본 모델이 될 수 없다(CHECK와 서비스 양쪽).
+- 대화 모델이 나오는 모든 곳에서 임베딩 모델을 뺐다: `GET /api/models`(기본 `kind=chat`, 관리 화면은 `kind=all`), 에이전트 모델·대체 모델 연결, 이름으로 모델 찾기, 빌더 기본 모델, 어시스턴트 모델 목록, 상태 점검. 에이전트가 쓰는 모델은 종류를 바꿀 수 없다.
+- 모델 탐색은 `kind`를 받는다. 임베딩은 이름에 `embed`가 든 모델만, OpenAI 형식(`openai`, `openai_compatible`) 제공자에서만 찾는다.
+- 회사 설정 `tenants.settings["memory"]`의 `embedding_model_id`와 `embedding_generation`. 고르기·바꾸기·끄기는 회사 관리 권한(`can_manage_tenant`, 개인 테넌트는 주인)이 필요하고, 다시 임베딩할 개수를 확인받는다(`MEMORY_VECTOR_COUNT_CHANGED`). 바꿀 때마다 세대 번호가 올라 재임베딩 작업이 새로 들어간다. 감사 `memory.vector_model_update`(본문 없음).
+- 열쇠: 모델의 기본 자격증명(플랫폼 것, 또는 그 회사의 공유 자격증명), 없으면 회사가 플랫폼 열쇠를 쓸 수 있을 때 제공자의 플랫폼 자격증명(`system_credential_resolver.open_model_key`).
+- 메모리 벡터 모델로 쓰이는 모델은 지울 수 없다.
+- #371은 시스템 LLM `embedding` 칸을 뺀 마지막 커밋 전에 머지되어, 그 커밋을 이 PR 맨 앞에 넣었다.
+
 ### 6.4 PR-B3: 정리 작업 (기능 플래그)
 
 1. 정리 작업(기억 정리와 프로필 문서 갱신), 작업 단위 사용량 기록과 지출 한도

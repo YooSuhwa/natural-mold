@@ -16,6 +16,7 @@ Endpoints:
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -474,6 +475,9 @@ async def preview_test(
 async def discover_models(
     credential_id: uuid.UUID,
     request: Request,
+    kind: Literal["chat", "embedding"] = Query(
+        "chat", description="Which models to list: chat models or embedding models (Q14)."
+    ),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
@@ -499,7 +503,7 @@ async def discover_models(
     if cred is None:
         raise credential_not_found()
     try:
-        results = await model_discovery.discover_from_credential(db, cred)
+        results = await model_discovery.discover_from_credential(db, cred, kind=kind)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 — opaque external errors

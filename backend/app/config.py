@@ -262,9 +262,8 @@ class Settings(AuthzSettings):
     opensearch_username: str = ""
     opensearch_password: str = ""
     korean_analyze_timeout_ms: int = 50
-    # Memory recall (plan 15, 5.4-5.5): vector width asked of the memory embedding
-    # model, how long one query embedding may take, and the recall database time limit.
-    memory_embedding_dimensions: int = 1024
+    # Memory recall (plan 15, 5.4-5.5): how long one query embedding may take, and the
+    # recall database time limit. The vector width is the embedding model's (``models``).
     memory_embedding_timeout_seconds: float = 1.0
     memory_recall_statement_timeout_ms: int = 300
 

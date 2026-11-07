@@ -16,6 +16,7 @@ Endpoints:
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,6 +71,10 @@ async def list_models(
             "Drives the operator-facing ``/models`` admin page."
         ),
     ),
+    kind: Literal["chat", "embedding", "all"] = Query(
+        "chat",
+        description="chat (every model picker), embedding (memory vectors) or all (admin).",
+    ),
     db: AsyncSession = Depends(get_company_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext | None = Depends(org_context_when_consulted),
@@ -77,7 +82,9 @@ async def list_models(
 ):
     if include_hidden and not user.is_super_user:
         raise super_user_required()
-    rows = await model_service.list_models(db, include_hidden=include_hidden, context=context)
+    rows = await model_service.list_models(
+        db, include_hidden=include_hidden, context=context, kind=None if kind == "all" else kind
+    )
     if context is None or include_hidden:  # legacy, or the operator catalog page
         return rows
     return await gate_list(authz, context, "llm_model", "can_use", rows, lambda row: row["id"])

@@ -162,7 +162,12 @@ async def list_model_health(
     authz: AuthzService = Depends(get_authz),
 ):
     company = context.tenant_id if context is not None else None  # E-07: never another's
-    models = (await db.execute(select(Model).where(model_scope(company)))).scalars().all()
+    # Health probes send a chat completion: embedding models are not probed (Q14).
+    models = (
+        (await db.execute(select(Model).where(model_scope(company), Model.kind == "chat")))
+        .scalars()
+        .all()
+    )
     if context is not None:
         models = await gate_list(authz, context, "llm_model", "can_use", models, lambda m: m.id)
     latest = await _latest_for(db, "model", [m.id for m in models])

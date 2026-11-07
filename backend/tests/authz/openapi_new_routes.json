@@ -8265,6 +8265,22 @@
               "title": "Credential Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Which models to list: chat models or embedding models (Q14).",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "chat",
+              "description": "Which models to list: chat models or embedding models (Q14).",
+              "enum": [
+                "chat",
+                "embedding"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11484,6 +11500,66 @@
         ]
       }
     },
+    "/api/me/memory-vector": {
+      "get": {
+        "operationId": "get_memory_vector_api_me_memory_vector_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryVectorStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Memory Vector",
+        "tags": [
+          "memory"
+        ]
+      },
+      "put": {
+        "operationId": "put_memory_vector_api_me_memory_vector_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryVectorUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryVectorStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Memory Vector",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/api/me/organizations": {
       "get": {
         "operationId": "list_organizations_api_me_organizations_get",
@@ -12574,6 +12650,23 @@
               "description": "Super-user only \u2014 include rows where ``is_visible=False``. Drives the operator-facing ``/models`` admin page.",
               "title": "Include Hidden",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "chat (every model picker), embedding (memory vectors) or all (admin).",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "chat",
+              "description": "chat (every model picker), embedding (memory vectors) or all (admin).",
+              "enum": [
+                "chat",
+                "embedding",
+                "all"
+              ],
+              "title": "Kind",
+              "type": "string"
             }
           }
         ],
@@ -41385,6 +41478,152 @@
       "title": "MemoryRevoke",
       "type": "object"
     },
+    "MemoryVectorModelOut": {
+      "properties": {
+        "dimensions": {
+          "title": "Dimensions",
+          "type": "integer"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "model_name": {
+          "title": "Model Name",
+          "type": "string"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "platform",
+            "company"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "display_name",
+        "model_name",
+        "provider",
+        "dimensions",
+        "source"
+      ],
+      "title": "MemoryVectorModelOut",
+      "type": "object"
+    },
+    "MemoryVectorStatusOut": {
+      "properties": {
+        "can_manage": {
+          "title": "Can Manage",
+          "type": "boolean"
+        },
+        "candidates": {
+          "items": {
+            "$ref": "#/components/schemas/MemoryVectorModelOut"
+          },
+          "title": "Candidates",
+          "type": "array"
+        },
+        "embedded": {
+          "title": "Embedded",
+          "type": "integer"
+        },
+        "floor_measured": {
+          "title": "Floor Measured",
+          "type": "boolean"
+        },
+        "job_progress": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Job Progress"
+        },
+        "job_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Job State"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MemoryVectorModelOut"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "other_vectors": {
+          "title": "Other Vectors",
+          "type": "integer"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "embedded",
+        "other_vectors",
+        "floor_measured",
+        "can_manage"
+      ],
+      "title": "MemoryVectorStatusOut",
+      "type": "object"
+    },
+    "MemoryVectorUpdate": {
+      "properties": {
+        "confirm_count": {
+          "minimum": 0.0,
+          "title": "Confirm Count",
+          "type": "integer"
+        },
+        "drop_vectors": {
+          "default": false,
+          "title": "Drop Vectors",
+          "type": "boolean"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Id"
+        }
+      },
+      "required": [
+        "confirm_count"
+      ],
+      "title": "MemoryVectorUpdate",
+      "type": "object"
+    },
     "MessageAttachmentBrief": {
       "description": "Inline attachment metadata exposed alongside ``MessageResponse``.\n\nThe frontend renders thumbnails / download cards from this. Only the\nfields needed for preview are surfaced \u2014 full row goes through\n``/api/uploads/{id}``.",
       "properties": {
@@ -41953,6 +42192,19 @@
           "title": "Display Name",
           "type": "string"
         },
+        "embedding_dimensions": {
+          "anyOf": [
+            {
+              "maximum": 4096.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Embedding Dimensions"
+        },
         "input_modalities": {
           "anyOf": [
             {
@@ -41976,6 +42228,15 @@
           "default": true,
           "title": "Is Visible",
           "type": "boolean"
+        },
+        "kind": {
+          "default": "chat",
+          "enum": [
+            "chat",
+            "embedding"
+          ],
+          "title": "Kind",
+          "type": "string"
         },
         "max_output_tokens": {
           "anyOf": [
@@ -42342,6 +42603,19 @@
           ],
           "title": "Display Name"
         },
+        "embedding_dimensions": {
+          "anyOf": [
+            {
+              "maximum": 4096.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Embedding Dimensions"
+        },
         "input_modalities": {
           "anyOf": [
             {
@@ -42377,6 +42651,21 @@
             }
           ],
           "title": "Is Visible"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "chat",
+                "embedding"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Kind"
         },
         "max_output_tokens": {
           "anyOf": [
@@ -51166,6 +51455,19 @@
           "title": "Display Name",
           "type": "string"
         },
+        "embedding_dimensions": {
+          "anyOf": [
+            {
+              "maximum": 4096.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Embedding Dimensions"
+        },
         "input_modalities": {
           "anyOf": [
             {
@@ -51189,6 +51491,15 @@
           "default": true,
           "title": "Is Visible",
           "type": "boolean"
+        },
+        "kind": {
+          "default": "chat",
+          "enum": [
+            "chat",
+            "embedding"
+          ],
+          "title": "Kind",
+          "type": "string"
         },
         "max_output_tokens": {
           "anyOf": [
@@ -51396,6 +51707,19 @@
           ],
           "title": "Display Name"
         },
+        "embedding_dimensions": {
+          "anyOf": [
+            {
+              "maximum": 4096.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Embedding Dimensions"
+        },
         "input_modalities": {
           "anyOf": [
             {
@@ -51431,6 +51755,21 @@
             }
           ],
           "title": "Is Visible"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "chat",
+                "embedding"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Kind"
         },
         "max_output_tokens": {
           "anyOf": [
@@ -51580,6 +51919,17 @@
           "title": "Display Name",
           "type": "string"
         },
+        "embedding_dimensions": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Embedding Dimensions"
+        },
         "id": {
           "format": "uuid",
           "title": "Id",
@@ -51592,6 +51942,11 @@
         "is_visible": {
           "title": "Is Visible",
           "type": "boolean"
+        },
+        "kind": {
+          "default": "chat",
+          "title": "Kind",
+          "type": "string"
         },
         "model_name": {
           "title": "Model Name",

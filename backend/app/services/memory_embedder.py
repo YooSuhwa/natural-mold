@@ -3,7 +3,7 @@
 A company uses one embedding model for memory: vectors carry its name and width, recall
 compares only vectors of the model in use, and a new model means embedding every memory
 again (``memory_index``). The model comes from the embedding model kind of the model
-registry, picked in the memory settings (next PR); ``resolve_embedder`` has none yet.
+registry (``models.kind = 'embedding'``), picked in the company memory settings.
 """
 
 from __future__ import annotations
@@ -16,9 +16,13 @@ from typing import Protocol
 
 import numpy as np
 
+from app.database import async_session, platform_session
 from app.outbound.client import outbound_http_client
 
 logger = logging.getLogger(__name__)
+
+# Providers whose API takes OpenAI's ``POST /embeddings`` request shape.
+OPENAI_SHAPED = frozenset({"openai", "openai_compatible", "litellm", "openrouter"})
 
 
 class MemoryEmbedder(Protocol):
@@ -37,6 +41,8 @@ class OpenAIShapedEmbedder:
     dimensions: int
     api_key: str | None
     base_url: str
+    # The company's model-change count (``memory_vectors``): one backfill per change.
+    generation: int = 0
 
     async def embed(self, texts: list[str], *, seconds: float) -> list[np.ndarray]:
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
@@ -75,10 +81,21 @@ def text_hash(text: str) -> str:
 async def resolve_embedder(tenant_id: uuid.UUID | None) -> MemoryEmbedder | None:
     """The company's memory vector model, or ``None`` (recall then uses keywords only).
 
-    No model can be chosen yet: the embedding model kind and the memory setting that picks
-    one arrive in the next PR (plan 5.5). Until then every run recalls by keywords.
+    Read in a platform session: the model may be a platform row and its credential a
+    platform credential (``memory_vectors.embedder_for`` applies the company's limits).
     """
-    return None
+    if tenant_id is None:
+        return None
+    from app.models.organization import Tenant
+    from app.services import memory_vectors  # it imports this module
+
+    try:
+        async with platform_session("memory.embedding_model", maker=async_session) as db:
+            tenant = await db.get(Tenant, tenant_id)
+            return await memory_vectors.embedder_for(db, tenant) if tenant else None
+    except Exception:  # noqa: BLE001 - a broken setting must not break a run
+        logger.warning("memory embedding model lookup failed", exc_info=True)
+        return None
 
 
 __all__ = [

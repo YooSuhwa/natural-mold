@@ -11,7 +11,16 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, ForeignKey, ForeignKeyConstraint, Integer, Numeric, String
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    Numeric,
+    String,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -27,6 +36,13 @@ class Model(Base):
         ForeignKeyConstraint(
             ["tenant_id"], ["tenants.id"], name="fk_models_tenant", ondelete="RESTRICT"
         ),
+        CheckConstraint("kind IN ('chat', 'embedding')", name="ck_models_kind"),
+        CheckConstraint(
+            "(kind = 'chat' AND embedding_dimensions IS NULL) OR "
+            "(kind = 'embedding' AND embedding_dimensions IS NOT NULL"
+            " AND embedding_dimensions BETWEEN 1 AND 4096)",
+            name="ck_models_embedding_dimensions",
+        ),
         {"extend_existing": True},
     )
 
@@ -36,6 +52,13 @@ class Model(Base):
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     model_name: Mapped[str] = mapped_column(String(200), nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # i23 (memory plan Q14): ``chat`` models run agents; ``embedding`` models turn text into
+    # vectors (memory recall, later RAG) and are never bound to an agent.
+    kind: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="chat", server_default="chat"
+    )
+    # The vector width asked of an embedding model (``dimensions``); NULL for chat models.
+    embedding_dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # M46 — operator-managed visibility. False rows are hidden from the

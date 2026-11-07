@@ -163,7 +163,28 @@ async def resolve_system_model(
     )
 
 
+async def open_model_key(
+    db: AsyncSession, *, credential_id: UUID | None, provider: str, tenant: Tenant
+) -> tuple[str | None, str | None]:
+    """``(api_key, base_url)`` for a company's service model (memory embeddings, Q14): the
+    model's own credential (``setting_credential`` limits), else the platform credential of
+    its provider while the company may use platform keys; ``(None, None)`` when neither."""
+    if credential_id is not None:
+        credential = await setting_credential(db, credential_id, tenant=tenant)
+    elif allows_system_models(tenant):
+        credential = await credential_service.find_system_by_definition(db, provider)
+    else:
+        credential = None
+    if credential is None:
+        return None, None
+    payload = await open_values(credential, "system")
+    api_key = payload.get("api_key") or payload.get("token")
+    base_url = payload.get("base_url")
+    return (str(api_key) if api_key else None, str(base_url) if base_url else None)
+
+
 __all__ = [
+    "open_model_key",
     "ResolvedSystemModel",
     "SystemModelNotConfiguredError",
     "get_setting",
