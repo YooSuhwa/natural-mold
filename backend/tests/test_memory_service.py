@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import json
+import time
 import uuid
 from datetime import datetime, timedelta
 
@@ -214,6 +216,44 @@ async def test_memory_tool_returns_rejection_for_secret_like_content(
     assert payload["reason"] == "MEMORY_SECRET_DETECTED"
     assert "sk-1234567890abcdef123456" not in result
     assert payload["content"] == "<redacted>"
+
+
+# Found by the memory write eval (evals/memory_writes): labelled keys a model saved verbatim.
+_LABELLED_SECRETS = [
+    "테스트용 API 키는 Xk29-aB7f-91Qw-ZzT4이다.",
+    "결제 API 키를 기억해두길 원함: sk_test_8f3K9dLpQ2bZ7xT1",
+    "API 키를 기억해두길 요청했다. 키 값: Zk93-Lp27-Qw84-Xy12",
+    "매장 와이파이 새 비밀번호는 Cafe2026!Secure 이다.",
+    "결제 테스트는 sk_test_8f3K9dLpQ2bZ7xT1로 돌린다",  # no label: the key prefix alone
+]
+_NOT_SECRETS = [
+    "토큰 비용은 gpt-5.4-mini가 싸다",
+    "비밀번호는 매달 바꾼다",
+    "네이버 광고 API 키를 보유하고 있으며 리포트에 쓴다",
+    "토큰 사용량 보고는 PostgreSQL14 기준",
+    "비밀번호 정책은 iPhone15에도 적용",
+    "API 키 발급은 AdminConsole2 메뉴에서",
+]
+
+
+@pytest.mark.parametrize("text", _LABELLED_SECRETS)
+def test_a_labelled_key_value_is_refused(text: str) -> None:
+    with pytest.raises(ValidationError) as caught:
+        memory_service.validate_memory_text(text)
+    assert caught.value.code == "MEMORY_SECRET_DETECTED"
+
+
+@pytest.mark.parametrize("text", _NOT_SECRETS)
+def test_a_label_without_a_key_value_is_kept(text: str) -> None:
+    memory_service.validate_memory_text(text)
+
+
+def test_the_labelled_key_pattern_stays_linear() -> None:
+    started = time.perf_counter()
+    for blob in ("API key " + "aB1" * 20000, "비밀번호" * 20000, "API 키 " + "a1" * 30000):
+        with pytest.raises(ValidationError) if "aB1" in blob else contextlib.nullcontext():
+            memory_service.validate_memory_text(blob)
+    assert time.perf_counter() - started < 1.0
 
 
 @pytest.mark.asyncio

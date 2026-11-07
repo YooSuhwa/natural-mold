@@ -120,6 +120,12 @@ documents:
   - path: backend/evals/memory_recall/REPORT.md
     lifecycle: generated-evidence
     status: generated
+  - path: backend/evals/memory_writes/PREREGISTRATION.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/evals/memory_writes/REPORT.md
+    lifecycle: generated-evidence
+    status: generated
   - path: docs/ARCHITECTURE.md
     lifecycle: canonical-current
     status: current
