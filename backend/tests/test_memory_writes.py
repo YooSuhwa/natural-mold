@@ -234,6 +234,7 @@ async def test_approving_a_proposal_copies_its_shape_and_records_the_approver(
     )
     assert approved is not None
     proposal, record = approved
+    assert record is not None  # a new-memory proposal always yields its memory
     assert (record.kind, record.topic, record.origin) == ("preference", "보고서", "agent_inferred")
     assert (record.approval_channel, record.approved_by) == ("proposal", TEST_USER_ID)
     assert proposal.record_id == record.id
