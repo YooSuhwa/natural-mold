@@ -27,7 +27,12 @@ def _memory_tool_instruction_prompt() -> str:
         "is waiting for approval.\n"
         "- Never store API keys, passwords, tokens, credentials, or government ID "
         "numbers. Ordinary test labels or preference IDs are not secrets by "
-        "themselves."
+        "themselves.\n"
+        "- Do not save how far the current task has got, results you just produced, "
+        'tool or search output, or a request meant only for this time ("just this '
+        'email").\n'
+        "- Write the memory in the language the user used, keeping names and values "
+        "exactly as they wrote them; do not translate or transliterate."
     )
 
 
