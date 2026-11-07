@@ -27,7 +27,7 @@ from app.schemas.memory import (
     UserMemorySettingsOut,
     UserMemorySettingsUpdate,
 )
-from app.services import memory_service
+from app.services import memory_service, memory_writes
 
 router = APIRouter(tags=["memory"])
 
@@ -121,10 +121,22 @@ async def create_memory(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> MemoryRecordOut:
-    record = await memory_service.create_memory_record(db, context=context, payload=payload)
-    if record is None:
+    # A person typed it on the memory screens: ``user_stated`` (plan 15, 5.3-1), still checked.
+    result = await memory_writes.write_memory(
+        db,
+        context=context,
+        write=memory_writes.MemoryWrite(
+            scope=payload.scope,
+            content=payload.content,
+            reason=payload.reason,
+            agent_id=payload.agent_id,
+            conversation_id=payload.source_conversation_id,
+            source_run_id=payload.source_run_id,
+        ),
+    )
+    if result.record is None:
         raise agent_not_found()
-    return MemoryRecordOut.model_validate(record)
+    return MemoryRecordOut.model_validate(result.record)
 
 
 @router.patch("/api/memories/{memory_id}", response_model=MemoryRecordOut)

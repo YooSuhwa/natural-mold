@@ -6,7 +6,9 @@ or revoked it. Existing rows become ``origin='legacy'`` (Q7). Three company tabl
 (RLS ``DIRECT_TENANT``): ``memory_revisions`` (before/after per change, removed with the
 memory), ``memory_sources`` (a derived memory's evidence) and ``memory_erasures`` (a
 deleted memory's keyed digest, so the same text is not written again).
-``user_memory_settings`` gains the approval mode (5.11) and the consolidation switch.
+``user_memory_settings`` gains the approval mode (5.11) and the consolidation switch;
+``conversations.memory_external_content_at`` marks when outside content first entered a
+conversation (5.3-1).
 
 Downgrade drops the three tables and the new columns; erased digests and revisions are lost.
 """
@@ -179,6 +181,11 @@ def upgrade() -> None:
             )
         )
 
+    with op.batch_alter_table("conversations") as batch:
+        batch.add_column(
+            sa.Column("memory_external_content_at", sa.DateTime(timezone=True), nullable=True)
+        )
+
     op.create_table(
         "memory_revisions",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -239,6 +246,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     for table in reversed(_TABLES):
         op.drop_table(table)
+    with op.batch_alter_table("conversations") as batch:
+        batch.drop_column("memory_external_content_at")
     with op.batch_alter_table("user_memory_settings") as batch:
         for column in ("consolidation_enabled", "approval_axes", "approval_mode"):
             batch.drop_column(column)

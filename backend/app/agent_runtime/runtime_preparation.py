@@ -126,6 +126,7 @@ async def prepare_runtime_components_impl(
                 conversation_id=cfg.thread_id,
                 is_trigger_mode=is_trigger_mode,
                 agent_memo_proposals=memo_proposals,
+                run_path=cfg.run_path,
             )
         )
     mark_timing("tools_ms")
