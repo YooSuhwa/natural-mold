@@ -73,6 +73,22 @@ _SECRET_PATTERNS = (
     re.compile(r"(?i)\b(api[_-]?key|password|passwd|secret|token)\b\s*[:=]\s*\S{8,}"),
     re.compile(r"\bsk-[A-Za-z0-9_\-]{16,}\b"),
     re.compile(r"\b[A-Za-z0-9_\-]{24,}\.[A-Za-z0-9_\-]{24,}\.[A-Za-z0-9_\-]{24,}\b"),
+    # Payment test/live keys (``sk_test_...``, ``pk_live_...``).
+    re.compile(r"\b[spr]k_(?:test|live)_[A-Za-z0-9]{8,}"),
+    # A labelled value ("API 키는 Xk29-aB7f-...", "비밀번호는 Cafe2026!x"): a credential label,
+    # up to 24 characters, then 10-64 key characters with upper, lower, a digit and a symbol
+    # or a second digit ("iPhone15", "AdminConsole2" stay). Bare "토큰", "token" and "암호"
+    # are no labels ("토큰 사용량은 PostgreSQL14 기준"). Found by evals/memory_writes (plan 15).
+    re.compile(
+        r"(?i:api[ _-]?(?:key|키)|비밀\s?번호|패스워드|password|passwd|passcode|"
+        r"(?:secret|시크릿|access|액세스)[ _-]?(?:key|키)|인증\s?키|(?:토큰|token|키)\s?값)"
+        r"[^\n]{0,24}?(?<![A-Za-z0-9!@#$%^&*_+=.\-])"
+        r"(?=[A-Za-z0-9!@#$%^&*_+=.\-]{0,64}?[A-Z])"
+        r"(?=[A-Za-z0-9!@#$%^&*_+=.\-]{0,64}?[a-z])"
+        r"(?=[A-Za-z0-9!@#$%^&*_+=.\-]{0,64}?\d)"
+        r"(?=[A-Za-z0-9!@#$%^&*_+=.\-]{0,64}?(?:[!@#$%^&*_+=.\-]|\d[A-Za-z]{0,64}?\d))"
+        r"[A-Za-z0-9!@#$%^&*_+=.\-]{10,64}"
+    ),
 )
 
 
