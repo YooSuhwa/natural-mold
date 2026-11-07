@@ -2,29 +2,56 @@ import { apiFetch } from './client'
 import type {
   AgentMemorySettings,
   AgentMemorySettingsUpdate,
+  MemoryActivity,
+  MemoryDeletionReceipt,
+  MemoryExportFormat,
+  MemoryPolicy,
   MemoryProposal,
   MemoryProposalApproval,
   MemoryProposalCreate,
   MemoryProposalEditApprove,
+  MemoryProposalStatusFilter,
   MemoryRecord,
   MemoryRecordCreate,
   MemoryRecordUpdate,
+  MemoryRevision,
+  MemoryScopeCount,
+  MemoryScopeDelete,
   MemoryScopeFilter,
+  MemoryScopeQuery,
+  MemoryStatusFilter,
   UserMemorySettings,
   UserMemorySettingsUpdate,
 } from '@/lib/types/memory'
 
-function buildMemorySearch(params?: {
+export interface MemoryListParams {
   scope?: MemoryScopeFilter
   agentId?: string | null
   q?: string | null
-}): string {
+  /** Omitted = the backend default (`active`). */
+  status?: MemoryStatusFilter
+}
+
+function buildMemorySearch(params?: MemoryListParams): string {
   const search = new URLSearchParams()
   if (params?.scope && params.scope !== 'all') search.set('scope', params.scope)
   if (params?.agentId) search.set('agent_id', params.agentId)
   if (params?.q?.trim()) search.set('q', params.q.trim())
+  if (params?.status) search.set('status', params.status)
   const qs = search.toString()
   return qs ? `?${qs}` : ''
+}
+
+function buildScopeSearch(query: MemoryScopeQuery, extra?: Record<string, string>): string {
+  const search = new URLSearchParams(extra)
+  search.set('scope', query.scope)
+  if (query.scope === 'agent' && query.agentId) search.set('agent_id', query.agentId)
+  return `?${search.toString()}`
+}
+
+/** `GET /api/memories/export` path (a file download, fetched with credentials). */
+export function memoryExportPath(format: MemoryExportFormat, query: MemoryScopeQuery): string {
+  return `/api/memories/export${buildScopeSearch(query, { format })}`
 }
 
 export const memoryApi = {
@@ -41,7 +68,8 @@ export const memoryApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  list: (params?: { scope?: MemoryScopeFilter; agentId?: string | null; q?: string | null }) =>
+  getPolicy: () => apiFetch<MemoryPolicy>('/api/me/memory-policy'),
+  list: (params?: MemoryListParams) =>
     apiFetch<MemoryRecord[]>(`/api/memories${buildMemorySearch(params)}`),
   create: (data: MemoryRecordCreate) =>
     apiFetch<MemoryRecord>('/api/memories', {
@@ -54,6 +82,25 @@ export const memoryApi = {
       body: JSON.stringify(data),
     }),
   delete: (memoryId: string) => apiFetch<void>(`/api/memories/${memoryId}`, { method: 'DELETE' }),
+  revoke: (memoryId: string, reason?: string | null) =>
+    apiFetch<MemoryRecord>(`/api/memories/${memoryId}/revoke`, {
+      method: 'POST',
+      body: JSON.stringify(reason ? { reason } : {}),
+    }),
+  restore: (memoryId: string) =>
+    apiFetch<MemoryRecord>(`/api/memories/${memoryId}/restore`, { method: 'POST' }),
+  listRevisions: (memoryId: string) =>
+    apiFetch<MemoryRevision[]>(`/api/memories/${memoryId}/revisions`),
+  countScope: (query: MemoryScopeQuery) =>
+    apiFetch<MemoryScopeCount>(`/api/memories/delete-scope/count${buildScopeSearch(query)}`),
+  deleteScope: (data: MemoryScopeDelete) =>
+    apiFetch<MemoryDeletionReceipt>('/api/memories/delete-scope', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  listActivity: () => apiFetch<MemoryActivity[]>('/api/me/memory-activity'),
+  listProposals: (status: MemoryProposalStatusFilter = 'pending') =>
+    apiFetch<MemoryProposal[]>(`/api/memory-proposals?status=${status}`),
   createProposal: (data: MemoryProposalCreate) =>
     apiFetch<MemoryProposal>('/api/memory-proposals', {
       method: 'POST',

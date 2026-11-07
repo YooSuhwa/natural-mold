@@ -141,6 +141,7 @@ async def test_company_audit_retention_shortening_needs_confirmation(
         "removed_member_memories": 0,
         "audit_events": 1,
         "guardrail_events": 1,
+        "expired_memories": 0,
     }
     assert preview.json()["audit_retention_days"] == 365
     confirmed = await _put(

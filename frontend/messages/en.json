@@ -458,8 +458,18 @@
         "readOnly": "Only organization admins can change this.",
         "confirm": {
           "title": "Shorten retention?",
-          "description": "After saving, the next cleanup deletes {conversations} conversations, {agents} agents, and {removed_member_conversations} conversations and {removed_member_memories} memories of removed members.",
+          "description": "After saving, the next cleanup deletes {conversations} conversations, {agents} agents, {removed_member_conversations} conversations and {removed_member_memories} memories of removed members, and {expired_memories} expired memories.",
           "submit": "Shorten and save"
+        },
+        "experience_memory_days": {
+          "label": "Experience memory retention",
+          "help": "How long agents' experience memories are kept. Revoked memories are erased after 30 days.",
+          "days": "Experience memory retention (days)",
+          "mode": {
+            "default": "Default (company 365 days, personal unlimited)",
+            "unlimited": "Keep indefinitely",
+            "days": "Set a period"
+          }
         }
       },
       "limits": {
@@ -5893,7 +5903,246 @@
         "updated": "Memory saved.",
         "updateFailed": "Could not update memory.",
         "deleted": "Memory deleted.",
-        "deleteFailed": "Could not delete memory."
+        "deleteFailed": "Could not delete memory.",
+        "revoked": "Memory revoked.",
+        "revokeFailed": "Could not revoke memory.",
+        "restored": "Memory restored.",
+        "restoreFailed": "Could not restore memory.",
+        "restoreBlockedPii": "This memory no longer passes the personal data check, so it cannot be restored. Review its content."
+      },
+      "tabs": {
+        "label": "Memory sections",
+        "overview": "Overview",
+        "memories": "Memories",
+        "activity": "Activity",
+        "settings": "Settings"
+      },
+      "firstUse": {
+        "title": "Your personal memory is shared by all your agents",
+        "description": "Personal memories saved here are used in conversations with every agent you use. First choose how freely agents may save memories.",
+        "choose": "Choose an approval mode",
+        "dismiss": "Dismiss notice"
+      },
+      "mode": {
+        "title": "Approval mode",
+        "description": "How much you review when agents save or change memories.",
+        "current": "In use",
+        "default": "{tenant} default",
+        "tenantKind": {
+          "company": "Company",
+          "personal": "Personal"
+        },
+        "defaultApplies": "You have not chosen a mode yet, so the {tenant} default ({mode}) applies.",
+        "notAllowed": "Your administrator does not allow this mode.",
+        "notAllowedError": "This approval mode is not allowed.",
+        "save": "Save approval mode",
+        "saved": "Approval mode saved.",
+        "saveFailed": "Could not save approval mode.",
+        "options": {
+          "off": {
+            "label": "Memory off",
+            "description": "Memories are neither saved nor read."
+          },
+          "read_only": {
+            "label": "Read only",
+            "description": "Agents save nothing new; only memories you write here are used."
+          },
+          "approve_all": {
+            "label": "Approve all",
+            "description": "Review every new memory, profile update and consolidation before it applies."
+          },
+          "partial_auto": {
+            "label": "Partly automatic",
+            "description": "Unflagged memories save automatically; only flagged ones need review."
+          },
+          "auto_notify": {
+            "label": "Automatic with notice",
+            "description": "Save automatically and put flagged ones on the review-later list."
+          },
+          "custom": {
+            "label": "Custom",
+            "description": "Choose automatic, approve or off for new memories, profile and consolidation separately."
+          }
+        },
+        "axes": {
+          "title": "Details",
+          "records": "New memories",
+          "profile": "Profile document updates",
+          "consolidation": "Consolidation (merge, supersede, expire)",
+          "value": {
+            "auto": "Automatic",
+            "approve": "Approve",
+            "off": "Off"
+          }
+        }
+      },
+      "overview": {
+        "counts": {
+          "title": "Memory summary",
+          "active": "Active memories",
+          "revoked": "Revoked memories",
+          "review": "Review later"
+        },
+        "quick": {
+          "title": "Quick actions",
+          "description": "Download all your memories or delete them at once.",
+          "export": "Export as JSON",
+          "deleteAll": "Delete all"
+        }
+      },
+      "status": {
+        "active": "Active",
+        "superseded": "Superseded",
+        "revoked": "Revoked",
+        "deleted": "Deleted"
+      },
+      "statusFilter": {
+        "label": "Memory status filter",
+        "active": "Active",
+        "revoked": "Revoked",
+        "review": "Review later",
+        "all": "All statuses"
+      },
+      "kind": {
+        "fact": "Fact",
+        "preference": "Preference",
+        "commitment": "Commitment",
+        "experience": "Experience",
+        "episode": "Episode",
+        "procedure": "Procedure"
+      },
+      "origin": {
+        "user_stated": "Stated by you",
+        "agent_inferred": "Inferred by agent",
+        "legacy": "Earlier memory",
+        "consolidation": "From consolidation",
+        "tool_derived": "From a tool"
+      },
+      "channel": {
+        "direct": "Saved directly",
+        "proposal": "Saved after approval",
+        "auto_policy": "Saved automatically"
+      },
+      "sensitivity": {
+        "contact": "Contact",
+        "sensitive": "Sensitive"
+      },
+      "flags": {
+        "instruction_like": "Looks like an instruction",
+        "sensitive": "Sensitive",
+        "other_person": "Another person",
+        "contact": "Contact",
+        "review_later": "Review later",
+        "source_deleted": "Source deleted",
+        "unknown": "Flag: {flag}"
+      },
+      "revokeDialog": {
+        "title": "Revoke this memory?",
+        "description": "From the next run, agents stop using this memory. The content stays so you can restore it; it is erased after 30 days.",
+        "reason": "Reason for revoking",
+        "reasonPlaceholder": "Optional",
+        "submit": "Revoke"
+      },
+      "deleteDialog": {
+        "title": "Delete this memory?",
+        "description": "This erases the memory and its history and cannot be undone. Conversation history and backups it came from are not deleted.",
+        "submit": "Delete"
+      },
+      "history": {
+        "title": "History",
+        "description": "When and how this memory changed.",
+        "loading": "Loading history.",
+        "empty": "No history yet.",
+        "before": "Before",
+        "after": "After",
+        "none": "None",
+        "reason": "Reason: {reason}",
+        "action": {
+          "create": "Created",
+          "update": "Edited",
+          "approve": "Approved",
+          "revoke": "Revoked",
+          "restore": "Restored",
+          "unknown": "Changed"
+        }
+      },
+      "activity": {
+        "title": "Activity",
+        "description": "Saves, edits, deletes and exports of your memories. Memory content is never shown.",
+        "loading": "Loading activity.",
+        "emptyTitle": "No activity yet",
+        "emptyDescription": "Saving or changing memories is recorded here.",
+        "retry": "Try again",
+        "action": {
+          "record_create": "Memory saved",
+          "record_update": "Memory edited",
+          "record_delete": "Memory deleted",
+          "record_delete_bulk": "Memories deleted in bulk",
+          "record_revoke": "Memory revoked",
+          "record_restore": "Memory restored",
+          "proposal_create": "Memory proposed",
+          "proposal_approve": "Proposal approved",
+          "proposal_reject": "Proposal rejected",
+          "export": "Exported",
+          "unknown": "Other memory action"
+        },
+        "counts": {
+          "deleted": "{count} deleted",
+          "records": "{count} memories",
+          "proposals": "{count} proposals",
+          "revisions_removed": "{count} history entries removed",
+          "proposals_cleared": "{count} proposals cleared"
+        }
+      },
+      "scopeSelect": {
+        "label": "Scope",
+        "all": "All",
+        "user": "Personal (all agents)",
+        "agent": "One agent",
+        "agent_label": "Agent"
+      },
+      "consolidation": {
+        "title": "Memory consolidation",
+        "description": "Merges similar memories and tidies superseded and expired ones.",
+        "label": "Consolidate my memories",
+        "help": "When off, consolidation never runs on your memories.",
+        "tenantOff": "Your administrator turned consolidation off, so it does not run now.",
+        "saved": "Consolidation setting saved.",
+        "failed": "Could not save the consolidation setting."
+      },
+      "export": {
+        "title": "Export",
+        "description": "Download your memories, their history and proposals as a file.",
+        "format": "Format",
+        "json": "JSON (for re-import)",
+        "markdown": "Markdown (for reading)",
+        "submit": "Export",
+        "done": "Export downloaded.",
+        "failed": "Could not export."
+      },
+      "bulkDelete": {
+        "title": "Delete memories in bulk",
+        "description": "Deletes every memory in the chosen scope at once. Conversation history and backups are not deleted.",
+        "check": "Check memories to delete",
+        "empty": "There are no memories to delete in this scope.",
+        "confirmTitle": "Delete {count} memories?",
+        "confirmDescription": "This erases {count} memories in the {scope} scope and their history. It cannot be undone.\nConversation history and backups they came from are not deleted.",
+        "confirmTextLabel": "To confirm, type the number of memories to delete: {count}",
+        "submit": "Delete",
+        "countChanged": "The number of memories changed meanwhile. Check the new count and type it again.",
+        "failed": "Could not delete.",
+        "receipt": {
+          "title": "Deletion receipt",
+          "deleted": "{count} memories deleted",
+          "revisions": "{count} history entries erased",
+          "proposals": "{count} proposals cleared",
+          "derived": "{count} derived memories marked for review",
+          "kept": "Not deleted: {places}",
+          "place": {
+            "conversation_history": "Conversation history",
+            "backups": "Backups"
+          }
+        }
       }
     },
     "security": {

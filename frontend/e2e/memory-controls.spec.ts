@@ -47,6 +47,7 @@ test.describe('Memory controls', () => {
     test.setTimeout(60_000)
     await page.goto('/settings/memory')
     await expect(page.getByTestId('memory-settings-page')).toBeVisible()
+    await page.getByRole('tab', { name: '기억' }).click()
 
     // 1. Create a user-scope memory (scope defaults to "user").
     await page.getByTestId('memory-content-input').fill(content)
@@ -75,9 +76,9 @@ test.describe('Memory controls', () => {
       })
       .toBe(editedContent)
 
-    // 3. Delete it (inline confirm) — the API drops the record.
+    // 3. Delete it (confirm dialog) — the API drops the record.
     await item.getByTestId('memory-delete-button').click()
-    await item.getByTestId('memory-delete-confirm').getByRole('button', { name: '삭제 확인' }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '삭제' }).click()
     await expect
       .poll(async () => (await searchMemories(request, prefix)).length, { timeout: 15_000 })
       .toBe(0)
@@ -91,6 +92,7 @@ test.describe('Memory controls', () => {
 
     await page.goto('/settings/memory')
     await expect(page.getByTestId('memory-settings-page')).toBeVisible()
+    await page.getByRole('tab', { name: '설정' }).click()
 
     await page.getByTestId('memory-write-policy-trigger').click()
     await page.getByTestId(`memory-write-policy-option-${target}`).click()

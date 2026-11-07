@@ -59,8 +59,11 @@ DIRECT_TENANT: Final = frozenset(
         "marketplace_installations",
         "marketplace_items",
         "mcp_servers",
+        "memory_erasures",  # deleted memory digests (plan 15, 5.7)
         "memory_proposals",
         "memory_records",
+        "memory_revisions",  # memory change history (plan 15, 5.7)
+        "memory_sources",  # derived memory evidence (plan 15, 5.1)
         "message_attachments",
         "models",
         "notifications",

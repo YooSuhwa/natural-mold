@@ -11229,6 +11229,53 @@
         ]
       }
     },
+    "/api/me/memory-activity": {
+      "get": {
+        "operationId": "list_memory_activity_api_me_memory_activity_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryActivityOut"
+                  },
+                  "title": "Response List Memory Activity Api Me Memory Activity Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Memory Activity",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/me/memory-policy": {
+      "get": {
+        "description": "Plan 15 (5.11, Q9): the mode in force and the tenant's allowed modes.",
+        "operationId": "get_memory_policy_api_me_memory_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Memory Policy",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/api/me/memory-settings": {
       "get": {
         "operationId": "get_user_memory_settings_api_me_memory_settings_get",
@@ -11386,6 +11433,22 @@
               ],
               "title": "Q"
             }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "active",
+              "enum": [
+                "active",
+                "revoked",
+                "review",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11454,6 +11517,194 @@
           }
         },
         "summary": "Create Memory",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/memories/delete-scope": {
+      "post": {
+        "operationId": "delete_memories_in_scope_api_memories_delete_scope_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryBulkDelete"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryDeletionReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Memories In Scope",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/memories/delete-scope/count": {
+      "get": {
+        "operationId": "count_memories_in_scope_api_memories_delete_scope_count_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "user",
+                "agent"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Count Memories In Scope Api Memories Delete Scope Count Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Count Memories In Scope",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/memories/export": {
+      "get": {
+        "description": "Plan 15 (5.7): everything the person owns, as JSON or readable Markdown.",
+        "operationId": "export_memories_api_memories_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "markdown"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "user",
+                "agent"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Memories",
         "tags": [
           "memory"
         ]
@@ -11546,7 +11797,201 @@
         ]
       }
     },
+    "/api/memories/{memory_id}/restore": {
+      "post": {
+        "operationId": "restore_memory_api_memories__memory_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Memory",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/memories/{memory_id}/revisions": {
+      "get": {
+        "operationId": "list_memory_revisions_api_memories__memory_id__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryRevisionOut"
+                  },
+                  "title": "Response List Memory Revisions Api Memories  Memory Id  Revisions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Memory Revisions",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/memories/{memory_id}/revoke": {
+      "post": {
+        "operationId": "revoke_memory_api_memories__memory_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryRevoke"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Memory",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/api/memory-proposals": {
+      "get": {
+        "operationId": "list_memory_proposals_api_memory_proposals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryProposalOut"
+                  },
+                  "title": "Response List Memory Proposals Api Memory Proposals Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Memory Proposals",
+        "tags": [
+          "memory"
+        ]
+      },
       "post": {
         "operationId": "create_memory_proposal_api_memory_proposals_post",
         "requestBody": {
@@ -28981,6 +29426,43 @@
       "title": "ApprovalAction",
       "type": "object"
     },
+    "ApprovalAxes": {
+      "additionalProperties": false,
+      "properties": {
+        "consolidation": {
+          "default": "approve",
+          "enum": [
+            "auto",
+            "approve",
+            "off"
+          ],
+          "title": "Consolidation",
+          "type": "string"
+        },
+        "profile": {
+          "default": "approve",
+          "enum": [
+            "auto",
+            "approve",
+            "off"
+          ],
+          "title": "Profile",
+          "type": "string"
+        },
+        "records": {
+          "default": "approve",
+          "enum": [
+            "auto",
+            "approve",
+            "off"
+          ],
+          "title": "Records",
+          "type": "string"
+        }
+      },
+      "title": "ApprovalAxes",
+      "type": "object"
+    },
     "ApprovalPage": {
       "properties": {
         "items": {
@@ -39273,6 +39755,202 @@
       "title": "MemberView",
       "type": "object"
     },
+    "MemoryActivityOut": {
+      "description": "One of the person's own memory audit events (plan 15, 5.9 \ud65c\ub3d9 tab); no text.",
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "target_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Id"
+        },
+        "target_type": {
+          "title": "Target Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "target_type",
+        "created_at"
+      ],
+      "title": "MemoryActivityOut",
+      "type": "object"
+    },
+    "MemoryBulkDelete": {
+      "additionalProperties": false,
+      "description": "Plan 15 (5.7): delete every memory in a scope; ``confirm`` must equal the count shown.",
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "confirm_count": {
+          "minimum": 0.0,
+          "title": "Confirm Count",
+          "type": "integer"
+        },
+        "scope": {
+          "enum": [
+            "all",
+            "user",
+            "agent"
+          ],
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "confirm_count"
+      ],
+      "title": "MemoryBulkDelete",
+      "type": "object"
+    },
+    "MemoryDeletionReceipt": {
+      "description": "What a delete erased and what it cannot reach (plan 15, 5.7 \uc0ad\uc81c \uc601\uc218\uc99d).",
+      "properties": {
+        "deleted": {
+          "title": "Deleted",
+          "type": "integer"
+        },
+        "derived_marked": {
+          "title": "Derived Marked",
+          "type": "integer"
+        },
+        "kept_elsewhere": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Kept Elsewhere",
+          "type": "array"
+        },
+        "proposals_cleared": {
+          "title": "Proposals Cleared",
+          "type": "integer"
+        },
+        "revisions_removed": {
+          "title": "Revisions Removed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "deleted",
+        "revisions_removed",
+        "proposals_cleared",
+        "derived_marked",
+        "kept_elsewhere"
+      ],
+      "title": "MemoryDeletionReceipt",
+      "type": "object"
+    },
+    "MemoryPolicyOut": {
+      "description": "The approval mode in force and what the tenant allows (plan 15, 5.11, Q9).",
+      "properties": {
+        "allowed_modes": {
+          "items": {
+            "enum": [
+              "off",
+              "read_only",
+              "approve_all",
+              "partial_auto",
+              "auto_notify",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "title": "Allowed Modes",
+          "type": "array"
+        },
+        "axes": {
+          "$ref": "#/components/schemas/ApprovalAxes"
+        },
+        "consolidation_enabled": {
+          "title": "Consolidation Enabled",
+          "type": "boolean"
+        },
+        "default_mode": {
+          "enum": [
+            "off",
+            "read_only",
+            "approve_all",
+            "partial_auto",
+            "auto_notify",
+            "custom"
+          ],
+          "title": "Default Mode",
+          "type": "string"
+        },
+        "effective_mode": {
+          "enum": [
+            "off",
+            "read_only",
+            "approve_all",
+            "partial_auto",
+            "auto_notify",
+            "custom"
+          ],
+          "title": "Effective Mode",
+          "type": "string"
+        },
+        "tenant_consolidation_enabled": {
+          "title": "Tenant Consolidation Enabled",
+          "type": "boolean"
+        },
+        "tenant_kind": {
+          "enum": [
+            "company",
+            "personal"
+          ],
+          "title": "Tenant Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_kind",
+        "effective_mode",
+        "axes",
+        "allowed_modes",
+        "default_mode",
+        "consolidation_enabled",
+        "tenant_consolidation_enabled"
+      ],
+      "title": "MemoryPolicyOut",
+      "type": "object"
+    },
     "MemoryProposalApprovalOut": {
       "properties": {
         "memory": {
@@ -39392,6 +40070,11 @@
     },
     "MemoryProposalOut": {
       "properties": {
+        "action": {
+          "default": "create",
+          "title": "Action",
+          "type": "string"
+        },
         "agent_id": {
           "anyOf": [
             {
@@ -39425,9 +40108,39 @@
           "title": "Created At",
           "type": "string"
         },
+        "flags": {
+          "additionalProperties": true,
+          "title": "Flags",
+          "type": "object"
+        },
         "id": {
           "format": "uuid",
           "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "default": "fact",
+          "enum": [
+            "fact",
+            "preference",
+            "commitment",
+            "experience",
+            "episode",
+            "procedure"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "origin": {
+          "default": "legacy",
+          "enum": [
+            "user_stated",
+            "agent_inferred",
+            "legacy",
+            "consolidation",
+            "tool_derived"
+          ],
+          "title": "Origin",
           "type": "string"
         },
         "reason": {
@@ -39440,6 +40153,18 @@
             }
           ],
           "title": "Reason"
+        },
+        "record_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Record Id"
         },
         "resolved_at": {
           "anyOf": [
@@ -39459,6 +40184,16 @@
             "agent"
           ],
           "title": "Scope",
+          "type": "string"
+        },
+        "sensitivity": {
+          "default": "normal",
+          "enum": [
+            "normal",
+            "contact",
+            "sensitive"
+          ],
+          "title": "Sensitivity",
           "type": "string"
         },
         "source_run_id": {
@@ -39481,6 +40216,26 @@
           ],
           "title": "Status",
           "type": "string"
+        },
+        "subject": {
+          "default": "self",
+          "enum": [
+            "self",
+            "other"
+          ],
+          "title": "Subject",
+          "type": "string"
+        },
+        "topic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Topic"
         },
         "user_id": {
           "format": "uuid",
@@ -39598,6 +40353,41 @@
           ],
           "title": "Agent Id"
         },
+        "approval_channel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Channel"
+        },
+        "approved_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approved At"
+        },
+        "approved_by": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approved By"
+        },
         "content": {
           "title": "Content",
           "type": "string"
@@ -39619,10 +40409,74 @@
           ],
           "title": "Deleted At"
         },
+        "flags": {
+          "additionalProperties": true,
+          "title": "Flags",
+          "type": "object"
+        },
         "id": {
           "format": "uuid",
           "title": "Id",
           "type": "string"
+        },
+        "importance": {
+          "default": 1,
+          "title": "Importance",
+          "type": "integer"
+        },
+        "kind": {
+          "default": "fact",
+          "enum": [
+            "fact",
+            "preference",
+            "commitment",
+            "experience",
+            "episode",
+            "procedure"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "occurred_end": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Occurred End"
+        },
+        "occurred_start": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Occurred Start"
+        },
+        "origin": {
+          "default": "legacy",
+          "enum": [
+            "user_stated",
+            "agent_inferred",
+            "legacy",
+            "consolidation",
+            "tool_derived"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "pinned": {
+          "default": false,
+          "title": "Pinned",
+          "type": "boolean"
         },
         "reason": {
           "anyOf": [
@@ -39635,12 +40489,50 @@
           ],
           "title": "Reason"
         },
+        "recall_count": {
+          "default": 0,
+          "title": "Recall Count",
+          "type": "integer"
+        },
+        "revoke_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revoke Reason"
+        },
+        "revoked_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revoked At"
+        },
         "scope": {
           "enum": [
             "user",
             "agent"
           ],
           "title": "Scope",
+          "type": "string"
+        },
+        "sensitivity": {
+          "default": "normal",
+          "enum": [
+            "normal",
+            "contact",
+            "sensitive"
+          ],
+          "title": "Sensitivity",
           "type": "string"
         },
         "source_conversation_id": {
@@ -39680,6 +40572,8 @@
         "status": {
           "enum": [
             "active",
+            "superseded",
+            "revoked",
             "deleted"
           ],
           "title": "Status",
@@ -39688,6 +40582,60 @@
         "store_path": {
           "title": "Store Path",
           "type": "string"
+        },
+        "subject": {
+          "default": "self",
+          "enum": [
+            "self",
+            "other"
+          ],
+          "title": "Subject",
+          "type": "string"
+        },
+        "subject_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subject Label"
+        },
+        "superseded_by_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Superseded By Id"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Title"
+        },
+        "topic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Topic"
         },
         "updated_at": {
           "format": "date-time",
@@ -39698,6 +40646,18 @@
           "format": "uuid",
           "title": "User Id",
           "type": "string"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Valid Until"
         }
       },
       "required": [
@@ -39743,6 +40703,106 @@
         }
       },
       "title": "MemoryRecordUpdate",
+      "type": "object"
+    },
+    "MemoryRevisionOut": {
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "actor_user_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Actor User Id"
+        },
+        "after_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "After Content"
+        },
+        "before_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Before Content"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        },
+        "run_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Path"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "created_at"
+      ],
+      "title": "MemoryRevisionOut",
+      "type": "object"
+    },
+    "MemoryRevoke": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        }
+      },
+      "title": "MemoryRevoke",
       "type": "object"
     },
     "MessageAttachmentBrief": {
@@ -41435,6 +42495,24 @@
           ],
           "title": "Conversation Days"
         },
+        "experience_memory_days": {
+          "anyOf": [
+            {
+              "maximum": 3650.0,
+              "minimum": 30.0,
+              "type": "integer"
+            },
+            {
+              "const": "default",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "default",
+          "title": "Experience Memory Days"
+        },
         "removed_member_days": {
           "default": 30,
           "maximum": 3650.0,
@@ -41468,6 +42546,24 @@
             }
           ],
           "title": "Conversation Days"
+        },
+        "experience_memory_days": {
+          "anyOf": [
+            {
+              "maximum": 3650.0,
+              "minimum": 30.0,
+              "type": "integer"
+            },
+            {
+              "const": "default",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "default",
+          "title": "Experience Memory Days"
         },
         "removed_member_days": {
           "default": 30,
@@ -44013,6 +45109,11 @@
         "conversations": {
           "default": 0,
           "title": "Conversations",
+          "type": "integer"
+        },
+        "expired_memories": {
+          "default": 0,
+          "title": "Expired Memories",
           "type": "integer"
         },
         "guardrail_events": {
@@ -52906,6 +54007,40 @@
           "title": "Allowed Scopes",
           "type": "string"
         },
+        "approval_axes": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ApprovalAxes"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approval_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "off",
+                "read_only",
+                "approve_all",
+                "partial_auto",
+                "auto_notify",
+                "custom"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Mode"
+        },
+        "consolidation_enabled": {
+          "default": true,
+          "title": "Consolidation Enabled",
+          "type": "boolean"
+        },
         "memory_enabled": {
           "title": "Memory Enabled",
           "type": "boolean"
@@ -52960,6 +54095,46 @@
             }
           ],
           "title": "Allowed Scopes"
+        },
+        "approval_axes": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ApprovalAxes"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approval_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "off",
+                "read_only",
+                "approve_all",
+                "partial_auto",
+                "auto_notify",
+                "custom"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Mode"
+        },
+        "consolidation_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Consolidation Enabled"
         },
         "memory_enabled": {
           "anyOf": [

@@ -2,13 +2,17 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
-import { memoryApi } from '@/lib/api/memory'
+import { memoryApi, memoryExportPath, type MemoryListParams } from '@/lib/api/memory'
+import { downloadApiFile } from '@/lib/hooks/use-api-object-url'
 import type {
   AgentMemorySettingsUpdate,
+  MemoryExportFormat,
   MemoryProposalEditApprove,
+  MemoryProposalStatusFilter,
   MemoryRecordCreate,
   MemoryRecordUpdate,
-  MemoryScopeFilter,
+  MemoryScopeDelete,
+  MemoryScopeQuery,
   UserMemorySettingsUpdate,
 } from '@/lib/types/memory'
 
@@ -18,8 +22,13 @@ export const memoryKeys = {
   userSettings: ['memory', 'settings', 'user'] as const,
   agentSettings: (agentId: string) => ['memory', 'settings', 'agent', agentId] as const,
   proposal: (proposalId: string) => ['memory', 'proposal', proposalId] as const,
-  list: (params?: { scope?: MemoryScopeFilter; agentId?: string | null; q?: string | null }) =>
-    ['memory', 'records', params ?? {}] as const,
+  policy: ['memory', 'policy'] as const,
+  list: (params?: MemoryListParams) => ['memory', 'records', params ?? {}] as const,
+  revisions: (memoryId: string) => ['memory', 'revisions', memoryId] as const,
+  activity: ['memory', 'activity'] as const,
+  proposals: (status: MemoryProposalStatusFilter) => ['memory', 'proposals', status] as const,
+  scopeCount: (query: MemoryScopeQuery) =>
+    ['memory', 'scope-count', query.scope, query.agentId ?? null] as const,
 }
 
 function invalidateMemory(qc: QueryClient) {
@@ -59,11 +68,16 @@ export function useUpdateAgentMemorySettings(agentId: string) {
   })
 }
 
-export function useMemories(params?: {
-  scope?: MemoryScopeFilter
-  agentId?: string | null
-  q?: string | null
-}) {
+/** The approval mode in force and the tenant's allowed modes (plan 15, 5.11, Q9). */
+export function useMemoryPolicy() {
+  return useQuery({
+    queryKey: memoryKeys.policy,
+    queryFn: memoryApi.getPolicy,
+    staleTime: 30_000,
+  })
+}
+
+export function useMemories(params?: MemoryListParams) {
   return useQuery({
     queryKey: memoryKeys.list(params),
     queryFn: () => memoryApi.list(params),
@@ -128,5 +142,81 @@ export function useEditAndApproveMemoryProposal() {
     mutationFn: ({ id, data }: { id: string; data: MemoryProposalEditApprove }) =>
       memoryApi.editAndApproveProposal(id, data),
     onSuccess: () => invalidateMemory(qc),
+  })
+}
+
+export function useRevokeMemory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string | null }) =>
+      memoryApi.revoke(id, reason),
+    onSuccess: () => invalidateMemory(qc),
+  })
+}
+
+export function useRestoreMemory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => memoryApi.restore(id),
+    onSuccess: () => invalidateMemory(qc),
+  })
+}
+
+export function useMemoryRevisions(memoryId: string | null) {
+  return useQuery({
+    queryKey: memoryKeys.revisions(memoryId ?? ''),
+    queryFn: () => memoryApi.listRevisions(memoryId ?? ''),
+    enabled: Boolean(memoryId),
+    staleTime: 5_000,
+  })
+}
+
+export function useMemoryActivity() {
+  return useQuery({
+    queryKey: memoryKeys.activity,
+    queryFn: memoryApi.listActivity,
+    staleTime: 10_000,
+  })
+}
+
+export function useMemoryProposals(status: MemoryProposalStatusFilter = 'pending') {
+  return useQuery({
+    queryKey: memoryKeys.proposals(status),
+    queryFn: () => memoryApi.listProposals(status),
+    staleTime: 10_000,
+  })
+}
+
+/** The count a scoped delete must confirm; always refetched so the number is current. */
+export function useMemoryScopeCount(query: MemoryScopeQuery, enabled: boolean) {
+  return useQuery({
+    queryKey: memoryKeys.scopeCount(query),
+    queryFn: () => memoryApi.countScope(query),
+    enabled: enabled && (query.scope !== 'agent' || Boolean(query.agentId)),
+    staleTime: 0,
+    gcTime: 0,
+  })
+}
+
+export function useDeleteMemoryScope() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: MemoryScopeDelete) => memoryApi.deleteScope(data),
+    onSettled: () => invalidateMemory(qc),
+  })
+}
+
+const EXPORT_FILENAMES: Record<MemoryExportFormat, string> = {
+  json: 'memories.json',
+  markdown: 'memories.md',
+}
+
+/** Downloads the export file; the export is an audited event, so activity refreshes. */
+export function useExportMemories() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ format, query }: { format: MemoryExportFormat; query: MemoryScopeQuery }) =>
+      downloadApiFile(memoryExportPath(format, query), EXPORT_FILENAMES[format]),
+    onSuccess: () => qc.invalidateQueries({ queryKey: memoryKeys.activity }),
   })
 }

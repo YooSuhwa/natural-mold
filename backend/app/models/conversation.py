@@ -78,6 +78,12 @@ class Conversation(RequiredOrgScope, Base):
     last_read_at: Mapped[datetime | None] = mapped_column(nullable=True)
     last_unread_at: Mapped[datetime | None] = mapped_column(nullable=True)
     last_activity_source: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    # Memory policy plan 15 (5.3-1): when outside content (a tool, MCP, web or file
+    # result, an attachment) first entered this conversation. Sticky: later memory writes
+    # from it are ``tool_derived`` even after compaction drops the messages.
+    memory_external_content_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     runtime_policy_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     runtime_policy_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     runtime_policy_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)

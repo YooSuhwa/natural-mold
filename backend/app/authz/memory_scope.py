@@ -76,3 +76,12 @@ def private_memory_proposal_predicate(
         _agent_parent(MemoryProposal.agent_id, MemoryProposal, context, shared),
         _source_conversation(MemoryProposal.conversation_id, MemoryProposal, context, shared),
     )
+
+
+def memory_owned_by(model: Any, context: OrgContext, *, column: str = "user_id") -> ColumnElement:
+    """Plan 15: rows of ``model`` the person owns in this company (``column`` = the owner).
+
+    For the memory lifecycle (export, delete, erasures, activity) where the person acts on
+    their own rows only; shared-agent visibility is not involved.
+    """
+    return and_(getattr(model, column) == context.user_id, model.tenant_id == context.tenant_id)

@@ -67,6 +67,14 @@ describe('memory tool UI result bridge', () => {
       reason: null,
       created_at: '2026-06-04T00:00:00',
       resolved_at: null,
+      kind: 'fact',
+      subject: 'self',
+      topic: null,
+      origin: 'agent_inferred',
+      sensitivity: 'normal',
+      flags: {},
+      action: 'create',
+      record_id: null,
     } as const
 
     expect(memoryResultFromProposal({ ...baseProposal, status: 'pending' })).toMatchObject({

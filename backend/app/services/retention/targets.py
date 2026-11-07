@@ -128,4 +128,24 @@ async def preview_org(
         agents=await count(db, expired_agents(org, policy.agent_trash_days, now)),
         removed_member_conversations=await count(db, member_conversations(org, members)),
         removed_member_memories=memories,
+        expired_memories=await expired_memories(db, org, policy, now),
     )
+
+
+async def expired_memories(
+    db: AsyncSession, org: OrgScope, policy: OrgRetention, now: datetime
+) -> int:
+    """Plan 15 (5.7): what the sweep's memory purge would remove under ``policy``."""
+    from app.models.organization import Tenant
+    from app.schemas.retention import EXPERIENCE_DEFAULTS
+    from app.services import memory_lifecycle
+
+    days = policy.experience_memory_days
+    if days == "default":
+        settings = await db.scalar(select(Tenant.settings).where(Tenant.id == org.tenant_id))
+        kind = "personal" if (settings or {}).get("kind") == "personal" else "company"
+        days = EXPERIENCE_DEFAULTS[kind]
+    ids = await memory_lifecycle.expired_ids(
+        db, org_id=org.id, tenant_id=org.tenant_id, experience_days=days, now=now
+    )
+    return len(ids)

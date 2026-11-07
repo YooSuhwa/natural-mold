@@ -14,7 +14,12 @@ describe('orgGovernanceApi', () => {
   beforeEach(() => apiFetch.mockReset())
 
   it('puts retention with the organization version', async () => {
-    const body = { conversation_days: null, agent_trash_days: 30, removed_member_days: 30 }
+    const body = {
+      conversation_days: null,
+      agent_trash_days: 30,
+      removed_member_days: 30,
+      experience_memory_days: 'default' as const,
+    }
     await orgGovernanceApi.putRetention('org 1', body, V)
     expect(apiFetch).toHaveBeenCalledWith('/api/orgs/org%201/retention', {
       method: 'PUT',

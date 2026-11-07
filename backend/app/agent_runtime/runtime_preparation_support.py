@@ -66,6 +66,7 @@ class BuildMemoryTools(Protocol):
         conversation_id: str,
         is_trigger_mode: bool,
         agent_memo_proposals: bool = False,
+        run_path: str = "chat",
     ) -> list[BaseTool]: ...
 
 

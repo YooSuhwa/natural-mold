@@ -7,11 +7,24 @@ from app.migrations.org_authz_v1.contracts import M81_SCOPED, SHARED, TENANT_ONL
 from tests.authz.scope_migration_fixture import execute, prepare_m80
 
 _F04_MODES = {"credential_mode": False, "credential_definition_key": True}  # m87 (F-04)
+_MEMORY_SHAPE = {
+    "kind": False,
+    "subject": False,
+    "subject_label": True,
+    "topic": True,
+    "origin": False,
+    "sensitivity": False,
+    "flags": False,
+    "occurred_start": True,
+    "occurred_end": True,
+    "valid_until": True,
+}
 _B08_ADDED_COLUMN_NULLABILITY = {
     "conversations": {
         "agent_archived_at_snapshot": True,
         "agent_lifecycle_state": False,
         "agent_purged_at": True,
+        "memory_external_content_at": True,  # 순번 15 (i21, memory plan 5.3-1)
     },
     "tools": _F04_MODES,
     "mcp_servers": _F04_MODES,
@@ -19,6 +32,30 @@ _B08_ADDED_COLUMN_NULLABILITY = {
     "agents": {"llm_credential_delegated_by": True},  # F-01 (m86)
     "agent_triggers": {"approval_policy": False},  # 순번 13 (i18, plan 17.3)
     "agent_deployments": {"approval_policy": False},  # 순번 21 (i20, plan 17.3)
+    # 순번 15 (i21, memory plan 5.1): what a memory is, its origin and approval.
+    "memory_records": {
+        **_MEMORY_SHAPE,
+        "title": True,
+        "pinned": False,
+        "importance": False,
+        "episode_ref": True,
+        "superseded_by_id": True,
+        "approved_by": True,
+        "approved_at": True,
+        "approval_channel": True,
+        "revoked_by": True,
+        "revoked_at": True,
+        "revoke_reason": True,
+        "last_recalled_at": True,
+        "recall_count": False,
+    },
+    "memory_proposals": {
+        **_MEMORY_SHAPE,
+        "action": False,
+        "target_record_id": True,
+        "record_id": True,
+        "source_ids": True,
+    },
 }
 _B08_ADDED_COLUMNS = {name: set(columns) for name, columns in _B08_ADDED_COLUMN_NULLABILITY.items()}
 _B08_NULLABILITY_CHANGES = {
@@ -32,6 +69,16 @@ _B08_REMOVED_FOREIGN_KEYS = {
 _B08_ADDED_FOREIGN_KEYS = {
     "conversation_artifacts": {(("agent_id",), ("agents.id",), "SET NULL")},
     "agents": {(("llm_credential_delegated_by",), ("users.id",), "SET NULL")},  # F-01
+    # 순번 15 (i21): supersession, approver and revoker.
+    "memory_records": {
+        (("superseded_by_id",), ("memory_records.id",), "SET NULL"),
+        (("approved_by",), ("users.id",), "SET NULL"),
+        (("revoked_by",), ("users.id",), "SET NULL"),
+    },
+    "memory_proposals": {
+        (("target_record_id",), ("memory_records.id",), "SET NULL"),
+        (("record_id",), ("memory_records.id",), "SET NULL"),
+    },
 }
 
 

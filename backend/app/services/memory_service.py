@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -15,7 +15,6 @@ from app.authz.audit_actions import (
     MEMORY_PROPOSAL_CREATE,
     MEMORY_PROPOSAL_REJECT,
     MEMORY_RECORD_CREATE,
-    MEMORY_RECORD_DELETE,
     MEMORY_RECORD_UPDATE,
 )
 from app.authz.memory_agent_access import (
@@ -25,6 +24,7 @@ from app.authz.memory_agent_access import (
     shared_memory_agent_ids,
 )
 from app.authz.memory_scope import (
+    memory_owned_by,
     private_memory_proposal_predicate,
     private_memory_record_predicate,
     private_memory_source_conversation_predicate,
@@ -39,6 +39,7 @@ from app.models.memory import (
     AgentMemorySettings,
     MemoryProposal,
     MemoryRecord,
+    MemoryRevision,
     UserMemorySettings,
 )
 from app.schemas.memory import (
@@ -54,6 +55,7 @@ from app.services.agent_memory_settings import (
 from app.services.agent_memory_settings import (
     update_agent_settings as update_agent_settings,
 )
+from app.services.memory_checks import MemoryCheck, check_memory_text
 from app.services.memory_settings_reads import peek_user_settings
 
 MemoryScope = Literal["user", "agent"]
@@ -72,6 +74,106 @@ _SECRET_PATTERNS = (
     re.compile(r"\bsk-[A-Za-z0-9_\-]{16,}\b"),
     re.compile(r"\b[A-Za-z0-9_\-]{24,}\.[A-Za-z0-9_\-]{24,}\.[A-Za-z0-9_\-]{24,}\b"),
 )
+
+
+@dataclass(frozen=True)
+class MemoryShape:
+    """What a memory is and where it came from (plan 15, 5.1); the server fills ``origin``."""
+
+    kind: str = "fact"
+    subject: str = "self"
+    subject_label: str | None = None
+    topic: str | None = None
+    title: str | None = None
+    occurred_start: datetime | None = None
+    occurred_end: datetime | None = None
+    valid_until: datetime | None = None
+    origin: str = "user_stated"
+    sensitivity: str = "normal"
+    flags: dict[str, object] | None = None
+    approval_channel: str = "direct"
+
+
+_SHAPE_FIELDS = (
+    "kind",
+    "subject",
+    "subject_label",
+    "topic",
+    "occurred_start",
+    "occurred_end",
+    "valid_until",
+    "origin",
+    "sensitivity",
+)
+
+
+def apply_shape(target: MemoryRecord | MemoryProposal, shape: MemoryShape) -> None:
+    for name in _SHAPE_FIELDS:
+        setattr(target, name, getattr(shape, name))
+    target.flags = dict(shape.flags or {})
+    if isinstance(target, MemoryRecord):
+        target.title = shape.title
+
+
+def current_shape(record: MemoryRecord) -> MemoryShape:
+    return MemoryShape(
+        **{name: getattr(record, name) for name in _SHAPE_FIELDS},
+        title=record.title,
+        flags={},  # re-derived from the new text
+    )
+
+
+def _shape_of(proposal: MemoryProposal) -> MemoryShape:
+    return MemoryShape(
+        **{name: getattr(proposal, name) for name in _SHAPE_FIELDS},
+        flags=dict(proposal.flags or {}),
+        approval_channel="proposal",
+    )
+
+
+def check_text(content: str) -> MemoryCheck:
+    """Plan 15 (5.3-2): reject high-risk personal data and pseudonym tokens, mark the rest."""
+    _validate_memory_content(content)
+    result = check_memory_text(content)
+    if result.rejected is not None:
+        raise ValidationError(result.rejected, "이 내용은 기억으로 저장할 수 없습니다")
+    return result
+
+
+def with_check(shape: MemoryShape, result: MemoryCheck) -> MemoryShape:
+    flags = {**(shape.flags or {}), **dict.fromkeys(result.flags, True)}
+    subject = "other" if "other_person" in result.flags else shape.subject
+    sensitivity = max(
+        (shape.sensitivity, result.sensitivity), key=("normal", "contact", "sensitive").index
+    )
+    return replace(shape, flags=flags, subject=subject, sensitivity=sensitivity)
+
+
+async def record_revision(
+    db: AsyncSession,
+    record: MemoryRecord,
+    action: str,
+    actor: uuid.UUID | None,
+    *,
+    before: str | None = None,
+    after: str | None = None,
+    run_path: str | None = None,
+    reason: str | None = None,
+) -> None:
+    db.add(
+        MemoryRevision(
+            org_id=record.org_id,
+            tenant_id=record.tenant_id,
+            record_id=record.id,
+            user_id=record.user_id,
+            actor_user_id=actor,
+            action=action,
+            run_path=run_path,
+            before_content=before,
+            after_content=after,
+            reason=reason,
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -239,6 +341,17 @@ async def update_user_settings(
     settings = await get_user_settings(db, user_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(settings, field, value)
+    if payload.approval_mode is not None:
+        # Plan 15 (5.11): keep the pre-plan fields in step, so every older reader (the
+        # runtime's write-tool gate, agent overrides) narrows the same way.
+        axes = payload.approval_axes.model_dump() if payload.approval_axes else {}
+        records = axes.get("records") if payload.approval_mode == "custom" else None
+        settings.memory_write_policy = {
+            "off": "off",
+            "read_only": "off",
+            "approve_all": "ask",
+        }.get(payload.approval_mode, {"approve": "ask", "off": "off"}.get(records or "", "auto"))
+        settings.memory_enabled = payload.approval_mode != "off"
     settings.updated_at = _now_naive()
     await db.commit()
     await db.refresh(settings)
@@ -339,7 +452,10 @@ async def create_memory_record(
     context: OrgContext,
     payload: MemoryRecordCreate,
     channel: WriteChannel = "direct",
+    shape: MemoryShape | None = None,
+    run_path: str | None = None,
 ) -> MemoryRecord | None:
+    """Store a checked memory (``memory_writes.write_memory`` decides whether to)."""
     await resolve_private_actor(
         db,
         PrivateResourceActor(
@@ -374,11 +490,26 @@ async def create_memory_record(
         source_conversation_id=payload.source_conversation_id,
         source_message_id=payload.source_message_id,
         source_run_id=payload.source_run_id,
+        approved_by=context.user_id,
+        approved_at=_now_naive(),
     )
+    applied = shape or MemoryShape()
+    apply_shape(record, applied)
+    record.approval_channel = applied.approval_channel
     db.add(record)
     await db.flush()
+    await record_revision(
+        db, record, "create", context.user_id, after=record.content, run_path=run_path
+    )
     await _audit(
-        db, context, MEMORY_RECORD_CREATE, record, length=len(record.content), channel=channel
+        db,
+        context,
+        MEMORY_RECORD_CREATE,
+        record,
+        length=len(record.content),
+        channel=channel,
+        origin=record.origin,
+        approval_channel=record.approval_channel,
     )
     await db.commit()
     await db.refresh(record)
@@ -392,7 +523,9 @@ async def list_memory_records(
     scope: str | None = None,
     agent_id: uuid.UUID | None = None,
     q: str | None = None,
+    status: str = "active",
 ) -> list[MemoryRecord]:
+    """``status``: ``active``, ``revoked``, ``review`` (saved, waiting for a look) or ``all``."""
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
@@ -402,7 +535,10 @@ async def list_memory_records(
         if agent is None:
             return []
         shared = shared_ids(agent, context)
-    filters = [private_memory_record_predicate(context, shared), MemoryRecord.status == "active"]
+    statuses = {"revoked": ("revoked",), "all": ("active", "superseded", "revoked")}.get(
+        status, ("active",)
+    )
+    filters = [private_memory_record_predicate(context, shared), MemoryRecord.status.in_(statuses)]
     if scope in {"user", "agent"}:
         filters.append(MemoryRecord.scope == scope)
     if agent_id is not None:
@@ -422,7 +558,10 @@ async def list_memory_records(
         .order_by(MemoryRecord.updated_at.desc(), MemoryRecord.created_at.desc())
         .execution_options(populate_existing=True, autoflush=False)
     )
-    return list(result.scalars().all())
+    rows = list(result.scalars().all())
+    if status == "review":
+        rows = [row for row in rows if (row.flags or {}).get("review_later")]
+    return rows
 
 
 async def list_runtime_memory_records(
@@ -454,7 +593,10 @@ async def list_runtime_memory_records(
         .limit(RUNTIME_MEMORY_MAX_RECORDS)
         .execution_options(populate_existing=True, autoflush=False)
     )
-    records = list(result.scalars().all())
+    # Q7: a pre-plan memory the checks would now refuse waits for the person; runs skip it.
+    records = [
+        row for row in result.scalars().all() if not (row.flags or {}).get("legacy_rejected")
+    ]
     records.reverse()
     return records
 
@@ -492,13 +634,24 @@ async def update_memory_record(
     if record is None:
         return None
     updates = payload.model_dump(exclude_unset=True)
+    before = record.content
+    checked = None
     if "content" in updates and updates["content"] is not None:
-        _validate_memory_content(updates["content"])
+        checked = check_text(updates["content"])
     if "reason" in updates:
         _validate_memory_text(updates["reason"])
     for field, value in updates.items():
         setattr(record, field, value)
+    if checked is not None:
+        # A person rewrote it on the memory screens (5.3-1): their text, re-marked (5.3-2).
+        apply_shape(
+            record, with_check(replace(current_shape(record), origin="user_stated"), checked)
+        )
     record.updated_at = _now_naive()
+    if record.content != before:
+        await record_revision(
+            db, record, "update", context.user_id, before=before, after=record.content
+        )
     await _audit(
         db,
         context,
@@ -518,16 +671,10 @@ async def delete_memory_record(
     memory_id: uuid.UUID,
     context: OrgContext,
 ) -> bool:
-    record = await get_memory_record(db, memory_id=memory_id, context=context)
-    if record is None:
-        return False
-    record.status = "deleted"
-    deleted_at = _now_naive()
-    record.deleted_at = deleted_at
-    record.updated_at = deleted_at
-    await _audit(db, context, MEMORY_RECORD_DELETE, record)
-    await db.commit()
-    return True
+    """A real delete (plan 15, 5.7): ``memory_lifecycle.delete_one``."""
+    from app.services import memory_lifecycle  # it imports this module
+
+    return await memory_lifecycle.delete_one(db, context=context, memory_id=memory_id) is not None
 
 
 async def create_memory_proposal(
@@ -536,6 +683,7 @@ async def create_memory_proposal(
     context: OrgContext,
     payload: MemoryProposalCreate,
     channel: WriteChannel = "direct",
+    shape: MemoryShape | None = None,
 ) -> MemoryProposal | None:
     await resolve_private_actor(
         db,
@@ -570,6 +718,7 @@ async def create_memory_proposal(
         content=payload.content,
         reason=payload.reason,
     )
+    apply_shape(proposal, shape or MemoryShape())
     db.add(proposal)
     await db.flush()
     await _audit(
@@ -583,6 +732,26 @@ async def create_memory_proposal(
     await db.commit()
     await db.refresh(proposal)
     return proposal
+
+
+async def list_memory_proposals(
+    db: AsyncSession, *, context: OrgContext, status: str = "pending"
+) -> list[MemoryProposal]:
+    """The person's own memory proposals (shared-memo proposals are decided elsewhere)."""
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    filters = [
+        memory_owned_by(MemoryProposal, context),
+        MemoryProposal.scope != AGENT_MEMO_SCOPE,
+        private_memory_proposal_predicate(context, frozenset()),
+    ]
+    if status != "all":
+        filters.append(MemoryProposal.status == status)
+    rows = await db.scalars(
+        select(MemoryProposal).where(*filters).order_by(MemoryProposal.created_at.desc())
+    )
+    return list(rows)
 
 
 async def create_agent_memo_proposal(
@@ -667,6 +836,10 @@ async def approve_memory_proposal(
     )
     final_content = content if content is not None else proposal.content
     final_reason = reason if reason is not None else proposal.reason
+    shape = _shape_of(proposal)
+    if content is not None:
+        # An approver's edit is checked like any new text (5.3-2).
+        shape = with_check(shape, check_text(final_content))
     _validate_memory_content(final_content)
     _validate_memory_text(final_reason)
     record = MemoryRecord(
@@ -680,13 +853,21 @@ async def approve_memory_proposal(
         store_path=_store_path(proposal.scope),
         source_conversation_id=proposal.conversation_id,
         source_run_id=proposal.source_run_id,
+        approved_by=context.user_id,
+        approved_at=_now_naive(),
     )
+    apply_shape(record, shape)
+    record.approval_channel = "proposal"
     proposal.content = final_content
     proposal.reason = final_reason
     proposal.status = "approved"
     proposal.resolved_at = _now_naive()
     db.add(record)
     await db.flush()
+    proposal.record_id = record.id
+    await record_revision(
+        db, record, "approve", context.user_id, after=record.content, reason="proposal"
+    )
     await _audit(
         db,
         context,
@@ -742,3 +923,17 @@ def render_memory_prompt(records: list[MemoryRecord]) -> str:
         lines.append("\n### Agent Memory")
         lines.extend(f"- {_truncate_runtime_memory_content(item.content)}" for item in agent_items)
     return "\n".join(lines)
+
+
+async def write_memory(db: AsyncSession, *, context: OrgContext, write: Any) -> Any:
+    """``memory_writes.write_memory`` (plan 15, 5.3) for callers that may import only this
+    module (the agent runtime's dependency guard)."""
+    from app.services import memory_writes  # it imports this module
+
+    return await memory_writes.write_memory(db, context=context, write=write)
+
+
+def memory_write(**fields: Any) -> Any:
+    from app.services import memory_writes
+
+    return memory_writes.MemoryWrite(**fields)

@@ -8,8 +8,9 @@ The memory screens and the agent's settings narrow this further; nothing here wi
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,10 +88,49 @@ async def origin_run_path(db: AsyncSession, run: ConversationRun) -> RunPath:
     return _RUN_SOURCES.get(current.run_source or "", "chat")
 
 
+# A tool result that brings no outside text into the conversation (5.3-1).
+INTERNAL_TOOLS: Final = frozenset(
+    {
+        "propose_memory",
+        "save_user_memory",
+        "save_agent_memory",
+        "propose_agent_memo",
+        "write_todos",
+        "ask_user",
+        "current_datetime",
+    }
+)
+_SUMMARY_PREFIX: Final = "Here is a summary of the conversation to date"
+
+
+def state_has_outside_content(messages: Iterable[Any]) -> bool:
+    """Whether outside text reached the conversation (5.3-1, "대화 단위").
+
+    A tool result other than the internal ones, a non-text attachment block in a user
+    message, or a compaction summary (it may hide earlier tool results) all count.
+    """
+    for message in messages:
+        kind = getattr(message, "type", None)
+        if kind == "tool" and getattr(message, "name", None) not in INTERNAL_TOOLS:
+            return True
+        content = getattr(message, "content", None)
+        if kind == "human":
+            if isinstance(content, str) and content.startswith(_SUMMARY_PREFIX):
+                return True
+            if isinstance(content, list) and any(
+                isinstance(block, Mapping) and block.get("type") not in (None, "text")
+                for block in content
+            ):
+                return True
+    return False
+
+
 __all__ = [
+    "INTERNAL_TOOLS",
     "MemoryPathAccess",
     "RunPath",
     "allowed_scopes_for",
     "memory_access",
     "origin_run_path",
+    "state_has_outside_content",
 ]

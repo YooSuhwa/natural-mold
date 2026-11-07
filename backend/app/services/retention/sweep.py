@@ -32,8 +32,13 @@ from app.models.conversation import Conversation
 from app.models.guardrail_event import GuardrailEvent
 from app.models.memory import MemoryProposal, MemoryRecord
 from app.models.organization import Organization, Tenant
-from app.schemas.retention import RetentionPreview, audit_retention_days, org_retention
-from app.services import audit_service
+from app.schemas.retention import (
+    RetentionPreview,
+    audit_retention_days,
+    experience_days,
+    org_retention,
+)
+from app.services import audit_service, memory_lifecycle
 from app.services.retention import targets
 from app.services.retention.agent_trash import purge_expired_agents
 from app.services.retention.conversations import PreLock, delete_conversations
@@ -54,6 +59,7 @@ class OrgRef:
     tenant_id: UUID
     name: str
     settings: dict[str, JsonValue]
+    tenant_kind: str = "company"  # plan 15 (Q5): the experience-memory default
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,11 +124,19 @@ async def sweep_organization(request: SweepRequest, org: OrgRef) -> RetentionPre
         memories += await delete_in_chunks(db, model, targets.member_memories(org, members, model))
     trashed = targets.expired_agents(org, policy.agent_trash_days, now)
     agents = await purge_expired_agents(db, org.id, trashed, request.checkpointer)
+    expired_memories = await memory_lifecycle.purge_expired(
+        db,
+        org_id=org.id,
+        tenant_id=org.tenant_id,
+        experience_days=experience_days(org.settings, org.tenant_kind),
+        now=now,
+    )
     return RetentionPreview(
         conversations=conversations,
         agents=agents,
         removed_member_conversations=member_conversations,
         removed_member_memories=memories,
+        expired_memories=expired_memories,
     )
 
 
@@ -167,7 +181,8 @@ async def sweep_tenant(request: SweepRequest, tenant_id: UUID) -> dict[UUID, Ret
             .order_by(Organization.id)
         )
     ).all()
-    orgs = [OrgRef(row.id, tenant_id, row.name, dict(row.settings or {})) for row in rows]
+    kind = "personal" if (tenant.settings or {}).get("kind") == "personal" else "company"
+    orgs = [OrgRef(row.id, tenant_id, row.name, dict(row.settings or {}), kind) for row in rows]
     results: dict[UUID, RetentionPreview] = {}
     for org in orgs:
         if not await request.still_leader():
