@@ -228,6 +228,8 @@ Moldy에서 채팅의 주체는 에이전트이고 대화 기억·도구·승인
 - **1차:** 실행형만. 워크플로 화면 "실행" → 시작 노드 입력 폼 → 실행 상세(캔버스 겹쳐 보기), 실행 목록, 승인 대기는 승인함.
 - **확장 1:** 도구형. 에이전트 설정에서 게시된 워크플로를 도구로 붙인다. 시작 노드 입력이 도구 인자, 출력 노드가 도구 결과다. 워크플로 실행은 그 채팅 실행의
   하위 실행으로 기록하고, 업무 승인 노드는 채팅의 승인 카드로 뜬다. 실행자는 채팅한 사용자, 권한은 워크플로 `can_run`.
+  Copilot Studio(100초 안에 응답)·Agentforce(화면 없는 흐름만)는 도구용 흐름을 짧은 동기 실행으로 제한한다. 우리 워크플로는 승인으로 오래 멈출 수 있으므로,
+  도구 호출은 채팅 실행을 표준 인터럽트로 멈춰 두고 워크플로가 끝나면 그 결과로 재개한다(승인함 대기와 같은 방식). 도구 입력·출력 스키마는 게시 버전에 고정한다.
 - **확장 2:** 예약(기존 예약 트리거가 에이전트 대신 워크플로를 대상으로), Agent API·웹훅, 일괄 실행.
 
 ## 4. 결정 질문
@@ -327,3 +329,21 @@ xyflow 유료 템플릿("Workflow Editor", "AI Workflow Editor", €129~)은 참
 
 읽은 것: 대화형을 둔 제품은 대부분 "흐름 자체가 챗봇"인 구조다. 도구형은 Dify·n8n·Copilot Studio·Langflow가 모두 갖고 있어, 에이전트 중심 제품에서
 워크플로를 채팅에 붙이는 표준 방식이다. n8n·Copilot Studio 항목은 공식 문서가 아니라 해설 글로 확인했다.
+
+**에이전트 중심 플랫폼 (2026-11-08 추가 조사)**
+
+| 제품 | 워크플로를 어떻게 쓰나 |
+|---|---|
+| Microsoft Copilot Studio | 에이전트가 주인이고 흐름은 도구. "에이전트가 흐름을 호출할 때" 트리거와 "에이전트에 응답" 동작이 있어야 하고 100초 안에 실시간 응답해야 도구로 붙는다. 에이전트 전체 또는 토픽 하나에 붙인다([flow-agent](https://learn.microsoft.com/en-us/microsoft-copilot-studio/flow-agent), [workflow tools](https://learn.microsoft.com/en-us/training/modules/copilot-studio-structured-automation/5-add-workflow-tools-agents)) |
+| Microsoft Agent Framework (오픈소스) | 에이전트 = 모델이 단계를 고름, 워크플로 = 정해진 순서에 에이전트를 단계로 넣음([overview](https://learn.microsoft.com/en-us/agent-framework/overview/)). `workflow.as_agent()`로 워크플로를 채팅 에이전트처럼 쓴다. 바깥 래퍼의 지시·도구·미들웨어는 안쪽 단계로 전달되지 않아 정책은 안쪽 에이전트에 둔다([as-agents](https://learn.microsoft.com/en-us/agent-framework/workflows/as-agents)) |
+| Salesforce Agentforce | 두 방향 다. Flow를 에이전트 동작으로 붙이되 화면 없는 자동 흐름만, 입출력은 만든 뒤 못 바꾼다. 반대로 레코드 변경 흐름 안에서 에이전트를 부른다([dev blog](https://developer.salesforce.com/blogs/2025/04/invoke-agentforce-agents-with-apex-and-flow), [해설](https://salesforcetime.com/?p=7452)) |
+| Alibaba Model Studio(百炼) | 에이전트 앱·워크플로 앱·에이전트 오케스트레이션 앱이 따로 있고 모두 API로 부른다. 여러 턴 대화는 에이전트 앱과 "대화형 워크플로" 앱만([application calling](https://www.alibabacloud.com/help/en/model-studio/application-calling)). 에이전트가 워크플로를 도구로 쓰는 공식 설명은 찾지 못했고 플러그인·MCP로 연결한다 |
+| AgentScope (Alibaba 계열 오픈소스) | 중앙 에이전트가 작업을 나누는 방식과, 순차·팬아웃 파이프라인으로 에이전트를 묶는 방식([orchestration](https://docs.agentscope.io/building-blocks/orchestration)) |
+| Qwen-Agent | 도구·계획·기억을 쓰는 에이전트 프레임워크. 워크플로 기능은 확인하지 못했다 |
+| Google Gemini Enterprise Agent Designer | 다단계 에이전트 = 메인 에이전트 + 하위 에이전트, Flow 탭에서 순서를 짠다. 사용자는 채팅에서 그 에이전트를 쓴다([agent designer](https://docs.cloud.google.com/gemini/enterprise/docs/agent-designer)) |
+| Amazon Bedrock Flows | 흐름 안에 에이전트 노드(별칭 ARN으로 호출), 에이전트가 부족한 값을 사용자에게 물으며 흐름을 멈추는 기능(2025 미리보기)([agent node](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent_AgentFlowNodeConfiguration.html)) |
+| CrewAI (오픈소스) | Flow가 상태·분기·반복을 갖는 뼈대, Crew(에이전트 팀)는 Flow가 맡긴 작업을 푼다. 규제·다단계 업무는 Flow가 여러 Crew를 묶는 구성을 권한다([evaluating use cases](https://docs.crewai.com/guides/concepts/evaluating-use-cases)) |
+
+읽은 것: 에이전트 중심 플랫폼은 (1) 워크플로를 에이전트 도구로 붙이거나(Copilot Studio, Agentforce), (2) 워크플로가 에이전트를 단계로 묶어
+정해진 순서로 돌리거나(Agent Framework, CrewAI, Bedrock, AgentScope), (3) 그 묶음을 다시 채팅 에이전트처럼 쓰게 한다(Agent Framework `as_agent`,
+Gemini Agent Designer). 도구로 붙이는 쪽은 모두 짧은 동기 실행으로 제한한다. 순번 23은 (2), 확장 1은 (1)이고, (3)은 확장 1로 같은 효과를 내므로 따로 두지 않는다.
