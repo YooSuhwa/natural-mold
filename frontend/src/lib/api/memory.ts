@@ -65,6 +65,14 @@ export function memoryExportPath(format: MemoryExportFormat, query: MemoryScopeQ
   return `/api/memories/export${buildScopeSearch(query, { format })}`
 }
 
+function profileQuery(agentId?: string | null, triggerId?: string | null): string {
+  const params = new URLSearchParams()
+  if (agentId) params.set('agent_id', agentId)
+  if (triggerId) params.set('trigger_id', triggerId)
+  const query = params.toString()
+  return query ? `?${query}` : ''
+}
+
 export const memoryApi = {
   getUserSettings: () => apiFetch<UserMemorySettings>('/api/me/memory-settings'),
   updateUserSettings: (data: UserMemorySettingsUpdate) =>
@@ -137,10 +145,8 @@ export const memoryApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  getProfiles: (agentId?: string | null) =>
-    apiFetch<MemoryProfiles>(
-      `/api/me/memory-profile${agentId ? `?agent_id=${encodeURIComponent(agentId)}` : ''}`,
-    ),
+  getProfiles: (agentId?: string | null, triggerId?: string | null) =>
+    apiFetch<MemoryProfiles>(`/api/me/memory-profile${profileQuery(agentId, triggerId)}`),
   updateProfile: (kind: MemoryProfileKind, data: MemoryProfileUpdate) =>
     apiFetch<MemoryProfile>(`/api/me/memory-profile/${kind}`, {
       method: 'PUT',

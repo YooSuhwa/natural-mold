@@ -5960,24 +5960,29 @@
           "revoke": "Revoke",
           "profileAdd": "Add profile line",
           "profileRemove": "Remove profile line",
-          "unknown": "Memory change"
+          "unknown": "Memory change",
+          "triggerMemo": "Schedule memo status"
         },
         "before": "Now",
         "after": "After",
         "sources": "Source memories",
+        "triggerRecent": "New recent status",
+        "triggerTips": "Tips to add",
         "missingSource": "The original memory could not be found.",
         "subjectOther": "About another person",
         "reason": "Reason: {reason}",
         "profileTarget": {
           "user_profile": "My profile",
-          "work_memo": "Work memo"
+          "work_memo": "Work memo",
+          "trigger_memo": "Schedule memo"
         },
         "outcome": {
           "expire": "Expires past its date. Recall leaves it out from the next run.",
           "revoke": "Revokes it. Runs stop using it from the next run.",
           "pin": "Adds it to your profile.",
           "profileAdd": "Adds this line to {target}.",
-          "profileRemove": "Removes this line from {target}."
+          "profileRemove": "Removes this line from {target}.",
+          "triggerMemoBefore": "The whole ‘Recent status’ section is replaced by these lines. Other sections stay as they are."
         },
         "approve": "Approve",
         "reject": "Reject",
@@ -6360,7 +6365,8 @@
         "origin": {
           "user": "Written by you",
           "pinned": "Added from a memory",
-          "consolidation": "Consolidation"
+          "consolidation": "Consolidation",
+          "schedule": "Schedule run"
         },
         "unreadable": "Skipped in runs",
         "removeLine": "Remove line {index}",
@@ -6369,7 +6375,18 @@
         "reset": "Revert",
         "save": "Save",
         "saved": "Profile saved.",
-        "saveFailed": "Could not save the profile."
+        "saveFailed": "Could not save the profile.",
+        "triggerTitle": "Schedule memo",
+        "triggerDescription": "A memo kept per schedule. Only that schedule's runs read it; when a run ends, a proposal to update its ‘Recent status’ section appears under approvals.",
+        "triggerLabel": "Schedule",
+        "triggerNone": "Choose a schedule",
+        "triggerEmpty": "This agent has no schedules.",
+        "sectionLabel": "Section of line {index}",
+        "section": {
+          "recent": "Recent status and next run",
+          "basics": "Basics",
+          "tips": "Tips"
+        }
       },
       "preview": {
         "title": "Recall preview",

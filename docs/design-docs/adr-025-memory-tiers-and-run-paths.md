@@ -4,7 +4,7 @@
 - Date: 2026-11-07
 - Decision owners: Moldy runtime, memory and authorization boundaries
 - Source: Moldy feature plan v2, item 15 (C6); `docs/exec-plans/active/memory-policy-plan.md`
-  (decisions Q1–Q14); PRs #368, #370, #371, #372, #373 and PR-B3
+  (decisions Q1–Q14); PRs #368, #370, #371, #372, #373, #374 and PR-B3b
 
 ## Context
 
@@ -36,7 +36,10 @@ The person's settings and the agent's override can only narrow this.
 1. **Profile documents** in the system prompt: "내 프로필" (every agent) and the
    per-agent "작업 메모", 800 tokens each, one sourced line per fact
    (`memory_profile`). A line is read only while all its sources are active memories of
-   the person.
+   the person. A schedule's runs (and their resumes) also read that schedule's
+   "예약 메모" (1,500 tokens, fixed sections recent/basics/tips); a successful run ends
+   with a proposal (`memory_trigger_memo`) that replaces its "recent" section with lines
+   grounded in the run's input and output.
 2. **Automatic recall** as a one-off message just before the latest user message, on the
    root agent only (`MemoryRecallMiddleware`; never the checkpoint, the stored events or
    a child agent). Raw-score floors per list (keyword `termShare`, cosine per measured
@@ -86,5 +89,4 @@ names what it cannot reach (conversation history, backups).
 - Vector recall stays off until a model's floor is measured on the eval set
   (`backend/evals/memory_recall`): the first measurement did not meet the pre-registered
   "nothing recalled" criterion.
-- Open: `search_memory` in prepared lease runs (needs a snapshot-safe tool), the trigger
-  memo and its end-of-run "최근 상태" proposal (PR-B3b).
+- Open: `search_memory` in prepared lease runs (needs a snapshot-safe tool).

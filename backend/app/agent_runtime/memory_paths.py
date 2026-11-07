@@ -65,27 +65,35 @@ def allowed_scopes_for(path: str, allowed: str) -> str | None:
     return "user" if user else "agent" if agent else None
 
 
-async def origin_run_path(db: AsyncSession, run: ConversationRun) -> RunPath:
-    """The path of the first run in ``run``'s resume chain (``parent_run_id`` links).
-
-    A chain that cannot be followed to its start (a missing parent, a cycle, an overlong
-    chain) reads as ``channel``: no personal memory rather than a guessed chat run.
-    """
+async def origin_run(db: AsyncSession, run: ConversationRun) -> ConversationRun | None:
+    """The first run in ``run``'s resume chain (``parent_run_id`` links), or ``None`` when
+    the chain cannot be followed to its start (a missing parent, a cycle, an overlong one)."""
     current = run
     seen: set[uuid.UUID] = set()
     while current.parent_run_id is not None:
         seen.add(current.id)
         if current.parent_run_id in seen or len(seen) >= _MAX_CHAIN:
-            return "channel"
+            return None
         parent = (
             await db.execute(
                 select(ConversationRun).where(ConversationRun.id == current.parent_run_id)
             )
         ).scalar_one_or_none()
         if parent is None:
-            return "channel"
+            return None
         current = parent
-    return _RUN_SOURCES.get(current.run_source or "", "chat")
+    return current
+
+
+async def origin_run_path(db: AsyncSession, run: ConversationRun) -> RunPath:
+    """The path of the first run in ``run``'s resume chain.
+
+    A broken chain reads as ``channel``: no personal memory rather than a guessed chat run.
+    """
+    first = await origin_run(db, run)
+    if first is None:
+        return "channel"
+    return _RUN_SOURCES.get(first.run_source or "", "chat")
 
 
 # A tool result that brings no outside text into the conversation (5.3-1).
@@ -131,6 +139,7 @@ __all__ = [
     "RunPath",
     "allowed_scopes_for",
     "memory_access",
+    "origin_run",
     "origin_run_path",
     "state_has_outside_content",
 ]

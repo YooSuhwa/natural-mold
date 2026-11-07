@@ -253,6 +253,10 @@ async def finish_trigger_run(
         ):
             trigger.status = "paused"
             trigger.next_run_at = None
+    if status == "success":
+        from app.services import memory_trigger_memo  # it imports the memory stack
+
+        await memory_trigger_memo.maybe_schedule(db, trigger, run)
     await db.commit()
     if trigger.status == "active":
         await refresh_next_run_at(db, trigger)

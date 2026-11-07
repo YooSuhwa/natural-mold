@@ -5960,24 +5960,29 @@
           "revoke": "철회",
           "profileAdd": "프로필 줄 추가",
           "profileRemove": "프로필 줄 빼기",
-          "unknown": "기억 변경"
+          "unknown": "기억 변경",
+          "triggerMemo": "예약 메모 최근 상태"
         },
         "before": "지금",
         "after": "바뀐 뒤",
         "sources": "근거 기억",
+        "triggerRecent": "새 최근 상태",
+        "triggerTips": "더할 실전 요령",
         "missingSource": "원본 기억을 찾을 수 없습니다.",
         "subjectOther": "다른 사람에 대한 기억",
         "reason": "이유: {reason}",
         "profileTarget": {
           "user_profile": "내 프로필",
-          "work_memo": "작업 메모"
+          "work_memo": "작업 메모",
+          "trigger_memo": "예약 메모"
         },
         "outcome": {
           "expire": "기한이 지나 만료합니다. 다음 실행부터 회상에서 빠집니다.",
           "revoke": "철회합니다. 다음 실행부터 쓰이지 않습니다.",
           "pin": "프로필에 올립니다.",
           "profileAdd": "{target}에 이 줄을 더합니다.",
-          "profileRemove": "{target}에서 이 줄을 뺍니다."
+          "profileRemove": "{target}에서 이 줄을 뺍니다.",
+          "triggerMemoBefore": "지금의 ‘최근 상태’ 절 전체가 이 줄들로 바뀝니다. 다른 절은 그대로 둡니다."
         },
         "approve": "승인",
         "reject": "거절",
@@ -6360,7 +6365,8 @@
         "origin": {
           "user": "직접 씀",
           "pinned": "프로필에 올림",
-          "consolidation": "정리 작업"
+          "consolidation": "정리 작업",
+          "schedule": "예약 실행"
         },
         "unreadable": "실행에서 빠짐",
         "removeLine": "{index}번째 줄 지우기",
@@ -6369,7 +6375,18 @@
         "reset": "되돌리기",
         "save": "저장",
         "saved": "프로필을 저장했습니다.",
-        "saveFailed": "프로필을 저장하지 못했습니다."
+        "saveFailed": "프로필을 저장하지 못했습니다.",
+        "triggerTitle": "예약 메모",
+        "triggerDescription": "예약마다 따로 두는 메모입니다. 그 예약이 실행될 때만 읽고, 실행이 끝나면 ‘최근 상태’ 절을 고치는 제안이 승인 대기에 올라옵니다.",
+        "triggerLabel": "예약",
+        "triggerNone": "예약을 고르세요",
+        "triggerEmpty": "이 에이전트에는 예약이 없습니다.",
+        "sectionLabel": "{index}번째 줄의 절",
+        "section": {
+          "recent": "최근 상태와 다음 실행",
+          "basics": "기본 정보",
+          "tips": "실전 요령"
+        }
       },
       "preview": {
         "title": "회상 미리 보기",

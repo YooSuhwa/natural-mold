@@ -161,6 +161,7 @@ async def _user_memory_context_in(
                 agent_id=agent_uuid,
                 user_scope=scopes in ("user", "both"),
                 agent_scope=scopes in ("agent", "both"),
+                run_id=cfg.memory_run_id if cfg.run_path == "trigger" else None,
             )
     except Exception:  # noqa: BLE001 — memory is helpful context, not a hard runtime dependency
         logger.warning("memory prompt load failed", exc_info=True)

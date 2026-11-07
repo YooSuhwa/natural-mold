@@ -996,12 +996,41 @@ async def run_profile(
     agent_id: uuid.UUID | None,
     user_scope: bool,
     agent_scope: bool,
+    run_id: str | None = None,
 ) -> Any:
-    """``memory_profile.for_run``: the profile documents this run's path may read."""
+    """``memory_profile.for_run``: the profile documents this run's path may read; a
+    schedule's run (or its resume) also reads that schedule's memo (Q13)."""
     from app.services import memory_profile
 
+    trigger_id = await trigger_of_run(db, run_id) if agent_scope and run_id else None
     return await memory_profile.for_run(
-        db, context, agent_id=agent_id, user_scope=user_scope, agent_scope=agent_scope
+        db,
+        context,
+        agent_id=agent_id,
+        user_scope=user_scope,
+        agent_scope=agent_scope,
+        trigger_id=trigger_id,
+    )
+
+
+async def trigger_of_run(db: AsyncSession, run_id: str | uuid.UUID | None) -> uuid.UUID | None:
+    """The schedule that started ``run_id``'s resume chain, if a schedule did."""
+    from app.agent_runtime.memory_paths import origin_run
+    from app.models.agent_trigger_run import AgentTriggerRun
+    from app.models.conversation_run import ConversationRun
+
+    try:
+        key = uuid.UUID(str(run_id))
+    except (TypeError, ValueError):
+        return None
+    run = await db.get(ConversationRun, key)
+    first = await origin_run(db, run) if run is not None else None
+    if first is None or first.run_source != "TRIGGER":
+        return None
+    return await db.scalar(
+        select(AgentTriggerRun.trigger_id)
+        .where(AgentTriggerRun.conversation_run_id == first.id)
+        .limit(1)
     )
 
 

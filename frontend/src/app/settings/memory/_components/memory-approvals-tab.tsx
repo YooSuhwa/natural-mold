@@ -32,6 +32,7 @@ const CHANGE_KINDS = [
   'pin',
   'profileAdd',
   'profileRemove',
+  'triggerMemo',
   'unknown',
 ] as const
 type ChangeKind = (typeof CHANGE_KINDS)[number]
@@ -47,7 +48,9 @@ const BULK_REASONS = new Set([
 
 function changeKind(proposal: MemoryProposal): ChangeKind {
   if (proposal.action === 'profile') {
-    return proposal.profile_change?.op === 'remove' ? 'profileRemove' : 'profileAdd'
+    const op = proposal.profile_change?.op
+    if (op === 'replace_section') return 'triggerMemo'
+    return op === 'remove' ? 'profileRemove' : 'profileAdd'
   }
   return (CHANGE_KINDS as readonly string[]).includes(proposal.action)
     ? (proposal.action as ChangeKind)
@@ -61,7 +64,8 @@ function proposalFlags(proposal: MemoryProposal): string[] {
       ([key, value]) =>
         Boolean(value) &&
         key !== proposal.sensitivity &&
-        !(key === 'consolidation' && proposal.origin === 'consolidation'),
+        !(key === 'consolidation' && proposal.origin === 'consolidation') &&
+        key !== 'trigger_memo',
     )
     .map(([key]) => key)
 }
@@ -394,6 +398,17 @@ function ProposalItem({
   )
 }
 
+function LineList({ lines }: { lines?: string[] }) {
+  const items = Array.isArray(lines) ? lines.filter((line) => typeof line === 'string') : []
+  return (
+    <ul className="list-disc space-y-1 pl-5 text-sm leading-6 text-foreground">
+      {items.map((line, index) => (
+        <li key={`${index}-${line}`}>{line}</li>
+      ))}
+    </ul>
+  )
+}
+
 /** Before (`sources`, as they are now) and after (`content` / `profile_change`). */
 function ProposalDiff({ proposal, kind }: { proposal: MemoryProposal; kind: ChangeKind }) {
   const t = useTranslations('appSettings.memory.approvals')
@@ -440,6 +455,22 @@ function ProposalDiff({ proposal, kind }: { proposal: MemoryProposal; kind: Chan
                   <p className="text-xs font-medium text-muted-foreground">{t('sources')}</p>
                   {sourceList}
                 </div>
+              ) : null}
+            </div>
+          ),
+        }
+      case 'triggerMemo':
+        return {
+          before: <p className="text-sm text-muted-foreground">{t('outcome.triggerMemoBefore')}</p>,
+          after: (
+            <div className="space-y-2" data-testid={`memory-proposal-trigger-memo-${proposal.id}`}>
+              <p className="text-xs font-medium text-muted-foreground">{t('triggerRecent')}</p>
+              <LineList lines={change?.recent} />
+              {change?.tips && change.tips.length > 0 ? (
+                <>
+                  <p className="text-xs font-medium text-muted-foreground">{t('triggerTips')}</p>
+                  <LineList lines={change.tips} />
+                </>
               ) : null}
             </div>
           ),

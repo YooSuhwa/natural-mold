@@ -247,5 +247,8 @@ async def delete_trigger(db: AsyncSession, trigger: AgentTrigger, context: OrgCo
     from app.scheduler import remove_trigger_job
 
     remove_trigger_job(trigger.id)
+    from app.services import memory_trigger_memo  # it imports the memory stack
+
+    await memory_trigger_memo.forget_trigger(db, trigger)
     await db.delete(trigger)
     await db.commit()

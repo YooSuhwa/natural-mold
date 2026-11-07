@@ -66,7 +66,9 @@ MEMORY_APPROVAL_MODES = ("off", "read_only", "approve_all", "partial_auto", "aut
 MEMORY_AXIS_VALUES = ("auto", "approve", "off")
 MEMORY_PROPOSAL_STATUSES = ("pending", "approved", "rejected", "expired")
 # Plan 15 (5.12): the person's profile (every agent) and their work memo for one agent.
-MEMORY_PROFILE_KINDS = ("user_profile", "work_memo")
+MEMORY_PROFILE_KINDS = ("user_profile", "work_memo", "trigger_memo")
+# Q13: a trigger memo's three fixed sections (5.12).
+TRIGGER_MEMO_SECTIONS = ("recent", "basics", "tips")
 # Plan 15 (5.4-10): profile document, automatic recall, ``search_memory``.
 MEMORY_RECALL_PATHS = ("profile", "auto", "tool")
 
@@ -514,8 +516,9 @@ class MemoryProfileDoc(RequiredOrgScope, Base):
         *resource_scope_constraints("memory_profile_docs", system=False),
         CheckConstraint(_in("kind", MEMORY_PROFILE_KINDS), name="ck_memory_profile_docs_kind"),
         CheckConstraint(
-            "(kind = 'user_profile' AND agent_id IS NULL) "
-            "OR (kind = 'work_memo' AND agent_id IS NOT NULL)",
+            "(kind = 'user_profile' AND agent_id IS NULL AND trigger_id IS NULL) "
+            "OR (kind = 'work_memo' AND agent_id IS NOT NULL AND trigger_id IS NULL) "
+            "OR (kind = 'trigger_memo' AND agent_id IS NOT NULL AND trigger_id IS NOT NULL)",
             name="ck_memory_profile_docs_agent",
         ),
         Index(
@@ -533,6 +536,13 @@ class MemoryProfileDoc(RequiredOrgScope, Base):
             postgresql_where=text("kind = 'work_memo'"),
             sqlite_where=text("kind = 'work_memo'"),
         ),
+        Index(
+            "uq_memory_profile_docs_trigger",
+            "trigger_id",
+            unique=True,
+            postgresql_where=text("kind = 'trigger_memo'"),
+            sqlite_where=text("kind = 'trigger_memo'"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -541,6 +551,10 @@ class MemoryProfileDoc(RequiredOrgScope, Base):
     )
     agent_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("agents.id", ondelete="CASCADE"), nullable=True
+    )
+    # Q13: the schedule a trigger memo belongs to (deleting the schedule deletes the memo).
+    trigger_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_triggers.id", ondelete="CASCADE"), nullable=True
     )
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     lines: Mapped[list] = mapped_column(

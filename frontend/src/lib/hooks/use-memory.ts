@@ -34,7 +34,8 @@ export const memoryKeys = {
   activity: ['memory', 'activity'] as const,
   proposals: (status: MemoryProposalStatusFilter) => ['memory', 'proposals', status] as const,
   profilesAll: ['memory', 'profiles'] as const,
-  profiles: (agentId: string | null) => ['memory', 'profiles', agentId] as const,
+  profiles: (agentId: string | null, triggerId: string | null = null) =>
+    ['memory', 'profiles', agentId, triggerId] as const,
   vector: ['memory', 'vector'] as const,
   tenantPolicy: ['memory', 'tenant-policy'] as const,
   scopeCount: (query: MemoryScopeQuery) =>
@@ -247,11 +248,14 @@ export function useExportMemories() {
   })
 }
 
-/** 내 프로필, plus that agent's 작업 메모 when `agentId` is given (plan 15, 5.12). */
-export function useMemoryProfiles(agentId: string | null) {
+/**
+ * 내 프로필, plus that agent's 작업 메모 when `agentId` is given and that schedule's
+ * 예약 메모 when `triggerId` is (plan 15, 5.12, Q13).
+ */
+export function useMemoryProfiles(agentId: string | null, triggerId: string | null = null) {
   return useQuery({
-    queryKey: memoryKeys.profiles(agentId),
-    queryFn: () => memoryApi.getProfiles(agentId),
+    queryKey: memoryKeys.profiles(agentId, triggerId),
+    queryFn: () => memoryApi.getProfiles(agentId, triggerId),
     staleTime: 10_000,
   })
 }
