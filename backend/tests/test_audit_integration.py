@@ -1191,3 +1191,89 @@ async def test_personal_memory_mutations_write_audit_without_text(
     assert approved["edited"] is False
     assert secret not in str([row.event_metadata for row in rows])
     assert "비밀" not in str([row.target_name_snapshot for row in rows])
+
+
+@pytest.mark.asyncio
+async def test_memory_lifecycle_routes_write_audit_without_text(
+    client,
+    db: AsyncSession,
+) -> None:
+    secret = "철회할 기억 내용 5521"
+    created = await client.post("/api/memories", json={"scope": "user", "content": secret})
+    assert created.status_code == 201, created.text
+    memory_id = created.json()["id"]
+    revoked = await client.post(f"/api/memories/{memory_id}/revoke", json={"reason": "틀림"})
+    assert revoked.status_code == 200 and revoked.json()["status"] == "revoked"
+    assert (await client.get("/api/memories?status=revoked")).json()[0]["id"] == memory_id
+    restored = await client.post(f"/api/memories/{memory_id}/restore")
+    assert restored.status_code == 200 and restored.json()["status"] == "active"
+    history = await client.get(f"/api/memories/{memory_id}/revisions")
+    assert [row["action"] for row in history.json()] == ["create", "revoke", "restore"]
+    exported = await client.get("/api/memories/export?format=markdown")
+    assert exported.status_code == 200 and secret in exported.text
+    count = await client.get("/api/memories/delete-scope/count?scope=all")
+    assert count.json() == {"count": 1}
+    stale = await client.post(
+        "/api/memories/delete-scope", json={"scope": "all", "confirm_count": 5}
+    )
+    assert stale.status_code in (400, 422)
+    deleted = await client.post(
+        "/api/memories/delete-scope", json={"scope": "all", "confirm_count": 1}
+    )
+    assert deleted.status_code == 200 and deleted.json()["deleted"] == 1
+
+    rows = (
+        (await db.execute(select(AuditEvent).where(AuditEvent.action.like("memory.%"))))
+        .scalars()
+        .all()
+    )
+    actions = [row.action for row in rows]
+    for action in (
+        "memory.record_revoke",
+        "memory.record_restore",
+        "memory.export",
+        "memory.record_delete_bulk",
+    ):
+        assert action in actions
+    by_action = {row.action: row for row in rows}
+    revoke = by_action["memory.record_revoke"]
+    assert (revoke.target_type, revoke.target_id, revoke.outcome) == (
+        "memory_record",
+        memory_id,
+        "success",
+    )
+    bulk = by_action["memory.record_delete_bulk"].event_metadata
+    assert bulk is not None and (bulk["deleted"], bulk["scope"]) == (1, "all")
+    activity = await client.get("/api/me/memory-activity")
+    assert activity.status_code == 200
+    listed = [row["action"] for row in activity.json()]
+    assert listed[0] == "memory.record_delete_bulk" and "memory.record_revoke" in listed
+    assert secret not in activity.text
+    assert secret not in str([row.event_metadata for row in rows])
+
+
+@pytest.mark.asyncio
+async def test_memory_policy_route_and_mode_limits(client, db: AsyncSession) -> None:
+    from app.models.organization import Tenant
+    from tests.authz.unit_scope_fixture import TEST_TENANT_ID
+
+    policy = await client.get("/api/me/memory-policy")
+    assert policy.status_code == 200, policy.text
+    body = policy.json()
+    assert (body["tenant_kind"], body["effective_mode"]) == ("company", "approve_all")
+    assert set(body["axes"]) == {"records", "profile", "consolidation"}
+    saved = await client.patch("/api/me/memory-settings", json={"approval_mode": "partial_auto"})
+    assert saved.status_code == 200 and saved.json()["memory_write_policy"] == "auto"
+    assert (await client.get("/api/me/memory-policy")).json()["effective_mode"] == "partial_auto"
+    tenant_id = TEST_TENANT_ID
+    tenant = await db.get(Tenant, tenant_id)
+    if tenant is None:
+        tenant = Tenant(id=tenant_id, name="t", slug="t", secrets_namespace="t")
+        db.add(tenant)
+    tenant.settings = {"memory": {"allowed_modes": ["approve_all"]}}
+    await db.commit()
+    limited = (await client.get("/api/me/memory-policy")).json()
+    assert limited["allowed_modes"] == ["approve_all"]
+    assert limited["effective_mode"] == "approve_all"  # the stored mode is no longer allowed
+    refused = await client.patch("/api/me/memory-settings", json={"approval_mode": "auto_notify"})
+    assert refused.status_code in (400, 422)

@@ -42,6 +42,10 @@ async def test_user_memory_settings_default_and_patch(client: AsyncClient) -> No
         "memory_write_policy": "ask",
         "allowed_scopes": "both",
         "trigger_memory_write_policy": "off",
+        # Plan 15 (5.11): no chosen mode yet; the tenant default applies.
+        "approval_mode": None,
+        "approval_axes": None,
+        "consolidation_enabled": True,
     }
 
     response = await client.patch(

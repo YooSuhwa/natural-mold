@@ -97,7 +97,8 @@ async def test_record_parent_boundary_for_sibling_consumers(
         case unreachable:
             assert_never(unreachable)
     status = await db.scalar(select(MemoryRecord.status).where(MemoryRecord.id == record.id))
-    assert status == ("deleted" if action == "delete" and allowed else "active")
+    # Plan 15 (5.7): a delete removes the row; a refused one leaves it active.
+    assert status == (None if action == "delete" and allowed else "active")
 
 
 @pytest.mark.parametrize(

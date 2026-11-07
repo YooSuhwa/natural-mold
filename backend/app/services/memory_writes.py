@@ -66,6 +66,11 @@ async def _tenant_settings(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
     return dict(settings or {})
 
 
+async def tenant_settings_for(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
+    """The tenant's settings (``kind`` and ``memory``) for the policy routes."""
+    return await _tenant_settings(db, tenant_id)
+
+
 async def _erased(db: AsyncSession, context: OrgContext, content: str) -> bool:
     digest = memory_digest(context.tenant_id, content)
     found = await db.scalar(

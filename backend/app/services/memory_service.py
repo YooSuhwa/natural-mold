@@ -15,7 +15,6 @@ from app.authz.audit_actions import (
     MEMORY_PROPOSAL_CREATE,
     MEMORY_PROPOSAL_REJECT,
     MEMORY_RECORD_CREATE,
-    MEMORY_RECORD_DELETE,
     MEMORY_RECORD_UPDATE,
 )
 from app.authz.memory_agent_access import (
@@ -107,7 +106,7 @@ _SHAPE_FIELDS = (
 )
 
 
-def _apply_shape(target: MemoryRecord | MemoryProposal, shape: MemoryShape) -> None:
+def apply_shape(target: MemoryRecord | MemoryProposal, shape: MemoryShape) -> None:
     for name in _SHAPE_FIELDS:
         setattr(target, name, getattr(shape, name))
     target.flags = dict(shape.flags or {})
@@ -115,7 +114,7 @@ def _apply_shape(target: MemoryRecord | MemoryProposal, shape: MemoryShape) -> N
         target.title = shape.title
 
 
-def _current_shape(record: MemoryRecord) -> MemoryShape:
+def current_shape(record: MemoryRecord) -> MemoryShape:
     return MemoryShape(
         **{name: getattr(record, name) for name in _SHAPE_FIELDS},
         title=record.title,
@@ -149,7 +148,7 @@ def with_check(shape: MemoryShape, result: MemoryCheck) -> MemoryShape:
     return replace(shape, flags=flags, subject=subject, sensitivity=sensitivity)
 
 
-async def _revision(
+async def record_revision(
     db: AsyncSession,
     record: MemoryRecord,
     action: str,
@@ -341,6 +340,17 @@ async def update_user_settings(
     settings = await get_user_settings(db, user_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(settings, field, value)
+    if payload.approval_mode is not None:
+        # Plan 15 (5.11): keep the pre-plan fields in step, so every older reader (the
+        # runtime's write-tool gate, agent overrides) narrows the same way.
+        axes = payload.approval_axes.model_dump() if payload.approval_axes else {}
+        records = axes.get("records") if payload.approval_mode == "custom" else None
+        settings.memory_write_policy = {
+            "off": "off",
+            "read_only": "off",
+            "approve_all": "ask",
+        }.get(payload.approval_mode, {"approve": "ask", "off": "off"}.get(records or "", "auto"))
+        settings.memory_enabled = payload.approval_mode != "off"
     settings.updated_at = _now_naive()
     await db.commit()
     await db.refresh(settings)
@@ -483,11 +493,13 @@ async def create_memory_record(
         approved_at=_now_naive(),
     )
     applied = shape or MemoryShape()
-    _apply_shape(record, applied)
+    apply_shape(record, applied)
     record.approval_channel = applied.approval_channel
     db.add(record)
     await db.flush()
-    await _revision(db, record, "create", context.user_id, after=record.content, run_path=run_path)
+    await record_revision(
+        db, record, "create", context.user_id, after=record.content, run_path=run_path
+    )
     await _audit(
         db,
         context,
@@ -510,7 +522,9 @@ async def list_memory_records(
     scope: str | None = None,
     agent_id: uuid.UUID | None = None,
     q: str | None = None,
+    status: str = "active",
 ) -> list[MemoryRecord]:
+    """``status``: ``active``, ``revoked``, ``review`` (saved, waiting for a look) or ``all``."""
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
@@ -520,7 +534,10 @@ async def list_memory_records(
         if agent is None:
             return []
         shared = shared_ids(agent, context)
-    filters = [private_memory_record_predicate(context, shared), MemoryRecord.status == "active"]
+    statuses = {"revoked": ("revoked",), "all": ("active", "superseded", "revoked")}.get(
+        status, ("active",)
+    )
+    filters = [private_memory_record_predicate(context, shared), MemoryRecord.status.in_(statuses)]
     if scope in {"user", "agent"}:
         filters.append(MemoryRecord.scope == scope)
     if agent_id is not None:
@@ -540,7 +557,10 @@ async def list_memory_records(
         .order_by(MemoryRecord.updated_at.desc(), MemoryRecord.created_at.desc())
         .execution_options(populate_existing=True, autoflush=False)
     )
-    return list(result.scalars().all())
+    rows = list(result.scalars().all())
+    if status == "review":
+        rows = [row for row in rows if (row.flags or {}).get("review_later")]
+    return rows
 
 
 async def list_runtime_memory_records(
@@ -620,12 +640,14 @@ async def update_memory_record(
         setattr(record, field, value)
     if checked is not None:
         # A person rewrote it on the memory screens (5.3-1): their text, re-marked (5.3-2).
-        _apply_shape(
-            record, with_check(replace(_current_shape(record), origin="user_stated"), checked)
+        apply_shape(
+            record, with_check(replace(current_shape(record), origin="user_stated"), checked)
         )
     record.updated_at = _now_naive()
     if record.content != before:
-        await _revision(db, record, "update", context.user_id, before=before, after=record.content)
+        await record_revision(
+            db, record, "update", context.user_id, before=before, after=record.content
+        )
     await _audit(
         db,
         context,
@@ -645,16 +667,10 @@ async def delete_memory_record(
     memory_id: uuid.UUID,
     context: OrgContext,
 ) -> bool:
-    record = await get_memory_record(db, memory_id=memory_id, context=context)
-    if record is None:
-        return False
-    record.status = "deleted"
-    deleted_at = _now_naive()
-    record.deleted_at = deleted_at
-    record.updated_at = deleted_at
-    await _audit(db, context, MEMORY_RECORD_DELETE, record)
-    await db.commit()
-    return True
+    """A real delete (plan 15, 5.7): ``memory_lifecycle.delete_one``."""
+    from app.services import memory_lifecycle  # it imports this module
+
+    return await memory_lifecycle.delete_one(db, context=context, memory_id=memory_id) is not None
 
 
 async def create_memory_proposal(
@@ -698,7 +714,7 @@ async def create_memory_proposal(
         content=payload.content,
         reason=payload.reason,
     )
-    _apply_shape(proposal, shape or MemoryShape())
+    apply_shape(proposal, shape or MemoryShape())
     db.add(proposal)
     await db.flush()
     await _audit(
@@ -712,6 +728,26 @@ async def create_memory_proposal(
     await db.commit()
     await db.refresh(proposal)
     return proposal
+
+
+async def list_memory_proposals(
+    db: AsyncSession, *, context: OrgContext, status: str = "pending"
+) -> list[MemoryProposal]:
+    """The person's own memory proposals (shared-memo proposals are decided elsewhere)."""
+    await resolve_private_actor(
+        db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
+    )
+    filters = [
+        MemoryProposal.user_id == context.user_id,
+        MemoryProposal.scope != AGENT_MEMO_SCOPE,
+        private_memory_proposal_predicate(context, frozenset()),
+    ]
+    if status != "all":
+        filters.append(MemoryProposal.status == status)
+    rows = await db.scalars(
+        select(MemoryProposal).where(*filters).order_by(MemoryProposal.created_at.desc())
+    )
+    return list(rows)
 
 
 async def create_agent_memo_proposal(
@@ -816,7 +852,7 @@ async def approve_memory_proposal(
         approved_by=context.user_id,
         approved_at=_now_naive(),
     )
-    _apply_shape(record, shape)
+    apply_shape(record, shape)
     record.approval_channel = "proposal"
     proposal.content = final_content
     proposal.reason = final_reason
@@ -825,7 +861,9 @@ async def approve_memory_proposal(
     db.add(record)
     await db.flush()
     proposal.record_id = record.id
-    await _revision(db, record, "approve", context.user_id, after=record.content, reason="proposal")
+    await record_revision(
+        db, record, "approve", context.user_id, after=record.content, reason="proposal"
+    )
     await _audit(
         db,
         context,
