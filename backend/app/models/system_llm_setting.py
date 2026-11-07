@@ -23,14 +23,15 @@ from app.database import Base
 
 # Valid role slots. Kept in sync with the CHECK constraint below and the
 # Alembic m45 seed rows.
-SYSTEM_LLM_ROLES = ("text_primary", "text_fallback", "image")
+# ``embedding``: the memory (and later RAG) embedding model (plan 15, Q2; i22).
+SYSTEM_LLM_ROLES = ("text_primary", "text_fallback", "image", "embedding")
 
 
 class SystemLlmSetting(Base):
     __tablename__ = "system_llm_settings"
     __table_args__ = (
         CheckConstraint(
-            "role IN ('text_primary', 'text_fallback', 'image')",
+            "role IN ('text_primary', 'text_fallback', 'image', 'embedding')",
             name="ck_system_llm_settings_role",
         ),
         ForeignKeyConstraint(

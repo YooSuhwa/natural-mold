@@ -10,10 +10,18 @@ import { atom } from 'jotai'
  * run), and replay on reload re-populates in event order so the last run wins.
  */
 
+/** How a memory reached the prompt: profile document, automatic recall, or the recall tool. */
+export type MemoryRecallPath = 'profile' | 'auto' | 'tool'
+
 export interface RecalledMemoryBrief {
+  /** Source memory id; absent for a profile line the person wrote (no source memory). */
   readonly id?: string
+  /** Profile briefs only: the profile line the brief came from. */
+  readonly lineId?: string
   readonly scope: 'user' | 'agent'
   readonly content: string
+  /** Absent on briefs persisted before paths existed; read as `auto`. */
+  readonly path?: MemoryRecallPath
 }
 
 export type ChatMemoryRecallState = Record<string, readonly RecalledMemoryBrief[]>

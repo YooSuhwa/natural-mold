@@ -9,11 +9,13 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.memory_paths import allowed_scopes_for, memory_access, origin_run_path
 from app.agent_runtime.runtime.memory_context import load_memory_context_in, memory_write_policy_in
 from app.agent_runtime.runtime_config import AgentConfig
+from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.memory import UserMemorySettings
 from app.schemas.memory import MemoryRecordCreate
@@ -100,13 +102,25 @@ async def _seed_memories(db: AsyncSession) -> uuid.UUID:
     ],
 )
 @pytest.mark.asyncio
-async def test_prompt_memory_follows_the_path(
+async def test_recalled_memory_follows_the_path(
     db: AsyncSession, path: str, user_seen: bool, agent_seen: bool
 ) -> None:
+    """PR-B2: memories reach a run through automatic recall, never the system prompt."""
     agent_id = await _seed_memories(db)
-    prompt, briefs = await load_memory_context_in(_cfg(agent_id, path), db)
-    assert (USER_FACT in prompt, AGENT_FACT in prompt) == (user_seen, agent_seen)
+    conversation_id = await db.scalar(select(Conversation.id))
+    assert conversation_id is not None
+    run = _run(conversation_id, agent_id, path.upper())
+    run.input_preview = "what is the fact 4411 and 9927"
+    db.add(run)
+    await db.commit()
+    cfg = _cfg(agent_id, path)
+    cfg.memory_run_id = str(run.id)
+    prompt, briefs = await load_memory_context_in(cfg, db)
+    block = cfg.memory_recall_block or ""
+    assert (USER_FACT in block, AGENT_FACT in block) == (user_seen, agent_seen)
+    assert USER_FACT not in prompt and AGENT_FACT not in prompt
     assert len(briefs) == int(user_seen) + int(agent_seen)
+    assert ("## 기억 사용 규칙" in prompt) == (user_seen or agent_seen)
 
 
 @pytest.mark.parametrize(

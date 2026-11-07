@@ -163,6 +163,12 @@ class AgentConfig:
     # Memory policy plan 15 (5.2): the execution path that decides which memory the run may
     # read and write (``memory_paths``). Set by each entry; a resume takes its chain's origin.
     run_path: str = field(default="chat", kw_only=True)
+    # Plan 15 (PR-B2, 5.4): the run whose chain keys automatic recall, the one-off recall
+    # block the root agent's model calls carry (never the system prompt, the checkpoint or
+    # a child agent), and the scopes ``search_memory`` may read (``None``: no tool).
+    memory_run_id: str | None = field(default=None, kw_only=True)
+    memory_recall_block: str | None = field(default=None, kw_only=True)
+    memory_search_scopes: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,

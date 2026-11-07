@@ -12,14 +12,16 @@ import { MemoryActivityTab } from './memory-activity-tab'
 import { MemoryFirstUseNotice } from './memory-first-use-notice'
 import type { MemoryAgentOption } from './memory-form-fields'
 import { MemoryOverviewTab } from './memory-overview-tab'
+import { MemoryProfileTab } from './memory-profile-tab'
+import { MemoryRecallPreviewTab } from './memory-recall-preview-tab'
 import { MemoryRecordsTab } from './memory-records-tab'
 import { MemorySettingsTab } from './memory-settings-tab'
 
-const TABS = ['overview', 'memories', 'activity', 'settings'] as const
+const TABS = ['overview', 'profile', 'memories', 'preview', 'activity', 'settings'] as const
 type MemoryTab = (typeof TABS)[number]
 
 /**
- * `/settings/memory` (plan 15, 5.9): 개요 / 기억 / 활동 / 설정. Only the person's own
+ * `/settings/memory` (plan 15, 5.9): 개요 / 내 프로필 / 기억 / 회상 미리 보기 / 활동 / 설정. Only the person's own
  * memories, and the same screens for company and personal tenants (Q9).
  */
 export function MemorySettingsContent() {
@@ -70,8 +72,14 @@ function MemoryTabs({ settings }: { settings: UserMemorySettings }) {
         <TabsContent value="overview" className="pt-2">
           <MemoryOverviewTab settings={settings} policy={policy} />
         </TabsContent>
+        <TabsContent value="profile" className="pt-2">
+          <MemoryProfileTab agents={agents} />
+        </TabsContent>
         <TabsContent value="memories" className="pt-2">
           <MemoryRecordsTab agents={agents} agentsLoading={agentsLoading} />
+        </TabsContent>
+        <TabsContent value="preview" className="pt-2">
+          <MemoryRecallPreviewTab agents={agents} />
         </TabsContent>
         <TabsContent value="activity" className="pt-2">
           <MemoryActivityTab />

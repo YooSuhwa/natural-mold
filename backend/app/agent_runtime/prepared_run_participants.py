@@ -154,7 +154,7 @@ def build_censuses(
 ) -> dict[str, EffectiveCapabilityCensus]:
     def middleware(path: str) -> tuple[Any, ...]:
         if path == ROOT_PATH:
-            return inputs.custom_middleware
+            return (*inputs.custom_middleware, *inputs.root_middleware)
         return tuple(catalog.children[path].spec.get("middleware", ()))
 
     return {

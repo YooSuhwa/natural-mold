@@ -48,6 +48,9 @@ _B08_ADDED_COLUMN_NULLABILITY = {
         "revoke_reason": True,
         "last_recalled_at": True,
         "recall_count": False,
+        # 순번 15 (i22, memory plan 5.4-11): Korean terms for keyword recall.
+        "search_tokens": True,
+        "search_tokens_analyzer": True,
     },
     "memory_proposals": {
         **_MEMORY_SHAPE,

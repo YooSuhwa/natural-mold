@@ -9,6 +9,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dependencies
+from app.agent_runtime.memory_paths import allowed_scopes_for
 from app.authz.memory_agent_access import agent_edit_context
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, RES, authz_policy
@@ -25,10 +26,17 @@ from app.schemas.memory import (
     MemoryBulkDelete,
     MemoryDeletionReceipt,
     MemoryPolicyOut,
+    MemoryProfileLineOut,
+    MemoryProfileOut,
+    MemoryProfilesOut,
+    MemoryProfileUpdate,
     MemoryProposalApprovalOut,
     MemoryProposalCreate,
     MemoryProposalEditApprove,
     MemoryProposalOut,
+    MemoryRecallPreviewIn,
+    MemoryRecallPreviewItem,
+    MemoryRecallPreviewOut,
     MemoryRecordCreate,
     MemoryRecordOut,
     MemoryRecordUpdate,
@@ -37,7 +45,13 @@ from app.schemas.memory import (
     UserMemorySettingsOut,
     UserMemorySettingsUpdate,
 )
-from app.services import memory_lifecycle, memory_service, memory_writes
+from app.services import (
+    memory_lifecycle,
+    memory_profile,
+    memory_recall,
+    memory_service,
+    memory_writes,
+)
 from app.services.memory_policy import effective_mode, mode_axes, tenant_kind, tenant_memory_policy
 
 router = APIRouter(tags=["memory"])
@@ -472,3 +486,156 @@ async def reject_memory_proposal(
     if proposal is None:
         raise memory_proposal_not_found()
     return MemoryProposalOut.model_validate(proposal)
+
+
+# Plan 15 (PR-B2, 5.12): "내 프로필" and "작업 메모"; 5.9: the recall preview.
+
+
+def _profile_out(view: memory_profile.ProfileView) -> MemoryProfileOut:
+    return MemoryProfileOut(
+        kind=view.kind,
+        agent_id=view.agent_id,
+        lines=[
+            MemoryProfileLineOut(
+                id=line.id,
+                text=line.text,
+                origin=line.origin
+                if line.origin in ("user", "pinned", "consolidation")
+                else "user",
+                sources=list(line.sources),
+                readable=line.id in view.readable,
+            )
+            for line in view.lines
+        ],
+        tokens=view.tokens,
+        budget_tokens=memory_profile.PROFILE_BUDGET_TOKENS,
+        version=view.version,
+    )
+
+
+@router.get("/api/me/memory-profile", response_model=MemoryProfilesOut)
+@authz_policy(PRIVATE("memory_profile_docs"))
+async def get_memory_profile(
+    agent_id: uuid.UUID | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+) -> MemoryProfilesOut:
+    user_view = await memory_profile.view(db, context, "user_profile", None)
+    work = None
+    if agent_id is not None:
+        await memory_profile.agent_for(db, context, "work_memo", agent_id)
+        work = _profile_out(await memory_profile.view(db, context, "work_memo", agent_id))
+    return MemoryProfilesOut(user_profile=_profile_out(user_view), work_memo=work)
+
+
+@router.put("/api/me/memory-profile/{kind}", response_model=MemoryProfileOut)
+@authz_policy(PRIVATE("memory_profile_docs"))
+async def update_memory_profile(
+    kind: Literal["user_profile", "work_memo"],
+    payload: MemoryProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+) -> MemoryProfileOut:
+    view = await memory_profile.replace_lines(
+        db,
+        context,
+        kind=kind,
+        agent_id=payload.agent_id,
+        texts=[(line.id, line.text) for line in payload.lines],
+        expected_version=payload.version,
+    )
+    return _profile_out(view)
+
+
+@router.post("/api/memories/{memory_id}/pin", response_model=MemoryProfileOut)
+@authz_policy(PRIVATE("memory_records", param="memory_id"))
+async def pin_memory(
+    memory_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+) -> MemoryProfileOut:
+    view = await memory_profile.pin(db, context, memory_id=memory_id)
+    if view is None:
+        raise memory_not_found()
+    return _profile_out(view)
+
+
+@router.delete("/api/memories/{memory_id}/pin", response_model=MemoryProfileOut)
+@authz_policy(PRIVATE("memory_records", param="memory_id"))
+async def unpin_memory(
+    memory_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+) -> MemoryProfileOut:
+    view = await memory_profile.unpin(db, context, memory_id=memory_id)
+    if view is None:
+        raise memory_not_found()
+    return _profile_out(view)
+
+
+@router.post("/api/me/memory-recall-preview", response_model=MemoryRecallPreviewOut)
+@authz_policy(PRIVATE("memory_records"))
+async def preview_memory_recall(
+    payload: MemoryRecallPreviewIn,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+) -> MemoryRecallPreviewOut:
+    """What a chat run would recall for ``message`` now (nothing is recorded)."""
+    if payload.agent_id is not None:
+        await memory_profile.agent_for(db, context, "work_memo", payload.agent_id)
+    policy = await memory_service.resolve_effective_policy(
+        db, context=context, agent_id=payload.agent_id
+    )
+    scopes = allowed_scopes_for("chat", policy.allowed_scopes) if policy.read_enabled else None
+    budget = memory_recall.AUTO_BUDGET_TOKENS
+    if scopes is None:
+        return MemoryRecallPreviewOut(
+            mode="skipped", analyzer="", vector="off", budget_tokens=budget
+        )
+    profile = await memory_profile.for_run(
+        db,
+        context,
+        agent_id=payload.agent_id,
+        user_scope=scopes in ("user", "both"),
+        agent_scope=scopes in ("agent", "both"),
+    )
+    result = await memory_recall.preview(
+        db,
+        context,
+        messages=[payload.message, *payload.previous],
+        filters=memory_recall.Filters(
+            scopes=scopes, agent_id=payload.agent_id, exclude=profile.source_ids
+        ),
+    )
+    return MemoryRecallPreviewOut(
+        mode=result.mode,
+        analyzer=result.analyzer,
+        vector=result.vector,
+        profile_lines=[line.text for _, line in profile.lines],
+        items=[
+            MemoryRecallPreviewItem(
+                id=item.scored.record.id,
+                scope=item.scored.record.scope,
+                kind=item.scored.record.kind,
+                content=item.scored.record.content[: memory_recall.AUTO_ITEM_CHARS],
+                keyword=round(item.scored.keyword, 4),
+                cosine=None if item.scored.cosine is None else round(item.scored.cosine, 4),
+                search=round(item.scored.search, 4),
+                final=round(item.scored.final, 4),
+                included=item.included,
+                left_out=item.left_out,
+            )
+            for item in result.items
+        ],
+        tokens=result.tokens,
+        budget_tokens=budget,
+    )

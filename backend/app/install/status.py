@@ -25,6 +25,7 @@ from app.jobs import service as jobs
 from app.mcp_runtime.probe import check_runtime
 from app.models.job import JobWorker
 from app.storage.object_store import get_object_store
+from app.text import korean_terms
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +142,13 @@ async def _skill_sandbox() -> Check:
     return Check("ok", "isolated runs on (not probed)")
 
 
+async def _opensearch() -> Check:
+    ok, detail = await korean_terms.probe()
+    if not settings.opensearch_url:
+        return Check("off", detail)
+    return Check("ok" if ok else "error", detail)
+
+
 async def _guarded(key: ComponentKey, check: Callable[[], Awaitable[Check]]) -> Check:
     try:
         return await asyncio.wait_for(check(), CHECK_TIMEOUT_SECONDS)
@@ -167,6 +175,7 @@ async def collect(db: AsyncSession, *, profile_key: ProfileKey | None = None) ->
         "mcp_runtime": _mcp_runtime,
         "pii_detector": _pii_detector,
         "skill_sandbox": _skill_sandbox,
+        "opensearch": _opensearch,
     }
     results = await asyncio.gather(*(_guarded(k, c) for k, c in network.items()))
     found.update(zip(network, results, strict=True))

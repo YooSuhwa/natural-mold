@@ -11276,6 +11276,154 @@
         ]
       }
     },
+    "/api/me/memory-profile": {
+      "get": {
+        "operationId": "get_memory_profile_api_me_memory_profile_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryProfilesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Memory Profile",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/me/memory-profile/{kind}": {
+      "put": {
+        "operationId": "update_memory_profile_api_me_memory_profile__kind__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "user_profile",
+                "work_memo"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryProfileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Memory Profile",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/me/memory-recall-preview": {
+      "post": {
+        "description": "What a chat run would recall for ``message`` now (nothing is recorded).",
+        "operationId": "preview_memory_recall_api_me_memory_recall_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryRecallPreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRecallPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Memory Recall",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/api/me/memory-settings": {
       "get": {
         "operationId": "get_user_memory_settings_api_me_memory_settings_get",
@@ -11792,6 +11940,90 @@
           }
         },
         "summary": "Update Memory",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/memories/{memory_id}/pin": {
+      "delete": {
+        "operationId": "unpin_memory_api_memories__memory_id__pin_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unpin Memory",
+        "tags": [
+          "memory"
+        ]
+      },
+      "post": {
+        "operationId": "pin_memory_api_memories__memory_id__pin_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pin Memory",
         "tags": [
           "memory"
         ]
@@ -31020,7 +31252,8 @@
             "object_store",
             "mcp_runtime",
             "pii_detector",
-            "skill_sandbox"
+            "skill_sandbox",
+            "opensearch"
           ],
           "title": "Key",
           "type": "string"
@@ -39951,6 +40184,186 @@
       "title": "MemoryPolicyOut",
       "type": "object"
     },
+    "MemoryProfileLineIn": {
+      "description": "``id`` keeps an existing line (and its sources) when its text is unchanged.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "text": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "MemoryProfileLineIn",
+      "type": "object"
+    },
+    "MemoryProfileLineOut": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "pinned",
+            "consolidation"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "readable": {
+          "title": "Readable",
+          "type": "boolean"
+        },
+        "sources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "origin",
+        "readable"
+      ],
+      "title": "MemoryProfileLineOut",
+      "type": "object"
+    },
+    "MemoryProfileOut": {
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "budget_tokens": {
+          "title": "Budget Tokens",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "user_profile",
+            "work_memo"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "lines": {
+          "items": {
+            "$ref": "#/components/schemas/MemoryProfileLineOut"
+          },
+          "title": "Lines",
+          "type": "array"
+        },
+        "tokens": {
+          "title": "Tokens",
+          "type": "integer"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "lines",
+        "tokens",
+        "budget_tokens",
+        "version"
+      ],
+      "title": "MemoryProfileOut",
+      "type": "object"
+    },
+    "MemoryProfileUpdate": {
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "lines": {
+          "items": {
+            "$ref": "#/components/schemas/MemoryProfileLineIn"
+          },
+          "maxItems": 60,
+          "title": "Lines",
+          "type": "array"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version"
+        }
+      },
+      "title": "MemoryProfileUpdate",
+      "type": "object"
+    },
+    "MemoryProfilesOut": {
+      "properties": {
+        "user_profile": {
+          "$ref": "#/components/schemas/MemoryProfileOut"
+        },
+        "work_memo": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MemoryProfileOut"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "user_profile"
+      ],
+      "title": "MemoryProfilesOut",
+      "type": "object"
+    },
     "MemoryProposalApprovalOut": {
       "properties": {
         "memory": {
@@ -40252,6 +40665,173 @@
         "created_at"
       ],
       "title": "MemoryProposalOut",
+      "type": "object"
+    },
+    "MemoryRecallPreviewIn": {
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "message": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "previous": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Previous",
+          "type": "array"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "MemoryRecallPreviewIn",
+      "type": "object"
+    },
+    "MemoryRecallPreviewItem": {
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "cosine": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cosine"
+        },
+        "final": {
+          "title": "Final",
+          "type": "number"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "included": {
+          "title": "Included",
+          "type": "boolean"
+        },
+        "keyword": {
+          "title": "Keyword",
+          "type": "number"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "left_out": {
+          "anyOf": [
+            {
+              "enum": [
+                "budget",
+                "scope_cap"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Left Out"
+        },
+        "scope": {
+          "title": "Scope",
+          "type": "string"
+        },
+        "search": {
+          "title": "Search",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "scope",
+        "kind",
+        "content",
+        "keyword",
+        "search",
+        "final",
+        "included"
+      ],
+      "title": "MemoryRecallPreviewItem",
+      "type": "object"
+    },
+    "MemoryRecallPreviewOut": {
+      "properties": {
+        "analyzer": {
+          "title": "Analyzer",
+          "type": "string"
+        },
+        "budget_tokens": {
+          "title": "Budget Tokens",
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/MemoryRecallPreviewItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "fresh",
+            "skipped",
+            "reference"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "profile_lines": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Profile Lines",
+          "type": "array"
+        },
+        "tokens": {
+          "default": 0,
+          "title": "Tokens",
+          "type": "integer"
+        },
+        "vector": {
+          "enum": [
+            "on",
+            "unmeasured",
+            "off"
+          ],
+          "title": "Vector",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "analyzer",
+        "vector",
+        "budget_tokens"
+      ],
+      "title": "MemoryRecallPreviewOut",
       "type": "object"
     },
     "MemoryRecordCreate": {
@@ -50280,7 +50860,8 @@
           "enum": [
             "text_primary",
             "text_fallback",
-            "image"
+            "image",
+            "embedding"
           ],
           "title": "Role",
           "type": "string"

@@ -1253,6 +1253,59 @@ async def test_memory_lifecycle_routes_write_audit_without_text(
 
 
 @pytest.mark.asyncio
+async def test_memory_profile_routes_write_audit_without_text(
+    client,
+    db: AsyncSession,
+) -> None:
+    """Plan 15 (PR-B2, 5.12): profile edits and pins are audited; no line text is."""
+    secret = "프로필 비밀 줄 8842"
+    saved = await client.put(
+        "/api/me/memory-profile/user_profile", json={"lines": [{"text": secret}]}
+    )
+    assert saved.status_code == 200, saved.text
+    created = await client.post("/api/memories", json={"scope": "user", "content": "핀 기억 1"})
+    memory_id = created.json()["id"]
+    pinned = await client.post(f"/api/memories/{memory_id}/pin")
+    assert pinned.status_code == 200, pinned.text
+    assert [line["origin"] for line in pinned.json()["lines"]] == ["user", "pinned"]
+    unpinned = await client.delete(f"/api/memories/{memory_id}/pin")
+    assert unpinned.status_code == 200
+
+    rows = list(
+        await db.scalars(
+            select(AuditEvent).where(
+                AuditEvent.action.in_(
+                    ("memory.profile_update", "memory.record_pin", "memory.record_unpin")
+                )
+            )
+        )
+    )
+    by_action = {row.action: row for row in rows}
+    assert sorted(by_action) == [
+        "memory.profile_update",
+        "memory.record_pin",
+        "memory.record_unpin",
+    ]
+    profile = by_action["memory.profile_update"]
+    assert (profile.target_type, profile.target_id, profile.outcome) == (
+        "memory_profile",
+        None,
+        "success",
+    )
+    assert profile.event_metadata == {"kind": "user_profile", "lines": 1}
+    for action in ("memory.record_pin", "memory.record_unpin"):
+        row = by_action[action]
+        assert (row.target_type, row.target_id, row.outcome) == (
+            "memory_record",
+            memory_id,
+            "success",
+        )
+        assert row.event_metadata == {"kind": "user_profile"}
+        assert str(row.actor_user_id) == str(TEST_USER_ID)
+    assert secret not in str([row.event_metadata for row in rows])
+
+
+@pytest.mark.asyncio
 async def test_memory_policy_route_and_mode_limits(client, db: AsyncSession) -> None:
     from app.models.organization import Tenant
     from tests.authz.unit_scope_fixture import TEST_TENANT_ID

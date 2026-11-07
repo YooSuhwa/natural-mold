@@ -117,6 +117,9 @@ class PreparationInputs:
     # Stored policy: child ID -> allowed tool names (models are lease-owned).
     child_tools: Mapping[str, frozenset[str]] = field(default_factory=dict)
     custom_middleware: tuple[AgentMiddleware[Any, Any, Any], ...] = ()
+    # The root agent's own model-call middleware, never handed to children (plan 15,
+    # 5.4-4: the one-off recall block).
+    root_middleware: tuple[AgentMiddleware[Any, Any, Any], ...] = ()
     preloaded_resources: Mapping[str, Iterable[str]] = field(default_factory=dict)
     interrupt_on: dict[str, Any] | None = None
     # Interactive (non-trigger) runs: merge each discovered MCP tool's required

@@ -8,10 +8,12 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     PrimaryKeyConstraint,
     String,
     Text,
@@ -52,6 +54,10 @@ MEMORY_REVISION_ACTIONS = (
 MEMORY_APPROVAL_MODES = ("off", "read_only", "approve_all", "partial_auto", "auto_notify", "custom")
 MEMORY_AXIS_VALUES = ("auto", "approve", "off")
 MEMORY_PROPOSAL_STATUSES = ("pending", "approved", "rejected", "expired")
+# Plan 15 (5.12): the person's profile (every agent) and their work memo for one agent.
+MEMORY_PROFILE_KINDS = ("user_profile", "work_memo")
+# Plan 15 (5.4-10): profile document, automatic recall, ``search_memory``.
+MEMORY_RECALL_PATHS = ("profile", "auto", "tool")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -243,6 +249,9 @@ class MemoryRecord(RequiredOrgScope, Base):
     flags: Mapped[dict] = mapped_column(
         JSON, nullable=False, server_default=text("'{}'"), default=dict
     )
+    # Plan 15 (5.4-11): Korean terms for keyword recall, and which analyzer made them.
+    search_tokens: Mapped[str | None] = mapped_column(Text, nullable=True)
+    search_tokens_analyzer: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
 class MemoryProposal(RequiredOrgScope, Base):
@@ -390,3 +399,140 @@ class MemoryErasure(RequiredOrgScope, Base):
     )
     content_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)
+
+
+class MemoryEmbedding(RequiredOrgScope, Base):
+    """A memory's vector for one embedding model (plan 15, 5.5), removed with the memory.
+
+    ``text_hash`` is the SHA-256 of the embedded text: a changed memory is embedded again.
+    The vector is little-endian float32 bytes; recall compares only vectors of the model in
+    use, so a model change re-embeds everything before vectors are used again.
+    """
+
+    __tablename__ = "memory_embeddings"
+    __table_args__ = (
+        *resource_scope_constraints("memory_embeddings", system=False),
+        Index("uq_memory_embeddings_record_model", "record_id", "model", "dimensions", unique=True),
+        Index("ix_memory_embeddings_user_model", "user_id", "model", "dimensions"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("memory_records.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    vector: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)
+
+
+class MemoryRecallRun(RequiredOrgScope, Base):
+    """What automatic recall did for one run chain (plan 15, 5.4-2 and 5.4-10).
+
+    Keyed by the first run of a resume chain: an approval resume reuses this row's memories
+    instead of recalling again. No memory text, only counts.
+    """
+
+    __tablename__ = "memory_recall_runs"
+    __table_args__ = (
+        *resource_scope_constraints("memory_recall_runs", system=False),
+        Index("uq_memory_recall_runs_run", "run_id", unique=True),
+        Index("ix_memory_recall_runs_conversation", "conversation_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
+    )
+    # fresh | reference (the previous run's memories) | skipped (greeting) | fallback
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    dropped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fallback: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)
+
+
+class MemoryRecall(RequiredOrgScope, Base):
+    """One memory put in front of a model (plan 15, 5.4-10); seen only by its owner."""
+
+    __tablename__ = "memory_recalls"
+    __table_args__ = (
+        *resource_scope_constraints("memory_recalls", system=False),
+        CheckConstraint(_in("path", MEMORY_RECALL_PATHS), name="ck_memory_recalls_path"),
+        Index("ix_memory_recalls_run", "run_id"),
+        Index("ix_memory_recalls_record", "record_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    record_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("memory_records.id", ondelete="CASCADE"), nullable=False
+    )
+    path: Mapped[str] = mapped_column(String(10), nullable=False)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)
+
+
+class MemoryProfileDoc(RequiredOrgScope, Base):
+    """ "내 프로필" or one agent's "작업 메모" (plan 15, 5.12): short lines, each with sources.
+
+    ``lines`` items: ``{"id", "text", "origin": user|pinned|consolidation, "sources": [ids]}``.
+    A line whose sources are not all this person's active memories is not read.
+    """
+
+    __tablename__ = "memory_profile_docs"
+    __table_args__ = (
+        *resource_scope_constraints("memory_profile_docs", system=False),
+        CheckConstraint(_in("kind", MEMORY_PROFILE_KINDS), name="ck_memory_profile_docs_kind"),
+        CheckConstraint(
+            "(kind = 'user_profile' AND agent_id IS NULL) "
+            "OR (kind = 'work_memo' AND agent_id IS NOT NULL)",
+            name="ck_memory_profile_docs_agent",
+        ),
+        Index(
+            "uq_memory_profile_docs_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("kind = 'user_profile'"),
+            sqlite_where=text("kind = 'user_profile'"),
+        ),
+        Index(
+            "uq_memory_profile_docs_work",
+            "user_id",
+            "agent_id",
+            unique=True,
+            postgresql_where=text("kind = 'work_memo'"),
+            sqlite_where=text("kind = 'work_memo'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    lines: Mapped[list] = mapped_column(
+        JSON, nullable=False, server_default=text("'[]'"), default=list
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=_now_naive, onupdate=_now_naive, nullable=False
+    )

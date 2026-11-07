@@ -96,6 +96,10 @@ MEMORY_EXPORT: Final = "memory.export"
 MEMORY_PROPOSAL_CREATE: Final = "memory.proposal_create"
 MEMORY_PROPOSAL_APPROVE: Final = "memory.proposal_approve"
 MEMORY_PROPOSAL_REJECT: Final = "memory.proposal_reject"
+# Plan 15 (5.12): "내 프로필"/"작업 메모" edits, and a memory pinned to or taken off one.
+MEMORY_PROFILE_UPDATE: Final = "memory.profile_update"
+MEMORY_RECORD_PIN: Final = "memory.record_pin"
+MEMORY_RECORD_UNPIN: Final = "memory.record_unpin"
 # H-01 access requests (14.1 "요청"); expiry is a status change, not an audit action.
 ACCESS_REQUEST_CREATE: Final = "access_request.create"
 ACCESS_REQUEST_APPROVE: Final = "access_request.approve"

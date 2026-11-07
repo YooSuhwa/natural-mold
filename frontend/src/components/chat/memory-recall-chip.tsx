@@ -18,10 +18,16 @@ function MemoryRecallList({ memories }: { readonly memories: readonly RecalledMe
     <ul className="space-y-1 border-t border-border/60 px-3 py-2">
       {memories.map((memory, index) => (
         <li
-          key={memory.id ?? index}
+          key={`${memory.path ?? 'auto'}:${memory.lineId ?? memory.id ?? index}`}
           className="flex items-start gap-2"
           data-moldy-memory-recall-item={memory.scope}
         >
+          <span
+            className="mt-0.5 shrink-0 rounded-full border border-border/70 px-1.5 py-0.5 moldy-ui-micro font-medium text-muted-foreground"
+            data-moldy-memory-recall-path={memory.path ?? 'auto'}
+          >
+            {t(`path.${memory.path ?? 'auto'}`)}
+          </span>
           <span className="mt-0.5 shrink-0 rounded-full bg-muted px-1.5 py-0.5 moldy-ui-micro font-medium text-muted-foreground">
             {memory.scope === 'user' ? t('scopeUser') : t('scopeAgent')}
           </span>

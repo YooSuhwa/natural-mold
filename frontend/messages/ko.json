@@ -1165,7 +1165,8 @@
         "role": {
           "text_primary": "기본 텍스트 모델",
           "text_fallback": "대체 텍스트 모델",
-          "image": "이미지 모델"
+          "image": "이미지 모델",
+          "embedding": "임베딩 (기억 검색)"
         },
         "inherits": "플랫폼 기본값을 따릅니다.",
         "override": "회사 값: {credential} / {model}",
@@ -1180,7 +1181,8 @@
         "pickCredential": "자격증명 선택",
         "model": "모델 ID",
         "save": "저장",
-        "saved": "서비스 LLM 설정을 저장했습니다."
+        "saved": "서비스 LLM 설정을 저장했습니다.",
+        "embeddingHelp": "기억 회상이 이 모델로 검색합니다. 모델을 바꾸면 모든 기억을 다시 임베딩합니다."
       },
       "catalog": {
         "title": "회사 카탈로그",
@@ -3142,7 +3144,12 @@
       "count": "{count}개",
       "scopeUser": "사용자",
       "scopeAgent": "에이전트",
-      "hiddenContent": "내용 비공개"
+      "hiddenContent": "내용 비공개",
+      "path": {
+        "profile": "프로필",
+        "auto": "자동",
+        "tool": "도구"
+      }
     },
     "excludedCapabilities": {
       "title": "이 실행에서 일부 기능이 제외되었습니다",
@@ -3823,7 +3830,7 @@
     "save": "저장",
     "operatorOnly": {
       "title": "운영자 전용",
-      "description": "세 슬롯을 모두 설정하기 전까지 Builder/Assistant/이미지 생성이 동작하지 않습니다. 제공자는 선택한 시스템 자격증명에서 자동으로 파생되며, openai_compatible/openrouter는 자격증명의 base_url을 그대로 사용합니다."
+      "description": "텍스트·이미지 슬롯을 모두 설정하기 전까지 Builder/Assistant/이미지 생성이 동작하지 않습니다. 임베딩 슬롯이 비어 있으면 기억 검색은 키워드로만 찾습니다. 제공자는 선택한 시스템 자격증명에서 자동으로 파생되며, openai_compatible/openrouter는 자격증명의 base_url을 그대로 사용합니다."
     },
     "roles": {
       "text_primary": {
@@ -3837,6 +3844,10 @@
       "image": {
         "label": "이미지 모델",
         "description": "이미지 생성에 사용하는 모델 (base_url 주입 지원)."
+      },
+      "embedding": {
+        "label": "임베딩 (기억 검색)",
+        "description": "기억 회상이 이 모델로 검색합니다. 모델을 바꾸면 모든 기억을 다시 임베딩합니다."
       }
     },
     "toast": {
@@ -5893,7 +5904,10 @@
         "save": "메모리 저장",
         "cancel": "수정 취소",
         "delete": "메모리 삭제",
-        "memoryEntity": "메모리"
+        "memoryEntity": "메모리",
+        "pin": "프로필에 올리기",
+        "unpin": "프로필에서 내리기",
+        "pinnedBadge": "프로필에 올림"
       },
       "toast": {
         "settingsSaved": "메모리 정책을 저장했습니다.",
@@ -5908,14 +5922,20 @@
         "revokeFailed": "메모리 철회에 실패했습니다.",
         "restored": "메모리를 복원했습니다.",
         "restoreFailed": "메모리 복원에 실패했습니다.",
-        "restoreBlockedPii": "개인정보 검사를 통과하지 못해 복원할 수 없습니다. 내용을 확인해 주세요."
+        "restoreBlockedPii": "개인정보 검사를 통과하지 못해 복원할 수 없습니다. 내용을 확인해 주세요.",
+        "pinned": "프로필에 올렸습니다.",
+        "unpinned": "프로필에서 내렸습니다.",
+        "pinFailed": "프로필에 올리지 못했습니다.",
+        "unpinFailed": "프로필에서 내리지 못했습니다."
       },
       "tabs": {
         "label": "메모리 화면",
         "overview": "개요",
         "memories": "기억",
         "activity": "활동",
-        "settings": "설정"
+        "settings": "설정",
+        "profile": "내 프로필",
+        "preview": "회상 미리 보기"
       },
       "firstUse": {
         "title": "개인 기억은 모든 에이전트가 함께 씁니다",
@@ -6142,6 +6162,89 @@
             "conversation_history": "대화 기록",
             "backups": "백업"
           }
+        }
+      },
+      "profile": {
+        "userTitle": "내 프로필",
+        "userDescription": "모든 에이전트가 대화마다 먼저 읽는 짧은 문서입니다. 한 줄에 한 가지씩 적어 주세요.",
+        "workTitle": "작업 메모",
+        "workDescription": "에이전트마다 따로 두는 메모입니다. 그 에이전트와 대화할 때만 읽습니다.",
+        "agentLabel": "에이전트",
+        "agentNone": "에이전트를 고르세요",
+        "loading": "프로필을 불러오는 중입니다.",
+        "loadFailed": "프로필을 불러오지 못했습니다.",
+        "tokensLabel": "저장된 문서 사용량",
+        "tokens": "{tokens}/{budget}토큰",
+        "overBudget": "상한에 닿았습니다. 줄을 줄이거나 지워야 더 저장할 수 있습니다.",
+        "unreadableNotice": "표시된 줄은 근거 기억이 철회되거나 삭제되어 실행에서 빠집니다. 고쳐 쓰면 내가 쓴 줄로 다시 쓰이고, 지우면 문서에서도 사라집니다.",
+        "empty": "아직 적힌 줄이 없습니다.",
+        "origin": {
+          "user": "직접 씀",
+          "pinned": "프로필에 올림",
+          "consolidation": "정리 작업"
+        },
+        "unreadable": "실행에서 빠짐",
+        "removeLine": "{index}번째 줄 지우기",
+        "lineLabel": "{index}번째 줄",
+        "addLine": "줄 추가",
+        "reset": "되돌리기",
+        "save": "저장",
+        "saved": "프로필을 저장했습니다.",
+        "saveFailed": "프로필을 저장하지 못했습니다."
+      },
+      "preview": {
+        "title": "회상 미리 보기",
+        "description": "질문을 넣으면 채팅에서 지금 무엇을 떠올리는지 점수와 함께 보여 줍니다. 미리 보기는 아무것도 기록하지 않습니다.",
+        "messageLabel": "질문",
+        "messagePlaceholder": "예: 다음 주 출장 일정 정리해 줘",
+        "previousLabel": "직전 질문 (선택)",
+        "previousDescription": "이어지는 대화를 흉내 낼 때 바로 앞 질문을 적습니다.",
+        "agentLabel": "에이전트 (선택)",
+        "agentNone": "에이전트 없이",
+        "submit": "미리 보기",
+        "failed": "미리 보기를 불러오지 못했습니다.",
+        "resultTitle": "미리 보기 결과",
+        "mode": {
+          "fresh": {
+            "label": "새로 찾음",
+            "description": "이 질문으로 기억을 새로 찾았습니다."
+          },
+          "skipped": {
+            "label": "찾지 않음",
+            "description": "인사나 짧은 맞장구처럼 기억이 필요 없는 말에는 아무것도 찾지 않습니다. 기억 읽기가 꺼져 있어도 이렇게 나옵니다."
+          },
+          "reference": {
+            "label": "직전 회상 재사용",
+            "description": "직전 질문을 이어 가는 말이라 직전 턴에 떠올린 기억을 그대로 씁니다."
+          }
+        },
+        "analyzerLabel": "분석기: {analyzer}",
+        "analyzer": {
+          "nori": "Nori",
+          "suffix": "접미사 목록",
+          "none": "쓰지 않음"
+        },
+        "vectorLabel": "벡터 검색: {vector}",
+        "vector": {
+          "on": "켜짐",
+          "unmeasured": "기준 미측정",
+          "off": "꺼짐"
+        },
+        "tokens": "자동 회상 {tokens}/{budget}토큰",
+        "profileTitle": "프롬프트에 들어가는 프로필 줄",
+        "profileEmpty": "들어가는 프로필 줄이 없습니다.",
+        "candidatesTitle": "후보 기억",
+        "candidatesEmpty": "떠올릴 기억 후보가 없습니다.",
+        "reason": {
+          "included": "들어감",
+          "budget": "빠짐: 예산 초과",
+          "scope_cap": "빠짐: 범위 상한",
+          "below": "빠짐: 기준 미달"
+        },
+        "score": {
+          "keyword": "키워드 {value}",
+          "cosine": "코사인 {value}",
+          "final": "최종 {value}"
         }
       }
     },
@@ -6898,7 +7001,8 @@
       "object_store": "파일 저장소",
       "mcp_runtime": "MCP 런타임",
       "pii_detector": "한국어 개인정보 탐지 모델",
-      "skill_sandbox": "스킬 격리 실행"
+      "skill_sandbox": "스킬 격리 실행",
+      "opensearch": "기억 검색 한국어 분석 (Nori)"
     },
     "profile": {
       "minimal": {

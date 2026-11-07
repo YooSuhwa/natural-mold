@@ -12,13 +12,16 @@ from typing import Any
 from langchain_core.tools import BaseTool
 
 from app.agent_runtime.memory_paths import memory_access
+from app.agent_runtime.runtime import memory_context
 from app.agent_runtime.runtime.connection_guard import with_connection_guard
+from app.agent_runtime.runtime.memory_recall_middleware import MemoryRecallMiddleware
 from app.agent_runtime.runtime.shared_memo import load_shared_memo, memo_governed
 from app.agent_runtime.runtime.usage_guard import with_usage_guard
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.agent_runtime.runtime_policy_capabilities import STORED_RESERVED_TOOL_NAMES
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
+from app.agent_runtime.tools.memory import build_memory_search_tool
 from app.guardrails.legacy import covered_by_guardrails
 from app.guardrails.run import effective_rules
 from app.tools.risk import unattended_interrupt_policy
@@ -218,11 +221,26 @@ async def prepare_runtime_components_impl(
         system_prompt += "\n\n" + bindings.memory_tool_instruction_prompt()
 
     if include_agent_memory_file:
+        # Plan 15 (5.4): the root run keys automatic recall by its resume chain.
+        cfg.memory_run_id = run_id
         memory_prompt, recalled_memories = await bindings.load_memory_context(cfg)
         if memory_prompt:
             system_prompt += "\n\n" + memory_prompt
         if recalled_memories:
             cfg.recalled_memories = recalled_memories
+        if cfg.memory_search_scopes is not None:
+            system_prompt += "\n\n" + memory_context.MEMORY_SEARCH_RULES
+            langchain_tools.append(
+                build_memory_search_tool(
+                    context=cfg.org_context,
+                    agent_id=cfg.agent_id,
+                    scopes=cfg.memory_search_scopes,
+                    run_id=run_id,
+                )
+            )
+        if cfg.memory_recall_block:
+            # Root slot only: a child agent never sees the parent's memories (5.4-4).
+            middleware.append(MemoryRecallMiddleware(cfg.memory_recall_block))
 
     if stored_policy:
         permissions = bindings.build_stored_filesystem_permissions(

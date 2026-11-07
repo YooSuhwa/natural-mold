@@ -204,7 +204,10 @@ class PreparedRunResolver:
             write_policy=self._memory.write_policy,
         )
         cfg.secret_values |= resolved.secret_values
+        cfg.memory_run_id = str(run.id)  # plan 15 (5.4): recall keyed by the resume chain
         memory_prompt, recalled = await self._memory.context(cfg, db)
+        # A lease carries no ``search_memory`` yet (it would need a snapshot-safe tool).
+        cfg.memory_search_scopes = None
         cfg.recalled_memories = recalled or None
         names = {child.runtime_name: child.display_name for child in resolved.children}
         self.execution_cfg = _execution_metadata(cfg, names)

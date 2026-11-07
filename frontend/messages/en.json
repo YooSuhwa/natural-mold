@@ -1165,7 +1165,8 @@
         "role": {
           "text_primary": "Primary text model",
           "text_fallback": "Fallback text model",
-          "image": "Image model"
+          "image": "Image model",
+          "embedding": "Embedding (memory search)"
         },
         "inherits": "Follows the platform default.",
         "override": "Company value: {credential} / {model}",
@@ -1180,7 +1181,8 @@
         "pickCredential": "Choose a credential",
         "model": "Model ID",
         "save": "Save",
-        "saved": "Service LLM settings saved."
+        "saved": "Service LLM settings saved.",
+        "embeddingHelp": "Memory recall searches with this model. Changing the model re-embeds all memories."
       },
       "catalog": {
         "title": "Company catalog",
@@ -3142,7 +3144,12 @@
       "count": "{count} used",
       "scopeUser": "User",
       "scopeAgent": "Agent",
-      "hiddenContent": "Content hidden"
+      "hiddenContent": "Content hidden",
+      "path": {
+        "profile": "Profile",
+        "auto": "Auto",
+        "tool": "Tool"
+      }
     },
     "excludedCapabilities": {
       "title": "Some capabilities were left out of this run",
@@ -3837,6 +3844,10 @@
       "image": {
         "label": "Label",
         "description": "Model used for image generation."
+      },
+      "embedding": {
+        "label": "Embedding (memory search)",
+        "description": "Memory recall searches with this model. Changing the model re-embeds all memories."
       }
     },
     "toast": {
@@ -5893,7 +5904,10 @@
         "save": "Save memory",
         "cancel": "Cancel edit",
         "delete": "Delete memory",
-        "memoryEntity": "memory"
+        "memoryEntity": "memory",
+        "pin": "Add to profile",
+        "unpin": "Remove from profile",
+        "pinnedBadge": "In profile"
       },
       "toast": {
         "settingsSaved": "Memory policy saved.",
@@ -5908,14 +5922,20 @@
         "revokeFailed": "Could not revoke memory.",
         "restored": "Memory restored.",
         "restoreFailed": "Could not restore memory.",
-        "restoreBlockedPii": "This memory no longer passes the personal data check, so it cannot be restored. Review its content."
+        "restoreBlockedPii": "This memory no longer passes the personal data check, so it cannot be restored. Review its content.",
+        "pinned": "Added to your profile.",
+        "unpinned": "Removed from your profile.",
+        "pinFailed": "Could not add it to your profile.",
+        "unpinFailed": "Could not remove it from your profile."
       },
       "tabs": {
         "label": "Memory sections",
         "overview": "Overview",
         "memories": "Memories",
         "activity": "Activity",
-        "settings": "Settings"
+        "settings": "Settings",
+        "profile": "My profile",
+        "preview": "Recall preview"
       },
       "firstUse": {
         "title": "Your personal memory is shared by all your agents",
@@ -6142,6 +6162,89 @@
             "conversation_history": "Conversation history",
             "backups": "Backups"
           }
+        }
+      },
+      "profile": {
+        "userTitle": "My profile",
+        "userDescription": "A short document every agent reads first in each conversation. Keep one point per line.",
+        "workTitle": "Work memo",
+        "workDescription": "A memo kept per agent. Only that agent reads it.",
+        "agentLabel": "Agent",
+        "agentNone": "Choose an agent",
+        "loading": "Loading the profile.",
+        "loadFailed": "Could not load the profile.",
+        "tokensLabel": "Saved document usage",
+        "tokens": "{tokens}/{budget} tokens",
+        "overBudget": "The limit is reached. Shorten or remove lines to save more.",
+        "unreadableNotice": "Marked lines lost their source memory (revoked or deleted), so runs skip them. Rewriting a line makes it your own again; removing it drops it from the document.",
+        "empty": "No lines yet.",
+        "origin": {
+          "user": "Written by you",
+          "pinned": "Added from a memory",
+          "consolidation": "Consolidation"
+        },
+        "unreadable": "Skipped in runs",
+        "removeLine": "Remove line {index}",
+        "lineLabel": "Line {index}",
+        "addLine": "Add line",
+        "reset": "Revert",
+        "save": "Save",
+        "saved": "Profile saved.",
+        "saveFailed": "Could not save the profile."
+      },
+      "preview": {
+        "title": "Recall preview",
+        "description": "Enter a question to see what a chat would recall right now, with scores. The preview records nothing.",
+        "messageLabel": "Question",
+        "messagePlaceholder": "e.g. Plan my business trip next week",
+        "previousLabel": "Previous question (optional)",
+        "previousDescription": "Enter the question just before to imitate a follow-up.",
+        "agentLabel": "Agent (optional)",
+        "agentNone": "No agent",
+        "submit": "Preview",
+        "failed": "Could not load the preview.",
+        "resultTitle": "Preview result",
+        "mode": {
+          "fresh": {
+            "label": "New search",
+            "description": "Memories were searched afresh for this question."
+          },
+          "skipped": {
+            "label": "No search",
+            "description": "Greetings and short replies that need no memory recall nothing. This also shows when memory reading is off."
+          },
+          "reference": {
+            "label": "Reused previous recall",
+            "description": "This follows up the previous question, so the memories recalled in the previous turn are reused."
+          }
+        },
+        "analyzerLabel": "Analyzer: {analyzer}",
+        "analyzer": {
+          "nori": "Nori",
+          "suffix": "Suffix list",
+          "none": "Not used"
+        },
+        "vectorLabel": "Vector search: {vector}",
+        "vector": {
+          "on": "On",
+          "unmeasured": "Threshold not measured",
+          "off": "Off"
+        },
+        "tokens": "Automatic recall {tokens}/{budget} tokens",
+        "profileTitle": "Profile lines in the prompt",
+        "profileEmpty": "No profile lines go into the prompt.",
+        "candidatesTitle": "Candidate memories",
+        "candidatesEmpty": "No candidate memories.",
+        "reason": {
+          "included": "Included",
+          "budget": "Left out: budget",
+          "scope_cap": "Left out: scope limit",
+          "below": "Left out: below threshold"
+        },
+        "score": {
+          "keyword": "Keyword {value}",
+          "cosine": "Cosine {value}",
+          "final": "Final {value}"
         }
       }
     },
@@ -6898,7 +7001,8 @@
       "object_store": "File storage",
       "mcp_runtime": "MCP runtime",
       "pii_detector": "Korean personal data model",
-      "skill_sandbox": "Isolated skill runs"
+      "skill_sandbox": "Isolated skill runs",
+      "opensearch": "Korean memory search terms (Nori)"
     },
     "profile": {
       "minimal": {

@@ -27,6 +27,7 @@ from app.agent_runtime.prepared_run_tool_inputs import (
     merged_origins,
     prepared_tool_set,
 )
+from app.agent_runtime.runtime.memory_recall_middleware import MemoryRecallMiddleware
 from app.agent_runtime.runtime.reliability import EmptyContentRetryMiddleware
 from app.agent_runtime.runtime.shared_memo import memo_governed
 from app.agent_runtime.runtime_config import AgentConfig
@@ -296,6 +297,9 @@ def build_preparation_inputs(
         mcp_configs=root_tools.mcp_configs,
         subagents=tuple(children),
         custom_middleware=(EmptyContentRetryMiddleware(max_retries=1),),
+        root_middleware=(
+            (MemoryRecallMiddleware(cfg.memory_recall_block),) if cfg.memory_recall_block else ()
+        ),
         mcp_interrupts=not trigger,
         child_tools=child_tools,
         interrupt_on=_interrupts(
