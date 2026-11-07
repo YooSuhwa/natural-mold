@@ -83,6 +83,7 @@ async def test_proposal_approval_copies_the_same_private_scope(
     assert approved is not None
     saved_proposal, record = approved
     assert saved_proposal.status == "approved"
+    assert record is not None  # a new-memory proposal always yields its memory
     assert (record.user_id, record.org_id, record.tenant_id) == (
         proposal.user_id,
         proposal.org_id,
