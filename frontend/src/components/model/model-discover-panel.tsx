@@ -25,7 +25,7 @@ import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { formatDisplayNumber } from '@/lib/utils/display-format'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
 import type { DiscoveredModel, ModelKind } from '@/lib/types/model'
-import { modelKindPayload, modelKindValid } from './model-kind-fields'
+import { modelKindPayload, modelKindValid, parseEmbeddingDimensions } from './model-kind-fields'
 
 interface ModelDiscoverPanelProps {
   /** Q14: which models to list and register (chat by default). */
@@ -284,22 +284,19 @@ export function ModelDiscoverPanel({
                           {t('alreadyRegistered')}
                         </span>
                       )}
-                      {/* The connection test is a chat completion; embedding models skip it. */}
-                      {kind === 'chat' ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="xs"
-                          className="ml-auto"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            setTestRow((prev) => (prev === m.model_name ? null : m.model_name))
-                          }}
-                          aria-label={t('testModel', { name: m.display_name })}
-                        >
-                          <Zap className="size-3" /> {t('test')}
-                        </Button>
-                      ) : null}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        className="ml-auto"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setTestRow((prev) => (prev === m.model_name ? null : m.model_name))
+                        }}
+                        aria-label={t('testModel', { name: m.display_name })}
+                      >
+                        <Zap className="size-3" /> {t('test')}
+                      </Button>
                     </div>
                     <p className="truncate font-mono moldy-ui-caption text-muted-foreground">
                       {m.provider} · {m.model_name}
@@ -324,13 +321,15 @@ export function ModelDiscoverPanel({
                         <RankingBadge rankingKey="aa_index" value={m.rankings.aa_index} />
                       </div>
                     )}
-                    {kind === 'chat' && testRow === m.model_name && credentialId && (
+                    {testRow === m.model_name && credentialId && (
                       <div className="mt-2">
                         <ModelConnectionTest
                           key={`${m.model_name}-${credentialId}`}
                           mode="preview"
                           provider={m.provider}
                           modelName={m.model_name}
+                          kind={kind}
+                          embeddingDimensions={parseEmbeddingDimensions(dimensions)}
                           credentialId={credentialId}
                           modelLabel={m.display_name}
                           autoStart

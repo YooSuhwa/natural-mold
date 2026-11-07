@@ -28,7 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { useTestModel } from '@/lib/hooks/use-models'
 import { formatDisplayNumber, formatDisplayUsd } from '@/lib/utils/display-format'
-import type { ModelTestErrorKind, ModelTestResponse } from '@/lib/types/model'
+import type { ModelKind, ModelTestErrorKind, ModelTestResponse } from '@/lib/types/model'
 
 interface BaseProps {
   credentialId: string
@@ -51,6 +51,9 @@ interface PreviewProps extends BaseProps {
   provider: string
   modelName: string
   baseUrl?: string | null
+  /** Embedding models embed one text at ``embeddingDimensions`` instead of chatting. */
+  kind?: ModelKind
+  embeddingDimensions?: number | null
 }
 
 type Props = RegisteredProps | PreviewProps
@@ -89,6 +92,9 @@ export function ModelConnectionTest(props: Props) {
                 model_name: props.modelName,
                 base_url: props.baseUrl ?? null,
                 credential_id: credentialId,
+                ...(props.kind === 'embedding'
+                  ? { kind: 'embedding' as const, embedding_dimensions: props.embeddingDimensions }
+                  : {}),
               },
             })
       setResult(data)

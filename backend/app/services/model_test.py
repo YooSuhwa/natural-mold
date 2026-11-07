@@ -177,6 +177,112 @@ async def run_model_test(
     )
 
 
+_EMBEDDING_TEST_TEXT = "연결 확인"
+# Providers whose ``POST /embeddings`` takes OpenAI's request shape (memory plan Q14).
+_EMBEDDING_PROVIDERS = frozenset({"openai", "openai_compatible", "litellm", "openrouter"})
+
+
+async def run_embedding_test(
+    *,
+    provider: str,
+    model_name: str,
+    base_url: str | None,
+    credential_data: dict[str, Any],
+    dimensions: int | None,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> ModelTestResult:
+    """Embed one short text with an embedding model (memory plan Q14) and report.
+
+    Success needs a vector of exactly ``dimensions`` numbers: a model that ignores the
+    requested width would store vectors recall cannot compare.
+    """
+
+    api_key = _extract_api_key(credential_data)
+    cred_base_url = credential_data.get("base_url") if credential_data else None
+    host = (cred_base_url if isinstance(cred_base_url, str) and cred_base_url else base_url) or (
+        "https://api.openai.com/v1"
+    )
+    body: dict[str, Any] = {"model": model_name, "input": [_EMBEDDING_TEST_TEXT]}
+    if dimensions:
+        body["dimensions"] = dimensions
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {_REDACTED}"
+    raw_request = {
+        "url": host.rstrip("/") + "/embeddings",
+        "method": "POST",
+        "headers": headers,
+        "body": body,
+    }
+    curl_command = _build_curl(raw_request)
+    if provider not in _EMBEDDING_PROVIDERS:
+        return ModelTestResult(
+            success=False,
+            error=ModelTestError(
+                kind="other", message=f"embedding test supports OpenAI-shaped APIs, not {provider}"
+            ),
+            raw_request=raw_request,
+            curl_command=curl_command,
+        )
+    wire_headers = dict(headers)
+    if api_key:
+        wire_headers["Authorization"] = f"Bearer {api_key}"
+    started = time.perf_counter()
+    try:
+        from app.outbound.client import outbound_http_client
+
+        async with outbound_http_client(
+            timeout=_TEST_TIMEOUT_SECONDS, transport=transport
+        ) as client:
+            response = await client.post(raw_request["url"], json=body, headers=wire_headers)
+            response.raise_for_status()
+            reply = response.json()
+    except Exception as exc:  # noqa: BLE001 - every failure is reported, not raised
+        return ModelTestResult(
+            success=False,
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            error=_classify(exc),
+            raw_request=raw_request,
+            curl_command=curl_command,
+        )
+    latency = int((time.perf_counter() - started) * 1000)
+    data = reply.get("data") if isinstance(reply, dict) else None
+    vector = data[0].get("embedding") if isinstance(data, list) and data else None
+    usage = reply.get("usage") if isinstance(reply, dict) else None
+    tokens_in = _coerce_int(usage.get("prompt_tokens")) if isinstance(usage, dict) else None
+    summary = {"model": reply.get("model"), "dimensions": len(vector) if vector else 0}
+    if not isinstance(vector, list) or not vector:
+        error = ModelTestError(kind="other", message="the reply holds no embedding vector")
+        return ModelTestResult(
+            success=False,
+            latency_ms=latency,
+            error=error,
+            raw_request=raw_request,
+            raw_response=summary,
+            curl_command=curl_command,
+        )
+    if dimensions and len(vector) != dimensions:
+        message = f"asked for {dimensions} dimensions, the model returned {len(vector)}"
+        return ModelTestResult(
+            success=False,
+            latency_ms=latency,
+            error=ModelTestError(kind="other", message=message),
+            raw_request=raw_request,
+            raw_response=summary,
+            curl_command=curl_command,
+        )
+    return ModelTestResult(
+        success=True,
+        response=f"vector of {len(vector)} dimensions",
+        latency_ms=latency,
+        tokens_in=tokens_in,
+        raw_request=raw_request,
+        raw_response=summary,  # the numbers themselves are of no use on screen
+        curl_command=curl_command,
+        metadata={"kind": "embedding", "dimensions": len(vector)},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
@@ -455,15 +561,9 @@ def _build_curl(request: dict[str, Any]) -> str:
 
     body_str = _json.dumps(body, ensure_ascii=False, indent=2)
     header_lines = "".join(
-        f"  -H '{name}: {value}' \\\n"
-        for name, value in headers.items()
-        if value
+        f"  -H '{name}: {value}' \\\n" for name, value in headers.items() if value
     )
-    return (
-        f"curl -X {method} '{url}' \\\n"
-        f"{header_lines}"
-        f"  -d '{body_str}'"
-    )
+    return f"curl -X {method} '{url}' \\\n{header_lines}  -d '{body_str}'"
 
 
 # ---- Misc helpers ----------------------------------------------------------

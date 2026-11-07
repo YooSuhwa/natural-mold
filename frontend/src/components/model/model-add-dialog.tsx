@@ -23,6 +23,7 @@ import {
   ModelKindFields,
   modelKindPayload,
   modelKindValid,
+  parseEmbeddingDimensions,
 } from './model-kind-fields'
 import { perMillionToTokenPrice } from './model-format'
 import { useCreateModel } from '@/lib/hooks/use-models'
@@ -123,8 +124,6 @@ function CustomIdForm({
 
   const canSubmit =
     provider.trim() !== '' && modelName.trim() !== '' && modelKindValid(kind, dimensions)
-  // The connection test runs a chat completion, which an embedding model cannot answer.
-  const canTest = kind === 'chat'
 
   // Filter to LLM credentials so the test panel only offers API keys.
   const llmCredentials = useMemo(() => {
@@ -268,7 +267,7 @@ function CustomIdForm({
         </div>
       </div>
 
-      {canTest && testOpen && effectiveCredId && (
+      {testOpen && effectiveCredId && (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs font-medium" htmlFor="custom-test-cred">
@@ -296,6 +295,8 @@ function CustomIdForm({
             provider={provider.trim()}
             modelName={modelName.trim()}
             baseUrl={baseUrl.trim() || null}
+            kind={kind}
+            embeddingDimensions={parseEmbeddingDimensions(dimensions)}
             credentialId={effectiveCredId}
             modelLabel={displayName.trim() || modelName.trim()}
             autoStart
@@ -304,17 +305,15 @@ function CustomIdForm({
       )}
 
       <div className="flex items-center justify-end gap-2">
-        {canTest ? (
-          <Button
-            variant="outline"
-            onClick={() => setTestOpen(true)}
-            disabled={!canSubmit || llmCredentials.length === 0}
-            data-testid="custom-test-button"
-          >
-            <Zap className="size-3.5" />
-            {t('actions.test')}
-          </Button>
-        ) : null}
+        <Button
+          variant="outline"
+          onClick={() => setTestOpen(true)}
+          disabled={!canSubmit || llmCredentials.length === 0}
+          data-testid="custom-test-button"
+        >
+          <Zap className="size-3.5" />
+          {t('actions.test')}
+        </Button>
         <Button onClick={handleSave} disabled={!canSubmit || create.isPending}>
           {create.isPending && <Loader2 className="size-4 animate-spin" />}
           {t('actions.save')}

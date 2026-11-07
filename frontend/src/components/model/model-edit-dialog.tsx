@@ -192,62 +192,56 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
               emptyHint={model.source === 'manual' ? te('customIdBenchmarkHint') : undefined}
             />
 
-            {/* The connection test is a chat completion; an embedding model skips it. */}
-            {model.kind === 'chat' ? (
-              <>
-                <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 p-2">
-                  <span className="text-xs text-muted-foreground">{te('testHint')}</span>
-                  {!testOpen ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setTestOpen(true)}
-                      disabled={llmCredentials.length === 0}
-                      data-testid="edit-test-button"
-                    >
-                      <Zap className="size-3.5" /> {te('testConnection')}
-                    </Button>
-                  ) : (
-                    <Button variant="ghost" size="sm" onClick={() => setTestOpen(false)}>
-                      {te('hideTest')}
-                    </Button>
-                  )}
-                </div>
-
-                {testOpen && effectiveTestCredId && (
-                  <div className="space-y-2">
-                    <Select
-                      value={effectiveTestCredId}
-                      onValueChange={(v) => v && setTestCredId(v)}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder={te('selectCredential')}>
-                          {(selected) =>
-                            llmCredentials.find((c) => c.id === selected)?.name ??
-                            te('selectCredential')
-                          }
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {llmCredentials.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <ModelConnectionTest
-                      key={`${model.id}-${effectiveTestCredId}`}
-                      mode="registered"
-                      modelId={model.id}
-                      credentialId={effectiveTestCredId}
-                      modelLabel={model.display_name}
-                      autoStart
-                    />
-                  </div>
+            <>
+              <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 p-2">
+                <span className="text-xs text-muted-foreground">{te('testHint')}</span>
+                {!testOpen ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTestOpen(true)}
+                    disabled={llmCredentials.length === 0}
+                    data-testid="edit-test-button"
+                  >
+                    <Zap className="size-3.5" /> {te('testConnection')}
+                  </Button>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={() => setTestOpen(false)}>
+                    {te('hideTest')}
+                  </Button>
                 )}
-              </>
-            ) : null}
+              </div>
+
+              {testOpen && effectiveTestCredId && (
+                <div className="space-y-2">
+                  <Select value={effectiveTestCredId} onValueChange={(v) => v && setTestCredId(v)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={te('selectCredential')}>
+                        {(selected) =>
+                          llmCredentials.find((c) => c.id === selected)?.name ??
+                          te('selectCredential')
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {llmCredentials.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <ModelConnectionTest
+                    key={`${model.id}-${effectiveTestCredId}`}
+                    mode="registered"
+                    modelId={model.id}
+                    credentialId={effectiveTestCredId}
+                    modelLabel={model.display_name}
+                    autoStart
+                  />
+                </div>
+              )}
+            </>
 
             <div className="space-y-4">
               <ModelKindFields

@@ -150,6 +150,9 @@ class ModelTestPreviewRequest(BaseModel):
     credential_id: uuid.UUID = Field(
         ..., description="Stored Credential whose decrypted payload supplies the API key."
     )
+    # Memory plan Q14: an embedding model is tested by embedding a text at this width.
+    kind: ModelKind = "chat"
+    embedding_dimensions: int | None = Field(default=None, ge=1, le=4096)
 
 
 class ModelTestErrorSchema(BaseModel):

@@ -268,8 +268,9 @@ describe('UserInputUI', () => {
     fireEvent.click(response)
     fireEvent.click(screen.getByRole('button', { name: 'confirm' }))
 
-    await waitFor(() => expect(response).toBeEnabled())
+    // Wait for the rejection itself: the button is also enabled before the submit starts.
+    expect(await screen.findByRole('alert')).toHaveTextContent('resumeFailed')
+    expect(response).toBeEnabled()
     expect(screen.queryByText('completed')).toBeNull()
-    expect(screen.getByRole('alert')).toHaveTextContent('resumeFailed')
   })
 })
