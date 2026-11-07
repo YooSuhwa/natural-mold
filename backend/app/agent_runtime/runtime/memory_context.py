@@ -12,6 +12,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.memory_paths import allowed_scopes_for, memory_access
 from app.agent_runtime.runtime.shared_memo import (
     load_shared_memo,
     memory_session,
@@ -98,11 +99,15 @@ async def _user_memory_context_in(
             )
             if not policy.read_enabled:
                 return "", []
+            # Plan 15 (5.2): the run's path narrows the scopes (API, channel, subagent: none).
+            scopes = allowed_scopes_for(cfg.run_path, policy.allowed_scopes)
+            if scopes is None:
+                return "", []
             records = await memory_service.list_runtime_memory_records(
                 session,
                 context=cfg.org_context,
                 agent_id=agent_uuid,
-                allowed_scopes=policy.allowed_scopes,
+                allowed_scopes=scopes,
             )
             prompt = memory_service.render_memory_prompt(records)
             return prompt, _recalled_memory_briefs(records) if prompt else []
@@ -121,8 +126,10 @@ async def memory_write_policy_in(
     """``_memory_write_policy_for_run`` reading through ``db`` (``None`` = own session)."""
     assert_pre_marker("_memory_write_policy_for_run")
     user_uuid = _parse_uuid(cfg.user_id)
-    if user_uuid is None:
+    if user_uuid is None or not memory_access(cfg.run_path).write_tools:
         return "off"
+    # A resumed schedule keeps the schedule's write policy (plan 15, 5.2).
+    is_trigger_mode = is_trigger_mode or cfg.run_path == "trigger"
     agent_uuid = _parse_uuid(cfg.agent_id)
     try:
         from app.services import memory_service

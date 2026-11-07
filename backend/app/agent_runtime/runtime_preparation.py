@@ -11,6 +11,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.memory_paths import memory_access
 from app.agent_runtime.runtime.connection_guard import with_connection_guard
 from app.agent_runtime.runtime.shared_memo import load_shared_memo, memo_governed
 from app.agent_runtime.runtime.usage_guard import with_usage_guard
@@ -205,7 +206,10 @@ async def prepare_runtime_components_impl(
             system_prompt += "\n" + skills_block
 
     memory_sources: list[str] | None = None
-    if include_agent_memory_file and cfg.agent_id and not governed:
+    # Plan 15 (5.2): only a chat run may mount or write the legacy memo (no schedule, API
+    # run or child agent edits AGENTS.md).
+    memo_writable = not governed and memory_access(cfg.run_path).memo_mount
+    if include_agent_memory_file and cfg.agent_id and memo_writable:
         (bindings.data_dir / "agents" / cfg.agent_id).mkdir(parents=True, exist_ok=True)
         memory_sources = [f"/agents/{cfg.agent_id}/AGENTS.md"]
 
@@ -226,7 +230,7 @@ async def prepare_runtime_components_impl(
             user_id=cfg.user_id,
             selected_skill_slugs=bindings.selected_skill_slugs(cfg.agent_skills),
             agent_runtime_name=cfg.agent_runtime_name,
-            include_agent_memory_file=include_agent_memory_file and not governed,
+            include_agent_memory_file=include_agent_memory_file and memo_writable,
             mode=filesystem_mode,
         )
         langchain_tools = [
@@ -239,7 +243,7 @@ async def prepare_runtime_components_impl(
             user_id=cfg.user_id,
             selected_skill_slugs=bindings.selected_skill_slugs(cfg.agent_skills),
             agent_runtime_name=cfg.agent_runtime_name,
-            agent_memory_file=not governed,
+            agent_memory_file=memo_writable,
         )
 
     if include_ask_user and not is_trigger_mode:

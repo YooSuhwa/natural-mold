@@ -182,3 +182,48 @@ def test_memo_proposal_events_and_args_are_redacted() -> None:
     assert safe["payload"]["content"] == "<redacted>" and safe["payload"]["reason"] == "<redacted>"
     args = sanitize_tool_call_parameters("propose_agent_memo", {"content": "x", "reason": "y"})
     assert args == {"content": "<redacted>", "reason": "<redacted>"}
+
+
+@pytest.mark.parametrize(("path", "writable"), [("chat", True), ("trigger", False), ("api", False)])
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
+@patch("app.agent_runtime.runtime_component_builder.build_agent")
+@patch("app.agent_runtime.runtime_component_builder.convert_to_langchain_messages")
+@patch("app.agent_runtime.runtime_component_builder.create_chat_model")
+async def test_legacy_memo_is_writable_only_on_the_chat_path(
+    model: MagicMock,
+    convert: MagicMock,
+    build: MagicMock,
+    stream: MagicMock,
+    checkpointer: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    writable: bool,
+) -> None:
+    """Memory policy plan 15 (5.2): schedules and API runs never write the legacy memo."""
+    from app.agent_runtime.agent_stream_runner import execute_agent_stream
+
+    monkeypatch.setattr(runtime, "_current", legacy_service())
+    model.return_value, convert.return_value, build.return_value = MagicMock(), [], MagicMock()
+
+    async def fake_stream(*_args: object, **_kwargs: object):
+        yield "done"
+
+    stream.return_value = fake_stream()
+    cfg = _cfg(owner=CALLER)
+    cfg.run_path = path
+    with (
+        patch("app.agent_runtime.runtime_component_builder._DATA_DIR", tmp_path),
+        patch(
+            "app.agent_runtime.runtime_component_builder.resolve_runtime_credentials",
+            new_callable=AsyncMock,
+        ),
+    ):
+        async for _ in execute_agent_stream(cfg, []):
+            pass
+    kwargs = build.call_args[1]
+    assert (calculate_filesystem_access(kwargs["permissions"], "write", MEMO)[0] == "allow") is (
+        writable
+    )
+    assert bool(kwargs.get("memory")) is writable

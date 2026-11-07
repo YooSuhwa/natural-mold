@@ -250,6 +250,7 @@ async def build_agent_config_for_loaded_agent(
         credential_subject_user_id=str(identity.credential_subject_user_id),
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
+        run_path={"trigger": "trigger", "api": "api"}.get(source, "chat"),
     )
     # The company guardrail policy at this run's start (guardrails/policy.py).
     cfg.guardrail_rules = await resolve_guardrails(

@@ -160,6 +160,9 @@ class AgentConfig:
     # for the approval inbox, "block" answers a BLOCKED result. ``None``: a chat asks in
     # the conversation and an invoke (schedule, Agent API wait) blocks.
     unattended_approval: Literal["wait", "block"] | None = None
+    # Memory policy plan 15 (5.2): the execution path that decides which memory the run may
+    # read and write (``memory_paths``). Set by each entry; a resume takes its chain's origin.
+    run_path: str = field(default="chat", kw_only=True)
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,
