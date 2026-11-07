@@ -124,9 +124,10 @@ async def test_native_constraints_and_retention_boundaries(
                 "conversation_run_inputs",
                 "conversation_runs",
                 "mcp_app_invocation_bindings",
-                "token_usages",
             ):
                 assert fk_contract[(table_name, "conversation_id")] == ("CASCADE", "NO")
+            # i24 (memory plan 5.6): a background job's model call has no conversation.
+            assert fk_contract[("token_usages", "conversation_id")] == ("CASCADE", "YES")
 
             # When the fixture Agent is physically removed after its Conversations are detached.
             await db.execute(
