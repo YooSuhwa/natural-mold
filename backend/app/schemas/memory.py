@@ -284,7 +284,7 @@ class MemoryProposalSourceOut(BaseModel):
     content: str
     status: str
     kind: str
-    provenance: str
+    provenance: Literal["confirmed", "agent", "outside", "legacy"]
 
 
 class MemoryProposalOut(BaseModel):

@@ -33,7 +33,7 @@ from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -946,13 +946,27 @@ __all__ = [
 # --- the approval queue -----------------------------------------------------------------
 
 
+Provenance = Literal["confirmed", "agent", "outside", "legacy"]
+_PROVENANCE_CODES: Final[dict[str, Provenance]] = {
+    "사람이 확인함": "confirmed",
+    "에이전트가 씀": "agent",
+    "외부 내용에서 나옴": "outside",
+    "이전 기록, 확인 안 됨": "legacy",
+}
+
+
+def provenance_code(record: MemoryRecord) -> Provenance:
+    """The screen's code for the read-time origin label (the prompt keeps the label)."""
+    return _PROVENANCE_CODES.get(provenance(record), "agent")
+
+
 @dataclass(frozen=True, slots=True)
 class SourceView:
     id: uuid.UUID
     content: str
     status: str
     kind: str
-    provenance: str
+    provenance: Provenance
 
 
 async def proposal_sources(
@@ -978,6 +992,8 @@ async def proposal_sources(
         for value in proposal.source_ids or []:
             row = rows.get(uuid.UUID(value)) if _is_uuid(value) else None
             if row is not None:
-                views.append(SourceView(row.id, row.content, row.status, row.kind, provenance(row)))
+                views.append(
+                    SourceView(row.id, row.content, row.status, row.kind, provenance_code(row))
+                )
         out[proposal.id] = views
     return out

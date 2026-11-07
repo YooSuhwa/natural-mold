@@ -41003,6 +41003,12 @@
           "type": "string"
         },
         "provenance": {
+          "enum": [
+            "confirmed",
+            "agent",
+            "outside",
+            "legacy"
+          ],
           "title": "Provenance",
           "type": "string"
         },

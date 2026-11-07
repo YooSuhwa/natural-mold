@@ -400,7 +400,11 @@ async def _proposals_out(
         view = MemoryProposalOut.model_validate(proposal)
         view.sources = [
             MemoryProposalSourceOut(
-                id=s.id, content=s.content, status=s.status, kind=s.kind, provenance=s.provenance
+                id=s.id,
+                content=s.content,
+                status=s.status,
+                kind=s.kind,
+                provenance=s.provenance,
             )
             for s in sources.get(proposal.id, [])
         ]
