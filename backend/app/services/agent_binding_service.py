@@ -162,7 +162,9 @@ async def _validate_model_fallback_ids(
     if not fallback_ids:
         return
     result = await db.execute(
-        select(Model.id).where(Model.id.in_(fallback_ids), model_scope(tenant_id))
+        select(Model.id).where(
+            Model.id.in_(fallback_ids), model_scope(tenant_id), Model.kind == "chat"
+        )
     )
     valid = {row[0] for row in result.all()}
     invalid = [str(i) for i in fallback_ids if i not in valid]
@@ -205,7 +207,11 @@ async def _validate_agent_binding_ids(
             await _validate_sub_agent_ids_owned(db, data.sub_agent_ids, context)
         if data.model_id is not None:  # FK covers existence; block other companies' models
             foreign = await db.scalar(
-                select(Model.id).where(Model.id == data.model_id, ~model_scope(context.tenant_id))
+                select(Model.id).where(
+                    Model.id == data.model_id,
+                    # an embedding model never runs an agent (memory plan Q14)
+                    ~model_scope(context.tenant_id) | (Model.kind != "chat"),
+                )
             )
             if foreign is not None:
                 raise HTTPException(status_code=400, detail="Unknown model_id")

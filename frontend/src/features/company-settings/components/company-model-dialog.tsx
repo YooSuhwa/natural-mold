@@ -4,6 +4,12 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
+import {
+  DEFAULT_DIMENSIONS_INPUT,
+  ModelKindFields,
+  modelKindPayload,
+  modelKindValid,
+} from '@/components/model/model-kind-fields'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { FormFieldShell } from '@/components/shared/form-field-shell'
 import { Button } from '@/components/ui/button'
@@ -11,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { useOrgErrorMessage } from '@/features/organizations/lib/error-message'
 import { useTenantModelMutations } from '@/lib/hooks/use-tenant-catalog'
+import type { ModelKind } from '@/lib/types/model'
 import type { TenantCredential, TenantModel } from '@/lib/types/tenant-admin'
 import { OrgMultiSelect } from './org-multi-select'
 
@@ -40,6 +47,12 @@ export function CompanyModelDialog({
   const [modelName, setModelName] = useState(model?.model_name ?? '')
   const [displayName, setDisplayName] = useState(model?.display_name ?? '')
   const [baseUrl, setBaseUrl] = useState(model?.base_url ?? '')
+  const [kind, setKind] = useState<ModelKind>(model?.kind ?? 'chat')
+  const [dimensions, setDimensions] = useState(
+    model?.embedding_dimensions != null
+      ? String(model.embedding_dimensions)
+      : DEFAULT_DIMENSIONS_INPUT,
+  )
   const [credentialId, setCredentialId] = useState(model?.default_credential_id ?? NO_CREDENTIAL)
   const [orgIds, setOrgIds] = useState<string[] | null>(model ? model.allowed_org_ids : [])
   const [error, setError] = useState<string | null>(null)
@@ -48,6 +61,7 @@ export function CompanyModelDialog({
   const valid =
     platform ||
     (displayName.trim() !== '' &&
+      modelKindValid(kind, dimensions) &&
       (model !== null || (provider.trim() !== '' && modelName.trim() !== '')))
   const handlers = {
     onSuccess: () => {
@@ -65,6 +79,7 @@ export function CompanyModelDialog({
           provider: provider.trim(),
           model_name: modelName.trim(),
           display_name: displayName.trim(),
+          ...modelKindPayload(kind, dimensions),
           base_url: baseUrl.trim() || null,
           default_credential_id: credential,
           allowed_org_ids: orgIds ?? [],
@@ -77,6 +92,7 @@ export function CompanyModelDialog({
       ? { allowed_org_ids: orgIds }
       : {
           display_name: displayName.trim(),
+          ...modelKindPayload(kind, dimensions),
           base_url: baseUrl.trim() || null,
           default_credential_id: credential,
           allowed_org_ids: orgIds ?? [],
@@ -120,6 +136,13 @@ export function CompanyModelDialog({
           ) : null}
           {platform ? null : (
             <>
+              <ModelKindFields
+                idPrefix="company-model"
+                kind={kind}
+                dimensions={dimensions}
+                onKindChange={setKind}
+                onDimensionsChange={setDimensions}
+              />
               <FormFieldShell id="model-display-name" label={t('displayName')} required>
                 <Input
                   id="model-display-name"

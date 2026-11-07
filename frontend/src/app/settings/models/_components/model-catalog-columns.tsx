@@ -8,6 +8,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { Button } from '@/components/ui/button'
 import { DomainIcon } from '@/components/shared/icon'
 import { ModelSourceBadge } from '@/components/model/model-source-badge'
+import { ModelKindBadge } from '@/components/model/model-kind-fields'
 import { formatTokenPrice } from '@/components/model/model-format'
 import { RankingBadge } from '@/components/model/model-rankings'
 import { formatDisplayNumber } from '@/lib/utils/display-format'
@@ -64,9 +65,15 @@ export function useModelCatalogColumns({
                   </span>
                 )}
               </p>
-              <p className="truncate font-mono moldy-ui-caption text-muted-foreground">
-                {row.original.provider} · {row.original.model_name}
-              </p>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate font-mono moldy-ui-caption text-muted-foreground">
+                  {row.original.provider} · {row.original.model_name}
+                </span>
+                <ModelKindBadge
+                  kind={row.original.kind}
+                  dimensions={row.original.embedding_dimensions}
+                />
+              </div>
               <CapabilityIcons model={row.original} />
             </div>
           </div>

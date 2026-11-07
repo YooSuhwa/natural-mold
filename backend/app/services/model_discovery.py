@@ -130,9 +130,16 @@ class _DispatchEntry:
 # -- Public API --------------------------------------------------------------
 
 
+def is_embedding_name(model_id: str) -> bool:
+    """Embedding models by name (``text-embedding-3-large``, ``bge-m3-embed``...)."""
+    return "embed" in model_id.lower()
+
+
 async def discover_from_credential(
     db: AsyncSession,
     credential: Credential,
+    *,
+    kind: str = "chat",
 ) -> list[DiscoveredModel]:
     """Discover models reachable with the given Credential.
 
@@ -150,7 +157,18 @@ async def discover_from_credential(
         )
     handler, provider = entry
 
-    discovered = await handler(data)
+    if kind == "embedding" and provider not in _EMBEDDING_PROVIDERS:
+        return []
+    if handler is _discover_openai:
+        discovered = await _discover_openai(data, include_embeddings=kind == "embedding")
+    else:
+        discovered = await handler(data)
+    # Memory plan Q14: each kind's picker lists only its own models.
+    discovered = [
+        model
+        for model in discovered
+        if is_embedding_name(model.model_name) == (kind == "embedding")
+    ]
     await _mark_already_registered(db, provider, discovered)
     return discovered
 
@@ -158,7 +176,9 @@ async def discover_from_credential(
 # -- Per-provider handlers ---------------------------------------------------
 
 
-async def _discover_openai(data: dict[str, Any]) -> list[DiscoveredModel]:
+async def _discover_openai(
+    data: dict[str, Any], *, include_embeddings: bool = False
+) -> list[DiscoveredModel]:
     api_key = data.get("api_key")
     base_url = data.get("base_url") or "https://api.openai.com/v1"
     is_custom = is_custom_openai_endpoint(base_url)
@@ -173,7 +193,10 @@ async def _discover_openai(data: dict[str, Any]) -> list[DiscoveredModel]:
     out: list[DiscoveredModel] = []
     for item in items:
         model_id = item.get("id") or ""
-        if not model_id or not should_include_model("openai", model_id, is_custom):
+        if not model_id:
+            continue
+        embedding = include_embeddings and is_embedding_name(model_id)
+        if not embedding and not should_include_model("openai", model_id, is_custom):
             continue
         enriched = enrich_model(model_id)
         out.append(_from_enriched("openai", model_id, enriched, is_custom))
@@ -457,6 +480,9 @@ async def _mark_already_registered(
 
 # -- Dispatch table ----------------------------------------------------------
 
+
+# Providers whose ``POST /embeddings`` memory recall can call (OpenAI's request shape).
+_EMBEDDING_PROVIDERS = frozenset({"openai", "openai_compatible"})
 
 _DISPATCH: dict[str, tuple[Any, str]] = {
     "openai": (_discover_openai, "openai"),

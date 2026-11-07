@@ -42,6 +42,9 @@ from app.schemas.memory import (
     MemoryRecordUpdate,
     MemoryRevisionOut,
     MemoryRevoke,
+    MemoryVectorModelOut,
+    MemoryVectorStatusOut,
+    MemoryVectorUpdate,
     UserMemorySettingsOut,
     UserMemorySettingsUpdate,
 )
@@ -50,9 +53,11 @@ from app.services import (
     memory_profile,
     memory_recall,
     memory_service,
+    memory_vectors,
     memory_writes,
 )
 from app.services.memory_policy import effective_mode, mode_axes, tenant_kind, tenant_memory_policy
+from app.tenancy.admin_context import TenantAdminTarget, load_tenant_admin_context
 
 router = APIRouter(tags=["memory"])
 
@@ -639,3 +644,66 @@ async def preview_memory_recall(
         tokens=result.tokens,
         budget_tokens=budget,
     )
+
+
+# Plan 15 Q14: the company memory vector model (company admins; a personal tenant's owner).
+
+
+def _vector_model(model: memory_vectors.VectorModel) -> MemoryVectorModelOut:
+    return MemoryVectorModelOut(
+        id=model.id,
+        display_name=model.display_name,
+        model_name=model.model_name,
+        provider=model.provider,
+        dimensions=model.dimensions,
+        source="company" if model.source == "company" else "platform",
+    )
+
+
+def _vector_out(result: memory_vectors.VectorStatus, *, can_manage: bool) -> MemoryVectorStatusOut:
+    return MemoryVectorStatusOut(
+        model=_vector_model(result.model) if result.model is not None else None,
+        candidates=[_vector_model(row) for row in result.candidates],
+        total=result.total,
+        embedded=result.embedded,
+        other_vectors=result.other_vectors,
+        job_state=result.job_state,
+        job_progress=result.job_progress,
+        floor_measured=result.floor_measured,
+        can_manage=can_manage,
+    )
+
+
+@router.get("/api/me/memory-vector", response_model=MemoryVectorStatusOut)
+@authz_policy(PRIVATE("memory_records"))
+async def get_memory_vector(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+) -> MemoryVectorStatusOut:
+    admin = await load_tenant_admin_context(db, user, TenantAdminTarget(context.tenant_id))
+    result = await memory_vectors.status(db, admin.tenant)
+    return _vector_out(result, can_manage="can_manage_tenant" in admin.permissions)
+
+
+@router.put("/api/me/memory-vector", response_model=MemoryVectorStatusOut)
+@authz_policy(PRIVATE("memory_records"))
+async def put_memory_vector(
+    payload: MemoryVectorUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+) -> MemoryVectorStatusOut:
+    admin = await load_tenant_admin_context(
+        db, user, TenantAdminTarget(context.tenant_id, permission="can_manage_tenant")
+    )
+    result = await memory_vectors.change(
+        db,
+        admin.tenant,
+        context,
+        model_id=payload.model_id,
+        confirm_count=payload.confirm_count,
+        drop_vectors=payload.drop_vectors,
+    )
+    return _vector_out(result, can_manage=True)

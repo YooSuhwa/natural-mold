@@ -225,7 +225,7 @@ async def test_vectors_of_another_model_are_never_compared(
     )
     assert ranked.items == []
     # The missing vector asks for a company-wide backfill of the model in use.
-    backfill = await db.scalar(select(Job).where(Job.idempotency_key == "all:fake-embed@3"))
+    backfill = await db.scalar(select(Job).where(Job.idempotency_key == "all:fake-embed@3:0"))
     assert backfill is not None and backfill.payload == {"all": True}
 
 

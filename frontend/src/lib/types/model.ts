@@ -6,6 +6,16 @@
 
 export type ModelSource = 'litellm' | 'openrouter' | 'manual'
 
+/** Memory plan Q14: a chat model (every model picker) or an embedding model (memory vectors). */
+export type ModelKind = 'chat' | 'embedding'
+
+/** `GET /api/models?kind=` — chat by default; the operator catalog asks for `all`. */
+export type ModelListKind = ModelKind | 'all'
+
+/** Default vector width offered when registering an embedding model. */
+export const DEFAULT_EMBEDDING_DIMENSIONS = 1024
+export const MAX_EMBEDDING_DIMENSIONS = 4096
+
 /**
  * External benchmark ranking snapshot for a model. Backend cron refreshes
  * these every ~6h. All values may be missing for new/private/Custom-ID
@@ -25,6 +35,9 @@ export interface Model {
   provider: string
   model_name: string
   display_name: string
+  kind: ModelKind
+  /** Vector width of an embedding model; `null` for a chat model. */
+  embedding_dimensions: number | null
   base_url: string | null
   is_default: boolean
   /**
@@ -78,12 +91,16 @@ export interface ListModelsOptions {
   order?: ModelSortOrder
   /** Super-user only — surface rows where `is_visible=false`. */
   include_hidden?: boolean
+  /** Omitted = the backend default (`chat`). */
+  kind?: ModelListKind
 }
 
 export interface ModelCreate {
   provider: string
   model_name: string
   display_name: string
+  kind?: ModelKind
+  embedding_dimensions?: number | null
   base_url?: string | null
   cost_per_input_token?: number | null
   cost_per_output_token?: number | null
@@ -102,6 +119,8 @@ export interface ModelCreate {
 
 export interface ModelUpdate {
   display_name?: string
+  kind?: ModelKind
+  embedding_dimensions?: number | null
   base_url?: string | null
   cost_per_input_token?: number | null
   cost_per_output_token?: number | null

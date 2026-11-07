@@ -3,7 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { modelsApi } from '@/lib/api/models'
 import { modelQueryKeys } from '@/lib/query-keys/models'
-import type { ModelCreate, ModelTestPreviewRequest, ModelUpdate } from '@/lib/types/model'
+import type {
+  ModelCreate,
+  ModelKind,
+  ModelListKind,
+  ModelTestPreviewRequest,
+  ModelUpdate,
+} from '@/lib/types/model'
 
 interface UseModelsOptions {
   /**
@@ -12,13 +18,17 @@ interface UseModelsOptions {
    * query so the agent-creation selector stays clean.
    */
   includeHidden?: boolean
+  /** Chat models by default (every picker); the operator catalog passes `all` (Q14). */
+  kind?: ModelListKind
 }
 
 export function useModels(options?: UseModelsOptions) {
   const includeHidden = options?.includeHidden ?? false
+  const kind = options?.kind ?? 'chat'
   return useQuery({
-    queryKey: modelQueryKeys.list(includeHidden),
-    queryFn: () => modelsApi.list({ include_hidden: includeHidden }),
+    queryKey: modelQueryKeys.list(includeHidden, kind),
+    queryFn: () =>
+      modelsApi.list({ include_hidden: includeHidden, ...(kind === 'chat' ? {} : { kind }) }),
     staleTime: 60_000,
   })
 }
@@ -69,7 +79,8 @@ export function useDeleteModel() {
  */
 export function useDiscoverModels() {
   return useMutation({
-    mutationFn: (credentialId: string) => modelsApi.discoverFromCredential(credentialId),
+    mutationFn: ({ credentialId, kind }: { credentialId: string; kind: ModelKind }) =>
+      modelsApi.discoverFromCredential(credentialId, kind),
   })
 }
 

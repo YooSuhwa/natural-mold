@@ -192,7 +192,9 @@ async def _get_default_model_name(db: AsyncSession) -> str:
     #    is_default=true row 가 여러 개여도 raise 하지 않도록 결정적 first 행 선택
     result = await db.execute(
         select(Model)
-        .where(Model.is_default.is_(True), Model.tenant_id.is_(None))  # platform only (E-07)
+        .where(  # platform chat models only (E-07, memory plan Q14)
+            Model.is_default.is_(True), Model.tenant_id.is_(None), Model.kind == "chat"
+        )
         .order_by(Model.created_at.asc())
         .limit(1)
     )
@@ -202,7 +204,10 @@ async def _get_default_model_name(db: AsyncSession) -> str:
 
     # 3. 아무 모델 — 마찬가지로 결정적 순서 보장
     result = await db.execute(
-        select(Model).where(Model.tenant_id.is_(None)).order_by(Model.created_at.asc()).limit(1)
+        select(Model)
+        .where(Model.tenant_id.is_(None), Model.kind == "chat")
+        .order_by(Model.created_at.asc())
+        .limit(1)
     )
     model = result.scalars().first()
     if model:

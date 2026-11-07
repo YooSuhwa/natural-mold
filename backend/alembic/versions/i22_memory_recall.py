@@ -4,11 +4,11 @@
 analyzer that made them (Nori or the suffix fallback). Four company tables (RLS
 ``DIRECT_TENANT``): ``memory_embeddings`` (a memory's vector per model, removed with the
 memory), ``memory_recall_runs`` and ``memory_recalls`` (what recall put in front of a run,
-no text) and ``memory_profile_docs`` ("내 프로필" and per-agent "작업 메모"). The system LLM
-settings gain an ``embedding`` role (the minimal embedding model kind, Q2).
+no text) and ``memory_profile_docs`` ("내 프로필" and per-agent "작업 메모"). Which
+embedding model a company uses arrives with the embedding model kind (plan 5.5, next PR).
 
 Existing memories get their terms from the suffix fallback here; the index job moves them to
-Nori where OpenSearch runs. Downgrade drops the tables, the columns and the role's rows.
+Nori where OpenSearch runs. Downgrade drops the tables and the columns.
 """
 
 from __future__ import annotations
@@ -25,8 +25,6 @@ branch_labels = None
 depends_on = None
 
 _TABLES = ("memory_embeddings", "memory_recall_runs", "memory_recalls", "memory_profile_docs")
-_ROLES_BEFORE = "role IN ('text_primary', 'text_fallback', 'image')"
-_ROLES_AFTER = "role IN ('text_primary', 'text_fallback', 'image', 'embedding')"
 
 
 def _scope(table: str) -> list[sa.Column | sa.Constraint]:
@@ -74,9 +72,6 @@ def upgrade() -> None:
     with op.batch_alter_table("memory_records") as batch:
         batch.add_column(sa.Column("search_tokens", sa.Text(), nullable=True))
         batch.add_column(sa.Column("search_tokens_analyzer", sa.String(20), nullable=True))
-    with op.batch_alter_table("system_llm_settings") as batch:
-        batch.drop_constraint("ck_system_llm_settings_role", type_="check")
-        batch.create_check_constraint("ck_system_llm_settings_role", _ROLES_AFTER)
 
     op.create_table(
         "memory_embeddings",
@@ -203,10 +198,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     for table in reversed(_TABLES):
         op.drop_table(table)
-    op.execute(sa.text("DELETE FROM system_llm_settings WHERE role = 'embedding'"))
-    with op.batch_alter_table("system_llm_settings") as batch:
-        batch.drop_constraint("ck_system_llm_settings_role", type_="check")
-        batch.create_check_constraint("ck_system_llm_settings_role", _ROLES_BEFORE)
     with op.batch_alter_table("memory_records") as batch:
         batch.drop_column("search_tokens_analyzer")
         batch.drop_column("search_tokens")

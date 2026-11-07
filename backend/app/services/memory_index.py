@@ -57,17 +57,19 @@ async def on_saved(db: AsyncSession, context: OrgContext, record: MemoryRecord) 
     )
 
 
+def backfill_key(model: str, dimensions: int, generation: int) -> str:
+    """One company-wide job per model choice (a new choice is a new generation)."""
+    return f"all:{model}@{dimensions}:{generation}"
+
+
 async def enqueue_backfill(
     db: AsyncSession, context: OrgContext, embedder: memory_embedder.MemoryEmbedder
 ) -> None:
+    key = backfill_key(embedder.model, embedder.dimensions, getattr(embedder, "generation", 0))
     await jobs.enqueue(
         db,
         context,
-        jobs.EnqueueRequest(
-            type=INDEX_JOB,
-            payload={"all": True},
-            idempotency_key=f"all:{embedder.model}@{embedder.dimensions}",
-        ),
+        jobs.EnqueueRequest(type=INDEX_JOB, payload={"all": True}, idempotency_key=key),
         actor_id=None,
     )
 
@@ -167,6 +169,7 @@ def register_jobs() -> None:
 
 __all__ = [
     "INDEX_JOB",
+    "backfill_key",
     "enqueue_backfill",
     "index_records",
     "on_saved",

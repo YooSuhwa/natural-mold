@@ -17,6 +17,7 @@ import type {
   MemoryRecordUpdate,
   MemoryScopeDelete,
   MemoryScopeQuery,
+  MemoryVectorUpdate,
   UserMemorySettingsUpdate,
 } from '@/lib/types/memory'
 
@@ -33,6 +34,7 @@ export const memoryKeys = {
   proposals: (status: MemoryProposalStatusFilter) => ['memory', 'proposals', status] as const,
   profilesAll: ['memory', 'profiles'] as const,
   profiles: (agentId: string | null) => ['memory', 'profiles', agentId] as const,
+  vector: ['memory', 'vector'] as const,
   scopeCount: (query: MemoryScopeQuery) =>
     ['memory', 'scope-count', query.scope, query.agentId ?? null] as const,
 }
@@ -265,5 +267,30 @@ export function usePinMemory() {
 export function useMemoryRecallPreview() {
   return useMutation({
     mutationFn: (data: MemoryRecallPreviewRequest) => memoryApi.previewRecall(data),
+  })
+}
+
+/** The company memory vector model and its re-embedding progress (plan 15, Q14). */
+export function useMemoryVectorStatus() {
+  return useQuery({
+    queryKey: memoryKeys.vector,
+    queryFn: memoryApi.getVectorStatus,
+    staleTime: 10_000,
+    // Poll while a re-embedding job is waiting or running.
+    refetchInterval: (query) => {
+      const state = query.state.data?.job_state
+      return state === 'queued' || state === 'running' ? 5_000 : false
+    },
+  })
+}
+
+export function useUpdateMemoryVector() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: MemoryVectorUpdate) => memoryApi.updateVector(data),
+    onSuccess: (status) => {
+      qc.setQueryData(memoryKeys.vector, status)
+      void qc.invalidateQueries({ queryKey: memoryKeys.vector })
+    },
   })
 }

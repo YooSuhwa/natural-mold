@@ -1,6 +1,9 @@
 import { render, screen, userEvent, waitFor, within } from '../test-utils'
 import MemorySettingsPage from '@/app/settings/memory/page'
+import { ApiError } from '@/lib/api/client'
 import type {
+  MemoryVectorModel,
+  MemoryVectorStatus,
   MemoryPolicy,
   MemoryProfile,
   MemoryRecallPreview,
@@ -27,6 +30,13 @@ const api = vi.hoisted(() => ({
   pin: vi.fn(),
   unpin: vi.fn(),
   previewRecall: vi.fn(),
+  getVectorStatus: vi.fn(),
+  updateVector: vi.fn(),
+}))
+
+const session = vi.hoisted(() => ({ user: { id: 'user-1', is_super_user: false } }))
+vi.mock('@/lib/auth/session', () => ({
+  useSession: () => ({ data: session.user, isPending: false }),
 }))
 
 vi.mock('@/lib/api/memory', async (importOriginal) => ({
@@ -110,6 +120,48 @@ const REVOKED = makeRecord({
   approval_channel: 'auto_policy',
 })
 
+const LARGE: MemoryVectorModel = {
+  id: 'embed-large',
+  display_name: 'Embedding Large',
+  model_name: 'text-embedding-3-large',
+  provider: 'openai',
+  dimensions: 1024,
+  source: 'platform',
+}
+const SMALL: MemoryVectorModel = {
+  ...LARGE,
+  id: 'embed-small',
+  display_name: 'Embedding Small',
+  model_name: 'text-embedding-3-small',
+  dimensions: 512,
+}
+
+function vectorStatus(overrides: Partial<MemoryVectorStatus> = {}): MemoryVectorStatus {
+  return {
+    model: null,
+    candidates: [LARGE, SMALL],
+    total: 12,
+    embedded: 0,
+    other_vectors: 0,
+    job_state: null,
+    job_progress: null,
+    floor_measured: false,
+    can_manage: true,
+    ...overrides,
+  }
+}
+
+async function openSettingsTab() {
+  render(<MemorySettingsPage />)
+  await userEvent.click(await screen.findByRole('tab', { name: '설정' }))
+  return screen.findByTestId('memory-vector-card')
+}
+
+async function chooseVectorOption(name: string) {
+  await userEvent.click(screen.getByTestId('memory-vector-model-trigger'))
+  await userEvent.click(await screen.findByRole('option', { name }))
+}
+
 describe('memory settings page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -145,6 +197,8 @@ describe('memory settings page', () => {
     api.revoke.mockResolvedValue({ ...ACTIVE, status: 'revoked' })
     api.restore.mockResolvedValue({ ...REVOKED, status: 'active' })
     api.delete.mockResolvedValue(undefined)
+    api.getVectorStatus.mockResolvedValue(vectorStatus())
+    session.user = { id: 'user-1', is_super_user: false }
   })
 
   it('renders the tabs and each tab content', async () => {
@@ -476,6 +530,128 @@ describe('memory settings page', () => {
       mode === 'skipped' ? '쓰지 않음' : '접미사 목록',
     )
     expect(within(result).queryByText('후보 기억')).not.toBeInTheDocument()
+  })
+
+  describe('memory vector model card (Q14)', () => {
+    it('cannot be turned on without a registered embedding model', async () => {
+      session.user = { id: 'op', is_super_user: true }
+      api.getVectorStatus.mockResolvedValue(vectorStatus({ candidates: [] }))
+      await openSettingsTab()
+
+      expect(screen.getByTestId('memory-vector-state')).toHaveTextContent('꺼져 있습니다')
+      expect(screen.getByTestId('memory-vector-model-trigger')).toBeDisabled()
+      const note = screen.getByTestId('memory-vector-no-models')
+      expect(note).toHaveTextContent('등록된 임베딩 모델이 없어 켤 수 없습니다.')
+      expect(within(note).getByRole('link')).toHaveAttribute('href', '/settings/models')
+    })
+
+    it('is read-only for someone who cannot manage the company', async () => {
+      api.getVectorStatus.mockResolvedValue(
+        vectorStatus({
+          model: LARGE,
+          embedded: 7,
+          can_manage: false,
+          floor_measured: true,
+          job_state: 'running',
+          job_progress: 40,
+          other_vectors: 3,
+        }),
+      )
+      await openSettingsTab()
+
+      expect(screen.getByTestId('memory-vector-state')).toHaveTextContent(
+        '현재 임베딩: Embedding Large (1024차원) — 7/12개 완료',
+      )
+      expect(screen.getByTestId('memory-vector-job')).toHaveTextContent(
+        '다시 임베딩 중 40%. 끝날 때까지 키워드로만 찾습니다.',
+      )
+      expect(screen.getByTestId('memory-vector-other')).toHaveTextContent('3개')
+      expect(screen.queryByTestId('memory-vector-unmeasured')).not.toBeInTheDocument()
+      expect(screen.getByTestId('memory-vector-model-trigger')).toBeDisabled()
+      expect(screen.getByTestId('memory-vector-read-only')).toHaveTextContent(
+        '회사 관리자만 바꿀 수 있습니다.',
+      )
+      expect(screen.queryByTestId('memory-vector-no-models')).not.toBeInTheDocument()
+    })
+
+    it('confirms how many memories are embedded again and sends that count', async () => {
+      api.getVectorStatus.mockResolvedValue(vectorStatus({ model: LARGE, embedded: 12 }))
+      api.updateVector.mockResolvedValue(vectorStatus({ model: SMALL, job_state: 'queued' }))
+      await openSettingsTab()
+      expect(screen.getByTestId('memory-vector-unmeasured')).toHaveTextContent(
+        '기준 미측정: 평가 전까지 키워드로만 찾습니다.',
+      )
+
+      await chooseVectorOption('Embedding Small (512차원)')
+      // Vectors of a model other than the current one are not counted: all 12 again.
+      expect(await screen.findByTestId('memory-vector-confirm')).toHaveTextContent(
+        '기억 12개를 다시 임베딩합니다. 끝날 때까지 키워드로만 찾습니다. 바꿀까요?',
+      )
+      await userEvent.click(screen.getByRole('button', { name: '바꾸기' }))
+      await waitFor(() =>
+        expect(api.updateVector).toHaveBeenCalledWith({
+          model_id: 'embed-small',
+          confirm_count: 12,
+        }),
+      )
+      await waitFor(() =>
+        expect(screen.queryByTestId('memory-vector-confirm')).not.toBeInTheDocument(),
+      )
+    })
+
+    it('re-reads and asks again with the server count when the count changed', async () => {
+      api.updateVector
+        .mockRejectedValueOnce(
+          new ApiError(
+            422,
+            'MEMORY_VECTOR_COUNT_CHANGED',
+            '다시 임베딩할 기억 수가 바뀌었습니다(15개). 새로 확인해 주세요',
+          ),
+        )
+        .mockResolvedValueOnce(vectorStatus({ model: LARGE, total: 15, job_state: 'queued' }))
+      await openSettingsTab()
+
+      await chooseVectorOption('Embedding Large (1024차원)')
+      expect(await screen.findByTestId('memory-vector-confirm')).toHaveTextContent('기억 12개')
+      const reads = api.getVectorStatus.mock.calls.length
+      api.getVectorStatus.mockResolvedValue(vectorStatus({ total: 15 }))
+      await userEvent.click(screen.getByRole('button', { name: '바꾸기' }))
+
+      await waitFor(() =>
+        expect(screen.getByTestId('memory-vector-confirm')).toHaveTextContent('기억 15개'),
+      )
+      expect(screen.getByRole('alert')).toHaveTextContent('그사이 기억 수가 바뀌었습니다')
+      expect(api.getVectorStatus.mock.calls.length).toBeGreaterThan(reads)
+      await userEvent.click(screen.getByRole('button', { name: '바꾸기' }))
+      await waitFor(() =>
+        expect(api.updateVector).toHaveBeenLastCalledWith({
+          model_id: 'embed-large',
+          confirm_count: 15,
+        }),
+      )
+    })
+
+    it('turns off with confirm_count 0 and asks whether to drop the vectors', async () => {
+      api.getVectorStatus.mockResolvedValue(
+        vectorStatus({ model: LARGE, embedded: 12, floor_measured: true }),
+      )
+      api.updateVector.mockResolvedValue(vectorStatus())
+      await openSettingsTab()
+
+      await chooseVectorOption('끔')
+      const dialog = await screen.findByTestId('memory-vector-off')
+      const drop = within(dialog).getByRole('checkbox', { name: '저장된 벡터도 지우기' })
+      expect(drop).not.toBeChecked()
+      await userEvent.click(drop)
+      await userEvent.click(screen.getByRole('button', { name: '끄기' }))
+      await waitFor(() =>
+        expect(api.updateVector).toHaveBeenCalledWith({
+          model_id: null,
+          confirm_count: 0,
+          drop_vectors: true,
+        }),
+      )
+    })
   })
 })
 

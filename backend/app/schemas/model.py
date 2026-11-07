@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+ModelKind = Literal["chat", "embedding"]
+
 
 class ModelCreate(BaseModel):
     """Payload for ``POST /api/models`` — register a discovered or custom model.
@@ -18,6 +20,9 @@ class ModelCreate(BaseModel):
     provider: str
     model_name: str
     display_name: str
+    # Memory plan Q14: an embedding model needs its vector width; a chat model has none.
+    kind: ModelKind = "chat"
+    embedding_dimensions: int | None = Field(default=None, ge=1, le=4096)
     base_url: str | None = None
     is_default: bool = False
     is_visible: bool = True
@@ -40,6 +45,8 @@ class ModelUpdate(BaseModel):
     provider: str | None = None
     model_name: str | None = None
     display_name: str | None = None
+    kind: ModelKind | None = None
+    embedding_dimensions: int | None = Field(default=None, ge=1, le=4096)
     base_url: str | None = None
     is_default: bool | None = None
     is_visible: bool | None = None
@@ -61,6 +68,8 @@ class ModelResponse(BaseModel):
     provider: str
     model_name: str
     display_name: str
+    kind: ModelKind = "chat"
+    embedding_dimensions: int | None = None
     base_url: str | None
     is_default: bool
     is_visible: bool

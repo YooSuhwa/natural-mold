@@ -46,8 +46,10 @@ export default function ModelsPage() {
   const [showHidden, setShowHidden] = useState(true)
   const showOperatorControls = sessionHydrated && isSuper
   const effectiveShowHidden = showOperatorControls && showHidden
+  // Q14: the catalog lists every kind (pickers get chat models only), with a kind badge.
   const { data: models, isLoading } = useModels({
     includeHidden: effectiveShowHidden,
+    kind: 'all',
   })
   const { data: healthEntries } = useModelHealth()
   const { data: credentials } = useCredentials()

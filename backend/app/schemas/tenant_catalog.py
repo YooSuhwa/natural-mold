@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from app.schemas.model import ModelCreate, ModelUpdate
 from app.schemas.org_catalog import CatalogKind
 
-SystemLlmRole = Literal["text_primary", "text_fallback", "image", "embedding"]
+SystemLlmRole = Literal["text_primary", "text_fallback", "image"]
 OrgIds = list[uuid.UUID]
 
 
@@ -33,6 +33,8 @@ class TenantModelView(BaseModel):
     provider: str
     model_name: str
     display_name: str
+    kind: str = "chat"
+    embedding_dimensions: int | None = None
     base_url: str | None
     is_default: bool
     is_visible: bool

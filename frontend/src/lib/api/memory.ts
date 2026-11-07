@@ -26,6 +26,8 @@ import type {
   MemoryScopeFilter,
   MemoryScopeQuery,
   MemoryStatusFilter,
+  MemoryVectorStatus,
+  MemoryVectorUpdate,
   UserMemorySettings,
   UserMemorySettingsUpdate,
 } from '@/lib/types/memory'
@@ -143,6 +145,12 @@ export const memoryApi = {
   previewRecall: (data: MemoryRecallPreviewRequest) =>
     apiFetch<MemoryRecallPreview>('/api/me/memory-recall-preview', {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getVectorStatus: () => apiFetch<MemoryVectorStatus>('/api/me/memory-vector'),
+  updateVector: (data: MemoryVectorUpdate) =>
+    apiFetch<MemoryVectorStatus>('/api/me/memory-vector', {
+      method: 'PUT',
       body: JSON.stringify(data),
     }),
 }

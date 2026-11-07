@@ -100,6 +100,8 @@ MEMORY_PROPOSAL_REJECT: Final = "memory.proposal_reject"
 MEMORY_PROFILE_UPDATE: Final = "memory.profile_update"
 MEMORY_RECORD_PIN: Final = "memory.record_pin"
 MEMORY_RECORD_UNPIN: Final = "memory.record_unpin"
+# Q14: a company's memory vector model chosen, changed or turned off (no memory text).
+MEMORY_VECTOR_MODEL_UPDATE: Final = "memory.vector_model_update"
 # H-01 access requests (14.1 "요청"); expiry is a status change, not an audit action.
 ACCESS_REQUEST_CREATE: Final = "access_request.create"
 ACCESS_REQUEST_APPROVE: Final = "access_request.approve"

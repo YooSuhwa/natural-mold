@@ -229,7 +229,11 @@ def build_read_tools(
         """사용 가능한 모델 목록을 조회합니다."""
         async with _session() as session:
             result = await session.execute(  # visible, platform + caller company (E-07)
-                select(Model).where(Model.is_visible.is_(True), model_scope(context.tenant_id))
+                select(Model).where(
+                    Model.is_visible.is_(True),
+                    Model.kind == "chat",
+                    model_scope(context.tenant_id),
+                )
             )
             models = result.scalars().all()
             items = [

@@ -49,6 +49,8 @@ PLATFORM_REASONS: dict[str, str] = {
     # TODO(8.9 company overrides): once system_llm_settings gains tenant rows,
     # this read must filter ``tenant_id IS NULL`` (or move to a tenant session).
     "system_llm.resolve": "8.9 system LLM: platform default (company override later)",
+    "memory.embedding_model": "순번 15 Q14: a company's memory embedding model may be a "
+    "platform model with a platform credential",
     "guardrail.model_settings": "8.9 instance-wide guardrail model service setting",
     "jobs.worker": "순번 5 job worker: claims due jobs of every company; runs each in its own",
     "audit.platform_event": "8.9 audit: platform events (denied before a company)",

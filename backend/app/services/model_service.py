@@ -47,7 +47,8 @@ async def resolve_model(db: AsyncSession, model_name: str, *, strict: bool = Fal
     """
 
     order = (Model.is_default.desc(), Model.created_at.asc())
-    platform = model_scope(None)  # a company model (E-07) never resolves by name
+    # A company model (E-07) never resolves by name; neither does an embedding model (Q14).
+    platform = model_scope(None) & (Model.kind == "chat")
 
     result = await db.execute(
         select(Model).where(platform, Model.display_name == model_name).order_by(*order).limit(1)
@@ -77,12 +78,28 @@ async def resolve_model(db: AsyncSession, model_name: str, *, strict: bool = Fal
     return result.scalars().first()
 
 
+def check_kind(kind: str, dimensions: int | None, *, is_default: bool) -> None:
+    """Memory plan Q14: an embedding model needs its vector width, a chat model has none,
+    and only a chat model can be the default (agents bind the default)."""
+    if kind == "embedding" and dimensions is None:
+        raise HTTPException(status_code=422, detail="an embedding model needs its dimensions")
+    if kind == "chat" and dimensions is not None:
+        raise HTTPException(status_code=422, detail="only an embedding model has dimensions")
+    if kind == "embedding" and is_default:
+        raise HTTPException(status_code=422, detail="an embedding model cannot be the default")
+
+
 async def list_models(
-    db: AsyncSession, *, include_hidden: bool = False, context: OrgContext | None = None
+    db: AsyncSession,
+    *,
+    include_hidden: bool = False,
+    context: OrgContext | None = None,
+    kind: str | None = "chat",
 ) -> list[dict]:
     """List models with agent_count. Filters hidden rows by default — only
     super_user surfaces (the ``/models`` admin page) should pass
-    ``include_hidden=True``. Platform models plus the caller company's models (E-07)."""
+    ``include_hidden=True``. Platform models plus the caller company's models (E-07).
+    ``kind``: chat models by default (every model picker); ``None`` lists every kind."""
 
     stmt = (
         select(Model, func.count(Agent.id).label("agent_count"))
@@ -92,6 +109,8 @@ async def list_models(
     )
     if not include_hidden:
         stmt = stmt.where(Model.is_visible.is_(True))
+    if kind is not None:
+        stmt = stmt.where(Model.kind == kind)
     stmt = stmt.where(model_scope(None if include_hidden or not context else context.tenant_id))
     result = await db.execute(stmt)
     return [serialize_model(row[0], agent_count=row[1]) for row in result.all()]
@@ -129,6 +148,8 @@ def serialize_model(model: Model, *, agent_count: int = 0) -> dict:
         "provider": model.provider,
         "model_name": model.model_name,
         "display_name": model.display_name,
+        "kind": model.kind,
+        "embedding_dimensions": model.embedding_dimensions,
         "base_url": model.base_url,
         "is_default": model.is_default,
         "is_visible": model.is_visible,
@@ -174,11 +195,14 @@ async def create_model(db: AsyncSession, *, data: ModelCreate) -> Model:
             status_code=422,
             detail="cannot mark a hidden model as default",
         )
+    check_kind(data.kind, data.embedding_dimensions, is_default=data.is_default)
 
     model = Model(
         provider=data.provider,
         model_name=data.model_name,
         display_name=data.display_name,
+        kind=data.kind,
+        embedding_dimensions=data.embedding_dimensions,
         base_url=data.base_url,
         is_default=data.is_default,
         is_visible=data.is_visible,
@@ -221,6 +245,13 @@ async def update_model(db: AsyncSession, *, model: Model, data: ModelUpdate) -> 
             status_code=422,
             detail="cannot mark a hidden model as default",
         )
+    check_kind(
+        updated.get("kind", model.kind),
+        updated.get("embedding_dimensions", model.embedding_dimensions),
+        is_default=final_default,
+    )
+    if updated.get("kind", model.kind) != model.kind:
+        await ensure_model_unused(db, model.id)
     for key, value in updated.items():
         setattr(model, key, value)
 
@@ -247,6 +278,13 @@ async def ensure_model_unused(db: AsyncSession, model_id: uuid.UUID) -> None:
         raise HTTPException(
             status_code=409,
             detail=f"model is used by {count} agent(s); rebind them before deleting",
+        )
+    from app.services import memory_vectors  # it reads this module's models
+
+    if await memory_vectors.companies_using(db, model_id):
+        raise HTTPException(
+            status_code=409,
+            detail="model is a company's memory vector model; turn it off there first",
         )
 
 

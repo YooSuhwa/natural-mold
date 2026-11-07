@@ -23,6 +23,13 @@ import {
 } from '@/components/ui/select'
 import { ModelSourceBadge } from './model-source-badge'
 import { ModelConnectionTest } from './model-connection-test'
+import {
+  DEFAULT_DIMENSIONS_INPUT,
+  ModelKindBadge,
+  ModelKindFields,
+  modelKindPayload,
+  modelKindValid,
+} from './model-kind-fields'
 import { RankingsSection } from './model-rankings'
 import { StatusChip } from '@/components/shared/status-chip'
 import { HealthHistoryChart } from '@/components/shared/health-history-chart'
@@ -32,7 +39,8 @@ import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { useModelHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 import { filterLlmCredentials, resolveCredentialForModel } from '@/lib/utils/credential-resolution'
 import { formatDisplayDateTime } from '@/lib/utils/display-format'
-import type { Model } from '@/lib/types/model'
+import { ApiError } from '@/lib/api/client'
+import type { Model, ModelKind } from '@/lib/types/model'
 
 interface ModelEditDialogProps {
   model: Model | null
@@ -49,6 +57,8 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
   const { data: definitions } = useCredentialTypes()
 
   const [displayName, setDisplayName] = useState('')
+  const [kind, setKind] = useState<ModelKind>('chat')
+  const [dimensions, setDimensions] = useState(DEFAULT_DIMENSIONS_INPUT)
   const [inputPriceM, setInputPriceM] = useState<string>('')
   const [outputPriceM, setOutputPriceM] = useState<string>('')
   const [contextWindow, setContextWindow] = useState<string>('')
@@ -77,6 +87,12 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
   useEffect(() => {
     if (!model) return
     setDisplayName(model.display_name)
+    setKind(model.kind)
+    setDimensions(
+      model.embedding_dimensions === null
+        ? DEFAULT_DIMENSIONS_INPUT
+        : String(model.embedding_dimensions),
+    )
     const ip = tokenPriceToPerMillion(model.cost_per_input_token)
     const op = tokenPriceToPerMillion(model.cost_per_output_token)
     setInputPriceM(ip === '' ? '' : String(ip))
@@ -96,8 +112,10 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
 
   if (!model) return null
 
+  const isEmbedding = kind === 'embedding'
+
   async function handleSave() {
-    if (!model) return
+    if (!model || !modelKindValid(kind, dimensions)) return
     try {
       await update.mutateAsync({
         id: model.id,
@@ -110,13 +128,19 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
           supports_vision: supportsVision,
           supports_function_calling: supportsTools,
           supports_reasoning: supportsReasoning,
-          is_default: isDefault,
+          ...modelKindPayload(kind, dimensions),
+          // An embedding model cannot be the default (agents bind the default).
+          is_default: isEmbedding ? false : isDefault,
           is_visible: isVisible,
         },
       })
       toast.success(te('toast.updated'))
       onOpenChange(false)
     } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && kind !== model.kind) {
+        toast.error(te('toast.kindInUse'))
+        return
+      }
       toast.error(e instanceof Error ? e.message : te('toast.saveFailed'))
     }
   }
@@ -144,6 +168,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
           <span className="flex items-center gap-2">
             {model.display_name}
             <ModelSourceBadge source={model.source} />
+            <ModelKindBadge kind={model.kind} dimensions={model.embedding_dimensions} />
           </span>
         }
         description={
@@ -167,56 +192,71 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
               emptyHint={model.source === 'manual' ? te('customIdBenchmarkHint') : undefined}
             />
 
-            <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 p-2">
-              <span className="text-xs text-muted-foreground">{te('testHint')}</span>
-              {!testOpen ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setTestOpen(true)}
-                  disabled={llmCredentials.length === 0}
-                  data-testid="edit-test-button"
-                >
-                  <Zap className="size-3.5" /> {te('testConnection')}
-                </Button>
-              ) : (
-                <Button variant="ghost" size="sm" onClick={() => setTestOpen(false)}>
-                  {te('hideTest')}
-                </Button>
-              )}
-            </div>
+            {/* The connection test is a chat completion; an embedding model skips it. */}
+            {model.kind === 'chat' ? (
+              <>
+                <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 p-2">
+                  <span className="text-xs text-muted-foreground">{te('testHint')}</span>
+                  {!testOpen ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTestOpen(true)}
+                      disabled={llmCredentials.length === 0}
+                      data-testid="edit-test-button"
+                    >
+                      <Zap className="size-3.5" /> {te('testConnection')}
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" size="sm" onClick={() => setTestOpen(false)}>
+                      {te('hideTest')}
+                    </Button>
+                  )}
+                </div>
 
-            {testOpen && effectiveTestCredId && (
-              <div className="space-y-2">
-                <Select value={effectiveTestCredId} onValueChange={(v) => v && setTestCredId(v)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={te('selectCredential')}>
-                      {(selected) =>
-                        llmCredentials.find((c) => c.id === selected)?.name ??
-                        te('selectCredential')
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {llmCredentials.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <ModelConnectionTest
-                  key={`${model.id}-${effectiveTestCredId}`}
-                  mode="registered"
-                  modelId={model.id}
-                  credentialId={effectiveTestCredId}
-                  modelLabel={model.display_name}
-                  autoStart
-                />
-              </div>
-            )}
+                {testOpen && effectiveTestCredId && (
+                  <div className="space-y-2">
+                    <Select
+                      value={effectiveTestCredId}
+                      onValueChange={(v) => v && setTestCredId(v)}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={te('selectCredential')}>
+                          {(selected) =>
+                            llmCredentials.find((c) => c.id === selected)?.name ??
+                            te('selectCredential')
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {llmCredentials.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <ModelConnectionTest
+                      key={`${model.id}-${effectiveTestCredId}`}
+                      mode="registered"
+                      modelId={model.id}
+                      credentialId={effectiveTestCredId}
+                      modelLabel={model.display_name}
+                      autoStart
+                    />
+                  </div>
+                )}
+              </>
+            ) : null}
 
             <div className="space-y-4">
+              <ModelKindFields
+                idPrefix="e"
+                kind={kind}
+                dimensions={dimensions}
+                onKindChange={setKind}
+                onDimensionsChange={setDimensions}
+              />
               <div className="space-y-1.5">
                 <label htmlFor="e-display" className="text-xs font-medium">
                   {te('fields.displayName')}
@@ -308,7 +348,8 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
                 <Toggle
                   id="e-default"
                   label={te('fields.setDefault')}
-                  checked={isDefault}
+                  checked={isEmbedding ? false : isDefault}
+                  disabled={isEmbedding}
                   onChange={setIsDefault}
                 />
                 <Toggle
@@ -318,6 +359,11 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
                   onChange={setIsVisible}
                 />
               </div>
+              {isEmbedding ? (
+                <p className="moldy-ui-caption text-muted-foreground">
+                  {t('kind.defaultDisabled')}
+                </p>
+              ) : null}
 
               <Separator />
 
@@ -368,6 +414,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
           onSubmit={handleSave}
           submitLabel={te('save')}
           pending={update.isPending}
+          disabled={!modelKindValid(kind, dimensions)}
         />
       </DialogShell.Footer>
     </DialogShell>
@@ -493,19 +540,28 @@ function Toggle({
   id,
   label,
   checked,
+  disabled,
   onChange,
 }: {
   id: string
   label: string
   checked: boolean
+  disabled?: boolean
   onChange: (next: boolean) => void
 }) {
   return (
     <label
       htmlFor={id}
-      className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+      className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+        disabled ? 'opacity-60' : ''
+      }`}
     >
-      <Checkbox id={id} checked={checked} onCheckedChange={(next) => onChange(Boolean(next))} />
+      <Checkbox
+        id={id}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={(next) => onChange(Boolean(next))}
+      />
       {label}
     </label>
   )
