@@ -216,6 +216,20 @@ worker: workflow.run 처리기
 | 이전과 되돌리기 | i26은 새 테이블·NULL 허용 열만. 되돌리기는 테이블 삭제(워크플로 데이터 소실 경고) |
 | 외부 API | 1차 없음(Agent API로 여는 것은 확장 단계, 기존 `/workflows/run` 호환 경로와 이름이 겹치지 않게) |
 
+### 3.9 쓰는 방식 (근거는 부록 B)
+
+다른 제품은 같은 워크플로를 세 가지로 쓴다.
+- **실행형:** 입력을 받아 한 번 돌고 결과를 낸다. 실행 폼, 예약, 웹훅·API, 일괄 실행(CSV)으로 시작한다(Dify Workflow, n8n Form·Schedule·Webhook).
+- **대화형:** 사용자 메시지마다 흐름 전체가 돌고 대화 기억을 가진다(Dify Chatflow, n8n Chat Trigger, Flowise Chatflow, OpenAI Agent Builder + ChatKit).
+- **도구형:** 게시한 워크플로를 에이전트가 채팅 중에 도구로 부른다(Dify "워크플로를 도구로 게시"·MCP 서버, n8n Call Workflow Tool·MCP Server Trigger,
+  Copilot Studio agent flow, Langflow MCP 서버).
+
+Moldy에서 채팅의 주체는 에이전트이고 대화 기억·도구·승인도 에이전트가 가진다. 그래서 대화형 흐름을 따로 만들지 않고, 채팅에서 쓰는 길은 도구형으로 연다(Q9).
+- **1차:** 실행형만. 워크플로 화면 "실행" → 시작 노드 입력 폼 → 실행 상세(캔버스 겹쳐 보기), 실행 목록, 승인 대기는 승인함.
+- **확장 1:** 도구형. 에이전트 설정에서 게시된 워크플로를 도구로 붙인다. 시작 노드 입력이 도구 인자, 출력 노드가 도구 결과다. 워크플로 실행은 그 채팅 실행의
+  하위 실행으로 기록하고, 업무 승인 노드는 채팅의 승인 카드로 뜬다. 실행자는 채팅한 사용자, 권한은 워크플로 `can_run`.
+- **확장 2:** 예약(기존 예약 트리거가 에이전트 대신 워크플로를 대상으로), Agent API·웹훅, 일괄 실행.
+
 ## 4. 결정 질문
 
 | 번호 | 결정할 내용 | 선택지 | 추천 |
@@ -228,6 +242,7 @@ worker: workflow.run 처리기
 | Q6 | 편집기 구현(기획서 D33) | LangConfig 선택 이식 / 기존 `@xyflow/react` 12로 직접 구현 / xyflow 유료 "Workflow Editor" 템플릿(€129~, ELK 기반) 구매 | **1차는 직접 구현**. 노드 7종이고 비주얼 설정이 이미 xyflow 12를 쓴다. LangConfig는 ReactFlow 11 기반이라 이식 비용이 이득보다 크고, 유료 템플릿은 ELK(EPL/GPL 라이선스 검토 필요)와 자체 상태 구조를 들여와 편집 명령 모델(3.7)과 겹친다 |
 | Q7 | 배치 방식 | 자동 정렬만(좌표 저장 안 함) / 자유 배치 + 정렬 버튼 | **자동 정렬만**. 위→아래로 읽히는 순서가 보장되고 diff·AI 편집·좁은 화면 목록이 단순해진다. 노드가 수십 개로 늘어 사람이 묶어 보고 싶어지면 그룹(하위 흐름)으로 푼다 |
 | Q8 | AI로 만들고 고치기 시점 | 23번 안(W5, 핵심 노드 검증 뒤) / 나머지 1차 노드와 함께 / 하지 않음 | **23번 안의 W5**. 편집 명령 모델과 diff 렌더러는 W3에서 이미 만들므로 AI 제안은 그 위에 얹는다. 핵심 실행이 검증되기 전에는 열지 않는다 |
+| Q9 | 쓰는 방식(3.9) | 실행형만 / 실행형 + 대화형(Chatflow) / 실행형 + 도구형 | **1차 실행형, 확장 1에 도구형, 대화형은 만들지 않음**. 채팅의 주체는 에이전트라 대화형을 따로 두면 기억·승인·도구 설정이 두 군데가 된다. 채팅에서 쓰는 요구는 에이전트가 워크플로를 도구로 부르는 것으로 채운다 |
 
 ## 5. PR 순서
 
@@ -299,3 +314,16 @@ xyflow 유료 템플릿("Workflow Editor", "AI Workflow Editor", €129~)은 참
 
 확인하지 못한 것: OpenAI Agent Builder의 캔버스 방향과 추가 방식, n8n의 연결선 "+" 동작과 AI 변경 단위 되돌리기, Google Agent Designer의 캔버스 유무, Vellum "View Changes" 원문.
 
+## 부록 B. 쓰는 방식 리서치 (2026-11-08)
+
+| 제품 | 실행형 | 대화형 | 도구형 |
+|---|---|---|---|
+| Dify | Workflow: 한 번 실행, 트리거(예약·웹훅·연동 이벤트)는 Workflow만([workflow-chatflow](https://docs.dify.ai/en/cloud/use-dify/build/workflow-chatflow)). 웹앱 실행 폼과 CSV 일괄 실행([workflow webapp](https://docs.dify.ai/en/use-dify/publish/webapp/workflow-webapp)), API | Chatflow: 메시지마다 실행, Answer 노드로 끝남, 대화 기억 | 워크플로를 도구로 게시해 에이전트·다른 워크플로가 호출([v0.6.9](https://github.com/langgenius/dify/releases/tag/0.6.9)), 앱을 MCP 서버로 게시([publish mcp](https://docs.dify.ai/en/use-dify/publish/publish-mcp)) |
+| n8n | Form Trigger(호스팅 폼), Schedule, Webhook, 한 워크플로에 트리거 여러 개 | Chat Trigger: 호스팅 채팅 페이지 또는 사이트 삽입, Agent 노드와 연결 | Call n8n Workflow Tool(에이전트가 하위 워크플로 호출), MCP Server Trigger |
+| Copilot Studio | 게시된 에이전트의 자율 트리거(예약·메일) | 대화형 에이전트는 사용자가 시작 | agent flow: "에이전트가 흐름을 호출할 때" 트리거 하나, 동기 실행으로 토픽이 결과를 기다림 |
+| OpenAI Agent Builder | 게시 = 버전 스냅숏, Agents SDK 코드 내보내기 | 워크플로 ID를 ChatKit에 넣어 채팅으로 배포([agent builder](https://developers.openai.com/api/docs/guides/agent-builder), 2026-11-30 종료 예정) | - |
+| Flowise | Prediction API, 웹훅 | Chatflow·Agentflow V2, 삽입 채팅 위젯([docs](https://docs.flowiseai.com)) | - |
+| Langflow | API 실행 | Playground | 프로젝트를 MCP 서버로, 켠 흐름이 도구([mcp-server](https://docs.langflow.org/mcp-server)) |
+
+읽은 것: 대화형을 둔 제품은 대부분 "흐름 자체가 챗봇"인 구조다. 도구형은 Dify·n8n·Copilot Studio·Langflow가 모두 갖고 있어, 에이전트 중심 제품에서
+워크플로를 채팅에 붙이는 표준 방식이다. n8n·Copilot Studio 항목은 공식 문서가 아니라 해설 글로 확인했다.
