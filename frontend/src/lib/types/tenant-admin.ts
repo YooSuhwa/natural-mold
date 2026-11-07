@@ -5,6 +5,7 @@
  */
 
 import type { TenantOverview } from './organization'
+import type { ModelKind } from './model'
 
 export type TenantAccess = TenantOverview['access']
 
@@ -105,6 +106,9 @@ export interface TenantModel {
   provider: string
   model_name: string
   display_name: string
+  /** Memory plan Q14: chat or embedding (memory vectors). */
+  kind: ModelKind
+  embedding_dimensions: number | null
   base_url: string | null
   is_default: boolean
   is_visible: boolean
@@ -124,6 +128,8 @@ export interface TenantModelCreate {
   provider: string
   model_name: string
   display_name: string
+  kind?: ModelKind
+  embedding_dimensions?: number | null
   base_url?: string | null
   default_credential_id?: string | null
   allowed_org_ids: string[]
@@ -132,6 +138,8 @@ export interface TenantModelCreate {
 /** Platform models accept only `allowed_org_ids`. */
 export interface TenantModelUpdate {
   display_name?: string
+  kind?: ModelKind
+  embedding_dimensions?: number | null
   base_url?: string | null
   default_credential_id?: string | null
   allowed_org_ids?: string[] | null

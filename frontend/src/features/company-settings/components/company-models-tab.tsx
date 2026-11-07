@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
+import { ModelKindBadge } from '@/components/model/model-kind-fields'
 import { ApiErrorState } from '@/components/shared/api-error-state'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { SettingsSectionCard } from '@/components/shared/settings-section-card'
@@ -84,6 +85,9 @@ export function CompanyModelsTab({ tenantId }: { tenantId: string }) {
                   <span className="block text-sm">{model.display_name}</span>
                   <span className="moldy-ui-caption text-muted-foreground">
                     {model.provider} / {model.model_name}
+                  </span>
+                  <span className="mt-1 block">
+                    <ModelKindBadge kind={model.kind} dimensions={model.embedding_dimensions} />
                   </span>
                 </TableCell>
                 <TableCell>

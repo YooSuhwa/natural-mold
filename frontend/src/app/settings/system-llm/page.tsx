@@ -119,10 +119,13 @@ function SlotCard({
   const provider = selectedCredential?.definition_key ?? setting.provider
 
   function loadModels(id: string) {
-    discover.mutate(id, {
-      onSuccess: (list) => setModels(list),
-      onError: (e) => toast.error(e instanceof Error ? e.message : t('toast.loadModelsFailed')),
-    })
+    discover.mutate(
+      { credentialId: id, kind: 'chat' },
+      {
+        onSuccess: (list) => setModels(list),
+        onError: (e) => toast.error(e instanceof Error ? e.message : t('toast.loadModelsFailed')),
+      },
+    )
   }
 
   function handleCredentialChange(value: string | null) {

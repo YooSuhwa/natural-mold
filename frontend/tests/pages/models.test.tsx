@@ -27,7 +27,7 @@ vi.mock('@/lib/auth/session', () => ({
 const mockDeleteModel = vi.fn()
 
 vi.mock('@/lib/hooks/use-models', () => ({
-  useModels: () => mockUseModels(),
+  useModels: (options: unknown) => mockUseModels(options),
   useUpdateModel: () => ({
     mutate: vi.fn(),
     mutateAsync: vi.fn(),
@@ -162,6 +162,31 @@ describe('ModelsPage', () => {
     expect(screen.queryByRole('columnheader', { name: '입력 단가' })).not.toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: '출력 단가' })).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /상태 확인/ })[0]).toHaveClass('px-2')
+  })
+
+  it('asks for every model kind and badges embedding models with their dimensions (Q14)', () => {
+    mockUseModels.mockReturnValue({
+      data: [
+        ...modelsWithNewFields,
+        {
+          ...modelsWithNewFields[0],
+          id: 'model-embed',
+          model_name: 'text-embedding-3-large',
+          display_name: 'Embedding Large',
+          kind: 'embedding',
+          embedding_dimensions: 1024,
+          is_default: false,
+        },
+      ],
+      isLoading: false,
+    })
+    render(<ModelsPage />)
+
+    expect(mockUseModels).toHaveBeenCalledWith(
+      expect.objectContaining({ includeHidden: true, kind: 'all' }),
+    )
+    const badges = screen.getAllByTestId('model-kind-badge').map((badge) => badge.textContent)
+    expect(badges).toEqual(['대화', '대화', '임베딩 · 1024차원'])
   })
 
   // 페이지 안의 DataTable / 모델 detail / provider 카드 / delete 흐름은

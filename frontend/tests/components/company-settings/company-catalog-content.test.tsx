@@ -24,6 +24,8 @@ const model = (overrides = {}) => ({
   provider: 'anthropic',
   model_name: 'claude-sonnet',
   display_name: 'Claude Sonnet',
+  kind: 'chat',
+  embedding_dimensions: null,
   base_url: null,
   is_default: false,
   is_visible: true,
@@ -166,6 +168,32 @@ describe('CompanyCatalogContent (S07)', () => {
       credential_id: null,
       model_name: null,
     })
+  })
+
+  it('registers a company embedding model with its dimensions (Q14)', async () => {
+    orgApiMock.tenantsApi.overview.mockResolvedValue(makeOverview('admin'))
+    api.createModel.mockResolvedValue(model({ id: 'm-3', source: 'company' }))
+    render(<CompanyCatalogContent />)
+
+    await userEvent.click(await screen.findByRole('button', { name: '모델 추가' }))
+    await userEvent.click(await screen.findByTestId('company-model-kind-trigger'))
+    await userEvent.click(await screen.findByRole('option', { name: '임베딩 모델' }))
+    await userEvent.type(screen.getByLabelText(/제공자/), 'openai')
+    await userEvent.type(screen.getByLabelText(/모델 ID/), 'bge-m3-ko')
+    await userEvent.type(screen.getByLabelText(/표시 이름/), '사내 임베딩')
+    expect(screen.getByLabelText(/차원/)).toHaveValue(1024)
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() =>
+      expect(api.createModel).toHaveBeenCalledWith(
+        'tenant-1',
+        expect.objectContaining({
+          model_name: 'bge-m3-ko',
+          kind: 'embedding',
+          embedding_dimensions: 1024,
+        }),
+      ),
+    )
   })
 
   it.each(['member', 'auditor'] as const)('fails closed for a company %s', async (access) => {

@@ -334,3 +334,42 @@ export interface MemoryRecallPreview {
   tokens: number
   budget_tokens: number
 }
+
+// Plan 15 Q14: the company's memory vector model (`/api/me/memory-vector`).
+
+export interface MemoryVectorModel {
+  id: string
+  display_name: string
+  model_name: string
+  provider: string
+  dimensions: number
+  source: 'platform' | 'company'
+}
+
+export interface MemoryVectorStatus {
+  /** `null` = vectors are off (keyword recall only). */
+  model: MemoryVectorModel | null
+  /** Registered embedding models the company may choose. */
+  candidates: MemoryVectorModel[]
+  /** Memories recall may embed. */
+  total: number
+  /** Of those, how many have a vector of the chosen model. */
+  embedded: number
+  /** Vectors of any other model (removed once a re-embedding finishes). */
+  other_vectors: number
+  /** Latest re-embedding job: queued, running, succeeded, failed or canceled. */
+  job_state: string | null
+  job_progress: number | null
+  /** False: no measured cosine floor for the chosen model, so recall stays keyword-only. */
+  floor_measured: boolean
+  /** Whether this person can change it (a company admin, or a personal tenant's owner). */
+  can_manage: boolean
+}
+
+export interface MemoryVectorUpdate {
+  model_id: string | null
+  /** The number of memories the screen said would be embedded again (0 to turn off). */
+  confirm_count: number
+  /** Turning off: also remove the stored vectors. */
+  drop_vectors?: boolean
+}

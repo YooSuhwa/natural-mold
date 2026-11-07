@@ -24,9 +24,14 @@ import { useCreateModel, useDiscoverModels } from '@/lib/hooks/use-models'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { formatDisplayNumber } from '@/lib/utils/display-format'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
-import type { DiscoveredModel } from '@/lib/types/model'
+import type { DiscoveredModel, ModelKind } from '@/lib/types/model'
+import { modelKindPayload, modelKindValid } from './model-kind-fields'
 
 interface ModelDiscoverPanelProps {
+  /** Q14: which models to list and register (chat by default). */
+  kind?: ModelKind
+  /** Vector width given to every picked embedding model. */
+  dimensions?: string
   onComplete?: () => void
 }
 
@@ -35,7 +40,11 @@ interface ModelDiscoverPanelProps {
  * the backend to enumerate available models from that provider, then ticks
  * the ones to register. Pricing/source is enriched server-side.
  */
-export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
+export function ModelDiscoverPanel({
+  kind = 'chat',
+  dimensions = '',
+  onComplete,
+}: ModelDiscoverPanelProps) {
   const t = useTranslations('model.discoverPanel')
   const { data: credentials } = useCredentials()
   const { data: definitions } = useCredentialTypes()
@@ -43,7 +52,12 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
   const create = useCreateModel()
 
   const [credentialId, setCredentialId] = useState<string>('')
-  const [results, setResults] = useState<DiscoveredModel[] | null>(null)
+  // Results belong to the kind they were discovered for; another kind needs a new search.
+  const [discovered, setDiscovered] = useState<{
+    kind: ModelKind
+    models: DiscoveredModel[]
+  } | null>(null)
+  const results = discovered && discovered.kind === kind ? discovered.models : null
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
@@ -78,8 +92,8 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
   async function handleDiscover() {
     if (!credentialId) return
     try {
-      const models = await discover.mutateAsync(credentialId)
-      setResults(models)
+      const models = await discover.mutateAsync({ credentialId, kind })
+      setDiscovered({ kind, models })
       setSelected(new Set())
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('toast.discoveryFailed'))
@@ -124,6 +138,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
             provider: m.provider,
             model_name: m.model_name,
             display_name: m.display_name,
+            ...modelKindPayload(kind, dimensions),
             cost_per_input_token: m.cost_per_input_token,
             cost_per_output_token: m.cost_per_output_token,
             context_window: m.context_window,
@@ -269,19 +284,22 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                           {t('alreadyRegistered')}
                         </span>
                       )}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        className="ml-auto"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          setTestRow((prev) => (prev === m.model_name ? null : m.model_name))
-                        }}
-                        aria-label={t('testModel', { name: m.display_name })}
-                      >
-                        <Zap className="size-3" /> {t('test')}
-                      </Button>
+                      {/* The connection test is a chat completion; embedding models skip it. */}
+                      {kind === 'chat' ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="xs"
+                          className="ml-auto"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setTestRow((prev) => (prev === m.model_name ? null : m.model_name))
+                          }}
+                          aria-label={t('testModel', { name: m.display_name })}
+                        >
+                          <Zap className="size-3" /> {t('test')}
+                        </Button>
+                      ) : null}
                     </div>
                     <p className="truncate font-mono moldy-ui-caption text-muted-foreground">
                       {m.provider} · {m.model_name}
@@ -306,7 +324,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                         <RankingBadge rankingKey="aa_index" value={m.rankings.aa_index} />
                       </div>
                     )}
-                    {testRow === m.model_name && credentialId && (
+                    {kind === 'chat' && testRow === m.model_name && credentialId && (
                       <div className="mt-2">
                         <ModelConnectionTest
                           key={`${m.model_name}-${credentialId}`}
@@ -330,7 +348,11 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
             <span>
               {t('selectedSummary', { selected: selected.size, shown: filteredResults.length })}
             </span>
-            <Button size="sm" onClick={handleSave} disabled={selected.size === 0 || saving}>
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={selected.size === 0 || saving || !modelKindValid(kind, dimensions)}
+            >
               {saving && <Loader2 className="size-3 animate-spin" />}
               {t('saveSelected')}
             </Button>

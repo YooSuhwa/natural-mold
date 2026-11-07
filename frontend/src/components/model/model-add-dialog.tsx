@@ -18,9 +18,16 @@ import {
 } from '@/components/ui/select'
 import { ModelDiscoverPanel } from './model-discover-panel'
 import { ModelConnectionTest } from './model-connection-test'
+import {
+  DEFAULT_DIMENSIONS_INPUT,
+  ModelKindFields,
+  modelKindPayload,
+  modelKindValid,
+} from './model-kind-fields'
 import { perMillionToTokenPrice } from './model-format'
 import { useCreateModel } from '@/lib/hooks/use-models'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
+import type { ModelKind } from '@/lib/types/model'
 
 interface ModelAddDialogProps {
   open: boolean
@@ -49,11 +56,21 @@ const PROVIDERS = [
 export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
   const t = useTranslations('model.addDialog')
   const [tab, setTab] = useState<'discover' | 'custom'>('discover')
+  // Q14: one kind for both tabs; discovery lists only models of that kind.
+  const [kind, setKind] = useState<ModelKind>('chat')
+  const [dimensions, setDimensions] = useState(DEFAULT_DIMENSIONS_INPUT)
 
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="lg" height="fixed">
       <DialogShell.Header title={t('title')} description={t('description')} />
-      <DialogShell.Body className="flex flex-col">
+      <DialogShell.Body className="flex flex-col gap-4">
+        <ModelKindFields
+          idPrefix="model-add"
+          kind={kind}
+          dimensions={dimensions}
+          onKindChange={setKind}
+          onDimensionsChange={setDimensions}
+        />
         <Tabs
           value={tab}
           onValueChange={(v) => setTab(v as 'discover' | 'custom')}
@@ -65,11 +82,15 @@ export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
           </TabsList>
 
           <TabsContent value="discover" className="min-w-0 flex-1 overflow-y-auto pt-4">
-            <ModelDiscoverPanel onComplete={() => onOpenChange(false)} />
+            <ModelDiscoverPanel
+              kind={kind}
+              dimensions={dimensions}
+              onComplete={() => onOpenChange(false)}
+            />
           </TabsContent>
 
           <TabsContent value="custom" className="min-w-0 flex-1 overflow-y-auto pt-4">
-            <CustomIdForm onSaved={() => onOpenChange(false)} />
+            <CustomIdForm kind={kind} dimensions={dimensions} onSaved={() => onOpenChange(false)} />
           </TabsContent>
         </Tabs>
       </DialogShell.Body>
@@ -77,7 +98,15 @@ export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
   )
 }
 
-function CustomIdForm({ onSaved }: { onSaved: () => void }) {
+function CustomIdForm({
+  kind,
+  dimensions,
+  onSaved,
+}: {
+  kind: ModelKind
+  dimensions: string
+  onSaved: () => void
+}) {
   const t = useTranslations('model.addDialog')
   const create = useCreateModel()
   const { data: credentials } = useCredentials()
@@ -92,7 +121,10 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
   const [testCredId, setTestCredId] = useState<string>('')
   const [testOpen, setTestOpen] = useState(false)
 
-  const canSubmit = provider.trim() !== '' && modelName.trim() !== ''
+  const canSubmit =
+    provider.trim() !== '' && modelName.trim() !== '' && modelKindValid(kind, dimensions)
+  // The connection test runs a chat completion, which an embedding model cannot answer.
+  const canTest = kind === 'chat'
 
   // Filter to LLM credentials so the test panel only offers API keys.
   const llmCredentials = useMemo(() => {
@@ -111,6 +143,7 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
         provider: provider.trim(),
         model_name: modelName.trim(),
         display_name: displayName.trim() || modelName.trim(),
+        ...modelKindPayload(kind, dimensions),
         base_url: baseUrl.trim() || null,
         cost_per_input_token: perMillionToTokenPrice(inputPriceM),
         cost_per_output_token: perMillionToTokenPrice(outputPriceM),
@@ -235,7 +268,7 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
         </div>
       </div>
 
-      {testOpen && effectiveCredId && (
+      {canTest && testOpen && effectiveCredId && (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs font-medium" htmlFor="custom-test-cred">
@@ -271,15 +304,17 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
       )}
 
       <div className="flex items-center justify-end gap-2">
-        <Button
-          variant="outline"
-          onClick={() => setTestOpen(true)}
-          disabled={!canSubmit || llmCredentials.length === 0}
-          data-testid="custom-test-button"
-        >
-          <Zap className="size-3.5" />
-          {t('actions.test')}
-        </Button>
+        {canTest ? (
+          <Button
+            variant="outline"
+            onClick={() => setTestOpen(true)}
+            disabled={!canSubmit || llmCredentials.length === 0}
+            data-testid="custom-test-button"
+          >
+            <Zap className="size-3.5" />
+            {t('actions.test')}
+          </Button>
+        ) : null}
         <Button onClick={handleSave} disabled={!canSubmit || create.isPending}>
           {create.isPending && <Loader2 className="size-4 animate-spin" />}
           {t('actions.save')}

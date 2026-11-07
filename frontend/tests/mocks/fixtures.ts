@@ -103,6 +103,8 @@ export const mockModel: Model = {
   provider: 'openai',
   model_name: 'gpt-4o',
   display_name: 'GPT-4o',
+  kind: 'chat',
+  embedding_dimensions: null,
   base_url: null,
   is_default: true,
   is_visible: true,

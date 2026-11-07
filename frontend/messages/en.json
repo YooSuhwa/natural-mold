@@ -5242,6 +5242,20 @@
         "curl": "Curl"
       }
     },
+    "kind": {
+      "field": "Kind",
+      "chat": "Chat model",
+      "embedding": "Embedding model",
+      "dimensions": "Dimensions",
+      "dimensionsHint": "Length of the embedding vector. Use a value the model supports.",
+      "dimensionsInvalid": "Enter a whole number from 1 to {max}.",
+      "defaultDisabled": "An embedding model cannot be the default model.",
+      "badge": {
+        "chat": "Chat",
+        "embedding": "Embedding"
+      },
+      "badgeEmbedding": "Embedding · {count} dims"
+    },
     "addDialog": {
       "title": "Add Dialog",
       "description": "Register a model and configure pricing and capabilities.",
@@ -5316,6 +5330,7 @@
         "saveFailed": "Operation failed.",
         "deleteFailed": "Operation failed.",
         "deleteInUse": "Delete In Use",
+        "kindInUse": "Agents use this model, so its kind cannot change. Move those agents to another model first.",
         "noCredential": "No Credential",
         "healthCheckFailed": "Operation failed."
       },
@@ -6114,6 +6129,45 @@
         "user": "Personal (all agents)",
         "agent": "One agent",
         "agent_label": "Agent"
+      },
+      "vector": {
+        "title": "Memory search vector model",
+        "description": "The embedding model used alongside keywords to find memories. It is set for the whole company; when off, memories are found by keywords only.",
+        "loading": "Loading vector settings...",
+        "loadFailed": "Could not load the vector settings.",
+        "onBadge": "On",
+        "offBadge": "Off",
+        "select": "Vector model",
+        "off": "Off",
+        "option": "{name} ({dimensions} dims)",
+        "currentOff": "Off. Memories are found by keywords only.",
+        "current": "Current embedding: {name} ({dimensions} dims) — {embedded}/{total} done",
+        "jobQueued": "Waiting to embed again. Until it finishes, memories are found by keywords only.",
+        "jobRunning": "Embedding again, {progress}%. Until it finishes, memories are found by keywords only.",
+        "floorUnmeasured": "Threshold not measured: memories are found by keywords only until it is evaluated.",
+        "otherVectorsReplacing": "{count} vectors of the previous model remain. They are removed when embedding finishes.",
+        "otherVectorsKept": "{count} stored vectors remain. Turning the same model back on will not embed again.",
+        "noModels": "No embedding model is registered, so this cannot be turned on.",
+        "registerHint": "Register an embedding model on the models page.",
+        "readOnly": "Only a company admin can change this.",
+        "saved": "Vector model changed. Embedding again has started.",
+        "turnedOff": "Vector search turned off.",
+        "failed": "Could not change the vector settings.",
+        "chooseDialog": {
+          "title": "Switch to {name}?",
+          "model": "{name} · {dimensions} dims",
+          "body": "{count} memories will be embedded again. Until it finishes, memories are found by keywords only. Switch?",
+          "recounted": "The number of memories changed meanwhile. Please confirm the new count.",
+          "confirm": "Switch"
+        },
+        "offDialog": {
+          "title": "Turn off vector search?",
+          "description": "When off, memories are found by keywords only.",
+          "drop": "Also delete stored vectors",
+          "keepHelp": "Kept vectors mean turning the same model back on will not embed again.",
+          "dropHelp": "All stored vectors are deleted. Turning it back on embeds from scratch.",
+          "confirm": "Turn off"
+        }
       },
       "consolidation": {
         "title": "Memory consolidation",
