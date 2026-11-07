@@ -10,6 +10,14 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.audit_actions import (
+    MEMORY_PROPOSAL_APPROVE,
+    MEMORY_PROPOSAL_CREATE,
+    MEMORY_PROPOSAL_REJECT,
+    MEMORY_RECORD_CREATE,
+    MEMORY_RECORD_DELETE,
+    MEMORY_RECORD_UPDATE,
+)
 from app.authz.memory_agent_access import (
     memory_agent,
     row_shared_memory_agent_ids,
@@ -39,6 +47,7 @@ from app.schemas.memory import (
     MemoryRecordUpdate,
     UserMemorySettingsUpdate,
 )
+from app.services import audit_service
 from app.services.agent_memory_settings import (
     get_agent_settings as get_agent_settings,
 )
@@ -52,6 +61,8 @@ AGENT_MEMO_SCOPE = "agent_memo"  # F-09: a proposal to the agent's shared memo (
 AllowedScopes = Literal["user", "agent", "both"]
 WritePolicy = Literal["off", "ask", "auto"]
 TriggerWritePolicy = Literal["off", "auto"]
+# Who wrote it: the memory screens/API ("direct") or an agent's memory tool ("tool").
+WriteChannel = Literal["direct", "tool"]
 
 RUNTIME_MEMORY_MAX_RECORDS = 20
 RUNTIME_MEMORY_ITEM_MAX_CHARS = 500
@@ -73,6 +84,34 @@ class EffectiveMemoryPolicy:
 
 def _now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+async def _audit(
+    db: AsyncSession,
+    context: OrgContext,
+    action: str,
+    target: MemoryRecord | MemoryProposal,
+    **metadata: object,
+) -> None:
+    """Personal memory audit (plan 15, 5.7): ids, scope and sizes only, never the text."""
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=context.user_id,
+        owner_user_id=target.user_id,
+        action=action,
+        target_type="memory_record" if isinstance(target, MemoryRecord) else "memory_proposal",
+        target_id=target.id,
+        target_owner_user_id=target.user_id,
+        outcome="success",
+        metadata={
+            "scope": target.scope,
+            "agent_id": str(target.agent_id) if target.agent_id else None,
+            **metadata,
+        },
+        tenant_id=context.tenant_id,
+        org_id=context.org_id,
+    )
 
 
 def _store_path(scope: str) -> str:
@@ -299,6 +338,7 @@ async def create_memory_record(
     *,
     context: OrgContext,
     payload: MemoryRecordCreate,
+    channel: WriteChannel = "direct",
 ) -> MemoryRecord | None:
     await resolve_private_actor(
         db,
@@ -336,6 +376,10 @@ async def create_memory_record(
         source_run_id=payload.source_run_id,
     )
     db.add(record)
+    await db.flush()
+    await _audit(
+        db, context, MEMORY_RECORD_CREATE, record, length=len(record.content), channel=channel
+    )
     await db.commit()
     await db.refresh(record)
     return record
@@ -455,6 +499,14 @@ async def update_memory_record(
     for field, value in updates.items():
         setattr(record, field, value)
     record.updated_at = _now_naive()
+    await _audit(
+        db,
+        context,
+        MEMORY_RECORD_UPDATE,
+        record,
+        fields=sorted(updates),
+        length=len(record.content),
+    )
     await db.commit()
     await db.refresh(record)
     return record
@@ -473,6 +525,7 @@ async def delete_memory_record(
     deleted_at = _now_naive()
     record.deleted_at = deleted_at
     record.updated_at = deleted_at
+    await _audit(db, context, MEMORY_RECORD_DELETE, record)
     await db.commit()
     return True
 
@@ -482,6 +535,7 @@ async def create_memory_proposal(
     *,
     context: OrgContext,
     payload: MemoryProposalCreate,
+    channel: WriteChannel = "direct",
 ) -> MemoryProposal | None:
     await resolve_private_actor(
         db,
@@ -517,6 +571,15 @@ async def create_memory_proposal(
         reason=payload.reason,
     )
     db.add(proposal)
+    await db.flush()
+    await _audit(
+        db,
+        context,
+        MEMORY_PROPOSAL_CREATE,
+        proposal,
+        length=len(proposal.content),
+        channel=channel,
+    )
     await db.commit()
     await db.refresh(proposal)
     return proposal
@@ -623,6 +686,15 @@ async def approve_memory_proposal(
     proposal.status = "approved"
     proposal.resolved_at = _now_naive()
     db.add(record)
+    await db.flush()
+    await _audit(
+        db,
+        context,
+        MEMORY_PROPOSAL_APPROVE,
+        proposal,
+        record_id=str(record.id),
+        edited=content is not None or reason is not None,
+    )
     await db.commit()
     await db.refresh(proposal)
     await db.refresh(record)
@@ -644,6 +716,7 @@ async def reject_memory_proposal(
         return None
     proposal.status = "rejected"
     proposal.resolved_at = _now_naive()
+    await _audit(db, context, MEMORY_PROPOSAL_REJECT, proposal)
     await db.commit()
     await db.refresh(proposal)
     return proposal
