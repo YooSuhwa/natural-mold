@@ -109,6 +109,7 @@ async def resolve_prepared_children(
             agent_id=str(child.id),
             user_id=str(child.user_id),
             provider_api_keys={child.model.provider: api_key} if api_key else None,
+            run_path="subagent",
         )
         policy = await write_policy(child_cfg, db, is_trigger_mode=is_trigger_mode)
         if policy != "off":

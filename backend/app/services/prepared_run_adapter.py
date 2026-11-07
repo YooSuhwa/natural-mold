@@ -28,6 +28,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.memory_paths import origin_run_path
 from app.agent_runtime.message_utils import RuntimeMessage
 from app.agent_runtime.prepared_run_input_builder import (
     PreparedRunSources,
@@ -70,7 +71,7 @@ def chat_config_resolver(
     """The chat/queue ``AgentConfig`` path, minus legacy child compilation."""
 
     async def resolve(db: AsyncSession, run: ConversationRun) -> AgentConfig:
-        return await resolve_agent_context(
+        cfg = await resolve_agent_context(
             db,
             run.conversation_id,
             user,
@@ -78,6 +79,8 @@ def chat_config_resolver(
             checkpoint_id=checkpoint_id,
             include_subagents=False,
         )
+        cfg.run_path = await origin_run_path(db, run)  # plan 15 (5.2): a resume keeps its origin
+        return cfg
 
     return resolve
 

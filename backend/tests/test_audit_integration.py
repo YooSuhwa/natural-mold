@@ -1129,3 +1129,59 @@ async def test_emergency_stop_audit_records_who_what_and_how_much_was_stopped(
         "approvals_canceled": 1,
         "agents": 1,
     }
+
+
+@pytest.mark.asyncio
+async def test_personal_memory_mutations_write_audit_without_text(
+    client,
+    db: AsyncSession,
+) -> None:
+    secret = "나의 비밀 메모 내용 7731"
+    create = await client.post("/api/memories", json={"scope": "user", "content": secret})
+    assert create.status_code == 201, create.text
+    memory_id = create.json()["id"]
+    update = await client.patch(f"/api/memories/{memory_id}", json={"content": secret + " 수정"})
+    assert update.status_code == 200, update.text
+    delete = await client.delete(f"/api/memories/{memory_id}")
+    assert delete.status_code == 204
+
+    approve = await client.post("/api/memory-proposals", json={"scope": "user", "content": secret})
+    assert approve.status_code == 201, approve.text
+    approved_id = approve.json()["id"]
+    decided = await client.post(f"/api/memory-proposals/{approved_id}/approve")
+    assert decided.status_code == 200, decided.text
+    record_id = decided.json()["memory"]["id"]
+    reject = await client.post("/api/memory-proposals", json={"scope": "user", "content": secret})
+    rejected_id = reject.json()["id"]
+    assert (await client.post(f"/api/memory-proposals/{rejected_id}/reject")).status_code == 200
+
+    rows = (
+        (await db.execute(select(AuditEvent).where(AuditEvent.action.like("memory.%"))))
+        .scalars()
+        .all()
+    )
+    by_target = {(row.action, row.target_id): row for row in rows}
+    expected = {
+        ("memory.record_create", memory_id): "memory_record",
+        ("memory.record_update", memory_id): "memory_record",
+        ("memory.record_delete", memory_id): "memory_record",
+        ("memory.proposal_create", approved_id): "memory_proposal",
+        ("memory.proposal_approve", approved_id): "memory_proposal",
+        ("memory.proposal_create", rejected_id): "memory_proposal",
+        ("memory.proposal_reject", rejected_id): "memory_proposal",
+    }
+    for key, target_type in expected.items():
+        row = by_target[key]
+        assert row.target_type == target_type
+        assert row.outcome == "success"
+        assert str(row.actor_user_id) == str(TEST_USER_ID)
+        assert row.event_metadata["scope"] == "user"
+    create_row = by_target[("memory.record_create", memory_id)]
+    assert create_row.event_metadata["channel"] == "direct"
+    assert create_row.event_metadata["length"] == len(secret)
+    assert by_target[("memory.record_update", memory_id)].event_metadata["fields"] == ["content"]
+    approve_row = by_target[("memory.proposal_approve", approved_id)]
+    assert approve_row.event_metadata["record_id"] == record_id
+    assert approve_row.event_metadata["edited"] is False
+    assert secret not in str([row.event_metadata for row in rows])
+    assert "비밀" not in str([row.target_name_snapshot for row in rows])

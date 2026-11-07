@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import registry as broker_registry
+from app.agent_runtime.memory_paths import origin_run_path
 from app.approvals.recording import claim_resume
 from app.approvals.service import ApprovalStale
 from app.authz.conversation_scope import load_private_conversation
@@ -241,6 +242,8 @@ async def resume_message(
     if legacy_interrupt_trace is not None:
         metadata = {"legacy_interrupt_assistant_msg_id": legacy_interrupt_trace.assistant_msg_id}
     cfg = await resolve_agent_context(db, conversation_id, user, context=context)
+    if parent_run is not None:  # plan 15 (5.2): a resumed schedule or API run keeps its path
+        cfg.run_path = await origin_run_path(db, parent_run)
     await db.commit()
     accepted = await accept_owned_execution(
         db,

@@ -84,6 +84,14 @@ AGENT_MEMO_UPDATE: Final = "agent_memo.update"
 AGENT_MEMO_PROPOSAL_DECIDE: Final = "agent_memo.proposal_decide"
 # F-09: a non-owner editor changed the agent memory settings (owner changes: unchanged).
 AGENT_MEMORY_SETTINGS_UPDATE: Final = "agent.memory_settings_update"
+# Personal memory (memory policy plan 15, 5.7): records and proposals. Metadata carries ids,
+# scope, length and the write channel only, never the memory text.
+MEMORY_RECORD_CREATE: Final = "memory.record_create"
+MEMORY_RECORD_UPDATE: Final = "memory.record_update"
+MEMORY_RECORD_DELETE: Final = "memory.record_delete"
+MEMORY_PROPOSAL_CREATE: Final = "memory.proposal_create"
+MEMORY_PROPOSAL_APPROVE: Final = "memory.proposal_approve"
+MEMORY_PROPOSAL_REJECT: Final = "memory.proposal_reject"
 # H-01 access requests (14.1 "요청"); expiry is a status change, not an audit action.
 ACCESS_REQUEST_CREATE: Final = "access_request.create"
 ACCESS_REQUEST_APPROVE: Final = "access_request.approve"

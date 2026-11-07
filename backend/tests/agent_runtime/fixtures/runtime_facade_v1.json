@@ -572,6 +572,12 @@
           "default": "value:ResolvedRuntimePolicy",
           "kind": "keyword_only",
           "name": "runtime_policy"
+        },
+        {
+          "annotation": "str",
+          "default": "value:str",
+          "kind": "keyword_only",
+          "name": "run_path"
         }
       ],
       "return": "None"

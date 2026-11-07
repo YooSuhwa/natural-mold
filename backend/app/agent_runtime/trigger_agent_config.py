@@ -73,4 +73,5 @@ def build_trigger_agent_config(source: TriggerConfigSource) -> AgentConfig:
         agent_runtime_name=identity.runtime_name,
         access_plan=source.access_plan,
         unattended_approval="wait" if source.approval_policy == "inbox" else "block",
+        run_path="trigger",
     )

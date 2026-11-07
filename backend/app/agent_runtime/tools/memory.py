@@ -168,6 +168,7 @@ def build_memory_tools(
                             agent_id=agent_uuid,
                             conversation_id=conversation_uuid,
                         ),
+                        channel="tool",
                     )
                 except ValidationError as exc:
                     await db.rollback()
@@ -217,6 +218,7 @@ def build_memory_tools(
                         agent_id=agent_uuid,
                         source_conversation_id=conversation_uuid,
                     ),
+                    channel="tool",
                 )
             except ValidationError as exc:
                 await db.rollback()
