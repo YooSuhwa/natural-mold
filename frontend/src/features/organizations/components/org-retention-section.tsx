@@ -11,9 +11,15 @@ import { SettingsSectionCard } from '@/components/shared/settings-section-card'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useOrgRetention, useSaveOrgRetention } from '@/lib/hooks/use-org-governance'
-import type { OrgRetention, OrgRetentionView, RetentionPreview } from '@/lib/types/org-governance'
+import type {
+  ExperienceMemoryDays,
+  OrgRetention,
+  OrgRetentionView,
+  RetentionPreview,
+} from '@/lib/types/org-governance'
 import { useOrgErrorMessage } from '../lib/error-message'
 
 /** Backend `app/schemas/retention.py` bounds. */
@@ -21,9 +27,19 @@ const BOUNDS = {
   conversation_days: [30, 3650],
   agent_trash_days: [7, 90],
   removed_member_days: [7, 3650],
+  experience_memory_days: [30, 3650],
 } as const
 
 type DayField = keyof typeof BOUNDS
+type InputField = Exclude<DayField, 'experience_memory_days'>
+/** How the experience-memory period is set: tenant default, unlimited or a day count. */
+type ExperienceMode = 'default' | 'unlimited' | 'days'
+const EXPERIENCE_MODES: readonly ExperienceMode[] = ['default', 'unlimited', 'days']
+
+function experienceMode(value: ExperienceMemoryDays): ExperienceMode {
+  if (value === 'default') return 'default'
+  return value === null ? 'unlimited' : 'days'
+}
 
 function inRange(field: DayField, value: string): boolean {
   if (!/^\d+$/.test(value)) return false
@@ -66,26 +82,40 @@ function RetentionForm({
   const errorMessage = useOrgErrorMessage()
   const save = useSaveOrgRetention(orgId)
   const [unlimited, setUnlimited] = useState(view.conversation_days === null)
+  const [experience, setExperience] = useState<ExperienceMode>(
+    experienceMode(view.experience_memory_days),
+  )
   const [values, setValues] = useState<Record<DayField, string>>({
     conversation_days: String(view.conversation_days ?? 365),
     agent_trash_days: String(view.agent_trash_days),
     removed_member_days: String(view.removed_member_days),
+    experience_memory_days: String(
+      typeof view.experience_memory_days === 'number' ? view.experience_memory_days : 365,
+    ),
   })
   const [preview, setPreview] = useState<RetentionPreview | null>(null)
 
   const valid =
     (unlimited || inRange('conversation_days', values.conversation_days)) &&
     inRange('agent_trash_days', values.agent_trash_days) &&
-    inRange('removed_member_days', values.removed_member_days)
+    inRange('removed_member_days', values.removed_member_days) &&
+    (experience !== 'days' || inRange('experience_memory_days', values.experience_memory_days))
   const policy: OrgRetention = {
     conversation_days: unlimited ? null : Number(values.conversation_days),
     agent_trash_days: Number(values.agent_trash_days),
     removed_member_days: Number(values.removed_member_days),
+    experience_memory_days:
+      experience === 'default'
+        ? 'default'
+        : experience === 'unlimited'
+          ? null
+          : Number(values.experience_memory_days),
   }
   const dirty =
     policy.conversation_days !== view.conversation_days ||
     policy.agent_trash_days !== view.agent_trash_days ||
-    policy.removed_member_days !== view.removed_member_days
+    policy.removed_member_days !== view.removed_member_days ||
+    policy.experience_memory_days !== view.experience_memory_days
 
   function submit(confirm: boolean) {
     save.mutate(
@@ -104,7 +134,7 @@ function RetentionForm({
     )
   }
 
-  const field = (name: DayField) => (
+  const field = (name: InputField) => (
     <FormFieldShell
       id={`retention-${name}`}
       label={t(`${name}.label`)}
@@ -142,6 +172,59 @@ function RetentionForm({
       </div>
       {field('agent_trash_days')}
       {field('removed_member_days')}
+      <div className="space-y-2">
+        <FormFieldShell
+          id="retention-experience-mode"
+          label={t('experience_memory_days.label')}
+          description={t('experience_memory_days.help')}
+        >
+          <Select
+            value={experience}
+            onValueChange={(next) => next && setExperience(next as ExperienceMode)}
+            disabled={!canEdit}
+          >
+            <SelectTrigger id="retention-experience-mode" className="w-full sm:w-64">
+              <span className="truncate">{t(`experience_memory_days.mode.${experience}`)}</span>
+            </SelectTrigger>
+            <SelectContent>
+              {EXPERIENCE_MODES.map((mode) => (
+                <SelectItem key={mode} value={mode}>
+                  {t(`experience_memory_days.mode.${mode}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormFieldShell>
+        {experience === 'days' ? (
+          <FormFieldShell
+            id="retention-experience_memory_days"
+            label={t('experience_memory_days.days')}
+            description={t('range', {
+              min: BOUNDS.experience_memory_days[0],
+              max: BOUNDS.experience_memory_days[1],
+            })}
+            error={
+              inRange('experience_memory_days', values.experience_memory_days)
+                ? null
+                : t('outOfRange')
+            }
+          >
+            <Input
+              id="retention-experience_memory_days"
+              inputMode="numeric"
+              className="w-full sm:w-40"
+              value={values.experience_memory_days}
+              disabled={!canEdit}
+              onChange={(event) =>
+                setValues((current) => ({
+                  ...current,
+                  experience_memory_days: event.target.value,
+                }))
+              }
+            />
+          </FormFieldShell>
+        ) : null}
+      </div>
       {canEdit ? (
         <Button onClick={() => submit(false)} disabled={!valid || !dirty || save.isPending}>
           {t('submit')}

@@ -59,11 +59,13 @@ describe('OrganizationSettingsContent governance sections (S08)', () => {
           removed_member_conversations: 0,
           removed_member_memories: 0,
           audit_events: 0,
+          expired_memories: 7,
         },
         policy: {
           conversation_days: null,
           agent_trash_days: 30,
           removed_member_days: 30,
+          experience_memory_days: 'default',
           updated_at: VERSION,
         },
       })
@@ -74,6 +76,7 @@ describe('OrganizationSettingsContent governance sections (S08)', () => {
           conversation_days: 90,
           agent_trash_days: 30,
           removed_member_days: 30,
+          experience_memory_days: 'default',
           updated_at: 'v2',
         },
       })
@@ -87,18 +90,73 @@ describe('OrganizationSettingsContent governance sections (S08)', () => {
 
     const dialog = await screen.findByRole('alertdialog')
     expect(within(dialog).getByText(/대화 1240건/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/기간이 지난 기억 7건/)).toBeInTheDocument()
     expect(api.putRetention).toHaveBeenLastCalledWith(
       'org-1',
-      { conversation_days: 90, agent_trash_days: 30, removed_member_days: 30, confirm: false },
+      {
+        conversation_days: 90,
+        agent_trash_days: 30,
+        removed_member_days: 30,
+        experience_memory_days: 'default',
+        confirm: false,
+      },
       VERSION,
     )
     await userEvent.click(within(dialog).getByRole('button', { name: '줄이고 저장' }))
     await waitFor(() =>
       expect(api.putRetention).toHaveBeenLastCalledWith(
         'org-1',
-        { conversation_days: 90, agent_trash_days: 30, removed_member_days: 30, confirm: true },
+        {
+          conversation_days: 90,
+          agent_trash_days: 30,
+          removed_member_days: 30,
+          experience_memory_days: 'default',
+          confirm: true,
+        },
         VERSION,
       ),
+    )
+  })
+
+  it('sends the experience-memory period back with every retention save', async () => {
+    api.getRetention.mockResolvedValue({
+      conversation_days: null,
+      agent_trash_days: 30,
+      removed_member_days: 30,
+      experience_memory_days: 120,
+      updated_at: VERSION,
+    })
+    api.putRetention.mockResolvedValue({
+      saved: true,
+      preview: null,
+      policy: {
+        conversation_days: null,
+        agent_trash_days: 30,
+        removed_member_days: 30,
+        experience_memory_days: 400,
+        updated_at: 'v2',
+      },
+    })
+    render(<OrganizationSettingsContent />)
+
+    const days = await screen.findByLabelText('경험 기억 보존(일)')
+    expect(days).toHaveValue('120')
+    await userEvent.clear(days)
+    await userEvent.type(days, '20')
+    expect(screen.getByRole('button', { name: '보존 정책 저장' })).toBeDisabled()
+    await userEvent.clear(days)
+    await userEvent.type(days, '400')
+    await userEvent.click(screen.getByRole('button', { name: '보존 정책 저장' }))
+    expect(api.putRetention).toHaveBeenCalledWith(
+      'org-1',
+      {
+        conversation_days: null,
+        agent_trash_days: 30,
+        removed_member_days: 30,
+        experience_memory_days: 400,
+        confirm: false,
+      },
+      VERSION,
     )
   })
 

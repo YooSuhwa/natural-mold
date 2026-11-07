@@ -458,8 +458,18 @@
         "readOnly": "조직 관리자만 변경할 수 있습니다.",
         "confirm": {
           "title": "보존 기간을 줄일까요?",
-          "description": "저장하면 다음 정리 때 대화 {conversations}건, 에이전트 {agents}개, 제외된 구성원의 대화 {removed_member_conversations}건과 메모리 {removed_member_memories}건이 삭제돼요.",
+          "description": "저장하면 다음 정리 때 대화 {conversations}건, 에이전트 {agents}개, 제외된 구성원의 대화 {removed_member_conversations}건과 메모리 {removed_member_memories}건, 기간이 지난 기억 {expired_memories}건이 삭제돼요.",
           "submit": "줄이고 저장"
+        },
+        "experience_memory_days": {
+          "label": "경험 기억 보존",
+          "help": "에이전트가 남긴 경험 기억을 보관하는 기간입니다. 철회한 기억은 30일 뒤에 지워집니다.",
+          "days": "경험 기억 보존(일)",
+          "mode": {
+            "default": "기본값 (회사 365일, 개인 무기한)",
+            "unlimited": "무기한 보존",
+            "days": "기간 지정"
+          }
         }
       },
       "limits": {
@@ -5893,7 +5903,246 @@
         "updated": "메모리를 저장했습니다.",
         "updateFailed": "메모리 수정에 실패했습니다.",
         "deleted": "메모리를 삭제했습니다.",
-        "deleteFailed": "메모리 삭제에 실패했습니다."
+        "deleteFailed": "메모리 삭제에 실패했습니다.",
+        "revoked": "메모리를 철회했습니다.",
+        "revokeFailed": "메모리 철회에 실패했습니다.",
+        "restored": "메모리를 복원했습니다.",
+        "restoreFailed": "메모리 복원에 실패했습니다.",
+        "restoreBlockedPii": "개인정보 검사를 통과하지 못해 복원할 수 없습니다. 내용을 확인해 주세요."
+      },
+      "tabs": {
+        "label": "메모리 화면",
+        "overview": "개요",
+        "memories": "기억",
+        "activity": "활동",
+        "settings": "설정"
+      },
+      "firstUse": {
+        "title": "개인 기억은 모든 에이전트가 함께 씁니다",
+        "description": "여기에 저장된 개인 기억은 내가 쓰는 모든 에이전트의 대화에 쓰입니다. 에이전트가 기억을 얼마나 알아서 저장할지 먼저 정해 주세요.",
+        "choose": "승인 모드 고르기",
+        "dismiss": "안내 닫기"
+      },
+      "mode": {
+        "title": "승인 모드",
+        "description": "에이전트가 기억을 저장하거나 고칠 때 얼마나 확인할지 정합니다.",
+        "current": "사용 중",
+        "default": "{tenant} 기본값",
+        "tenantKind": {
+          "company": "회사",
+          "personal": "개인"
+        },
+        "defaultApplies": "아직 모드를 고르지 않아 {tenant} 기본값({mode})이 적용됩니다.",
+        "notAllowed": "관리자가 허용하지 않은 모드입니다.",
+        "notAllowedError": "이 승인 모드는 쓸 수 없습니다.",
+        "save": "승인 모드 저장",
+        "saved": "승인 모드를 저장했습니다.",
+        "saveFailed": "승인 모드 저장에 실패했습니다.",
+        "options": {
+          "off": {
+            "label": "메모리 끄기",
+            "description": "기억을 저장하지도 읽지도 않습니다."
+          },
+          "read_only": {
+            "label": "읽기만",
+            "description": "에이전트는 새 기억을 저장하지 않고, 이 화면에서 직접 쓴 기억만 씁니다."
+          },
+          "approve_all": {
+            "label": "모두 승인",
+            "description": "새 기억, 프로필 갱신, 정리를 하나씩 확인한 뒤 반영합니다."
+          },
+          "partial_auto": {
+            "label": "일부 자동",
+            "description": "표시가 없는 기억은 자동으로 저장하고, 표시가 붙은 것만 확인합니다."
+          },
+          "auto_notify": {
+            "label": "자동 적용 후 알림",
+            "description": "자동으로 저장하고, 표시가 붙은 것은 나중에 검토 목록에 올립니다."
+          },
+          "custom": {
+            "label": "직접 고르기",
+            "description": "새 기억, 프로필, 정리를 각각 자동, 승인, 안 함 중에서 고릅니다."
+          }
+        },
+        "axes": {
+          "title": "세부 설정",
+          "records": "새 기억",
+          "profile": "프로필 문서 갱신",
+          "consolidation": "정리(합치기, 대체, 만료)",
+          "value": {
+            "auto": "자동",
+            "approve": "승인",
+            "off": "안 함"
+          }
+        }
+      },
+      "overview": {
+        "counts": {
+          "title": "기억 현황",
+          "active": "사용 중인 기억",
+          "revoked": "철회한 기억",
+          "review": "나중에 검토"
+        },
+        "quick": {
+          "title": "빠른 작업",
+          "description": "내 기억 전체를 내려받거나 한 번에 삭제합니다.",
+          "export": "JSON으로 내보내기",
+          "deleteAll": "전체 삭제"
+        }
+      },
+      "status": {
+        "active": "사용 중",
+        "superseded": "대체됨",
+        "revoked": "철회됨",
+        "deleted": "삭제됨"
+      },
+      "statusFilter": {
+        "label": "메모리 상태 필터",
+        "active": "사용 중",
+        "revoked": "철회됨",
+        "review": "나중에 검토",
+        "all": "모든 상태"
+      },
+      "kind": {
+        "fact": "사실",
+        "preference": "선호",
+        "commitment": "약속",
+        "experience": "경험",
+        "episode": "에피소드",
+        "procedure": "절차"
+      },
+      "origin": {
+        "user_stated": "직접 말함",
+        "agent_inferred": "에이전트 추론",
+        "legacy": "이전 기억",
+        "consolidation": "정리로 만듦",
+        "tool_derived": "도구 결과"
+      },
+      "channel": {
+        "direct": "직접 저장",
+        "proposal": "승인 후 저장",
+        "auto_policy": "자동 저장"
+      },
+      "sensitivity": {
+        "contact": "연락처",
+        "sensitive": "민감 정보"
+      },
+      "flags": {
+        "instruction_like": "지시문 의심",
+        "sensitive": "민감 정보",
+        "other_person": "다른 사람",
+        "contact": "연락처",
+        "review_later": "나중에 검토",
+        "source_deleted": "근거 삭제됨",
+        "unknown": "표시: {flag}"
+      },
+      "revokeDialog": {
+        "title": "이 기억을 철회할까요?",
+        "description": "철회하면 다음 실행부터 에이전트가 이 기억을 쓰지 않습니다. 내용은 남아 있어 다시 복원할 수 있고, 30일이 지나면 지워집니다.",
+        "reason": "철회 사유",
+        "reasonPlaceholder": "선택 사항",
+        "submit": "철회"
+      },
+      "deleteDialog": {
+        "title": "이 기억을 삭제할까요?",
+        "description": "기억 내용과 변경 이력을 지우며 되돌릴 수 없습니다. 이 기억이 나온 대화 기록과 백업은 지워지지 않습니다.",
+        "submit": "삭제"
+      },
+      "history": {
+        "title": "변경 이력",
+        "description": "이 기억이 언제 어떻게 바뀌었는지 보여 줍니다.",
+        "loading": "변경 이력을 불러오는 중입니다.",
+        "empty": "변경 이력이 없습니다.",
+        "before": "이전",
+        "after": "이후",
+        "none": "없음",
+        "reason": "사유: {reason}",
+        "action": {
+          "create": "생성",
+          "update": "수정",
+          "approve": "승인",
+          "revoke": "철회",
+          "restore": "복원",
+          "unknown": "변경"
+        }
+      },
+      "activity": {
+        "title": "활동",
+        "description": "내 기억의 저장, 수정, 삭제, 내보내기 기록입니다. 기억 내용은 보여 주지 않습니다.",
+        "loading": "활동 기록을 불러오는 중입니다.",
+        "emptyTitle": "활동 기록이 없습니다",
+        "emptyDescription": "기억을 저장하거나 바꾸면 여기에 기록됩니다.",
+        "retry": "다시 시도",
+        "action": {
+          "record_create": "기억 저장",
+          "record_update": "기억 수정",
+          "record_delete": "기억 삭제",
+          "record_delete_bulk": "기억 전체 삭제",
+          "record_revoke": "기억 철회",
+          "record_restore": "기억 복원",
+          "proposal_create": "기억 제안",
+          "proposal_approve": "제안 승인",
+          "proposal_reject": "제안 거절",
+          "export": "내보내기",
+          "unknown": "기타 기억 작업"
+        },
+        "counts": {
+          "deleted": "삭제 {count}건",
+          "records": "기억 {count}건",
+          "proposals": "제안 {count}건",
+          "revisions_removed": "이력 {count}건 삭제",
+          "proposals_cleared": "제안 {count}건 정리"
+        }
+      },
+      "scopeSelect": {
+        "label": "범위",
+        "all": "전체",
+        "user": "개인 전역",
+        "agent": "에이전트별",
+        "agent_label": "에이전트"
+      },
+      "consolidation": {
+        "title": "기억 정리",
+        "description": "비슷한 기억을 합치고, 대체된 기억과 기간이 지난 기억을 정리합니다.",
+        "label": "내 기억 정리",
+        "help": "끄면 내 기억에는 정리 작업이 돌지 않습니다.",
+        "tenantOff": "관리자가 정리를 꺼 두어 지금은 실행되지 않습니다.",
+        "saved": "기억 정리 설정을 저장했습니다.",
+        "failed": "기억 정리 설정 저장에 실패했습니다."
+      },
+      "export": {
+        "title": "내보내기",
+        "description": "내 기억, 변경 이력, 제안을 파일로 내려받습니다.",
+        "format": "형식",
+        "json": "JSON (다시 가져오기용)",
+        "markdown": "Markdown (읽기용)",
+        "submit": "내보내기",
+        "done": "내보내기 파일을 내려받았습니다.",
+        "failed": "내보내기에 실패했습니다."
+      },
+      "bulkDelete": {
+        "title": "기억 전체 삭제",
+        "description": "고른 범위의 기억을 한 번에 삭제합니다. 대화 기록과 백업은 지워지지 않습니다.",
+        "check": "삭제할 기억 확인",
+        "empty": "이 범위에는 삭제할 기억이 없습니다.",
+        "confirmTitle": "기억 {count}개를 삭제할까요?",
+        "confirmDescription": "{scope} 범위의 기억 {count}개와 변경 이력을 지웁니다. 되돌릴 수 없습니다.\n이 기억이 나온 대화 기록과 백업은 지워지지 않습니다.",
+        "confirmTextLabel": "확인을 위해 삭제할 기억 수 {count}를 입력하세요",
+        "submit": "삭제",
+        "countChanged": "그사이 기억 수가 바뀌었습니다. 바뀐 개수를 확인하고 다시 입력해 주세요.",
+        "failed": "삭제에 실패했습니다.",
+        "receipt": {
+          "title": "삭제 영수증",
+          "deleted": "삭제한 기억 {count}개",
+          "revisions": "지운 변경 이력 {count}개",
+          "proposals": "정리한 제안 {count}개",
+          "derived": "다시 확인하도록 표시한 파생 기억 {count}개",
+          "kept": "지워지지 않고 남는 것: {places}",
+          "place": {
+            "conversation_history": "대화 기록",
+            "backups": "백업"
+          }
+        }
       }
     },
     "security": {

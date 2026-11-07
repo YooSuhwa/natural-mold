@@ -21,7 +21,6 @@
     "client-page:src/app/settings/agent-api/page.tsx",
     "client-page:src/app/settings/credentials/page.tsx",
     "client-page:src/app/settings/marketplace-admin/page.tsx",
-    "client-page:src/app/settings/memory/page.tsx",
     "client-page:src/app/settings/models/page.tsx",
     "client-page:src/app/settings/page.tsx",
     "client-page:src/app/settings/schedules/page.tsx",

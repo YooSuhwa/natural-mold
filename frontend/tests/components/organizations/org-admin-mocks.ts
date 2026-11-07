@@ -88,6 +88,7 @@ export function resetGovernanceMocks(): void {
     conversation_days: null,
     agent_trash_days: 30,
     removed_member_days: 30,
+    experience_memory_days: 'default',
     updated_at: '2026-10-16T00:00:00Z',
   })
   api.getLimits.mockResolvedValue(makeLimitView())

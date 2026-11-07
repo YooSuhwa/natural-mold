@@ -4,11 +4,19 @@
  * org_catalog,org_invitations}.py`. Decimal amounts arrive as strings.
  */
 
+/**
+ * Experience-memory period (plan 15, Q5): days (30–3650), `null` = unlimited, or
+ * `"default"` = the tenant kind's default (company 365 days, personal unlimited).
+ */
+export type ExperienceMemoryDays = number | null | 'default'
+
 /** `GET /api/orgs/{org_id}/retention`. `conversation_days: null` = unlimited. */
 export interface OrgRetention {
   conversation_days: number | null
   agent_trash_days: number
   removed_member_days: number
+  /** PUT is a full replacement: always send it back or it resets to `"default"`. */
+  experience_memory_days: ExperienceMemoryDays
 }
 
 export interface OrgRetentionView extends OrgRetention {
@@ -26,6 +34,8 @@ export interface RetentionPreview {
   removed_member_conversations: number
   removed_member_memories: number
   audit_events: number
+  /** Experience memories past their period and revoked memories past 30 days. */
+  expired_memories: number
 }
 
 /** `saved: false` + `preview`: nothing changed, resend with `confirm: true`. */
