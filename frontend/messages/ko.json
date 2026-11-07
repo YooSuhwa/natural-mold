@@ -1165,8 +1165,7 @@
         "role": {
           "text_primary": "기본 텍스트 모델",
           "text_fallback": "대체 텍스트 모델",
-          "image": "이미지 모델",
-          "embedding": "임베딩 (기억 검색)"
+          "image": "이미지 모델"
         },
         "inherits": "플랫폼 기본값을 따릅니다.",
         "override": "회사 값: {credential} / {model}",
@@ -1181,8 +1180,7 @@
         "pickCredential": "자격증명 선택",
         "model": "모델 ID",
         "save": "저장",
-        "saved": "서비스 LLM 설정을 저장했습니다.",
-        "embeddingHelp": "기억 회상이 이 모델로 검색합니다. 모델을 바꾸면 모든 기억을 다시 임베딩합니다."
+        "saved": "서비스 LLM 설정을 저장했습니다."
       },
       "catalog": {
         "title": "회사 카탈로그",
@@ -3830,7 +3828,7 @@
     "save": "저장",
     "operatorOnly": {
       "title": "운영자 전용",
-      "description": "텍스트·이미지 슬롯을 모두 설정하기 전까지 Builder/Assistant/이미지 생성이 동작하지 않습니다. 임베딩 슬롯이 비어 있으면 기억 검색은 키워드로만 찾습니다. 제공자는 선택한 시스템 자격증명에서 자동으로 파생되며, openai_compatible/openrouter는 자격증명의 base_url을 그대로 사용합니다."
+      "description": "세 슬롯을 모두 설정하기 전까지 Builder/Assistant/이미지 생성이 동작하지 않습니다. 제공자는 선택한 시스템 자격증명에서 자동으로 파생되며, openai_compatible/openrouter는 자격증명의 base_url을 그대로 사용합니다."
     },
     "roles": {
       "text_primary": {
@@ -3844,10 +3842,6 @@
       "image": {
         "label": "이미지 모델",
         "description": "이미지 생성에 사용하는 모델 (base_url 주입 지원)."
-      },
-      "embedding": {
-        "label": "임베딩 (기억 검색)",
-        "description": "기억 회상이 이 모델로 검색합니다. 모델을 바꾸면 모든 기억을 다시 임베딩합니다."
       }
     },
     "toast": {

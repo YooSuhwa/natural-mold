@@ -1165,8 +1165,7 @@
         "role": {
           "text_primary": "Primary text model",
           "text_fallback": "Fallback text model",
-          "image": "Image model",
-          "embedding": "Embedding (memory search)"
+          "image": "Image model"
         },
         "inherits": "Follows the platform default.",
         "override": "Company value: {credential} / {model}",
@@ -1181,8 +1180,7 @@
         "pickCredential": "Choose a credential",
         "model": "Model ID",
         "save": "Save",
-        "saved": "Service LLM settings saved.",
-        "embeddingHelp": "Memory recall searches with this model. Changing the model re-embeds all memories."
+        "saved": "Service LLM settings saved."
       },
       "catalog": {
         "title": "Company catalog",
@@ -3844,10 +3842,6 @@
       "image": {
         "label": "Label",
         "description": "Model used for image generation."
-      },
-      "embedding": {
-        "label": "Embedding (memory search)",
-        "description": "Memory recall searches with this model. Changing the model re-embeds all memories."
       }
     },
     "toast": {
