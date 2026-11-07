@@ -39,5 +39,13 @@ export default async function ({ page, api, step, expect, scriptedModelId }) {
   const artifacts = await api.get(`/api/conversations/${conversation.id}/artifacts`)
   const names = artifacts.map((a) => a.display_name)
   if (names.includes('moldy-docx-demo.docx')) throw new Error(`tool ran despite rejection: ${names.join(', ')}`)
-  return { agentId: agent.id, conversationId: conversation.id, artifacts: names }
+
+  // Sidebar must stop flagging the conversation as "action required" once the
+  // resumed run settles, without a reload (server list drops resumed parents).
+  const attention = page.locator(`[data-moldy-run-attention="${conversation.id}"]`)
+  const settleStart = Date.now()
+  await expect(attention).toHaveCount(0, { timeout: 15_000 })
+  const sidebarSettledMs = Date.now() - settleStart
+  await step('sidebar-settled', `${sidebarSettledMs}ms after run idle`)
+  return { agentId: agent.id, conversationId: conversation.id, artifacts: names, sidebarSettledMs }
 }
