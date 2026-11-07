@@ -114,6 +114,12 @@ documents:
   - path: backend/app/seed/system_skill_packages/xlsx-spreadsheet/SKILL.md
     lifecycle: reference/spec
     status: reference
+  - path: backend/evals/memory_recall/PREREGISTRATION.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/evals/memory_recall/REPORT.md
+    lifecycle: generated-evidence
+    status: generated
   - path: docs/ARCHITECTURE.md
     lifecycle: canonical-current
     status: current

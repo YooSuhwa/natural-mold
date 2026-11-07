@@ -1,0 +1,4982 @@
+{
+ "seed": 15,
+ "today": "2026-11-07",
+ "memory_model": "gpt-5.4-mini",
+ "question_model": "claude-sonnet-5",
+ "people": [
+  {
+   "id": "p01",
+   "who": "백엔드 개발자 '도윤'",
+   "agent": "코드 리뷰와 배포를 돕는 개발 비서"
+  },
+  {
+   "id": "p02",
+   "who": "브랜드 마케터 '서연'",
+   "agent": "캠페인 기획과 보고서를 돕는 마케팅 비서"
+  },
+  {
+   "id": "p03",
+   "who": "고등학교 국어 교사 '지호'",
+   "agent": "수업 준비와 학부모 상담을 돕는 교무 비서"
+  },
+  {
+   "id": "p04",
+   "who": "핀테크 스타트업 PM '하린'",
+   "agent": "로드맵과 회의록을 관리하는 제품 비서"
+  },
+  {
+   "id": "p05",
+   "who": "중견기업 재무 담당 '민준'",
+   "agent": "결산과 예산 검토를 돕는 재무 비서"
+  },
+  {
+   "id": "p06",
+   "who": "생물학 연구원 '수아'",
+   "agent": "실험 기록과 논문 작업을 돕는 연구 비서"
+  },
+  {
+   "id": "p07",
+   "who": "UX 디자이너 '예준'",
+   "agent": "디자인 리뷰와 사용성 테스트를 돕는 디자인 비서"
+  },
+  {
+   "id": "p08",
+   "who": "B2B 영업 관리자 '지안'",
+   "agent": "고객사 미팅과 제안서를 돕는 영업 비서"
+  },
+  {
+   "id": "p09",
+   "who": "동네 카페 운영자 '은우'",
+   "agent": "재고, 직원 근무표, 메뉴 개발을 돕는 매장 비서"
+  },
+  {
+   "id": "p10",
+   "who": "데이터과학 대학원생 '유나'",
+   "agent": "논문 읽기와 실험 코드를 돕는 연구실 비서"
+  }
+ ],
+ "memories": [
+  {
+   "id": "p01-m01",
+   "person": "p01",
+   "content": "도윤은 백엔드 개발자이며 주로 Spring Boot와 PostgreSQL로 API를 만든다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m02",
+   "person": "p01",
+   "content": "도윤은 리눅스 서버와 Docker Compose 환경에서 배포 점검을 자주 한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m03",
+   "person": "p01",
+   "content": "도윤은 코드 리뷰에서 가독성보다 장애 복구 경로를 먼저 보길 원한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m04",
+   "person": "p01",
+   "content": "도윤은 PR 제목에 티켓 번호를 넣고, 본문엔 배포 영향도를 적는 습관이 있다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m05",
+   "person": "p01",
+   "content": "도윤은 Redis 캐시와 배치 작업을 함께 다루는 기능을 특히 자주 맡는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m06",
+   "person": "p01",
+   "content": "도윤은 단위 테스트보다 통합 테스트 결과를 보고 안심하는 편이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m07",
+   "person": "p01",
+   "content": "도윤은 슬랙으로 짧게 확인받는 편을 좋아하고, 장황한 회의록은 싫어한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m08",
+   "person": "p01",
+   "content": "도윤은 알림을 슬랙 중심으로 받고, 이메일은 하루 한 번만 모아서 본다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m09",
+   "person": "p01",
+   "content": "도윤은 오전 10시 이전에는 긴 회의보다 비동기 코멘트를 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m10",
+   "person": "p01",
+   "content": "도윤은 배포 전 체크리스트를 표 형태로 정리해 주면 훨씬 빠르게 읽는다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m11",
+   "person": "p01",
+   "content": "도윤은 에러 로그를 먼저 보고, 원인 추적은 그다음에 하길 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m12",
+   "person": "p01",
+   "content": "도윤은 회의록보다 핵심 결론 3줄 요약을 더 믿고 참고한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m13",
+   "person": "p01",
+   "content": "도윤은 배포 노트에 버전 번호와 롤백 포인트가 같이 있길 원한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m14",
+   "person": "p01",
+   "content": "도윤은 코드 리뷰에서 코멘트가 많아도 우선순위가 표시되면 편하다고 느낀다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m15",
+   "person": "p01",
+   "content": "도윤은 2026-11-10까지 결제 API 리팩터링 PR을 머지하겠다고 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m16",
+   "person": "p01",
+   "content": "도윤은 다음 주 금요일까지 스테이징 배포 체크리스트를 업데이트하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m17",
+   "person": "p01",
+   "content": "도윤은 월말 전에 장애 재현 스크립트를 정리해 공유하겠다고 약속했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m18",
+   "person": "p01",
+   "content": "도윤은 11월 둘째 주에 로그 포맷 변경안을 팀에 설명하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m19",
+   "person": "p01",
+   "content": "도윤은 새 모니터링 대시보드 초안을 2026-11-14까지 검토하겠다고 말했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m20",
+   "person": "p01",
+   "content": "2026-04-18에 도윤은 Redis TTL 설정 실수로 캐시 미스가 늘어났고, 그날 핫픽스까지 처리했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-04-18",
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m21",
+   "person": "p01",
+   "content": "2026-05-09에 도윤은 Jenkins 파이프라인을 수정해 배포 시간이 12분 줄어든 것을 확인했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-05-09",
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m22",
+   "person": "p01",
+   "content": "2026-06-27부터 2026-06-28까지 도윤은 장애 대응 회의에서 503 오류 원인을 추적했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-06-27",
+   "occurred_end": "2026-06-28"
+  },
+  {
+   "id": "p01-m23",
+   "person": "p01",
+   "content": "2026-07-14에 도윤은 OpenAPI 문서와 실제 응답 필드가 달라져서 PR을 다시 열었다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-07-14",
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m24",
+   "person": "p01",
+   "content": "2026-08-03에 도윤은 Slack 알림 폭주를 줄이려고 경보 규칙을 조정했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-08-03",
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m25",
+   "person": "p01",
+   "content": "2026-09-11부터 2026-09-12까지 도윤은 MySQL 백업 복구 리허설을 수행했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-09-11",
+   "occurred_end": "2026-09-12"
+  },
+  {
+   "id": "p01-m26",
+   "person": "p01",
+   "content": "2026-10-22에 도윤은 GitHub Actions의 캐시 키 문제를 찾아 빌드 실패를 잡았다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-22",
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m27",
+   "person": "p01",
+   "content": "2026-11-05에 도윤은 배포 직전 로그 레벨을 INFO로 낮춰 노이즈를 정리했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-11-05",
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m28",
+   "person": "p01",
+   "content": "agent는 리뷰 요청을 받으면 먼저 변경 범위와 롤백 가능성을 확인한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m29",
+   "person": "p01",
+   "content": "agent는 배포 안내를 할 때 버전, 시간, 영향 범위를 한 번에 적어준다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m30",
+   "person": "p01",
+   "content": "agent는 로그 분석 시 에러 메시지, 스택트레이스, 최근 배포 순서로 본다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m31",
+   "person": "p01",
+   "content": "agent는 코드 수정 제안 뒤에 바로 테스트 명령어와 확인 포인트를 붙인다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p01-m32",
+   "person": "p01",
+   "content": "agent는 필요하면 체크리스트를 표로 정리해 주되, 불필요한 장황한 설명은 줄인다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m01",
+   "person": "p02",
+   "content": "서연은 D2C 뷰티 브랜드의 마케터로, 런칭·리브랜딩 캠페인을 자주 맡는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m02",
+   "person": "p02",
+   "content": "서연은 보고서에서 KPI와 전환율을 함께 보는 편이며, 숫자 해석을 중요하게 여긴다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m03",
+   "person": "p02",
+   "content": "서연은 메일보다 슬랙으로 빠르게 확인받는 것을 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m04",
+   "person": "p02",
+   "content": "서연은 캠페인 자료를 표와 한 줄 요약으로 먼저 보는 편이다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m05",
+   "person": "p02",
+   "content": "서연은 회의 안건을 미리 보내주면 응답이 훨씬 빨라진다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m06",
+   "person": "p02",
+   "content": "서연은 리포트 초안에 너무 많은 이모지를 쓰지 않길 바란다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m07",
+   "person": "p02",
+   "content": "서연은 주간 보고서를 월요일 오전보다 전날 저녁에 받는 쪽을 더 편하게 느낀다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m08",
+   "person": "p02",
+   "content": "서연은 경쟁사 비교표를 색상보다 정렬된 구조로 보는 것을 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m09",
+   "person": "p02",
+   "content": "서연은 신규 캠페인 브리프를 받으면, 먼저 타깃과 예산을 확인해 달라고 요청한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m10",
+   "person": "p02",
+   "content": "서연은 11월 캠페인 보고서를 2026-11-10까지 검토하고 코멘트를 주기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m11",
+   "person": "p02",
+   "content": "서연은 다음 분기 프로모션 일정안을 2026-11-12 오전 회의 전까지 공유하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m12",
+   "person": "p02",
+   "content": "서연은 광고 성과표의 숫자 검증을 2026-11-08에 마무리하겠다고 약속했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m13",
+   "person": "p02",
+   "content": "서연은 브랜드 가이드 수정본에 대해 디자인팀과 2026-11-13까지 조율하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m14",
+   "person": "p02",
+   "content": "서연은 인플루언서 제안서 1차안을 2026-11-09까지 받아 보기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m15",
+   "person": "p02",
+   "content": "서연은 2026-05-14에 GA4 대시보드 정리 회의를 열어 지표 정의를 맞췄다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-05-14",
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m16",
+   "person": "p02",
+   "content": "서연은 2026-06-03부터 2026-06-05까지 신제품 런칭 캠페인 A/B 테스트를 진행했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-06-03",
+   "occurred_end": "2026-06-05"
+  },
+  {
+   "id": "p02-m17",
+   "person": "p02",
+   "content": "서연은 2026-07-19에 외부 대행사와 보고서 톤앤매너를 맞추는 미팅을 했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-07-19",
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m18",
+   "person": "p02",
+   "content": "서연은 2026-08-08에 주간 성과 리포트에서 CTR 하락 원인을 찾아 재분류했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-08-08",
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m19",
+   "person": "p02",
+   "content": "서연은 2026-09-02부터 2026-09-04까지 시즌 프로모션 예산안을 재편성했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-09-02",
+   "occurred_end": "2026-09-04"
+  },
+  {
+   "id": "p02-m20",
+   "person": "p02",
+   "content": "서연은 2026-10-11에 신규 랜딩페이지 문구를 검수하며 CTA를 두 차례 고쳤다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-11",
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m21",
+   "person": "p02",
+   "content": "서연은 2026-11-01에 CRM 발송 결과를 보고서로 묶어 팀 채널에 공유했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-11-01",
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m22",
+   "person": "p02",
+   "content": "비서는 캠페인 요약을 먼저 3줄로 정리하고, 세부 수치는 뒤에 붙여야 한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m23",
+   "person": "p02",
+   "content": "비서는 보고서 초안을 만들 때 KPI, 인사이트, 액션 아이템 순서로 배열한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m24",
+   "person": "p02",
+   "content": "비서는 서연에게 답할 때 슬랙용 짧은 문장과 문서용 정중한 문장을 구분해 쓴다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m25",
+   "person": "p02",
+   "content": "비서는 회의록을 남길 때 날짜, 담당자, 마감일을 빠뜨리지 않고 적는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m26",
+   "person": "p02",
+   "content": "비서는 캠페인 안건을 받을 때 예산, 타깃, 채널을 먼저 확인해 되묻는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m27",
+   "person": "p02",
+   "content": "비서는 보고서 수정 요청이 오면 변경점만 표시해 재작업 범위를 줄인다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m28",
+   "person": "p02",
+   "content": "비서는 성과 분석 시 전월 대비와 목표 대비를 함께 비교해 설명한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m29",
+   "person": "p02",
+   "content": "비서는 여러 캠페인을 비교할 때 같은 지표명과 동일한 기간을 맞춰 정리한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p02-m30",
+   "person": "p02",
+   "content": "비서는 주간 보고서 초안에서 숫자와 문장을 분리해 검수한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m01",
+   "person": "p03",
+   "content": "지호는 고등학교 국어 교사이며 2학년 문학과 3학년 독서 지도를 맡는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m02",
+   "person": "p03",
+   "content": "지호는 학부모 상담에서 생활기록부와 수행평가 기준을 함께 설명하는 편이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m03",
+   "person": "p03",
+   "content": "지호는 수업 자료를 구글 문서보다 한글(HWP) 파일로 정리하는 경우가 많다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m04",
+   "person": "p03",
+   "content": "지호는 학생 피드백을 말투가 부드러운 문장으로 다듬는 것을 중요하게 여긴다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m05",
+   "person": "p03",
+   "content": "지호는 1차 기안보다 최종 공문 문구를 더 꼼꼼히 확인해 달라고 자주 요청한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m06",
+   "person": "p03",
+   "content": "지호는 학부모 상담 기록을 주간 단위로 묶어 두면 찾기 쉽다고 느낀다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m07",
+   "person": "p03",
+   "content": "지호는 국어과 평가에서 서술형 문항과 루브릭을 함께 보는 방식을 선호한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m08",
+   "person": "p03",
+   "content": "지호는 수업 자료를 먼저 간단히 요약하고, 그다음 활동지를 붙이는 구성을 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m09",
+   "person": "p03",
+   "content": "지호는 문자 알림보다 학부모 상담 안내문 초안을 먼저 보는 편이다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m10",
+   "person": "p03",
+   "content": "지호는 회의록에서 핵심 결정만 굵게 정리된 형태를 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m11",
+   "person": "p03",
+   "content": "지호는 답장 초안이 너무 딱딱하면 덜 공식적인 어조로 바꾸길 원한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m12",
+   "person": "p03",
+   "content": "지호는 수업안 파일 이름에 날짜와 학년을 넣어 정리하는 방식을 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m13",
+   "person": "p03",
+   "content": "지호는 상담 일정은 오전보다 오후 시간대로 잡는 편이 편하다고 느낀다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m14",
+   "person": "p03",
+   "content": "지호는 인쇄본보다 화면에서 표와 문단을 먼저 확인하는 습관이 있다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m15",
+   "person": "p03",
+   "content": "지호는 2026-11-10에 3학년 독서 발표 수업안을 완성해 달라고 요청했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m16",
+   "person": "p03",
+   "content": "지호는 2026-11-12까지 학부모 상담 안내문 초안을 검토하겠다고 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m17",
+   "person": "p03",
+   "content": "지호는 2026-11-08에 2학년 문학 수행평가 루브릭을 다시 확인하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m18",
+   "person": "p03",
+   "content": "지호는 2026-11-15까지 학생 피드백 문구를 다듬어 달라고 부탁했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m19",
+   "person": "p03",
+   "content": "지호는 2026-11-07 오후에 학년부 회의 자료를 함께 정리하기로 약속했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m20",
+   "person": "p03",
+   "content": "2026-04-18에 지호는 1학기 중간고사 문항 점검표를 만들고 오탈자를 고쳤다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-04-18",
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m21",
+   "person": "p03",
+   "content": "2026-05-09에 지호는 학부모 상담 주간 일정표를 엑셀로 다시 배치했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-05-09",
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m22",
+   "person": "p03",
+   "content": "2026-06-21부터 2026-06-23까지 지호는 국어과 세부 능력 특기사항 문구를 정리했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-06-21",
+   "occurred_end": "2026-06-23"
+  },
+  {
+   "id": "p03-m23",
+   "person": "p03",
+   "content": "2026-07-12에 지호는 여름방학 보충수업 안내문을 교무실 프린터로 출력했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-07-12",
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m24",
+   "person": "p03",
+   "content": "2026-08-27에 지호는 3학년 독서 토론 활동지를 A4 두 장으로 줄여 재구성했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-08-27",
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m25",
+   "person": "p03",
+   "content": "2026-10-14에 지호는 수행평가 채점 기준을 학생용 예시와 함께 설명했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-14",
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m26",
+   "person": "p03",
+   "content": "2026-11-03부터 2026-11-04까지 지호는 서술형 평가 결과를 표로 묶어 검토했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-11-03",
+   "occurred_end": "2026-11-04"
+  },
+  {
+   "id": "p03-m27",
+   "person": "p03",
+   "content": "회신 초안은 먼저 3문장 이내로 줄이고, 필요하면 다음에 길게 늘려 써야 한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m28",
+   "person": "p03",
+   "content": "수업 자료 정리 시 파일명은 '학년_주제_날짜' 형식으로 맞추고 버전 번호를 붙인다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m29",
+   "person": "p03",
+   "content": "학부모 상담 관련 메모는 일정, 쟁점, 후속 조치의 3단 구조로 기록한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p03-m30",
+   "person": "p03",
+   "content": "공문이나 안내문은 최종본 전에 맞춤법과 수치 표기를 한 번 더 대조한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m01",
+   "person": "p04",
+   "content": "하린은 핀테크 스타트업에서 PM으로 일하며 로드맵과 회의록 정리를 자주 맡는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m02",
+   "person": "p04",
+   "content": "하린은 Notion에 제품 요구사항을 모으고, Jira 티켓 상태를 함께 보는 편이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m03",
+   "person": "p04",
+   "content": "하린은 월간 지표보다 주간 실행 계획을 더 선호해 스프린트 단위로 보는 습관이 있다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m04",
+   "person": "p04",
+   "content": "하린은 회의 전에 아젠다를 3개 이하로 줄이면 논의가 빨라진다고 본다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m05",
+   "person": "p04",
+   "content": "하린은 이메일보다 슬랙 짧은 메시지로 확인받는 방식을 더 편하게 느낀다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m06",
+   "person": "p04",
+   "content": "하린은 숫자 표기에서 천 단위 구분을 꼭 넣어야 보고서가 읽기 쉽다고 생각한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m07",
+   "person": "p04",
+   "content": "하린은 데모 자료를 만들 때 Figma 스크린과 표 한 장을 함께 두는 편이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m08",
+   "person": "p04",
+   "content": "하린은 회의록에서 결정사항과 보류사항을 분리해 적는 방식을 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m09",
+   "person": "p04",
+   "content": "하린은 일정 조율 시 오전보다 오후 2시~4시를 더 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m10",
+   "person": "p04",
+   "content": "하린은 긴 보고서보다 표와 불릿으로 요약된 문서를 더 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m11",
+   "person": "p04",
+   "content": "하린은 회의 초대장에 목적과 산출물을 먼저 적어두는 것을 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m12",
+   "person": "p04",
+   "content": "하린은 버그 공유 때 스크린샷과 재현 절차가 같이 있는 걸 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m13",
+   "person": "p04",
+   "content": "하린은 용어가 섞인 슬라이드보다 하나의 표현을 끝까지 유지한 문서를 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m14",
+   "person": "p04",
+   "content": "하린은 주간 보고를 금요일 오후 전에 받아보길 원한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m15",
+   "person": "p04",
+   "content": "하린은 2026-11-10까지 다음 분기 로드맵 초안을 공유하겠다고 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m16",
+   "person": "p04",
+   "content": "하린은 2026-11-12 오전 회의에서 결제 플로우 개편안을 설명하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m17",
+   "person": "p04",
+   "content": "하린은 이번 주 안에 고객 피드백 12건을 우선순위 표에 반영하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m18",
+   "person": "p04",
+   "content": "하린은 2026-11-08에 QA와 함께 오류 재현 체크리스트를 검토하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m19",
+   "person": "p04",
+   "content": "하린은 2026-11-14까지 1차 회의록 템플릿을 확정해 팀에 배포하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m20",
+   "person": "p04",
+   "content": "2026-04-18에 하린은 신규 대시보드 시연 회의에서 지표 정의를 다시 정리했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-04-18",
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m21",
+   "person": "p04",
+   "content": "2026-05-07에 하린은 Jira 워크플로우를 바꾸는 회의에서 칼럼 이름을 재조정했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-05-07",
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m22",
+   "person": "p04",
+   "content": "2026-06-11부터 2026-06-12까지 하린은 스프린트 계획 워크숍에서 우선순위 표를 수정했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-06-11",
+   "occurred_end": "2026-06-12"
+  },
+  {
+   "id": "p04-m23",
+   "person": "p04",
+   "content": "2026-07-23에 하린은 Slack 알림 과다 문제를 논의하며 채널 분리를 제안했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-07-23",
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m24",
+   "person": "p04",
+   "content": "2026-08-14에 하린은 고객 인터뷰 5건 요약본을 읽고 FAQ 문구를 고쳤다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-08-14",
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m25",
+   "person": "p04",
+   "content": "2026-09-03부터 2026-09-05까지 하린은 릴리스 준비 회의와 점검표를 묶어 관리했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-09-03",
+   "occurred_end": "2026-09-05"
+  },
+  {
+   "id": "p04-m26",
+   "person": "p04",
+   "content": "2026-10-21에 하린은 분기 리뷰에서 KPI 그래프를 바꾸고 보고서 문구를 다듬었다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-21",
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m27",
+   "person": "p04",
+   "content": "2026-11-04에 하린은 회의록 누락을 줄이기 위해 녹취 요약본 검토를 시도했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-11-04",
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m28",
+   "person": "p04",
+   "content": "비서는 회의 직후 10분 안에 아젠다, 결정사항, 액션아이템을 정리한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m29",
+   "person": "p04",
+   "content": "비서는 로드맵 항목을 분기별·월별로 나눠 Jira 링크와 함께 저장한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m30",
+   "person": "p04",
+   "content": "비서는 일정 제안 시 하린의 선호 시간대와 기존 회의 충돌을 먼저 확인한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p04-m31",
+   "person": "p04",
+   "content": "비서는 회의록에서 보류된 이슈를 별도 목록으로 빼고 다음 확인일을 적는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m01",
+   "person": "p05",
+   "content": "민준은 중견기업의 재무 담당으로, 월말 결산과 예산 검토를 주로 맡는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m02",
+   "person": "p05",
+   "content": "민준은 엑셀 피벗과 Power Query를 자주 써서 매출·비용 데이터를 정리한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m03",
+   "person": "p05",
+   "content": "민준은 보고서에서 숫자보다 요약 문장을 먼저 보는 편이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m04",
+   "person": "p05",
+   "content": "민준은 법인카드 비용과 출장비 항목을 별도 표로 확인하는 습관이 있다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m05",
+   "person": "p05",
+   "content": "민준은 주간 회의에서 현금흐름과 예산 차이를 먼저 점검하길 원한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m06",
+   "person": "p05",
+   "content": "민준은 3분기 실적표를 볼 때 전월 대비 증감률을 함께 확인한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m07",
+   "person": "p05",
+   "content": "민준은 결산 일정이 밀리면 원인 메모를 남겨 두는 편이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m08",
+   "person": "p05",
+   "content": "민준은 답변을 짧게 받은 뒤 필요할 때만 세부표를 추가로 보는 걸 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m09",
+   "person": "p05",
+   "content": "민준은 표준 용어로 통일된 보고서를 좋아하고, 표현이 흔들리는 걸 싫어한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m10",
+   "person": "p05",
+   "content": "민준은 숫자 요약을 먼저, 해설은 뒤에 두는 형식을 더 편하게 느낀다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m11",
+   "person": "p05",
+   "content": "민준은 메일보다 슬랙 한 줄 요약으로 먼저 확인하는 방식을 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m12",
+   "person": "p05",
+   "content": "민준은 예산안 검토에서 보수적 가정을 쓰는 쪽을 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m13",
+   "person": "p05",
+   "content": "민준은 PDF보다 엑셀 원본으로 받으면 수정 검토가 빠르다고 느낀다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m14",
+   "person": "p05",
+   "content": "민준은 회의록에 액션아이템과 마감일이 분리돼 있길 원한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m15",
+   "person": "p05",
+   "content": "민준은 11월 15일까지 4분기 예산 수정안을 경영회의에 올리기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m16",
+   "person": "p05",
+   "content": "민준은 다음 주 화요일까지 법인카드 정산 누락분을 재확인하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m17",
+   "person": "p05",
+   "content": "민준은 11월 말 결산 전까지 부서별 비용 코드를 다시 맞추기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m18",
+   "person": "p05",
+   "content": "민준은 월간 보고서 초안을 2일 안에 검토해 달라고 요청하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m19",
+   "person": "p05",
+   "content": "민준은 2026-11-20 전까지 현금흐름 전망표를 업데이트하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m20",
+   "person": "p05",
+   "content": "2026-04-18에 민준은 2분기 예산 회의에서 비용 항목 3개를 재분류했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-04-18",
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m21",
+   "person": "p05",
+   "content": "2026-05-07에 민준은 ERP에서 전표 누락을 발견해 마감표를 다시 맞췄다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-05-07",
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m22",
+   "person": "p05",
+   "content": "2026-06-12에 민준은 부서장 회의용 슬라이드 8장을 급히 수정했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-06-12",
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m23",
+   "person": "p05",
+   "content": "2026-07-23부터 2026-07-24까지 민준은 출장비 정산과 증빙 스캔을 함께 처리했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-07-23",
+   "occurred_end": "2026-07-24"
+  },
+  {
+   "id": "p05-m24",
+   "person": "p05",
+   "content": "2026-08-09에 민준은 Power Query 새 규칙을 적용해 월별 비용표를 정리했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-08-09",
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m25",
+   "person": "p05",
+   "content": "2026-09-16에 민준은 3분기 실적 리뷰에서 매출 추세 그래프를 다시 설명했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-09-16",
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m26",
+   "person": "p05",
+   "content": "2026-10-28에 민준은 예산 잔액표를 보고 본부 요청 메일의 숫자를 교정했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-10-28",
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m27",
+   "person": "p05",
+   "content": "에이전트는 답변 전에 핵심 숫자 3개를 먼저 정리해 주는 방식으로 돕는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m28",
+   "person": "p05",
+   "content": "에이전트는 결산 항목을 정리할 때 원인과 영향, 다음 조치를 분리해 적는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m29",
+   "person": "p05",
+   "content": "에이전트는 예산 검토 요청이 오면 전월·전년 대비 수치를 함께 비교한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m30",
+   "person": "p05",
+   "content": "에이전트는 보고서 초안을 만들 때 표와 문장을 분리해 가독성을 유지한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p05-m31",
+   "person": "p05",
+   "content": "에이전트는 최신 자료가 없으면 추정 대신 확인 필요라고 분명히 표시한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m01",
+   "person": "p06",
+   "content": "수아는 세포생물학 실험 기록을 Notion보다 로컬 Markdown에 먼저 적는 편이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m02",
+   "person": "p06",
+   "content": "수아는 주로 Python과 R을 함께 써서 시퀀싱 결과를 정리한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m03",
+   "person": "p06",
+   "content": "수아는 초록 작성 때 용어를 한국어와 영어로 병기해 두길 선호한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m04",
+   "person": "p06",
+   "content": "수아는 그림 파일명에 날짜와 샘플 코드를 넣어 두는 습관이 있다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m05",
+   "person": "p06",
+   "content": "수아는 회의록보다 실험 조건표를 먼저 확인해야 안심한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m06",
+   "person": "p06",
+   "content": "수아는 논문 초안의 결과 섹션에서 통계값 표기를 아주 꼼꼼히 본다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m07",
+   "person": "p06",
+   "content": "수아는 장기 프로젝트명에 ‘세포주 24h’ 같은 짧은 태그를 붙인다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m08",
+   "person": "p06",
+   "content": "수아는 주간 보고서 초안을 목요일 오후에 함께 다듬어 달라고 했다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m09",
+   "person": "p06",
+   "content": "수아는 실험 기록 요약을 표 형태로 받는 것을 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m10",
+   "person": "p06",
+   "content": "수아는 문장 끝이 딱딱한 안내문보다 짧은 체크리스트를 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m11",
+   "person": "p06",
+   "content": "수아는 논문 관련 메모에서 불확실한 부분을 먼저 표시해 주길 원한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m12",
+   "person": "p06",
+   "content": "수아는 파일명을 한글보다 영문+숫자 조합으로 맞추는 걸 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m13",
+   "person": "p06",
+   "content": "수아는 회의 뒤 정리본을 3줄 이내로 먼저 보는 편이다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m14",
+   "person": "p06",
+   "content": "수아는 실험 노트의 날짜 표기를 YYYY-MM-DD 형식으로 유지하길 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m15",
+   "person": "p06",
+   "content": "수아는 2026-11-12까지 학회 초록 최종본을 제출하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m16",
+   "person": "p06",
+   "content": "수아는 다음 주 월요일 오전에 공동저자와 원고 개요를 검토하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m17",
+   "person": "p06",
+   "content": "수아는 금요일까지 실험 기록 표준양식을 새 버전으로 정리하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m18",
+   "person": "p06",
+   "content": "수아는 다음 달 전까지 Figure 2의 캡션 초안을 마치기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m19",
+   "person": "p06",
+   "content": "수아는 2026-11-20 전에 리뷰 코멘트에 대한 답변 초안을 준비하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m20",
+   "person": "p06",
+   "content": "2026-04-18에 수아는 qPCR 결과표를 재점검했고 Ct 값 표기를 바로잡았다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-04-18",
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m21",
+   "person": "p06",
+   "content": "2026-05-09부터 2026-05-10까지 수아는 동료와 미니 세미나 슬라이드를 함께 손봤다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-05-09",
+   "occurred_end": "2026-05-10"
+  },
+  {
+   "id": "p06-m22",
+   "person": "p06",
+   "content": "2026-06-14에 수아는 실험실 회의에서 샘플 라벨 규칙을 다시 설명했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-06-14",
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m23",
+   "person": "p06",
+   "content": "2026-07-02에 수아는 원고 초안의 Discussion 문단을 대폭 줄였다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-07-02",
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m24",
+   "person": "p06",
+   "content": "2026-08-21부터 2026-08-23까지 수아는 분석 파이프라인 로그를 점검하며 오류를 잡았다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-08-21",
+   "occurred_end": "2026-08-23"
+  },
+  {
+   "id": "p06-m25",
+   "person": "p06",
+   "content": "2026-09-17에 수아는 회의록에서 항목별 담당자와 마감일을 재배치했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-09-17",
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m26",
+   "person": "p06",
+   "content": "2026-10-28에 수아는 포스터 초안의 그림 번호와 범례를 최종 확인했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-28",
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m27",
+   "person": "p06",
+   "content": "기억을 저장할 때는 사실과 선호, 약속을 서로 섞지 말고 분리해 둔다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m28",
+   "person": "p06",
+   "content": "경험 기억은 반드시 날짜를 넣고, 여러 날이면 occurred_end까지 기록한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m29",
+   "person": "p06",
+   "content": "사람 이름이나 민감정보가 보이면 저장 전에 반드시 삭제하거나 바꾼다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p06-m30",
+   "person": "p06",
+   "content": "논문 작업 기억은 초안, 리뷰, 회의록 같은 검색어를 함께 남겨 찾기 쉽게 한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m01",
+   "person": "p07",
+   "content": "예준은 UX 디자이너로 Figma와 FigJam을 자주 쓰며, 컴포넌트 정리와 사용자 흐름 점검을 맡는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m02",
+   "person": "p07",
+   "content": "예준은 모바일 앱보다 웹 대시보드의 정보 구조를 더 자주 다룬다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m03",
+   "person": "p07",
+   "content": "예준은 한국어 보고서를 선호하지만, 회의 메모는 영어 키워드도 섞어 적는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m04",
+   "person": "p07",
+   "content": "예준은 사용자 인터뷰 요약을 표보다 짧은 문장 목록으로 보는 편이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m05",
+   "person": "p07",
+   "content": "예준은 피드백 받을 때 버튼명과 화면 전환 같은 세부를 먼저 확인한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m06",
+   "person": "p07",
+   "content": "예준은 주중 오전보다 화요일 오후에 디자인 리뷰 집중도가 높다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m07",
+   "person": "p07",
+   "content": "예준은 Jira 티켓 번호를 붙여두면 후속 작업 추적이 빠르다고 본다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m08",
+   "person": "p07",
+   "content": "예준은 답변을 먼저 3줄 요약으로 받고, 그다음 상세 근거를 보는 방식을 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m09",
+   "person": "p07",
+   "content": "예준은 사용성 테스트 결과를 표보다 불릿 포인트 5개 안팎으로 정리하는 걸 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m10",
+   "person": "p07",
+   "content": "예준은 회의록에 스크린샷 캡션과 액션 아이템을 같이 넣는 편을 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m11",
+   "person": "p07",
+   "content": "예준은 색상 대비나 폰트 크기 같은 접근성 이슈를 별도 섹션으로 분리해 달라고 한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m12",
+   "person": "p07",
+   "content": "예준은 목업 검토 때 지나친 수식어보다 직접적인 문장과 구체 예시를 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m13",
+   "person": "p07",
+   "content": "예준은 1차 리뷰에서는 폭넓은 의견, 2차에서는 우선순위가 정리된 피드백을 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m14",
+   "person": "p07",
+   "content": "예준은 Slack 메시지를 길게 받기보다 핵심 질문과 선택지만 짧게 받는 편이다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m15",
+   "person": "p07",
+   "content": "예준은 2026-11-10까지 신규 온보딩 화면의 와이어프레임 초안을 마무리하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m16",
+   "person": "p07",
+   "content": "예준은 다음 주 금요일까지 고객센터 FAQ용 문구를 제품팀과 맞춰보기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m17",
+   "person": "p07",
+   "content": "예준은 2026-11-14 전까지 사용성 테스트 참가자 6명 일정을 확정하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m18",
+   "person": "p07",
+   "content": "예준은 11월 셋째 주에 대시보드 필터 UI를 개발자와 재검토하기로 약속했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m19",
+   "person": "p07",
+   "content": "예준은 이번 달 안에 디자인 시스템의 토큰 명명 규칙을 문서로 정리하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m20",
+   "person": "p07",
+   "content": "2026-04-12에 예준은 신규 가입 흐름의 카드형 레이아웃을 2안으로 나눠 리뷰했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-04-12",
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m21",
+   "person": "p07",
+   "content": "2026-05-08에 예준은 4명과 함께 모바일 결제 화면 사용성 테스트를 진행했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-05-08",
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m22",
+   "person": "p07",
+   "content": "2026-06-19부터 2026-06-21까지 예준은 대시보드 KPI 위젯의 간격과 정렬을 손봤다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-06-19",
+   "occurred_end": "2026-06-21"
+  },
+  {
+   "id": "p07-m23",
+   "person": "p07",
+   "content": "2026-07-03에 예준은 회의실 B에서 30분짜리 디자인 리뷰를 열어 피드백을 모았다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-07-03",
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m24",
+   "person": "p07",
+   "content": "2026-08-15에 예준은 Figma 라이브러리에서 버튼 상태를 정리하고 주석을 남겼다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-08-15",
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m25",
+   "person": "p07",
+   "content": "2026-09-09부터 2026-09-10까지 예준은 신규 온보딩 문구를 두 차례 A/B로 비교했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-09-09",
+   "occurred_end": "2026-09-10"
+  },
+  {
+   "id": "p07-m26",
+   "person": "p07",
+   "content": "2026-10-28에 예준은 Jira 티켓 14개를 훑으며 우선순위와 중복 이슈를 정리했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-28",
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m27",
+   "person": "p07",
+   "content": "2026-11-05에 예준은 Zoom으로 원격 사용성 테스트를 하며 메모를 실시간으로 남겼다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-11-05",
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m28",
+   "person": "p07",
+   "content": "에이전트는 디자인 리뷰를 할 때 먼저 문제 정의, 다음에 개선안 순서로 답한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m29",
+   "person": "p07",
+   "content": "에이전트는 사용성 테스트 요약을 만들 때 관찰, 해석, 제안의 3단 구성을 유지한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m30",
+   "person": "p07",
+   "content": "에이전트는 피드백을 줄 때 반드시 화면 요소명, 동작, 영향 범위를 함께 적는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p07-m31",
+   "person": "p07",
+   "content": "에이전트는 일정이나 후속 작업을 언급할 때 날짜와 담당자를 명확히 분리해 적는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m01",
+   "person": "p08",
+   "content": "지안은 B2B 영업 관리자이며, 고객사 미팅과 제안서 조율을 주로 맡는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m02",
+   "person": "p08",
+   "content": "지안은 CRM에 리드 상태와 다음 액션을 꼼꼼히 남기는 편이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m03",
+   "person": "p08",
+   "content": "지안은 주간 파이프라인 리뷰에서 숫자와 근거를 함께 보는 방식을 선호한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m04",
+   "person": "p08",
+   "content": "지안은 제안서 초안의 첫 페이지에 고객의 핵심 과제를 먼저 적어두길 원한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m05",
+   "person": "p08",
+   "content": "지안은 외부 미팅 일정이 바뀌면 캘린더와 메모를 바로 동기화해 두는 편이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m06",
+   "person": "p08",
+   "content": "지안은 견적서보다 비교표와 ROI 설명이 들어간 자료를 더 자주 활용한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m07",
+   "person": "p08",
+   "content": "지안은 아침에는 짧은 확인 메시지, 오후에는 상세 보고서를 받는 흐름을 좋아한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m08",
+   "person": "p08",
+   "content": "지안은 1페이지 요약본과 핵심 숫자 표를 먼저 확인하는 스타일을 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m09",
+   "person": "p08",
+   "content": "지안은 회의록에 결정사항과 담당자, 마감일을 한 번에 정리해 두길 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m10",
+   "person": "p08",
+   "content": "지안은 제안서 문구를 너무 길게 쓰기보다 3~5개 핵심 포인트로 나누는 것을 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m11",
+   "person": "p08",
+   "content": "지안은 고객사 명칭과 산업군을 먼저 적고, 뒤에 상세 배경을 붙이는 구성을 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m12",
+   "person": "p08",
+   "content": "지안은 일정 변경이 생기면 늦어도 당일 오전 안에 알림받기를 원한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m13",
+   "person": "p08",
+   "content": "지안은 표준 용어를 쓰되, 제안서에서는 너무 딱딱한 표현은 피하는 편이다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m14",
+   "person": "p08",
+   "content": "지안은 고객 미팅 전에 경쟁사 비교자료를 함께 보는 방식을 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m15",
+   "person": "p08",
+   "content": "지안은 2026-11-10에 ABC테크와 견적 재협의 미팅을 잡아 두었다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m16",
+   "person": "p08",
+   "content": "지안은 2026-11-12까지 2차 제안서 초안을 완성해 공유하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m17",
+   "person": "p08",
+   "content": "지안은 2026-11-14에 Q4 파이프라인 리뷰 자료를 제출하기로 약속했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m18",
+   "person": "p08",
+   "content": "지안은 2026-11-18 전까지 고객사 FAQ 보강본을 정리해 두기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m19",
+   "person": "p08",
+   "content": "지안은 2026-11-20에 내부 데모 일정과 발표자 배치를 확정하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m20",
+   "person": "p08",
+   "content": "2026-04-18에 지안은 리드 3건의 상태를 CRM에 정리하고 팀과 공유했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-04-18",
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m21",
+   "person": "p08",
+   "content": "2026-05-09에 지안은 강남 오피스에서 고객사 미팅을 마치고 후속 제안을 보냈다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-05-09",
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m22",
+   "person": "p08",
+   "content": "2026-06-21~2026-06-22에 지안은 제안서 워크숍을 진행하며 가격표와 범위를 조정했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-06-21",
+   "occurred_end": "2026-06-22"
+  },
+  {
+   "id": "p08-m23",
+   "person": "p08",
+   "content": "2026-07-14에 지안은 화상 회의에서 고객의 보안 질문 5개에 답하고 메모를 남겼다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-07-14",
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m24",
+   "person": "p08",
+   "content": "2026-08-02에 지안은 주간 보고서에 파이프라인 4건과 리스크 항목을 넣었다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-08-02",
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m25",
+   "person": "p08",
+   "content": "2026-09-11에 지안은 제안서 버전 3.1을 검토하고 문구 수정을 요청했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-09-11",
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m26",
+   "person": "p08",
+   "content": "2026-10-23~2026-10-24에 지안은 고객사 파일럿 결과를 확인하며 다음 미팅 안건을 정리했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-10-23",
+   "occurred_end": "2026-10-24"
+  },
+  {
+   "id": "p08-m27",
+   "person": "p08",
+   "content": "비서는 고객 미팅 요약을 5줄 이내로 먼저 만들고, 세부는 뒤에 붙인다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m28",
+   "person": "p08",
+   "content": "비서는 제안서 초안에서 가격, 일정, 범위를 별도 표로 정리해 전달한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m29",
+   "person": "p08",
+   "content": "비서는 일정 변경이 감지되면 캘린더와 할 일 목록을 함께 갱신한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p08-m30",
+   "person": "p08",
+   "content": "비서는 회의록에 결정사항, 담당자, 마감일을 누락 없이 포함해 저장한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m01",
+   "person": "p09",
+   "content": "은우는 동네 카페 ‘모닝브루’를 운영하며 오전 피크에 매장 관리가 가장 바쁘다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m02",
+   "person": "p09",
+   "content": "은우는 빙수보다 라떼, 특히 바닐라 라떼와 콜드브루 조합을 자주 언급한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m03",
+   "person": "p09",
+   "content": "은우는 재고표를 엑셀보다 구글 스프레드시트로 정리하는 편이라고 했다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m04",
+   "person": "p09",
+   "content": "은우는 평일 오후엔 직원 근무표를 먼저 보고, 그다음 발주를 잡는 순서를 선호한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m05",
+   "person": "p09",
+   "content": "은우는 시럽 재고가 줄면 메뉴 개발보다 먼저 원두·우유 발주를 챙긴다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m06",
+   "person": "p09",
+   "content": "은우는 테이블 6개짜리 작은 매장에서 포장 주문 비율이 꽤 높다고 말했다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m07",
+   "person": "p09",
+   "content": "은우는 매장 비서에게 짧은 할 일 목록과 우선순위 1~3으로 정리해 달라고 했다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m08",
+   "person": "p09",
+   "content": "은우는 답변을 5줄 안팎으로 짧게 받고, 장황한 설명은 줄여 달라고 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m09",
+   "person": "p09",
+   "content": "은우는 직원 이름이 섞인 근무표보다 오전·오후·마감 슬롯으로 보는 표를 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m10",
+   "person": "p09",
+   "content": "은우는 재고 알림에서 원두, 우유, 컵 순으로 먼저 보여 주는 구성을 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m11",
+   "person": "p09",
+   "content": "은우는 메뉴 개발 제안에 원가와 판매가를 함께 적어 주는 방식을 더 신뢰한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m12",
+   "person": "p09",
+   "content": "은우는 공지 초안에 날짜와 마감 시간을 굵게 표시해 주길 원한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m13",
+   "person": "p09",
+   "content": "은우는 보고서에 감성 표현보다 숫자와 체크박스가 많은 형식을 더 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m14",
+   "person": "p09",
+   "content": "은우는 신메뉴 아이디어를 낼 때 계절감이 드러나는 이름을 좋아한다고 했다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m15",
+   "person": "p09",
+   "content": "은우는 2026-11-10까지 가을 한정 메뉴 2종의 원가표를 검토하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m16",
+   "person": "p09",
+   "content": "은우는 2026-11-12 오후까지 주말 근무표 초안을 확정하겠다고 약속했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m17",
+   "person": "p09",
+   "content": "은우는 2026-11-08에 시럽과 우유 발주 수량을 최종 확인하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m18",
+   "person": "p09",
+   "content": "은우는 2026-11-15 전에 매장 비치용 메뉴판 문구를 다듬어 달라고 요청했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m19",
+   "person": "p09",
+   "content": "은우는 2026-11-09 오전에 직원 1명과 15분짜리 짧은 근무 조정 통화를 하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m20",
+   "person": "p09",
+   "content": "2026-04-18에 은우는 에스프레소 머신 점검 뒤 주문량을 20잔 단위로 다시 맞췄다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-04-18",
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m21",
+   "person": "p09",
+   "content": "2026-05-07에 은우는 우유 발주가 늦어져 아메리카노 중심으로 임시 메뉴판을 바꿨다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-05-07",
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m22",
+   "person": "p09",
+   "content": "2026-06-22에 은우는 직원 근무표를 수정하며 마감조 1명을 추가로 배치했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-06-22",
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m23",
+   "person": "p09",
+   "content": "2026-07-13에 은우는 바닐라 라떼 시음을 하고 원가표에 시럽 ml 수치를 적어 넣었다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-07-13",
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m24",
+   "person": "p09",
+   "content": "2026-08-02에 은우는 포장 손님이 몰려 주문서 번호표를 새로 정리했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-08-02",
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m25",
+   "person": "p09",
+   "content": "2026-09-14에 은우는 구글 스프레드시트에서 재고 경고 색상을 노란색으로 바꿨다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-09-14",
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m26",
+   "person": "p09",
+   "content": "2026-10-28에 은우는 신메뉴 후보 3개를 적고, 그중 흑임자 라떼를 보류했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-28",
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m27",
+   "person": "p09",
+   "content": "2026-11-03부터 2026-11-05까지 은우는 아침 피크 대비로 샷 추가 준비를 늘려 운영했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-11-03",
+   "occurred_end": "2026-11-05"
+  },
+  {
+   "id": "p09-m28",
+   "person": "p09",
+   "content": "재고·근무표·메뉴 관련 요청은 먼저 중요도 0~3으로 분류해 처리한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m29",
+   "person": "p09",
+   "content": "매장 일정은 날짜, 시간, 담당자, 비고 4칸으로 표를 만들어 전달한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m30",
+   "person": "p09",
+   "content": "재고 알림은 원두, 우유, 컵, 시럽 순으로 묶어 부족 수량을 함께 적는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p09-m31",
+   "person": "p09",
+   "content": "메뉴 제안은 이름, 핵심 재료, 예상 원가, 마진을 한 번에 보여 주는 형식을 쓴다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m01",
+   "person": "p10",
+   "content": "유나는 데이터과학 대학원생이며, 논문 읽기와 실험 코드 정리를 병행한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m02",
+   "person": "p10",
+   "content": "유나는 Python과 JupyterLab로 실험하고, 주로 pandas와 scikit-learn을 쓴다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m03",
+   "person": "p10",
+   "content": "유나는 재현 가능한 실험을 좋아해 seed 고정과 로그 저장을 자주 챙긴다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m04",
+   "person": "p10",
+   "content": "유나는 모델 비교에서 F1-score와 AUROC를 같이 보는 편이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m05",
+   "person": "p10",
+   "content": "유나는 실험 노트에 하이퍼파라미터와 에러 메시지를 함께 적어 둔다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m06",
+   "person": "p10",
+   "content": "유나는 논문 PDF를 Zotero에 모아 두고, 태그로 주제별 정리를 한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m07",
+   "person": "p10",
+   "content": "유나는 슬랙보다 문서형 메모를 선호하고, 요약을 짧게 남기길 원한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m08",
+   "person": "p10",
+   "content": "유나는 답변을 너무 길게 받기보다 핵심부터 먼저 보는 편이다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m09",
+   "person": "p10",
+   "content": "유나는 코드 예시가 있으면 이해가 빠르며, 최소한의 실행 예를 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m10",
+   "person": "p10",
+   "content": "유나는 표보다 글머리표 정리를 더 편하게 느낀다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m11",
+   "person": "p10",
+   "content": "유나는 실험 결과를 볼 때 metric 변화와 원인 가설을 같이 보고 싶어 한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m12",
+   "person": "p10",
+   "content": "유나는 파일명에 날짜와 버전 번호가 들어가면 추적하기 쉽다고 느낀다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m13",
+   "person": "p10",
+   "content": "유나는 논문 요약에서 방법보다 한계와 후속 실험을 먼저 찾는 편이다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m14",
+   "person": "p10",
+   "content": "유나는 디버깅 때 traceback을 그대로 붙여 보는 방식이 가장 편하다고 느낀다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m15",
+   "person": "p10",
+   "content": "유나는 2026-11-10까지 리뷰할 논문 2편의 초록과 핵심 그림을 정리해 둔다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m16",
+   "person": "p10",
+   "content": "유나는 이번 주 금요일까지 실험 코드의 seed 설정을 일괄 수정하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m17",
+   "person": "p10",
+   "content": "유나는 2026-11-12 학과 세미나 전에 발표용 슬라이드 초안을 완성할 예정이다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m18",
+   "person": "p10",
+   "content": "유나는 다음 회의 전까지 ablation 결과 표를 CSV와 PNG로 함께 정리하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m19",
+   "person": "p10",
+   "content": "유나는 2026-11-20 이전에 실험 로그 폴더를 정리하고 README를 갱신할 계획이다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m20",
+   "person": "p10",
+   "content": "2026-04-18에 유나는 JupyterLab에서 실험 중 GPU 메모리 초과를 해결했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-04-18",
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m21",
+   "person": "p10",
+   "content": "2026-05-09에 유나는 교수님 연구실 미팅에서 논문 3편의 차이를 비교했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-05-09",
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m22",
+   "person": "p10",
+   "content": "2026-06-02부터 2026-06-04까지 유나는 pandas 리팩터링으로 데이터 전처리 코드를 다시 썼다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-06-02",
+   "occurred_end": "2026-06-04"
+  },
+  {
+   "id": "p10-m23",
+   "person": "p10",
+   "content": "2026-07-21에 유나는 SciPy 최적화 실험에서 학습률 스윕 결과를 확인했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-07-21",
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m24",
+   "person": "p10",
+   "content": "2026-08-14에 유나는 학회 포스터 초안을 만들며 그래프 색상 체계를 맞췄다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 1,
+   "occurred_start": "2026-08-14",
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m25",
+   "person": "p10",
+   "content": "2026-09-03부터 2026-09-05까지 유나는 실험 재현성 점검으로 로그와 시드를 비교했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 3,
+   "occurred_start": "2026-09-03",
+   "occurred_end": "2026-09-05"
+  },
+  {
+   "id": "p10-m26",
+   "person": "p10",
+   "content": "2026-10-27에 유나는 모델 평가표를 만들다 F1과 AUROC 차이를 다시 계산했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-27",
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m27",
+   "person": "p10",
+   "content": "비서는 먼저 핵심 결론을 2문장으로 요약하고, 그다음 상세를 붙인다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m28",
+   "person": "p10",
+   "content": "비서는 코드 제안 시 파일명, 함수명, 실행 위치를 함께 적어 준다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m29",
+   "person": "p10",
+   "content": "비서는 실험 코드를 고칠 때 재현성 체크리스트와 함께 수정안을 제시한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 3,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "p10-m30",
+   "person": "p10",
+   "content": "비서는 논문 요약에서 목적, 방법, 한계, 다음 실험 순서로 정리한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  }
+ ],
+ "questions": [
+  {
+   "id": "p01-q01",
+   "person": "p01",
+   "category": "same_word",
+   "question": "Redis 캐시와 배치 작업을 함께 다루는 업무 말고 다른 것도 있나요?",
+   "previous": null,
+   "gold": [
+    "p01-m05"
+   ],
+   "group": "g-p01-q01",
+   "split": "report"
+  },
+  {
+   "id": "p01-q02",
+   "person": "p01",
+   "category": "same_word",
+   "question": "배포 노트에 버전 번호와 롤백 포인트가 같이 있어야 하나요?",
+   "previous": null,
+   "gold": [
+    "p01-m13"
+   ],
+   "group": "g-p01-q02",
+   "split": "report"
+  },
+  {
+   "id": "p01-q03",
+   "person": "p01",
+   "category": "same_word",
+   "question": "스테이징 배포 체크리스트를 언제까지 업데이트하기로 했죠?",
+   "previous": null,
+   "gold": [
+    "p01-m16"
+   ],
+   "group": "g-p01-q03",
+   "split": "tune"
+  },
+  {
+   "id": "p01-q04",
+   "person": "p01",
+   "category": "particle",
+   "question": "알림이 밀려서 놓친 거 있나 확인해줄래요?",
+   "previous": null,
+   "gold": [
+    "p01-m08"
+   ],
+   "group": "g-p01-q04",
+   "split": "report"
+  },
+  {
+   "id": "p01-q05",
+   "person": "p01",
+   "category": "particle",
+   "question": "회의록은 어디서 찾을 수 있나요?",
+   "previous": null,
+   "gold": [
+    "p01-m12"
+   ],
+   "group": "g-p01-q05",
+   "split": "tune"
+  },
+  {
+   "id": "p01-q06",
+   "person": "p01",
+   "category": "particle",
+   "question": "로그 분석은 보통 얼마나 걸리나요?",
+   "previous": null,
+   "gold": [
+    "p01-m30"
+   ],
+   "group": "g-p01-q06",
+   "split": "report"
+  },
+  {
+   "id": "p01-q07",
+   "person": "p01",
+   "category": "paraphrase",
+   "question": "하루 시작하고 얼마 안됐을 때 모여서 얘기 나누는거 괜찮으세요, 아니면 글로 짧게 남기는 게 나아요?",
+   "previous": null,
+   "gold": [
+    "p01-m09"
+   ],
+   "group": "g-p01-q07",
+   "split": "tune"
+  },
+  {
+   "id": "p01-q08",
+   "person": "p01",
+   "category": "paraphrase",
+   "question": "작업물에 의견을 남길 때 중요도를 먼저 알려주면 보기 수월한가요?",
+   "previous": null,
+   "gold": [
+    "p01-m14"
+   ],
+   "group": "g-p01-q08",
+   "split": "report"
+  },
+  {
+   "id": "p01-q09",
+   "person": "p01",
+   "category": "paraphrase",
+   "question": "전체 시스템이 같이 잘 맞물려 돌아가는지 확인되면 마음이 놓이시나요?",
+   "previous": null,
+   "gold": [
+    "p01-m06"
+   ],
+   "group": "g-p01-q09",
+   "split": "tune"
+  },
+  {
+   "id": "p01-q10",
+   "person": "p01",
+   "category": "time",
+   "question": "두 달 전에 했던 백업 복구 리허설, 어떻게 됐었죠?",
+   "previous": null,
+   "gold": [
+    "p01-m25"
+   ],
+   "group": "g-p01-q10",
+   "split": "tune"
+  },
+  {
+   "id": "p01-q11",
+   "person": "p01",
+   "category": "time",
+   "question": "지난 여름에 있었던 장애 대응 때 원인이 뭐였죠?",
+   "previous": null,
+   "gold": [
+    "p01-m22"
+   ],
+   "group": "g-p01-q11",
+   "split": "tune"
+  },
+  {
+   "id": "p01-q12",
+   "person": "p01",
+   "category": "multi_turn",
+   "question": "그거 언제까지 끝내야 하죠?",
+   "previous": "스테이징 배포 체크리스트 작업 중이에요.",
+   "gold": [
+    "p01-m16"
+   ],
+   "group": "g-p01-q03",
+   "split": "tune"
+  },
+  {
+   "id": "p01-q13",
+   "person": "p01",
+   "category": "multi_turn",
+   "question": "그때 어떻게 해결했었죠?",
+   "previous": "예전에 캐시 설정 때문에 사고 났던 적 있었잖아요.",
+   "gold": [
+    "p01-m20"
+   ],
+   "group": "g-p01-q13",
+   "split": "report"
+  },
+  {
+   "id": "p01-q14",
+   "person": "p01",
+   "category": "unrelated",
+   "question": "요즘 읽을 만한 개발 서적 추천해줄 수 있어요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p01-q14",
+   "split": "tune"
+  },
+  {
+   "id": "p01-q15",
+   "person": "p01",
+   "category": "unrelated",
+   "question": "서울 맛집 하나 추천해줄래요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p01-q15",
+   "split": "tune"
+  },
+  {
+   "id": "p01-q16",
+   "person": "p01",
+   "category": "unrelated",
+   "question": "노트북 배터리 수명 늘리는 방법 있나요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p01-q16",
+   "split": "tune"
+  },
+  {
+   "id": "p02-q01",
+   "person": "p02",
+   "category": "same_word",
+   "question": "이번에도 슬랙으로 빠르게 확인받을 수 있을까요?",
+   "previous": null,
+   "gold": [
+    "p02-m03"
+   ],
+   "group": "g-p02-q01",
+   "split": "report"
+  },
+  {
+   "id": "p02-q02",
+   "person": "p02",
+   "category": "same_word",
+   "question": "경쟁사 비교표는 정렬된 구조로 정리해 주셨나요?",
+   "previous": null,
+   "gold": [
+    "p02-m08"
+   ],
+   "group": "g-p02-q02",
+   "split": "report"
+  },
+  {
+   "id": "p02-q03",
+   "person": "p02",
+   "category": "same_word",
+   "question": "리포트 초안에 이모지 많이 넣지 않으셨죠?",
+   "previous": null,
+   "gold": [
+    "p02-m06"
+   ],
+   "group": "g-p02-q03",
+   "split": "report"
+  },
+  {
+   "id": "p02-q04",
+   "person": "p02",
+   "category": "particle",
+   "question": "이번 브리프에서 타깃은 어떻게 설정했나요?",
+   "previous": null,
+   "gold": [
+    "p02-m09"
+   ],
+   "group": "g-p02-q04",
+   "split": "tune"
+  },
+  {
+   "id": "p02-q05",
+   "person": "p02",
+   "category": "particle",
+   "question": "인플루언서 제안서는 언제쯤 받아볼 수 있을까요?",
+   "previous": null,
+   "gold": [
+    "p02-m14"
+   ],
+   "group": "g-p02-q05",
+   "split": "tune"
+  },
+  {
+   "id": "p02-q06",
+   "person": "p02",
+   "category": "particle",
+   "question": "광고 성과표가 벌써 검증 끝났나요?",
+   "previous": null,
+   "gold": [
+    "p02-m12"
+   ],
+   "group": "g-p02-q06",
+   "split": "report"
+  },
+  {
+   "id": "p02-q07",
+   "person": "p02",
+   "category": "paraphrase",
+   "question": "이달 자료에 대한 의견은 언제까지 전달하기로 했었나요?",
+   "previous": null,
+   "gold": [
+    "p02-m10"
+   ],
+   "group": "g-p02-q07",
+   "split": "report"
+  },
+  {
+   "id": "p02-q08",
+   "person": "p02",
+   "category": "paraphrase",
+   "question": "로고 관련 변경 작업은 그쪽 팀과 언제까지 맞추기로 했죠?",
+   "previous": null,
+   "gold": [
+    "p02-m13"
+   ],
+   "group": "g-p02-q08",
+   "split": "tune"
+  },
+  {
+   "id": "p02-q09",
+   "person": "p02",
+   "category": "paraphrase",
+   "question": "정기적으로 올라오는 자료는 언제 받는 게 제일 편하세요?",
+   "previous": null,
+   "gold": [
+    "p02-m07"
+   ],
+   "group": "g-p02-q09",
+   "split": "tune"
+  },
+  {
+   "id": "p02-q10",
+   "person": "p02",
+   "category": "time",
+   "question": "지난달에 랜딩페이지 문구 검수하면서 CTA 몇 번 고쳤었죠?",
+   "previous": null,
+   "gold": [
+    "p02-m20"
+   ],
+   "group": "g-p02-q10",
+   "split": "tune"
+  },
+  {
+   "id": "p02-q11",
+   "person": "p02",
+   "category": "time",
+   "question": "지난 여름에 대행사랑 보고서 톤 맞추는 미팅 했었잖아요, 그때 어떤 얘기 나눴었죠?",
+   "previous": null,
+   "gold": [
+    "p02-m17"
+   ],
+   "group": "g-p02-q11",
+   "split": "report"
+  },
+  {
+   "id": "p02-q12",
+   "person": "p02",
+   "category": "multi_turn",
+   "question": "그거 마감이 언제였죠?",
+   "previous": "인플루언서 제안서 1차안 관련해서 궁금한 게 있어요.",
+   "gold": [
+    "p02-m14"
+   ],
+   "group": "g-p02-q05",
+   "split": "tune"
+  },
+  {
+   "id": "p02-q13",
+   "person": "p02",
+   "category": "multi_turn",
+   "question": "그때까지 다 끝낼 수 있을까요?",
+   "previous": "디자인팀이랑 브랜드 가이드 수정 건 진행 중이잖아요.",
+   "gold": [
+    "p02-m13"
+   ],
+   "group": "g-p02-q08",
+   "split": "tune"
+  },
+  {
+   "id": "p02-q14",
+   "person": "p02",
+   "category": "unrelated",
+   "question": "다음 주에 휴가 내면 괜찮을까요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p02-q14",
+   "split": "report"
+  },
+  {
+   "id": "p02-q15",
+   "person": "p02",
+   "category": "unrelated",
+   "question": "요즘 환율이 어떻게 되나요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p02-q15",
+   "split": "report"
+  },
+  {
+   "id": "p02-q16",
+   "person": "p02",
+   "category": "unrelated",
+   "question": "점심 메뉴 뭐 먹을지 추천해 주세요.",
+   "previous": null,
+   "gold": [],
+   "group": "g-p02-q16",
+   "split": "report"
+  },
+  {
+   "id": "p03-q01",
+   "person": "p03",
+   "category": "same_word",
+   "question": "서술형 문항과 루브릭을 함께 보는 방식 어떤 거였죠?",
+   "previous": null,
+   "gold": [
+    "p03-m07"
+   ],
+   "group": "g-p03-q01",
+   "split": "report"
+  },
+  {
+   "id": "p03-q02",
+   "person": "p03",
+   "category": "same_word",
+   "question": "수업안 파일 이름에 날짜와 학년을 넣는 방식 맞죠?",
+   "previous": null,
+   "gold": [
+    "p03-m12"
+   ],
+   "group": "g-p03-q02",
+   "split": "report"
+  },
+  {
+   "id": "p03-q03",
+   "person": "p03",
+   "category": "same_word",
+   "question": "학부모 상담 메모 일정, 쟁점, 후속 조치 구조 기억나세요?",
+   "previous": null,
+   "gold": [
+    "p03-m29"
+   ],
+   "group": "g-p03-q03",
+   "split": "report"
+  },
+  {
+   "id": "p03-q04",
+   "person": "p03",
+   "category": "particle",
+   "question": "안내문부터 먼저 볼까요?",
+   "previous": null,
+   "gold": [
+    "p03-m09"
+   ],
+   "group": "g-p03-q04",
+   "split": "report"
+  },
+  {
+   "id": "p03-q05",
+   "person": "p03",
+   "category": "particle",
+   "question": "오후에는 상담 잡아도 괜찮죠?",
+   "previous": null,
+   "gold": [
+    "p03-m13"
+   ],
+   "group": "g-p03-q05",
+   "split": "tune"
+  },
+  {
+   "id": "p03-q06",
+   "person": "p03",
+   "category": "particle",
+   "question": "파일명이 어떤 형식이었죠?",
+   "previous": null,
+   "gold": [
+    "p03-m28"
+   ],
+   "group": "g-p03-q06",
+   "split": "report"
+  },
+  {
+   "id": "p03-q07",
+   "person": "p03",
+   "category": "paraphrase",
+   "question": "학생들에게 전달하는 말을 좀 더 따뜻하게 손보고 싶은데 어떻게 하면 좋을까요?",
+   "previous": null,
+   "gold": [
+    "p03-m04"
+   ],
+   "group": "g-p03-q07",
+   "split": "report"
+  },
+  {
+   "id": "p03-q08",
+   "person": "p03",
+   "category": "paraphrase",
+   "question": "종이로 뽑기 전에 모니터에서 쭉 살펴보는 편인가요?",
+   "previous": null,
+   "gold": [
+    "p03-m14"
+   ],
+   "group": "g-p03-q08",
+   "split": "tune"
+  },
+  {
+   "id": "p03-q09",
+   "person": "p03",
+   "category": "paraphrase",
+   "question": "마지막 버전 글귀를 좀 더 세심하게 봐달라고 했던 거 맞나요?",
+   "previous": null,
+   "gold": [
+    "p03-m05"
+   ],
+   "group": "g-p03-q09",
+   "split": "report"
+  },
+  {
+   "id": "p03-q10",
+   "person": "p03",
+   "category": "time",
+   "question": "지난 여름에 보충수업 안내문 출력한 거 기억나세요?",
+   "previous": null,
+   "gold": [
+    "p03-m23"
+   ],
+   "group": "g-p03-q10",
+   "split": "report"
+  },
+  {
+   "id": "p03-q11",
+   "person": "p03",
+   "category": "time",
+   "question": "며칠 전에 서술형 평가 결과 정리한 거 어땠나요?",
+   "previous": null,
+   "gold": [
+    "p03-m26"
+   ],
+   "group": "g-p03-q11",
+   "split": "tune"
+  },
+  {
+   "id": "p03-q12",
+   "person": "p03",
+   "category": "multi_turn",
+   "question": "그거 언제까지 보기로 했죠?",
+   "previous": "학부모 상담 안내문 초안을 오늘 봐야 할 것 같아요.",
+   "gold": [
+    "p03-m16"
+   ],
+   "group": "g-p03-q12",
+   "split": "tune"
+  },
+  {
+   "id": "p03-q13",
+   "person": "p03",
+   "category": "multi_turn",
+   "question": "그거 지금 같이 해볼까요?",
+   "previous": "오늘 오후에 학년부 회의 자료도 같이 손봐야 하는데.",
+   "gold": [
+    "p03-m19"
+   ],
+   "group": "g-p03-q13",
+   "split": "tune"
+  },
+  {
+   "id": "p03-q14",
+   "person": "p03",
+   "category": "unrelated",
+   "question": "내일 서울 날씨가 어떤가요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p03-q14",
+   "split": "tune"
+  },
+  {
+   "id": "p03-q15",
+   "person": "p03",
+   "category": "unrelated",
+   "question": "엑셀에서 피벗 테이블 만드는 법 알려주세요.",
+   "previous": null,
+   "gold": [],
+   "group": "g-p03-q15",
+   "split": "tune"
+  },
+  {
+   "id": "p03-q16",
+   "person": "p03",
+   "category": "unrelated",
+   "question": "이번 학기 체육대회 날짜가 언제였죠?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p03-q16",
+   "split": "report"
+  },
+  {
+   "id": "p04-q01",
+   "person": "p04",
+   "category": "same_word",
+   "question": "슬랙 짧은 메시지로 확인받는 방식이 편하다고 하셨었죠?",
+   "previous": null,
+   "gold": [
+    "p04-m05"
+   ],
+   "group": "g-p04-q01",
+   "split": "tune"
+  },
+  {
+   "id": "p04-q02",
+   "person": "p04",
+   "category": "same_word",
+   "question": "천 단위 구분을 넣어야 보고서가 읽기 쉽다고 하셨었나요?",
+   "previous": null,
+   "gold": [
+    "p04-m06"
+   ],
+   "group": "g-p04-q02",
+   "split": "tune"
+  },
+  {
+   "id": "p04-q03",
+   "person": "p04",
+   "category": "same_word",
+   "question": "금요일 오후 전에 주간 보고를 받고 싶다고 하셨었죠?",
+   "previous": null,
+   "gold": [
+    "p04-m14"
+   ],
+   "group": "g-p04-q03",
+   "split": "tune"
+  },
+  {
+   "id": "p04-q04",
+   "person": "p04",
+   "category": "particle",
+   "question": "결제 플로우를 언제 설명하기로 했었나요?",
+   "previous": null,
+   "gold": [
+    "p04-m16"
+   ],
+   "group": "g-p04-q04",
+   "split": "tune"
+  },
+  {
+   "id": "p04-q05",
+   "person": "p04",
+   "category": "particle",
+   "question": "회의록 템플릿은 언제까지 확정하기로 했죠?",
+   "previous": null,
+   "gold": [
+    "p04-m19"
+   ],
+   "group": "g-p04-q05",
+   "split": "tune"
+  },
+  {
+   "id": "p04-q06",
+   "person": "p04",
+   "category": "particle",
+   "question": "데모 자료에서는 Figma 화면이랑 표를 같이 넣으시나요?",
+   "previous": null,
+   "gold": [
+    "p04-m07"
+   ],
+   "group": "g-p04-q06",
+   "split": "report"
+  },
+  {
+   "id": "p04-q07",
+   "person": "p04",
+   "category": "paraphrase",
+   "question": "일 처리를 길게 내다보기보다 짧은 주기로 쪼개서 보는 편이신가요?",
+   "previous": null,
+   "gold": [
+    "p04-m03"
+   ],
+   "group": "g-p04-q07",
+   "split": "tune"
+  },
+  {
+   "id": "p04-q08",
+   "person": "p04",
+   "category": "paraphrase",
+   "question": "기록할 때 확정된 내용과 미뤄둔 내용을 따로 적어두는 걸 좋아하시나요?",
+   "previous": null,
+   "gold": [
+    "p04-m08"
+   ],
+   "group": "g-p04-q08",
+   "split": "tune"
+  },
+  {
+   "id": "p04-q09",
+   "person": "p04",
+   "category": "paraphrase",
+   "question": "문서 안에서 부르는 말이 바뀌지 않게 하나로 통일해두는 편이세요?",
+   "previous": null,
+   "gold": [
+    "p04-m13"
+   ],
+   "group": "g-p04-q09",
+   "split": "tune"
+  },
+  {
+   "id": "p04-q10",
+   "person": "p04",
+   "category": "time",
+   "question": "지난 여름에 있었던 Slack 알림 과다 논의에서 어떤 제안을 하셨었죠?",
+   "previous": null,
+   "gold": [
+    "p04-m23"
+   ],
+   "group": "g-p04-q10",
+   "split": "tune"
+  },
+  {
+   "id": "p04-q11",
+   "person": "p04",
+   "category": "time",
+   "question": "지난달 분기 리뷰 때 보고서 문구를 어떻게 고치셨었죠?",
+   "previous": null,
+   "gold": [
+    "p04-m26"
+   ],
+   "group": "g-p04-q11",
+   "split": "report"
+  },
+  {
+   "id": "p04-q12",
+   "person": "p04",
+   "category": "multi_turn",
+   "question": "그거 몇 시에 하기로 했었죠?",
+   "previous": "오늘 QA랑 체크리스트 검토 일정 다시 확인해야겠어요.",
+   "gold": [
+    "p04-m18"
+   ],
+   "group": "g-p04-q12",
+   "split": "tune"
+  },
+  {
+   "id": "p04-q13",
+   "person": "p04",
+   "category": "multi_turn",
+   "question": "그거 언제까지 드리기로 했었죠?",
+   "previous": "다음 분기 로드맵 초안 작업 중이에요.",
+   "gold": [
+    "p04-m15"
+   ],
+   "group": "g-p04-q13",
+   "split": "report"
+  },
+  {
+   "id": "p04-q14",
+   "person": "p04",
+   "category": "unrelated",
+   "question": "이번 분기 매출 목표 수치가 얼마였죠?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p04-q14",
+   "split": "report"
+  },
+  {
+   "id": "p04-q15",
+   "person": "p04",
+   "category": "unrelated",
+   "question": "Figma 라이선스 갱신일이 언제인가요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p04-q15",
+   "split": "tune"
+  },
+  {
+   "id": "p04-q16",
+   "person": "p04",
+   "category": "unrelated",
+   "question": "새로 입사한 디자이너 이름이 뭐였죠?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p04-q16",
+   "split": "report"
+  },
+  {
+   "id": "p05-q01",
+   "person": "p05",
+   "category": "same_word",
+   "question": "법인카드 비용과 출장비 항목은 따로 봐야 하죠?",
+   "previous": null,
+   "gold": [
+    "p05-m04"
+   ],
+   "group": "g-p05-q01",
+   "split": "report"
+  },
+  {
+   "id": "p05-q02",
+   "person": "p05",
+   "category": "same_word",
+   "question": "표준 용어로 통일된 보고서로 정리해 주세요",
+   "previous": null,
+   "gold": [
+    "p05-m09"
+   ],
+   "group": "g-p05-q02",
+   "split": "report"
+  },
+  {
+   "id": "p05-q03",
+   "person": "p05",
+   "category": "same_word",
+   "question": "엑셀 원본으로 보내주실 수 있나요?",
+   "previous": null,
+   "gold": [
+    "p05-m13"
+   ],
+   "group": "g-p05-q03",
+   "split": "report"
+  },
+  {
+   "id": "p05-q04",
+   "person": "p05",
+   "category": "particle",
+   "question": "현금흐름은 이번 주 회의에서 먼저 보나요?",
+   "previous": null,
+   "gold": [
+    "p05-m05"
+   ],
+   "group": "g-p05-q04",
+   "split": "tune"
+  },
+  {
+   "id": "p05-q05",
+   "person": "p05",
+   "category": "particle",
+   "question": "액션아이템이 회의록에 따로 나와 있나요?",
+   "previous": null,
+   "gold": [
+    "p05-m14"
+   ],
+   "group": "g-p05-q05",
+   "split": "tune"
+  },
+  {
+   "id": "p05-q06",
+   "person": "p05",
+   "category": "particle",
+   "question": "현금흐름 전망표는 언제까지 손봐야 하죠?",
+   "previous": null,
+   "gold": [
+    "p05-m19"
+   ],
+   "group": "g-p05-q06",
+   "split": "report"
+  },
+  {
+   "id": "p05-q07",
+   "person": "p05",
+   "category": "paraphrase",
+   "question": "일단 핵심만 알려주시고, 더 궁금하면 그때 자세히 물어볼게요",
+   "previous": null,
+   "gold": [
+    "p05-m08"
+   ],
+   "group": "g-p05-q07",
+   "split": "report"
+  },
+  {
+   "id": "p05-q08",
+   "person": "p05",
+   "category": "paraphrase",
+   "question": "예산 짤 때는 좀 안전하게 낮춰서 잡아주시겠어요?",
+   "previous": null,
+   "gold": [
+    "p05-m12"
+   ],
+   "group": "g-p05-q08",
+   "split": "report"
+  },
+  {
+   "id": "p05-q09",
+   "person": "p05",
+   "category": "paraphrase",
+   "question": "이번 달 중순까지 고친 계획을 윗선 회의에 올려야 하는 일정 맞나요?",
+   "previous": null,
+   "gold": [
+    "p05-m15"
+   ],
+   "group": "g-p05-q09",
+   "split": "tune"
+  },
+  {
+   "id": "p05-q10",
+   "person": "p05",
+   "category": "time",
+   "question": "지난 여름에 증빙 스캔이랑 출장비 처리했던 날짜가 언제였죠?",
+   "previous": null,
+   "gold": [
+    "p05-m23"
+   ],
+   "group": "g-p05-q10",
+   "split": "report"
+  },
+  {
+   "id": "p05-q11",
+   "person": "p05",
+   "category": "time",
+   "question": "두 달 전에 매출 추세 그래프 설명했던 자료 다시 볼 수 있을까요?",
+   "previous": null,
+   "gold": [
+    "p05-m25"
+   ],
+   "group": "g-p05-q11",
+   "split": "report"
+  },
+  {
+   "id": "p05-q12",
+   "person": "p05",
+   "category": "multi_turn",
+   "question": "그거 다시 한번 확인해 주실 수 있어요?",
+   "previous": "지난번에 ERP에서 전표 누락 찾아서 마감표 맞췄던 일 있잖아요",
+   "gold": [
+    "p05-m21"
+   ],
+   "group": "g-p05-q12",
+   "split": "report"
+  },
+  {
+   "id": "p05-q13",
+   "person": "p05",
+   "category": "multi_turn",
+   "question": "그때 몇 장이나 고쳤었죠?",
+   "previous": "부서장 회의용 슬라이드 급하게 수정했던 거 기억나세요?",
+   "gold": [
+    "p05-m22"
+   ],
+   "group": "g-p05-q13",
+   "split": "tune"
+  },
+  {
+   "id": "p05-q14",
+   "person": "p05",
+   "category": "unrelated",
+   "question": "오늘 점심 메뉴 추천 좀 해주세요",
+   "previous": null,
+   "gold": [],
+   "group": "g-p05-q14",
+   "split": "tune"
+  },
+  {
+   "id": "p05-q15",
+   "person": "p05",
+   "category": "unrelated",
+   "question": "요즘 원달러 환율 왜 이렇게 출렁이는 거예요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p05-q15",
+   "split": "report"
+  },
+  {
+   "id": "p05-q16",
+   "person": "p05",
+   "category": "unrelated",
+   "question": "회사 근처에 괜찮은 주차장 있는지 아세요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p05-q16",
+   "split": "tune"
+  },
+  {
+   "id": "p06-q01",
+   "person": "p06",
+   "category": "same_word",
+   "question": "세포생물학 실험 기록을 로컬 Markdown에 적을 때 특별히 신경 쓸 부분이 있을까?",
+   "previous": null,
+   "gold": [
+    "p06-m01"
+   ],
+   "group": "g-p06-q01",
+   "split": "report"
+  },
+  {
+   "id": "p06-q02",
+   "person": "p06",
+   "category": "same_word",
+   "question": "실험 노트 날짜는 YYYY-MM-DD 형식으로 계속 맞춰줘",
+   "previous": null,
+   "gold": [
+    "p06-m14"
+   ],
+   "group": "g-p06-q02",
+   "split": "tune"
+  },
+  {
+   "id": "p06-q03",
+   "person": "p06",
+   "category": "same_word",
+   "question": "학회 초록 최종본 제출 마감이 언제였지?",
+   "previous": null,
+   "gold": [
+    "p06-m15"
+   ],
+   "group": "g-p06-q03",
+   "split": "tune"
+  },
+  {
+   "id": "p06-q04",
+   "person": "p06",
+   "category": "particle",
+   "question": "표에서는 실험 기록을 어떻게 정리해서 보여주는 게 좋을까요?",
+   "previous": null,
+   "gold": [
+    "p06-m09"
+   ],
+   "group": "g-p06-q04",
+   "split": "report"
+  },
+  {
+   "id": "p06-q05",
+   "person": "p06",
+   "category": "particle",
+   "question": "파일명이 지금 영문+숫자 규칙에 맞게 되어있나요?",
+   "previous": null,
+   "gold": [
+    "p06-m12"
+   ],
+   "group": "g-p06-q05",
+   "split": "report"
+  },
+  {
+   "id": "p06-q06",
+   "person": "p06",
+   "category": "particle",
+   "question": "표준양식도 이번 주 안에 같이 손봐야 하나요?",
+   "previous": null,
+   "gold": [
+    "p06-m17"
+   ],
+   "group": "g-p06-q06",
+   "split": "tune"
+  },
+  {
+   "id": "p06-q07",
+   "person": "p06",
+   "category": "paraphrase",
+   "question": "작업을 시작하기 전에 어떤 자료부터 살펴봐야 마음이 편해질까요?",
+   "previous": null,
+   "gold": [
+    "p06-m05"
+   ],
+   "group": "g-p06-q07",
+   "split": "report"
+  },
+  {
+   "id": "p06-q08",
+   "person": "p06",
+   "category": "paraphrase",
+   "question": "확실하지 않은 내용은 어떻게 구분해서 먼저 알려주면 좋을까요?",
+   "previous": null,
+   "gold": [
+    "p06-m11"
+   ],
+   "group": "g-p06-q08",
+   "split": "report"
+  },
+  {
+   "id": "p06-q09",
+   "person": "p06",
+   "category": "paraphrase",
+   "question": "심사위원 의견에 대한 응답은 언제까지 마련해야 하나요?",
+   "previous": null,
+   "gold": [
+    "p06-m19"
+   ],
+   "group": "g-p06-q09",
+   "split": "tune"
+  },
+  {
+   "id": "p06-q10",
+   "person": "p06",
+   "category": "time",
+   "question": "지난 여름에 분석 파이프라인 로그 점검하면서 어떤 오류를 잡았었죠?",
+   "previous": null,
+   "gold": [
+    "p06-m24"
+   ],
+   "group": "g-p06-q10",
+   "split": "tune"
+  },
+  {
+   "id": "p06-q11",
+   "person": "p06",
+   "category": "time",
+   "question": "지난 봄에 점검했던 결과표, 그때 뭘 바로잡았었는지 다시 알려줄래?",
+   "previous": null,
+   "gold": [
+    "p06-m20"
+   ],
+   "group": "g-p06-q11",
+   "split": "tune"
+  },
+  {
+   "id": "p06-q12",
+   "person": "p06",
+   "category": "multi_turn",
+   "question": "그때 뭘 최종 확인했었지?",
+   "previous": "지난번에 포스터 작업했던 거 기억나?",
+   "gold": [
+    "p06-m26"
+   ],
+   "group": "g-p06-q12",
+   "split": "report"
+  },
+  {
+   "id": "p06-q13",
+   "person": "p06",
+   "category": "multi_turn",
+   "question": "그거 언제까지 끝내야 하죠?",
+   "previous": "요즘 논문 리뷰 답변 준비 중이야",
+   "gold": [
+    "p06-m19"
+   ],
+   "group": "g-p06-q09",
+   "split": "tune"
+  },
+  {
+   "id": "p06-q14",
+   "person": "p06",
+   "category": "unrelated",
+   "question": "요즘 날씨가 너무 건조한데 실험실 습도 관리 팁 있을까?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p06-q14",
+   "split": "tune"
+  },
+  {
+   "id": "p06-q15",
+   "person": "p06",
+   "category": "unrelated",
+   "question": "최신 CRISPR 관련 논문 추천해줄 수 있어?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p06-q15",
+   "split": "tune"
+  },
+  {
+   "id": "p06-q16",
+   "person": "p06",
+   "category": "unrelated",
+   "question": "점심 메뉴로 뭐가 좋을지 추천해줘",
+   "previous": null,
+   "gold": [],
+   "group": "g-p06-q16",
+   "split": "tune"
+  },
+  {
+   "id": "p07-q01",
+   "person": "p07",
+   "category": "same_word",
+   "question": "사용성 테스트 결과를 불릿 포인트로 정리해 줄 수 있어?",
+   "previous": null,
+   "gold": [
+    "p07-m09"
+   ],
+   "group": "g-p07-q01",
+   "split": "tune"
+  },
+  {
+   "id": "p07-q02",
+   "person": "p07",
+   "category": "same_word",
+   "question": "신규 온보딩 화면의 와이어프레임 초안을 언제까지 마무리하기로 했지?",
+   "previous": null,
+   "gold": [
+    "p07-m15"
+   ],
+   "group": "g-p07-q02",
+   "split": "report"
+  },
+  {
+   "id": "p07-q03",
+   "person": "p07",
+   "category": "same_word",
+   "question": "Jira 티켓 번호를 붙여두면 후속 작업 추적이 왜 빠르다고 생각해?",
+   "previous": null,
+   "gold": [
+    "p07-m07"
+   ],
+   "group": "g-p07-q03",
+   "split": "tune"
+  },
+  {
+   "id": "p07-q04",
+   "person": "p07",
+   "category": "particle",
+   "question": "사용자 인터뷰에서는 어떤 형식으로 정리해 드리는 게 편하세요?",
+   "previous": null,
+   "gold": [
+    "p07-m04"
+   ],
+   "group": "g-p07-q04",
+   "split": "tune"
+  },
+  {
+   "id": "p07-q05",
+   "person": "p07",
+   "category": "particle",
+   "question": "접근성은 본문이랑 같이 적어도 괜찮을까요?",
+   "previous": null,
+   "gold": [
+    "p07-m11"
+   ],
+   "group": "g-p07-q05",
+   "split": "tune"
+  },
+  {
+   "id": "p07-q06",
+   "person": "p07",
+   "category": "particle",
+   "question": "토큰이 이번 달 안에 문서로 정리될 예정인가요?",
+   "previous": null,
+   "gold": [
+    "p07-m19"
+   ],
+   "group": "g-p07-q06",
+   "split": "tune"
+  },
+  {
+   "id": "p07-q07",
+   "person": "p07",
+   "category": "paraphrase",
+   "question": "짧게 핵심부터 듣고 뒤에 자세한 설명을 듣는 쪽이 더 편하신가요?",
+   "previous": null,
+   "gold": [
+    "p07-m08"
+   ],
+   "group": "g-p07-q07",
+   "split": "report"
+  },
+  {
+   "id": "p07-q08",
+   "person": "p07",
+   "category": "paraphrase",
+   "question": "채팅으로 연락할 때 문장은 간단히, 옵션만 명확히 주는 걸 선호하세요?",
+   "previous": null,
+   "gold": [
+    "p07-m14"
+   ],
+   "group": "g-p07-q08",
+   "split": "report"
+  },
+  {
+   "id": "p07-q09",
+   "person": "p07",
+   "category": "paraphrase",
+   "question": "검토 의견을 받을 때 가장 먼저 눈여겨보는 요소가 뭔가요?",
+   "previous": null,
+   "gold": [
+    "p07-m05"
+   ],
+   "group": "g-p07-q09",
+   "split": "tune"
+  },
+  {
+   "id": "p07-q10",
+   "person": "p07",
+   "category": "time",
+   "question": "지난 봄에 진행한 결제 화면 테스트는 몇 명이 참여했었지?",
+   "previous": null,
+   "gold": [
+    "p07-m21"
+   ],
+   "group": "g-p07-q10",
+   "split": "report"
+  },
+  {
+   "id": "p07-q11",
+   "person": "p07",
+   "category": "time",
+   "question": "지난달에 Jira 티켓 정리할 때 몇 개를 훑었었지?",
+   "previous": null,
+   "gold": [
+    "p07-m26"
+   ],
+   "group": "g-p07-q11",
+   "split": "report"
+  },
+  {
+   "id": "p07-q12",
+   "person": "p07",
+   "category": "multi_turn",
+   "question": "그거 메모는 어디다 정리해뒀어?",
+   "previous": "지난 수요일에 Zoom으로 사용성 테스트를 했었잖아.",
+   "gold": [
+    "p07-m27"
+   ],
+   "group": "g-p07-q12",
+   "split": "report"
+  },
+  {
+   "id": "p07-q13",
+   "person": "p07",
+   "category": "multi_turn",
+   "question": "그거 날짜가 언제였지?",
+   "previous": "대시보드 필터 UI 재검토 건 말인데.",
+   "gold": [
+    "p07-m18"
+   ],
+   "group": "g-p07-q13",
+   "split": "report"
+  },
+  {
+   "id": "p07-q14",
+   "person": "p07",
+   "category": "unrelated",
+   "question": "오늘 저녁에 비 올까?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p07-q14",
+   "split": "report"
+  },
+  {
+   "id": "p07-q15",
+   "person": "p07",
+   "category": "unrelated",
+   "question": "근처에 맛있는 점심 메뉴 추천해 줄래?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p07-q15",
+   "split": "tune"
+  },
+  {
+   "id": "p07-q16",
+   "person": "p07",
+   "category": "unrelated",
+   "question": "요즘 환율이 얼마나 오른 거야?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p07-q16",
+   "split": "report"
+  },
+  {
+   "id": "p08-q01",
+   "person": "p08",
+   "category": "same_word",
+   "question": "ABC테크와 견적 재협의 미팅이 몇 시였는지 다시 알려줘",
+   "previous": null,
+   "gold": [
+    "p08-m15"
+   ],
+   "group": "g-p08-q01",
+   "split": "tune"
+  },
+  {
+   "id": "p08-q02",
+   "person": "p08",
+   "category": "same_word",
+   "question": "비교표와 ROI 설명 자료 준비됐나요?",
+   "previous": null,
+   "gold": [
+    "p08-m06"
+   ],
+   "group": "g-p08-q02",
+   "split": "report"
+  },
+  {
+   "id": "p08-q03",
+   "person": "p08",
+   "category": "same_word",
+   "question": "회의록에 결정사항과 담당자, 마감일 잘 들어갔는지 확인해줘",
+   "previous": null,
+   "gold": [
+    "p08-m09"
+   ],
+   "group": "g-p08-q03",
+   "split": "tune"
+  },
+  {
+   "id": "p08-q04",
+   "person": "p08",
+   "category": "particle",
+   "question": "제안서 초안은 언제까지 보내드리면 될까요?",
+   "previous": null,
+   "gold": [
+    "p08-m16"
+   ],
+   "group": "g-p08-q04",
+   "split": "tune"
+  },
+  {
+   "id": "p08-q05",
+   "person": "p08",
+   "category": "particle",
+   "question": "데모 일정이 벌써 확정됐어?",
+   "previous": null,
+   "gold": [
+    "p08-m19"
+   ],
+   "group": "g-p08-q05",
+   "split": "report"
+  },
+  {
+   "id": "p08-q06",
+   "person": "p08",
+   "category": "particle",
+   "question": "가격표에서 수정할 부분 있을까요?",
+   "previous": null,
+   "gold": [
+    "p08-m22"
+   ],
+   "group": "g-p08-q06",
+   "split": "report"
+  },
+  {
+   "id": "p08-q07",
+   "person": "p08",
+   "category": "paraphrase",
+   "question": "하루 일과 초반에는 간단히, 후반에는 자세히 전달받고 싶은데 가능할까?",
+   "previous": null,
+   "gold": [
+    "p08-m07"
+   ],
+   "group": "g-p08-q07",
+   "split": "tune"
+  },
+  {
+   "id": "p08-q08",
+   "person": "p08",
+   "category": "paraphrase",
+   "question": "상대 회사 정보를 미리 살펴보고 들어가고 싶은데 준비해줄 수 있어?",
+   "previous": null,
+   "gold": [
+    "p08-m14"
+   ],
+   "group": "g-p08-q08",
+   "split": "tune"
+  },
+  {
+   "id": "p08-q09",
+   "person": "p08",
+   "category": "paraphrase",
+   "question": "문서 맨 앞부분에 상대방이 겪는 주요 문제를 적어두는 걸 유지해줘",
+   "previous": null,
+   "gold": [
+    "p08-m04"
+   ],
+   "group": "g-p08-q09",
+   "split": "tune"
+  },
+  {
+   "id": "p08-q10",
+   "person": "p08",
+   "category": "time",
+   "question": "지난 여름에 진행했던 워크숍에서 가격표를 어떻게 조정했는지 다시 알려줘",
+   "previous": null,
+   "gold": [
+    "p08-m22"
+   ],
+   "group": "g-p08-q06",
+   "split": "report"
+  },
+  {
+   "id": "p08-q11",
+   "person": "p08",
+   "category": "time",
+   "question": "지난달에 파일럿 결과 확인하면서 정리했던 다음 미팅 안건이 뭐였죠?",
+   "previous": null,
+   "gold": [
+    "p08-m26"
+   ],
+   "group": "g-p08-q11",
+   "split": "report"
+  },
+  {
+   "id": "p08-q12",
+   "person": "p08",
+   "category": "multi_turn",
+   "question": "그때 정리했던 내용 다시 보여줄 수 있어?",
+   "previous": "지난번 파일럿 결과 확인 작업 생각나?",
+   "gold": [
+    "p08-m26"
+   ],
+   "group": "g-p08-q11",
+   "split": "report"
+  },
+  {
+   "id": "p08-q13",
+   "person": "p08",
+   "category": "multi_turn",
+   "question": "거기서 어떤 답변 했는지 요약해줘",
+   "previous": "화상 회의에서 보안 관련 질문 받았던 거 기억나?",
+   "gold": [
+    "p08-m23"
+   ],
+   "group": "g-p08-q13",
+   "split": "report"
+  },
+  {
+   "id": "p08-q14",
+   "person": "p08",
+   "category": "unrelated",
+   "question": "다음 분기 영업 목표는 어떻게 세우면 좋을까요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p08-q14",
+   "split": "report"
+  },
+  {
+   "id": "p08-q15",
+   "person": "p08",
+   "category": "unrelated",
+   "question": "요즘 쓸만한 이메일 서명 디자인 추천해줄 수 있어?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p08-q15",
+   "split": "report"
+  },
+  {
+   "id": "p08-q16",
+   "person": "p08",
+   "category": "unrelated",
+   "question": "오늘 서울 날씨 어때?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p08-q16",
+   "split": "report"
+  },
+  {
+   "id": "p09-q01",
+   "person": "p09",
+   "category": "same_word",
+   "question": "바닐라 라떼와 콜드브루 조합, 요즘도 자주 추천하시나요?",
+   "previous": null,
+   "gold": [
+    "p09-m02"
+   ],
+   "group": "g-p09-q01",
+   "split": "tune"
+  },
+  {
+   "id": "p09-q02",
+   "person": "p09",
+   "category": "same_word",
+   "question": "오전·오후·마감 슬롯으로 표 만들어 줄 수 있어?",
+   "previous": null,
+   "gold": [
+    "p09-m09"
+   ],
+   "group": "g-p09-q02",
+   "split": "tune"
+  },
+  {
+   "id": "p09-q03",
+   "person": "p09",
+   "category": "same_word",
+   "question": "계절감이 드러나는 이름으로 신메뉴 이름 하나 추천해줄래?",
+   "previous": null,
+   "gold": [
+    "p09-m14"
+   ],
+   "group": "g-p09-q03",
+   "split": "tune"
+  },
+  {
+   "id": "p09-q04",
+   "person": "p09",
+   "category": "particle",
+   "question": "테이블은 몇 개짜리 매장이었죠?",
+   "previous": null,
+   "gold": [
+    "p09-m06"
+   ],
+   "group": "g-p09-q04",
+   "split": "report"
+  },
+  {
+   "id": "p09-q05",
+   "person": "p09",
+   "category": "particle",
+   "question": "시럽과 우유는 언제 확인하기로 했었죠?",
+   "previous": null,
+   "gold": [
+    "p09-m17"
+   ],
+   "group": "g-p09-q05",
+   "split": "report"
+  },
+  {
+   "id": "p09-q06",
+   "person": "p09",
+   "category": "particle",
+   "question": "담당자도 표에 들어가나요?",
+   "previous": null,
+   "gold": [
+    "p09-m29"
+   ],
+   "group": "g-p09-q06",
+   "split": "report"
+  },
+  {
+   "id": "p09-q07",
+   "person": "p09",
+   "category": "paraphrase",
+   "question": "낮에 업무 처리할 때 뭐부터 살펴보면 좋을지 알려줘?",
+   "previous": null,
+   "gold": [
+    "p09-m04"
+   ],
+   "group": "g-p09-q07",
+   "split": "report"
+  },
+  {
+   "id": "p09-q08",
+   "person": "p09",
+   "category": "paraphrase",
+   "question": "새 음료 아이디어 줄 때 돈 관련 정보도 같이 표시해줄 수 있어?",
+   "previous": null,
+   "gold": [
+    "p09-m11"
+   ],
+   "group": "g-p09-q08",
+   "split": "report"
+  },
+  {
+   "id": "p09-q09",
+   "person": "p09",
+   "category": "paraphrase",
+   "question": "간단한 작업 리스트를 만들고 중요도도 표시해줄 수 있어?",
+   "previous": null,
+   "gold": [
+    "p09-m07"
+   ],
+   "group": "g-p09-q09",
+   "split": "report"
+  },
+  {
+   "id": "p09-q10",
+   "person": "p09",
+   "category": "time",
+   "question": "지난달 말에 신메뉴 후보들 어떻게 됐더라?",
+   "previous": null,
+   "gold": [
+    "p09-m26"
+   ],
+   "group": "g-p09-q10",
+   "split": "tune"
+  },
+  {
+   "id": "p09-q11",
+   "person": "p09",
+   "category": "time",
+   "question": "지난 봄에 우유 발주 늦어졌을 때 어떻게 했었지?",
+   "previous": null,
+   "gold": [
+    "p09-m21"
+   ],
+   "group": "g-p09-q11",
+   "split": "tune"
+  },
+  {
+   "id": "p09-q12",
+   "person": "p09",
+   "category": "multi_turn",
+   "question": "그거 언제까지 끝내야 하죠?",
+   "previous": "가을 한정 메뉴 원가표 검토하려고 해요.",
+   "gold": [
+    "p09-m15"
+   ],
+   "group": "g-p09-q12",
+   "split": "report"
+  },
+  {
+   "id": "p09-q13",
+   "person": "p09",
+   "category": "multi_turn",
+   "question": "그거 언제까지 확정하기로 했죠?",
+   "previous": "주말 근무표 초안 짜고 있어요.",
+   "gold": [
+    "p09-m16"
+   ],
+   "group": "g-p09-q13",
+   "split": "tune"
+  },
+  {
+   "id": "p09-q14",
+   "person": "p09",
+   "category": "unrelated",
+   "question": "요즘 원두 원산지 트렌드 뭐가 있을까요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p09-q14",
+   "split": "report"
+  },
+  {
+   "id": "p09-q15",
+   "person": "p09",
+   "category": "unrelated",
+   "question": "카페 인테리어 조명 색온도 추천해줘요.",
+   "previous": null,
+   "gold": [],
+   "group": "g-p09-q15",
+   "split": "tune"
+  },
+  {
+   "id": "p09-q16",
+   "person": "p09",
+   "category": "unrelated",
+   "question": "소상공인 대출 금리 요즘 어때요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p09-q16",
+   "split": "report"
+  },
+  {
+   "id": "p10-q01",
+   "person": "p10",
+   "category": "same_word",
+   "question": "모델 비교에서 F1-score와 AUROC를 같이 보는 이유가 뭐였는지 다시 설명해줄래요?",
+   "previous": null,
+   "gold": [
+    "p10-m04"
+   ],
+   "group": "g-p10-q01",
+   "split": "report"
+  },
+  {
+   "id": "p10-q02",
+   "person": "p10",
+   "category": "same_word",
+   "question": "디버깅 때 traceback을 그대로 붙여 보는 방식이 왜 편하다고 느끼는지 궁금해요",
+   "previous": null,
+   "gold": [
+    "p10-m14"
+   ],
+   "group": "g-p10-q02",
+   "split": "tune"
+  },
+  {
+   "id": "p10-q03",
+   "person": "p10",
+   "category": "same_word",
+   "question": "논문 PDF를 Zotero에 모아 두는 제 정리 방식 기억하고 있나요?",
+   "previous": null,
+   "gold": [
+    "p10-m06"
+   ],
+   "group": "g-p10-q03",
+   "split": "tune"
+  },
+  {
+   "id": "p10-q04",
+   "person": "p10",
+   "category": "particle",
+   "question": "슬라이드 초안은 언제까지 끝내야 하는 거였죠?",
+   "previous": null,
+   "gold": [
+    "p10-m17"
+   ],
+   "group": "g-p10-q04",
+   "split": "tune"
+  },
+  {
+   "id": "p10-q05",
+   "person": "p10",
+   "category": "particle",
+   "question": "ablation 결과 표가 어떤 형식으로 필요했는지 다시 알려줘요",
+   "previous": null,
+   "gold": [
+    "p10-m18"
+   ],
+   "group": "g-p10-q05",
+   "split": "report"
+  },
+  {
+   "id": "p10-q06",
+   "person": "p10",
+   "category": "particle",
+   "question": "코드 예시는 어느 정도까지 넣어드리는 게 좋을까요?",
+   "previous": null,
+   "gold": [
+    "p10-m09"
+   ],
+   "group": "g-p10-q06",
+   "split": "tune"
+  },
+  {
+   "id": "p10-q07",
+   "person": "p10",
+   "category": "paraphrase",
+   "question": "채팅창에 남기기보다 따로 적어두는 쪽을 선호하시고, 설명은 짧게 드리는 게 나을까요?",
+   "previous": null,
+   "gold": [
+    "p10-m07"
+   ],
+   "group": "g-p10-q07",
+   "split": "report"
+  },
+  {
+   "id": "p10-q08",
+   "person": "p10",
+   "category": "paraphrase",
+   "question": "글을 읽을 때 어떤 부분을 가장 먼저 확인하고 싶으신가요?",
+   "previous": null,
+   "gold": [
+    "p10-m13"
+   ],
+   "group": "g-p10-q08",
+   "split": "report"
+  },
+  {
+   "id": "p10-q09",
+   "person": "p10",
+   "category": "paraphrase",
+   "question": "같은 결과가 반복해서 나오게 하려면 어떤 점을 미리 챙기시나요?",
+   "previous": null,
+   "gold": [
+    "p10-m03"
+   ],
+   "group": "g-p10-q09",
+   "split": "tune"
+  },
+  {
+   "id": "p10-q10",
+   "person": "p10",
+   "category": "time",
+   "question": "지난 여름에 학회 포스터 색상 맞추던 거 다시 알려줄래요?",
+   "previous": null,
+   "gold": [
+    "p10-m24"
+   ],
+   "group": "g-p10-q10",
+   "split": "report"
+  },
+  {
+   "id": "p10-q11",
+   "person": "p10",
+   "category": "time",
+   "question": "지난주에 F1이랑 AUROC 다시 계산했던 결과 좀 보여줘요",
+   "previous": null,
+   "gold": [
+    "p10-m26"
+   ],
+   "group": "g-p10-q11",
+   "split": "tune"
+  },
+  {
+   "id": "p10-q12",
+   "person": "p10",
+   "category": "multi_turn",
+   "question": "그거 어떻게 해결했는지 다시 알려줄 수 있어요?",
+   "previous": "예전에 실험하다가 메모리 문제 때문에 고생했던 적 있었잖아요",
+   "gold": [
+    "p10-m20"
+   ],
+   "group": "g-p10-q12",
+   "split": "report"
+  },
+  {
+   "id": "p10-q13",
+   "person": "p10",
+   "category": "multi_turn",
+   "question": "그때까지 뭘 끝내 놔야 하는지 다시 확인해줄래요?",
+   "previous": "다음 주에 발표가 있어서 준비해야 하는데",
+   "gold": [
+    "p10-m17"
+   ],
+   "group": "g-p10-q04",
+   "split": "tune"
+  },
+  {
+   "id": "p10-q14",
+   "person": "p10",
+   "category": "unrelated",
+   "question": "오늘 날씨 좋은데 우산 챙겨야 할까요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p10-q14",
+   "split": "tune"
+  },
+  {
+   "id": "p10-q15",
+   "person": "p10",
+   "category": "unrelated",
+   "question": "최근에 나온 생성형 이미지 모델 추천해줄 수 있어요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p10-q15",
+   "split": "tune"
+  },
+  {
+   "id": "p10-q16",
+   "person": "p10",
+   "category": "unrelated",
+   "question": "집 근처에 맛있는 카페 있을까요?",
+   "previous": null,
+   "gold": [],
+   "group": "g-p10-q16",
+   "split": "report"
+  }
+ ]
+}
