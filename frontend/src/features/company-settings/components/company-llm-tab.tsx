@@ -49,11 +49,6 @@ export function CompanyLlmTab({ tenantId }: { tenantId: string }) {
             <li key={setting.role} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1 space-y-1">
                 <span className="block text-sm font-medium">{t(`role.${setting.role}`)}</span>
-                {setting.role === 'embedding' ? (
-                  <span className="block moldy-ui-caption text-muted-foreground">
-                    {t('embeddingHelp')}
-                  </span>
-                ) : null}
                 <span className="moldy-ui-caption text-muted-foreground">
                   {setting.inherits
                     ? t('inherits')

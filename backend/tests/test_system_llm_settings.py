@@ -48,7 +48,7 @@ async def test_get_returns_three_unconfigured_roles(client: AsyncClient) -> None
     assert resp.status_code == 200, resp.text
     body = resp.json()
     roles = {row["role"] for row in body}
-    assert roles == {"text_primary", "text_fallback", "image", "embedding"}
+    assert roles == {"text_primary", "text_fallback", "image"}
     for row in body:
         assert row["configured"] is False
         assert row["credential_id"] is None

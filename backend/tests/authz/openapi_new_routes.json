@@ -50860,8 +50860,7 @@
           "enum": [
             "text_primary",
             "text_fallback",
-            "image",
-            "embedding"
+            "image"
           ],
           "title": "Role",
           "type": "string"

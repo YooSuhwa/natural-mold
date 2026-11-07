@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from app.schemas.model import ModelCreate, ModelUpdate
 from app.schemas.org_catalog import CatalogKind
 
-SystemLlmRole = Literal["text_primary", "text_fallback", "image", "embedding"]
+SystemLlmRole = Literal["text_primary", "text_fallback", "image"]
 OrgIds = list[uuid.UUID]
 
 

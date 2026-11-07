@@ -189,17 +189,14 @@ def _patch_conversation_run_worker_session(monkeypatch):
             module, "tenant_session", lambda ctx: tenant_session(ctx, maker=TestSession)
         )
     model_settings.invalidate()
-    # Memory recall (plan 15, PR-B2) commits through its own session and reads the
-    # embedding model setting: both stay on the test database.
+    # Memory recall (plan 15, PR-B2) commits through its own session: the test database.
     from app.agent_runtime.runtime import memory_context as runtime_memory_context
-    from app.services import memory_embedder
 
     monkeypatch.setattr(
         runtime_memory_context,
         "recall_session",
         lambda cfg: tenant_session(cfg.org_context, maker=TestSession),
     )
-    monkeypatch.setattr(memory_embedder, "async_session", TestSession)
 
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
