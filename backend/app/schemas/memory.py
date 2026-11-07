@@ -279,6 +279,14 @@ class MemoryProposalCreate(BaseModel):
         return _strip_non_empty(value) if value is not None else None
 
 
+class MemoryProposalSourceOut(BaseModel):
+    id: uuid.UUID
+    content: str
+    status: str
+    kind: str
+    provenance: str
+
+
 class MemoryProposalOut(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
@@ -299,8 +307,44 @@ class MemoryProposalOut(BaseModel):
     flags: dict[str, Any] = Field(default_factory=dict)
     action: str = "create"
     record_id: uuid.UUID | None = None
+    # Plan 15 (5.6): what a consolidation proposal changes, for the before/after view.
+    target_record_id: uuid.UUID | None = None
+    source_ids: list[str] | None = None
+    profile_change: dict[str, Any] | None = None
+    sources: list[MemoryProposalSourceOut] = Field(default_factory=list)
+    # Why it cannot be approved in bulk (None: it can).
+    bulk_block: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MemoryBulkApprove(BaseModel):
+    ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+
+
+class MemoryBulkSkip(BaseModel):
+    id: uuid.UUID
+    reason: str
+
+
+class MemoryBulkApproveOut(BaseModel):
+    approved: list[uuid.UUID]
+    skipped: list[MemoryBulkSkip]
+
+
+class MemoryTenantPolicyValues(BaseModel):
+    default_mode: ApprovalMode
+    allowed_modes: list[ApprovalMode] = Field(min_length=1)
+    consolidation_enabled: bool
+    channel_personal_memory: bool
+    contacts_allowed: bool
+
+
+class MemoryTenantPolicyOut(BaseModel):
+    tenant_kind: Literal["company", "personal"]
+    values: MemoryTenantPolicyValues
+    defaults: MemoryTenantPolicyValues
+    can_manage: bool
 
 
 class MemoryProposalEditApprove(BaseModel):
@@ -322,7 +366,8 @@ class MemoryProposalEditApprove(BaseModel):
 
 class MemoryProposalApprovalOut(BaseModel):
     proposal: MemoryProposalOut
-    memory: MemoryRecordOut
+    # None for a profile line change (no memory row is made or changed).
+    memory: MemoryRecordOut | None = None
 
 
 class EffectiveMemoryPolicyOut(BaseModel):

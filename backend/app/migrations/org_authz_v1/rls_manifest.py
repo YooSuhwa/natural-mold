@@ -59,6 +59,7 @@ DIRECT_TENANT: Final = frozenset(
         "marketplace_installations",
         "marketplace_items",
         "mcp_servers",
+        "memory_consolidation_runs",  # consolidation run counts (plan 15, 5.6)
         "memory_embeddings",  # memory vectors per model (plan 15, 5.5)
         "memory_erasures",  # deleted memory digests (plan 15, 5.7)
         "memory_profile_docs",  # profile and work memo documents (plan 15, 5.12)

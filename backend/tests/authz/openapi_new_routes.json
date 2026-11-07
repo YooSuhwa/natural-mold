@@ -11500,6 +11500,66 @@
         ]
       }
     },
+    "/api/me/memory-tenant-policy": {
+      "get": {
+        "operationId": "get_memory_tenant_policy_api_me_memory_tenant_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryTenantPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Memory Tenant Policy",
+        "tags": [
+          "memory"
+        ]
+      },
+      "put": {
+        "operationId": "put_memory_tenant_policy_api_me_memory_tenant_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryTenantPolicyValues"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryTenantPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Memory Tenant Policy",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/api/me/memory-vector": {
       "get": {
         "operationId": "get_memory_vector_api_me_memory_vector_get",
@@ -12335,6 +12395,48 @@
           }
         },
         "summary": "Create Memory Proposal",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/memory-proposals/bulk-approve": {
+      "post": {
+        "description": "Approve the unmarked ones (5.6): a marked, contradicting or person-replacing\nproposal is skipped with its reason and waits for a decision of its own.",
+        "operationId": "bulk_approve_memory_proposals_api_memory_proposals_bulk_approve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryBulkApprove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryBulkApproveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bulk Approve Memory Proposals",
         "tags": [
           "memory"
         ]
@@ -40128,6 +40230,50 @@
       "title": "MemoryActivityOut",
       "type": "object"
     },
+    "MemoryBulkApprove": {
+      "properties": {
+        "ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ids"
+      ],
+      "title": "MemoryBulkApprove",
+      "type": "object"
+    },
+    "MemoryBulkApproveOut": {
+      "properties": {
+        "approved": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Approved",
+          "type": "array"
+        },
+        "skipped": {
+          "items": {
+            "$ref": "#/components/schemas/MemoryBulkSkip"
+          },
+          "title": "Skipped",
+          "type": "array"
+        }
+      },
+      "required": [
+        "approved",
+        "skipped"
+      ],
+      "title": "MemoryBulkApproveOut",
+      "type": "object"
+    },
     "MemoryBulkDelete": {
       "additionalProperties": false,
       "description": "Plan 15 (5.7): delete every memory in a scope; ``confirm`` must equal the count shown.",
@@ -40164,6 +40310,25 @@
         "confirm_count"
       ],
       "title": "MemoryBulkDelete",
+      "type": "object"
+    },
+    "MemoryBulkSkip": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "reason"
+      ],
+      "title": "MemoryBulkSkip",
       "type": "object"
     },
     "MemoryDeletionReceipt": {
@@ -40460,15 +40625,21 @@
     "MemoryProposalApprovalOut": {
       "properties": {
         "memory": {
-          "$ref": "#/components/schemas/MemoryRecordOut"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MemoryRecordOut"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "proposal": {
           "$ref": "#/components/schemas/MemoryProposalOut"
         }
       },
       "required": [
-        "proposal",
-        "memory"
+        "proposal"
       ],
       "title": "MemoryProposalApprovalOut",
       "type": "object"
@@ -40593,6 +40764,17 @@
           ],
           "title": "Agent Id"
         },
+        "bulk_block": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Bulk Block"
+        },
         "content": {
           "title": "Content",
           "type": "string"
@@ -40649,6 +40831,18 @@
           "title": "Origin",
           "type": "string"
         },
+        "profile_change": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Profile Change"
+        },
         "reason": {
           "anyOf": [
             {
@@ -40702,6 +40896,20 @@
           "title": "Sensitivity",
           "type": "string"
         },
+        "source_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Ids"
+        },
         "source_run_id": {
           "anyOf": [
             {
@@ -40712,6 +40920,13 @@
             }
           ],
           "title": "Source Run Id"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/components/schemas/MemoryProposalSourceOut"
+          },
+          "title": "Sources",
+          "type": "array"
         },
         "status": {
           "enum": [
@@ -40731,6 +40946,18 @@
           ],
           "title": "Subject",
           "type": "string"
+        },
+        "target_record_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Record Id"
         },
         "topic": {
           "anyOf": [
@@ -40758,6 +40985,40 @@
         "created_at"
       ],
       "title": "MemoryProposalOut",
+      "type": "object"
+    },
+    "MemoryProposalSourceOut": {
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "provenance": {
+          "title": "Provenance",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "status",
+        "kind",
+        "provenance"
+      ],
+      "title": "MemoryProposalSourceOut",
       "type": "object"
     },
     "MemoryRecallPreviewIn": {
@@ -41476,6 +41737,89 @@
         }
       },
       "title": "MemoryRevoke",
+      "type": "object"
+    },
+    "MemoryTenantPolicyOut": {
+      "properties": {
+        "can_manage": {
+          "title": "Can Manage",
+          "type": "boolean"
+        },
+        "defaults": {
+          "$ref": "#/components/schemas/MemoryTenantPolicyValues"
+        },
+        "tenant_kind": {
+          "enum": [
+            "company",
+            "personal"
+          ],
+          "title": "Tenant Kind",
+          "type": "string"
+        },
+        "values": {
+          "$ref": "#/components/schemas/MemoryTenantPolicyValues"
+        }
+      },
+      "required": [
+        "tenant_kind",
+        "values",
+        "defaults",
+        "can_manage"
+      ],
+      "title": "MemoryTenantPolicyOut",
+      "type": "object"
+    },
+    "MemoryTenantPolicyValues": {
+      "properties": {
+        "allowed_modes": {
+          "items": {
+            "enum": [
+              "off",
+              "read_only",
+              "approve_all",
+              "partial_auto",
+              "auto_notify",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Modes",
+          "type": "array"
+        },
+        "channel_personal_memory": {
+          "title": "Channel Personal Memory",
+          "type": "boolean"
+        },
+        "consolidation_enabled": {
+          "title": "Consolidation Enabled",
+          "type": "boolean"
+        },
+        "contacts_allowed": {
+          "title": "Contacts Allowed",
+          "type": "boolean"
+        },
+        "default_mode": {
+          "enum": [
+            "off",
+            "read_only",
+            "approve_all",
+            "partial_auto",
+            "auto_notify",
+            "custom"
+          ],
+          "title": "Default Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "default_mode",
+        "allowed_modes",
+        "consolidation_enabled",
+        "channel_personal_memory",
+        "contacts_allowed"
+      ],
+      "title": "MemoryTenantPolicyValues",
       "type": "object"
     },
     "MemoryVectorModelOut": {

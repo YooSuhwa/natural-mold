@@ -136,6 +136,9 @@ async def _mode(db: AsyncSession, context: OrgContext, agent_id: uuid.UUID | Non
     return mode, axes, tenant
 
 
+mode_for = _mode  # the consolidation job reads the same axes (plan 15, 5.6)
+
+
 async def write_memory(
     db: AsyncSession, *, context: OrgContext, write: MemoryWrite
 ) -> MemoryWriteResult:

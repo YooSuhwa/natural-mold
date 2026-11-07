@@ -58,6 +58,7 @@ _B08_ADDED_COLUMN_NULLABILITY = {
         "target_record_id": True,
         "record_id": True,
         "source_ids": True,
+        "profile_change": True,  # 순번 15 (i24, memory plan 5.12)
     },
 }
 _B08_ADDED_COLUMNS = {name: set(columns) for name, columns in _B08_ADDED_COLUMN_NULLABILITY.items()}

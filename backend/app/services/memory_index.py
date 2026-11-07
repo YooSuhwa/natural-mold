@@ -43,6 +43,9 @@ async def set_terms(record: MemoryRecord) -> None:
 async def on_saved(db: AsyncSession, context: OrgContext, record: MemoryRecord) -> None:
     """Terms now, vector and Nori terms in the background (called before the commit)."""
     await set_terms(record)
+    from app.services import memory_consolidation  # it imports this module
+
+    await memory_consolidation.maybe_schedule(db, context, record)
     digest = memory_embedder.text_hash(record.content)[:16]
     await jobs.enqueue(
         db,

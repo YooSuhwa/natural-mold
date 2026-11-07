@@ -818,7 +818,7 @@ async def approve_memory_proposal(
     context: OrgContext,
     content: str | None = None,
     reason: str | None = None,
-) -> tuple[MemoryProposal, MemoryRecord] | None:
+) -> tuple[MemoryProposal, MemoryRecord | None] | None:
     proposal = await get_memory_proposal(
         db,
         proposal_id=proposal_id,
@@ -826,6 +826,13 @@ async def approve_memory_proposal(
     )
     if proposal is None or proposal.status != "pending":
         return None
+    if proposal.action != "create":
+        # Plan 15 (5.6): consolidation proposals are carried out as proposed, unedited.
+        if content is not None or reason is not None:
+            raise ValidationError(
+                "MEMORY_PROPOSAL_NOT_EDITABLE", "정리 제안은 고치지 않고 승인하거나 거절합니다"
+            )
+        return await _approve_consolidation(db, context, proposal)
     agent = None
     if proposal.agent_id is not None:
         agent = await _get_owned_agent(db, proposal.agent_id, context)
@@ -889,6 +896,36 @@ async def approve_memory_proposal(
     await db.commit()
     await db.refresh(proposal)
     await db.refresh(record)
+    return proposal, record
+
+
+async def _approve_consolidation(
+    db: AsyncSession, context: OrgContext, proposal: MemoryProposal
+) -> tuple[MemoryProposal, MemoryRecord | None]:
+    from app.services import memory_consolidation  # it imports this module
+
+    try:
+        await memory_consolidation.apply_proposal(db, context, proposal)
+    except memory_consolidation.StaleProposal:
+        await db.rollback()
+        proposal.status, proposal.resolved_at = "expired", _now_naive()
+        await db.commit()
+        raise ValidationError(
+            "MEMORY_PROPOSAL_STALE", "근거 기억이 바뀌어 이 제안은 더 쓸 수 없습니다"
+        ) from None
+    await _audit(
+        db,
+        context,
+        MEMORY_PROPOSAL_APPROVE,
+        proposal,
+        record_id=str(proposal.record_id) if proposal.record_id else None,
+        edited=False,
+        consolidation=proposal.action,
+    )
+    await db.commit()
+    await db.refresh(proposal)
+    record_id = proposal.record_id or proposal.target_record_id
+    record = await db.get(MemoryRecord, record_id) if record_id is not None else None
     return proposal, record
 
 

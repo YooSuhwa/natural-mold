@@ -237,6 +237,11 @@ def _claim_markers(text: str) -> Counter[str]:
     return +markers  # drop zero counts
 
 
+def claim_markers(text: str) -> Counter[str]:
+    """Negations, numbers, amounts and dates of ``text`` (with counts)."""
+    return _claim_markers(text)
+
+
 def claims_diverge(a: str, b: str) -> bool:
     """True when negation, numbers, amounts or dates differ: never merge these two texts."""
     return _claim_markers(a) != _claim_markers(b)

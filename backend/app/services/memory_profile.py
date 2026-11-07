@@ -334,6 +334,30 @@ async def unpin(
     return await view(db, context, kind, agent)
 
 
+async def apply_change(db: AsyncSession, context: OrgContext, change: dict[str, Any]) -> None:
+    """An approved consolidation line change (5.12): add a sourced line or remove one.
+
+    The added line stays within the document limit and is not a duplicate; a removed line
+    that no longer exists is a no-op. No commit.
+    """
+    kind: ProfileKind = "work_memo" if change.get("kind") == "work_memo" else "user_profile"
+    agent = uuid.UUID(str(change["agent_id"])) if change.get("agent_id") else None
+    doc = await _doc(db, context, kind, agent if kind == "work_memo" else None)
+    lines = _lines(doc)
+    if change.get("op") == "remove":
+        kept = [line for line in lines if line.id != change.get("line_id")]
+        if doc is not None and len(kept) != len(lines):
+            await _save(db, context, kind, agent, kept, doc)
+        return
+    text = _check_line(str(change.get("text") or ""))
+    sources = tuple(str(s) for s in change.get("sources") or ())
+    added = _dedupe([*lines, ProfileLine(str(uuid.uuid4()), text, "consolidation", sources)])
+    if len(added) == len(lines):
+        return  # the same line is already there
+    _check_budget(added)
+    await _save(db, context, kind, agent if kind == "work_memo" else None, added, doc)
+
+
 async def drop_sources(db: AsyncSession, records: Sequence[MemoryRecord]) -> int:
     """Remove every line citing one of ``records`` (their delete, 5.7); returns lines removed."""
     ids = {str(row.id) for row in records}
@@ -420,6 +444,7 @@ async def for_run(
 __all__ = [
     "LINE_MAX_CHARS",
     "agent_for",
+    "apply_change",
     "PROFILE_BUDGET_TOKENS",
     "ProfileLine",
     "ProfileView",

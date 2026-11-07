@@ -74,7 +74,8 @@ def test_conversation_family_routes_declare_their_plan_policy(monkeypatch) -> No
         if isinstance(route, APIRoute) and route.endpoint.__module__ in DOMAIN_MODULES
         for method in route.methods
     ]
-    assert len(routes) == 105  # +9 memory routes (plan 15 PR-B1), +5 (PR-B2), +2 (Q14)
+    # +9 memory routes (plan 15 PR-B1), +5 (PR-B2), +2 (Q14), +3 (PR-B3)
+    assert len(routes) == 108
     assert [r for r in routes if r[2] != _expected(r[1])] == []
     memory = next(r for r in app.routes if isinstance(r, APIRoute) and r.path in RES_ROUTES)
     assert policy_of(memory.endpoint) == RES(
