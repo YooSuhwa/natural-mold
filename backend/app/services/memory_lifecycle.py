@@ -29,6 +29,7 @@ from app.authz.audit_actions import (
 )
 from app.authz.memory_agent_access import row_shared_memory_agent_ids
 from app.authz.memory_scope import (
+    memory_owned_by,
     private_memory_proposal_predicate,
     private_memory_record_predicate,
 )
@@ -269,8 +270,7 @@ async def delete_one(
 
 def _scope_filters(context: OrgContext, scope: str, agent_id: uuid.UUID | None) -> list[Any]:
     filters: list[Any] = [
-        MemoryRecord.user_id == context.user_id,
-        MemoryRecord.tenant_id == context.tenant_id,
+        memory_owned_by(MemoryRecord, context),
     ]
     if scope == "user":
         filters.append(MemoryRecord.scope == "user")
@@ -419,8 +419,7 @@ async def export(
                 }
             )
     proposal_filters: list[Any] = [
-        MemoryProposal.user_id == context.user_id,
-        MemoryProposal.tenant_id == context.tenant_id,
+        memory_owned_by(MemoryProposal, context),
         MemoryProposal.scope.in_(("user", "agent") if scope == "all" else (scope,)),
         private_memory_proposal_predicate(context, frozenset()),
     ]
@@ -564,7 +563,7 @@ async def activity(db: AsyncSession, *, context: OrgContext, limit: int = 100) -
         select(AuditEvent)
         .where(
             AuditEvent.actor_user_id == context.user_id,
-            AuditEvent.owner_user_id == context.user_id,
+            memory_owned_by(AuditEvent, context, column="owner_user_id"),
             AuditEvent.action.like("memory.%"),
         )
         .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())

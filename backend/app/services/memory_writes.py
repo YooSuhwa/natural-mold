@@ -15,6 +15,7 @@ from typing import Literal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.memory_scope import memory_owned_by
 from app.authz.org_context import OrgContext
 from app.exceptions import ValidationError
 from app.models.memory import (
@@ -75,8 +76,7 @@ async def _erased(db: AsyncSession, context: OrgContext, content: str) -> bool:
     digest = memory_digest(context.tenant_id, content)
     found = await db.scalar(
         select(MemoryErasure.id).where(
-            MemoryErasure.user_id == context.user_id,
-            MemoryErasure.tenant_id == context.tenant_id,
+            memory_owned_by(MemoryErasure, context),
             MemoryErasure.content_digest == digest,
         )
     )
@@ -87,8 +87,7 @@ async def _forget_erasure(db: AsyncSession, context: OrgContext, content: str) -
     digest = memory_digest(context.tenant_id, content)
     rows = await db.scalars(
         select(MemoryErasure).where(
-            MemoryErasure.user_id == context.user_id,
-            MemoryErasure.tenant_id == context.tenant_id,
+            memory_owned_by(MemoryErasure, context),
             MemoryErasure.content_digest == digest,
         )
     )
@@ -103,8 +102,7 @@ async def _duplicate(
     agent = write.agent_id if write.scope == "agent" else None
     rows = await db.scalars(
         select(MemoryRecord).where(
-            MemoryRecord.user_id == context.user_id,
-            MemoryRecord.tenant_id == context.tenant_id,
+            memory_owned_by(MemoryRecord, context),
             MemoryRecord.scope == write.scope,
             MemoryRecord.agent_id.is_(None) if agent is None else MemoryRecord.agent_id == agent,
             MemoryRecord.status == "active",

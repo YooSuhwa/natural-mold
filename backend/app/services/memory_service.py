@@ -24,6 +24,7 @@ from app.authz.memory_agent_access import (
     shared_memory_agent_ids,
 )
 from app.authz.memory_scope import (
+    memory_owned_by,
     private_memory_proposal_predicate,
     private_memory_record_predicate,
     private_memory_source_conversation_predicate,
@@ -741,7 +742,7 @@ async def list_memory_proposals(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
     filters = [
-        MemoryProposal.user_id == context.user_id,
+        memory_owned_by(MemoryProposal, context),
         MemoryProposal.scope != AGENT_MEMO_SCOPE,
         private_memory_proposal_predicate(context, frozenset()),
     ]

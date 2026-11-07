@@ -96,6 +96,7 @@ async def get_memory_policy(
         allowed_modes=sorted(tenant.allowed_modes),  # type: ignore[arg-type]
         default_mode=tenant.default_mode,  # type: ignore[arg-type]
         consolidation_enabled=tenant.consolidation_enabled and settings.consolidation_enabled,
+        tenant_consolidation_enabled=tenant.consolidation_enabled,
     )
 
 

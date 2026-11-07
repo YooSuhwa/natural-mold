@@ -39926,6 +39926,10 @@
           "title": "Effective Mode",
           "type": "string"
         },
+        "tenant_consolidation_enabled": {
+          "title": "Tenant Consolidation Enabled",
+          "type": "boolean"
+        },
         "tenant_kind": {
           "enum": [
             "company",
@@ -39941,7 +39945,8 @@
         "axes",
         "allowed_modes",
         "default_mode",
-        "consolidation_enabled"
+        "consolidation_enabled",
+        "tenant_consolidation_enabled"
       ],
       "title": "MemoryPolicyOut",
       "type": "object"

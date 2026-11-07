@@ -99,7 +99,8 @@ class MemoryPolicyOut(BaseModel):
     axes: ApprovalAxes
     allowed_modes: list[ApprovalMode]
     default_mode: ApprovalMode
-    consolidation_enabled: bool
+    consolidation_enabled: bool  # the tenant's switch and the person's both on
+    tenant_consolidation_enabled: bool
 
 
 class AgentMemorySettingsOut(BaseModel):

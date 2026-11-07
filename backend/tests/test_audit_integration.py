@@ -1262,6 +1262,7 @@ async def test_memory_policy_route_and_mode_limits(client, db: AsyncSession) -> 
     body = policy.json()
     assert (body["tenant_kind"], body["effective_mode"]) == ("company", "approve_all")
     assert set(body["axes"]) == {"records", "profile", "consolidation"}
+    assert body["tenant_consolidation_enabled"] is False  # company default (Q3)
     saved = await client.patch("/api/me/memory-settings", json={"approval_mode": "partial_auto"})
     assert saved.status_code == 200 and saved.json()["memory_write_policy"] == "auto"
     assert (await client.get("/api/me/memory-policy")).json()["effective_mode"] == "partial_auto"
