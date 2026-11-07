@@ -31252,7 +31252,8 @@
             "object_store",
             "mcp_runtime",
             "pii_detector",
-            "skill_sandbox"
+            "skill_sandbox",
+            "opensearch"
           ],
           "title": "Key",
           "type": "string"
