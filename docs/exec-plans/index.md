@@ -12,7 +12,7 @@ The active organization authorization program follows the supplied
 - [조직·권한·공유 실행 기록](active/org-authz-progress.md) — approved 2026-10-10; P0–P7 and P8 implementation merged in PR #314 (2026-10-19); I-01–I-05 operations and U-05 pending deployment.
 - [개인 테넌트·회사 키·공유 공백 실행 계획](active/personal-tenant-sharing-plan.md) — approved 2026-10-21 (Q1–Q8 recommendations accepted); implementation in progress.
 
-- [순번 15 메모리 정책 상세 기획](active/memory-policy-plan.md) — v8 2026-11-07 (Aside traces, folder, study and GBrain reviews folded in); Q1/Q3/Q5/Q8/Q9 decided; Q2 model, Q10–Q13 pending.
+- [순번 15 메모리 정책 상세 기획](active/memory-policy-plan.md) — v9 2026-11-07; all decisions made (Q12 Nori, Q2 text-embedding-3-large provisional); PR-A next.
 
 ## Completed
 
