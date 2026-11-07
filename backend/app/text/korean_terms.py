@@ -80,6 +80,15 @@ _SUFFIXES: Final = tuple(
             "했던",
             "하던",
             "해줘",
+            "해줘요",
+            "해줄래",
+            "해줄래요",
+            "해주세요",
+            "이었지",
+            "였지",
+            "했지",
+            "인가요",
+            "나요",
             "이었다",
             "였다",
             "이다",
@@ -144,8 +153,36 @@ _SUFFIXES: Final = tuple(
     )
 )
 _MIN_STEM: Final = 2
-# These rarely end a noun, so one syllable may stay ("팀은" -> "팀").
-_SHORT_STEM_PARTICLES: Final = frozenset({"은", "는", "을", "를"})
+# These rarely end a noun, so one syllable may stay ("팀은" -> "팀"); so do particles of two
+# or more syllables ("표에서" -> "표", "칸으로" -> "칸"; eval, 2026-11-07).
+_SHORT_STEM_PARTICLES: Final = frozenset(
+    {
+        "은",
+        "는",
+        "을",
+        "를",
+        "에서",
+        "에서는",
+        "에서도",
+        "으로",
+        "으로는",
+        "으로도",
+        "에게",
+        "한테",
+        "까지",
+        "부터",
+        "처럼",
+        "보다",
+        "마다",
+        "조차",
+        "마저",
+        "에는",
+        "에도",
+        "와는",
+        "과는",
+        "이랑",
+    }
+)
 _STOPWORDS: Final = frozenset(
     {
         "그",
@@ -169,6 +206,21 @@ _STOPWORDS: Final = frozenset(
         "이거",
         "저거",
         "뭐",
+        # question words and fillers that carry no topic (eval: they diluted termShare)
+        "거",
+        "어떻게",
+        "어디",
+        "언제",
+        "누구",
+        "왜",
+        "무엇",
+        "무슨",
+        "있나",
+        "있어",
+        "있었나",
+        "알려줘",
+        "뭐였지",
+        "뭐더라",
         "a",
         "an",
         "the",

@@ -417,3 +417,18 @@ async def test_a_scope_takes_at_most_four_places(db: AsyncSession) -> None:
     now = datetime.now(UTC).replace(tzinfo=None)
     chosen = memory_recall.select_within_budget(ranked.items, now)
     assert len(ranked.items) == 10 and len(chosen.items) == 4 and chosen.dropped == 0
+
+
+@pytest.mark.parametrize(
+    ("text", "terms"),
+    [
+        ("표에서 칸으로 옮겨", ("표", "칸", "옮겨")),
+        ("알림 놓친 거 있나 확인해줄래요?", ("알림", "놓친", "확인")),
+        ("지난달 워크숍 어디였지", ("지난달", "워크숍")),
+        ("회의 평가", ("회의", "평가")),  # one-syllable particles keep a two-syllable noun
+    ],
+)
+def test_suffix_list_terms(text: str, terms: tuple[str, ...]) -> None:
+    from app.text.korean_terms import fallback_terms
+
+    assert fallback_terms(text) == terms
