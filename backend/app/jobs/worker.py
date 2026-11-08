@@ -48,6 +48,9 @@ class Worker:
         from app.services.memory_trigger_memo import register_jobs as register_trigger_memo
 
         register_trigger_memo()
+        from app.workflows.runner import register_jobs as register_workflow_jobs
+
+        register_workflow_jobs()
         self.worker_id = worker_id or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
         self.concurrency = concurrency
         self.poll_seconds = poll_seconds

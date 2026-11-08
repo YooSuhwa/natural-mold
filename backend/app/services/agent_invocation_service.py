@@ -59,6 +59,11 @@ class AgentInvocationPrincipal:
         return cls(owner_user_id=owner_user_id, caller_user_id=None)
 
     @classmethod
+    def workflow_runner(cls, user_id: uuid.UUID) -> AgentInvocationPrincipal:
+        """The person who started a workflow run is its caller (workflow-plan 3.6)."""
+        return cls(owner_user_id=user_id, caller_user_id=user_id)
+
+    @classmethod
     def api_key(
         cls,
         *,

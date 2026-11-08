@@ -73,3 +73,46 @@ class WorkflowVersionSummary(BaseModel):
 class WorkflowVersionDetail(WorkflowVersionSummary):
     definition: dict[str, Any]
     agent_pins: dict[str, Any]
+
+
+class WorkflowRunStart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowRunSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workflow_id: uuid.UUID
+    version_id: uuid.UUID
+    status: str
+    error_code: str | None
+    error_message: str | None
+    current_node: str | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class WorkflowStepRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    position: int
+    node_id: str
+    node_type: str
+    status: str
+    branch: str | None
+    output: dict[str, Any] | None
+    error_code: str | None
+    error_message: str | None
+    conversation_id: uuid.UUID | None
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class WorkflowRunDetail(WorkflowRunSummary):
+    input: dict[str, Any]
+    output: dict[str, Any] | None
+    steps: list[WorkflowStepRunOut]
