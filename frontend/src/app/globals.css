@@ -879,6 +879,17 @@
       linear-gradient(135deg, var(--moldy-mint), var(--moldy-sky), var(--moldy-violet)) border-box;
   }
 
+  /* Workflow version comparison: connection colours (nodes use border-status-* classes). */
+  .moldy-flow-diff-added .react-flow__edge-path {
+    stroke: var(--status-success);
+    stroke-width: 2;
+  }
+
+  .moldy-flow-diff-removed .react-flow__edge-path {
+    stroke: var(--status-danger);
+    stroke-dasharray: 6 4;
+  }
+
   .moldy-app-surface {
     background: linear-gradient(
       180deg,

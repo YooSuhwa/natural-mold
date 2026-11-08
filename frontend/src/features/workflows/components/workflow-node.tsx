@@ -10,6 +10,7 @@ import type { EdgeWhen, WorkflowNodeType } from '@/lib/types/workflow'
 
 import { branchesOf } from '../lib/editor-commands'
 import { NODE_ICONS } from '../lib/node-catalog'
+import type { DiffStatus } from '../lib/version-diff'
 
 export type WorkflowNodeData = {
   type: WorkflowNodeType
@@ -21,7 +22,20 @@ export type WorkflowNodeData = {
   issueCount: number
   selected: boolean
   freeExits: (EdgeWhen | null)[]
-  onAddAfter: (nodeId: string, when: EdgeWhen | null) => void
+  onAddAfter?: (nodeId: string, when: EdgeWhen | null) => void
+  /** Set on the version comparison: added green, removed red, changed yellow. */
+  diff?: DiffStatus
+}
+
+const DIFF_CARD: Record<Exclude<DiffStatus, 'same'>, string> = {
+  added: 'border-2 border-status-success',
+  removed: 'border-2 border-dashed border-status-danger opacity-70',
+  changed: 'border-2 border-status-warn',
+}
+const DIFF_TONE: Record<Exclude<DiffStatus, 'same'>, string> = {
+  added: 'moldy-status-success',
+  removed: 'moldy-status-danger',
+  changed: 'moldy-status-warn',
 }
 
 export type WorkflowFlowNode = Node<WorkflowNodeData, 'workflow'>
@@ -52,6 +66,7 @@ export function WorkflowNodeCard({ id, data }: NodeProps<WorkflowFlowNode>) {
         'moldy-card relative flex h-full w-full items-center gap-3 px-3 py-2',
         data.selected && 'ring-2 ring-primary-strong',
         data.issueCount > 0 && 'border-status-danger',
+        data.diff && data.diff !== 'same' && DIFF_CARD[data.diff],
       )}
       data-testid={`workflow-node-${id}`}
     >
@@ -69,6 +84,16 @@ export function WorkflowNodeCard({ id, data }: NodeProps<WorkflowFlowNode>) {
           </span>
         ) : null}
       </span>
+      {data.diff && data.diff !== 'same' ? (
+        <span
+          className={cn(
+            'moldy-status-surface rounded-full px-2 py-0.5 shrink-0 text-xs',
+            DIFF_TONE[data.diff],
+          )}
+        >
+          {t(`versions.status.${data.diff}`)}
+        </span>
+      ) : null}
       {data.issueCount > 0 ? (
         <span className="moldy-status-surface moldy-status-danger rounded-full px-2 py-0.5 shrink-0 text-xs">
           {data.issueCount}
@@ -103,7 +128,7 @@ export function WorkflowNodeCard({ id, data }: NodeProps<WorkflowFlowNode>) {
               }
               onClick={(event) => {
                 event.stopPropagation()
-                data.onAddAfter(id, when)
+                data.onAddAfter?.(id, when)
               }}
             >
               <PlusIcon className="size-3" aria-hidden />
