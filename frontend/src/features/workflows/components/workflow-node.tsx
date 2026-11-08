@@ -1,0 +1,96 @@
+'use client'
+
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
+import { PlusIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import type { EdgeWhen, WorkflowNodeType } from '@/lib/types/workflow'
+
+import { branchesOf } from '../lib/editor-commands'
+import { NODE_ICONS } from '../lib/node-catalog'
+
+export type WorkflowNodeData = {
+  type: WorkflowNodeType
+  title: string
+  subtitle: string
+  issueCount: number
+  selected: boolean
+  freeExits: (EdgeWhen | null)[]
+  onAddAfter: (nodeId: string, when: EdgeWhen | null) => void
+}
+
+export type WorkflowFlowNode = Node<WorkflowNodeData, 'workflow'>
+
+export function handleId(when: EdgeWhen | null): string {
+  return when ?? 'next'
+}
+
+/** One node card: icon, title, kind, issue badge, one handle per exit. */
+export function WorkflowNodeCard({ id, data }: NodeProps<WorkflowFlowNode>) {
+  const t = useTranslations('workflows')
+  const Icon = NODE_ICONS[data.type]
+  const exits = branchesOf(data.type)
+  return (
+    <div
+      className={cn(
+        'moldy-card relative flex h-full w-full items-center gap-3 px-3 py-2',
+        data.selected && 'ring-2 ring-primary-strong',
+        data.issueCount > 0 && 'border-status-danger',
+      )}
+      data-testid={`workflow-node-${id}`}
+    >
+      {data.type !== 'start' ? <Handle type="target" position={Position.Top} /> : null}
+      <span className="moldy-status-icon flex size-8 shrink-0 items-center justify-center">
+        <Icon className="size-4" aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">{data.title}</span>
+        <span className="block truncate text-xs text-muted-foreground">{data.subtitle}</span>
+      </span>
+      {data.issueCount > 0 ? (
+        <span className="moldy-status-danger moldy-status-pill shrink-0 text-xs">
+          {data.issueCount}
+        </span>
+      ) : null}
+      {exits.map((when, index) => (
+        <Handle
+          key={handleId(when)}
+          id={handleId(when)}
+          type="source"
+          position={Position.Bottom}
+          className={cn(exits.length === 2 && (index === 0 ? 'left-1/4' : 'left-3/4'))}
+        />
+      ))}
+      {exits.length === 2 ? (
+        <span className="pointer-events-none absolute inset-x-0 top-full mt-1 flex justify-around text-xs text-muted-foreground">
+          {exits.map((when) => (
+            <span key={handleId(when)}>{when ? t(`branch.${when}`) : null}</span>
+          ))}
+        </span>
+      ) : null}
+      {data.freeExits.length > 0 ? (
+        <span className="absolute inset-x-0 top-full mt-5 flex justify-around">
+          {data.freeExits.map((when) => (
+            <Button
+              key={handleId(when)}
+              size="icon"
+              variant="outline"
+              className="nodrag size-6 rounded-full"
+              aria-label={
+                when ? `${t('editor.addAfter')} · ${t(`branch.${when}`)}` : t('editor.addAfter')
+              }
+              onClick={(event) => {
+                event.stopPropagation()
+                data.onAddAfter(id, when)
+              }}
+            >
+              <PlusIcon className="size-3" aria-hidden />
+            </Button>
+          ))}
+        </span>
+      ) : null}
+    </div>
+  )
+}

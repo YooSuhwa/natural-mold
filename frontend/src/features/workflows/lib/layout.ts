@@ -1,0 +1,88 @@
+/**
+ * Top-to-bottom layout for a workflow (workflow-plan 3.7, Q7: positions are never stored).
+ *
+ * 1차 graphs are small DAGs (≤ 50 nodes, no loops), so a layered layout is enough and needs
+ * no layout library: each node's row is its longest distance from a root, and nodes in a
+ * row are ordered by the average column of their parents (branches stay under the node
+ * they came from), then spread around the centre.
+ */
+import type { WorkflowDefinition } from '@/lib/types/workflow'
+
+export interface Placed {
+  id: string
+  x: number
+  y: number
+  row: number
+}
+
+export const NODE_WIDTH = 240
+export const NODE_HEIGHT = 84
+const COLUMN_GAP = 56
+const ROW_GAP = 72
+
+export function layout(definition: WorkflowDefinition): Map<string, Placed> {
+  const ids = definition.nodes.map((node) => node.id)
+  const known = new Set(ids)
+  const edges = definition.edges.filter((edge) => known.has(edge.from) && known.has(edge.to))
+  const parents = new Map<string, string[]>(ids.map((id) => [id, []]))
+  const children = new Map<string, string[]>(ids.map((id) => [id, []]))
+  for (const edge of edges) {
+    parents.get(edge.to)?.push(edge.from)
+    children.get(edge.from)?.push(edge.to)
+  }
+
+  // Longest-path rows in topological order; nodes on a cycle (a draft may have one) keep
+  // the row they had when the cycle was reached.
+  const row = new Map<string, number>()
+  const indegree = new Map(ids.map((id) => [id, parents.get(id)?.length ?? 0]))
+  const queue = ids.filter((id) => indegree.get(id) === 0)
+  for (const id of queue) row.set(id, 0)
+  while (queue.length > 0) {
+    const current = queue.shift() as string
+    for (const child of children.get(current) ?? []) {
+      row.set(child, Math.max(row.get(child) ?? 0, (row.get(current) ?? 0) + 1))
+      indegree.set(child, (indegree.get(child) ?? 0) - 1)
+      if (indegree.get(child) === 0) queue.push(child)
+    }
+  }
+  for (const id of ids) if (!row.has(id)) row.set(id, 0)
+
+  const rows = new Map<number, string[]>()
+  for (const id of ids) {
+    const r = row.get(id) ?? 0
+    rows.set(r, [...(rows.get(r) ?? []), id])
+  }
+  const column = new Map<string, number>()
+  const placed = new Map<string, Placed>()
+  for (const r of [...rows.keys()].sort((a, b) => a - b)) {
+    const members = rows.get(r) ?? []
+    const keyed = members.map((id, index) => {
+      const cols = (parents.get(id) ?? [])
+        .map((parent) => column.get(parent))
+        .filter((value): value is number => value !== undefined)
+      const anchor = cols.length ? cols.reduce((a, b) => a + b, 0) / cols.length : index
+      return { id, anchor, index }
+    })
+    keyed.sort((a, b) => a.anchor - b.anchor || a.index - b.index)
+    // Spread the row around its parents' centre, one column apart.
+    const centre = keyed.reduce((sum, item) => sum + item.anchor, 0) / keyed.length
+    const offset = (keyed.length - 1) / 2
+    keyed.forEach((item, position) => {
+      const col = r === 0 ? position - offset : centre + position - offset
+      column.set(item.id, col)
+      placed.set(item.id, {
+        id: item.id,
+        row: r,
+        x: col * (NODE_WIDTH + COLUMN_GAP),
+        y: r * (NODE_HEIGHT + ROW_GAP),
+      })
+    })
+  }
+  return placed
+}
+
+/** Nodes in reading order (row, then left to right): the narrow-screen list view. */
+export function readingOrder(definition: WorkflowDefinition): string[] {
+  const placed = layout(definition)
+  return [...placed.values()].sort((a, b) => a.row - b.row || a.x - b.x).map((item) => item.id)
+}

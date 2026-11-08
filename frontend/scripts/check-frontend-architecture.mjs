@@ -47,7 +47,7 @@ const heavyClientImports = [
   {
     module: '@xyflow/react',
     files: new Set(),
-    prefixes: ['src/components/agent/visual-settings/'],
+    prefixes: ['src/components/agent/visual-settings/', 'src/features/workflows/components/'],
   },
   {
     module: '@assistant-ui/react-streamdown',
@@ -79,6 +79,7 @@ const heavyClientImports = [
 const heavyRouteComponents = new Set([
   '@/components/chat/trace-debugger-view',
   '@/components/agent/visual-settings/visual-settings-island',
+  '@/features/workflows/components/workflow-canvas-island',
 ])
 
 function isStableIssueKey(value) {
