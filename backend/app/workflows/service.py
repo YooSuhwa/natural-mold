@@ -157,7 +157,15 @@ async def agent_issues(
 ) -> list[Issue]:
     """Agent nodes the runner could not use: missing, hidden, archived, not runnable,
     or on a model that cannot call tools (structured output needs a tool call)."""
-    nodes = [node for node in definition.nodes if isinstance(node, AgentNode)]
+    return await agent_node_issues(
+        db, context, [node for node in definition.nodes if isinstance(node, AgentNode)]
+    )
+
+
+async def agent_node_issues(
+    db: AsyncSession, context: OrgContext, nodes: list[AgentNode]
+) -> list[Issue]:
+    """``agent_issues`` for given nodes (the runner checks each agent step as it starts)."""
     ids = {node.id: uuid.UUID(node.agent_id) for node in nodes}
     rows = {
         row.id: row

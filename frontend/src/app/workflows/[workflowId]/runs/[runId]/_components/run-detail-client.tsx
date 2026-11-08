@@ -195,7 +195,8 @@ function ApprovalCard({ run }: { run: WorkflowRunDetail }) {
   const t = useTranslations('workflows.runs')
   const pending = useApprovals('pending')
   const decide = useDecideApproval()
-  if (run.status !== 'waiting') return null
+  // Waiting on a decision, or on the check of a step whose result is unknown (W4).
+  if (run.status !== 'waiting' && run.status !== 'unknown') return null
   const request = pending.data?.items.find((item) => item.workflow_run_id === run.id)
   if (!request) return null
   if (request.kind !== 'business') {
@@ -216,6 +217,7 @@ function ApprovalCard({ run }: { run: WorkflowRunDetail }) {
   }
   const action = request.actions[0]
   const args = (action?.args ?? {}) as { title?: string; body?: string }
+  const unknownCheck = action?.name === 'workflow_unknown_check'
   const send = (type: 'approve' | 'reject') =>
     decide.mutate(
       { id: request.id, decisions: [{ type }] },
@@ -228,10 +230,10 @@ function ApprovalCard({ run }: { run: WorkflowRunDetail }) {
     <section className="moldy-status-surface moldy-status-warn flex flex-col gap-3 rounded-md p-4">
       <h2 className="text-sm font-semibold">{args.title || t('approvalTitle')}</h2>
       {args.body ? <p className="text-sm whitespace-pre-wrap">{args.body}</p> : null}
-      <p className="text-xs">{t('businessApprovalHint')}</p>
+      <p className="text-xs">{t(unknownCheck ? 'unknownCheckHint' : 'businessApprovalHint')}</p>
       <div className="flex gap-2">
         <Button size="sm" disabled={decide.isPending} onClick={() => send('approve')}>
-          {t('approve')}
+          {t(unknownCheck ? 'retryStep' : 'approve')}
         </Button>
         <Button
           size="sm"
@@ -239,7 +241,7 @@ function ApprovalCard({ run }: { run: WorkflowRunDetail }) {
           disabled={decide.isPending}
           onClick={() => send('reject')}
         >
-          {t('reject')}
+          {t(unknownCheck ? 'failRun' : 'reject')}
         </Button>
       </div>
     </section>

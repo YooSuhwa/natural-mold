@@ -313,10 +313,30 @@ async def test_a_step_cut_off_mid_run_is_unknown_and_never_runs_again(
     assert (detail["status"], detail["current_node"]) == ("unknown", "classify")
     assert detail["steps"][-1]["status"] == "unknown"
     assert await _job(run["id"]) == {"outcome": "unknown"}  # a reclaim changes nothing
+    # Not finished: the runner is asked once, and the audit says which step and why.
+    (request,) = (await client.get("/api/approvals")).json()["items"]
+    assert (request["kind"], request["workflow_run_id"]) == ("business", run["id"])
+    assert request["actions"][0]["name"] == "workflow_unknown_check"
+    assert request["actions"][0]["args"]["node_id"] == "classify"
     finishes = await db.scalars(
         sa.select(AuditEvent).where(AuditEvent.action == "workflow.run_finish")
     )
-    assert len(list(finishes)) == 1
+    assert list(finishes) == []
+    (event,) = (
+        await db.scalars(sa.select(AuditEvent).where(AuditEvent.action == "workflow.step_unknown"))
+    ).all()
+    step = await db.scalar(sa.select(WorkflowStepRun).where(WorkflowStepRun.node_id == "classify"))
+    assert step is not None
+    assert (event.outcome, event.reason_code, event.target_id) == (
+        "failure",
+        "step_outcome_unknown",
+        run["id"],
+    )
+    metadata = event.event_metadata or {}
+    assert metadata["step_id"] == str(step.id)
+    assert metadata["conversation_run_id"] == str(step.conversation_run_id)
+    assert metadata["node_id"] == "classify"
+    assert metadata["approval_request_id"] == request["id"]
 
 
 @pytest.mark.asyncio
@@ -597,3 +617,225 @@ async def test_a_request_of_another_organization_is_not_found(
     row.org_id = uuid.uuid4()
     await db.commit()
     assert (await _decide(client, request, "approve")).status_code == 404
+
+
+# --- W4: the unknown-step check, agents rechecked at each step -----------------------
+
+
+async def _unknown(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Any, Any]:
+    workflow_id, _ = await _published(client, db)
+    run = await _start(client, workflow_id)
+
+    async def crash(*_: Any) -> Any:
+        raise Crash
+
+    real_execute = agent_step.execute
+    monkeypatch.setattr(agent_step, "execute", crash)
+    with pytest.raises(Crash):
+        await _job(run["id"])
+    monkeypatch.setattr(agent_step, "execute", real_execute)
+    assert await _job(run["id"]) == {"outcome": "unknown"}
+    (request,) = (await client.get("/api/approvals")).json()["items"]
+    return run, request
+
+
+@pytest.mark.asyncio
+async def test_approving_an_unknown_step_runs_it_again_in_a_new_conversation(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, request = await _unknown(client, db, fake, monkeypatch)
+    classify = sa.select(WorkflowStepRun).where(WorkflowStepRun.node_id == "classify")
+    before = await db.scalar(classify)
+    assert before is not None
+    first_conversation, first_run = before.conversation_id, before.conversation_run_id
+    assert (await _decide(client, request, "approve")).json()["status"] == "approved"
+    assert (await _decide(client, request, "approve")).status_code == 409  # once
+    assert (await client.get(f"/api/workflow-runs/{run['id']}")).json()["status"] == "running"
+    fake.answers.append({"category": "bug", "urgent": False})
+    assert await _job(run["id"]) == {"outcome": "completed"}
+    assert len(fake.calls) == 1
+    db.expire_all()
+    step = await db.scalar(classify)
+    assert step is not None and step.status == "completed"
+    assert step.conversation_id not in (None, first_conversation)
+    assert step.conversation_run_id not in (None, first_run)
+    assert (step.input or {})["previous_attempts"] == [
+        {
+            "conversation_id": str(first_conversation),
+            "conversation_run_id": str(first_run),
+            "approval_request_id": request["id"],
+        }
+    ]
+    finishes = (
+        await db.scalars(sa.select(AuditEvent).where(AuditEvent.action == "workflow.run_finish"))
+    ).all()
+    assert [(e.outcome, (e.event_metadata or {})["status"]) for e in finishes] == [
+        ("success", "completed")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_rejecting_or_not_answering_an_unknown_step_fails_the_run(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.approvals import inbox
+    from app.models.approval_request import ApprovalRequest
+
+    run, request = await _unknown(client, db, fake, monkeypatch)
+    assert (await _decide(client, request, "reject")).json()["status"] == "rejected"
+    detail = (await client.get(f"/api/workflow-runs/{run['id']}")).json()
+    assert (detail["status"], detail["error_code"]) == ("failed", "step_outcome_unknown")
+    assert detail["steps"][-1]["status"] == "unknown"  # what happened stays on record
+    assert await _job(run["id"]) == {"outcome": "failed"}
+    assert fake.calls == []
+    (event,) = (
+        await db.scalars(sa.select(AuditEvent).where(AuditEvent.action == "workflow.run_finish"))
+    ).all()
+    assert (event.outcome, event.reason_code) == ("failure", "step_outcome_unknown")
+
+    second, pending = await _unknown(client, db, fake, monkeypatch)
+    row = await db.get(ApprovalRequest, uuid.UUID(pending["id"]))
+    assert row is not None
+    row.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    await db.commit()
+    assert await inbox.expire_due() == 1
+    detail = (await client.get(f"/api/workflow-runs/{second['id']}")).json()
+    assert (detail["status"], detail["error_code"]) == ("failed", "step_outcome_unknown")
+    assert fake.calls == []
+
+
+@pytest.mark.asyncio
+async def test_canceling_an_unknown_run_ends_it_and_its_check(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, request = await _unknown(client, db, fake, monkeypatch)
+    canceled = (await client.post(f"/api/workflow-runs/{run['id']}/cancel")).json()
+    assert canceled["status"] == "canceled"
+    assert (await client.get("/api/approvals")).json()["items"] == []
+    assert (await _decide(client, request, "approve")).status_code == 409
+    assert await _job(run["id"]) == {"outcome": "canceled"}
+    assert fake.calls == []
+
+
+@pytest.mark.asyncio
+async def test_an_agent_archived_after_the_start_is_not_run(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    workflow_id, agent = await _published(client, db)
+    run = await _start(client, workflow_id)
+    agent.archived_at = datetime.now(UTC).replace(tzinfo=None)
+    await db.commit()
+    assert await _job(run["id"]) == {"outcome": "failed"}
+    assert fake.calls == []
+    detail = (await client.get(f"/api/workflow-runs/{run['id']}")).json()
+    assert (detail["error_code"], detail["steps"][-1]["status"]) == ("agent_archived", "failed")
+    # No step was accepted: no internal conversation run was created for it.
+    assert detail["steps"][-1]["conversation_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_an_agent_no_longer_runnable_during_an_approval_wait_is_not_run(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    """A second agent step after the approval: losing the agent while waiting stops it."""
+    from tests.workflow_fixtures import CLASSIFY_SCHEMA, node, ref, text
+
+    _, _, agent = await seed_agent(db)
+    await db.commit()
+    definition = inquiry_workflow(str(agent.id))
+    definition["nodes"].append(
+        {
+            "id": "answer",
+            "type": "agent",
+            "agent_id": str(agent.id),
+            "prompt": [text("답하세요: "), ref("input", "/inquiry")],
+            "output_schema": CLASSIFY_SCHEMA,
+        }
+    )
+    definition["edges"] = [
+        edge for edge in definition["edges"] if edge.get("when") != "approved"
+    ] + [
+        {"from": "review", "to": "answer", "when": "approved"},
+        {"from": "answer", "to": "draft"},
+    ]
+    node(definition, "draft")["template"] = [text("분류: "), ref("classify", "/category")]
+    created = (await client.post(BASE, json={"name": "두 단계"})).json()
+    saved = (
+        await client.put(
+            f"{BASE}/{created['id']}/draft", json={"revision": 1, "definition": definition}
+        )
+    ).json()
+    published = await client.post(
+        f"{BASE}/{created['id']}/publish", json={"revision": saved["draft_revision"]}
+    )
+    assert published.status_code == 201, published.text
+    fake.answers.append({"category": "refund", "urgent": True})
+    run = await _start(client, created["id"])
+    assert await _job(run["id"]) == {"outcome": "waiting"}
+    # The agent leaves the runner's reach while the run waits (legacy mode: ownership).
+    agent.user_id = uuid.uuid4()
+    await db.commit()
+    (request,) = (await client.get("/api/approvals")).json()["items"]
+    assert (await _decide(client, request, "approve")).status_code == 200
+    assert await _job(run["id"]) == {"outcome": "failed"}
+    assert len(fake.calls) == 1  # only the first step ran
+    detail = (await client.get(f"/api/workflow-runs/{run['id']}")).json()
+    assert (detail["error_code"], detail["steps"][-1]["node_id"]) == ("agent_missing", "answer")
+
+
+@pytest.mark.asyncio
+async def test_a_worker_dying_after_a_stored_step_resumes_at_the_next_node(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Completion criterion 2: a new worker continues from the step rows, once each."""
+    workflow_id, _ = await _published(client, db)
+    fake.answers.append({"category": "bug", "urgent": False})
+    run = await _start(client, workflow_id)
+    real_simple = runner._simple_node
+    calls = {"n": 0}
+
+    async def dies_at_the_decision(db: AsyncSession, run: Any, node: Any, *args: Any) -> None:
+        calls["n"] += 1
+        if node.id == "is_urgent" and calls["n"] < 3:
+            raise Crash  # the agent step is stored; the decision is not
+        await real_simple(db, run, node, *args)
+
+    monkeypatch.setattr(runner, "_simple_node", dies_at_the_decision)
+    with pytest.raises(Crash):
+        await _job(run["id"])
+    db.expire_all()
+    steps = (await client.get(f"/api/workflow-runs/{run['id']}")).json()["steps"]
+    assert [(s["node_id"], s["status"]) for s in steps] == [
+        ("start", "completed"),
+        ("classify", "completed"),
+    ]
+    monkeypatch.setattr(runner, "_simple_node", real_simple)
+    assert await _job(run["id"]) == {"outcome": "completed"}  # the next worker
+    assert len(fake.calls) == 1  # the agent step ran once
+    detail = (await client.get(f"/api/workflow-runs/{run['id']}")).json()
+    assert [s["node_id"] for s in detail["steps"]] == [
+        "start",
+        "classify",
+        "is_urgent",
+        "draft",
+        "done",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_an_emergency_stop_of_the_agent_stops_the_next_agent_step(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    workflow_id, agent = await _published(client, db)
+    run = await _start(client, workflow_id)
+    stopped = await client.post(
+        "/api/emergency-stops",
+        json={"scope_type": "agent", "scope_id": str(agent.id), "reason": "오발송 의심"},
+    )
+    assert stopped.status_code in (200, 201), stopped.text
+    assert await _job(run["id"]) == {"outcome": "failed"}
+    assert fake.calls == []
+    detail = (await client.get(f"/api/workflow-runs/{run['id']}")).json()
+    assert (detail["error_code"], detail["steps"][-1]["node_id"]) == ("emergency_stop", "classify")
