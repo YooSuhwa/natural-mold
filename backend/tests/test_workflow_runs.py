@@ -125,7 +125,7 @@ async def test_a_run_goes_start_to_output_through_a_real_agent_step(
     ]
     (cfg, prompt) = fake.calls[0]
     assert cfg.output_schema["required"] == ["category", "urgent"]
-    assert (cfg.run_path, cfg.unattended_approval) == ("workflow", "block")
+    assert (cfg.run_path, cfg.unattended_approval) == ("workflow", "wait")
     assert prompt.startswith(DATA_NOTE) and "<data>앱이 꺼져요 <script></data>" in prompt
 
     step = await db.scalar(sa.select(WorkflowStepRun).where(WorkflowStepRun.node_id == "classify"))

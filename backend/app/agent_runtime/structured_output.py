@@ -39,6 +39,8 @@ _KEYS: Final = {
     "scalar": {"type", "description", "enum"},
 }
 _TRUNCATED: Final = {"length", "max_tokens", "MAX_TOKENS"}
+# The response tool ``ToolStrategy`` gives the model: the output model's class name.
+OUTPUT_TOOL: Final = "WorkflowOutput"
 
 
 class OutputSchemaError(AppValidationError):
@@ -130,7 +132,7 @@ def _check_enum(values: Any, *, kind: str, path: str) -> None:
         raise OutputSchemaError(f"{path}: enum must be 1-{MAX_ENUM} distinct strings")
 
 
-def output_model(schema: Mapping[str, Any], name: str = "WorkflowOutput") -> type[BaseModel]:
+def output_model(schema: Mapping[str, Any], name: str = OUTPUT_TOOL) -> type[BaseModel]:
     """A Pydantic model that accepts exactly what ``schema`` describes (no extra keys)."""
     checked = check_output_schema(schema)
     return _model(checked, name)
@@ -189,6 +191,10 @@ def response_format_for(schema: Mapping[str, Any]) -> ToolStrategy[Any]:
 def structured_outcome(result: Mapping[str, Any], schema: Mapping[str, Any]) -> StructuredOutcome:
     """Read a finished run's state into an outcome; the value is re-validated here."""
     raw = result.get("structured_response")
+    if raw is None:
+        # A resumed run's state comes back through the checkpoint: read the answer from
+        # the response tool call itself (the same arguments ``ToolStrategy`` validated).
+        raw = _response_tool_args(result.get("messages") or [])
     if raw is not None:
         data = raw.model_dump(mode="json") if isinstance(raw, BaseModel) else raw
         try:
@@ -207,6 +213,17 @@ def structured_outcome(result: Mapping[str, Any], schema: Mapping[str, Any]) -> 
     return StructuredOutcome("schema_invalid")
 
 
+def _response_tool_args(messages: list[Any]) -> dict[str, Any] | None:
+    for message in reversed(messages):
+        if getattr(message, "type", None) != "ai":
+            continue
+        for call in reversed(getattr(message, "tool_calls", None) or []):
+            if call.get("name") == OUTPUT_TOOL and isinstance(call.get("args"), dict):
+                return call["args"]
+        return None  # only the last model turn counts
+    return None
+
+
 def _last_ai_message(messages: list[Any]) -> Any | None:
     for message in reversed(messages):
         if getattr(message, "type", None) == "ai":
@@ -216,6 +233,7 @@ def _last_ai_message(messages: list[Any]) -> Any | None:
 
 __all__ = [
     "MAX_DEPTH",
+    "OUTPUT_TOOL",
     "OutputSchemaError",
     "OutputStatus",
     "StructuredOutcome",

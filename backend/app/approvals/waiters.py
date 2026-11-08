@@ -13,6 +13,7 @@ from collections.abc import Iterable
 from app.approvals import api_runs, triggers
 from app.authz.org_context import OrgContext
 from app.database import TenantScoped
+from app.workflows import tool_waits
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ async def settle_best_effort(
     try:
         await triggers.settle(run_id, status, context)
         await api_runs.settle(run_id, status, context, secret_values)
+        await tool_waits.settle(run_id, status, context, secret_values)
     except Exception:
         logger.exception("approval waiter settle failed run_id=%s", run_id)
 
@@ -34,6 +36,7 @@ async def abandon_best_effort(tenant: TenantScoped, request_ids: Iterable[uuid.U
     try:
         await triggers.abandon(tenant, ids)
         await api_runs.abandon(tenant, ids)
+        await tool_waits.abandon(tenant, ids)
     except Exception:
         logger.exception("approval waiter abandon failed requests=%s", ids)
 

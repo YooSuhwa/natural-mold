@@ -445,6 +445,15 @@ async def run_job(job: JobContext) -> dict[str, Any]:
             outcome = await agent_step.execute(context, step, prepared)
             async with job.session() as db:
                 stored = await db.get(WorkflowStepRun, step.id, with_for_update=True)
+                if outcome.status == "waiting":
+                    # Paused before a tool that needs the runner: the inbox decision resumes it.
+                    waiting_run = await _locked(db, run_id)
+                    if stored is not None and stored.status not in ("completed", "failed"):
+                        stored.status = "waiting"
+                    if waiting_run is not None and waiting_run.status == "running":
+                        waiting_run.status = "waiting"
+                    await db.commit()
+                    return {"outcome": "waiting"}
                 if stored is not None:
                     _record(stored, outcome)
                 await db.commit()
