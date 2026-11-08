@@ -1,6 +1,6 @@
 # 순번 23 워크플로 1차 핵심 노드 상세 기획 (E1, 기획서 v2 22장 확장)
 
-- 상태: **v1.1 초안**, 2026-11-08. 편집 화면 리서치와 설계(3.7, 부록 A) 추가. 결정 질문 Q1~Q8(4장) 답을 받으면 v2로 확정하고 W0부터 구현한다.
+- 상태: **v2 확정**, 2026-11-08. 결정 질문 Q1~Q9(4장)는 모두 추천안으로 확정했다. W0부터 구현한다. 편집 화면 디자인 계층과 다크 모드는 3.7 끝과 부록 C.
 - 범위: 기획서 22.9절 "워크플로 1차 핵심"만. 핵심 7종(시작 입력, 에이전트, 판단 true/false 규칙 방식, 승인, 변환과 템플릿,
   최종 출력, 실패 종료)으로 실제 업무 하나를 설계·실행·중단·복구·감사까지 검증한다. 나머지 1차 13종, 2차, 3차는 이 문서 범위 밖이다.
 - 근거: 기획서 v2 22장(22.1~22.9), 34장 D32~D35, 32장 검증 표(워크플로 복구·데이터 계약), ADR-024(공통 실행 계약),
@@ -202,6 +202,13 @@ worker: workflow.run 처리기
 화면 목록: `/workflows`(목록: 이름, 게시 버전, 최근 실행), `/workflows/[id]`(편집기), `/workflows/[id]/runs`·`/runs/[runId]`(실행 목록·상세: 캔버스 겹쳐 보기 +
 단계 목록, 당시 버전, 에이전트 단계의 추적 화면 링크), 승인함(출처 `워크플로` 배지, "업무 승인 / 단계 안 도구 승인" 구분). 사이드바는 템플릿 근처(`app-sidebar.tsx`).
 
+**디자인 계층과 다크 모드 (부록 C)**
+- 캔버스 엔진은 `@xyflow/react` 12를 그대로 쓴다(Dify, Langflow, Sim, Vercel 워크플로 템플릿이 모두 같은 엔진).
+- 보이는 부분은 Vercel AI Elements의 워크플로 부품(Canvas, Node, Edge, Connection, Controls, Panel, Toolbar; Apache-2.0, shadcn/Tailwind, 코드를 저장소에
+  복사해 고쳐 쓰는 방식)과 React Flow UI 무료 부품(MIT)에서 시작해 Moldy 디자인 토큰으로 맞춘다. 가져온 파일은 머리 주석에 출처와 라이선스를 남긴다.
+- 다크 모드: `ReactFlow`의 `colorMode`를 `next-themes`의 실제 테마에 연결하고, 노드·연결선·배경·미니맵 색은 전부 CSS 변수(디자인 토큰)로만 쓴다.
+  밝은·어두운 화면 캡처를 W3a 완료 확인에 넣는다. 기존 비주얼 설정 캔버스(`visual-settings-flow.tsx`)는 `colorMode`를 쓰지 않으므로 같은 연결을 공유 훅으로 만들어 함께 쓴다.
+
 ### 3.8 실행 계약 (ADR-024)
 
 | 항목 | 이 기능의 값 |
@@ -233,6 +240,8 @@ Moldy에서 채팅의 주체는 에이전트이고 대화 기억·도구·승인
 - **확장 2:** 예약(기존 예약 트리거가 에이전트 대신 워크플로를 대상으로), Agent API·웹훅, 일괄 실행.
 
 ## 4. 결정 질문
+
+2026-11-08 확정: Q1~Q9 모두 아래 "추천" 열대로. Q6은 디자인 계층(부록 C)을 더해 확정했다.
 
 | 번호 | 결정할 내용 | 선택지 | 추천 |
 |---|---|---|---|
@@ -347,3 +356,13 @@ xyflow 유료 템플릿("Workflow Editor", "AI Workflow Editor", €129~)은 참
 읽은 것: 에이전트 중심 플랫폼은 (1) 워크플로를 에이전트 도구로 붙이거나(Copilot Studio, Agentforce), (2) 워크플로가 에이전트를 단계로 묶어
 정해진 순서로 돌리거나(Agent Framework, CrewAI, Bedrock, AgentScope), (3) 그 묶음을 다시 채팅 에이전트처럼 쓰게 한다(Agent Framework `as_agent`,
 Gemini Agent Designer). 도구로 붙이는 쪽은 모두 짧은 동기 실행으로 제한한다. 순번 23은 (2), 확장 1은 (1)이고, (3)은 확장 1로 같은 효과를 내므로 따로 두지 않는다.
+
+## 부록 C. 캔버스 디자인 오픈소스 (2026-11-08)
+
+| 후보 | 라이선스·활동 | 무엇인가 | 판단 |
+|---|---|---|---|
+| Vercel AI Elements 워크플로 부품 | Apache-2.0, 별 2.5k | React Flow 위의 shadcn 스타일 Canvas·Node(머리·본문·꼬리)·Edge(실행 중 애니메이션, 조건·오류 경로) 부품. 코드를 복사해 고쳐 쓴다([workflow 예제](https://elements.ai-sdk.dev/examples/workflow)) | **채택**. 스택(Next 16, React 19, shadcn, Tailwind)이 같다 |
+| Vercel `workflow-builder-template` | Apache-2.0, 별 1.2k, 2026-11 활동 | Next 16 + React Flow + shadcn + Jotai 워크플로 빌더 앱 전체([repo](https://github.com/vercel-labs/workflow-builder-template)) | 참고 구현. 화면 구성과 다크 모드 처리만 본다 |
+| React Flow UI | MIT(무료 부품), 유료 템플릿 별도 | shadcn CLI로 받는 노드·툴바 부품([components](https://reactflow.dev/components)) | 필요한 부품만 |
+| FlowGram (ByteDance) | MIT, 별 8.5k, 2026-11 활동 | 워크플로 플랫폼용 프레임워크. 고정 배치(분기·반복 복합 노드)와 자유 배치를 모두 지원([docs](https://flowgram.ai/en/guide/getting-started/introduction)) | 보류. 고정 배치는 우리 자동 정렬과 잘 맞지만 자체 상태·플러그인 구조와 별도 UI 라이브러리를 들여와 편집 명령 모델(3.7)·shadcn과 겹친다. 반복·병렬 그룹이 필요한 확장 단계에서 다시 본다 |
+| Sim | Apache-2.0, 별 30k | React Flow 기반 에이전트 워크플로 앱 | AI 편집 diff 화면만 참고(부록 A) |
