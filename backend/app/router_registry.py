@@ -188,6 +188,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(feedback.router)
     app.include_router(usage.router)
     app.include_router(workflows.router)
+    app.include_router(workflows.runs_router)
 
     if settings.e2e_test_helpers_enabled:
         from app.routers import e2e_chat_run_helpers, e2e_mcp_apps_helpers

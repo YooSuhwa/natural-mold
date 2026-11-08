@@ -27,6 +27,8 @@ POLICY_CALLERS = {
     "services/conversation_run_queue_persistence.py",
     "services/conversation_side_chat_service.py",
     "services/trigger_conversation_runtime.py",
+    # 순번 23 W2a: a workflow agent step's internal conversation, like an API thread.
+    "workflows/agent_step.py",
 }
 CREATE_RUN_CALLERS = {
     "routers/e2e_chat_run_helpers.py",

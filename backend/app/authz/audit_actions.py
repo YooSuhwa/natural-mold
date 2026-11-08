@@ -109,6 +109,10 @@ MEMORY_TENANT_POLICY_UPDATE: Final = "memory.tenant_policy_update"
 WORKFLOW_CREATE: Final = "workflow.create"
 WORKFLOW_PUBLISH: Final = "workflow.publish"
 WORKFLOW_ARCHIVE: Final = "workflow.archive"
+# W2a runs: started by the runner, finished (outcome and reason), canceled.
+WORKFLOW_RUN_START: Final = "workflow.run_start"
+WORKFLOW_RUN_FINISH: Final = "workflow.run_finish"
+WORKFLOW_RUN_CANCEL: Final = "workflow.run_cancel"
 # H-01 access requests (14.1 "요청"); expiry is a status change, not an audit action.
 ACCESS_REQUEST_CREATE: Final = "access_request.create"
 ACCESS_REQUEST_APPROVE: Final = "access_request.approve"

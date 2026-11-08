@@ -28,11 +28,13 @@ from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.workflow import WorkflowStepRun
 from app.services.agent_lifecycle_locks import AgentTreeSnapshot
 from app.services.conversation_run_creation import create_run_from_locked_proof
 from app.services.conversation_run_envelope_projection import (
     api_status_for_run,
     trigger_status_for_run,
+    workflow_step_status_for_run,
 )
 from app.services.conversation_run_service import RunSource
 from app.tenancy.attribution import (
@@ -41,8 +43,9 @@ from app.tenancy.attribution import (
     attribute_run,
 )
 
-type OwnedExecutionSource = Literal["chat", "api", "trigger"]
-type EnvelopeKind = Literal["api", "trigger"]
+type OwnedExecutionSource = Literal["chat", "api", "trigger", "workflow"]
+type EnvelopeKind = Literal["api", "trigger", "workflow"]
+type EnvelopeRow = AgentApiRun | AgentTriggerRun | WorkflowStepRun
 
 
 class ExecutionOwnershipError(ValueError):
@@ -109,7 +112,7 @@ async def _validated_envelope(
     db: AsyncSession,
     request: OwnedExecutionRequest,
     proof: ExecutionTransactionProof,
-) -> AgentApiRun | AgentTriggerRun | None:
+) -> EnvelopeRow | None:
     envelope = request.envelope
     if request.source == "chat":
         if envelope is not None:
@@ -118,7 +121,7 @@ async def _validated_envelope(
     if envelope is None or envelope.kind != request.source:
         raise ExecutionOwnershipError("External execution requires its matching business envelope")
     if request.source == "api":
-        row: AgentApiRun | AgentTriggerRun | None = await lock_row(
+        row: EnvelopeRow | None = await lock_row(
             db,
             proof.cursor,
             LockClass.ENVELOPE,
@@ -137,6 +140,28 @@ async def _validated_envelope(
                 noload(AgentApiRun.thread),
             )
             .where(AgentApiRun.id == envelope.envelope_id)
+            .with_for_update(),
+        )
+    elif request.source == "workflow":
+        # A workflow agent step (workflow-plan 3.4): its step row is the envelope.
+        row = await lock_row(
+            db,
+            proof.cursor,
+            LockClass.ENVELOPE,
+            envelope.envelope_id,
+            select(WorkflowStepRun)
+            .options(
+                load_only(
+                    WorkflowStepRun.id,
+                    WorkflowStepRun.agent_id,
+                    WorkflowStepRun.user_id,
+                    WorkflowStepRun.conversation_id,
+                    WorkflowStepRun.conversation_run_id,
+                    WorkflowStepRun.status,
+                    raiseload=True,
+                )
+            )
+            .where(WorkflowStepRun.id == envelope.envelope_id)
             .with_for_update(),
         )
     else:
@@ -185,24 +210,25 @@ async def _validated_envelope(
         raise ExecutionOwnershipError(
             "Execution envelope provenance does not match the accepted Agent"
         )
-    if isinstance(row, AgentTriggerRun) and row.agent_id != request.root_agent_id:
+    if isinstance(row, AgentTriggerRun | WorkflowStepRun) and row.agent_id != request.root_agent_id:
         raise ExecutionOwnershipError(
-            "Trigger envelope provenance does not match the accepted Agent"
+            "Business envelope provenance does not match the accepted Agent"
         )
     return row
 
 
 def _bind_envelope(
-    row: AgentApiRun | AgentTriggerRun,
+    row: EnvelopeRow,
     envelope: ExecutionEnvelopeRef,
     run: ConversationRun,
 ) -> None:
     row.conversation_run_id = run.id
-    row.status = (
-        api_status_for_run(run.status)
-        if envelope.kind == "api"
-        else trigger_status_for_run(run.status)
-    )
+    if envelope.kind == "api":
+        row.status = api_status_for_run(run.status)
+    elif envelope.kind == "workflow":
+        row.status = workflow_step_status_for_run(run.status)
+    else:
+        row.status = trigger_status_for_run(run.status)
 
 
 def _participant_attribution(

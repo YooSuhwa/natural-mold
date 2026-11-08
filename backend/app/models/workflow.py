@@ -15,7 +15,17 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -72,4 +82,108 @@ class WorkflowVersion(RequiredOrgScope, Base):
     published_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)
 
 
-__all__ = ["Workflow", "WorkflowVersion"]
+RUN_STATUSES = (
+    "queued",
+    "running",
+    "waiting",
+    "unknown",
+    "completed",
+    "failed",
+    "canceling",
+    "canceled",
+)
+RUN_TERMINAL = frozenset({"completed", "failed", "canceled"})
+STEP_STATUSES = ("queued", "running", "waiting", "completed", "failed", "unknown", "canceled")
+
+
+def _in(column: str, values: tuple[str, ...]) -> str:
+    return f"{column} IN (" + ", ".join(f"'{value}'" for value in values) + ")"
+
+
+class WorkflowRun(RequiredOrgScope, Base):
+    """One run of a published version, started by ``user_id`` (the runner, workflow 3.6)."""
+
+    __tablename__ = "workflow_runs"
+    __table_args__ = (
+        *resource_scope_constraints("workflow_runs", system=False),
+        CheckConstraint(_in("status", RUN_STATUSES), name="ck_workflow_runs_status"),
+        Index("ix_workflow_runs_workflow_created", "workflow_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False
+    )
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workflow_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    input: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    output: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_node: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=_now_naive, onupdate=_now_naive, nullable=False
+    )
+
+
+class WorkflowStepRun(RequiredOrgScope, Base):
+    """One node of a run. For an agent node it is the run's business **envelope**: the
+    accepted ``conversation_runs`` row binds here once (``conversation_run_id``)."""
+
+    __tablename__ = "workflow_step_runs"
+    __table_args__ = (
+        *resource_scope_constraints("workflow_step_runs", system=False),
+        CheckConstraint(_in("status", STEP_STATUSES), name="ck_workflow_step_runs_status"),
+        UniqueConstraint("run_id", "node_id", name="uq_workflow_step_runs_node"),
+        UniqueConstraint("conversation_run_id", name="uq_workflow_step_runs_conversation_run"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workflow_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    node_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    node_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    input: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    output: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    branch: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
+    )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
+    )
+    conversation_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversation_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)
+
+
+__all__ = [
+    "RUN_STATUSES",
+    "RUN_TERMINAL",
+    "STEP_STATUSES",
+    "Workflow",
+    "WorkflowRun",
+    "WorkflowStepRun",
+    "WorkflowVersion",
+]

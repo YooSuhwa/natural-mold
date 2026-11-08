@@ -22,17 +22,23 @@ from app.schemas.workflow import (
     WorkflowIssue,
     WorkflowIssues,
     WorkflowPublish,
+    WorkflowRunDetail,
+    WorkflowRunStart,
+    WorkflowRunSummary,
+    WorkflowStepRunOut,
     WorkflowSummary,
     WorkflowVersionDetail,
     WorkflowVersionSummary,
 )
 from app.services import audit_service
-from app.workflows import service
+from app.workflows import runner, service
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
+runs_router = APIRouter(prefix="/api/workflow-runs", tags=["workflows"])
 
 WORKFLOWS = PRIVATE("workflows")
 WORKFLOW = PRIVATE("workflows", param="workflow_id")
+RUN = PRIVATE("workflow_runs", param="run_id")
 
 
 async def _audit(
@@ -201,3 +207,88 @@ async def archive_workflow(
         await _audit(db, user, request, audit_actions.WORKFLOW_ARCHIVE, workflow)
     await db.commit()
     return workflow
+
+
+@router.post("/{workflow_id}/runs", response_model=WorkflowRunSummary, status_code=201)
+@authz_policy(WORKFLOW)
+async def start_run(
+    workflow_id: uuid.UUID,
+    body: WorkflowRunStart,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+):
+    run = await runner.start_run(db, context, workflow_id, body.inputs)
+    await audit_service.record_self_event(
+        db,
+        user,
+        action=runner.RUN_STARTED,
+        target_type="workflow_run",
+        target_id=run.id,
+        request=request,
+        metadata={"workflow_id": str(workflow_id), "version_id": str(run.version_id)},
+    )
+    await db.commit()
+    return run
+
+
+@router.get("/{workflow_id}/runs", response_model=list[WorkflowRunSummary])
+@authz_policy(WORKFLOW)
+async def list_runs(
+    workflow_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+):
+    return await runner.list_runs(db, context, workflow_id)
+
+
+async def _detail(db: AsyncSession, run: runner.WorkflowRun) -> WorkflowRunDetail:
+    steps = await runner.list_steps(db, run)
+    return WorkflowRunDetail.model_validate(
+        {
+            **WorkflowRunSummary.model_validate(run).model_dump(),
+            "input": run.input,
+            "output": run.output,
+            "steps": [WorkflowStepRunOut.model_validate(step) for step in steps],
+        }
+    )
+
+
+@runs_router.get("/{run_id}", response_model=WorkflowRunDetail)
+@authz_policy(RUN)
+async def get_run(
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+):
+    return await _detail(db, await runner.get_run(db, context, run_id))
+
+
+@runs_router.post("/{run_id}/cancel", response_model=WorkflowRunDetail)
+@authz_policy(RUN)
+async def cancel_run(
+    run_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+):
+    before = (await runner.get_run(db, context, run_id)).status
+    run = await runner.cancel_run(db, context, run_id)
+    if before != run.status:
+        await audit_service.record_self_event(
+            db,
+            user,
+            action=runner.RUN_CANCELED,
+            target_type="workflow_run",
+            target_id=run.id,
+            request=request,
+            metadata={"workflow_id": str(run.workflow_id), "status_before": before},
+        )
+    await db.commit()
+    return await _detail(db, run)

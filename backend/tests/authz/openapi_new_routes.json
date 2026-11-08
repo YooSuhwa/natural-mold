@@ -25358,6 +25358,92 @@
         ]
       }
     },
+    "/api/workflow-runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_workflow_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflow-runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancel_run_api_workflow_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Run",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
     "/api/workflows": {
       "get": {
         "operationId": "list_workflows_api_workflows_get",
@@ -25674,6 +25760,104 @@
           }
         },
         "summary": "Publish Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/runs": {
+      "get": {
+        "operationId": "list_runs_api_workflows__workflow_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowRunSummary"
+                  },
+                  "title": "Response List Runs Api Workflows  Workflow Id  Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "post": {
+        "operationId": "start_run_api_workflows__workflow_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowRunStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run",
         "tags": [
           "workflows"
         ]
@@ -56442,6 +56626,359 @@
         "revision"
       ],
       "title": "WorkflowPublish",
+      "type": "object"
+    },
+    "WorkflowRunDetail": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "current_node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Node"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Message"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finished At"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "input": {
+          "additionalProperties": true,
+          "title": "Input",
+          "type": "object"
+        },
+        "output": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Output"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/components/schemas/WorkflowStepRunOut"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "version_id": {
+          "format": "uuid",
+          "title": "Version Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "format": "uuid",
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "workflow_id",
+        "version_id",
+        "status",
+        "error_code",
+        "error_message",
+        "current_node",
+        "created_at",
+        "started_at",
+        "finished_at",
+        "input",
+        "output",
+        "steps"
+      ],
+      "title": "WorkflowRunDetail",
+      "type": "object"
+    },
+    "WorkflowRunStart": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "additionalProperties": true,
+          "title": "Inputs",
+          "type": "object"
+        }
+      },
+      "title": "WorkflowRunStart",
+      "type": "object"
+    },
+    "WorkflowRunSummary": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "current_node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Node"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Message"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finished At"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "version_id": {
+          "format": "uuid",
+          "title": "Version Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "format": "uuid",
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "workflow_id",
+        "version_id",
+        "status",
+        "error_code",
+        "error_message",
+        "current_node",
+        "created_at",
+        "started_at",
+        "finished_at"
+      ],
+      "title": "WorkflowRunSummary",
+      "type": "object"
+    },
+    "WorkflowStepRunOut": {
+      "properties": {
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Branch"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Conversation Id"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Message"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finished At"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_type": {
+          "title": "Node Type",
+          "type": "string"
+        },
+        "output": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Output"
+        },
+        "position": {
+          "title": "Position",
+          "type": "integer"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "position",
+        "node_id",
+        "node_type",
+        "status",
+        "branch",
+        "output",
+        "error_code",
+        "error_message",
+        "conversation_id",
+        "started_at",
+        "finished_at"
+      ],
+      "title": "WorkflowStepRunOut",
       "type": "object"
     },
     "WorkflowSummary": {

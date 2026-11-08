@@ -14,6 +14,7 @@ from app.models.agent_api import AgentApiRun
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.workflow import WorkflowStepRun
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +51,19 @@ def trigger_status_for_run(status: str) -> str:
     }.get(status, "failed")
 
 
+def workflow_step_status_for_run(status: str) -> str:
+    """A step follows its run until the workflow runner records the result: a finished
+    run stays ``running`` here (the runner checks and stores the output, workflow 3.5)."""
+    return {
+        "queued": "queued",
+        "running": "running",
+        "canceling": "running",
+        "completed": "running",
+        "canceled": "canceled",
+        "interrupted": "waiting",
+    }.get(status, "failed")
+
+
 async def project_owned_envelopes(db: AsyncSession, run: ConversationRun) -> None:
     api_run = await db.scalar(
         select(AgentApiRun)
@@ -81,6 +95,21 @@ async def project_owned_envelopes(db: AsyncSession, run: ConversationRun) -> Non
         .where(AgentTriggerRun.conversation_run_id == run.id)
         .execution_options(populate_existing=True, autoflush=False)
     )
+    step = await db.scalar(
+        select(WorkflowStepRun)
+        .options(
+            load_only(
+                WorkflowStepRun.id,
+                WorkflowStepRun.conversation_run_id,
+                WorkflowStepRun.status,
+                raiseload=True,
+            )
+        )
+        .where(WorkflowStepRun.conversation_run_id == run.id)
+        .execution_options(populate_existing=True, autoflush=False)
+    )
+    if step is not None and step.status not in ("completed", "unknown"):
+        step.status = workflow_step_status_for_run(run.status)
     if api_run is not None:
         api_run.status = api_status_for_run(run.status)
     if trigger_run is not None:
@@ -125,4 +154,5 @@ __all__ = [
     "api_status_for_run",
     "project_owned_envelopes",
     "trigger_status_for_run",
+    "workflow_step_status_for_run",
 ]
