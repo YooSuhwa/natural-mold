@@ -16,6 +16,7 @@ from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.schemas.workflow import (
+    WorkflowAgentUsage,
     WorkflowCreate,
     WorkflowDetail,
     WorkflowDraftUpdate,
@@ -70,6 +71,28 @@ async def list_workflows(
     context: OrgContext = Depends(get_org_context),
 ):
     return await service.list_workflows(db, context, include_archived=include_archived)
+
+
+@router.get("/using-agent/{agent_id}", response_model=list[WorkflowAgentUsage])
+@authz_policy(WORKFLOWS)
+async def workflows_using_agent(
+    agent_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+):
+    """Shown on the agent's settings: changing it means republishing these (Q1)."""
+    return [
+        WorkflowAgentUsage(
+            id=usage.workflow.id,
+            name=usage.workflow.name,
+            published_version_no=usage.workflow.published_version_no,
+            in_draft=usage.in_draft,
+            in_published=usage.in_published,
+            drifted=usage.drifted,
+        )
+        for usage in await service.workflows_using_agent(db, context, agent_id)
+    ]
 
 
 @router.post("", response_model=WorkflowDetail, status_code=201)
@@ -231,7 +254,7 @@ async def start_run(
         metadata={"workflow_id": str(workflow_id), "version_id": str(run.version_id)},
     )
     await db.commit()
-    return run
+    return _summary(run, await runner.version_numbers(db, [run]))
 
 
 @router.get("/{workflow_id}/runs", response_model=list[WorkflowRunSummary])
@@ -242,14 +265,21 @@ async def list_runs(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
 ):
-    return await runner.list_runs(db, context, workflow_id)
+    runs = await runner.list_runs(db, context, workflow_id)
+    numbers = await runner.version_numbers(db, runs)
+    return [_summary(run, numbers) for run in runs]
+
+
+def _summary(run: runner.WorkflowRun, numbers: dict[uuid.UUID, int]) -> WorkflowRunSummary:
+    summary = WorkflowRunSummary.model_validate(run)
+    return summary.model_copy(update={"version_no": numbers.get(run.version_id)})
 
 
 async def _detail(db: AsyncSession, run: runner.WorkflowRun) -> WorkflowRunDetail:
     steps = await runner.list_steps(db, run)
     return WorkflowRunDetail.model_validate(
         {
-            **WorkflowRunSummary.model_validate(run).model_dump(),
+            **_summary(run, await runner.version_numbers(db, [run])).model_dump(),
             "input": run.input,
             "output": run.output,
             "steps": [WorkflowStepRunOut.model_validate(step) for step in steps],

@@ -131,6 +131,7 @@ export interface WorkflowRunSummary {
   id: string
   workflow_id: string
   version_id: string
+  version_no: number | null
   status: WorkflowRunStatus
   error_code: string | null
   error_message: string | null
@@ -139,3 +140,43 @@ export interface WorkflowRunSummary {
   started_at: string | null
   finished_at: string | null
 }
+
+export type WorkflowStepStatus =
+  | 'queued'
+  | 'running'
+  | 'waiting'
+  | 'completed'
+  | 'failed'
+  | 'unknown'
+  | 'canceled'
+
+export interface WorkflowStepRun {
+  position: number
+  node_id: string
+  node_type: WorkflowNodeType
+  status: WorkflowStepStatus
+  branch: EdgeWhen | null
+  output: Record<string, unknown> | null
+  error_code: string | null
+  error_message: string | null
+  conversation_id: string | null
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface WorkflowRunDetail extends WorkflowRunSummary {
+  input: Record<string, unknown>
+  output: Record<string, unknown> | null
+  steps: WorkflowStepRun[]
+}
+
+export interface WorkflowAgentUsage {
+  id: string
+  name: string
+  published_version_no: number | null
+  in_draft: boolean
+  in_published: boolean
+  drifted: boolean
+}
+
+export const RUN_TERMINAL: readonly WorkflowRunStatus[] = ['completed', 'failed', 'canceled']

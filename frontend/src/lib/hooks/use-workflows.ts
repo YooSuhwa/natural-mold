@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { workflowsApi } from '@/lib/api/workflows'
 import { workflowQueryKeys } from '@/lib/query-keys/workflows'
-import type { WorkflowDefinition, WorkflowDetail } from '@/lib/types/workflow'
+import { RUN_TERMINAL, type WorkflowDefinition, type WorkflowDetail } from '@/lib/types/workflow'
 
 export function useWorkflows() {
   return useQuery({ queryKey: workflowQueryKeys.list, queryFn: workflowsApi.list })
@@ -64,5 +64,36 @@ export function useWorkflowVersion(id: string, versionNo: number | null | undefi
 export function useStartWorkflowRun(id: string) {
   return useMutation({
     mutationFn: (inputs: Record<string, unknown>) => workflowsApi.startRun(id, inputs),
+  })
+}
+
+const RUN_POLL_MS = 3_000
+
+export function useWorkflowRuns(id: string) {
+  return useQuery({ queryKey: workflowQueryKeys.runs(id), queryFn: () => workflowsApi.runs(id) })
+}
+
+/** A run polls while it can still change (running, waiting, canceling). */
+export function useWorkflowRun(runId: string) {
+  return useQuery({
+    queryKey: workflowQueryKeys.run(runId),
+    queryFn: () => workflowsApi.run(runId),
+    refetchInterval: (query) =>
+      query.state.data && RUN_TERMINAL.includes(query.state.data.status) ? false : RUN_POLL_MS,
+  })
+}
+
+export function useCancelWorkflowRun(runId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => workflowsApi.cancelRun(runId),
+    onSuccess: (run) => qc.setQueryData(workflowQueryKeys.run(runId), run),
+  })
+}
+
+export function useWorkflowsUsingAgent(agentId: string) {
+  return useQuery({
+    queryKey: workflowQueryKeys.usingAgent(agentId),
+    queryFn: () => workflowsApi.usingAgent(agentId),
   })
 }

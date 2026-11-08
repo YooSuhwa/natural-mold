@@ -28,10 +28,12 @@ export function RunDialog({
   workflowId,
   versionNo,
   onClose,
+  onStarted,
 }: {
   workflowId: string
   versionNo: number
   onClose: () => void
+  onStarted: (runId: string) => void
 }) {
   const t = useTranslations('workflows.run')
   const version = useWorkflowVersion(workflowId, versionNo)
@@ -47,7 +49,7 @@ export function RunDialog({
     start.mutate(payload, {
       onSuccess: (run) => {
         toast.success(t('started', { id: run.id.slice(0, 8) }))
-        onClose()
+        onStarted(run.id)
       },
       onError: (error) => {
         const problems = (error instanceof ApiError ? error.details?.problems : undefined) as

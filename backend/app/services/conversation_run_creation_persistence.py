@@ -23,7 +23,8 @@ from app.models.conversation_run_input import ConversationRunInput
 from app.services import trace_storage
 from app.services.artifact_service import finalize_artifacts_for_run
 from app.services.conversation_audit_service import record_conversation_run_audit
-from app.services.conversation_run_creation import RunStatus, transition_run, utc_now_naive
+from app.services.conversation_run_creation import RunStatus, utc_now_naive
+from app.services.conversation_run_state import transition_run
 
 logger = logging.getLogger("app.services.conversation_run_service")
 

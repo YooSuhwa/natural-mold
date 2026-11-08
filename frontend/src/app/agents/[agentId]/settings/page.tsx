@@ -1,6 +1,7 @@
 'use client'
 
 import { use, useState, useEffect, useMemo } from 'react'
+import { AgentWorkflowUsage } from '@/features/workflows/components/agent-workflow-usage'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { ClipboardListIcon, WorkflowIcon } from 'lucide-react'
@@ -162,6 +163,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         saveDisabled={updateAgent.isPending || !isDirty || !runtimePolicyCompatible}
       />
 
+      <AgentWorkflowUsage agentId={agentId} />
       <div className="grid flex-1 grid-cols-1 content-start gap-3 overflow-x-hidden overflow-y-auto p-3 lg:grid-cols-2 lg:content-stretch lg:overflow-hidden">
         <section className="moldy-panel flex min-h-176 min-w-0 flex-col overflow-hidden lg:min-h-0">
           <Tabs

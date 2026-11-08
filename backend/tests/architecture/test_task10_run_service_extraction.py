@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -20,6 +22,7 @@ from app.services import (
     conversation_run_delivery,
     conversation_run_execution,
     conversation_run_service,
+    conversation_run_state,
     conversation_run_task_registry,
     conversation_run_transitions,
     conversation_run_worker,
@@ -44,7 +47,7 @@ FACADE_EXPORTS = [
     (conversation_stream_service, conversation_stream_persistence, "finalize_trace"),
     (conversation_stream_service, conversation_stream_persistence, "build_persist_callback"),
     (conversation_run_service, conversation_run_creation, "create_run"),
-    (conversation_run_service, conversation_run_creation, "transition_run"),
+    (conversation_run_service, conversation_run_state, "transition_run"),
     (conversation_run_service, conversation_run_creation, "ALLOWED_TRANSITIONS"),
     (conversation_run_service, conversation_run_creation_persistence, "mark_stale_active_runs"),
     (
@@ -210,3 +213,10 @@ async def test_create_run_observes_late_facade_active_run_patch(monkeypatch) -> 
         assert raised.value.status_code == 409
 
     assert seen == ["first", "second"]
+
+
+def test_run_state_imports_first_without_a_cycle() -> None:
+    """The workflow runner imports the state module before anything else loaded creation."""
+    code = "import app.services.conversation_run_state as s; print(s.request_cancel_run.__name__)"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
+    assert out.returncode == 0, out.stderr[-2000:]

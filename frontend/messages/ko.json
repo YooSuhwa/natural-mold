@@ -1454,6 +1454,11 @@
     "tip": "💡 팁: 템플릿을 활용하면 더 빠르게 시작할 수 있어요!"
   },
   "agent": {
+    "workflowUsage": {
+      "title": "이 에이전트를 쓰는 워크플로 {count}개:",
+      "republish": "다시 게시 필요",
+      "hint": "게시할 때 에이전트 설정을 고정하므로, 고치면 다시 게시해야 실행할 수 있어요."
+    },
     "triggerStopReason": {
       "label": "정지 사유: {reason}",
       "reasons": {
@@ -6636,6 +6641,8 @@
     "agentDetail": "에이전트",
     "skillDetail": "스킬 상세",
     "workflowDetail": "워크플로",
+    "workflowRuns": "실행 기록",
+    "workflowRun": "실행 {id}",
     "companyDetail": "회사 상세",
     "marketplaceItem": "마켓플레이스 항목",
     "traces": "실행 추적"
@@ -7509,6 +7516,46 @@
         "boolean": "예/아니오",
         "enum": "선택지",
         "string_list": "텍스트 목록"
+      }
+    },
+    "runs": {
+      "open": "실행 기록",
+      "listTitle": "{name} 실행 기록",
+      "listDescription": "최근 실행부터 보여 줍니다.",
+      "backToEditor": "설계로 돌아가기",
+      "backToRuns": "실행 기록",
+      "version": "v{version}",
+      "empty": "아직 실행이 없어요",
+      "emptyHint": "게시한 뒤 시험 실행으로 시작해 보세요.",
+      "detailTitle": "실행 상세",
+      "detailDescription": "단계별 결과와 선택한 경로를 같은 실행 기록에서 확인합니다.",
+      "atNode": "지금: {node}",
+      "meta": "실행 {id} · v{version} · {time}",
+      "stepsDone": "단계 완료",
+      "cancel": "실행 취소",
+      "cancelFailed": "취소하지 못했어요",
+      "timeline": "단계",
+      "noSteps": "아직 시작한 단계가 없어요",
+      "output": "최종 출력",
+      "input": "입력",
+      "unknownHint": "실행 도중 멈춰 결과를 알 수 없습니다. 에이전트가 외부 작업을 했을 수 있어 자동으로 다시 실행하지 않아요.",
+      "toolApprovalTitle": "에이전트 도구 승인을 기다려요",
+      "toolApprovalHint": "에이전트가 승인이 필요한 도구를 쓰려고 멈췄어요. 승인함에서 결정하면 이어서 실행합니다.",
+      "openInbox": "승인함 열기",
+      "approvalTitle": "담당자 승인",
+      "businessApprovalHint": "이 승인은 업무 단계 승인입니다. 에이전트 내부 도구 승인은 따로 표시해요.",
+      "approve": "승인 후 계속",
+      "reject": "거절하고 종료",
+      "decideFailed": "결정하지 못했어요",
+      "status": {
+        "queued": "대기",
+        "running": "실행 중",
+        "waiting": "승인 대기",
+        "unknown": "결과 불명",
+        "completed": "완료",
+        "failed": "실패",
+        "canceling": "취소 중",
+        "canceled": "취소됨"
       }
     }
   }

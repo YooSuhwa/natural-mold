@@ -28,6 +28,7 @@ const ROUTE_LABELS: Record<string, string> = {
   'mcp-servers': 'sidebar.nav.mcpServers',
   approvals: 'sidebar.nav.approvals',
   workflows: 'sidebar.nav.workflows',
+  runs: 'nav.workflowRuns',
   marketplace: 'sidebar.nav.marketplace',
   moderation: 'sidebar.nav.moderation',
   company: 'nav.company',
@@ -79,7 +80,14 @@ const SKIP_SEGMENTS = new Set(['agents', 'conversations', 'admin'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /** Id segments resolved to a name; a generic label stands in until (or unless) it loads. */
-type IdKind = 'agent' | 'conversation' | 'marketplaceItem' | 'skill' | 'tenant' | 'workflow'
+type IdKind =
+  | 'agent'
+  | 'conversation'
+  | 'marketplaceItem'
+  | 'skill'
+  | 'tenant'
+  | 'workflow'
+  | 'workflowRun'
 const ID_PARENTS: Record<string, IdKind> = {
   agents: 'agent',
   conversations: 'conversation',
@@ -87,6 +95,7 @@ const ID_PARENTS: Record<string, IdKind> = {
   skills: 'skill',
   tenants: 'tenant',
   workflows: 'workflow',
+  runs: 'workflowRun',
 }
 
 function AgentName({ id, fallback }: { id: string; fallback: string }) {
@@ -139,6 +148,7 @@ const FALLBACK_LABELS: Record<IdKind, string> = {
   skill: 'nav.skillDetail',
   tenant: 'nav.companyDetail',
   workflow: 'nav.workflowDetail',
+  workflowRun: 'nav.workflowRun',
 }
 
 interface Crumb {
@@ -152,7 +162,8 @@ function CrumbContent({ crumb, agentId }: { crumb: Crumb; agentId: string | null
   const t = useTranslations()
   if (!crumb.idKind) return <>{crumb.label}</>
   const id = crumb.label
-  const fallback = t(FALLBACK_LABELS[crumb.idKind])
+  // A run has no name: its short id is the label.
+  const fallback = t(FALLBACK_LABELS[crumb.idKind], { id: id.slice(0, 8) })
   switch (crumb.idKind) {
     case 'agent':
       return <AgentName id={id} fallback={fallback} />
@@ -170,6 +181,8 @@ function CrumbContent({ crumb, agentId }: { crumb: Crumb; agentId: string | null
       return <TenantName id={id} fallback={fallback} />
     case 'workflow':
       return <WorkflowName id={id} fallback={fallback} />
+    case 'workflowRun':
+      return <>{fallback}</>
   }
 }
 

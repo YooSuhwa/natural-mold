@@ -2,7 +2,9 @@ import { apiFetch } from './client'
 import type {
   WorkflowDefinition,
   WorkflowDetail,
+  WorkflowAgentUsage,
   WorkflowIssues,
+  WorkflowRunDetail,
   WorkflowRunSummary,
   WorkflowSummary,
   WorkflowVersionDetail,
@@ -34,5 +36,14 @@ export const workflowsApi = {
       method: 'POST',
       body: JSON.stringify({ inputs }),
     }),
+  runs: (id: string) => apiFetch<WorkflowRunSummary[]>(`${path(id)}/runs`),
+  run: (runId: string) =>
+    apiFetch<WorkflowRunDetail>(`/api/workflow-runs/${encodeURIComponent(runId)}`),
+  cancelRun: (runId: string) =>
+    apiFetch<WorkflowRunDetail>(`/api/workflow-runs/${encodeURIComponent(runId)}/cancel`, {
+      method: 'POST',
+    }),
+  usingAgent: (agentId: string) =>
+    apiFetch<WorkflowAgentUsage[]>(`/api/workflows/using-agent/${encodeURIComponent(agentId)}`),
   archive: (id: string) => apiFetch<WorkflowDetail>(`${path(id)}/archive`, { method: 'POST' }),
 }

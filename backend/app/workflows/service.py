@@ -291,6 +291,47 @@ async def get_version(
     return version
 
 
+@dataclass(frozen=True, slots=True)
+class AgentUsage:
+    workflow: Workflow
+    in_draft: bool
+    in_published: bool
+    # The agent's settings no longer match the published pin: the next run is refused (Q1).
+    drifted: bool
+
+
+async def workflows_using_agent(
+    db: AsyncSession, context: OrgContext, agent_id: uuid.UUID
+) -> list[AgentUsage]:
+    """The caller's workflows whose draft or published version uses the agent."""
+    usages: list[AgentUsage] = []
+    live: str | None = None
+    for workflow in await list_workflows(db, context):
+        in_draft = any(
+            node.get("type") == "agent" and node.get("agent_id") == str(agent_id)
+            for node in (workflow.draft_definition or {}).get("nodes", [])
+        )
+        pins: list[str] = []
+        if workflow.published_version_no is not None:
+            version = await db.scalar(
+                select(WorkflowVersion).where(
+                    WorkflowVersion.workflow_id == workflow.id,
+                    WorkflowVersion.version_no == workflow.published_version_no,
+                )
+            )
+            pins = [
+                pin["fingerprint"]
+                for pin in (version.agent_pins if version else {}).values()
+                if pin.get("agent_id") == str(agent_id)
+            ]
+        if not in_draft and not pins:
+            continue
+        if pins and live is None:
+            live = (await agent_fingerprints(db, [agent_id])).get(agent_id, "")
+        usages.append(AgentUsage(workflow, in_draft, bool(pins), any(pin != live for pin in pins)))
+    return usages
+
+
 async def archive(db: AsyncSession, context: OrgContext, workflow_id: uuid.UUID) -> Workflow:
     """Idempotent: archiving an archived workflow keeps its first archive time."""
     workflow = await get_workflow(db, context, workflow_id, for_update=True)
@@ -303,7 +344,9 @@ async def archive(db: AsyncSession, context: OrgContext, workflow_id: uuid.UUID)
 
 
 __all__ = [
+    "AgentUsage",
     "PublishResult",
+    "workflows_using_agent",
     "Workflow",
     "agent_issues",
     "archive",

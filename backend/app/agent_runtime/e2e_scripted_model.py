@@ -730,12 +730,42 @@ def _message_text(message: BaseMessage) -> str:
     return str(content)
 
 
+# Workflow agent steps (순번 23): the structured output tool ``ToolStrategy`` binds. The scripted
+# model answers it with values made from its schema; this marker turns yes/no fields to yes.
+WORKFLOW_OUTPUT_TOOL = "WorkflowOutput"
+WORKFLOW_YES_MARKER = "E2E_WORKFLOW_YES"
+
+
+def _scripted_value(schema: dict[str, Any], yes: bool) -> Any:
+    options = [item for item in schema.get("anyOf", []) if item.get("type") != "null"]
+    if options:
+        return _scripted_value(options[0], yes)
+    if "enum" in schema:
+        return schema["enum"][0]
+    kind = schema.get("type")
+    if kind == "boolean":
+        return yes
+    if kind in ("integer", "number"):
+        return 1
+    if kind == "array":
+        return []
+    if kind == "object":
+        return {}
+    return "E2E 응답"
+
+
+def workflow_output_args(properties: dict[str, Any], human_text: str) -> dict[str, Any]:
+    yes = WORKFLOW_YES_MARKER in human_text
+    return {name: _scripted_value(spec, yes) for name, spec in properties.items()}
+
+
 class E2EScriptedChatModel(BaseChatModel):
     """Deterministic dev-only model for document artifact E2E tests."""
 
     model: str = "document-artifact-scripted"
     slow_stream_delay_seconds: float = 0.75
     _bound_tool_names: tuple[str, ...] = PrivateAttr(default_factory=tuple)
+    _workflow_output_args: dict[str, Any] | None = PrivateAttr(default=None)
 
     @property
     def _llm_type(self) -> str:
@@ -753,6 +783,8 @@ class E2EScriptedChatModel(BaseChatModel):
         for tool in tools:
             if isinstance(tool, BaseTool):
                 names.append(tool.name)
+                if tool.name == WORKFLOW_OUTPUT_TOOL:
+                    clone._workflow_output_args = dict(tool.args)  # noqa: SLF001
             elif isinstance(tool, dict):
                 if isinstance(tool.get("name"), str):
                     names.append(tool["name"])
@@ -778,6 +810,11 @@ class E2EScriptedChatModel(BaseChatModel):
         if skill_eval_response is not None:
             return ChatResult(generations=[ChatGeneration(message=skill_eval_response)])
         human_text = self._latest_human_text(messages)
+        if self._workflow_output_args is not None and not isinstance(messages[-1], ToolMessage):
+            args = workflow_output_args(self._workflow_output_args, human_text)
+            call = {"name": WORKFLOW_OUTPUT_TOOL, "args": args, "id": "e2e-workflow-output"}
+            message = AIMessage(content="", tool_calls=[call])
+            return ChatResult(generations=[ChatGeneration(message=message)])
         if ERROR_MARKER in human_text:
             # RateLimitError prefix triggers public_stream_error_message masking so
             # the error bubble shows the production-representative provider failure

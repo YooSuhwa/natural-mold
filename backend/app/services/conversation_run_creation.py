@@ -257,12 +257,3 @@ async def create_run_from_locked_proof(
             raise _conflict("Conversation already has an active run") from exc
         raise
     return run
-
-
-from app.services.conversation_run_state import (  # noqa: E402 - re-export after definitions
-    heartbeat_run,
-    request_cancel_run,
-    transition_run,
-)
-
-__all__ = ["heartbeat_run", "request_cancel_run", "transition_run"]
