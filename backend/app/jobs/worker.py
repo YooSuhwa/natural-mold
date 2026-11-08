@@ -214,9 +214,29 @@ def main() -> None:
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, worker.stop)
-        await worker.run_forever()
+        await serve(worker)
 
     asyncio.run(run())
+
+
+async def serve(worker: Worker) -> None:
+    """Run jobs with what agent runs need: workflow agent steps run here, not in the API
+    process, so the checkpointer and the default hooks start here too (the app's lifespan
+    does the same)."""
+    from app.agent_runtime.checkpointer import init_checkpointer, shutdown_checkpointer
+    from app.config import settings
+    from app.hooks import register_default_hooks
+
+    await init_checkpointer(
+        settings.database_url_sync,
+        min_size=settings.checkpointer_pool_min_size,
+        max_size=settings.checkpointer_pool_max_size,
+    )
+    register_default_hooks()
+    try:
+        await worker.run_forever()
+    finally:
+        await shutdown_checkpointer()
 
 
 if __name__ == "__main__":

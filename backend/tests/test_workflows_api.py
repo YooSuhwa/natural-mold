@@ -270,3 +270,29 @@ def test_every_agent_settings_table_is_classified_for_pins() -> None:
     assert cascading - set(PINNED_TABLES) - UNPINNED_TABLES == set()
     assert set(PINNED_TABLES) & UNPINNED_TABLES == set()
     assert {Agent.__tablename__, WorkflowVersion.__tablename__}.isdisjoint(cascading)
+
+
+@pytest.mark.asyncio
+async def test_using_agent_lists_draft_and_published_use_and_drift(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    _, _, agent = await seed_agent(db)
+    other = await make_agent(db, model_id=agent.model_id, name="안 쓰는 에이전트")
+    await db.commit()
+    created = await _create(client)
+    saved = (await _save(client, created, inquiry_workflow(str(agent.id)))).json()
+    url = f"{BASE}/using-agent/{agent.id}"
+    (draft_only,) = (await client.get(url)).json()
+    assert (draft_only["in_draft"], draft_only["in_published"], draft_only["drifted"]) == (
+        True,
+        False,
+        False,
+    )
+    await client.post(f"{BASE}/{created['id']}/publish", json={"revision": saved["draft_revision"]})
+    (published,) = (await client.get(url)).json()
+    assert (published["in_published"], published["drifted"]) == (True, False)
+    agent.system_prompt = "바뀐 지시"
+    await db.commit()
+    (drifted,) = (await client.get(url)).json()
+    assert drifted["drifted"] is True
+    assert (await client.get(f"{BASE}/using-agent/{other.id}")).json() == []

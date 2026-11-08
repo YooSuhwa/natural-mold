@@ -25530,6 +25530,54 @@
         ]
       }
     },
+    "/api/workflows/using-agent/{agent_id}": {
+      "get": {
+        "description": "Shown on the agent's settings: changing it means republishing these (Q1).",
+        "operationId": "workflows_using_agent_api_workflows_using_agent__agent_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowAgentUsage"
+                  },
+                  "title": "Response Workflows Using Agent Api Workflows Using Agent  Agent Id  Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Workflows Using Agent",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
     "/api/workflows/{workflow_id}": {
       "get": {
         "operationId": "get_workflow_api_workflows__workflow_id__get",
@@ -56427,6 +56475,52 @@
       "title": "WorkerOut",
       "type": "object"
     },
+    "WorkflowAgentUsage": {
+      "properties": {
+        "drifted": {
+          "title": "Drifted",
+          "type": "boolean"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "in_draft": {
+          "title": "In Draft",
+          "type": "boolean"
+        },
+        "in_published": {
+          "title": "In Published",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "published_version_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published Version No"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "published_version_no",
+        "in_draft",
+        "in_published",
+        "drifted"
+      ],
+      "title": "WorkflowAgentUsage",
+      "type": "object"
+    },
     "WorkflowCreate": {
       "additionalProperties": false,
       "properties": {
@@ -56754,6 +56848,17 @@
           "title": "Version Id",
           "type": "string"
         },
+        "version_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version No"
+        },
         "workflow_id": {
           "format": "uuid",
           "title": "Workflow Id",
@@ -56867,6 +56972,17 @@
           "format": "uuid",
           "title": "Version Id",
           "type": "string"
+        },
+        "version_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version No"
         },
         "workflow_id": {
           "format": "uuid",

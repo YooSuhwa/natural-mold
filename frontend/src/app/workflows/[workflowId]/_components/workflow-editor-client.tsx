@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowLeftIcon, PlayIcon, PlusIcon, Redo2Icon, TableIcon, Undo2Icon } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import {
+  ArrowLeftIcon,
+  HistoryIcon,
+  PlayIcon,
+  PlusIcon,
+  Redo2Icon,
+  TableIcon,
+  Undo2Icon,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -101,6 +110,7 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
   const [addTarget, setAddTarget] = useState<AddTarget | null>(null)
   const [showContract, setShowContract] = useState(true)
   const [running, setRunning] = useState(false)
+  const router = useRouter()
   const save = useSaveWorkflowDraft(detail.id)
   const publish = usePublishWorkflow(detail.id)
   const issues = useWorkflowIssues(detail.id, revision)
@@ -351,6 +361,10 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
           <PlayIcon className="size-4" aria-hidden />
           {t('run.open')}
         </Button>
+        <Button variant="ghost" size="sm" render={<Link href={`/workflows/${detail.id}/runs`} />}>
+          <HistoryIcon className="size-4" aria-hidden />
+          {t('runs.open')}
+        </Button>
       </header>
       <div className="flex min-h-0 flex-1">
         <div className="hidden min-h-0 flex-1 md:block">
@@ -402,6 +416,7 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
           workflowId={detail.id}
           versionNo={detail.published_version_no}
           onClose={() => setRunning(false)}
+          onStarted={(runId) => router.push(`/workflows/${detail.id}/runs/${runId}`)}
         />
       ) : null}
       <AddNodeDialog

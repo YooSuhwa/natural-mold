@@ -87,6 +87,7 @@ class WorkflowRunSummary(BaseModel):
     id: uuid.UUID
     workflow_id: uuid.UUID
     version_id: uuid.UUID
+    version_no: int | None = None
     status: str
     error_code: str | None
     error_message: str | None
@@ -116,3 +117,12 @@ class WorkflowRunDetail(WorkflowRunSummary):
     input: dict[str, Any]
     output: dict[str, Any] | None
     steps: list[WorkflowStepRunOut]
+
+
+class WorkflowAgentUsage(BaseModel):
+    id: uuid.UUID
+    name: str
+    published_version_no: int | None
+    in_draft: bool
+    in_published: bool
+    drifted: bool

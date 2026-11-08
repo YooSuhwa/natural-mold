@@ -1,7 +1,8 @@
 """Conversation run state transitions, cancel intent and heartbeat (Task 10 I4/I9).
 
-Moved unchanged from ``conversation_run_creation``; re-exported there and by
-``conversation_run_service``.
+Moved unchanged from ``conversation_run_creation``; re-exported by
+``conversation_run_service`` (not by ``conversation_run_creation``: that re-export made
+importing this module first a circular import).
 """
 
 from __future__ import annotations

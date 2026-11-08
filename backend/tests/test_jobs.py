@@ -268,3 +268,32 @@ async def test_someone_elses_job_is_not_found(client: AsyncClient, db: AsyncSess
         assert response.status_code == 404
     async with TestSession() as session:
         assert (await session.scalar(select(Job.state).where(Job.id == job.id))) == "queued"
+
+
+async def test_the_worker_process_starts_the_checkpointer_and_hooks_for_agent_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Workflow agent steps run in the worker process; without these they all failed."""
+    from app.agent_runtime import checkpointer
+    from app.hooks import hooks
+    from app.jobs import worker as worker_module
+
+    calls: list[str] = []
+
+    async def init(*_args: Any, **_kwargs: Any) -> None:
+        calls.append("init")
+
+    async def shutdown() -> None:
+        calls.append("shutdown")
+
+    class StubWorker:
+        async def run_forever(self) -> None:
+            calls.append("run")
+            names = {hook.name for hook in hooks.all()}
+            assert names >= {"logging_hook", "audit_hook", "spend_hook"}
+
+    monkeypatch.setattr(checkpointer, "init_checkpointer", init)
+    monkeypatch.setattr(checkpointer, "shutdown_checkpointer", shutdown)
+    monkeypatch.setattr(hooks, "_hooks", [])
+    await worker_module.serve(StubWorker())  # type: ignore[arg-type]
+    assert calls == ["init", "run", "shutdown"]

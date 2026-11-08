@@ -7,6 +7,7 @@ const data = vi.hoisted(() => ({
   skill: undefined as { name: string } | undefined,
   tenant: undefined as { name: string } | undefined,
   item: undefined as { name: string } | undefined,
+  workflow: undefined as { name: string } | undefined,
 }))
 
 vi.mock('next/navigation', () => ({ usePathname: () => nav.pathname }))
@@ -23,6 +24,7 @@ vi.mock('@/lib/hooks/use-skills', () => ({ useSkill: () => ({ data: data.skill }
 vi.mock('@/lib/hooks/use-marketplace', () => ({
   useMarketplaceItem: () => ({ data: data.item }),
 }))
+vi.mock('@/lib/hooks/use-workflows', () => ({ useWorkflow: () => ({ data: data.workflow }) }))
 vi.mock('@/lib/hooks/use-platform-tenants', () => ({
   usePlatformTenant: () => ({ data: data.tenant }),
 }))
@@ -41,7 +43,7 @@ function trail(pathname: string): string[] {
 
 describe('BreadcrumbNav (org-authz routes)', () => {
   beforeEach(() => {
-    data.agent = data.skill = data.tenant = data.item = undefined
+    data.agent = data.skill = data.tenant = data.item = data.workflow = undefined
   })
 
   it('labels every settings route of the organization and company screens', () => {
@@ -85,6 +87,16 @@ describe('BreadcrumbNav (org-authz routes)', () => {
       '사내 IT 헬프데스크',
       '대화',
       '실행 추적',
+    ])
+  })
+
+  it('labels a workflow run by its short id under the run history', () => {
+    data.workflow = { name: '고객 문의 처리' }
+    expect(trail(`/workflows/${UUID}/runs/${UUID}`)).toEqual([
+      '워크플로',
+      '고객 문의 처리',
+      '실행 기록',
+      `실행 ${UUID.slice(0, 8)}`,
     ])
   })
 

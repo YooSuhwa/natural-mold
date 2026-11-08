@@ -198,6 +198,17 @@ async def list_runs(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def version_numbers(db: AsyncSession, runs: list[WorkflowRun]) -> dict[uuid.UUID, int]:
+    """``{version_id: version_no}`` for the runs (one query)."""
+    ids = {run.version_id for run in runs}
+    if not ids:
+        return {}
+    rows = await db.execute(
+        select(WorkflowVersion.id, WorkflowVersion.version_no).where(WorkflowVersion.id.in_(ids))
+    )
+    return {row.id: row.version_no for row in rows}
+
+
 async def list_steps(db: AsyncSession, run: WorkflowRun) -> list[WorkflowStepRun]:
     stmt = (
         select(WorkflowStepRun)
@@ -474,6 +485,7 @@ __all__ = [
     "get_run",
     "list_runs",
     "list_steps",
+    "version_numbers",
     "register_jobs",
     "run_job",
     "run_not_found",

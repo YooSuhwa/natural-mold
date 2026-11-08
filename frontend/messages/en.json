@@ -1454,6 +1454,11 @@
     "tip": "Tip: Templates help you get started faster."
   },
   "agent": {
+    "workflowUsage": {
+      "title": "{count} workflows use this agent:",
+      "republish": "republish needed",
+      "hint": "Publishing pins agent settings; after a change, publish again to run."
+    },
     "triggerStopReason": {
       "label": "Stopped: {reason}",
       "reasons": {
@@ -6636,6 +6641,8 @@
     "agentDetail": "Agent",
     "skillDetail": "Skill details",
     "workflowDetail": "Workflow",
+    "workflowRuns": "Runs",
+    "workflowRun": "Run {id}",
     "companyDetail": "Company details",
     "marketplaceItem": "Marketplace item",
     "traces": "Traces"
@@ -7509,6 +7516,46 @@
         "boolean": "Yes/No",
         "enum": "Choice",
         "string_list": "Text list"
+      }
+    },
+    "runs": {
+      "open": "Runs",
+      "listTitle": "{name} runs",
+      "listDescription": "Newest first.",
+      "backToEditor": "Back to design",
+      "backToRuns": "Runs",
+      "version": "v{version}",
+      "empty": "No runs yet",
+      "emptyHint": "Publish, then start a test run.",
+      "detailTitle": "Run",
+      "detailDescription": "Step results and the path taken, in one record.",
+      "atNode": "Now: {node}",
+      "meta": "Run {id} · v{version} · {time}",
+      "stepsDone": "steps done",
+      "cancel": "Cancel run",
+      "cancelFailed": "Could not cancel",
+      "timeline": "Steps",
+      "noSteps": "No step has started",
+      "output": "Output",
+      "input": "Input",
+      "unknownHint": "The run stopped mid-step, so the result is unknown. The agent may have done outside work, so it is not run again automatically.",
+      "toolApprovalTitle": "Waiting for an agent tool approval",
+      "toolApprovalHint": "The agent paused before a tool that needs approval. Decide in the inbox to continue.",
+      "openInbox": "Open inbox",
+      "approvalTitle": "Approval",
+      "businessApprovalHint": "This is a business step approval. Agent tool approvals are shown separately.",
+      "approve": "Approve and continue",
+      "reject": "Reject and end",
+      "decideFailed": "Could not decide",
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "waiting": "Waiting",
+        "unknown": "Unknown",
+        "completed": "Completed",
+        "failed": "Failed",
+        "canceling": "Canceling",
+        "canceled": "Canceled"
       }
     }
   }
