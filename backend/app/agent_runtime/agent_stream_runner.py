@@ -21,6 +21,7 @@ from typing import Any
 from app.agent_runtime.agent_invoke_runner import (
     _execute_agent_invoke_inner,
     execute_agent_invoke,
+    execute_agent_invoke_structured,
     execute_prepared_agent_invoke,
 )
 from app.agent_runtime.agent_stream_execution import (
@@ -44,7 +45,8 @@ from app.observability.langfuse import LangfuseTraceRecord, build_langfuse_run_c
 __all__ = ["HookContext", "HookResult", "UTC", "asyncio", "content_to_text", "datetime"]
 __all__ += ["_execute_agent_invoke_inner", "_hook_ctx_for_agent", "_hook_result_from_usage"]
 __all__ += ["_prepare_agent", "_stream_with_secrets", "build_langfuse_run_context"]
-__all__ += ["execute_agent_invoke", "hooks", "nullcontext", "project_offload_egress_data"]
+__all__ += ["execute_agent_invoke", "execute_agent_invoke_structured", "hooks", "nullcontext"]
+__all__ += ["project_offload_egress_data"]
 __all__ += ["redact_protocol_data", "reset_run_secrets", "set_run_secrets"]
 __all__ += ["stream_agent_response", "time", "_uuid"]
 # Opt-in prepared-lease (Task 10 I20) entry points used by I16-I19.

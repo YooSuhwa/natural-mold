@@ -29,6 +29,10 @@ class AgentRunSource(StrEnum):
     TRIGGER = "trigger"
     CHANNEL = "channel"
     SUBAGENT = "subagent"
+    WORKFLOW = "workflow"
+
+
+_HUMAN_STARTED = frozenset({AgentRunSource.CHAT, AgentRunSource.WORKFLOW})
 
 
 @dataclass(frozen=True)
@@ -81,10 +85,11 @@ def resolve_agent_run_identity(
 
     if identity_mode == AGENT_IDENTITY_FIXED:
         subject = agent_owner_user_id
-    elif source == AgentRunSource.CHAT and caller_user_id is not None:
+    elif source in _HUMAN_STARTED and caller_user_id is not None:
+        # A chat, or a workflow run someone started: the person's own connections.
         subject = caller_user_id
     else:
-        raise AgentIdentityError("per_user identity requires an authenticated chat caller")
+        raise AgentIdentityError("per_user identity requires an authenticated human caller")
 
     return AgentRunIdentity(
         agent_id=agent_id,

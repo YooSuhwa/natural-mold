@@ -7,7 +7,7 @@ from uuid import UUID
 
 from app.authz.org_context import OrgContext
 
-RunSource = Literal["CHAT", "TRIGGER", "CHANNEL", "SUBAGENT", "API"]
+RunSource = Literal["CHAT", "TRIGGER", "CHANNEL", "SUBAGENT", "API", "WORKFLOW"]
 
 
 @dataclass(frozen=True, slots=True)

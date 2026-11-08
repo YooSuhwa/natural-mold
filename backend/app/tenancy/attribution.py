@@ -31,12 +31,14 @@ if TYPE_CHECKING:
     from app.models.agent import Agent
 
 InvokerType = Literal["user", "schedule", "api", "subagent"]
-ExecutionSource = Literal["chat", "trigger", "api"]
+ExecutionSource = Literal["chat", "trigger", "api", "workflow"]
 
 _SOURCES: dict[str, tuple[str, InvokerType]] = {
     "chat": ("CHAT", "user"),
     "trigger": ("TRIGGER", "schedule"),
     "api": ("API", "api"),
+    # A workflow run is started by a person, who is its caller (workflow plan 3.6).
+    "workflow": ("WORKFLOW", "user"),
 }
 PER_USER = "per_user"
 _USAGE_COPIED = (
@@ -90,8 +92,8 @@ def _acting_user(agent: Agent, caller: uuid.UUID | None) -> uuid.UUID:
 def attribute_run(source: ExecutionSource, context: OrgContext, agent: Agent) -> RunAttribution:
     """The root run. ``context.user_id`` is the requester (caller, trigger or key owner)."""
     run_source, invoker = _SOURCES[source]
-    # Triggers and API keys run as the agent (fixed); only a chat caller is a human caller.
-    human = context.user_id if source == "chat" else None
+    # Triggers and API keys run as the agent (fixed); a chat or workflow caller is a person.
+    human = context.user_id if source in ("chat", "workflow") else None
     acting = _acting_user(agent, human)
     return RunAttribution(
         org_id=context.org_id,

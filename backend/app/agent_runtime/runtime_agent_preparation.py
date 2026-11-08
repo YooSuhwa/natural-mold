@@ -71,6 +71,18 @@ def _scoped_runtime_backend(
     )
 
 
+def _structured_output_kwargs(cfg: AgentConfig) -> dict[str, Any]:
+    """``response_format`` for a run that declares an output schema (workflow W0).
+
+    Empty otherwise, so ``build_agent`` stand-ins without the parameter keep working.
+    """
+    if cfg.output_schema is None:
+        return {}
+    from app.agent_runtime.structured_output import response_format_for
+
+    return {"response_format": response_format_for(cfg.output_schema)}
+
+
 def _configured_recursion_limit(cfg: AgentConfig) -> int | None:
     return _configured_recursion_limit_impl(cfg)
 
@@ -276,6 +288,7 @@ async def _prepare_agent(
         guard=guard,
         tool_risk=cfg.tool_risk,
         unattended=components.unattended,
+        **_structured_output_kwargs(cfg),
     )
     timings["build_agent_ms"] = int((time.perf_counter() - build_started) * 1000)
     last_mark = time.perf_counter()

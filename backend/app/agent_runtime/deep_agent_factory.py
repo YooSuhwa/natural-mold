@@ -276,6 +276,7 @@ def build_agent_impl(
     guard: Guard | None = None,
     tool_risk: ToolRiskPolicy | None = None,
     unattended: UnattendedMode | None = None,
+    response_format: Any | None = None,
 ) -> Any:
     resolved_backend = backend if backend is not None else StateBackend()
     compatible_middleware = bindings.with_compatibility(
@@ -352,7 +353,11 @@ def build_agent_impl(
                 middleware=list(compatible_middleware),
                 subagents=compatible_subagents,
             )
+    # Structured output (workflow W0) is passed only when asked for, so factories and
+    # test doubles that predate it keep their signature.
+    extra: dict[str, Any] = {} if response_format is None else {"response_format": response_format}
     return bindings.create_deep_agent(
+        **extra,
         model=model,
         tools=tools,
         system_prompt=system_prompt,

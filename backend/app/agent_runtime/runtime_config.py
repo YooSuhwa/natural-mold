@@ -169,6 +169,9 @@ class AgentConfig:
     memory_run_id: str | None = field(default=None, kw_only=True)
     memory_recall_block: str | None = field(default=None, kw_only=True)
     memory_search_scopes: str | None = field(default=None, kw_only=True)
+    # Workflow W0 (plan 3.2): the JSON the root agent must answer with, inside the subset
+    # ``structured_output.check_output_schema`` accepts. ``None``: a plain text answer.
+    output_schema: dict[str, Any] | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,

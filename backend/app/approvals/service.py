@@ -37,7 +37,13 @@ from app.models.conversation_run import ConversationRun
 from app.services import audit_service
 
 # Run principal source (``ConversationRun.run_source``) → approval source (17.3 rows).
-_SOURCES: Final = {"CHAT": "chat", "TRIGGER": "trigger", "API": "api", "SUBAGENT": "subagent"}
+_SOURCES: Final = {
+    "CHAT": "chat",
+    "TRIGGER": "trigger",
+    "API": "api",
+    "SUBAGENT": "subagent",
+    "WORKFLOW": "workflow",
+}
 _NOT_APPROVALS: Final = frozenset({"ask_user"})
 _REASONS: Final = {"expiry": "approval_expired", "emergency_stop": "emergency_stop"}
 

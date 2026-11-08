@@ -40,7 +40,7 @@ from app.services.authorized_runtime import prepare_authorized_runtime
 from app.services.conversation_runtime_policy import snapshot_from_conversation
 from app.services.runtime_links import runnable_agent
 
-InvocationSource = Literal["chat", "trigger", "api"]
+InvocationSource = Literal["chat", "trigger", "api", "workflow"]
 
 
 @dataclass(frozen=True)
@@ -96,6 +96,8 @@ def _source_to_agent_run_source(source: InvocationSource) -> AgentRunSource:
         return AgentRunSource.TRIGGER
     if source == "api":
         return AgentRunSource.CHANNEL
+    if source == "workflow":
+        return AgentRunSource.WORKFLOW
     return AgentRunSource.CHAT
 
 
@@ -250,7 +252,7 @@ async def build_agent_config_for_loaded_agent(
         credential_subject_user_id=str(identity.credential_subject_user_id),
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
-        run_path={"trigger": "trigger", "api": "api"}.get(source, "chat"),
+        run_path={"trigger": "trigger", "api": "api", "workflow": "workflow"}.get(source, "chat"),
     )
     # The company guardrail policy at this run's start (guardrails/policy.py).
     cfg.guardrail_rules = await resolve_guardrails(
@@ -263,7 +265,7 @@ async def build_agent_config_for_loaded_agent(
             agent,
             db=db,
             parent_cfg=cfg,
-            is_trigger_mode=source == "trigger",
+            is_trigger_mode=source in ("trigger", "workflow"),
         )
     # ADR-021 H1 — populate the eager secret set so value-based redaction works
     # for Agent API / non-chat entrypoints (Agent API stream already installs

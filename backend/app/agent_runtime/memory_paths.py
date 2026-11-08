@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversation_run import ConversationRun
 
-RunPath = Literal["chat", "trigger", "api", "channel", "subagent"]
+RunPath = Literal["chat", "trigger", "api", "channel", "subagent", "workflow"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +36,9 @@ _ACCESS: Final[dict[str, MemoryPathAccess]] = {
     "api": MemoryPathAccess(False, False, False, False),
     "channel": MemoryPathAccess(False, False, False, False),
     "subagent": MemoryPathAccess(False, False, False, False),
+    # A workflow step reads the runner's memory for this agent and writes none: nobody
+    # watches the run and every step would otherwise pile up proposals (workflow Q4).
+    "workflow": MemoryPathAccess(False, True, False, False),
 }
 _CLOSED: Final = MemoryPathAccess(False, False, False, False)
 
@@ -46,6 +49,7 @@ _RUN_SOURCES: Final[dict[str, RunPath]] = {
     "API": "api",
     "CHANNEL": "channel",
     "SUBAGENT": "subagent",
+    "WORKFLOW": "workflow",
 }
 _MAX_CHAIN: Final = 64
 

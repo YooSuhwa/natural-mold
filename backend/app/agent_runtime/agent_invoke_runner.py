@@ -9,6 +9,7 @@ import time
 import uuid as _uuid
 from collections.abc import Collection, Sequence
 from contextlib import nullcontext
+from dataclasses import dataclass
 from typing import Any
 
 from app.agent_runtime.agent_stream_facade_bindings import stream_attr
@@ -21,7 +22,20 @@ from app.agent_runtime.prepared_run_dispatch import (
     prepared_dispatch,
 )
 from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.structured_output import (
+    StructuredOutcome,
+    StructuredOutputExhausted,
+    structured_outcome,
+)
 from app.hooks import HookResult
+
+
+@dataclass(frozen=True, slots=True)
+class StructuredInvokeResult:
+    """A schema-bound invoke (workflow W0): the redacted text and the checked JSON."""
+
+    text: str
+    outcome: StructuredOutcome
 
 
 async def execute_agent_invoke(
@@ -61,7 +75,7 @@ async def _execute_agent_invoke_inner(
         is_trigger_mode=True,
         run_id=effective_run_id,
     )
-    return await _invoke_built_agent(
+    text, _ = await _invoke_built_agent(
         cfg,
         agent,
         {"messages": lc_messages},
@@ -69,6 +83,53 @@ async def _execute_agent_invoke_inner(
         run_id=effective_run_id,
         moldy_source=moldy_source,
     )
+    return text
+
+
+async def execute_agent_invoke_structured(
+    cfg: AgentConfig,
+    messages_history: Sequence[RuntimeMessage],
+    *,
+    run_id: str | None = None,
+    moldy_source: str = "workflow",
+) -> StructuredInvokeResult:
+    """Invoke a run that declares ``cfg.output_schema`` and check its answer.
+
+    A second schema miss (after the one retry) is ``schema_invalid``, not an error: the
+    caller decides what a failed step does. The value is redacted like the text.
+    """
+    schema = cfg.output_schema
+    if schema is None:
+        raise ValueError("execute_agent_invoke_structured needs cfg.output_schema")
+    secret_token = stream_attr("set_run_secrets")(cfg.secret_values)
+    try:
+        effective_run_id = run_id or str(_uuid.uuid4())
+        agent, lc_messages, config = await stream_attr("_prepare_agent")(
+            cfg,
+            messages_history=messages_history,
+            is_trigger_mode=True,
+            run_id=effective_run_id,
+        )
+        try:
+            text, result = await _invoke_built_agent(
+                cfg,
+                agent,
+                {"messages": lc_messages},
+                config,
+                run_id=effective_run_id,
+                moldy_source=moldy_source,
+            )
+        except StructuredOutputExhausted:
+            return StructuredInvokeResult("", StructuredOutcome("schema_invalid"))
+        outcome = structured_outcome(result, schema)
+        if outcome.value is not None:
+            redacted = stream_attr("redact_protocol_data")(
+                "messages", outcome.value, secret_values=cfg.secret_values
+            )
+            outcome = StructuredOutcome(outcome.status, redacted)
+        return StructuredInvokeResult(text, outcome)
+    finally:
+        stream_attr("reset_run_secrets")(secret_token)
 
 
 async def execute_prepared_agent_invoke(
@@ -87,7 +148,7 @@ async def execute_prepared_agent_invoke(
     """
 
     async with prepared_dispatch(handle) as lease:
-        return await _invoke_built_agent(
+        text, _ = await _invoke_built_agent(
             cfg,
             lease.runnable,
             lease_graph_input(lease, stream_input),
@@ -97,6 +158,7 @@ async def execute_prepared_agent_invoke(
             secret_values=lease.secret_values,
             hooks_enabled=False,
         )
+        return text
 
 
 async def _invoke_built_agent(
@@ -109,7 +171,8 @@ async def _invoke_built_agent(
     moldy_source: str,
     secret_values: Collection[str] | None = None,
     hooks_enabled: bool = True,
-) -> str:
+) -> tuple[str, Any]:
+    """The redacted final text and the graph's final state."""
     langfuse_ctx = stream_attr("build_langfuse_run_context")(
         cfg,
         run_id=run_id,
@@ -158,4 +221,4 @@ async def _invoke_built_agent(
                 output=text[:200],
             ),
         )
-    return text
+    return text, result
