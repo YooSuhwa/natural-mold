@@ -139,6 +139,9 @@ class RunOrigin:
     trigger_id: uuid.UUID | None = None
     trigger_run_id: uuid.UUID | None = None
     api_run_id: uuid.UUID | None = None
+    # A workflow agent step that waits on the request (순번 23 W2c).
+    workflow_run_id: uuid.UUID | None = None
+    workflow_step_run_id: uuid.UUID | None = None
 
 
 async def _inherited(db: AsyncSession, run: ConversationRun) -> ApprovalRequest | None:
@@ -171,6 +174,10 @@ async def record_pending(
     trigger_id = origin.trigger_id or (parent.trigger_id if parent else None)
     trigger_run_id = origin.trigger_run_id or (parent.trigger_run_id if parent else None)
     api_run_id = origin.api_run_id or (parent.api_run_id if parent else None)
+    workflow_run_id = origin.workflow_run_id or (parent.workflow_run_id if parent else None)
+    workflow_step_run_id = origin.workflow_step_run_id or (
+        parent.workflow_step_run_id if parent else None
+    )
     created: list[ApprovalRequest] = []
     for interrupt in interrupts:
         if approval_actions(interrupt.payload) is None:
@@ -205,6 +212,8 @@ async def record_pending(
             trigger_id=trigger_id,
             trigger_run_id=trigger_run_id,
             api_run_id=api_run_id,
+            workflow_run_id=workflow_run_id,
+            workflow_step_run_id=workflow_step_run_id,
             subject_user_id=run.user_id,
             requester_user_id=run.on_behalf_of_user_id or run.user_id,
             decider_user_id=run.user_id,

@@ -21,7 +21,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.agent_invoke_runner import execute_agent_invoke_structured
+from app.approvals import recording
 from app.approvals.emergency import STOPPED_CODE
+from app.approvals.service import RunOrigin
 from app.authz.org_context import OrgContext
 from app.exceptions import AppError
 from app.models.conversation import Conversation
@@ -52,7 +54,7 @@ _FINISHED_RUN: Final = frozenset({"completed", "failed", "canceled"})
 
 @dataclass(frozen=True, slots=True)
 class StepOutcome:
-    status: str  # completed | failed | unknown | canceled
+    status: str  # completed | failed | unknown | canceled | waiting
     output: dict[str, Any] | None = None
     error_code: str | None = None
     error_message: str | None = None
@@ -128,8 +130,8 @@ async def prepare(
             runtime_policy=runtime_policy,
         )
         cfg.output_schema = node.output_schema
-        # W2a: a tool call that needs approval answers BLOCKED; waits arrive with W2b.
-        cfg.unattended_approval = "block"
+        # A tool call that needs approval waits for the runner in the inbox (W2c).
+        cfg.unattended_approval = "wait"
         accepted = await accept_owned_execution(
             db,
             OwnedExecutionRequest(
@@ -156,12 +158,25 @@ async def execute(
     )
 
     async def operation() -> Any:
-        return await execute_agent_invoke_structured(
+        result = await execute_agent_invoke_structured(
             prepared.config,
             [{"role": "user", "content": prepared.prompt}],
             run_id=str(prepared.run_id),
             moldy_source="workflow",
         )
+        # The graph paused before a tool that needs a person: the step waits (W2c).
+        waiting = await recording.waiting_interrupts(prepared.conversation_id)
+        if waiting and await recording.pause(
+            run_id=prepared.run_id,
+            context=context,
+            interrupts=waiting,
+            origin=RunOrigin(
+                source="workflow", workflow_run_id=step.run_id, workflow_step_run_id=step.id
+            ),
+            secret_values=prepared.config.secret_values,
+        ):
+            return None
+        return result
 
     try:
         result = await run_owned_execution(ownership, operation)
@@ -170,6 +185,8 @@ async def execute(
     except Exception:
         logger.exception("workflow agent step %s failed", step.id)
         return StepOutcome("failed", error_code="agent_failed", error_message="에이전트 실행 실패")
+    if result is None:
+        return StepOutcome("waiting")
     outcome = result.outcome
     if outcome.status == "ok":
         return StepOutcome("completed", output=outcome.value)

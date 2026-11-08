@@ -51,6 +51,7 @@ from app.services.agent_execution_owner import OwnedExecutionRequest, accept_own
 from app.services.chat_resource_context_payload import apply_frozen_resource_context
 from app.services.conversation_audit_service import record_conversation_audit
 from app.services.conversation_stream_service import resolve_agent_context
+from app.workflows.tool_waits import adapt_resume as adapt_workflow_resume
 
 if TYPE_CHECKING:
     from app.services.conversation_run_service import RunSource
@@ -193,6 +194,8 @@ async def _handle_input_respond_command(
     cfg = await resolve_agent_context(db, conversation.id, user, context=context)
     # Plan 15 (5.2): a resumed schedule or API run keeps its path (inbox resumes come here).
     cfg.run_path = await origin_run_path(db, parent_run)
+    # 순번 23 W2c: a workflow step keeps its output schema and keeps waiting for the inbox.
+    await adapt_workflow_resume(db, parent_run, cfg)
     await db.commit()
 
     try:
