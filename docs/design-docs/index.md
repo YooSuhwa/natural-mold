@@ -30,3 +30,4 @@
 | ADR-023 | [Tenant, organization, authorization and sharing](adr-023-org-authz.md) | Accepted for implementation; production enforcement pending evidence (2026-10-10) |
 | ADR-024 | [Common execution contract for new features](adr-024-common-execution-contract.md) | Accepted (2026-11-01) |
 | ADR-025 | [Memory in three tiers, governed by the run path](adr-025-memory-tiers-and-run-paths.md) | Accepted (2026-11-07) |
+| ADR-026 | [Workflow execution on step rows, in the job worker](adr-026-workflow-execution.md) | Accepted (2026-11-09) |

@@ -20,7 +20,13 @@ vi.mock('@/lib/hooks/use-workflows', () => ({
   useCancelWorkflowRun: () => ({ isPending: false, mutate: vi.fn() }),
 }))
 vi.mock('@/lib/hooks/use-approvals', () => ({
-  useApprovals: () => ({ data: { items: state.requests } }),
+  useWorkflowRunApproval: (runId: string, _status: string, _node: string | null, on: boolean) => ({
+    data: on
+      ? ((state.requests as { workflow_run_id: string }[]).find(
+          (item) => item.workflow_run_id === runId,
+        ) ?? null)
+      : undefined,
+  }),
   useDecideApproval: () => ({ isPending: false, mutate: state.decide }),
 }))
 

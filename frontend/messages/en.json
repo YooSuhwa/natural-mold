@@ -7366,6 +7366,38 @@
     "published": "Published v{version}",
     "updated": "Edited {time}",
     "open": "Open",
+    "templates": {
+      "title": "Start from",
+      "pickAgent": "Choose an agent",
+      "blank": {
+        "name": "Blank draft",
+        "hint": "Build it yourself from a draft with only the start node."
+      },
+      "inquiry": {
+        "name": "Customer inquiry reply draft",
+        "hint": "Classifies the inquiry, gets a manager's approval when urgent, then drafts a reply.",
+        "classifierAgent": "Agent that classifies the inquiry",
+        "writerAgent": "Agent that writes the reply",
+        "inputLabel": "Inquiry",
+        "classify": "Classify inquiry",
+        "classifyPrompt": "Sort the customer inquiry below into a category (refund, bug, account, other) and mark it urgent if it must be handled today. Also write a one-sentence summary.\n\nInquiry: ",
+        "categoryHint": "Inquiry category",
+        "urgentHint": "true if it must be handled today",
+        "summaryHint": "One-sentence summary of the inquiry",
+        "isUrgent": "Urgent?",
+        "review": "Manager approval",
+        "reviewTitle": "Check urgent inquiry: ",
+        "draft": "Reply draft",
+        "draftPrompt": "Write a polite reply draft to the customer inquiry below.\n\nInquiry: ",
+        "draftCategory": "\nCategory: ",
+        "answerHint": "The reply to send to the customer",
+        "format": "Format as email",
+        "subjectPrefix": "[Inquiry reply] ",
+        "done": "Output reply draft",
+        "rejected": "End as rejected",
+        "rejectedReason": "The manager declined to handle the urgent inquiry"
+      }
+    },
     "editor": {
       "back": "Workflows",
       "saved": "Saved",

@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { RunStatusChip, StepStatusIcon } from '@/features/workflows/components/run-status'
 import { ApiError } from '@/lib/api/client'
-import { useApprovals, useDecideApproval } from '@/lib/hooks/use-approvals'
+import { useDecideApproval, useWorkflowRunApproval } from '@/lib/hooks/use-approvals'
 import {
   useCancelWorkflowRun,
   useWorkflow,
@@ -193,12 +193,12 @@ function StepDetail({ step, label }: { step: WorkflowStepRun; label: string }) {
 /** A waiting business approval is decided right here; a tool approval goes to the inbox. */
 function ApprovalCard({ run }: { run: WorkflowRunDetail }) {
   const t = useTranslations('workflows.runs')
-  const pending = useApprovals('pending')
-  const decide = useDecideApproval()
   // Waiting on a decision, or on the check of a step whose result is unknown (W4).
-  if (run.status !== 'waiting' && run.status !== 'unknown') return null
-  const request = pending.data?.items.find((item) => item.workflow_run_id === run.id)
-  if (!request) return null
+  const stopped = run.status === 'waiting' || run.status === 'unknown'
+  const pending = useWorkflowRunApproval(run.id, run.status, run.current_node, stopped)
+  const decide = useDecideApproval()
+  const request = pending.data
+  if (!stopped || !request) return null
   if (request.kind !== 'business') {
     return (
       <section className="moldy-status-surface moldy-status-warn flex flex-col gap-2 rounded-md p-4">
