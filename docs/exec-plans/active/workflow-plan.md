@@ -77,6 +77,7 @@
 | `workflow_runs` | workflow_id, version_id, 실행자(user), status, input(JSON), output(JSON), error_code, current_node, job_id, started/finished_at, cost 집계 | 상태: queued, running, waiting, unknown, completed, failed, canceling, canceled |
 | `workflow_step_runs` | run_id, node_id, node_type, attempt, status, input(JSON), output(JSON), branch, conversation_id, conversation_run_id(유일), error_code, started/finished_at | 에이전트 단계의 **봉투**. 상태: queued, running, waiting, completed, failed, unknown, skipped, canceled |
 
+- **W1(i27)은 `workflows`·`workflow_versions`만** 만든다. `workflow_runs`·`workflow_step_runs`와 아래 열 추가는 실행기와 함께 W2에서 한다. `workflows`는 게시 버전을 FK 대신 `published_version_no`로 가리킨다(두 테이블이 서로 참조하는 순환을 피함).
 - `conversations`에 `workflow_step_run_id`(NULL 허용, FK)를 더해 내부 대화를 표시한다. 대화 목록·검색·내비게이터·공유·메모리 회상 등 **모든 대화 조회 경로**에서
   숨긴다(CLAUDE.md "히든 리소스 필터는 모든 resolution 경로에" 규칙, 전수 grep으로 형제 경로 확인).
 - `approval_requests.source`에 `workflow`를 더하고 `workflow_run_id`, `workflow_node_id` 열을 둔다(업무 승인과 단계 안 도구 승인 모두).
@@ -128,6 +129,11 @@
 연결 끊긴 노드, 순환(1차는 반복 노드가 없으므로 순환 전부 금지), 시작 1개·끝(출력/실패) 1개 이상, 판단·승인 노드의 경로 누락, 시간 제한 없는 승인,
 템플릿이 존재하지 않는 노드·경로·입력을 참조, 참조 에이전트의 존재·보관 여부·실행 권한(`can_run`), 구조화 출력 지원 모델, 노드 수 상한(50).
 에이전트 고정 방식은 Q1.
+- **참조는 지배 노드만**(W1에서 정함): 템플릿·조건이 참조하는 노드는 시작에서 이 노드로 오는 **모든 경로**에서 앞에 있어야 한다. 승인 경로에서만 실행되는 노드를
+  "아니오" 경로와 합쳐지는 뒤 노드가 참조하면 실행 때 값이 없으므로 `ref_not_upstream`으로 막는다.
+- **에이전트 지문**(Q1 구현): 마켓플레이스용 `build_agent_spec_payload`는 비밀값이 있으면 오류를 내고 ID를 빼므로 쓰지 않는다. 실행에 영향을 주는 에이전트 열과
+  설정 연결 행(도구·스킬과 스킬 내용 해시·MCP 도구·하위 에이전트·가드레일 연결·메모리 설정)을 정렬해 해시한다(`app/workflows/pins.py`).
+  `agents`에서 CASCADE로 이어지는 테이블은 모두 "고정"이나 "제외"로 분류해야 하고, 분류되지 않은 새 테이블은 테스트가 막는다(지식 폴더·도구 승인 모드 연결이 빠지지 않게).
 
 ### 3.4 실행 구조
 
