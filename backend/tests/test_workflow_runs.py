@@ -541,7 +541,7 @@ async def test_a_second_job_while_waiting_changes_nothing_and_decide_queues_one(
     keys = (
         await db.scalars(sa.select(Job.idempotency_key).where(Job.type == "workflow.run"))
     ).all()
-    assert sorted(keys) == sorted([run["id"], f"{run['id']}:{request['id']}"])
+    assert sorted(key or "" for key in keys) == sorted([run["id"], f"{run['id']}:{request['id']}"])
 
 
 @pytest.mark.asyncio
