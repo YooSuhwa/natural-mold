@@ -25,7 +25,7 @@ from tests.authz.unit_scope_fixture import TEST_ORG_ID
 from tests.conftest import TEST_USER_ID, TestSession
 from tests.conftest import engine as test_engine
 
-ALL_SOURCES = ["CHAT", "TRIGGER", "CHANNEL", "SUBAGENT", "API"]
+ALL_SOURCES = ["CHAT", "TRIGGER", "CHANNEL", "SUBAGENT", "API", "WORKFLOW"]
 
 
 @pytest.fixture(autouse=True)

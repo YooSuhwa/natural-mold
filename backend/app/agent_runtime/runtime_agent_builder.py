@@ -225,6 +225,7 @@ def build_agent(
     guard: Guard | None = None,
     tool_risk: ToolRiskPolicy | None = None,
     unattended: UnattendedMode | None = None,
+    response_format: Any | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
     effective_permissions = permissions
@@ -275,4 +276,5 @@ def build_agent(
         guard=guard,
         tool_risk=tool_risk,
         unattended=unattended,
+        response_format=response_format,
     )

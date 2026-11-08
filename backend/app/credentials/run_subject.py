@@ -22,6 +22,7 @@ _SOURCES: dict[str, RunSource] = {
     "trigger": "TRIGGER",
     "channel": "CHANNEL",
     "subagent": "SUBAGENT",
+    "workflow": "WORKFLOW",
 }
 
 

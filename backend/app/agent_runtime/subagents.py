@@ -53,8 +53,15 @@ def _parent_identity_from_config(
         credential_subject_user_id=credential_subject_user_id,
         identity_mode=cfg.identity_mode or "fixed",
         runtime_name=runtime_name,
-        source=AgentRunSource.TRIGGER if is_trigger_mode else AgentRunSource.CHAT,
+        source=_child_source(cfg, is_trigger_mode=is_trigger_mode),
     )
+
+
+def _child_source(cfg: AgentConfig, *, is_trigger_mode: bool) -> AgentRunSource:
+    """A child keeps its root's source; a workflow step's children stay ``workflow``."""
+    if cfg.run_path == "workflow":
+        return AgentRunSource.WORKFLOW
+    return AgentRunSource.TRIGGER if is_trigger_mode else AgentRunSource.CHAT
 
 
 def _subagent_description(agent: Agent) -> str:

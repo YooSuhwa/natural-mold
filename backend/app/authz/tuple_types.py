@@ -7,7 +7,7 @@ from typing import Final
 
 from pydantic import JsonValue
 
-RUN_SOURCES: Final = ("CHAT", "TRIGGER", "CHANNEL", "SUBAGENT", "API")
+RUN_SOURCES: Final = ("CHAT", "TRIGGER", "CHANNEL", "SUBAGENT", "API", "WORKFLOW")
 EXPIRY_CONDITION: Final = "non_expired_grant"
 RUN_SOURCE_CONDITION: Final = "allowed_run_source"
 
