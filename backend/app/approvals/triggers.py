@@ -89,8 +89,8 @@ async def settle(run_id: uuid.UUID, status: str, context: OrgContext) -> None:
         if row is None or row.trigger_run_id is None:
             return
         trigger_run = await db.get(AgentTriggerRun, row.trigger_run_id, with_for_update=True)
-        if trigger_run is None or trigger_run.status != WAITING:
-            return
+        if trigger_run is None or trigger_run.status != WAITING or row.conversation_id is None:
+            return  # schedule runs only wait on tool requests, which always have a conversation
         expired = row.status == "expired"
         outcome = "success" if status == "completed" and not expired else "failed"
         error = "approval_expired" if expired else None if outcome == "success" else f"run {status}"
@@ -122,7 +122,7 @@ async def abandon(tenant: TenantScoped, request_ids: Iterable[uuid.UUID]) -> Non
             if await still_pending(db, ApprovalRequest.trigger_run_id == trigger_run_id):
                 continue
             trigger_run = await db.get(AgentTriggerRun, trigger_run_id, with_for_update=True)
-            if trigger_run is None or trigger_run.status != WAITING:
+            if trigger_run is None or trigger_run.status != WAITING or row.conversation_id is None:
                 continue
             reason = row.reason or "approval_canceled"
             await _end(

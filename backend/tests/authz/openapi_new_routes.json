@@ -30570,9 +30570,16 @@
           "title": "Channel"
         },
         "conversation_id": {
-          "format": "uuid",
-          "title": "Conversation Id",
-          "type": "string"
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Conversation Id"
         },
         "created_at": {
           "format": "date-time",
@@ -30599,6 +30606,11 @@
         "id": {
           "format": "uuid",
           "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "default": "tool",
+          "title": "Kind",
           "type": "string"
         },
         "policy_version": {
@@ -30642,6 +30654,18 @@
             }
           ],
           "title": "Trigger Id"
+        },
+        "workflow_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Workflow Run Id"
         }
       },
       "required": [

@@ -7256,7 +7256,8 @@
       "chat": "대화",
       "trigger": "예약",
       "api": "API",
-      "subagent": "하위 에이전트"
+      "subagent": "하위 에이전트",
+      "workflow": "워크플로"
     },
     "status": {
       "pending": "대기",

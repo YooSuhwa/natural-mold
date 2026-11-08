@@ -26,7 +26,10 @@ class ApprovalView(BaseModel):
     source: str
     agent_id: uuid.UUID | None
     agent_name: str
-    conversation_id: uuid.UUID
+    kind: str = "tool"
+    # ``None`` for a workflow approval node (``kind="business"``), which has no conversation.
+    conversation_id: uuid.UUID | None
+    workflow_run_id: uuid.UUID | None = None
     trigger_id: uuid.UUID | None
     actions: list[ApprovalAction]
     attempt: int

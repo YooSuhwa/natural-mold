@@ -39,6 +39,7 @@ from app.models.workflow import (
 from app.services import audit_service
 from app.services.conversation_run_state import request_cancel_run
 from app.workflows import agent_step
+from app.workflows import approvals as workflow_approvals
 from app.workflows.definition import (
     AgentNode,
     ApprovalNode,
@@ -212,7 +213,11 @@ async def cancel_run(db: AsyncSession, context: OrgContext, run_id: uuid.UUID) -
     if run.status in RUN_TERMINAL:
         return run
     run.cancel_requested = True
-    if run.status == "queued":
+    await workflow_approvals.cancel_for_run(db, run)
+    if run.status in ("queued", "waiting"):
+        for step in await list_steps(db, run):
+            if step.status == "waiting":
+                step.status, step.finished_at = "canceled", _now()
         _finish(run, "canceled", "canceled", "실행을 취소했습니다")
     else:
         run.status = "canceling"
@@ -366,17 +371,10 @@ async def _simple_node(
         await _step_row(db, run, node, position, output={"reason": node.reason}, **done)
         _finish(run, "failed", "workflow_fail_node", node.reason or "실패 종료 노드")
     elif isinstance(node, ApprovalNode):
-        # W2a: the approval inbox wiring for business approvals arrives with W2b.
-        await _step_row(
-            db,
-            run,
-            node,
-            position,
-            status="failed",
-            error_code="approval_unavailable",
-            finished_at=_now(),
-        )
-        _finish(run, "failed", "approval_unavailable", "승인 노드는 아직 실행할 수 없습니다")
+        # The run waits for the runner's decision in the approval inbox (W2b).
+        step = await _step_row(db, run, node, position, status="waiting")
+        await workflow_approvals.request(db, run, step, node, values)
+        run.status = "waiting"
 
 
 def _record(step: WorkflowStepRun, outcome: agent_step.StepOutcome) -> None:
@@ -414,7 +412,7 @@ async def run_job(job: JobContext) -> dict[str, Any]:
             run = await _locked(db, run_id)
             if run is None:
                 return {"outcome": "gone"}
-            if run.status in RUN_TERMINAL or run.status == "unknown":
+            if run.status in RUN_TERMINAL or run.status in ("unknown", "waiting"):
                 return {"outcome": run.status}
             if run.status == "queued":
                 run.status, run.started_at = "running", _now()
@@ -441,7 +439,7 @@ async def run_job(job: JobContext) -> dict[str, Any]:
             if finished:
                 await _audit_finish(db, run)
             await db.commit()
-            if finished:
+            if finished or run.status == "waiting":
                 return {"outcome": run.status}
         if isinstance(prepared, agent_step.PreparedStep) and step is not None:
             outcome = await agent_step.execute(context, step, prepared)

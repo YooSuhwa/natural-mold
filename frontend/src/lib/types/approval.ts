@@ -1,7 +1,9 @@
 /** Approval inbox, run status and emergency stop (feature plan v2 순번 13, chapter 17). */
 
 export type ApprovalStatus = 'pending' | 'approved' | 'edited' | 'rejected' | 'expired' | 'canceled'
-export type ApprovalSource = 'chat' | 'trigger' | 'api' | 'subagent'
+export type ApprovalSource = 'chat' | 'trigger' | 'api' | 'subagent' | 'workflow'
+/** ``business``: a workflow approval node, which has no conversation. */
+export type ApprovalKind = 'tool' | 'business'
 export type ApprovalDecisionType = 'approve' | 'edit' | 'reject'
 
 export interface ApprovalAction {
@@ -17,7 +19,9 @@ export interface ApprovalView {
   source: ApprovalSource
   agent_id: string | null
   agent_name: string
-  conversation_id: string
+  kind: ApprovalKind
+  conversation_id: string | null
+  workflow_run_id: string | null
   trigger_id: string | null
   actions: ApprovalAction[]
   attempt: number

@@ -179,11 +179,13 @@ function RequestCard({ request }: { request: ApprovalView }) {
           </Button>
         </div>
       ) : null}
-      <div className="mt-3 text-xs">
-        <Link className="text-muted-foreground underline" href={conversationHref(request)}>
-          {t('openConversation')}
-        </Link>
-      </div>
+      {request.conversation_id ? (
+        <div className="mt-3 text-xs">
+          <Link className="text-muted-foreground underline" href={conversationHref(request)}>
+            {t('openConversation')}
+          </Link>
+        </div>
+      ) : null}
     </SettingsSectionCard>
   )
 }

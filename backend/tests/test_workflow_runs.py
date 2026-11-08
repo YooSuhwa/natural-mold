@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -183,17 +183,113 @@ async def test_an_answer_outside_the_schema_fails_the_run(
     assert [s["node_id"] for s in detail["steps"]] == ["start", "classify"]
 
 
-@pytest.mark.asyncio
-async def test_the_urgent_branch_stops_at_the_approval_node_for_now(
-    client: AsyncClient, db: AsyncSession, fake: FakeAgent
-) -> None:
+async def _waiting_for_approval(client: AsyncClient, db: AsyncSession, fake: FakeAgent) -> Any:
     workflow_id, _ = await _published(client, db)
     fake.answers.append({"category": "refund", "urgent": True})
     run = await _start(client, workflow_id)
+    assert await _job(run["id"]) == {"outcome": "waiting"}
+    detail = (await client.get(f"/api/workflow-runs/{run['id']}")).json()
+    assert detail["status"] == "waiting"
+    assert (detail["steps"][-1]["node_id"], detail["steps"][-1]["status"]) == ("review", "waiting")
+    (request,) = (await client.get("/api/approvals")).json()["items"]
+    assert (request["kind"], request["source"], request["conversation_id"]) == (
+        "business",
+        "workflow",
+        None,
+    )
+    assert request["workflow_run_id"] == run["id"]
+    assert request["actions"][0]["args"]["title"] == "긴급 문의: refund"
+    assert request["actions"][0]["allowed_decisions"] == ["approve", "reject"]
+    return run, request
+
+
+async def _decide(client: AsyncClient, request: dict[str, Any], decision: str) -> Any:
+    return await client.post(
+        f"/api/approvals/{request['id']}/decision",
+        json={"decisions": [{"type": decision, "message": "확인함"}]},
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_approved_request_continues_the_run(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    run, request = await _waiting_for_approval(client, db, fake)
+    decided = await _decide(client, request, "approve")
+    assert decided.status_code == 200, decided.text
+    assert decided.json()["status"] == "approved"
+    assert (await _decide(client, request, "reject")).status_code == 409  # decided once
+    assert (await client.get(f"/api/workflow-runs/{run['id']}")).json()["status"] == "running"
+    assert await _job(run["id"]) == {"outcome": "completed"}
+    detail = (await client.get(f"/api/workflow-runs/{run['id']}")).json()
+    review = detail["steps"][3]
+    assert (review["branch"], review["output"]) == (
+        "approved",
+        {"decision": "approved", "comment": "확인함"},
+    )
+    assert detail["output"] == {"category": "refund", "note": "분류: refund"}
+    assert len(fake.calls) == 1  # the agent step is not run again after the wait
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_request_takes_the_rejected_branch(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    run, request = await _waiting_for_approval(client, db, fake)
+    assert (await _decide(client, request, "reject")).json()["status"] == "rejected"
     assert await _job(run["id"]) == {"outcome": "failed"}
     detail = (await client.get(f"/api/workflow-runs/{run['id']}")).json()
-    assert detail["error_code"] == "approval_unavailable"
-    assert detail["steps"][2]["branch"] == "true"
+    assert (detail["error_code"], detail["steps"][-1]["node_id"]) == ("workflow_fail_node", "fail")
+
+
+@pytest.mark.asyncio
+async def test_an_expired_request_rejects(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    from app.approvals import inbox
+    from app.models.approval_request import ApprovalRequest
+
+    run, request = await _waiting_for_approval(client, db, fake)
+    row = await db.get(ApprovalRequest, uuid.UUID(request["id"]))
+    assert row is not None
+    row.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    await db.commit()
+    assert await inbox.expire_due() == 1
+    await db.refresh(row)
+    assert (row.status, row.channel) == ("expired", "expiry")
+    assert await _job(run["id"]) == {"outcome": "failed"}
+    detail = (await client.get(f"/api/workflow-runs/{run['id']}")).json()
+    assert detail["steps"][3]["output"]["decision"] == "expired"
+
+
+@pytest.mark.asyncio
+async def test_canceling_a_waiting_run_cancels_its_request(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    run, request = await _waiting_for_approval(client, db, fake)
+    canceled = (await client.post(f"/api/workflow-runs/{run['id']}/cancel")).json()
+    assert canceled["status"] == "canceled" and canceled["steps"][-1]["status"] == "canceled"
+    assert (await client.get("/api/approvals")).json()["items"] == []
+    assert (await _decide(client, request, "approve")).status_code == 409
+    assert await _job(run["id"]) == {"outcome": "canceled"}
+
+
+@pytest.mark.asyncio
+async def test_another_person_cannot_decide_a_workflow_request(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    from app.models.approval_request import ApprovalRequest
+
+    _, request = await _waiting_for_approval(client, db, fake)
+    row = await db.get(ApprovalRequest, uuid.UUID(request["id"]))
+    assert row is not None
+    other = uuid.uuid4()
+    await seed_agent(db, user_id=other)
+    row.decider_user_id = other
+    await db.commit()
+    assert (await _decide(client, request, "approve")).status_code == 404
+    await db.refresh(row)
+    assert row.status == "pending"
 
 
 @pytest.mark.asyncio
@@ -430,3 +526,74 @@ def test_any_and_missing_paths() -> None:
     )
     assert evaluate(either, values)["value"] is True
     assert evaluate(_clause("eq", 1, "/missing"), values)["value"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_second_job_while_waiting_changes_nothing_and_decide_queues_one(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    from app.models.job import Job
+
+    run, request = await _waiting_for_approval(client, db, fake)
+    assert await _job(run["id"]) == {"outcome": "waiting"}
+    assert (await client.get(f"/api/workflow-runs/{run['id']}")).json()["status"] == "waiting"
+    await _decide(client, request, "approve")
+    keys = (
+        await db.scalars(sa.select(Job.idempotency_key).where(Job.type == "workflow.run"))
+    ).all()
+    assert sorted(keys) == sorted([run["id"], f"{run['id']}:{request['id']}"])
+
+
+@pytest.mark.asyncio
+async def test_concurrent_decisions_land_once(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    from app.approvals.service import ApprovalStale
+    from app.models.approval_request import ApprovalRequest
+    from app.workflows import approvals
+
+    _, request = await _waiting_for_approval(client, db, fake)
+    async with TestSession() as first, TestSession() as second:
+        row_a = await first.get(ApprovalRequest, uuid.UUID(request["id"]))
+        row_b = await second.get(ApprovalRequest, uuid.UUID(request["id"]))
+        assert row_a is not None and row_b is not None
+        await approvals.decide(
+            first, row_a, decision="approve", comment=None, actor_id=TEST_USER_ID
+        )
+        await first.commit()
+        with pytest.raises(ApprovalStale):
+            await approvals.decide(
+                second, row_b, decision="reject", comment=None, actor_id=TEST_USER_ID
+            )
+
+
+@pytest.mark.asyncio
+async def test_settle_leaves_a_step_that_no_longer_waits(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    from app.models.approval_request import ApprovalRequest
+    from app.workflows import approvals
+
+    run, request = await _waiting_for_approval(client, db, fake)
+    step = await db.scalar(sa.select(WorkflowStepRun).where(WorkflowStepRun.node_id == "review"))
+    row = await db.get(ApprovalRequest, uuid.UUID(request["id"]))
+    assert step is not None and row is not None
+    step.status = "canceled"
+    await db.commit()
+    await approvals.settle(db, row, decision="approve", comment=None)
+    await db.refresh(step)
+    assert (step.status, step.branch) == ("canceled", None)
+
+
+@pytest.mark.asyncio
+async def test_a_request_of_another_organization_is_not_found(
+    client: AsyncClient, db: AsyncSession, fake: FakeAgent
+) -> None:
+    from app.models.approval_request import ApprovalRequest
+
+    _, request = await _waiting_for_approval(client, db, fake)
+    row = await db.get(ApprovalRequest, uuid.UUID(request["id"]))
+    assert row is not None
+    row.org_id = uuid.uuid4()
+    await db.commit()
+    assert (await _decide(client, request, "approve")).status_code == 404
