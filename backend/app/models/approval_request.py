@@ -36,7 +36,10 @@ from app.database import Base
 from app.models.organization_base import Identity, Timestamps
 
 APPROVAL_STATUSES: Final = ("pending", "approved", "edited", "rejected", "expired", "canceled")
-APPROVAL_SOURCES: Final = ("chat", "trigger", "api", "subagent")
+APPROVAL_SOURCES: Final = ("chat", "trigger", "api", "subagent", "workflow")
+# ``tool``: a run paused before a tool call. ``business``: a workflow approval node (순번 23,
+# workflow-plan 3.4), which has no conversation run: it points at the waiting step instead.
+APPROVAL_KINDS: Final = ("tool", "business")
 APPROVAL_CHANNELS: Final = ("chat", "inbox", "expiry", "emergency_stop")
 _TABLE = "approval_requests"
 
@@ -48,6 +51,11 @@ def _in(column: str, values: tuple[str, ...]) -> str:
 STATUS_CHECK: Final = _in("status", APPROVAL_STATUSES)
 SOURCE_CHECK: Final = _in("source", APPROVAL_SOURCES)
 CHANNEL_CHECK: Final = "channel IS NULL OR " + _in("channel", APPROVAL_CHANNELS)
+KIND_CHECK: Final = _in("kind", APPROVAL_KINDS)
+SHAPE_CHECK: Final = (
+    "(kind = 'tool' AND conversation_id IS NOT NULL AND run_id IS NOT NULL) OR "
+    "(kind = 'business' AND workflow_step_run_id IS NOT NULL)"
+)
 
 
 class ApprovalRequest(Identity, Timestamps, Base):
@@ -58,6 +66,8 @@ class ApprovalRequest(Identity, Timestamps, Base):
         CheckConstraint(STATUS_CHECK, name="ck_approval_requests_status"),
         CheckConstraint(SOURCE_CHECK, name="ck_approval_requests_source"),
         CheckConstraint(CHANNEL_CHECK, name="ck_approval_requests_channel"),
+        CheckConstraint(KIND_CHECK, name="ck_approval_requests_kind"),
+        CheckConstraint(SHAPE_CHECK, name="ck_approval_requests_shape"),
         Index("ix_approval_requests_decider_status", "decider_user_id", "status"),
         Index("ix_approval_requests_status_expires", "status", "expires_at"),
         Index("ix_approval_requests_conversation", "conversation_id"),
@@ -66,14 +76,14 @@ class ApprovalRequest(Identity, Timestamps, Base):
         ForeignKey("tenants.id", ondelete="CASCADE", name="fk_approval_requests_tenant_id_tenants")
     )
     org_id: Mapped[UUID | None] = mapped_column(nullable=True)
-    conversation_id: Mapped[UUID] = mapped_column(
+    conversation_id: Mapped[UUID | None] = mapped_column(
         ForeignKey(
             "conversations.id",
             ondelete="CASCADE",
             name="fk_approval_requests_conversation_id_conversations",
         )
     )
-    run_id: Mapped[UUID] = mapped_column(
+    run_id: Mapped[UUID | None] = mapped_column(
         ForeignKey(
             "conversation_runs.id",
             ondelete="CASCADE",
@@ -81,6 +91,21 @@ class ApprovalRequest(Identity, Timestamps, Base):
         )
     )
     interrupt_id: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(20), default="tool", server_default="tool")
+    workflow_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "workflow_runs.id",
+            ondelete="CASCADE",
+            name="fk_approval_requests_workflow_run_id_workflow_runs",
+        )
+    )
+    workflow_step_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "workflow_step_runs.id",
+            ondelete="CASCADE",
+            name="fk_approval_requests_workflow_step_run_id_workflow_step_runs",
+        )
+    )
     namespace: Mapped[list[str]] = mapped_column(JSON, default=list)
     agent_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("agents.id", ondelete="SET NULL", name="fk_approval_requests_agent_id_agents")

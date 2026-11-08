@@ -7256,7 +7256,8 @@
       "chat": "Chat",
       "trigger": "Schedule",
       "api": "API",
-      "subagent": "Subagent"
+      "subagent": "Subagent",
+      "workflow": "Workflow"
     },
     "status": {
       "pending": "Waiting",

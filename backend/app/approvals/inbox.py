@@ -167,6 +167,10 @@ async def decide(
     if service.aware(row.expires_at) <= service.now():
         raise InboxError("approval_expired", "the approval request has expired")
     _check_decisions(row, decisions)
+    if row.kind == "business":
+        return await _decide_business(db, row, decisions, user=user, context=context)
+    if row.conversation_id is None:
+        raise InboxError("approval_not_found", "approval request not found", 404)
     conversation = await load_private_conversation(db, row.conversation_id, context)
     if conversation is None:  # access revoked, or another organization's request
         raise InboxError("approval_not_found", "approval request not found", 404)
@@ -191,6 +195,36 @@ async def decide(
     return row
 
 
+async def _decide_business(
+    db: AsyncSession,
+    row: ApprovalRequest,
+    decisions: Sequence[Mapping[str, Any]],
+    *,
+    user: CurrentUser,
+    context: OrgContext,
+) -> ApprovalRequest:
+    """A workflow approval node (순번 23): one decision, the run continues (no resume)."""
+    from app.workflows import approvals as workflow_approvals
+
+    if row.org_id != context.org_id or len(decisions) != 1:
+        raise InboxError("approval_not_found", "approval request not found", 404)
+    decision = decisions[0]
+    try:
+        await workflow_approvals.decide(
+            db,
+            row,
+            decision=str(decision.get("type")),
+            comment=decision.get("message"),
+            actor_id=user.id,
+        )
+    except service.ApprovalStale as exc:
+        await db.rollback()
+        raise InboxError("approval_stale", f"the approval request is already {exc.status}") from exc
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
 # --- expiry sweep and the "about to expire" notice ---------------------------------
 
 
@@ -200,7 +234,7 @@ class _Due:
     tenant_id: uuid.UUID
     org_id: uuid.UUID | None
     subject_user_id: uuid.UUID
-    conversation_id: uuid.UUID
+    conversation_id: uuid.UUID | None
 
 
 async def _due(kind: str) -> list[_Due]:
@@ -210,7 +244,7 @@ async def _due(kind: str) -> list[_Due]:
         )
         found = await db.execute(
             select(Conversation.id, Conversation.org_id).where(
-                Conversation.id.in_({row.conversation_id for row in rows})
+                Conversation.id.in_({r.conversation_id for r in rows if r.conversation_id})
             )
         )
         orgs: dict[uuid.UUID, uuid.UUID | None] = {cid: org for cid, org in found.tuples()}  # noqa: C416
@@ -218,7 +252,7 @@ async def _due(kind: str) -> list[_Due]:
             _Due(
                 r.id,
                 r.tenant_id,
-                orgs.get(r.conversation_id) or r.org_id,
+                (orgs.get(r.conversation_id) if r.conversation_id else None) or r.org_id,
                 r.subject_user_id,
                 r.conversation_id,
             )
@@ -241,11 +275,18 @@ async def _expire_one(due: _Due) -> None:
         row = await db.get(ApprovalRequest, due.id)
         if row is None or row.status != "pending":
             return
+        if row.kind == "business":
+            from app.workflows import approvals as workflow_approvals
+
+            await workflow_approvals.expire(db, row)
+            await db.commit()
+            return
         user = await _subject(db, due.subject_user_id)
         conversation: Conversation | None = None
         if user is not None:
             try:
-                conversation = await load_private_conversation(db, due.conversation_id, context)
+                if due.conversation_id is not None:
+                    conversation = await load_private_conversation(db, due.conversation_id, context)
             except AppError:  # the subject lost access meanwhile: nothing to resume
                 await db.rollback()
         rejections = [{"type": "reject", "message": EXPIRED_MESSAGE} for _ in row.actions]
@@ -269,7 +310,7 @@ async def _expire_one(due: _Due) -> None:
             logger.info("expired approval %s not resumed: %s", due.id, exc)
             await db.rollback()
         await db.refresh(row)
-        if row.status == "pending":  # nothing resumed: end the request on its own
+        if row.status == "pending" and row.run_id is not None:  # nothing resumed: end it
             await service.claim(
                 db,
                 service.Claim(

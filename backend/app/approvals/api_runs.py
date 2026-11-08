@@ -115,8 +115,8 @@ async def settle(
         if row is None or row.api_run_id is None:
             return
         api_run = await db.get(AgentApiRun, row.api_run_id, with_for_update=True)
-        if api_run is None or api_run.status != WAITING:
-            return
+        if api_run is None or api_run.status != WAITING or row.conversation_id is None:
+            return  # an API run only waits on tool requests, which always have a conversation
         if row.status == "expired":
             _fail(api_run, EXPIRED_CODE, "the approval request expired")
         elif status == "completed":

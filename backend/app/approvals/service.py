@@ -313,6 +313,57 @@ async def claim(db: AsyncSession, request: Claim) -> list[ApprovalRequest]:
     return rows
 
 
+async def audit_requested(db: AsyncSession, row: ApprovalRequest) -> None:
+    """The request's creation audit, for rows recorded outside ``record_pending``."""
+    await _audit(db, row, APPROVAL_REQUESTED, outcome="success", actor_type="system")
+
+
+async def claim_business(
+    db: AsyncSession,
+    row: ApprovalRequest,
+    *,
+    decision: str,
+    channel: str,
+    actor_id: uuid.UUID | None,
+) -> ApprovalRequest:
+    """``claim`` for a workflow approval node (no run to resume): one compare-and-set."""
+    stamp = now()
+    expiry = channel == "expiry"
+    status = "expired" if expiry else _status_for([decision])
+    guard = [ApprovalRequest.id == row.id, ApprovalRequest.status == "pending"]
+    if not expiry:
+        guard.append(ApprovalRequest.expires_at > stamp)
+    result = await db.execute(
+        update(ApprovalRequest)
+        .where(*guard)
+        .values(
+            status=status,
+            channel=channel,
+            decided_by=actor_id,
+            decided_at=stamp,
+            decisions=[decision],
+            decision_no=ApprovalRequest.decision_no + 1,
+            reason=_REASONS.get(channel),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    await db.refresh(row)
+    if result.rowcount != 1:  # type: ignore[attr-defined]
+        current = row.status
+        if current == "pending" and aware(row.expires_at) <= stamp:
+            current = "expired"
+        raise ApprovalStale(current)
+    action = APPROVAL_EXPIRED if status == "expired" else APPROVAL_DECIDED
+    await _audit(
+        db,
+        row,
+        action,
+        outcome="denied" if status in {"rejected", "expired"} else "success",
+        actor_type="user" if actor_id else "system",
+    )
+    return row
+
+
 async def due_for_expiry(db: AsyncSession, *, limit: int = 100) -> list[ApprovalRequest]:
     return list(
         (
