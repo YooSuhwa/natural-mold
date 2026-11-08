@@ -105,6 +105,10 @@ MEMORY_VECTOR_MODEL_UPDATE: Final = "memory.vector_model_update"
 # 5.6: one consolidation run (counts only); Q9: the company memory policy changed.
 MEMORY_CONSOLIDATION_RUN: Final = "memory.consolidation_run"
 MEMORY_TENANT_POLICY_UPDATE: Final = "memory.tenant_policy_update"
+# 순번 23 workflows (workflow-plan 3.6): created, a version published, archived.
+WORKFLOW_CREATE: Final = "workflow.create"
+WORKFLOW_PUBLISH: Final = "workflow.publish"
+WORKFLOW_ARCHIVE: Final = "workflow.archive"
 # H-01 access requests (14.1 "요청"); expiry is a status change, not an audit action.
 ACCESS_REQUEST_CREATE: Final = "access_request.create"
 ACCESS_REQUEST_APPROVE: Final = "access_request.approve"

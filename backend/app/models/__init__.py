@@ -104,6 +104,7 @@ from app.models.tenant_purge import TenantPurge
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
+from app.models.workflow import Workflow, WorkflowVersion
 
 __all__ = [
     "AgentGuardrailBinding",
@@ -210,4 +211,6 @@ __all__ = [
     "Tool",
     "UserMemorySettings",
     "User",
+    "Workflow",
+    "WorkflowVersion",
 ]

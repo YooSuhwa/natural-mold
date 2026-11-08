@@ -25358,6 +25358,426 @@
         ]
       }
     },
+    "/api/workflows": {
+      "get": {
+        "operationId": "list_workflows_api_workflows_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowSummary"
+                  },
+                  "title": "Response List Workflows Api Workflows Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Workflows",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "post": {
+        "operationId": "create_workflow_api_workflows_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}": {
+      "get": {
+        "operationId": "get_workflow_api_workflows__workflow_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/archive": {
+      "post": {
+        "operationId": "archive_workflow_api_workflows__workflow_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/draft": {
+      "put": {
+        "operationId": "save_draft_api_workflows__workflow_id__draft_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDraftUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Draft",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/issues": {
+      "get": {
+        "operationId": "check_workflow_api_workflows__workflow_id__issues_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowIssues"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/publish": {
+      "post": {
+        "operationId": "publish_workflow_api_workflows__workflow_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowPublish"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowVersionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/versions": {
+      "get": {
+        "operationId": "list_versions_api_workflows__workflow_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowVersionSummary"
+                  },
+                  "title": "Response List Versions Api Workflows  Workflow Id  Versions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Versions",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflows/{workflow_id}/versions/{version_no}": {
+      "get": {
+        "operationId": "get_version_api_workflows__workflow_id__versions__version_no__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_no",
+            "required": true,
+            "schema": {
+              "title": "Version No",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowVersionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Version",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
     "/auth/callback/{connection_id}": {
       "get": {
         "operationId": "sso_callback_auth_callback__connection_id__get",
@@ -55797,6 +56217,390 @@
         "live"
       ],
       "title": "WorkerOut",
+      "type": "object"
+    },
+    "WorkflowCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "WorkflowCreate",
+      "type": "object"
+    },
+    "WorkflowDetail": {
+      "properties": {
+        "archived_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Archived At"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "draft_definition": {
+          "additionalProperties": true,
+          "title": "Draft Definition",
+          "type": "object"
+        },
+        "draft_revision": {
+          "title": "Draft Revision",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "published_version_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published Version No"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "draft_revision",
+        "published_version_no",
+        "archived_at",
+        "created_at",
+        "updated_at",
+        "draft_definition"
+      ],
+      "title": "WorkflowDetail",
+      "type": "object"
+    },
+    "WorkflowDraftUpdate": {
+      "additionalProperties": false,
+      "description": "``revision`` is the draft revision the edit started from (409 when stale).",
+      "properties": {
+        "definition": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Definition"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "revision": {
+          "minimum": 1.0,
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "revision"
+      ],
+      "title": "WorkflowDraftUpdate",
+      "type": "object"
+    },
+    "WorkflowIssue": {
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Node Id"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "WorkflowIssue",
+      "type": "object"
+    },
+    "WorkflowIssues": {
+      "properties": {
+        "draft_revision": {
+          "title": "Draft Revision",
+          "type": "integer"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/components/schemas/WorkflowIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        }
+      },
+      "required": [
+        "draft_revision",
+        "issues"
+      ],
+      "title": "WorkflowIssues",
+      "type": "object"
+    },
+    "WorkflowPublish": {
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "minimum": 1.0,
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "revision"
+      ],
+      "title": "WorkflowPublish",
+      "type": "object"
+    },
+    "WorkflowSummary": {
+      "properties": {
+        "archived_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Archived At"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "draft_revision": {
+          "title": "Draft Revision",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "published_version_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published Version No"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "draft_revision",
+        "published_version_no",
+        "archived_at",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "WorkflowSummary",
+      "type": "object"
+    },
+    "WorkflowVersionDetail": {
+      "properties": {
+        "agent_pins": {
+          "additionalProperties": true,
+          "title": "Agent Pins",
+          "type": "object"
+        },
+        "definition": {
+          "additionalProperties": true,
+          "title": "Definition",
+          "type": "object"
+        },
+        "definition_hash": {
+          "title": "Definition Hash",
+          "type": "string"
+        },
+        "published_at": {
+          "format": "date-time",
+          "title": "Published At",
+          "type": "string"
+        },
+        "published_by": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published By"
+        },
+        "version_no": {
+          "title": "Version No",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version_no",
+        "definition_hash",
+        "published_by",
+        "published_at",
+        "definition",
+        "agent_pins"
+      ],
+      "title": "WorkflowVersionDetail",
+      "type": "object"
+    },
+    "WorkflowVersionSummary": {
+      "properties": {
+        "definition_hash": {
+          "title": "Definition Hash",
+          "type": "string"
+        },
+        "published_at": {
+          "format": "date-time",
+          "title": "Published At",
+          "type": "string"
+        },
+        "published_by": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published By"
+        },
+        "version_no": {
+          "title": "Version No",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version_no",
+        "definition_hash",
+        "published_by",
+        "published_at"
+      ],
+      "title": "WorkflowVersionSummary",
       "type": "object"
     },
     "app__models__conversation_run_input__JsonValue-Input": {
