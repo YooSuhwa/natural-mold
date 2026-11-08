@@ -596,6 +596,12 @@
           "default": "none",
           "kind": "keyword_only",
           "name": "memory_search_scopes"
+        },
+        {
+          "annotation": "dict[str, Any] | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "output_schema"
         }
       ],
       "return": "None"
@@ -1168,6 +1174,12 @@
           "default": "none",
           "kind": "keyword_only",
           "name": "unattended"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "response_format"
         }
       ],
       "return": "Any"
