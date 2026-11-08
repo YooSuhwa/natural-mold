@@ -7518,6 +7518,46 @@
         "string_list": "텍스트 목록"
       }
     },
+    "versions": {
+      "open": "버전 기록",
+      "title": "{name} 버전 기록",
+      "description": "게시한 버전을 비교하고, 필요하면 초안을 그 버전으로 되돌립니다.",
+      "backToEditor": "설계로 돌아가기",
+      "list": "게시한 버전",
+      "versionNo": "v{version}",
+      "live": "게시 중",
+      "empty": "아직 게시한 버전이 없어요",
+      "emptyHint": "설계 화면에서 게시하면 여기에 버전이 쌓입니다.",
+      "compare": "버전 비교",
+      "compareWith": "비교 기준",
+      "mode": {
+        "previous": "이전 버전과 비교",
+        "draft": "현재 초안과 비교"
+      },
+      "previousHint": "v{previous}에서 v{version}으로 바뀐 점입니다.",
+      "firstHint": "첫 버전이라 모든 단계가 새로 추가된 것으로 보입니다.",
+      "draftHint": "초안을 v{version}으로 되돌리면 이렇게 바뀝니다.",
+      "summary": "바뀐 단계 수",
+      "count": {
+        "added": "추가 {count}",
+        "removed": "삭제 {count}",
+        "changed": "변경 {count}"
+      },
+      "status": {
+        "added": "추가",
+        "removed": "삭제",
+        "changed": "변경"
+      },
+      "changes": "바뀐 단계",
+      "noChanges": "바뀐 단계가 없어요.",
+      "inputsChanged": "실행 입력이 바뀌었어요",
+      "restore": "이 버전으로 되돌리기",
+      "restoreTitle": "초안을 v{version}으로 되돌릴까요?",
+      "restoreDescription": "지금 초안이 이 버전의 내용으로 바뀝니다. 게시된 버전은 그대로이고, 다시 게시해야 실행에 반영됩니다. 설계 화면의 실행 취소로는 되돌릴 수 없으니, 지금 초안을 남기려면 먼저 게시해 두세요.",
+      "restored": "초안을 v{version}으로 되돌렸어요.",
+      "restoreConflict": "다른 곳에서 초안이 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요.",
+      "restoreFailed": "되돌리지 못했어요."
+    },
     "runs": {
       "open": "실행 기록",
       "listTitle": "{name} 실행 기록",

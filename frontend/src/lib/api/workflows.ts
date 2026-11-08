@@ -29,6 +29,7 @@ export const workflowsApi = {
       method: 'POST',
       body: JSON.stringify({ revision }),
     }),
+  versions: (id: string) => apiFetch<WorkflowVersionSummary[]>(`${path(id)}/versions`),
   version: (id: string, versionNo: number) =>
     apiFetch<WorkflowVersionDetail>(`${path(id)}/versions/${versionNo}`),
   startRun: (id: string, inputs: Record<string, unknown>) =>

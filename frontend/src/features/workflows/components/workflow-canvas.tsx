@@ -9,6 +9,7 @@ import type { EdgeWhen, WorkflowDefinition, WorkflowEdge } from '@/lib/types/wor
 
 import { freeExits } from '../lib/editor-commands'
 import { layout, NODE_HEIGHT, NODE_WIDTH } from '../lib/layout'
+import { edgeKey, type DiffStatus } from '../lib/version-diff'
 import { WorkflowEdgeLine, type WorkflowFlowEdge } from './workflow-edge'
 import { handleId, WorkflowNodeCard, type WorkflowFlowNode } from './workflow-node'
 
@@ -22,8 +23,11 @@ export interface CanvasProps {
   issueCounts: Map<string, number>
   selectedId: string | null
   onSelect: (nodeId: string | null) => void
-  onInsert: (edge: WorkflowEdge) => void
-  onAddAfter: (nodeId: string, when: EdgeWhen | null) => void
+  /** Without these the canvas is read only (the version comparison): no "+" buttons. */
+  onInsert?: (edge: WorkflowEdge) => void
+  onAddAfter?: (nodeId: string, when: EdgeWhen | null) => void
+  /** Colours each node and connection by how it differs from the compared version. */
+  diff?: { nodes: Map<string, DiffStatus>; edges: Map<string, DiffStatus> }
 }
 
 /** Auto-laid-out canvas (Q7): nodes are not dragged, the layout is the reading order. */
@@ -38,6 +42,7 @@ export function WorkflowCanvas(props: CanvasProps) {
     onSelect,
     onInsert,
     onAddAfter,
+    diff,
   } = props
   const nodes = useMemo<WorkflowFlowNode[]>(() => {
     const placed = layout(definition)
@@ -56,24 +61,29 @@ export function WorkflowCanvas(props: CanvasProps) {
           showDetail,
           issueCount: issueCounts.get(node.id) ?? 0,
           selected: node.id === selectedId,
-          freeExits: freeExits(definition, node.id),
+          freeExits: onAddAfter ? freeExits(definition, node.id) : [],
           onAddAfter,
+          diff: diff?.nodes.get(node.id),
         },
       }
     })
-  }, [definition, titleOf, showDetail, issueCounts, selectedId, onAddAfter])
+  }, [definition, titleOf, showDetail, issueCounts, selectedId, onAddAfter, diff])
   const edges = useMemo<WorkflowFlowEdge[]>(
     () =>
-      definition.edges.map((edge) => ({
-        id: `${edge.from}:${edge.when ?? 'next'}:${edge.to}`,
-        source: edge.from,
-        sourceHandle: handleId(edge.when ?? null),
-        target: edge.to,
-        type: 'workflow',
-        markerEnd: { type: MarkerType.ArrowClosed },
-        data: { edge, onInsert },
-      })),
-    [definition, onInsert],
+      definition.edges.map((edge) => {
+        const status = diff?.edges.get(edgeKey(edge))
+        return {
+          id: edgeKey(edge),
+          source: edge.from,
+          sourceHandle: handleId(edge.when ?? null),
+          target: edge.to,
+          type: 'workflow',
+          className: status && status !== 'same' ? `moldy-flow-diff-${status}` : undefined,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          data: onInsert ? { edge, onInsert } : undefined,
+        }
+      }),
+    [definition, onInsert, diff],
   )
   return (
     <ReactFlow
@@ -87,6 +97,9 @@ export function WorkflowCanvas(props: CanvasProps) {
       nodesConnectable={false}
       fitView
       fitViewOptions={{ padding: 0.25 }}
+      // Below the 0.5 default so a long workflow still fits (the version comparison
+      // draws the base's removed steps too).
+      minZoom={0.2}
       proOptions={{ hideAttribution: true }}
       onNodeClick={(_, node) => onSelect(node.id)}
       onPaneClick={() => onSelect(null)}

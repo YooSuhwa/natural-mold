@@ -51,6 +51,14 @@ export function usePublishWorkflow(id: string) {
   })
 }
 
+/** Published versions, newest first; a publish refreshes them (it invalidates ``all``). */
+export function useWorkflowVersions(id: string) {
+  return useQuery({
+    queryKey: workflowQueryKeys.versions(id),
+    queryFn: () => workflowsApi.versions(id),
+  })
+}
+
 /** A published version (immutable: it never goes stale). */
 export function useWorkflowVersion(id: string, versionNo: number | null | undefined) {
   return useQuery({

@@ -6,7 +6,7 @@
  * row are ordered by the average column of their parents (branches stay under the node
  * they came from), then spread around the centre.
  */
-import type { WorkflowDefinition } from '@/lib/types/workflow'
+import type { EdgeWhen, WorkflowDefinition } from '@/lib/types/workflow'
 
 export interface Placed {
   id: string
@@ -18,16 +18,34 @@ export interface Placed {
 export const NODE_WIDTH = 240
 export const NODE_HEIGHT = 84
 const COLUMN_GAP = 56
-const ROW_GAP = 72
+export const ROW_GAP = 72
+
+/**
+ * Where an exit leaves its card: a two-way node has its "yes/approved" handle on the left
+ * and "no/rejected" on the right, so its children are anchored half a column to that side.
+ * Without it both children share the parent's column and keep definition order (a "no"
+ * child listed first lands on the left, its line crossing the "yes" one), and a lone "yes"
+ * child sits right under the node, so a "no" line that skips down to a later row runs
+ * behind that child's card.
+ */
+const EXIT_OFFSET: Record<EdgeWhen | 'next', number> = {
+  next: 0,
+  true: -0.5,
+  approved: -0.5,
+  false: 0.5,
+  rejected: 0.5,
+}
 
 export function layout(definition: WorkflowDefinition): Map<string, Placed> {
   const ids = definition.nodes.map((node) => node.id)
   const known = new Set(ids)
   const edges = definition.edges.filter((edge) => known.has(edge.from) && known.has(edge.to))
   const parents = new Map<string, string[]>(ids.map((id) => [id, []]))
+  const exits = new Map<string, number[]>(ids.map((id) => [id, []]))
   const children = new Map<string, string[]>(ids.map((id) => [id, []]))
   for (const edge of edges) {
     parents.get(edge.to)?.push(edge.from)
+    exits.get(edge.to)?.push(EXIT_OFFSET[edge.when ?? 'next'])
     children.get(edge.from)?.push(edge.to)
   }
 
@@ -57,8 +75,12 @@ export function layout(definition: WorkflowDefinition): Map<string, Placed> {
   for (const r of [...rows.keys()].sort((a, b) => a - b)) {
     const members = rows.get(r) ?? []
     const keyed = members.map((id, index) => {
+      const offsets = exits.get(id) ?? []
       const cols = (parents.get(id) ?? [])
-        .map((parent) => column.get(parent))
+        .map((parent, at) => {
+          const col = column.get(parent)
+          return col === undefined ? undefined : col + (offsets[at] ?? 0)
+        })
         .filter((value): value is number => value !== undefined)
       const anchor = cols.length ? cols.reduce((a, b) => a + b, 0) / cols.length : index
       return { id, anchor, index }

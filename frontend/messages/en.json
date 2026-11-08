@@ -7518,6 +7518,46 @@
         "string_list": "Text list"
       }
     },
+    "versions": {
+      "open": "Versions",
+      "title": "{name} versions",
+      "description": "Compare published versions and, if needed, restore the draft to one.",
+      "backToEditor": "Back to design",
+      "list": "Published versions",
+      "versionNo": "v{version}",
+      "live": "Live",
+      "empty": "No published versions yet",
+      "emptyHint": "Versions appear here when you publish from the design screen.",
+      "compare": "Version comparison",
+      "compareWith": "Compare with",
+      "mode": {
+        "previous": "Previous version",
+        "draft": "Current draft"
+      },
+      "previousHint": "What changed from v{previous} to v{version}.",
+      "firstHint": "This is the first version, so every step shows as added.",
+      "draftHint": "What the draft becomes if you restore v{version}.",
+      "summary": "Changed steps",
+      "count": {
+        "added": "Added {count}",
+        "removed": "Removed {count}",
+        "changed": "Changed {count}"
+      },
+      "status": {
+        "added": "Added",
+        "removed": "Removed",
+        "changed": "Changed"
+      },
+      "changes": "Changed steps",
+      "noChanges": "No steps changed.",
+      "inputsChanged": "Run inputs changed",
+      "restore": "Restore this version",
+      "restoreTitle": "Restore the draft to v{version}?",
+      "restoreDescription": "The current draft is replaced with this version. Published versions stay as they are; publish again for runs to use it. This can't be undone from the design screen, so publish first if you need to keep the draft.",
+      "restored": "Draft restored to v{version}.",
+      "restoreConflict": "The draft changed elsewhere. Refresh and try again.",
+      "restoreFailed": "Couldn't restore the draft."
+    },
     "runs": {
       "open": "Runs",
       "listTitle": "{name} runs",

@@ -15,7 +15,7 @@ import {
   startHistory,
   undo,
 } from '../editor-commands'
-import { layout, readingOrder } from '../layout'
+import { layout, NODE_WIDTH, readingOrder } from '../layout'
 
 const base = (): WorkflowDefinition => ({
   schema_version: 'moldy.workflow.v1',
@@ -91,6 +91,53 @@ describe('layout', () => {
     expect(placed.get('f')?.row).toBe(2)
     expect(placed.get('start')?.x).toBe(placed.get('d')?.x)
     expect(readingOrder(definition).slice(0, 2)).toEqual(['start', 'd'])
+  })
+
+  it('puts a "no" branch on the right of a "yes" branch, whatever the definition order', () => {
+    const definition: WorkflowDefinition = {
+      ...base(),
+      nodes: [
+        { id: 'start', type: 'start' },
+        { id: 'd', type: 'decision_bool', condition: { all: [] } },
+        { id: 'no', type: 'fail', reason: 'no' },
+        { id: 'yes', type: 'output', fields: {} },
+      ],
+      edges: [
+        { from: 'start', to: 'd', when: null },
+        { from: 'd', to: 'no', when: 'false' },
+        { from: 'd', to: 'yes', when: 'true' },
+      ],
+    }
+    const placed = layout(definition)
+    expect(placed.get('yes')?.x).toBeLessThan(placed.get('no')?.x ?? 0)
+    // Still centred under the decision.
+    const centre = ((placed.get('yes')?.x ?? 0) + (placed.get('no')?.x ?? 0)) / 2
+    expect(centre).toBe(placed.get('d')?.x)
+  })
+
+  it('moves a lone "yes" child aside so a "no" line skipping down clears its card', () => {
+    const definition: WorkflowDefinition = {
+      ...base(),
+      nodes: [
+        { id: 'start', type: 'start' },
+        { id: 'd', type: 'decision_bool', condition: { all: [] } },
+        { id: 'review', type: 'approval', title: [], body: [] },
+        { id: 'done', type: 'output', fields: {} },
+      ],
+      edges: [
+        { from: 'start', to: 'd', when: null },
+        { from: 'd', to: 'review', when: 'true' },
+        { from: 'd', to: 'done', when: 'false' },
+        { from: 'review', to: 'done', when: 'approved' },
+      ],
+    }
+    const placed = layout(definition)
+    const d = placed.get('d')?.x ?? 0
+    const review = placed.get('review')?.x ?? 0
+    // Positions are card corners. The "no" handle sits at three quarters of the card and
+    // its line drops straight down past the "yes" card, with room to spare.
+    const noLine = d + (NODE_WIDTH * 3) / 4
+    expect(noLine - (review + NODE_WIDTH)).toBeGreaterThanOrEqual(48)
   })
 
   it('survives a cycle in a draft', () => {
