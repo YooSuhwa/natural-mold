@@ -50,3 +50,19 @@ export function usePublishWorkflow(id: string) {
     onSettled: () => qc.invalidateQueries({ queryKey: workflowQueryKeys.all }),
   })
 }
+
+/** A published version (immutable: it never goes stale). */
+export function useWorkflowVersion(id: string, versionNo: number | null | undefined) {
+  return useQuery({
+    queryKey: workflowQueryKeys.version(id, versionNo ?? 0),
+    queryFn: () => workflowsApi.version(id, versionNo ?? 0),
+    enabled: !!versionNo,
+    staleTime: Infinity,
+  })
+}
+
+export function useStartWorkflowRun(id: string) {
+  return useMutation({
+    mutationFn: (inputs: Record<string, unknown>) => workflowsApi.startRun(id, inputs),
+  })
+}

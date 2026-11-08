@@ -17,7 +17,8 @@ const EDGE_TYPES = { workflow: WorkflowEdgeLine }
 
 export interface CanvasProps {
   definition: WorkflowDefinition
-  titleOf: (nodeId: string) => { title: string; subtitle: string }
+  titleOf: (nodeId: string) => { title: string; subtitle: string; detail: string }
+  showDetail: boolean
   issueCounts: Map<string, number>
   selectedId: string | null
   onSelect: (nodeId: string | null) => void
@@ -28,7 +29,16 @@ export interface CanvasProps {
 /** Auto-laid-out canvas (Q7): nodes are not dragged, the layout is the reading order. */
 export function WorkflowCanvas(props: CanvasProps) {
   const colorMode = useFlowColorMode()
-  const { definition, titleOf, issueCounts, selectedId, onSelect, onInsert, onAddAfter } = props
+  const {
+    definition,
+    titleOf,
+    showDetail,
+    issueCounts,
+    selectedId,
+    onSelect,
+    onInsert,
+    onAddAfter,
+  } = props
   const nodes = useMemo<WorkflowFlowNode[]>(() => {
     const placed = layout(definition)
     return definition.nodes.map((node) => {
@@ -43,6 +53,7 @@ export function WorkflowCanvas(props: CanvasProps) {
         data: {
           type: node.type,
           ...titleOf(node.id),
+          showDetail,
           issueCount: issueCounts.get(node.id) ?? 0,
           selected: node.id === selectedId,
           freeExits: freeExits(definition, node.id),
@@ -50,7 +61,7 @@ export function WorkflowCanvas(props: CanvasProps) {
         },
       }
     })
-  }, [definition, titleOf, issueCounts, selectedId, onAddAfter])
+  }, [definition, titleOf, showDetail, issueCounts, selectedId, onAddAfter])
   const edges = useMemo<WorkflowFlowEdge[]>(
     () =>
       definition.edges.map((edge) => ({

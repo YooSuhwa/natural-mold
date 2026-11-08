@@ -15,6 +15,9 @@ export type WorkflowNodeData = {
   type: WorkflowNodeType
   title: string
   subtitle: string
+  /** The data contract line (outputs, the rule, the wait); shown when the toggle is on. */
+  detail: string
+  showDetail: boolean
   issueCount: number
   selected: boolean
   freeExits: (EdgeWhen | null)[]
@@ -22,6 +25,17 @@ export type WorkflowNodeData = {
 }
 
 export type WorkflowFlowNode = Node<WorkflowNodeData, 'workflow'>
+
+/** The short kind marker on a card (appendix D): IN, A, IF, ✓, FX, OUT, X. */
+export const KIND_TAG: Record<WorkflowNodeType, string> = {
+  start: 'IN',
+  agent: 'A',
+  decision_bool: 'IF',
+  approval: '✓',
+  transform: 'FX',
+  output: 'OUT',
+  fail: 'X',
+}
 
 export function handleId(when: EdgeWhen | null): string {
   return when ?? 'next'
@@ -42,15 +56,21 @@ export function WorkflowNodeCard({ id, data }: NodeProps<WorkflowFlowNode>) {
       data-testid={`workflow-node-${id}`}
     >
       {data.type !== 'start' ? <Handle type="target" position={Position.Top} /> : null}
-      <span className="moldy-status-icon flex size-8 shrink-0 items-center justify-center">
-        <Icon className="size-4" aria-hidden />
+      <span className="moldy-status-icon flex size-8 shrink-0 flex-col items-center justify-center">
+        <Icon className="size-3.5" aria-hidden />
+        <span className="text-xs leading-none font-semibold">{KIND_TAG[data.type]}</span>
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{data.title}</span>
         <span className="block truncate text-xs text-muted-foreground">{data.subtitle}</span>
+        {data.showDetail && data.detail ? (
+          <span className="block truncate font-mono text-xs text-muted-foreground">
+            {data.detail}
+          </span>
+        ) : null}
       </span>
       {data.issueCount > 0 ? (
-        <span className="moldy-status-danger moldy-status-pill shrink-0 text-xs">
+        <span className="moldy-status-surface moldy-status-danger rounded-full px-2 py-0.5 shrink-0 text-xs">
           {data.issueCount}
         </span>
       ) : null}

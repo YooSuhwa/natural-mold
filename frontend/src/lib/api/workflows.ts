@@ -3,7 +3,9 @@ import type {
   WorkflowDefinition,
   WorkflowDetail,
   WorkflowIssues,
+  WorkflowRunSummary,
   WorkflowSummary,
+  WorkflowVersionDetail,
   WorkflowVersionSummary,
 } from '@/lib/types/workflow'
 
@@ -24,6 +26,13 @@ export const workflowsApi = {
     apiFetch<WorkflowVersionSummary>(`${path(id)}/publish`, {
       method: 'POST',
       body: JSON.stringify({ revision }),
+    }),
+  version: (id: string, versionNo: number) =>
+    apiFetch<WorkflowVersionDetail>(`${path(id)}/versions/${versionNo}`),
+  startRun: (id: string, inputs: Record<string, unknown>) =>
+    apiFetch<WorkflowRunSummary>(`${path(id)}/runs`, {
+      method: 'POST',
+      body: JSON.stringify({ inputs }),
     }),
   archive: (id: string) => apiFetch<WorkflowDetail>(`${path(id)}/archive`, { method: 'POST' }),
 }

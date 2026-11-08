@@ -111,3 +111,31 @@ export interface WorkflowVersionSummary {
   published_by: string | null
   published_at: string
 }
+
+export interface WorkflowVersionDetail extends WorkflowVersionSummary {
+  definition: WorkflowDefinition
+  agent_pins: Record<string, { agent_id: string; fingerprint: string }>
+}
+
+export type WorkflowRunStatus =
+  | 'queued'
+  | 'running'
+  | 'waiting'
+  | 'unknown'
+  | 'completed'
+  | 'failed'
+  | 'canceling'
+  | 'canceled'
+
+export interface WorkflowRunSummary {
+  id: string
+  workflow_id: string
+  version_id: string
+  status: WorkflowRunStatus
+  error_code: string | null
+  error_message: string | null
+  current_node: string | null
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+}

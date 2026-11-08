@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PlusIcon, WorkflowIcon } from 'lucide-react'
-import { useFormatter, useTranslations } from 'next-intl'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { DialogShell } from '@/components/shared/dialog-shell'
@@ -16,13 +16,18 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ApiError } from '@/lib/api/client'
 import { useCreateWorkflow, useWorkflows } from '@/lib/hooks/use-workflows'
 import { getResourceTone } from '@/lib/resource-tones'
+import { formatDisplayDateTime } from '@/lib/utils/display-format'
 
 export function WorkflowsPageClient() {
   const t = useTranslations('workflows')
-  const format = useFormatter()
   const router = useRouter()
   const workflows = useWorkflows()
   const [creating, setCreating] = useState(false)
+  const [query, setQuery] = useState('')
+  const needle = query.trim().toLowerCase()
+  const shown = (workflows.data ?? []).filter((workflow) =>
+    `${workflow.name} ${workflow.description ?? ''}`.toLowerCase().includes(needle),
+  )
   const tone = getResourceTone('violet')
   return (
     <PageShell
@@ -40,34 +45,51 @@ export function WorkflowsPageClient() {
       {workflows.isPending ? (
         <Skeleton className="h-32 w-full" />
       ) : workflows.data && workflows.data.length > 0 ? (
-        <ResourceGrid>
-          {workflows.data.map((workflow) => (
-            <ResourceListCard
-              key={workflow.id}
-              as="button"
-              tone={tone}
-              onClick={() => router.push(`/workflows/${workflow.id}`)}
-            >
-              <ResourceListCard.Header>
-                <WorkflowIcon className="size-4" aria-hidden />
-              </ResourceListCard.Header>
-              <ResourceListCard.Title>{workflow.name}</ResourceListCard.Title>
-              {workflow.description ? (
-                <ResourceListCard.Description>{workflow.description}</ResourceListCard.Description>
-              ) : null}
-              <ResourceListCard.MetaRow>
-                <span>
-                  {workflow.published_version_no
-                    ? t('published', { version: workflow.published_version_no })
-                    : t('draft')}
-                </span>
-                <span>
-                  {t('updated', { time: format.relativeTime(new Date(workflow.updated_at)) })}
-                </span>
-              </ResourceListCard.MetaRow>
-            </ResourceListCard>
-          ))}
-        </ResourceGrid>
+        <div className="flex flex-col gap-4">
+          <Input
+            className="max-w-sm"
+            value={query}
+            placeholder={t('search')}
+            aria-label={t('search')}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <ResourceGrid>
+            {shown.map((workflow) => (
+              <ResourceListCard
+                key={workflow.id}
+                as="button"
+                tone={tone}
+                onClick={() => router.push(`/workflows/${workflow.id}`)}
+              >
+                <ResourceListCard.Header>
+                  <WorkflowIcon className="size-4" aria-hidden />
+                </ResourceListCard.Header>
+                <ResourceListCard.Title>{workflow.name}</ResourceListCard.Title>
+                {workflow.description ? (
+                  <ResourceListCard.Description>
+                    {workflow.description}
+                  </ResourceListCard.Description>
+                ) : null}
+                <ResourceListCard.StatusRow>
+                  <span
+                    className={
+                      workflow.published_version_no
+                        ? 'moldy-status-surface moldy-status-success rounded-full px-2 py-0.5 text-xs'
+                        : 'moldy-status-surface moldy-status-warn rounded-full px-2 py-0.5 text-xs'
+                    }
+                  >
+                    {workflow.published_version_no
+                      ? t('published', { version: workflow.published_version_no })
+                      : t('draft')}
+                  </span>
+                </ResourceListCard.StatusRow>
+                <ResourceListCard.MetaRow>
+                  <span>{t('updated', { time: formatDisplayDateTime(workflow.updated_at) })}</span>
+                </ResourceListCard.MetaRow>
+              </ResourceListCard>
+            ))}
+          </ResourceGrid>
+        </div>
       ) : (
         <EmptyState title={t('empty')} description={t('emptyHint')} />
       )}
