@@ -53,7 +53,7 @@ from app.workflows.definition import (
     WorkflowInput,
 )
 from app.workflows.pins import agent_fingerprints
-from app.workflows.service import agent_issues, get_workflow, parse_definition
+from app.workflows.service import agent_issues, agent_node_issues, get_workflow, parse_definition
 from app.workflows.values import agent_prompt, evaluate, field_value, render
 
 logger = logging.getLogger(__name__)
@@ -62,6 +62,7 @@ RUN_JOB: Final = "workflow.run"
 RUN_STARTED: Final = audit_actions.WORKFLOW_RUN_START
 RUN_FINISHED: Final = audit_actions.WORKFLOW_RUN_FINISH
 RUN_CANCELED: Final = audit_actions.WORKFLOW_RUN_CANCEL
+STEP_UNKNOWN: Final = audit_actions.WORKFLOW_STEP_UNKNOWN
 
 
 def run_not_found() -> NotFoundError:
@@ -225,7 +226,8 @@ async def cancel_run(db: AsyncSession, context: OrgContext, run_id: uuid.UUID) -
         return run
     run.cancel_requested = True
     await workflow_approvals.cancel_for_run(db, run)
-    if run.status in ("queued", "waiting"):
+    # Nothing is in flight while it waits for a decision (or for the unknown-step check).
+    if run.status in ("queued", "waiting", "unknown"):
         for step in await list_steps(db, run):
             if step.status == "waiting":
                 step.status, step.finished_at = "canceled", _now()
@@ -293,6 +295,42 @@ async def _audit_finish(db: AsyncSession, run: WorkflowRun) -> None:
     )
 
 
+async def fail_unknown(db: AsyncSession, run: WorkflowRun) -> None:
+    """The runner chose not to run an unknown step again (or never answered): failed."""
+    _finish(
+        run, "failed", "step_outcome_unknown", "결과를 알 수 없는 단계를 다시 실행하지 않았습니다"
+    )
+    await _audit_finish(db, run)
+
+
+async def _ask_about_unknown(
+    db: AsyncSession, run: WorkflowRun, step: WorkflowStepRun, node: Node | None
+) -> None:
+    label = (node.label if node else None) or step.node_id
+    request = await workflow_approvals.request_unknown_check(db, run, step, label)
+    await audit_service.record_event(
+        db,
+        actor_type="system",
+        actor_user_id=None,
+        owner_user_id=run.user_id,
+        action=STEP_UNKNOWN,
+        target_type="workflow_run",
+        target_id=run.id,
+        target_owner_user_id=run.user_id,
+        outcome="failure",
+        reason_code=step.error_code,
+        metadata={
+            "workflow_id": str(run.workflow_id),
+            "step_id": str(step.id),
+            "node_id": step.node_id,
+            "conversation_run_id": str(step.conversation_run_id)
+            if step.conversation_run_id
+            else None,
+            "approval_request_id": str(request.id),
+        },
+    )
+
+
 async def _step_row(
     db: AsyncSession, run: WorkflowRun, node: Node, position: int, **values: Any
 ) -> WorkflowStepRun:
@@ -331,6 +369,9 @@ async def _advance(
                 return last, node  # accepted never happened: safe to accept now
             _record(last, recovered)
             _end_from_step(run, last)
+            if last.status == "unknown":
+                node = next((n for n in definition.nodes if n.id == last.node_id), None)
+                await _ask_about_unknown(db, run, last, node)
             return None, None
         _end_from_step(run, last)
         return None, None
@@ -431,6 +472,16 @@ async def run_job(job: JobContext) -> dict[str, Any]:
             step, node = await _advance(db, run)
             prepared: agent_step.PreparedStep | agent_step.StepOutcome | None = None
             if step is not None and isinstance(node, AgentNode):
+                # Checked again at every agent step (3.6): archived, or no longer runnable
+                # by the runner since the run started (or while it waited for a decision).
+                issues = await agent_node_issues(db, context, [node])
+                if issues:
+                    prepared = agent_step.StepOutcome(
+                        "failed", error_code=issues[0].code, error_message=issues[0].message
+                    )
+                    _record(step, prepared)
+                    _end_from_step(run, step)
+            if step is not None and isinstance(node, AgentNode) and prepared is None:
                 workflow = await db.get(Workflow, run.workflow_id)
                 title = f"{workflow.name if workflow else '워크플로'} · {node.label or node.id}"
                 prepared = await agent_step.prepare(
@@ -446,11 +497,11 @@ async def run_job(job: JobContext) -> dict[str, Any]:
                     _end_from_step(run, step)
                 else:
                     step.status = "running"
-            finished = run.status in RUN_TERMINAL or run.status == "unknown"
+            finished = run.status in RUN_TERMINAL
             if finished:
                 await _audit_finish(db, run)
             await db.commit()
-            if finished or run.status == "waiting":
+            if finished or run.status in ("waiting", "unknown"):
                 return {"outcome": run.status}
         if isinstance(prepared, agent_step.PreparedStep) and step is not None:
             outcome = await agent_step.execute(context, step, prepared)
@@ -482,6 +533,7 @@ __all__ = [
     "RUN_JOB",
     "RUN_STARTED",
     "cancel_run",
+    "fail_unknown",
     "get_run",
     "list_runs",
     "list_steps",

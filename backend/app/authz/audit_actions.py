@@ -113,6 +113,8 @@ WORKFLOW_ARCHIVE: Final = "workflow.archive"
 WORKFLOW_RUN_START: Final = "workflow.run_start"
 WORKFLOW_RUN_FINISH: Final = "workflow.run_finish"
 WORKFLOW_RUN_CANCEL: Final = "workflow.run_cancel"
+# W4: an agent step stopped with no stored result (3.5); the runner is asked to check it.
+WORKFLOW_STEP_UNKNOWN: Final = "workflow.step_unknown"
 # H-01 access requests (14.1 "요청"); expiry is a status change, not an audit action.
 ACCESS_REQUEST_CREATE: Final = "access_request.create"
 ACCESS_REQUEST_APPROVE: Final = "access_request.approve"

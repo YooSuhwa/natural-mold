@@ -6,6 +6,11 @@ at the waiting step. Its decision moves away from ``pending`` exactly once (the 
 compare-and-set as tool approvals), records the step's branch (``approved``/``rejected``)
 and queues the run again. Expiry takes the rejected branch (plan 3.2); canceling the run
 cancels its pending requests.
+
+An agent step whose result is unknown (3.5: accepted, never stored) asks the runner the
+same way (W4): approving runs the step again in a fresh conversation (the runner checked
+the earlier one did nothing that must not repeat), rejecting or letting it expire ends the
+run as failed. The step is never run again without that answer.
 """
 
 from __future__ import annotations
@@ -28,7 +33,10 @@ from app.workflows.values import render
 
 BUSINESS: Final = "business"
 ACTION_NAME: Final = "workflow_approval"
+UNKNOWN_ACTION: Final = "workflow_unknown_check"
 DECISIONS: Final = ("approve", "reject")
+# Long enough to look at the conversation; unanswered, the run ends as failed.
+UNKNOWN_CHECK_MINUTES: Final = 7 * 24 * 60
 
 
 def _interrupt_id(step: WorkflowStepRun) -> str:
@@ -42,15 +50,50 @@ async def request(
     node: ApprovalNode,
     values: dict[str, Any],
 ) -> ApprovalRequest:
-    workflow = await db.get(Workflow, run.workflow_id)
     title = render(node.title, values)[:500]
     body = render(node.body, values)[:4000]
+    args = {"title": title, "body": body, "node_id": node.id}
+    return await _business_request(
+        db, run, step, ACTION_NAME, args, _interrupt_id(step), node.timeout_minutes or 1440
+    )
+
+
+async def request_unknown_check(
+    db: AsyncSession, run: WorkflowRun, step: WorkflowStepRun, label: str
+) -> ApprovalRequest:
+    """Ask the runner what to do with a step whose result is unknown (3.5, W4)."""
+    attempts = len((step.input or {}).get("previous_attempts", []))
+    args = {
+        "title": f"결과를 알 수 없는 단계: {label}"[:500],
+        "body": (
+            "에이전트가 실행 도중 멈춰 무엇을 했는지 알 수 없습니다. 대화 기록을 확인하고, "
+            "다시 실행해도 되면 승인하세요. 거절하면 실행을 실패로 끝냅니다."
+        ),
+        "node_id": step.node_id,
+        "conversation_id": str(step.conversation_id) if step.conversation_id else None,
+    }
+    interrupt = f"workflow-unknown:{step.id}:{attempts}"
+    return await _business_request(
+        db, run, step, UNKNOWN_ACTION, args, interrupt, UNKNOWN_CHECK_MINUTES
+    )
+
+
+async def _business_request(
+    db: AsyncSession,
+    run: WorkflowRun,
+    step: WorkflowStepRun,
+    name: str,
+    args: dict[str, Any],
+    interrupt_id: str,
+    minutes: int,
+) -> ApprovalRequest:
+    workflow = await db.get(Workflow, run.workflow_id)
     actions = [
         {
-            "name": ACTION_NAME,
-            "args": {"title": title, "body": body, "node_id": node.id},
+            "name": name,
+            "args": args,
             "allowed_decisions": list(DECISIONS),
-            "description": title,
+            "description": args["title"],
         }
     ]
     row = ApprovalRequest(
@@ -58,7 +101,7 @@ async def request(
         org_id=run.org_id,
         conversation_id=None,
         run_id=None,
-        interrupt_id=_interrupt_id(step),
+        interrupt_id=interrupt_id,
         namespace=[],
         kind=BUSINESS,
         workflow_run_id=run.id,
@@ -71,7 +114,7 @@ async def request(
         decider_user_id=run.user_id,
         actions=actions,
         args_digest=service.digest(actions),
-        expires_at=service.now() + timedelta(minutes=node.timeout_minutes or 1440),
+        expires_at=service.now() + timedelta(minutes=minutes),
     )
     db.add(row)
     await db.flush()
@@ -102,7 +145,12 @@ async def settle(
     """After the compare-and-set: give the step its branch and continue the run."""
     step = await db.get(WorkflowStepRun, row.workflow_step_run_id, with_for_update=True)
     run = await db.get(WorkflowRun, row.workflow_run_id, with_for_update=True)
-    if step is None or run is None or step.status != "waiting":
+    if step is None or run is None:
+        return
+    if row.actions and row.actions[0].get("name") == UNKNOWN_ACTION:
+        await _settle_unknown(db, row, run, step, approved=decision == "approve")
+        return
+    if step.status != "waiting":
         return
     approved = decision == "approve"
     step.status = "completed"
@@ -117,6 +165,39 @@ async def settle(
     if run.status == "waiting":
         run.status = "running"
         await _resume(db, run, row)
+    await db.flush()
+
+
+async def _settle_unknown(
+    db: AsyncSession,
+    row: ApprovalRequest,
+    run: WorkflowRun,
+    step: WorkflowStepRun,
+    *,
+    approved: bool,
+) -> None:
+    if step.status != "unknown" or run.status != "unknown":
+        return
+    if not approved:
+        from app.workflows.runner import fail_unknown  # runner imports this module
+
+        await fail_unknown(db, run)
+        return
+    # Run it again: a fresh conversation and acceptance; the earlier one stays on record.
+    earlier = {
+        "conversation_id": str(step.conversation_id) if step.conversation_id else None,
+        "conversation_run_id": str(step.conversation_run_id) if step.conversation_run_id else None,
+        "approval_request_id": str(row.id),
+    }
+    step.input = {
+        **(step.input or {}),
+        "previous_attempts": [*(step.input or {}).get("previous_attempts", []), earlier],
+    }
+    step.status, step.output, step.error_code, step.error_message = "queued", None, None, None
+    step.conversation_id = step.conversation_run_id = step.finished_at = None
+    step.started_at = service.now().replace(tzinfo=None)
+    run.status, run.error_code, run.error_message = "running", None, None
+    await _resume(db, run, row)
     await db.flush()
 
 
@@ -162,4 +243,14 @@ async def pending_for_run(db: AsyncSession, run_id: uuid.UUID) -> list[ApprovalR
     return list(rows.scalars())
 
 
-__all__ = ["BUSINESS", "cancel_for_run", "decide", "expire", "pending_for_run", "request", "settle"]
+__all__ = [
+    "BUSINESS",
+    "UNKNOWN_ACTION",
+    "cancel_for_run",
+    "decide",
+    "expire",
+    "pending_for_run",
+    "request",
+    "request_unknown_check",
+    "settle",
+]

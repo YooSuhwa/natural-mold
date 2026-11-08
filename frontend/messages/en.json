@@ -7578,7 +7578,7 @@
       "noSteps": "No step has started",
       "output": "Output",
       "input": "Input",
-      "unknownHint": "The run stopped mid-step, so the result is unknown. The agent may have done outside work, so it is not run again automatically.",
+      "unknownHint": "The run stopped mid-step, so the result is unknown. The agent may have done outside work, so it is not run again automatically; it waits for your check in the approval inbox.",
       "toolApprovalTitle": "Waiting for an agent tool approval",
       "toolApprovalHint": "The agent paused before a tool that needs approval. Decide in the inbox to continue.",
       "openInbox": "Open inbox",
@@ -7586,6 +7586,9 @@
       "businessApprovalHint": "This is a business step approval. Agent tool approvals are shown separately.",
       "approve": "Approve and continue",
       "reject": "Reject and end",
+      "unknownCheckHint": "Running it again starts this step over in a new conversation. The earlier conversation stays on record.",
+      "retryStep": "Run again and continue",
+      "failRun": "End as failed",
       "decideFailed": "Could not decide",
       "status": {
         "queued": "Queued",
