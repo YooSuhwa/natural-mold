@@ -1263,7 +1263,8 @@
       "marketplace": "Marketplace",
       "marketplaceExplore": "Explore",
       "moderation": "Moderation",
-      "approvals": "Approvals"
+      "approvals": "Approvals",
+      "workflows": "Workflows"
     },
     "section": {
       "capabilities": "Capabilities",
@@ -7341,5 +7342,80 @@
     "confirm": "Stop now",
     "stopped": "Emergency stop applied",
     "failed": "Could not apply the emergency stop"
+  },
+  "workflows": {
+    "title": "Workflows",
+    "description": "Run agents one after another in a fixed order.",
+    "create": "New workflow",
+    "createTitle": "Create a workflow",
+    "nameLabel": "Name",
+    "namePlaceholder": "e.g. Customer inquiries",
+    "createSubmit": "Create",
+    "cancel": "Cancel",
+    "empty": "No workflows yet",
+    "emptyHint": "Create a workflow to chain your agents in order.",
+    "draft": "Draft",
+    "published": "Published v{version}",
+    "updated": "Edited {time}",
+    "open": "Open",
+    "editor": {
+      "back": "Workflows",
+      "saved": "Saved",
+      "saving": "Saving…",
+      "unsaved": "Waiting to save",
+      "conflict": "Saved somewhere else first",
+      "reload": "Reload",
+      "saveFailed": "Could not save",
+      "undo": "Undo",
+      "redo": "Redo",
+      "addNode": "Add node",
+      "addNodeShortcut": "Add node (Ctrl/⌘+K)",
+      "publish": "Publish",
+      "publishing": "Publishing…",
+      "published": "Published as v{version}",
+      "publishBlocked": "Resolve {count} issues first",
+      "issues": "{count} to check",
+      "noIssues": "Ready to publish",
+      "issuesTitle": "To check",
+      "listView": "List view",
+      "canvasView": "Canvas view",
+      "insertHere": "Add a node here",
+      "addAfter": "Add next node",
+      "deleteNode": "Delete node",
+      "selectedTitle": "Selected node",
+      "selectHint": "Select a node to see it here. Editing settings opens in the next step.",
+      "nodeId": "Node ID"
+    },
+    "addDialog": {
+      "title": "Add node",
+      "search": "Search node kinds or agents",
+      "kinds": "Node kinds",
+      "agents": "Agents",
+      "noAgents": "No agents you can use",
+      "noResults": "Nothing matches"
+    },
+    "kind": {
+      "start": "Start",
+      "agent": "Agent",
+      "decision_bool": "Decision (yes/no)",
+      "approval": "Approval",
+      "transform": "Transform",
+      "output": "Output",
+      "fail": "Fail"
+    },
+    "kindHint": {
+      "agent": "An agent answers in a fixed shape",
+      "decision_bool": "Branches on an earlier value",
+      "approval": "A person approves or rejects",
+      "transform": "Combines earlier values into text or fields",
+      "output": "Returns the run's result",
+      "fail": "Ends the run as failed"
+    },
+    "branch": {
+      "true": "Yes",
+      "false": "No",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    }
   }
 }

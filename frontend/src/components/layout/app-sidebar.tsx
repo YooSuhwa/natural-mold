@@ -10,6 +10,7 @@ import {
   PlusIcon,
   ServerIcon,
   StoreIcon,
+  WorkflowIcon,
   WrenchIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -51,6 +52,7 @@ export function AppSidebar() {
   const buildItems = [
     { label: t('nav.templates'), href: '/agents/new/template', icon: LayoutTemplateIcon, badge: 0 },
     { label: t('nav.marketplace'), href: '/marketplace', icon: StoreIcon, badge: 0 },
+    { label: t('nav.workflows'), href: '/workflows', icon: WorkflowIcon, badge: 0 },
     // 승인함 (plan 17.2): requests waiting for my decision from every run.
     { label: t('nav.approvals'), href: '/approvals', icon: InboxIcon, badge: pendingApprovals },
   ]

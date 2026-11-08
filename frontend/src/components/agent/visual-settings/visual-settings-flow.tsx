@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ReactFlow, useNodesState, useEdgesState, Panel } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { useFlowColorMode } from '@/components/shared/use-flow-color-mode'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { useUpdateAgent, useCreateAgent } from '@/lib/hooks/use-agents'
@@ -119,6 +120,7 @@ export function VisualSettingsFlow({
 }: VisualSettingsFlowProps) {
   const router = useRouter()
   const t = useTranslations('agent.visualSettings')
+  const colorMode = useFlowColorMode()
   const updateAgent = useUpdateAgent(agentId ?? '')
   const createAgent = useCreateAgent()
   const { mutate: createTriggerMutate, isPending: isCreatingTrigger } = useCreateTrigger(
@@ -654,6 +656,7 @@ export function VisualSettingsFlow({
       <div className="flex-1">
         <ReactFlow
           className="moldy-visual-flow"
+          colorMode={colorMode}
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}

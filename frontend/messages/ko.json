@@ -1263,7 +1263,8 @@
       "marketplace": "마켓플레이스",
       "marketplaceExplore": "둘러보기",
       "moderation": "운영자 관리",
-      "approvals": "승인함"
+      "approvals": "승인함",
+      "workflows": "워크플로"
     },
     "section": {
       "capabilities": "기능",
@@ -7341,5 +7342,80 @@
     "confirm": "지금 중지",
     "stopped": "긴급 중지했어요",
     "failed": "긴급 중지하지 못했어요"
+  },
+  "workflows": {
+    "title": "워크플로",
+    "description": "에이전트들을 정해진 순서로 이어 실행합니다.",
+    "create": "새 워크플로",
+    "createTitle": "새 워크플로 만들기",
+    "nameLabel": "이름",
+    "namePlaceholder": "예: 고객 문의 처리",
+    "createSubmit": "만들기",
+    "cancel": "취소",
+    "empty": "아직 워크플로가 없어요",
+    "emptyHint": "새 워크플로를 만들어 에이전트를 순서대로 이어 보세요.",
+    "draft": "초안",
+    "published": "게시 v{version}",
+    "updated": "수정 {time}",
+    "open": "열기",
+    "editor": {
+      "back": "워크플로 목록",
+      "saved": "저장됨",
+      "saving": "저장 중…",
+      "unsaved": "저장 대기",
+      "conflict": "다른 곳에서 먼저 저장했어요",
+      "reload": "다시 불러오기",
+      "saveFailed": "저장하지 못했어요",
+      "undo": "되돌리기",
+      "redo": "다시 하기",
+      "addNode": "노드 추가",
+      "addNodeShortcut": "노드 추가 (Ctrl/⌘+K)",
+      "publish": "게시",
+      "publishing": "게시 중…",
+      "published": "v{version}으로 게시했어요",
+      "publishBlocked": "확인할 것 {count}개를 먼저 해결하세요",
+      "issues": "확인할 것 {count}개",
+      "noIssues": "게시할 수 있어요",
+      "issuesTitle": "확인할 것",
+      "listView": "목록 보기",
+      "canvasView": "캔버스 보기",
+      "insertHere": "여기에 노드 추가",
+      "addAfter": "다음 노드 추가",
+      "deleteNode": "노드 삭제",
+      "selectedTitle": "선택한 노드",
+      "selectHint": "노드를 누르면 여기에 표시돼요. 설정 편집은 다음 단계에서 열립니다.",
+      "nodeId": "노드 ID"
+    },
+    "addDialog": {
+      "title": "노드 추가",
+      "search": "노드 종류나 에이전트 이름으로 찾기",
+      "kinds": "노드 종류",
+      "agents": "에이전트",
+      "noAgents": "쓸 수 있는 에이전트가 없어요",
+      "noResults": "찾는 항목이 없어요"
+    },
+    "kind": {
+      "start": "시작",
+      "agent": "에이전트",
+      "decision_bool": "판단 (예/아니오)",
+      "approval": "승인",
+      "transform": "변환",
+      "output": "최종 출력",
+      "fail": "실패 종료"
+    },
+    "kindHint": {
+      "agent": "에이전트가 정해진 형식으로 답합니다",
+      "decision_bool": "앞 단계 값으로 갈래를 나눕니다",
+      "approval": "사람이 승인하거나 거절합니다",
+      "transform": "앞 단계 값을 글이나 필드로 엮습니다",
+      "output": "실행 결과를 내고 끝냅니다",
+      "fail": "정한 이유로 실패 처리합니다"
+    },
+    "branch": {
+      "true": "예",
+      "false": "아니오",
+      "approved": "승인",
+      "rejected": "거절"
+    }
   }
 }

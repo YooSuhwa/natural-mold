@@ -349,6 +349,11 @@ const INLINE_SVG_ALLOWLIST = [
 
 const STYLE_ATTRIBUTE_ALLOWLIST = [
   {
+    filePath: 'src/features/workflows/components/workflow-edge.tsx',
+    reason: 'React Flow edge label position (EdgeLabelRenderer requires a transform)',
+    context: /style=\{\{\s*transform:\s*`translate\(-50%, -50%\) translate\(\$\{labelX\}px, \$\{labelY\}px\)`\s*\}\}/,
+  },
+  {
     filePath: 'src/components/skill/skill-package-tree.tsx',
     reason: 'tree depth indentation',
     context: /style=\{\{\s*paddingLeft:\s*depth \* 12 \+ 4\s*\}\}/,
