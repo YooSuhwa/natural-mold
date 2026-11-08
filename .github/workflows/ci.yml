@@ -14,11 +14,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The release download fails during GitHub incidents (504, dropped connections), so the
+      # checksum-pinned tarball is cached and only fetched (with retries) on a cache miss.
+      - name: Cache OpenFGA CLI 0.8.1
+        id: fga-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/openfga/fga_0.8.1_linux_amd64.tar.gz
+          key: openfga-cli-0.8.1-e0414ad70850f8070540ad1be7a1e2e861edd6d6e73f6ed2b959c3277f98a54c
+      - name: Download OpenFGA CLI 0.8.1
+        if: steps.fga-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.cache/openfga
+          curl --fail --silent --show-error --location \
+            --retry 6 --retry-all-errors --retry-delay 10 --connect-timeout 20 \
+            https://github.com/openfga/cli/releases/download/v0.8.1/fga_0.8.1_linux_amd64.tar.gz \
+            --output ~/.cache/openfga/fga_0.8.1_linux_amd64.tar.gz
       - name: Install checksum-verified OpenFGA CLI 0.8.1
         run: |
-          curl --fail --silent --show-error --location \
-            https://github.com/openfga/cli/releases/download/v0.8.1/fga_0.8.1_linux_amd64.tar.gz \
-            --output "$RUNNER_TEMP/fga.tar.gz"
+          cp ~/.cache/openfga/fga_0.8.1_linux_amd64.tar.gz "$RUNNER_TEMP/fga.tar.gz"
           printf '%s  %s\n' \
             e0414ad70850f8070540ad1be7a1e2e861edd6d6e73f6ed2b959c3277f98a54c \
             "$RUNNER_TEMP/fga.tar.gz" | sha256sum --check
