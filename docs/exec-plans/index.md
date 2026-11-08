@@ -14,6 +14,7 @@ The active organization authorization program follows the supplied
 
 - [순번 15 메모리 정책 상세 기획](active/memory-policy-plan.md) — v10 2026-11-07 (Anthropic memory post folded in); all decisions made (Q12 Nori, Q2 text-embedding-3-large provisional); PR-A next.
 - [도구 승인 모드 상세 기획](active/approval-modes-plan.md) — v1 draft 2026-11-08; decisions Q1–Q9 pending.
+- [순번 23 워크플로 1차 핵심 노드 상세 기획](active/workflow-plan.md) — v2 2026-11-08; decisions Q1–Q9 confirmed, W0 next.
 
 ## Completed
 
