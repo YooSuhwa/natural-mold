@@ -17,7 +17,7 @@ export function StepList({
   onSelect,
 }: {
   definition: WorkflowDefinition
-  titleOf: (nodeId: string) => { title: string; subtitle: string }
+  titleOf: (nodeId: string) => { title: string; subtitle: string; detail: string }
   issueCounts: Map<string, number>
   selectedId: string | null
   onSelect: (nodeId: string) => void
@@ -30,7 +30,7 @@ export function StepList({
         const node = byId.get(id)
         if (!node) return null
         const Icon = NODE_ICONS[node.type]
-        const { title, subtitle } = titleOf(id)
+        const { title, subtitle, detail } = titleOf(id)
         const issues = issueCounts.get(id) ?? 0
         return (
           <li key={id}>
@@ -47,9 +47,16 @@ export function StepList({
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{title}</span>
                 <span className="block truncate text-xs text-muted-foreground">{subtitle}</span>
+                {detail ? (
+                  <span className="block truncate font-mono text-xs text-muted-foreground">
+                    {detail}
+                  </span>
+                ) : null}
               </span>
               {issues > 0 ? (
-                <span className="moldy-status-danger moldy-status-pill text-xs">{issues}</span>
+                <span className="moldy-status-surface moldy-status-danger rounded-full px-2 py-0.5 text-xs">
+                  {issues}
+                </span>
               ) : null}
             </button>
           </li>

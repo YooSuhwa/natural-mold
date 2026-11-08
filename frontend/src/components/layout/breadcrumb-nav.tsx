@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl'
 import { useAgent } from '@/lib/hooks/use-agents'
 import { useConversationPages } from '@/lib/hooks/use-conversations'
 import { useMarketplaceItem } from '@/lib/hooks/use-marketplace'
+import { useWorkflow } from '@/lib/hooks/use-workflows'
 import { usePlatformTenant } from '@/lib/hooks/use-platform-tenants'
 import { useSkill } from '@/lib/hooks/use-skills'
 
@@ -26,6 +27,7 @@ const ROUTE_LABELS: Record<string, string> = {
   credentials: 'sidebar.nav.credentials',
   'mcp-servers': 'sidebar.nav.mcpServers',
   approvals: 'sidebar.nav.approvals',
+  workflows: 'sidebar.nav.workflows',
   marketplace: 'sidebar.nav.marketplace',
   moderation: 'sidebar.nav.moderation',
   company: 'nav.company',
@@ -77,13 +79,14 @@ const SKIP_SEGMENTS = new Set(['agents', 'conversations', 'admin'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /** Id segments resolved to a name; a generic label stands in until (or unless) it loads. */
-type IdKind = 'agent' | 'conversation' | 'marketplaceItem' | 'skill' | 'tenant'
+type IdKind = 'agent' | 'conversation' | 'marketplaceItem' | 'skill' | 'tenant' | 'workflow'
 const ID_PARENTS: Record<string, IdKind> = {
   agents: 'agent',
   conversations: 'conversation',
   marketplace: 'marketplaceItem',
   skills: 'skill',
   tenants: 'tenant',
+  workflows: 'workflow',
 }
 
 function AgentName({ id, fallback }: { id: string; fallback: string }) {
@@ -119,6 +122,11 @@ function MarketplaceItemName({ id, fallback }: { id: string; fallback: string })
   return <>{item?.name ?? fallback}</>
 }
 
+function WorkflowName({ id, fallback }: { id: string; fallback: string }) {
+  const { data: workflow } = useWorkflow(id)
+  return <>{workflow?.name ?? fallback}</>
+}
+
 function TenantName({ id, fallback }: { id: string; fallback: string }) {
   const { data: tenant } = usePlatformTenant(id)
   return <>{tenant?.name ?? fallback}</>
@@ -130,6 +138,7 @@ const FALLBACK_LABELS: Record<IdKind, string> = {
   marketplaceItem: 'nav.marketplaceItem',
   skill: 'nav.skillDetail',
   tenant: 'nav.companyDetail',
+  workflow: 'nav.workflowDetail',
 }
 
 interface Crumb {
@@ -159,6 +168,8 @@ function CrumbContent({ crumb, agentId }: { crumb: Crumb; agentId: string | null
       return <SkillName id={id} fallback={fallback} />
     case 'tenant':
       return <TenantName id={id} fallback={fallback} />
+    case 'workflow':
+      return <WorkflowName id={id} fallback={fallback} />
   }
 }
 

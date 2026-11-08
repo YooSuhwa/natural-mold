@@ -6635,6 +6635,7 @@
     "newConversation": "New conversation",
     "agentDetail": "Agent",
     "skillDetail": "Skill details",
+    "workflowDetail": "Workflow",
     "companyDetail": "Company details",
     "marketplaceItem": "Marketplace item",
     "traces": "Traces"
@@ -7384,7 +7385,9 @@
       "deleteNode": "Delete node",
       "selectedTitle": "Selected node",
       "selectHint": "Select a node to see it here. Editing settings opens in the next step.",
-      "nodeId": "Node ID"
+      "nodeId": "Node ID",
+      "reuse": "Uses {count} existing agents",
+      "contract": "Data contract"
     },
     "addDialog": {
       "title": "Add node",
@@ -7416,6 +7419,97 @@
       "false": "No",
       "approved": "Approved",
       "rejected": "Rejected"
+    },
+    "search": "Search workflows",
+    "detail": {
+      "output": "Output: {fields}",
+      "timeout": "Answer within {minutes} min"
+    },
+    "run": {
+      "open": "Test run",
+      "title": "Test run · v{version}",
+      "hint": "Runs the published version's inputs. Republish to include draft changes.",
+      "noInputs": "No inputs",
+      "start": "Run",
+      "starting": "Starting…",
+      "cancel": "Cancel",
+      "started": "Run started ({id})",
+      "failed": "Could not start the run",
+      "needsPublish": "Publish first to run"
+    },
+    "settings": {
+      "nodeLabel": "Node name",
+      "inputs": "Run inputs",
+      "inputsHint": "The fields the run form asks for.",
+      "inputName": "Input name (letters)",
+      "inputLabel": "Display name",
+      "addInput": "Add input",
+      "agent": "Agent",
+      "pickAgent": "Choose an agent",
+      "openAgent": "Open agent settings",
+      "agentPinned": "Publishing pins this agent's settings. Change the agent and you must publish again to run.",
+      "prompt": "Message to the agent",
+      "output": "Output shape",
+      "outputHint": "The agent answers with JSON in this shape. Fields: {fields}",
+      "passedValues": "Values passed to this step",
+      "passedNone": "No earlier values yet",
+      "passedHint": "Only the chosen values are passed, never the whole conversation.",
+      "insertValue": "Insert value",
+      "noValues": "No earlier values to insert",
+      "evaluator": "Evaluator",
+      "evaluatorKind": {
+        "rule": "Rule",
+        "llm": "LLM",
+        "model": "Decision model"
+      },
+      "evaluatorLater": "LLM and decision model evaluators open after the decision model work (item 22).",
+      "condition": "Condition",
+      "conditionMode": "Combine",
+      "modeAll": "Yes when all match",
+      "modeAny": "Yes when any matches",
+      "conditionValue": "Value",
+      "conditionOp": "Comparison",
+      "conditionOperand": "Compare with",
+      "pickValue": "Choose a value",
+      "addClause": "Add condition",
+      "boolTrue": "Yes (true)",
+      "boolFalse": "No (false)",
+      "removeClause": "Remove condition",
+      "op": {
+        "eq": "=",
+        "ne": "≠",
+        "gt": ">",
+        "gte": "≥",
+        "lt": "<",
+        "lte": "≤",
+        "contains": "contains",
+        "exists": "has a value"
+      },
+      "approvalTitle": "Approval title",
+      "approvalBody": "Approval details",
+      "timeout": "Answer within (minutes)",
+      "timeoutHint": "When time runs out the rejected path runs.",
+      "template": "Text",
+      "fields": "Fields",
+      "outputFields": "Output fields",
+      "newFieldName": "New field name, then Enter",
+      "reason": "Failure reason",
+      "fieldName": "Field name (letters)",
+      "fieldType": "Type",
+      "fieldDescription": "Description (sent to the agent)",
+      "required": "Required",
+      "enumOptions": "Choices",
+      "enumPlaceholder": "Comma separated: refund, bug, other",
+      "addField": "Add field",
+      "removeField": "Remove",
+      "type": {
+        "string": "Text",
+        "number": "Number",
+        "integer": "Integer",
+        "boolean": "Yes/No",
+        "enum": "Choice",
+        "string_list": "Text list"
+      }
     }
   }
 }

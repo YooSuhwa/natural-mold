@@ -6635,6 +6635,7 @@
     "newConversation": "새 대화",
     "agentDetail": "에이전트",
     "skillDetail": "스킬 상세",
+    "workflowDetail": "워크플로",
     "companyDetail": "회사 상세",
     "marketplaceItem": "마켓플레이스 항목",
     "traces": "실행 추적"
@@ -7384,7 +7385,9 @@
       "deleteNode": "노드 삭제",
       "selectedTitle": "선택한 노드",
       "selectHint": "노드를 누르면 여기에 표시돼요. 설정 편집은 다음 단계에서 열립니다.",
-      "nodeId": "노드 ID"
+      "nodeId": "노드 ID",
+      "reuse": "기존 에이전트 {count}종 사용",
+      "contract": "데이터 계약"
     },
     "addDialog": {
       "title": "노드 추가",
@@ -7416,6 +7419,97 @@
       "false": "아니오",
       "approved": "승인",
       "rejected": "거절"
+    },
+    "search": "워크플로 이름으로 찾기",
+    "detail": {
+      "output": "출력: {fields}",
+      "timeout": "응답 기한 {minutes}분"
+    },
+    "run": {
+      "open": "시험 실행",
+      "title": "시험 실행 · v{version}",
+      "hint": "게시한 버전의 입력으로 실행합니다. 초안의 변경은 다시 게시해야 반영돼요.",
+      "noInputs": "입력 항목이 없어요",
+      "start": "실행",
+      "starting": "시작 중…",
+      "cancel": "취소",
+      "started": "실행을 시작했어요 ({id})",
+      "failed": "실행을 시작하지 못했어요",
+      "needsPublish": "게시한 뒤 실행할 수 있어요"
+    },
+    "settings": {
+      "nodeLabel": "노드 이름",
+      "inputs": "실행 입력",
+      "inputsHint": "실행할 때 입력 폼에 나오는 항목입니다.",
+      "inputName": "입력 이름(영문)",
+      "inputLabel": "보이는 이름",
+      "addInput": "입력 추가",
+      "agent": "사용할 에이전트",
+      "pickAgent": "에이전트 선택",
+      "openAgent": "에이전트 설정 열기",
+      "agentPinned": "게시할 때 이 에이전트의 설정을 고정합니다. 에이전트를 고치면 다시 게시해야 실행할 수 있어요.",
+      "prompt": "에이전트에 보낼 내용",
+      "output": "출력 형식",
+      "outputHint": "에이전트는 이 형식의 JSON으로 답합니다. 지금 필드: {fields}",
+      "passedValues": "이 단계에 전달할 입력",
+      "passedNone": "앞 단계 값을 아직 넣지 않았어요",
+      "passedHint": "선택한 값만 전달합니다. 전체 대화 이력은 넘기지 않아요.",
+      "insertValue": "값 넣기",
+      "noValues": "넣을 수 있는 앞 단계 값이 없어요",
+      "evaluator": "판단 방식",
+      "evaluatorKind": {
+        "rule": "규칙",
+        "llm": "LLM",
+        "model": "판단 모델"
+      },
+      "evaluatorLater": "LLM과 판단 모델 방식은 판단 모델 연동(순번 22) 뒤에 열립니다.",
+      "condition": "조건",
+      "conditionMode": "조건 묶기",
+      "modeAll": "모두 맞으면 예",
+      "modeAny": "하나라도 맞으면 예",
+      "conditionValue": "비교할 값",
+      "conditionOp": "비교 방법",
+      "conditionOperand": "기준 값",
+      "pickValue": "값을 고르세요",
+      "addClause": "조건 추가",
+      "boolTrue": "예 (true)",
+      "boolFalse": "아니오 (false)",
+      "removeClause": "조건 삭제",
+      "op": {
+        "eq": "=",
+        "ne": "≠",
+        "gt": ">",
+        "gte": "≥",
+        "lt": "<",
+        "lte": "≤",
+        "contains": "포함",
+        "exists": "값 있음"
+      },
+      "approvalTitle": "승인 제목",
+      "approvalBody": "승인 내용",
+      "timeout": "응답 기한(분)",
+      "timeoutHint": "기한이 지나면 거절 경로로 갑니다.",
+      "template": "글",
+      "fields": "필드",
+      "outputFields": "최종 출력 필드",
+      "newFieldName": "새 필드 이름(영문) 입력 후 Enter",
+      "reason": "실패 사유",
+      "fieldName": "필드 이름(영문)",
+      "fieldType": "형식",
+      "fieldDescription": "설명(에이전트에 함께 전달)",
+      "required": "필수",
+      "enumOptions": "선택지",
+      "enumPlaceholder": "쉼표로 구분: refund, bug, other",
+      "addField": "필드 추가",
+      "removeField": "삭제",
+      "type": {
+        "string": "텍스트",
+        "number": "숫자",
+        "integer": "정수",
+        "boolean": "예/아니오",
+        "enum": "선택지",
+        "string_list": "텍스트 목록"
+      }
     }
   }
 }

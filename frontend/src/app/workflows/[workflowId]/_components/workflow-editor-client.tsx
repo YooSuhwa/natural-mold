@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowLeftIcon, PlusIcon, Redo2Icon, Trash2Icon, Undo2Icon } from 'lucide-react'
+import { ArrowLeftIcon, PlayIcon, PlusIcon, Redo2Icon, TableIcon, Undo2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -27,6 +27,8 @@ import type {
 } from '@/lib/types/workflow'
 import { AddNodeDialog, type AddChoice } from '@/features/workflows/components/add-node-dialog'
 import { IssuesList } from '@/features/workflows/components/issues-list'
+import { NodeSettingsPanel } from '@/features/workflows/components/node-settings-panel'
+import { RunDialog } from '@/features/workflows/components/run-dialog'
 import { StepList } from '@/features/workflows/components/step-list'
 import {
   appendAfter,
@@ -39,8 +41,10 @@ import {
   removeNode,
   startHistory,
   undo,
+  updateNode,
   type History,
 } from '@/features/workflows/lib/editor-commands'
+import { contractLine } from '@/features/workflows/lib/schema-rows'
 
 const AUTOSAVE_MS = 800
 
@@ -95,6 +99,8 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
   const [status, setStatus] = useState<SaveStatus>('saved')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [addTarget, setAddTarget] = useState<AddTarget | null>(null)
+  const [showContract, setShowContract] = useState(true)
+  const [running, setRunning] = useState(false)
   const save = useSaveWorkflowDraft(detail.id)
   const publish = usePublishWorkflow(detail.id)
   const issues = useWorkflowIssues(detail.id, revision)
@@ -154,12 +160,49 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
   const titleOf = useCallback(
     (nodeId: string) => {
       const node = definition.nodes.find((item) => item.id === nodeId)
-      if (!node) return { title: nodeId, subtitle: '' }
+      if (!node) return { title: nodeId, subtitle: '', detail: '' }
       const kind = t(`kind.${node.type}`)
-      const agentName = node.type === 'agent' ? agentNames.get(node.agent_id) : undefined
-      return { title: node.label || agentName || kind, subtitle: kind }
+      if (node.type === 'agent') {
+        const agentName = agentNames.get(node.agent_id) ?? t('settings.pickAgent')
+        const fields = contractLine(node.output_schema)
+        return {
+          title: node.label || agentName,
+          subtitle: node.label ? agentName : kind,
+          detail: fields ? t('detail.output', { fields }) : '',
+        }
+      }
+      let detail = ''
+      if (node.type === 'start') detail = definition.inputs.map((item) => item.name).join(', ')
+      if (node.type === 'decision_bool') {
+        const clauses = node.condition.all ?? node.condition.any ?? []
+        const first = clauses[0]
+        detail = first
+          ? `${first.source}${first.path.replaceAll('/', '.')} ${t(`settings.op.${first.op}`)}${
+              first.op === 'exists' ? '' : ` ${String(first.value ?? '')}`
+            }${clauses.length > 1 ? ` +${clauses.length - 1}` : ''} · ${t('settings.evaluatorKind.rule')}`
+          : ''
+      }
+      if (node.type === 'approval' && node.timeout_minutes) {
+        detail = t('detail.timeout', { minutes: node.timeout_minutes })
+      }
+      if (node.type === 'transform' || node.type === 'output') {
+        detail = Object.keys(node.fields ?? {}).join(', ')
+      }
+      if (node.type === 'fail') detail = node.reason ?? ''
+      return { title: node.label || kind, subtitle: node.label ? kind : '', detail }
     },
     [definition, agentNames, t],
+  )
+  const labelOf = useCallback(
+    (node: string, path: string) => {
+      const field = path.split('/').filter(Boolean).join('.')
+      if (node === 'input') {
+        const input = definition.inputs.find((item) => `/${item.name}` === path)
+        return `${t('kind.start')} · ${input?.label || field}`
+      }
+      return field ? `${titleOf(node).title} · ${field}` : titleOf(node).title
+    },
+    [definition, t, titleOf],
   )
   const issueList = useMemo(() => issues.data?.issues ?? [], [issues.data])
   const issueCounts = useMemo(() => {
@@ -214,6 +257,11 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
   }, [openAddForSelection, step])
 
   const selected = definition.nodes.find((node) => node.id === selectedId) ?? null
+  const agentCount = new Set(
+    definition.nodes.flatMap((node) =>
+      node.type === 'agent' && node.agent_id ? [node.agent_id] : [],
+    ),
+  ).size
   const dirty = status !== 'saved'
   const blocked = issueList.length > 0
   const onPublish = () => {
@@ -231,7 +279,25 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
           <ArrowLeftIcon className="size-4" aria-hidden />
           {t('editor.back')}
         </Button>
-        <h1 className="min-w-0 flex-1 truncate text-base font-semibold">{detail.name}</h1>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h1 className="truncate text-base font-semibold">{detail.name}</h1>
+            <span
+              className={
+                detail.published_version_no
+                  ? 'moldy-status-surface moldy-status-success rounded-full px-2 py-0.5 text-xs'
+                  : 'moldy-status-surface moldy-status-warn rounded-full px-2 py-0.5 text-xs'
+              }
+            >
+              {detail.published_version_no
+                ? t('published', { version: detail.published_version_no })
+                : t('draft')}
+            </span>
+          </div>
+          <p className="truncate text-xs text-muted-foreground">
+            {t('editor.reuse', { count: agentCount })}
+          </p>
+        </div>
         <SaveBadge status={status} onReload={onReload} />
         <Button
           variant="ghost"
@@ -255,6 +321,15 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
           <PlusIcon className="size-4" aria-hidden />
           <span title={t('editor.addNodeShortcut')}>{t('editor.addNode')}</span>
         </Button>
+        <Button
+          variant={showContract ? 'secondary' : 'ghost'}
+          size="sm"
+          aria-pressed={showContract}
+          onClick={() => setShowContract((value) => !value)}
+        >
+          <TableIcon className="size-4" aria-hidden />
+          {t('editor.contract')}
+        </Button>
         <Badge variant={blocked ? 'destructive' : 'outline'}>
           {blocked ? t('editor.issues', { count: issueList.length }) : t('editor.noIssues')}
         </Badge>
@@ -266,12 +341,23 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
         >
           {publish.isPending ? t('editor.publishing') : t('editor.publish')}
         </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!detail.published_version_no}
+          title={detail.published_version_no ? undefined : t('run.needsPublish')}
+          onClick={() => setRunning(true)}
+        >
+          <PlayIcon className="size-4" aria-hidden />
+          {t('run.open')}
+        </Button>
       </header>
       <div className="flex min-h-0 flex-1">
         <div className="hidden min-h-0 flex-1 md:block">
           <WorkflowCanvas
             definition={definition}
             titleOf={titleOf}
+            showDetail={showContract}
             issueCounts={issueCounts}
             selectedId={selectedId}
             onSelect={setSelectedId}
@@ -288,39 +374,36 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
             onSelect={setSelectedId}
           />
         </div>
-        <aside className="hidden w-80 shrink-0 flex-col gap-4 overflow-auto border-l p-4 md:flex">
-          <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-semibold">{t('editor.selectedTitle')}</h2>
-            {selected ? (
-              <div className="flex flex-col gap-2 text-sm">
-                <span className="font-medium">{titleOf(selected.id).title}</span>
-                <span className="text-muted-foreground">
-                  {t('editor.nodeId')}: {selected.id}
-                </span>
-                {selected.type !== 'start' ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      change(removeNode(definition, selected.id))
-                      setSelectedId(null)
-                    }}
-                  >
-                    <Trash2Icon className="size-4" aria-hidden />
-                    {t('editor.deleteNode')}
-                  </Button>
-                ) : null}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">{t('editor.selectHint')}</p>
-            )}
-          </section>
+        <aside className="hidden w-96 shrink-0 flex-col gap-6 overflow-auto border-l p-4 md:flex">
+          {selected ? (
+            <NodeSettingsPanel
+              key={selected.id}
+              definition={definition}
+              node={selected}
+              labelOf={labelOf}
+              onChange={(node) => change(updateNode(definition, node.id, () => node))}
+              onInputsChange={(inputs) => change({ ...definition, inputs })}
+              onDelete={() => {
+                change(removeNode(definition, selected.id))
+                setSelectedId(null)
+              }}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">{t('editor.selectHint')}</p>
+          )}
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-semibold">{t('editor.issuesTitle')}</h2>
             <IssuesList issues={issueList} onSelect={setSelectedId} />
           </section>
         </aside>
       </div>
+      {running && detail.published_version_no ? (
+        <RunDialog
+          workflowId={detail.id}
+          versionNo={detail.published_version_no}
+          onClose={() => setRunning(false)}
+        />
+      ) : null}
       <AddNodeDialog
         open={addTarget !== null}
         onOpenChange={(open) => !open && setAddTarget(null)}
@@ -335,7 +418,7 @@ function SaveBadge({ status, onReload }: { status: SaveStatus; onReload: () => P
   if (status === 'conflict') {
     return (
       <span className="flex items-center gap-2 text-sm">
-        <span className="moldy-status-danger">{t('conflict')}</span>
+        <span className="text-status-danger">{t('conflict')}</span>
         <Button size="sm" variant="outline" onClick={() => void onReload()}>
           {t('reload')}
         </Button>
@@ -351,7 +434,7 @@ function SaveBadge({ status, onReload }: { status: SaveStatus; onReload: () => P
   return (
     <span
       className={
-        status === 'error' ? 'moldy-status-danger text-sm' : 'text-sm text-muted-foreground'
+        status === 'error' ? 'text-status-danger text-sm' : 'text-sm text-muted-foreground'
       }
       aria-live="polite"
     >
