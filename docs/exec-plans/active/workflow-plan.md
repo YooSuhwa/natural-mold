@@ -276,7 +276,7 @@ Moldy에서 채팅의 주체는 에이전트이고 대화 기억·도구·승인
 | W2c | 단계 안 도구 승인 대기와 재개: 단계는 `unattended_approval="wait"`로 돌고, 멈추면 단계·실행이 `waiting`, 요청은 `RunOrigin.workflow_*`로 단계를 가리킴(연쇄 대기는 상속). 결정은 **기존 채팅 재개 경로**(편집 도구명 채우기·가린 인자 복원·한 번 결정 그대로)로 재개하고, `tool_waits.adapt_resume`이 재개 실행에 노드 출력 형식과 대기를 다시 싣는다. 재개 실행이 끝나면 `waiters.settle`이 체크포인트의 응답 도구 호출에서 답을 읽어 검증·저장하고 실행을 이어 간다. 결정 없이 끝난 요청(`abandon`)은 단계 실패. 결과 불명 확인 요청은 W4a에서 구현(3.5). **실행 시간 한도는 1차에 따로 두지 않는다:** 멈춰 기다리는 곳마다 이미 기한이 있고(승인 노드 시간 제한 필수, 도구 승인 만료, 결과 불명 확인 7일), 도는 중인 에이전트 단계는 기존 에이전트 실행의 제한과 실행 취소를 따른다 | 대기 → 재개 → 같은 단계가 구조화 결과로 끝남(에이전트 재호출 없음), 형식 불일치·실패 재개, 남은 요청이 있으면 계속 대기 |
 | W3a | 편집기: 편집 명령 모델(되돌리기), 자동 정렬 캔버스와 세로 목록, "+" 추가·명령 팔레트, 오른쪽 설정 패널, 값 선택기(구조화 참조), 출력 스키마 편집기, 실시간 검사, 자동 저장, 목록 화면 | 편집 명령 단위 시험(되돌리기·검사), vitest, 접근성·디자인·i18n 게이트 |
 | W3b | 시험과 실행: 시험 실행·실행 상세의 캔버스 겹쳐 보기, 노드별 입출력, 이 노드만 시험(이전 실행 값), 승인함 표시, 버전 기록과 색 diff | 실행 상태 7종 표시, 승인 대기 → 승인함 → 재개가 화면에 반영 |
-| W4 | **W4a:** 결과 불명 확인 요청(3.5), 에이전트 단계마다 사용 가능 여부 재확인(3.6: 보관, 권한 회수, 승인 대기 중 회수 포함), worker 교체·긴급 중지 시험. **W4b:** 실제 업무(Q3) 끝까지 E2E(키 없는 시험 모델 + 사내 LiteLLM 한 번), 문서(ADR-026 워크플로 실행, CLAUDE.md 규칙) | 1장 완료 기준 1~6 증거 |
+| W4 | **W4a:** 결과 불명 확인 요청(3.5), 에이전트 단계마다 사용 가능 여부 재확인(3.6: 보관, 권한 회수, 승인 대기 중 회수 포함), worker 교체·긴급 중지 시험. **W4b:** 실제 업무(Q3) 끝까지 E2E(키 없는 시험 모델 + 사내 LiteLLM 한 번), 문서(ADR-026 워크플로 실행, CLAUDE.md 규칙). **W4b 구현:** 새 워크플로 만들기에 업무 템플릿 "고객 문의 답변 초안"(Q3, 핵심 7종, 에이전트 2개를 고름)을 두고, E2E 스택이 backend 옆에 job worker를 띄운다. 증거는 6장 "W4b 완료 증거" | 1장 완료 기준 1~6 증거 |
 | W5 | AI로 만들고 고치기: 편집 명령만 내는 모델 도구, 계획 먼저 보기, 캔버스 색 diff 수락/거절, 모호하면 되묻기, 자격 증명 비전송 | 제안이 검사를 우회하지 못함, 거절 시 초안 그대로, 사내 LiteLLM으로 업무 3건 생성 평가 |
 
 ## 6. 검증 (기획서 32장 워크플로 행)
@@ -287,6 +287,17 @@ Moldy에서 채팅의 주체는 에이전트이고 대화 기억·도구·승인
 - **동시성:** 같은 승인 요청에 결정 두 번 → 한 번만 반영. 같은 실행에 `workflow.run` 작업 두 개 → 하나만 진행.
 - **뮤테이션 검사:** 게시 검사 규칙, 결과 불명 규칙, 권한 재확인, 감사 내용 단언에 뮤테이션을 넣어 시험이 빨개지는지 확인한다.
 - PG 전체 레인을 로컬에서 돌린다(새 테이블·열 추가 때마다).
+
+### W4b 완료 증거 (2026-11-09, 1장 완료 기준)
+
+| 기준 | 증거 |
+|---|---|
+| 1. 화면에서 설계·게시·실행, 실행 상세에 단계·경로·버전·승인 대기 | E2E `frontend/e2e/workflow-inquiry.spec.ts`(키 없는 시험 모델 + job worker): 목록의 "고객 문의 답변 초안" 템플릿으로 만들고 에이전트 2개를 고른 뒤, 캔버스에서 승인 기한을 바꾸고 게시(v1에 반영 확인)·시험 실행 → 실행 상세에 승인 대기·v1·"긴급한가 예"·승인 카드 → 승인 → 완료와 최종 출력. 긴급하지 않은 문의는 "아니오" 경로로 승인 없이 완료. 로컬 3회 연속 통과. 사내 LiteLLM(`gpt-5.4-mini`) 한 번: 분류 refund·긴급 → 승인 대기(7초) → 승인 → 답변 초안·변환·출력까지 completed(78초), 감사 6건 |
+| 2. 업무 승인·도구 승인·worker 교체 뒤 같은 지점부터, 내부 단계 중복 없음 | `test_workflow_runs.py`: `test_an_approved_request_continues_the_run`, `test_a_second_job_while_waiting_changes_nothing_and_decide_queues_one`, `test_a_worker_dying_after_a_stored_step_resumes_at_the_next_node`, `test_a_step_envelope_only_accepts_its_own_agent`. `test_workflow_tool_waits.py`: `test_the_resumed_step_answers_in_its_schema_and_the_run_continues`, `test_a_valid_resumed_answer_completes_the_run`, `test_a_step_keeps_waiting_while_another_request_is_pending` |
+| 3. 보관·권한 회수·중복 콜백·긴급 중지 | `test_an_agent_archived_after_the_start_is_not_run`, `test_an_agent_no_longer_runnable_during_an_approval_wait_is_not_run`, `test_concurrent_decisions_land_once`, `test_settle_leaves_a_step_that_no_longer_waits`, `test_an_emergency_stop_of_the_agent_stops_the_next_agent_step`, 게시 거부 `test_publish_refuses_agents_the_runner_cannot_use`, 바뀐 에이전트 `test_start_checks_inputs_publication_and_changed_agents` |
+| 4. 실행 중 worker 종료 → 다시 실행하지 않고 결과 불명 | `test_a_step_cut_off_mid_run_is_unknown_and_never_runs_again`, `test_approving_an_unknown_step_runs_it_again_in_a_new_conversation`, `test_rejecting_or_not_answering_an_unknown_step_fails_the_run`, `test_canceling_an_unknown_run_ends_it_and_its_check`, 화면 `frontend/tests/pages/workflows/run-detail.test.tsx` |
+| 5. 생성·게시·실행·승인·취소·실패 감사 | E2E가 `workflow.create`·`workflow.publish`·`workflow.run_start`·`approval.decided`(승인 success / 거절 denied)·`workflow.run_finish`(success / failure)·`workflow.run_cancel`의 대상과 내용을 단언. 백엔드 `test_create_starts_from_a_start_node_and_is_audited`, `test_archive_hides_freezes_and_audits_once`, 결과 불명 `workflow.step_unknown` 내용 단언 |
+| 6. 화면만 완성된 상태는 완료 아님 | 위 E2E가 실제 API·DB·job worker·시험 모델을 거친다(목 없음). W4b에서 화면을 연 뒤 승인 대기가 된 실행의 승인 카드가 새로고침 전까지 안 보이던 버그를 E2E로 찾아 고쳤다(`useWorkflowRunApproval`, 폴링 제거 뮤테이션에 단위 시험이 빨개짐) |
 
 ## 7. 위험
 

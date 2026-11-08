@@ -26,7 +26,12 @@ export function useWorkflowIssues(id: string, revision: number | undefined) {
 export function useCreateWorkflow() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (name: string) => workflowsApi.create(name),
+    // A template's definition is saved as the first draft right after creating.
+    mutationFn: async ({ name, definition }: { name: string; definition?: WorkflowDefinition }) => {
+      const created = await workflowsApi.create(name)
+      if (!definition) return created
+      return workflowsApi.saveDraft(created.id, { revision: created.draft_revision, definition })
+    },
     onSettled: () => qc.invalidateQueries({ queryKey: workflowQueryKeys.list }),
   })
 }

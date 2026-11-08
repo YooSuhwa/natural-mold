@@ -415,6 +415,7 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 - **공유 목록 서비스에 기본 `limit`을 넣을 때는 전수 열거가 의미론인 소비자(retention/GC/prune)를 전수 확인할 것.** `list_revisions`에 기본 100을 넣자 retention prune이 창 밖(>100번째) 리비전을 영구히 못 보게 됐다 — 이미 pruned된 행이 창 슬롯을 차지해 자리가 나지도 않는 잠복 디스크 누수(R5). `limit: int | None`(None=무제한)을 허용하고 해당 소비자는 명시적으로 None을 넘긴다. 시간 컬럼 정렬 목록은 id 보조 정렬로 절단 경계 플랩도 함께 닫는다.
 - **`os.path.expanduser` → `Path.expanduser()` 기계 전환 금지.** `Path.expanduser()`는 `$HOME` 해석 불가 시(random-UID 컨테이너, distroless) `RuntimeError`를 던지지만 `os.path.expanduser`는 입력을 그대로 반환해 후속 `exists()`가 조용히 False가 된다 — 부팅 경로(main.py/model_factory.py/http_ssl.py의 HC_SSL 번들)에서 이 발산은 **import 시점 부팅 크래시**다(PR #291 리뷰에서 발견). 해당 지점은 `Path(os.path.expanduser(...))  # noqa: PTH111` 형태를 유지한다. 잔존 스윕 후보: `skill_execution_policy.py:140`(런타임 경로라 위험도 낮음, pre-existing).
 - **`app/seed/system_skill_packages/`는 marketplace seeder가 바이트 단위 content-hash 하는 vendored 자산** — lint fix든 noqa 주석이든 어떤 바이트 변경도 재배포 시 스퓨리어스 버전 범프(기존 설치본에 "업데이트 있음" 오알림)를 유발한다. 린트 위반은 파일 수정이 아니라 pyproject per-file-ignores로 처리한다(PR #291에서 RET504 등록).
+- **워크플로 실행(ADR-026)은 API 프로세스가 아니라 job worker(`python -m app.jobs.worker`)의 `workflow.run` 작업에서 돈다.** 그래서 worker가 checkpointer와 기본 훅을 직접 띄운다(`app/jobs/worker.serve`) — 에이전트를 실행하는 새 작업 처리기를 더하면 API lifespan에만 있는 초기화에 기대지 말고 worker에서 돌려 볼 것(W3b에서 "Checkpointer not initialized"로 모든 에이전트 단계가 실패했고, 재수출 순환 import로 worker가 시작부터 죽었다). 진행 기록은 `workflow_step_runs` 행 하나다 — 실행 중(running)이던 에이전트 단계는 worker가 바뀌어도 **다시 실행하지 않고** 실행 행이 completed면 그 결과를, 아니면 `unknown`으로 두고 `workflow_unknown_check` 업무 승인으로 사람에게 묻는다(재실행은 새 내부 대화에서). 에이전트 단계는 시작할 때마다 `agent_node_issues`로 보관·권한·모델을 다시 확인한다. E2E 스택도 worker를 함께 띄우므로(`buildJobWorkerCommand`) 워크플로 E2E는 실제 토폴로지로 돈다.
 - **갓 모듈을 facade+패키지로 분해할 때는 "테스트 monkeypatch 표면"과 "프로덕션 호출 경로"가 갈라지지 않게 이동할 것.** 테스트가 `module.X`를 patch하는 심볼은 소비자가 그 모듈 바인딩을 call-time으로 읽어야 patch가 보인다 — X의 호출자가 X와 함께 새 모듈로 이동해 내부 직접 호출이 되는 순간 patch가 조용히 우회된다(테스트는 그린, 프로덕션은 다른 경로). 보존 전략 3종(Stage 3 PR #296에서 확립): ① 호출자를 facade에 남김, ② 이동한 호출자가 X를 **call-time facade import**로 조회(artifacts recorder→`_sha256_file`, runtime/models→`create_chat_model`), ③ 주입 컨텍스트로 전달(`WriteToolContext.session_factory` — 조립자가 call-time 모듈 전역을 읽어 주입). 안전 불변식 2개: call-time 역방향 import 심볼은 module-level에서 호출 금지(부분 초기화 참조), 서브모듈이 raw 심볼(`async_session` 등)을 직접 import해 주입을 우회하는지 grep 1회로 확인. 부속: APScheduler 영속 jobstore(SQLAlchemyJobStore)는 job 콜러블을 `module:qualname`으로 직렬화하므로 잡 본문을 서비스로 이관해도 `add_job` 대상은 `app.scheduler`의 동명 wrapper로 유지한다.
 
 ### Frontend
@@ -439,6 +440,7 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 - **jsdiff로 콘텐츠 diff를 만들 땐 `stripTrailingCr`+`ignoreNewlineAtEof`를 켜고, 렌더는 useMemo+라인 상한으로 감쌀 것.** 옵션 없이는 CRLF 스냅샷(Windows 작성 .skill)과 LF 리비전이 전 라인 변경으로, 말미 개행 차이가 유령 -x/+x 쌍으로 오표기된다. diff 계산은 렌더 바디에서 부모 리렌더마다 재실행되므로 useMemo로 고정하고, 파일당 표시 상한(예: 2MB)까지 입력이 허용되면 라인 수 상한(예: 5000) 초과 시 placeholder+소스 뷰어 유도로 메인 스레드 블로킹을 막는다.
 - **행 클릭(onRowClick) 표 + 셀 인터랙티브 요소 조합의 3규칙.** ① 셀 안 위젯 클릭은 DataTable이 행 내비게이션으로 승격하지 않게 가드한다 — 새 셀 위젯 타입을 추가하면 `data-table.tsx`의 closest 셀렉터에 포함됐는지 확인(행 체크박스 클릭이 소스 탭으로 이탈한 실사례; 헤더 전체선택만 쓰던 mock E2E는 이 클래스를 못 잡는다 — 행 단위 체크 회귀 테스트 필수). ② 벌크/확인 다이얼로그는 선택 시점 **객체 스냅샷이 아니라 id를 저장**하고 실행·표시 시점의 현재 목록에서 파생한다(선택 통지는 id 시그니처 가드로 수렴하므로 같은 선택+refetch면 재통지되지 않는다 — 스냅샷은 stale). ③ 같은 뮤테이션의 진입점이 여럿이면 pending 가드까지 포함해 공유 훅으로 단일화한다(빌더 launcher — 목록 행만 가드가 빠져 이중 세션 생성 가능했음).
 - **구분자/시그니처용 제어 문자는 반드시 이스케이프 소스 표기(`'\u0000'`)로 쓸 것.** 리터럴 NUL을 소스에 넣으면(에디터/도구 경유로 조용히 들어감) **git이 파일을 바이너리로 취급**해 diff·리뷰·일부 린트 표면에서 코드가 통째로 사라진다 — 컴파일·테스트는 전부 그린이라 아무도 모른다(data-table 시그니처 join에서 실발생). 커밋 후 `git diff --stat`에 소스 파일이 `Bin`으로 보이면 즉시 제어 문자를 의심한다.
+- **화면을 연 뒤에 서버에서 생기는 상태(승인 요청 등)를 한 번 가져온 목록에서 찾지 말 것.** 워크플로 실행 상세는 실행이 승인 대기에 닿기 전에 열리는데, 승인함 목록을 마운트 때 한 번만 읽어 새로고침 전까지 승인 카드가 안 보였다(W4b E2E에서 발견, 스크린샷은 새로고침 뒤라 가려짐). 기다리는 지점(상태+노드)마다 쿼리 키를 새로 만들고, 찾을 때까지만 폴링한다(`useWorkflowRunApproval`).
 - **E2E에서 "메시지가 전송/렌더됐다"를 page-wide `getByText`로 단언하지 말 것** — emptyContent/힌트 패널이 같은 텍스트를 echo하는 화면(빌더의 `user_request` 등)에선 발화가 없어도 통과하는 토톨로지가 된다. `[data-moldy-message-id]` 버블 locator + `.filter({ hasText })`로 스코프하고, 중복 검사도 버블 count로 단언한다(Phase 1.5 리뷰).
 
 ### CI·게이트
@@ -474,6 +476,7 @@ ENV에서 자동으로 생성되는 `is_system=True` credentials는 production �
 | ADR-018 | Relative Storage Path | worktree 간 data 경로 안정화 |
 | ADR-019 | System LLM Settings | 역할별 모델 선택 + base_url 주입 |
 | ADR-025 | Memory Tiers and Run Paths | 실행 경로별 기억 읽기·쓰기, 프로필·자동 회상·검색 3계층, 문장을 새로 쓰지 않는 정리 |
+| ADR-026 | Workflow Execution | 버전 고정(지문) 정의, job worker의 단계 행 실행, 업무 승인·단계 안 도구 승인·결과 불명 확인의 한 승인함, 실행 중 단계는 다시 실행하지 않음 |
 
 각 ADR 본문은 `docs/design-docs/`에 있다.
 

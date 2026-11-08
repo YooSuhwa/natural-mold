@@ -15,6 +15,29 @@ export function useApprovals(status: 'pending' | 'done') {
   })
 }
 
+const RUN_APPROVAL_POLL_MS = 3_000
+
+/**
+ * The pending request a waiting workflow run stops on. The run page opens before the run
+ * reaches its approval, so each waiting point is its own key and the list is polled until
+ * the request shows up (then polling stops).
+ */
+export function useWorkflowRunApproval(
+  runId: string,
+  status: string,
+  node: string | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: approvalQueryKeys.workflowRun(runId, status, node),
+    queryFn: async () =>
+      (await approvalsApi.list('pending')).items.find((item) => item.workflow_run_id === runId) ??
+      null,
+    enabled,
+    refetchInterval: (query) => (query.state.data ? false : RUN_APPROVAL_POLL_MS),
+  })
+}
+
 export function usePendingApprovalCount(enabled = true) {
   return useQuery({
     queryKey: approvalQueryKeys.pendingCount,

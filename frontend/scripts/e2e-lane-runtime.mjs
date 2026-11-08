@@ -199,6 +199,19 @@ export function buildBackendWebServerCommand(
 }
 
 /**
+ * The job worker (``python -m app.jobs.worker``, Compose ``worker``): workflow runs and other
+ * background jobs run there, not in the API process. Same interpreter and model lane as the
+ * backend; Playwright waits for its start log line since it opens no port.
+ */
+export function buildJobWorkerCommand(lane) {
+  getLaneDefaultPorts(lane)
+  const scriptedModelEnabled = lane === 'scripted' ? 'true' : 'false'
+  return `E2E_SCRIPTED_MODEL_ENABLED=${scriptedModelEnabled} "\${MOLDY_GATE_PYTHON:-./.venv/bin/python}" -m app.jobs.worker`
+}
+
+export const JOB_WORKER_READY = /job worker \S+ started/
+
+/**
  * @typedef {Readonly<{
  *   browserName: 'chromium'
  *   trace?: 'off'

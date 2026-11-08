@@ -14,9 +14,18 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiError } from '@/lib/api/client'
+import { useAgents } from '@/lib/hooks/use-agents'
 import { useCreateWorkflow, useWorkflows } from '@/lib/hooks/use-workflows'
 import { getResourceTone } from '@/lib/resource-tones'
 import { formatDisplayDateTime } from '@/lib/utils/display-format'
+import {
+  inquiryTemplate,
+  WORKFLOW_TEMPLATES,
+  type WorkflowTemplate,
+} from '@/features/workflows/lib/templates'
+
+const SELECT_CLASS =
+  'h-9 w-full rounded-md border bg-background px-2 text-sm focus-visible:ring-2 focus-visible:ring-ring'
 
 export function WorkflowsPageClient() {
   const t = useTranslations('workflows')
@@ -111,20 +120,48 @@ function CreateDialog({
   onCreated: (id: string) => void
 }) {
   const t = useTranslations('workflows')
+  const tt = useTranslations('workflows.templates.inquiry')
   const [name, setName] = useState('')
+  const [template, setTemplate] = useState<WorkflowTemplate>('blank')
+  const [classifier, setClassifier] = useState('')
+  const [writer, setWriter] = useState('')
+  const agents = useAgents()
   const create = useCreateWorkflow()
+  const needsAgents = template === 'inquiry' && (!classifier || !writer)
+  const ready = name.trim() !== '' && !needsAgents && !create.isPending
   const submit = () => {
-    const trimmed = name.trim()
-    if (!trimmed || create.isPending) return
-    create.mutate(trimmed, {
-      onSuccess: (workflow) => onCreated(workflow.id),
-      onError: (error) => toast.error(error instanceof ApiError ? error.message : String(error)),
-    })
+    if (!ready) return
+    const definition =
+      template === 'inquiry' ? inquiryTemplate({ classifier, writer }, tt) : undefined
+    create.mutate(
+      { name: name.trim(), definition },
+      {
+        onSuccess: (workflow) => onCreated(workflow.id),
+        onError: (error) => toast.error(error instanceof ApiError ? error.message : String(error)),
+      },
+    )
   }
+  const agentSelect = (label: string, value: string, onChange: (id: string) => void) => (
+    <label className="flex flex-col gap-2 text-sm">
+      {label}
+      <select
+        className={SELECT_CLASS}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">{t('templates.pickAgent')}</option>
+        {(agents.data ?? []).map((agent) => (
+          <option key={agent.id} value={agent.id}>
+            {agent.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
   return (
     <DialogShell open onOpenChange={(open) => !open && onClose()} size="sm">
       <DialogShell.Header title={t('createTitle')} />
-      <DialogShell.Body>
+      <DialogShell.Body className="flex flex-col gap-4">
         <label className="flex flex-col gap-2 text-sm">
           {t('nameLabel')}
           <Input
@@ -136,12 +173,37 @@ function CreateDialog({
             onKeyDown={(event) => event.key === 'Enter' && submit()}
           />
         </label>
+        <fieldset className="flex flex-col gap-2 text-sm">
+          <legend className="mb-2">{t('templates.title')}</legend>
+          {WORKFLOW_TEMPLATES.map((kind) => (
+            <label key={kind} className="flex items-start gap-2">
+              <input
+                type="radio"
+                name="workflow-template"
+                className="mt-1"
+                aria-label={t(`templates.${kind}.name`)}
+                checked={template === kind}
+                onChange={() => setTemplate(kind)}
+              />
+              <span className="flex flex-col">
+                {t(`templates.${kind}.name`)}
+                <span className="text-xs text-muted-foreground">{t(`templates.${kind}.hint`)}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        {template === 'inquiry' ? (
+          <div className="flex flex-col gap-3">
+            {agentSelect(tt('classifierAgent'), classifier, setClassifier)}
+            {agentSelect(tt('writerAgent'), writer, setWriter)}
+          </div>
+        ) : null}
       </DialogShell.Body>
       <DialogShell.Footer>
         <Button variant="outline" onClick={onClose}>
           {t('cancel')}
         </Button>
-        <Button disabled={!name.trim() || create.isPending} onClick={submit}>
+        <Button disabled={!ready} onClick={submit}>
           {t('createSubmit')}
         </Button>
       </DialogShell.Footer>

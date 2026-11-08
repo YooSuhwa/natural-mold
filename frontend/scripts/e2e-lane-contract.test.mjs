@@ -23,6 +23,7 @@ import {
   buildE2ELauncherEnvironment,
   buildLaneEnvironment,
   buildFrontendWebServerCommand,
+  buildJobWorkerCommand,
   buildPlaywrightProjectUse,
   buildExactLiveTitleFilter,
   E2E_PROJECTS,
@@ -32,6 +33,7 @@ import {
   getPlaywrightExecutionPolicy,
   getPlaywrightWebServerTimeout,
   getPlaywrightArtifactsDirectory,
+  JOB_WORKER_READY,
   LIVE_E2E_CASES,
   LIVE_E2E_SPECS,
   LIVE_E2E_SPEC_GLOBS,
@@ -110,10 +112,11 @@ describe('E2E lane contract', () => {
     // Given: the production E2E lane builds Next.js before Playwright can connect.
     const config = readFileSync(path.join(frontendRoot, 'playwright.config.ts'), 'utf8')
 
-    // When / Then: both owned servers use an explicit budget instead of Playwright's 60s default.
+    // When / Then: the backend, the job worker and the frontend use an explicit budget instead
+    // of Playwright's 60s default.
     expect(getPlaywrightWebServerTimeout()).toBe(180_000)
     expect(config).toContain('const webServerTimeout = getPlaywrightWebServerTimeout()')
-    expect(config.match(/timeout: webServerTimeout/g)).toHaveLength(2)
+    expect(config.match(/timeout: webServerTimeout/g)).toHaveLength(3)
   })
 
   it('validates CLI project selection only in the coordinator and trusts the worker project', () => {
@@ -210,6 +213,18 @@ describe('E2E lane contract', () => {
     expect(environment.E2E_PROJECT).toBe('scripted-full')
     expect(environment.E2E_FRONTEND_PORT).toBe('3100')
     expect(environment.E2E_BACKEND_PORT).toBe('8101')
+  })
+
+  it('runs the job worker with the backend interpreter and the lane model switch', () => {
+    // Workflow runs are claimed by the worker process, so the E2E stack starts one.
+    const scripted = buildJobWorkerCommand('scripted')
+    expect(scripted).toBe(
+      'E2E_SCRIPTED_MODEL_ENABLED=true "${MOLDY_GATE_PYTHON:-./.venv/bin/python}" -m app.jobs.worker',
+    )
+    expect(buildJobWorkerCommand('live')).toContain('E2E_SCRIPTED_MODEL_ENABLED=false ')
+    expect(() => buildJobWorkerCommand('other')).toThrow()
+    // The worker's start log line (app/jobs/worker.py run_forever) is what Playwright waits on.
+    expect(JOB_WORKER_READY.test("job worker host-1-ab12 started for ['workflow.run']")).toBe(true)
   })
 
   it('keeps scripted webServer commands free of LiteLLM names while subprocess env strips them', () => {
