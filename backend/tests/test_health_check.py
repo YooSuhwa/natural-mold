@@ -337,6 +337,30 @@ async def test_check_all_active_returns_counters() -> None:
     assert counters["healthy"] >= 2
 
 
+@pytest.mark.asyncio
+async def test_prune_history_deletes_only_rows_past_retention() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    target = uuid.uuid4()
+    async with TestSession() as db:
+        for days in (100, 91, 89, 1):
+            db.add(
+                HealthCheckHistory(
+                    target_kind="model",
+                    target_id=target,
+                    status="healthy",
+                    checked_at=now - timedelta(days=days),
+                )
+            )
+        await db.commit()
+        deleted = await health_check_service.prune_history(db, retention_days=90)
+        left = (await db.execute(select(HealthCheckHistory.checked_at))).scalars().all()
+
+    assert deleted == 2
+    assert sorted((now - at).days for at in left) == [1, 89]
+
+
 # ---------------------------------------------------------------------------
 # Router scenarios
 # ---------------------------------------------------------------------------

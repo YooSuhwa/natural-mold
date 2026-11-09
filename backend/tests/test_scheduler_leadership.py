@@ -327,3 +327,37 @@ async def test_reconciliation_replaces_job_after_remote_schedule_change(
         assert job.trigger.interval.total_seconds() == 20 * 60
     finally:
         scheduler.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_skips_an_unusable_schedule_and_keeps_the_rest(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given two active triggers, one with a timezone that does not exist.
+    runtime = importlib.import_module("app.scheduler_runtime")
+    good = await _seed_trigger(db, status="active")
+    bad = await _seed_trigger(db, status="active")
+    bad.timezone = "Nowhere/Invalid"
+    await db.commit()
+    scheduler = AsyncIOScheduler(jobstores={"default": MemoryJobStore()})
+    scheduler.start()
+    monkeypatch.setattr("app.scheduler.get_scheduler", lambda: scheduler)
+    monkeypatch.setattr(runtime, "get_scheduler", lambda: scheduler)
+    monkeypatch.setattr(runtime, "async_session", TestSession)
+
+    try:
+        # When the leader reconciles.
+        count = await runtime.reconcile_trigger_jobs()
+
+        # Then the good trigger is scheduled, the bad one is skipped but left active.
+        assert count == 1
+        assert scheduler.get_job(f"trigger_{good.id}") is not None
+        assert scheduler.get_job(f"trigger_{bad.id}") is None
+        async with TestSession() as verification_db:
+            refreshed_bad = await verification_db.get(AgentTrigger, bad.id)
+            assert refreshed_bad is not None
+            assert refreshed_bad.status == "active"
+            assert refreshed_bad.next_run_at is None
+    finally:
+        scheduler.shutdown(wait=False)
