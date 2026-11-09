@@ -17,6 +17,8 @@ from app.authz.policies import PRIVATE, authz_policy
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.schemas.workflow import (
     WorkflowAgentUsage,
+    WorkflowAssistRequest,
+    WorkflowAssistResponse,
     WorkflowCreate,
     WorkflowDetail,
     WorkflowDraftUpdate,
@@ -32,7 +34,7 @@ from app.schemas.workflow import (
     WorkflowVersionSummary,
 )
 from app.services import audit_service
-from app.workflows import runner, service
+from app.workflows import ai_edit, runner, service
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 runs_router = APIRouter(prefix="/api/workflow-runs", tags=["workflows"])
@@ -160,6 +162,36 @@ async def check_workflow(
     return WorkflowIssues(
         draft_revision=workflow.draft_revision,
         issues=[WorkflowIssue.model_validate(issue.as_dict()) for issue in issues],
+    )
+
+
+@router.post("/{workflow_id}/assist", response_model=WorkflowAssistResponse)
+@authz_policy(WORKFLOW)
+async def assist_workflow(
+    workflow_id: uuid.UUID,
+    body: WorkflowAssistRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+):
+    """AI editing (W5): a question or a proposed draft; nothing is saved."""
+    proposal = await ai_edit.assist(
+        db,
+        context,
+        workflow_id,
+        revision=body.revision,
+        request=body.message,
+        history=[(turn.role, turn.text) for turn in body.history],
+    )
+    await db.commit()
+    return WorkflowAssistResponse(
+        kind=proposal.kind,
+        message=proposal.message,
+        plan=proposal.plan,
+        definition=proposal.definition,
+        issues=[WorkflowIssue.model_validate(issue.as_dict()) for issue in proposal.issues],
+        base_revision=body.revision,
     )
 
 

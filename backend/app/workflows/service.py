@@ -42,13 +42,13 @@ def workflow_version_not_found() -> NotFoundError:
     return NotFoundError("WORKFLOW_VERSION_NOT_FOUND", "워크플로 버전을 찾을 수 없습니다")
 
 
-def _stale(current: int) -> ConflictError:
+def stale_draft(current: int) -> ConflictError:
     error = ConflictError("WORKFLOW_DRAFT_STALE", "다른 곳에서 먼저 저장했습니다. 새로 불러오세요")
     error.details = {"draft_revision": current}
     return error
 
 
-def _archived() -> ConflictError:
+def archived_workflow() -> ConflictError:
     return ConflictError("WORKFLOW_ARCHIVED", "보관한 워크플로는 고칠 수 없습니다")
 
 
@@ -131,9 +131,9 @@ async def save_draft(
     """Write the draft the caller edited from ``revision``; a newer draft wins (409)."""
     workflow = await get_workflow(db, context, workflow_id, for_update=True)
     if workflow.archived_at is not None:
-        raise _archived()
+        raise archived_workflow()
     if workflow.draft_revision != revision:
-        raise _stale(workflow.draft_revision)
+        raise stale_draft(workflow.draft_revision)
     if definition is not None:
         workflow.draft_definition = parse_definition(definition).dump()
     if name is not None:
@@ -225,9 +225,9 @@ async def publish(
     """Freeze the draft at ``revision`` into the next version, pinning its agents."""
     workflow = await get_workflow(db, context, workflow_id, for_update=True)
     if workflow.archived_at is not None:
-        raise _archived()
+        raise archived_workflow()
     if workflow.draft_revision != revision:
-        raise _stale(workflow.draft_revision)
+        raise stale_draft(workflow.draft_revision)
     definition = parse_definition(workflow.draft_definition)
     issues = graph_issues(definition) + await agent_issues(db, context, definition)
     if issues:

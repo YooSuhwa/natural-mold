@@ -199,6 +199,7 @@ async def test_another_persons_workflow_is_not_found(client: AsyncClient, db: As
         await client.get(f"{path}/versions"),
         await client.get(f"{path}/versions/1"),
         await client.post(f"{path}/archive"),
+        await client.post(f"{path}/assist", json={"revision": 1, "message": "x"}),
     ):
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "WORKFLOW_NOT_FOUND"

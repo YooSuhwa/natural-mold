@@ -25664,6 +25664,60 @@
         ]
       }
     },
+    "/api/workflows/{workflow_id}/assist": {
+      "post": {
+        "description": "AI editing (W5): a question or a proposed draft; nothing is saved.",
+        "operationId": "assist_workflow_api_workflows__workflow_id__assist_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowAssistRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowAssistResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assist Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
     "/api/workflows/{workflow_id}/draft": {
       "put": {
         "operationId": "save_draft_api_workflows__workflow_id__draft_put",
@@ -56519,6 +56573,120 @@
         "drifted"
       ],
       "title": "WorkflowAgentUsage",
+      "type": "object"
+    },
+    "WorkflowAssistRequest": {
+      "additionalProperties": false,
+      "description": "``revision`` is the draft the person sees; the proposal is a change of it (409 when\nstale).",
+      "properties": {
+        "history": {
+          "items": {
+            "$ref": "#/components/schemas/WorkflowAssistTurn"
+          },
+          "maxItems": 20,
+          "title": "History",
+          "type": "array"
+        },
+        "message": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1.0,
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "revision",
+        "message"
+      ],
+      "title": "WorkflowAssistRequest",
+      "type": "object"
+    },
+    "WorkflowAssistResponse": {
+      "description": "``question``: the model asks back. ``proposal``: ``definition`` is the draft after the\nedit (not saved) with its publish-check ``issues``. ``failed``: no usable edit.",
+      "properties": {
+        "base_revision": {
+          "title": "Base Revision",
+          "type": "integer"
+        },
+        "definition": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Definition"
+        },
+        "issues": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/WorkflowIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "kind": {
+          "enum": [
+            "question",
+            "proposal",
+            "failed"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "plan": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Plan",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "message",
+        "base_revision"
+      ],
+      "title": "WorkflowAssistResponse",
+      "type": "object"
+    },
+    "WorkflowAssistTurn": {
+      "additionalProperties": false,
+      "description": "An earlier turn of the AI editing conversation on this screen (W5).",
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "text"
+      ],
+      "title": "WorkflowAssistTurn",
       "type": "object"
     },
     "WorkflowCreate": {

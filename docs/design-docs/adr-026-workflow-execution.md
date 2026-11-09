@@ -86,6 +86,19 @@ limits and cancellation.
 decisions stay `approval.requested` / `approval.decided` / `approval.expired` on the
 request. An unknown step is not the end of a run, so it is not `run_finish`.
 
+### 8. AI editing proposes commands, the server builds the draft
+
+`POST /api/workflows/{id}/assist` (W5, `app/workflows/ai_edit.py`) asks the system
+`text_primary` model for one `WorkflowEdit` tool call: a question when the request is
+ambiguous, or a short plan and edit commands (add, replace or remove a node, connect,
+disconnect, set the inputs). The server applies the commands to the draft revision the
+person sees, parses the result as a draft and runs the publish checks; a command that does
+not apply, a reply that does not validate or a graph the checks reject goes back to the
+model once. Nothing is saved: accepting is an ordinary draft save, and publishing checks it
+again. The model sees the draft, the person's runnable agents (id, name, description only)
+and the turns of this screen, never agent prompts, tools, credentials or run data. The call
+is booked to the person (`invoker_type="user"`).
+
 ## Consequences
 
 - Loops, parallel branches, merges and LLM or judgment-model decisions need a real graph

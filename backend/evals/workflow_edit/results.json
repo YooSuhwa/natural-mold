@@ -1,0 +1,1518 @@
+[
+ {
+  "model": "gpt-5.4-mini",
+  "case": "q3_from_scratch",
+  "kind": "proposal",
+  "ok": true,
+  "notes": [],
+  "tokens": [
+   9759,
+   1677
+  ],
+  "attempts": 2,
+  "message": "문의 분류 후 긴급 여부에 따라 승인 단계를 거치고, 승인되면 답변 초안을 작성해 최종 결과로 내보내도록 수정합니다.",
+  "plan": [
+   "입력 항목을 고객 문의로 추가합니다.",
+   "문의 분류 에이전트, 긴급 분기, 승인, 답변 작성, 실패, 최종 출력 노드를 추가합니다.",
+   "노드 순서와 분기 조건을 연결합니다."
+  ],
+  "definition": {
+   "schema_version": "moldy.workflow.v1",
+   "inputs": [
+    {
+     "name": "customer_inquiry",
+     "type": "string",
+     "required": true,
+     "label": "고객 문의",
+     "max_length": 10000
+    }
+   ],
+   "nodes": [
+    {
+     "id": "start",
+     "label": null,
+     "type": "start"
+    },
+    {
+     "id": "classify_inquiry",
+     "label": "문의 분류",
+     "type": "agent",
+     "agent_id": "11111111-1111-4111-8111-111111111111",
+     "prompt": [
+      {
+       "text": "다음 고객 문의를 유형과 긴급 여부로 분류해 줘:\n"
+      },
+      {
+       "ref": {
+        "node": "input",
+        "path": "/customer_inquiry"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "category": {
+        "type": "string"
+       },
+       "urgent": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "category",
+       "urgent"
+      ]
+     }
+    },
+    {
+     "id": "urgent_only",
+     "label": "긴급 여부",
+     "type": "decision_bool",
+     "condition": {
+      "all": [
+       {
+        "source": "classify_inquiry",
+        "path": "/urgent",
+        "op": "eq",
+        "value": true
+       }
+      ],
+      "any": null
+     }
+    },
+    {
+     "id": "urgent_approval",
+     "label": "긴급 승인",
+     "type": "approval",
+     "title": [
+      {
+       "text": "긴급 문의 답변 초안 작성 승인 요청"
+      }
+     ],
+     "body": [
+      {
+       "text": "고객 문의 분류 결과:\n유형: "
+      },
+      {
+       "ref": {
+        "node": "classify_inquiry",
+        "path": "/category"
+       }
+      },
+      {
+       "text": "\n긴급 여부: "
+      },
+      {
+       "ref": {
+        "node": "classify_inquiry",
+        "path": "/urgent"
+       }
+      },
+      {
+       "text": "\n\n답변 작성 에이전트가 답변 초안을 작성해도 될지 승인해 주세요."
+      }
+     ],
+     "timeout_minutes": 1440
+    },
+    {
+     "id": "draft_reply",
+     "label": "답변 초안 작성",
+     "type": "agent",
+     "agent_id": "22222222-2222-4222-8222-222222222222",
+     "prompt": [
+      {
+       "text": "다음 고객 문의와 분류 결과를 바탕으로 고객에게 보낼 답변 초안을 작성해 줘.\n\n고객 문의:\n"
+      },
+      {
+       "ref": {
+        "node": "input",
+        "path": "/customer_inquiry"
+       }
+      },
+      {
+       "text": "\n\n분류 결과:\n유형: "
+      },
+      {
+       "ref": {
+        "node": "classify_inquiry",
+        "path": "/category"
+       }
+      },
+      {
+       "text": "\n긴급 여부: "
+      },
+      {
+       "ref": {
+        "node": "classify_inquiry",
+        "path": "/urgent"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "draft_reply": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "draft_reply"
+      ]
+     }
+    },
+    {
+     "id": "fail_rejected",
+     "label": "승인 거절 실패",
+     "type": "fail",
+     "reason": "긴급 문의 답변 초안 작성 승인이 거절되었습니다."
+    },
+    {
+     "id": "final_output",
+     "label": "최종 결과",
+     "type": "output",
+     "fields": {
+      "reply": [
+       {
+        "ref": {
+         "node": "draft_reply",
+         "path": "/draft_reply"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   "edges": [
+    {
+     "from": "start",
+     "to": "classify_inquiry",
+     "when": null
+    },
+    {
+     "from": "classify_inquiry",
+     "to": "urgent_only",
+     "when": null
+    },
+    {
+     "from": "urgent_only",
+     "to": "urgent_approval",
+     "when": "true"
+    },
+    {
+     "from": "urgent_only",
+     "to": "draft_reply",
+     "when": "false"
+    },
+    {
+     "from": "urgent_approval",
+     "to": "draft_reply",
+     "when": "approved"
+    },
+    {
+     "from": "urgent_approval",
+     "to": "fail_rejected",
+     "when": "rejected"
+    },
+    {
+     "from": "draft_reply",
+     "to": "final_output",
+     "when": null
+    }
+   ]
+  }
+ },
+ {
+  "model": "gpt-5.4-mini",
+  "case": "weekly_report",
+  "kind": "proposal",
+  "ok": true,
+  "notes": [],
+  "tokens": [
+   4425,
+   755
+  ],
+  "attempts": 1,
+  "message": "주간 업무 메모를 받아 보고서를 작성하고, 위험 항목이 있으면 승인 후 내보내도록 워크플로를 구성합니다. 거절되면 실패로 끝납니다.",
+  "plan": [
+   "입력을 추가한다.",
+   "주간 보고 에이전트를 실행한다.",
+   "위험 여부를 검사한다.",
+   "위험이 있으면 승인 단계를 거친다.",
+   "최종 결과를 내보내고 거절 시 실패 처리한다."
+  ],
+  "definition": {
+   "schema_version": "moldy.workflow.v1",
+   "inputs": [
+    {
+     "name": "team_memo",
+     "type": "string",
+     "required": true,
+     "label": "팀 업무 메모",
+     "max_length": null
+    }
+   ],
+   "nodes": [
+    {
+     "id": "start",
+     "label": null,
+     "type": "start"
+    },
+    {
+     "id": "weekly_report",
+     "label": "주간 보고 작성",
+     "type": "agent",
+     "agent_id": "33333333-3333-4333-8333-333333333333",
+     "prompt": [
+      {
+       "text": "다음 팀 업무 메모를 바탕으로 주간 보고서를 작성하세요. 위험 항목이 있으면 명시적으로 표시하세요.\n\n팀 업무 메모:\n"
+      },
+      {
+       "ref": {
+        "node": "input",
+        "path": "/team_memo"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "report": {
+        "type": "string"
+       },
+       "has_risk": {
+        "type": "boolean"
+       },
+       "risk_items": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      },
+      "required": [
+       "report",
+       "has_risk",
+       "risk_items"
+      ]
+     }
+    },
+    {
+     "id": "risk_check",
+     "label": "위험 항목 확인",
+     "type": "decision_bool",
+     "condition": {
+      "all": [
+       {
+        "source": "weekly_report",
+        "path": "/has_risk",
+        "op": "eq",
+        "value": true
+       }
+      ],
+      "any": null
+     }
+    },
+    {
+     "id": "risk_approval",
+     "label": "위험 승인",
+     "type": "approval",
+     "title": [
+      {
+       "text": "주간 보고서에 위험 항목이 있습니다. 승인하시겠습니까?"
+      }
+     ],
+     "body": [
+      {
+       "text": "보고서:\n"
+      },
+      {
+       "ref": {
+        "node": "weekly_report",
+        "path": "/report"
+       }
+      },
+      {
+       "text": "\n\n위험 항목:\n"
+      },
+      {
+       "ref": {
+        "node": "weekly_report",
+        "path": "/risk_items"
+       }
+      }
+     ],
+     "timeout_minutes": 10080
+    },
+    {
+     "id": "final_output",
+     "label": "최종 내보내기",
+     "type": "output",
+     "fields": {
+      "report": [
+       {
+        "ref": {
+         "node": "weekly_report",
+         "path": "/report"
+        }
+       }
+      ],
+      "risk_items": [
+       {
+        "ref": {
+         "node": "weekly_report",
+         "path": "/risk_items"
+        }
+       }
+      ],
+      "approved": [
+       {
+        "text": "true"
+       }
+      ]
+     }
+    },
+    {
+     "id": "final_output_no_risk",
+     "label": "위험 없음 내보내기",
+     "type": "output",
+     "fields": {
+      "report": [
+       {
+        "ref": {
+         "node": "weekly_report",
+         "path": "/report"
+        }
+       }
+      ],
+      "risk_items": [
+       {
+        "ref": {
+         "node": "weekly_report",
+         "path": "/risk_items"
+        }
+       }
+      ],
+      "approved": [
+       {
+        "text": "true"
+       }
+      ]
+     }
+    },
+    {
+     "id": "rejected_fail",
+     "label": "승인 거절 실패",
+     "type": "fail",
+     "reason": "위험 항목 승인 요청이 거절되어 워크플로를 종료했습니다."
+    }
+   ],
+   "edges": [
+    {
+     "from": "start",
+     "to": "weekly_report",
+     "when": null
+    },
+    {
+     "from": "weekly_report",
+     "to": "risk_check",
+     "when": null
+    },
+    {
+     "from": "risk_check",
+     "to": "risk_approval",
+     "when": "true"
+    },
+    {
+     "from": "risk_check",
+     "to": "final_output_no_risk",
+     "when": "false"
+    },
+    {
+     "from": "risk_approval",
+     "to": "final_output",
+     "when": "approved"
+    },
+    {
+     "from": "risk_approval",
+     "to": "rejected_fail",
+     "when": "rejected"
+    }
+   ]
+  }
+ },
+ {
+  "model": "gpt-5.4-mini",
+  "case": "research_summary",
+  "kind": "proposal",
+  "ok": true,
+  "notes": [],
+  "tokens": [
+   4420,
+   558
+  ],
+  "attempts": 1,
+  "message": "주제를 받아 웹 조사 후 요약문을 제목과 본문으로 출력하도록 워크플로우를 구성합니다.",
+  "plan": [
+   "입력에 주제 항목을 추가합니다.",
+   "웹 조사 에이전트를 먼저 실행해 자료를 수집합니다.",
+   "답변 작성 에이전트가 조사 결과를 바탕으로 요약문을 작성하게 합니다.",
+   "제목과 본문 두 필드로 결과를 출력합니다."
+  ],
+  "definition": {
+   "schema_version": "moldy.workflow.v1",
+   "inputs": [
+    {
+     "name": "topic",
+     "type": "string",
+     "required": true,
+     "label": "주제",
+     "max_length": null
+    }
+   ],
+   "nodes": [
+    {
+     "id": "start",
+     "label": null,
+     "type": "start"
+    },
+    {
+     "id": "web_research",
+     "label": "웹 조사",
+     "type": "agent",
+     "agent_id": "44444444-4444-4444-8444-444444444444",
+     "prompt": [
+      {
+       "text": "다음 주제에 대해 웹 자료를 조사하고 핵심 사실, 쟁점, 참고할 만한 출처 요약을 정리해 주세요. 주제: "
+      },
+      {
+       "ref": {
+        "node": "input",
+        "path": "/topic"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "summary": {
+        "type": "string"
+       },
+       "sources": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      },
+      "required": [
+       "summary",
+       "sources"
+      ]
+     }
+    },
+    {
+     "id": "write_summary",
+     "label": "요약문 작성",
+     "type": "agent",
+     "agent_id": "22222222-2222-4222-8222-222222222222",
+     "prompt": [
+      {
+       "text": "다음 웹 조사 자료를 바탕으로 한국어 요약문을 작성해 주세요. 핵심만 간결하게 정리하되, 제목에 들어갈 한 줄 요약과 본문에 들어갈 상세 요약을 구분해 주세요.\n\n조사 자료:\n"
+      },
+      {
+       "ref": {
+        "node": "web_research",
+        "path": "/summary"
+       }
+      },
+      {
+       "text": "\n\n참고 출처:\n"
+      },
+      {
+       "ref": {
+        "node": "web_research",
+        "path": "/sources"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "title": {
+        "type": "string"
+       },
+       "body": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "title",
+       "body"
+      ]
+     }
+    },
+    {
+     "id": "result_output",
+     "label": "결과 출력",
+     "type": "output",
+     "fields": {
+      "title": [
+       {
+        "ref": {
+         "node": "write_summary",
+         "path": "/title"
+        }
+       }
+      ],
+      "body": [
+       {
+        "ref": {
+         "node": "write_summary",
+         "path": "/body"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   "edges": [
+    {
+     "from": "start",
+     "to": "web_research",
+     "when": null
+    },
+    {
+     "from": "web_research",
+     "to": "write_summary",
+     "when": null
+    },
+    {
+     "from": "write_summary",
+     "to": "result_output",
+     "when": null
+    }
+   ]
+  }
+ },
+ {
+  "model": "gpt-5.4-mini",
+  "case": "edit_timeout",
+  "kind": "proposal",
+  "ok": true,
+  "notes": [],
+  "tokens": [
+   4934,
+   101
+  ],
+  "attempts": 1,
+  "message": "담당자 승인 기한을 2시간(120분)으로 변경했습니다. 다른 구성은 유지했습니다.",
+  "plan": [
+   "승인 노드의 기한만 수정합니다."
+  ],
+  "definition": {
+   "schema_version": "moldy.workflow.v1",
+   "inputs": [
+    {
+     "name": "inquiry",
+     "type": "string",
+     "required": true,
+     "label": "문의 내용",
+     "max_length": null
+    }
+   ],
+   "nodes": [
+    {
+     "id": "start",
+     "label": null,
+     "type": "start"
+    },
+    {
+     "id": "classify",
+     "label": "문의 분류",
+     "type": "agent",
+     "agent_id": "11111111-1111-4111-8111-111111111111",
+     "prompt": [
+      {
+       "text": "분류: "
+      },
+      {
+       "ref": {
+        "node": "input",
+        "path": "/inquiry"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "category": {
+        "type": "string"
+       },
+       "urgent": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "category",
+       "urgent"
+      ]
+     }
+    },
+    {
+     "id": "is_urgent",
+     "label": "긴급한가",
+     "type": "decision_bool",
+     "condition": {
+      "all": [
+       {
+        "source": "classify",
+        "path": "/urgent",
+        "op": "eq",
+        "value": true
+       }
+      ],
+      "any": null
+     }
+    },
+    {
+     "id": "review",
+     "label": "담당자 승인",
+     "type": "approval",
+     "title": [
+      {
+       "text": "긴급 문의"
+      }
+     ],
+     "body": [],
+     "timeout_minutes": 120
+    },
+    {
+     "id": "draft",
+     "label": "답변 초안",
+     "type": "agent",
+     "agent_id": "22222222-2222-4222-8222-222222222222",
+     "prompt": [
+      {
+       "ref": {
+        "node": "input",
+        "path": "/inquiry"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "answer": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "answer"
+      ]
+     }
+    },
+    {
+     "id": "done",
+     "label": "출력",
+     "type": "output",
+     "fields": {
+      "answer": [
+       {
+        "ref": {
+         "node": "draft",
+         "path": "/answer"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "rejected",
+     "label": "거절 종료",
+     "type": "fail",
+     "reason": "거절"
+    }
+   ],
+   "edges": [
+    {
+     "from": "start",
+     "to": "classify",
+     "when": null
+    },
+    {
+     "from": "classify",
+     "to": "is_urgent",
+     "when": null
+    },
+    {
+     "from": "is_urgent",
+     "to": "review",
+     "when": "true"
+    },
+    {
+     "from": "is_urgent",
+     "to": "draft",
+     "when": "false"
+    },
+    {
+     "from": "review",
+     "to": "draft",
+     "when": "approved"
+    },
+    {
+     "from": "review",
+     "to": "rejected",
+     "when": "rejected"
+    },
+    {
+     "from": "draft",
+     "to": "done",
+     "when": null
+    }
+   ]
+  }
+ },
+ {
+  "model": "gpt-5.4-mini",
+  "case": "ambiguous",
+  "kind": "question",
+  "ok": true,
+  "notes": [
+   "문서 처리 흐름의 목적을 한 가지만 정해 주세요. 예: 문의 분류, 답변 초안 작성, 주간 보고, 웹 조사 중 어떤 흐름을 만들까요?"
+  ],
+  "tokens": [
+   4376,
+   92
+  ],
+  "attempts": 1,
+  "message": "문서 처리 흐름의 목적을 한 가지만 정해 주세요. 예: 문의 분류, 답변 초안 작성, 주간 보고, 웹 조사 중 어떤 흐름을 만들까요?",
+  "plan": [],
+  "definition": null
+ },
+ {
+  "model": "claude-sonnet-5",
+  "case": "q3_from_scratch",
+  "kind": "proposal",
+  "ok": true,
+  "notes": [],
+  "tokens": [
+   7203,
+   1520
+  ],
+  "attempts": 1,
+  "message": "고객 문의 입력을 받아 문의 분류 에이전트로 분류한 뒤, 긴급 여부에 따라 분기하여 긴급하면 승인을 거쳐 답변 작성 에이전트가 답변을 작성하고, 긴급하지 않으면 바로 답변 작성 에이전트가 답변을 작성하도록 구성했습니다. 승인이 거절되면 실패로 종료되고, 그 외에는 답변을 최종 결과로 출력합니다.",
+  "plan": [
+   "입력 필드(customer_inquiry) 추가",
+   "문의 분류 에이전트 노드 추가",
+   "긴급 여부 분기 노드 추가",
+   "승인 노드 추가 (긴급 시)",
+   "답변 작성 에이전트 노드 추가",
+   "실패 노드 추가 (거절 시)",
+   "출력 노드 추가 및 연결"
+  ],
+  "definition": {
+   "schema_version": "moldy.workflow.v1",
+   "inputs": [
+    {
+     "name": "customer_inquiry",
+     "type": "string",
+     "required": true,
+     "label": "고객 문의",
+     "max_length": null
+    }
+   ],
+   "nodes": [
+    {
+     "id": "start",
+     "label": null,
+     "type": "start"
+    },
+    {
+     "id": "classify",
+     "label": "문의 분류",
+     "type": "agent",
+     "agent_id": "11111111-1111-4111-8111-111111111111",
+     "prompt": [
+      {
+       "text": "다음 고객 문의를 유형과 긴급도로 분류해줘:\n"
+      },
+      {
+       "ref": {
+        "node": "input",
+        "path": "/customer_inquiry"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "category": {
+        "type": "string"
+       },
+       "is_urgent": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "category",
+       "is_urgent"
+      ]
+     }
+    },
+    {
+     "id": "urgent_check",
+     "label": "긴급 여부 확인",
+     "type": "decision_bool",
+     "condition": {
+      "all": [
+       {
+        "source": "classify",
+        "path": "/is_urgent",
+        "op": "eq",
+        "value": true
+       }
+      ],
+      "any": null
+     }
+    },
+    {
+     "id": "urgent_approval",
+     "label": "긴급 문의 승인",
+     "type": "approval",
+     "title": [
+      {
+       "text": "긴급 고객 문의 승인 요청"
+      }
+     ],
+     "body": [
+      {
+       "text": "분류 결과: "
+      },
+      {
+       "ref": {
+        "node": "classify",
+        "path": "/category"
+       }
+      },
+      {
+       "text": "\n원문: "
+      },
+      {
+       "ref": {
+        "node": "input",
+        "path": "/customer_inquiry"
+       }
+      }
+     ],
+     "timeout_minutes": 60
+    },
+    {
+     "id": "draft_reply",
+     "label": "답변 초안 작성",
+     "type": "agent",
+     "agent_id": "22222222-2222-4222-8222-222222222222",
+     "prompt": [
+      {
+       "text": "다음 고객 문의에 대한 답변 초안을 작성해줘:\n"
+      },
+      {
+       "ref": {
+        "node": "input",
+        "path": "/customer_inquiry"
+       }
+      },
+      {
+       "text": "\n분류: "
+      },
+      {
+       "ref": {
+        "node": "classify",
+        "path": "/category"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "reply": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "reply"
+      ]
+     }
+    },
+    {
+     "id": "rejected_fail",
+     "label": "승인 거절로 실패",
+     "type": "fail",
+     "reason": "긴급 문의 승인이 거절되었습니다."
+    },
+    {
+     "id": "final_output",
+     "label": "최종 답변",
+     "type": "output",
+     "fields": {
+      "reply": [
+       {
+        "ref": {
+         "node": "draft_reply",
+         "path": "/reply"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   "edges": [
+    {
+     "from": "start",
+     "to": "classify",
+     "when": null
+    },
+    {
+     "from": "classify",
+     "to": "urgent_check",
+     "when": null
+    },
+    {
+     "from": "urgent_check",
+     "to": "urgent_approval",
+     "when": "true"
+    },
+    {
+     "from": "urgent_check",
+     "to": "draft_reply",
+     "when": "false"
+    },
+    {
+     "from": "urgent_approval",
+     "to": "draft_reply",
+     "when": "approved"
+    },
+    {
+     "from": "urgent_approval",
+     "to": "rejected_fail",
+     "when": "rejected"
+    },
+    {
+     "from": "draft_reply",
+     "to": "final_output",
+     "when": null
+    }
+   ]
+  }
+ },
+ {
+  "model": "claude-sonnet-5",
+  "case": "weekly_report",
+  "kind": "proposal",
+  "ok": true,
+  "notes": [],
+  "tokens": [
+   7192,
+   1308
+  ],
+  "attempts": 1,
+  "message": "팀 업무 메모를 입력받아 주간 보고 에이전트로 보고서를 작성하고, 위험 항목 여부에 따라 승인 후 또는 바로 내보내도록 구성했습니다. 거절 시 실패로 종료됩니다.",
+  "plan": [
+   "입력에 team_memo 추가",
+   "주간 보고 에이전트 노드 추가 (has_risk 포함 출력)",
+   "위험 항목 여부 분기 노드 추가",
+   "위험 있을 때 승인 노드 추가",
+   "위험 없음/승인됨 각각 출력 노드 추가",
+   "거절 시 실패 노드 추가",
+   "모든 노드 연결"
+  ],
+  "definition": {
+   "schema_version": "moldy.workflow.v1",
+   "inputs": [
+    {
+     "name": "team_memo",
+     "type": "string",
+     "required": true,
+     "label": "팀 업무 메모",
+     "max_length": null
+    }
+   ],
+   "nodes": [
+    {
+     "id": "start",
+     "label": null,
+     "type": "start"
+    },
+    {
+     "id": "weekly_report",
+     "label": "주간 보고 작성",
+     "type": "agent",
+     "agent_id": "33333333-3333-4333-8333-333333333333",
+     "prompt": [
+      {
+       "text": "다음 팀 업무 메모를 바탕으로 주간 보고서를 작성해줘. 보고서에 위험 항목이 있으면 has_risk를 true로 표시해줘.\n\n팀 업무 메모:\n"
+      },
+      {
+       "ref": {
+        "node": "input",
+        "path": "/team_memo"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "report": {
+        "type": "string"
+       },
+       "has_risk": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "report",
+       "has_risk"
+      ]
+     }
+    },
+    {
+     "id": "risk_check",
+     "label": "위험 항목 여부 확인",
+     "type": "decision_bool",
+     "condition": {
+      "all": [
+       {
+        "source": "weekly_report",
+        "path": "/has_risk",
+        "op": "eq",
+        "value": true
+       }
+      ],
+      "any": null
+     }
+    },
+    {
+     "id": "report_approval",
+     "label": "보고서 승인",
+     "type": "approval",
+     "title": [
+      {
+       "text": "주간 보고서 승인 요청 (위험 항목 포함)"
+      }
+     ],
+     "body": [
+      {
+       "ref": {
+        "node": "weekly_report",
+        "path": "/report"
+       }
+      }
+     ],
+     "timeout_minutes": 1440
+    },
+    {
+     "id": "output_direct",
+     "label": "보고서 내보내기 (위험 없음)",
+     "type": "output",
+     "fields": {
+      "report": [
+       {
+        "ref": {
+         "node": "weekly_report",
+         "path": "/report"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "output_approved",
+     "label": "보고서 내보내기 (승인됨)",
+     "type": "output",
+     "fields": {
+      "report": [
+       {
+        "ref": {
+         "node": "weekly_report",
+         "path": "/report"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fail_rejected",
+     "label": "거절로 인한 실패",
+     "type": "fail",
+     "reason": "보고서의 위험 항목에 대한 승인이 거절되었습니다."
+    }
+   ],
+   "edges": [
+    {
+     "from": "start",
+     "to": "weekly_report",
+     "when": null
+    },
+    {
+     "from": "weekly_report",
+     "to": "risk_check",
+     "when": null
+    },
+    {
+     "from": "risk_check",
+     "to": "report_approval",
+     "when": "true"
+    },
+    {
+     "from": "risk_check",
+     "to": "output_direct",
+     "when": "false"
+    },
+    {
+     "from": "report_approval",
+     "to": "output_approved",
+     "when": "approved"
+    },
+    {
+     "from": "report_approval",
+     "to": "fail_rejected",
+     "when": "rejected"
+    }
+   ]
+  }
+ },
+ {
+  "model": "claude-sonnet-5",
+  "case": "research_summary",
+  "kind": "proposal",
+  "ok": true,
+  "notes": [],
+  "tokens": [
+   7173,
+   926
+  ],
+  "attempts": 1,
+  "message": "주제를 입력받아 웹 조사 에이전트로 자료를 수집하고, 답변 작성 에이전트가 요약문을 작성한 뒤 제목과 본문으로 나눠 출력하는 워크플로우를 구성했습니다.",
+  "plan": [
+   "입력 필드 'topic' 추가",
+   "웹 조사 에이전트 노드 추가 (topic 참조)",
+   "답변 작성 에이전트 노드 추가 (조사 결과 참조, 제목/본문 생성)",
+   "출력 노드 추가 (제목, 본문 필드)",
+   "노드 연결: start → 조사 → 작성 → 출력"
+  ],
+  "definition": {
+   "schema_version": "moldy.workflow.v1",
+   "inputs": [
+    {
+     "name": "topic",
+     "type": "string",
+     "required": true,
+     "label": "주제",
+     "max_length": null
+    }
+   ],
+   "nodes": [
+    {
+     "id": "start",
+     "label": null,
+     "type": "start"
+    },
+    {
+     "id": "research",
+     "label": "웹 조사",
+     "type": "agent",
+     "agent_id": "44444444-4444-4444-8444-444444444444",
+     "prompt": [
+      {
+       "text": "다음 주제에 대해 웹 자료를 조사하고 정리해 주세요: "
+      },
+      {
+       "ref": {
+        "node": "input",
+        "path": "/topic"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "summary": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "summary"
+      ]
+     }
+    },
+    {
+     "id": "write_answer",
+     "label": "답변 작성",
+     "type": "agent",
+     "agent_id": "22222222-2222-4222-8222-222222222222",
+     "prompt": [
+      {
+       "text": "다음 조사 자료를 바탕으로 제목과 본문으로 구성된 요약문을 작성해 주세요.\n\n조사 자료:\n"
+      },
+      {
+       "ref": {
+        "node": "research",
+        "path": "/summary"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "title": {
+        "type": "string"
+       },
+       "body": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "title",
+       "body"
+      ]
+     }
+    },
+    {
+     "id": "output",
+     "label": "결과 출력",
+     "type": "output",
+     "fields": {
+      "title": [
+       {
+        "ref": {
+         "node": "write_answer",
+         "path": "/title"
+        }
+       }
+      ],
+      "body": [
+       {
+        "ref": {
+         "node": "write_answer",
+         "path": "/body"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   "edges": [
+    {
+     "from": "start",
+     "to": "research",
+     "when": null
+    },
+    {
+     "from": "research",
+     "to": "write_answer",
+     "when": null
+    },
+    {
+     "from": "write_answer",
+     "to": "output",
+     "when": null
+    }
+   ]
+  }
+ },
+ {
+  "model": "claude-sonnet-5",
+  "case": "edit_timeout",
+  "kind": "proposal",
+  "ok": true,
+  "notes": [],
+  "tokens": [
+   7832,
+   241
+  ],
+  "attempts": 1,
+  "message": "담당자 승인 노드의 기한을 1440분(24시간)에서 120분(2시간)으로 변경했습니다.",
+  "plan": [
+   "review 승인 노드의 timeout_minutes를 120으로 수정"
+  ],
+  "definition": {
+   "schema_version": "moldy.workflow.v1",
+   "inputs": [
+    {
+     "name": "inquiry",
+     "type": "string",
+     "required": true,
+     "label": "문의 내용",
+     "max_length": null
+    }
+   ],
+   "nodes": [
+    {
+     "id": "start",
+     "label": null,
+     "type": "start"
+    },
+    {
+     "id": "classify",
+     "label": "문의 분류",
+     "type": "agent",
+     "agent_id": "11111111-1111-4111-8111-111111111111",
+     "prompt": [
+      {
+       "text": "분류: "
+      },
+      {
+       "ref": {
+        "node": "input",
+        "path": "/inquiry"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "category": {
+        "type": "string"
+       },
+       "urgent": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "category",
+       "urgent"
+      ]
+     }
+    },
+    {
+     "id": "is_urgent",
+     "label": "긴급한가",
+     "type": "decision_bool",
+     "condition": {
+      "all": [
+       {
+        "source": "classify",
+        "path": "/urgent",
+        "op": "eq",
+        "value": true
+       }
+      ],
+      "any": null
+     }
+    },
+    {
+     "id": "review",
+     "label": "담당자 승인",
+     "type": "approval",
+     "title": [
+      {
+       "text": "긴급 문의"
+      }
+     ],
+     "body": [],
+     "timeout_minutes": 120
+    },
+    {
+     "id": "draft",
+     "label": "답변 초안",
+     "type": "agent",
+     "agent_id": "22222222-2222-4222-8222-222222222222",
+     "prompt": [
+      {
+       "ref": {
+        "node": "input",
+        "path": "/inquiry"
+       }
+      }
+     ],
+     "output_schema": {
+      "type": "object",
+      "properties": {
+       "answer": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "answer"
+      ]
+     }
+    },
+    {
+     "id": "done",
+     "label": "출력",
+     "type": "output",
+     "fields": {
+      "answer": [
+       {
+        "ref": {
+         "node": "draft",
+         "path": "/answer"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "rejected",
+     "label": "거절 종료",
+     "type": "fail",
+     "reason": "거절"
+    }
+   ],
+   "edges": [
+    {
+     "from": "start",
+     "to": "classify",
+     "when": null
+    },
+    {
+     "from": "classify",
+     "to": "is_urgent",
+     "when": null
+    },
+    {
+     "from": "is_urgent",
+     "to": "review",
+     "when": "true"
+    },
+    {
+     "from": "is_urgent",
+     "to": "draft",
+     "when": "false"
+    },
+    {
+     "from": "review",
+     "to": "draft",
+     "when": "approved"
+    },
+    {
+     "from": "review",
+     "to": "rejected",
+     "when": "rejected"
+    },
+    {
+     "from": "draft",
+     "to": "done",
+     "when": null
+    }
+   ]
+  }
+ },
+ {
+  "model": "claude-sonnet-5",
+  "case": "ambiguous",
+  "kind": "question",
+  "ok": true,
+  "notes": [
+   "\"문서 처리\" 흐름이 구체적으로 어떤 작업을 의미하는지 조금 더 알려주시겠어요? 예를 들어 제공된 에이전트 중 '문의 분류', '답변 작성', '주간 보고', '웹 조사' 중 어떤 것을 활용한 문서 처리인가요? 처리"
+  ],
+  "tokens": [
+   7103,
+   219
+  ],
+  "attempts": 1,
+  "message": "\"문서 처리\" 흐름이 구체적으로 어떤 작업을 의미하는지 조금 더 알려주시겠어요? 예를 들어 제공된 에이전트 중 '문의 분류', '답변 작성', '주간 보고', '웹 조사' 중 어떤 것을 활용한 문서 처리인가요? 처리할 문서(또는 입력)가 무엇이고 최종적으로 어떤 결과물을 원하시는지도 알려주세요.",
+  "plan": [],
+  "definition": null
+ }
+]

@@ -39,6 +39,8 @@ REVIEWED: dict[str, str] = {
     "agent_runtime/prepared_run_inputs.py": "lease runs: a guardrail falls back to default",
     "services/memory_consolidation.py": "left out: the person's own checked memories in, "
     "ids and actions out (plan 15, 5.6)",
+    "workflows/ai_edit.py": "left out: workflow AI editing, the person's own request and "
+    "draft in (Moldy's prompt), edit commands the server applies and checks out (W5)",
 }
 
 

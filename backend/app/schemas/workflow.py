@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -126,3 +126,35 @@ class WorkflowAgentUsage(BaseModel):
     in_draft: bool
     in_published: bool
     drifted: bool
+
+
+class WorkflowAssistTurn(BaseModel):
+    """An earlier turn of the AI editing conversation on this screen (W5)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class WorkflowAssistRequest(BaseModel):
+    """``revision`` is the draft the person sees; the proposal is a change of it (409 when
+    stale)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    revision: int = Field(ge=1)
+    message: str = Field(min_length=1, max_length=4000)
+    history: list[WorkflowAssistTurn] = Field(default_factory=list, max_length=20)
+
+
+class WorkflowAssistResponse(BaseModel):
+    """``question``: the model asks back. ``proposal``: ``definition`` is the draft after the
+    edit (not saved) with its publish-check ``issues``. ``failed``: no usable edit."""
+
+    kind: Literal["question", "proposal", "failed"]
+    message: str
+    plan: list[str] = []
+    definition: dict[str, Any] | None = None
+    issues: list[WorkflowIssue] = []
+    base_revision: int
