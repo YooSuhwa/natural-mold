@@ -396,6 +396,10 @@ documents:
     lifecycle: active-plan
     status: active
     index: active-plan
+  - path: docs/exec-plans/active/workflow-tool-plan.md
+    lifecycle: active-plan
+    status: active
+    index: active-plan
   - path: docs/exec-plans/completed/backlog-c-field-keys-cache.md
     lifecycle: completed-plan
     status: completed
