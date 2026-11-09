@@ -172,7 +172,8 @@ async def test_a_due_schedule_fires_once_and_moves_on(
             AuditEvent.action == "workflow.run_start", AuditEvent.target_id == str(run.id)
         )
     )
-    assert audit is not None and audit.event_metadata["started_from"] == "schedule"
+    assert audit is not None and audit.event_metadata is not None
+    assert audit.event_metadata["started_from"] == "schedule"
     fake.answers.append({"category": "bug", "urgent": False})
     assert await _job(str(run.id)) == {"outcome": "completed"}
 

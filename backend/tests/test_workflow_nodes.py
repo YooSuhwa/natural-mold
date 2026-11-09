@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -38,7 +39,9 @@ LIST_SCHEMA = {
 SUMMARY = {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]}
 
 
-def _graph(nodes: list[dict[str, Any]], edges: list[tuple[str, str, str | None]], **extra: Any):
+def _graph(
+    nodes: list[dict[str, Any]], edges: Sequence[tuple[str, str, str | None]], **extra: Any
+) -> dict[str, Any]:
     return {
         "schema_version": "moldy.workflow.v1",
         "inputs": extra.get("inputs", [{"name": "topic", "type": "string"}]),
@@ -810,7 +813,7 @@ async def test_a_child_cut_off_after_acceptance_is_asked_about_not_run_again(
     child = await db.scalar(sa.select(WorkflowStepRun).where(WorkflowStepRun.node_id == "each.0"))
     assert child is not None
     await db.refresh(child)
-    assert len(child.input["previous_attempts"]) == 1
+    assert child.input is not None and len(child.input["previous_attempts"]) == 1
 
 
 @pytest.mark.asyncio
