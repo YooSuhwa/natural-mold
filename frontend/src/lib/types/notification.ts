@@ -22,6 +22,7 @@ export type NotificationKind =
   | 'emergency_stop.applied'
   | 'emergency_stop.released'
   | 'memory.consolidation_stopped'
+  | 'workflow.notify'
 
 /** `accessible: false` — the recipient lost access; the server withholds id and name. */
 export interface NotificationTarget {

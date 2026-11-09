@@ -53,6 +53,7 @@ NOTIFICATION_KINDS: Final = (
     "emergency_stop.applied",
     "emergency_stop.released",
     "memory.consolidation_stopped",
+    "workflow.notify",
 )
 KIND_CHECK: Final = "kind IN (" + ",".join(f"'{kind}'" for kind in NOTIFICATION_KINDS) + ")"
 _TABLE = "notifications"

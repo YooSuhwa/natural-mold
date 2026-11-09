@@ -349,6 +349,12 @@ const INLINE_SVG_ALLOWLIST = [
 
 const STYLE_ATTRIBUTE_ALLOWLIST = [
   {
+    filePath: 'src/features/workflows/components/workflow-node.tsx',
+    reason: 'React Flow exit handles spread by exit count (a switch has up to eleven exits)',
+    context:
+      /style=\{exits\.length >= 2 \? \{ left: `\$\{handleLeft\(index, exits\.length\)\}%` \} : undefined\}/,
+  },
+  {
     filePath: 'src/features/workflows/components/workflow-loop-edge.tsx',
     reason: 'React Flow edge label position (EdgeLabelRenderer requires a transform)',
     context:
@@ -357,7 +363,8 @@ const STYLE_ATTRIBUTE_ALLOWLIST = [
   {
     filePath: 'src/features/workflows/components/workflow-edge.tsx',
     reason: 'React Flow edge label position (EdgeLabelRenderer requires a transform)',
-    context: /style=\{\{\s*transform:\s*`translate\(-50%, -50%\) translate\(\$\{labelX\}px, \$\{labelY\}px\)`\s*\}\}/,
+    context:
+      /style=\{\{\s*transform:\s*`translate\(-50%, -50%\) translate\(\$\{labelX\}px, \$\{labelY\}px\)`\s*\}\}/,
   },
   {
     filePath: 'src/components/skill/skill-package-tree.tsx',

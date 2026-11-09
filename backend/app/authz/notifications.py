@@ -38,7 +38,11 @@ from app.models.organization import Organization, OrganizationMember
 from app.models.organization_group import GroupMember
 
 MERGE_WINDOW: Final = timedelta(hours=1)
-WINDOWS: Final = {"connection.owner_needed": timedelta(hours=24)}
+# ``workflow.notify``: each notify step is its own notice (never merged into an earlier one).
+WINDOWS: Final = {
+    "connection.owner_needed": timedelta(hours=24),
+    "workflow.notify": timedelta(0),
+}
 RETENTION: Final = timedelta(days=90)
 PayloadValue = str | int | bool | None
 _LINKS: Final = {

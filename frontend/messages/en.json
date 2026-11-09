@@ -7061,7 +7061,8 @@
       "emergencyStopApplied": "{target} was emergency-stopped",
       "emergencyStopReleased": "The emergency stop of {target} was released",
       "memoryConsolidationStopped": "Memory consolidation stopped after failing three times in 24 hours",
-      "generic": "You have a new notification"
+      "generic": "You have a new notification",
+      "workflowNotify": "Workflow notice: {title}"
     }
   },
   "readiness": {
@@ -7529,7 +7530,14 @@
       "approval": "Approval",
       "transform": "Transform",
       "output": "Output",
-      "fail": "Fail"
+      "fail": "Fail",
+      "switch": "Switch",
+      "llm": "LLM call",
+      "ask": "Ask a person",
+      "notify": "Notify",
+      "for_each": "For each",
+      "parallel": "Parallel agents",
+      "tool": "Tool call"
     },
     "kindHint": {
       "agent": "An agent answers in a fixed shape",
@@ -7537,19 +7545,30 @@
       "approval": "A person approves or rejects",
       "transform": "Combines earlier values into text or fields",
       "output": "Returns the run's result",
-      "fail": "Ends the run as failed"
+      "fail": "Ends the run as failed",
+      "switch": "Picks one of several exits by one value",
+      "llm": "Asks the model once, without an agent",
+      "ask": "Asks the runner and waits for a written answer",
+      "notify": "Sends the runner an in-app notification",
+      "for_each": "Runs the same agent for each item of a list",
+      "parallel": "Runs several agents at once and merges them",
+      "tool": "Calls a read-only tool directly"
     },
     "branch": {
       "limit": "limit reached",
       "true": "Yes",
       "false": "No",
       "approved": "Approved",
-      "rejected": "Rejected"
+      "rejected": "Rejected",
+      "answered": "Answered",
+      "timeout": "Timed out",
+      "default": "Otherwise"
     },
     "search": "Search workflows",
     "detail": {
       "output": "Output: {fields}",
-      "timeout": "Answer within {minutes} min"
+      "timeout": "Answer within {minutes} min",
+      "forEach": "For each item of {source}"
     },
     "run": {
       "open": "Test run",
@@ -7561,7 +7580,8 @@
       "cancel": "Cancel",
       "started": "Run started ({id})",
       "failed": "Could not start the run",
-      "needsPublish": "Publish first to run"
+      "needsPublish": "Publish first to run",
+      "uploadFailed": "Could not upload the file"
     },
     "settings": {
       "previousRound": "Previous round",
@@ -7640,7 +7660,45 @@
         "integer": "Integer",
         "boolean": "Yes/No",
         "enum": "Choice",
-        "string_list": "Text list"
+        "string_list": "Text list",
+        "file": "File"
+      },
+      "item": "Item",
+      "question": "Question",
+      "llmDecisionHint": "The system model answers yes or no with a confidence and a one-line reason. A confidence below 0.6 is marked in the record.",
+      "switchSource": "Value to check",
+      "cases": "Cases",
+      "caseName": "Case {n} name",
+      "caseValue": "Case {n} value",
+      "removeCase": "Remove case {n}",
+      "addCase": "Add case",
+      "casesHint": "Goes to the first case with the same value; with no match, the otherwise exit.",
+      "llmPrompt": "Message to the model",
+      "llmHint": "Use an agent node when the step needs tools or agent instructions.",
+      "askTimeoutHint": "With no answer in this time, the timed-out exit is taken.",
+      "notifyTitle": "Notification title",
+      "notifyBody": "Notification body",
+      "notifyHint": "The runner gets one in-app notification. The run does not stop.",
+      "forEachSource": "List value",
+      "forEachHint": "Runs the agent for each item of an earlier list (at most {max}). Insert the item value in the message.",
+      "maxItems": "Most items",
+      "parallelHint": "Runs 2 to {max} agents at once on the same values and merges their results by name.",
+      "branchTitle": "Branch {name}",
+      "branchName": "Branch {n} name",
+      "removeBranch": "Remove {name}",
+      "branchAgent": "{name} agent",
+      "branchPrompt": "Message to {name}",
+      "addBranch": "Add agent",
+      "tool": "Tool",
+      "toolHint": "Only read-only tools. Anything that sends or changes something belongs in an agent step.",
+      "toolName": {
+        "web_search": "Web search",
+        "web_scraper": "Read a web page",
+        "current_datetime": "Current time"
+      },
+      "toolArg": {
+        "query": "Search query",
+        "url": "Address"
       }
     },
     "versions": {
@@ -7726,7 +7784,16 @@
         "failed": "Failed",
         "canceling": "Canceling",
         "canceled": "Canceled"
-      }
+      },
+      "askTitle": "Question",
+      "children": "Child runs",
+      "item": "Item {n}"
+    },
+    "ask": {
+      "answer": "Answer",
+      "placeholder": "Write your answer",
+      "send": "Send answer",
+      "failed": "Could not send the answer"
     }
   }
 }

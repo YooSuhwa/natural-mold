@@ -131,7 +131,7 @@ def test_decision_conditions_check_their_references() -> None:
         lambda raw: node(raw, "draft").update(template=[{"text": "x", "ref": {"node": "a"}}]),
         lambda raw: node(raw, "draft").update(template="{{classify.category}}"),
         lambda raw: raw["edges"].append({"from": "start", "to": "classify"}),  # duplicate edge
-        lambda raw: raw["edges"].append({"from": "a", "to": "b", "when": "maybe"}),
+        lambda raw: raw["edges"].append({"from": "a", "to": "b", "when": "may be"}),
         lambda raw: raw["inputs"].append({"name": "n", "type": "integer", "max_length": 3}),
         lambda raw: raw.update(schema_version="moldy.workflow.v2"),
         lambda raw: raw["nodes"].extend({"id": f"n{i}", "type": "fail"} for i in range(MAX_NODES)),

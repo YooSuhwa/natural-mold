@@ -15,13 +15,19 @@ import { DEFAULT_MAX_ROUNDS, forwardOf, isBackEdge, loopTargets, loopsOf } from 
 
 export type AddableType = Exclude<WorkflowNodeType, 'start'>
 
-/** The outgoing branches a node kind has; a plain node has one unnamed exit. */
-export function branchesOf(type: WorkflowNodeType): readonly (EdgeWhen | null)[] {
-  if (type === 'decision_bool') return ['true', 'false']
-  if (type === 'approval') return ['approved', 'rejected']
-  if (type === 'output' || type === 'fail') return []
+/** The outgoing branches a node has; a plain node has one unnamed exit. A switch has one
+ * exit per case plus ``default``. */
+export function branchesOf(node: WorkflowNode): readonly (EdgeWhen | null)[] {
+  if (node.type === 'decision_bool') return ['true', 'false']
+  if (node.type === 'approval') return ['approved', 'rejected']
+  if (node.type === 'ask') return ['answered', 'timeout']
+  if (node.type === 'switch') return [...node.cases.map((item) => item.name), 'default']
+  if (node.type === 'output' || node.type === 'fail') return []
   return [null]
 }
+
+/** Kinds that run an agent (the add dialog gives them the first agent to start with). */
+export const AGENT_KINDS: readonly AddableType[] = ['agent', 'for_each', 'parallel']
 
 const DEFAULT_SCHEMA = {
   type: 'object',
@@ -61,6 +67,48 @@ export function newNode(
       return { id, label, type, fields: {} }
     case 'fail':
       return { id, label, type, reason: '' }
+    case 'switch':
+      return {
+        id,
+        label,
+        type,
+        source: 'input',
+        path: '',
+        cases: [{ name: 'case_1', value: '' }],
+      }
+    case 'llm':
+      return { id, label, type, prompt: [], output_schema: DEFAULT_SCHEMA }
+    case 'ask':
+      return { id, label, type, question: [], timeout_minutes: 1440 }
+    case 'notify':
+      return { id, label, type, title: [], body: [] }
+    case 'for_each':
+      return {
+        id,
+        label,
+        type,
+        // Pointed at a list value in the settings ("input" never is one: an issue until then).
+        source: 'input',
+        path: '',
+        agent_id: options.agentId ?? '',
+        prompt: [{ ref: { node: 'item', path: '' } }],
+        output_schema: DEFAULT_SCHEMA,
+        max_items: 20,
+      }
+    case 'parallel':
+      return {
+        id,
+        label,
+        type,
+        branches: ['first', 'second'].map((name) => ({
+          name,
+          agent_id: options.agentId ?? '',
+          prompt: [],
+          output_schema: DEFAULT_SCHEMA,
+        })),
+      }
+    case 'tool':
+      return { id, label, type, tool: 'current_datetime', args: {} }
   }
 }
 
@@ -82,7 +130,7 @@ export function insertOnEdge(
   edge: WorkflowEdge,
   node: WorkflowNode,
 ): WorkflowDefinition {
-  const exits = branchesOf(node.type)
+  const exits = branchesOf(node)
   const kept = definition.edges.filter((item) => !sameEdge(item, edge))
   const edges: WorkflowEdge[] = [...kept, { from: edge.from, to: node.id, when: edge.when ?? null }]
   if (exits.length > 0) edges.push({ from: node.id, to: edge.to, when: exits[0] })
@@ -104,7 +152,7 @@ export function appendAfter(
 export function exitsOf(definition: WorkflowDefinition, nodeId: string): (EdgeWhen | null)[] {
   const node = definition.nodes.find((item) => item.id === nodeId)
   if (!node) return []
-  const exits = [...branchesOf(node.type)]
+  const exits = [...branchesOf(node)]
   if (
     node.type === 'decision_bool' &&
     (node.repeat || loopsOf(definition).some((loop) => loop.decision === nodeId))

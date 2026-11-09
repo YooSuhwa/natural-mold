@@ -750,7 +750,9 @@ def _scripted_value(schema: dict[str, Any], yes: bool) -> Any:
     if kind in ("integer", "number"):
         return 1
     if kind == "array":
-        return []
+        # Two items, so a workflow's for_each step runs more than once (workflow-nodes-plan).
+        item = schema.get("items") or {}
+        return [_scripted_value(item, yes), _scripted_value(item, yes)]
     if kind == "object":
         return {}
     return "E2E 응답"

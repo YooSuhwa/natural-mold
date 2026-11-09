@@ -793,12 +793,12 @@ async def test_a_worker_dying_after_a_stored_step_resumes_at_the_next_node(
     workflow_id, _ = await _published(client, db)
     fake.answers.append({"category": "bug", "urgent": False})
     run = await _start(client, workflow_id)
-    real_decision = runner._decision
+    real_decision = runner._decision_branch
 
     async def dies_at_the_decision(*args: Any) -> None:
         raise Crash  # the agent step is stored; the decision is not
 
-    monkeypatch.setattr(runner, "_decision", dies_at_the_decision)
+    monkeypatch.setattr(runner, "_decision_branch", dies_at_the_decision)
     with pytest.raises(Crash):
         await _job(run["id"])
     db.expire_all()
@@ -807,7 +807,7 @@ async def test_a_worker_dying_after_a_stored_step_resumes_at_the_next_node(
         ("start", "completed"),
         ("classify", "completed"),
     ]
-    monkeypatch.setattr(runner, "_decision", real_decision)
+    monkeypatch.setattr(runner, "_decision_branch", real_decision)
     assert await _job(run["id"]) == {"outcome": "completed"}  # the next worker
     assert len(fake.calls) == 1  # the agent step ran once
     detail = (await client.get(f"/api/workflow-runs/{run['id']}")).json()

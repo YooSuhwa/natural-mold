@@ -38,6 +38,7 @@ from app.workflows.definition import (
     Node,
     WorkflowDefinition,
     WorkflowInput,
+    agent_uses,
 )
 
 TOOL_NAME: Final = "WorkflowEdit"
@@ -129,7 +130,30 @@ Use only the keys type, properties, required, items, enum and description (no mi
 maxLength, format, pattern, default or other keywords).
 - decision_bool: `condition` = {"all": [clauses]} or {"any": [clauses]}; a clause is \
 {"source": node id or "input", "path": "/field", "op": eq|ne|gt|gte|lt|lte|contains|exists, \
-"value": ...}. Two exits: when "true" and when "false".
+"value": ...}. Two exits: when "true" and when "false". For a judgement no rule can make \
+(is this answer good enough, is the tone polite) use "evaluator": "llm" with a `question` \
+template instead of `condition`: the system model answers yes/no with a confidence and a \
+reason ("/value", "/confidence", "/band", "/reason").
+- switch: several exits by one value: `source` (node id or "input") and `path`, `cases` = \
+[{"name": snake_case exit name, "value": the value to match}] (1..10). Exits: each case name \
+and "default" (no case matched); all must be connected. Output "/value", "/case".
+- llm: one call of the system model without an agent (summarize, translate, extract): \
+`prompt` template and `output_schema` (as for agent). Use an agent instead when the step \
+needs tools, knowledge or the agent's instructions.
+- ask: asks the runner a question and waits for a written answer: `question` template and \
+`timeout_minutes` (required). Exits "answered" (output "/answer") and "timeout".
+- notify: sends the runner an in-app notification (`title`, `body` templates) and goes on. \
+Output "/sent".
+- for_each: runs one offered agent once per item of an earlier list value: `source` and \
+`path` must point at an array in an earlier node's output schema, `agent_id`, `prompt` \
+(the current item is {"ref": {"node": "item", "path": ""}}, or "/<field>" of an object \
+item), `output_schema` for one item, `max_items` (1..20). Output "/items" (the list of \
+answers) and "/count".
+- parallel: 2..5 agents at once on the same values: `branches` = [{"name", "agent_id", \
+"prompt", "output_schema"}]. Output "/<branch name>/<field>".
+- tool: calls a read-only tool directly: `tool` is "web_search" (args {"query": template}), \
+"web_scraper" (args {"url": template}) or "current_datetime" (no args). Output "/result" \
+(text). Anything that sends, writes or changes something belongs in an agent step.
 - approval: the runner approves. `title` and `body` are templates, `timeout_minutes` \
 (1..10080) is required. Two exits: "approved" and "rejected" (a timeout takes "rejected").
 - transform: `fields` maps names to templates (and/or `template`); its output is \
@@ -142,15 +166,19 @@ A template is a list of segments: {"text": "..."} or {"ref": {"node": "<id>", "p
 reference may only name a node that runs before this one on every path from start (so a \
 node after a decision may not read a node that only one branch runs).
 
-Edges: {"from", "to", "when"}; `when` is set only on the exits of decision_bool and \
-approval. Every exit must be connected and every node reachable from start.
+Edges: {"from", "to", "when"}; `when` is set only on the exits of decision_bool, switch, \
+approval and ask. Every exit must be connected and every node reachable from start.
+
+Inputs: {"name", "type": string|number|integer|boolean|file, "label", "required"}. A file \
+input is a file the runner uploads; an agent step whose prompt references it gets the file \
+attached (other steps see its name).
 
 Loops: the only way back is a decision_bool's "true" or "false" exit connected to a step \
 that runs before it on every path (for example: draft → review → passed? with "false" back \
 to draft). Such a decision needs "repeat": {"max_rounds": 1..10} (use 3 unless asked) and a \
 "limit" exit to a step outside the loop (fail, an approval, or any later step), taken when \
 the rounds run out. Inside a loop (the steps from the target back to the decision) there may \
-be no approval, output or fail step, no other loop, and no exit except the decision's. A step \
+be no approval, ask, output or fail step, no other loop, and no exit except the decision's. A step \
 in a loop may read the previous round's value of a later step in the same loop with \
 {"ref": {"node": "<id>", "path": "/<field>", "previous": true}} (empty in the first round). \
 A step that is redone because a check failed must get that check's feedback this way in its \
@@ -249,8 +277,9 @@ def apply_commands(
         where = f"command {number} ({command.op})"
         if isinstance(command, AddNode | UpdateNode):
             node = command.node.model_dump(mode="json", by_alias=True)
-            if node["type"] == "agent" and node["agent_id"] not in agent_ids:
-                problems.append(f"{where}: agent_id {node['agent_id']} is not an offered agent")
+            stray = [u.agent_id for u in agent_uses([command.node]) if u.agent_id not in agent_ids]
+            if stray:
+                problems.append(f"{where}: agent_id {stray[0]} is not an offered agent")
                 continue
             position = index(node["id"])
             if isinstance(command, AddNode):

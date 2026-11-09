@@ -102,6 +102,7 @@ class WorkflowRunSummary(BaseModel):
 class WorkflowStepRunOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    id: uuid.UUID
     position: int
     node_id: str
     node_type: str
@@ -115,6 +116,10 @@ class WorkflowStepRunOut(BaseModel):
     conversation_id: uuid.UUID | None
     started_at: datetime | None
     finished_at: datetime | None
+    # A child row (workflow-nodes-plan 3.1): one agent of a for_each/parallel step, keyed by
+    # item index or branch name. The run's chain is the rows without a parent.
+    parent_step_id: uuid.UUID | None = None
+    branch_key: str | None = None
 
 
 class WorkflowRunDetail(WorkflowRunSummary):

@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError } from '@/lib/api/client'
+import { uploadFile } from '@/lib/api/uploads'
 import { useStartWorkflowRun, useWorkflowVersion } from '@/lib/hooks/use-workflows'
 import type { WorkflowInput } from '@/lib/types/workflow'
 
@@ -39,6 +40,23 @@ export function RunDialog({
   const version = useWorkflowVersion(workflowId, versionNo)
   const start = useStartWorkflowRun(workflowId)
   const [values, setValues] = useState<Values>({})
+  const [uploading, setUploading] = useState(0)
+  // A file input's value is the upload id (workflow-nodes-plan N8): uploaded on pick.
+  const pickFile = async (name: string, file: File | undefined) => {
+    if (!file) {
+      setValues((current) => ({ ...current, [name]: '' }))
+      return
+    }
+    setUploading((count) => count + 1)
+    try {
+      const uploaded = await uploadFile(file)
+      setValues((current) => ({ ...current, [name]: uploaded.id }))
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : t('uploadFailed'))
+    } finally {
+      setUploading((count) => count - 1)
+    }
+  }
   const inputs = version.data?.definition.inputs ?? []
   const submit = () => {
     const payload: Record<string, unknown> = {}
@@ -86,6 +104,11 @@ export function RunDialog({
                   setValues((current) => ({ ...current, [input.name]: checked === true }))
                 }
               />
+            ) : input.type === 'file' ? (
+              <Input
+                type="file"
+                onChange={(event) => void pickFile(input.name, event.target.files?.[0])}
+              />
             ) : input.type === 'string' ? (
               <Textarea
                 rows={3}
@@ -112,7 +135,7 @@ export function RunDialog({
         <Button variant="outline" onClick={onClose}>
           {t('cancel')}
         </Button>
-        <Button disabled={version.isPending || start.isPending} onClick={submit}>
+        <Button disabled={version.isPending || start.isPending || uploading > 0} onClick={submit}>
           {start.isPending ? t('starting') : t('start')}
         </Button>
       </DialogShell.Footer>

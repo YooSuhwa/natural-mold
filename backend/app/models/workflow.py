@@ -144,6 +144,9 @@ class WorkflowRun(RequiredOrgScope, Base):
         ForeignKey("conversation_runs.id", ondelete="SET NULL"), nullable=True
     )
     chat_resumed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # ``file`` inputs (workflow-nodes-plan N8): ``{name: {"id", "filename"}}``; the input
+    # itself holds the file name, which is what templates see.
+    files: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)
@@ -174,13 +177,20 @@ class WorkflowStepRun(RequiredOrgScope, Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
-    node_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # A child row (one agent of a ``for_each``/``parallel`` step) is ``<node>.<key>``.
+    node_id: Mapped[str] = mapped_column(String(130), nullable=False)
     round: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     node_type: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     input: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     output: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    branch: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    branch: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Child rows (workflow-nodes-plan 3.1): the step that runs them and the item index or
+    # branch name. The main chain is the rows without a parent.
+    parent_step_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_step_runs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    branch_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     agent_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
     )

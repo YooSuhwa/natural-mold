@@ -28,7 +28,7 @@ from app.models.agent import Agent
 from app.models.model import Model
 from app.models.workflow import Workflow, WorkflowVersion
 from app.workflows.checks import Issue, graph_issues
-from app.workflows.definition import AgentNode, WorkflowDefinition, empty_definition
+from app.workflows.definition import AgentUse, WorkflowDefinition, agent_uses, empty_definition
 from app.workflows.pins import agent_fingerprints
 
 STANDARD_PROFILE: Final = "standard"
@@ -157,16 +157,14 @@ async def agent_issues(
 ) -> list[Issue]:
     """Agent nodes the runner could not use: missing, hidden, archived, not runnable,
     or on a model that cannot call tools (structured output needs a tool call)."""
-    return await agent_node_issues(
-        db, context, [node for node in definition.nodes if isinstance(node, AgentNode)]
-    )
+    return await agent_node_issues(db, context, list(definition.nodes))
 
 
-async def agent_node_issues(
-    db: AsyncSession, context: OrgContext, nodes: list[AgentNode]
-) -> list[Issue]:
-    """``agent_issues`` for given nodes (the runner checks each agent step as it starts)."""
-    ids = {node.id: uuid.UUID(node.agent_id) for node in nodes}
+async def agent_node_issues(db: AsyncSession, context: OrgContext, nodes: list[Any]) -> list[Issue]:
+    """``agent_issues`` for given nodes (the runner checks each agent step as it starts):
+    agent nodes, the agent of a ``for_each`` and each ``parallel`` branch."""
+    uses: list[AgentUse] = agent_uses(nodes)
+    ids = {use.key: uuid.UUID(use.agent_id) for use in uses}
     rows = {
         row.id: row
         for row in (
@@ -186,20 +184,20 @@ async def agent_node_issues(
         ).all()
     }
     issues: list[Issue] = []
-    for node in nodes:
-        row = rows.get(ids[node.id])
+    for use in uses:
+        row = rows.get(ids[use.key])
         # Hidden runtimes (skill builder etc.) read as missing, never as "hidden".
         if (
             row is None
             or row.runtime_profile != STANDARD_PROFILE
             or not await _can_run(context, row)
         ):
-            issues.append(Issue("agent_missing", "에이전트를 찾을 수 없습니다", node.id))
+            issues.append(Issue("agent_missing", "에이전트를 찾을 수 없습니다", use.node_id))
         elif row.archived_at is not None:
-            issues.append(Issue("agent_archived", "보관된 에이전트입니다", node.id))
+            issues.append(Issue("agent_archived", "보관된 에이전트입니다", use.node_id))
         elif row.supports_function_calling is False:
             message = "이 에이전트의 모델은 도구 호출을 지원하지 않아 출력 형식을 맞출 수 없습니다"
-            issues.append(Issue("model_no_tools", message, node.id))
+            issues.append(Issue("model_no_tools", message, use.node_id))
     return issues
 
 
@@ -238,11 +236,7 @@ async def publish(
             details={"issues": [issue.as_dict() for issue in issues]},
         )
     stored = definition.dump()
-    agents = {
-        node.id: uuid.UUID(node.agent_id)
-        for node in definition.nodes
-        if isinstance(node, AgentNode)
-    }
+    agents = {use.key: uuid.UUID(use.agent_id) for use in agent_uses(list(definition.nodes))}
     prints = await agent_fingerprints(db, agents.values())
     pins = {
         node_id: {"agent_id": str(agent_id), "fingerprint": prints[agent_id]}
@@ -316,7 +310,8 @@ async def workflows_using_agent(
     live: str | None = None
     for workflow in await list_workflows(db, context):
         in_draft = any(
-            node.get("type") == "agent" and node.get("agent_id") == str(agent_id)
+            node.get("agent_id") == str(agent_id)
+            or any(b.get("agent_id") == str(agent_id) for b in node.get("branches") or [])
             for node in (workflow.draft_definition or {}).get("nodes", [])
         )
         pins: list[str] = []

@@ -41,6 +41,9 @@ REVIEWED: dict[str, str] = {
     "ids and actions out (plan 15, 5.6)",
     "workflows/ai_edit.py": "left out: workflow AI editing, the person's own request and "
     "draft in (Moldy's prompt), edit commands the server applies and checks out (W5)",
+    "workflows/node_steps.py": "left out: workflow llm/decision steps on the system model, "
+    "the runner's own published template in (earlier values fenced as data), a schema-checked "
+    "answer out (workflow-nodes-plan N3); agent steps keep their agents' guardrails",
 }
 
 

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { RunApprovalCard } from '@/features/workflows/components/run-approval-card'
 import { RunStatusChip, StepStatusIcon } from '@/features/workflows/components/run-status'
+import { branchLabel } from '@/features/workflows/lib/node-catalog'
 import {
   useCancelWorkflowRun,
   useWorkflow,
@@ -61,19 +62,25 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WorkflowRunDeta
   const tk = useTranslations('workflows')
   const version = useWorkflowVersion(workflowId, run.version_no)
   const cancel = useCancelWorkflowRun(run.id)
-  // Steps are told apart by position: a loop runs the same node again (one row per round).
-  const [selected, setSelected] = useState<number | null>(null)
+  // Steps are told apart by id: a loop runs the same node again (one row per round), and a
+  // for_each/parallel step's children share its position.
+  const [selected, setSelected] = useState<string | null>(null)
   const nodes = new Map((version.data?.definition.nodes ?? []).map((node) => [node.id, node]))
   const labelOf = (nodeId: string) => {
     const node = nodes.get(nodeId)
     return node?.label || (node ? tk(`kind.${node.type}`) : nodeId)
   }
+  const stepLabel = (step: WorkflowStepRun) =>
+    step.parent_step_id ? childLabel(step, tk) : labelOf(step.node_id)
   const finished = RUN_TERMINAL.includes(run.status)
-  const completed = run.steps.filter((step) => step.status === 'completed').length
+  const main = run.steps.filter((step) => !step.parent_step_id)
+  const childrenOf = (step: WorkflowStepRun) =>
+    run.steps.filter((child) => child.parent_step_id === step.id)
+  const completed = main.filter((step) => step.status === 'completed').length
   const current =
-    run.steps.find((step) => step.position === selected) ??
-    run.steps.find((step) => step.status !== 'completed') ??
-    run.steps.at(-1)
+    run.steps.find((step) => step.id === selected) ??
+    main.find((step) => step.status !== 'completed') ??
+    main.at(-1)
   return (
     <div className="flex flex-col gap-4">
       <section className="moldy-panel flex flex-wrap items-center gap-4 p-4">
@@ -131,31 +138,28 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WorkflowRunDeta
           className="moldy-panel flex flex-col gap-1 p-3 lg:col-span-1"
           aria-label={t('timeline')}
         >
-          {run.steps.map((step) => (
-            <li key={step.position}>
-              <button
-                type="button"
-                onClick={() => setSelected(step.position)}
-                className={cn(
-                  'flex w-full items-start gap-3 rounded-md px-2 py-2 text-left hover:bg-accent',
-                  current?.position === step.position && 'bg-accent',
-                )}
-              >
-                <StepStatusIcon status={step.status} />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">
-                    {labelOf(step.node_id)}
-                    {step.round > 1 ? (
-                      <span className="ml-1 text-xs font-normal text-muted-foreground">
-                        {t('round', { round: step.round })}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {stepSummary(step, tk)}
-                  </span>
-                </span>
-              </button>
+          {main.map((step) => (
+            <li key={step.id}>
+              <StepButton
+                step={step}
+                label={labelOf(step.node_id)}
+                active={current?.id === step.id}
+                onSelect={setSelected}
+              />
+              {childrenOf(step).length > 0 ? (
+                <ol className="ml-6 flex flex-col gap-1" aria-label={t('children')}>
+                  {childrenOf(step).map((child) => (
+                    <li key={child.id}>
+                      <StepButton
+                        step={child}
+                        label={childLabel(child, tk)}
+                        active={current?.id === child.id}
+                        onSelect={setSelected}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
             </li>
           ))}
           {run.steps.length === 0 ? (
@@ -164,7 +168,7 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WorkflowRunDeta
         </ol>
         <div className="flex flex-col gap-4 lg:col-span-2">
           <RunApprovalCard run={run} />
-          {current ? <StepDetail step={current} label={labelOf(current.node_id)} /> : null}
+          {current ? <StepDetail step={current} label={stepLabel(current)} /> : null}
           {run.output ? (
             <section className="moldy-panel flex flex-col gap-2 p-4">
               <h2 className="text-sm font-semibold">{t('output')}</h2>
@@ -181,9 +185,58 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WorkflowRunDeta
   )
 }
 
+function StepButton({
+  step,
+  label,
+  active,
+  onSelect,
+}: {
+  step: WorkflowStepRun
+  label: string
+  active: boolean
+  onSelect: (id: string) => void
+}) {
+  const t = useTranslations('workflows.runs')
+  const tk = useTranslations('workflows')
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(step.id)}
+      className={cn(
+        'flex w-full items-start gap-3 rounded-md px-2 py-2 text-left hover:bg-accent',
+        active && 'bg-accent',
+      )}
+    >
+      <StepStatusIcon status={step.status} />
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium">
+          {label}
+          {step.round > 1 && !step.parent_step_id ? (
+            <span className="ml-1 text-xs font-normal text-muted-foreground">
+              {t('round', { round: step.round })}
+            </span>
+          ) : null}
+        </span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {stepSummary(step, tk)}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+/** A child row of a for_each/parallel step: "항목 1" or the branch name. */
+function childLabel(
+  step: WorkflowStepRun,
+  t: (key: string, values?: Record<string, string | number>) => string,
+): string {
+  const key = step.branch_key ?? ''
+  return /^\d+$/.test(key) ? t('runs.item', { n: Number(key) + 1 }) : key
+}
+
 function stepSummary(step: WorkflowStepRun, t: (key: string) => string): string {
   if (step.error_message) return step.error_message
-  if (step.branch) return t(`branch.${step.branch}`)
+  if (step.branch) return branchLabel(t, step.branch)
   if (step.output) return Object.keys(step.output).join(', ')
   return t(`runs.status.${step.status}`)
 }

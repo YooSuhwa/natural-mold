@@ -29,6 +29,8 @@ import type {
   InboxDecision,
   RunState,
 } from '@/lib/types/approval'
+import { AskAnswerForm } from '@/features/workflows/components/ask-answer-form'
+
 import { ReleaseStopDialog } from './release-stop-dialog'
 
 export type ApprovalTab = 'pending' | 'done' | 'runs' | 'stops'
@@ -156,7 +158,11 @@ function RequestCard({ request }: { request: ApprovalView }) {
           />
         ))}
       </ol>
-      {pending ? (
+      {pending && request.actions[0]?.name === 'workflow_ask' ? (
+        <div className="mt-4">
+          <AskAnswerForm requestId={request.id} />
+        </div>
+      ) : pending ? (
         <div className="mt-4 flex flex-wrap justify-end gap-2">
           <Button
             size="sm"
@@ -219,7 +225,7 @@ function ActionRow({
     <li className="rounded-lg border bg-background p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <code className="text-sm font-medium">{action.name}</code>
-        {pending ? (
+        {pending && action.name !== 'workflow_ask' ? (
           <div
             className="flex gap-1"
             role="group"

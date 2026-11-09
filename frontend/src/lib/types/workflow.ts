@@ -8,9 +8,37 @@ export type WorkflowNodeType =
   | 'transform'
   | 'output'
   | 'fail'
+  | 'switch'
+  | 'llm'
+  | 'ask'
+  | 'notify'
+  | 'for_each'
+  | 'parallel'
+  | 'tool'
 
-/** ``limit``: a loop's exit once its rounds run out (workflow-loop-plan). */
-export type EdgeWhen = 'true' | 'false' | 'approved' | 'rejected' | 'limit'
+/** The fixed exits; ``limit`` is a loop's exit once its rounds run out (workflow-loop-plan). */
+export type FixedExit =
+  | 'true'
+  | 'false'
+  | 'approved'
+  | 'rejected'
+  | 'limit'
+  | 'answered'
+  | 'timeout'
+  | 'default'
+/** A fixed exit, or a switch case name (workflow-nodes-plan 3.2). */
+export type EdgeWhen = FixedExit | (string & {})
+
+export const FIXED_EXITS: readonly FixedExit[] = [
+  'true',
+  'false',
+  'approved',
+  'rejected',
+  'limit',
+  'answered',
+  'timeout',
+  'default',
+]
 
 /** A template is a list of segments: literal text or a reference to an earlier value. */
 export type TextSegment = { text: string }
@@ -47,7 +75,10 @@ export type WorkflowNode =
     })
   | (NodeBase & {
       type: 'decision_bool'
-      condition: Condition
+      /** ``rule`` compares values (``condition``); ``llm`` asks the system model ``question``. */
+      evaluator?: 'rule' | 'llm'
+      condition?: Condition | null
+      question?: TemplateSegment[] | null
       /** Set when an exit leads back (a loop); rounds include the first. */
       repeat?: { max_rounds: number } | null
     })
@@ -64,6 +95,55 @@ export type WorkflowNode =
     })
   | (NodeBase & { type: 'output'; fields: Record<string, TemplateSegment[]> })
   | (NodeBase & { type: 'fail'; reason?: string })
+  | (NodeBase & {
+      type: 'switch'
+      source: string
+      path: string
+      cases: SwitchCase[]
+    })
+  | (NodeBase & { type: 'llm'; prompt: TemplateSegment[]; output_schema: Record<string, unknown> })
+  | (NodeBase & { type: 'ask'; question: TemplateSegment[]; timeout_minutes?: number | null })
+  | (NodeBase & { type: 'notify'; title: TemplateSegment[]; body?: TemplateSegment[] })
+  | (NodeBase & {
+      type: 'for_each'
+      source: string
+      path: string
+      agent_id: string
+      prompt: TemplateSegment[]
+      output_schema: Record<string, unknown>
+      max_items?: number
+    })
+  | (NodeBase & { type: 'parallel'; branches: ParallelBranch[] })
+  | (NodeBase & {
+      type: 'tool'
+      tool: WorkflowToolName
+      args?: Record<string, TemplateSegment[]>
+    })
+
+export interface SwitchCase {
+  name: string
+  value: string | number | boolean
+}
+
+export interface ParallelBranch {
+  name: string
+  agent_id: string
+  prompt: TemplateSegment[]
+  output_schema: Record<string, unknown>
+}
+
+export type WorkflowToolName = 'web_search' | 'web_scraper' | 'current_datetime'
+
+/** The arguments each read-only tool takes (workflow-nodes-plan N7). */
+export const TOOL_ARGS: Record<WorkflowToolName, readonly string[]> = {
+  web_search: ['query'],
+  web_scraper: ['url'],
+  current_datetime: [],
+}
+
+export const MAX_FOR_EACH = 20
+export const MAX_PARALLEL = 5
+export const MAX_CASES = 10
 
 export interface WorkflowEdge {
   from: string
@@ -73,7 +153,8 @@ export interface WorkflowEdge {
 
 export interface WorkflowInput {
   name: string
-  type: 'string' | 'number' | 'integer' | 'boolean'
+  /** ``file``: an upload id; agent steps that reference it get the file attached. */
+  type: 'string' | 'number' | 'integer' | 'boolean' | 'file'
   required: boolean
   label?: string | null
   max_length?: number | null
@@ -170,6 +251,7 @@ export type WorkflowStepStatus =
   | 'canceled'
 
 export interface WorkflowStepRun {
+  id: string
   position: number
   node_id: string
   node_type: WorkflowNodeType
@@ -183,6 +265,9 @@ export interface WorkflowStepRun {
   conversation_id: string | null
   started_at: string | null
   finished_at: string | null
+  /** A child row: one agent of a for_each/parallel step (item index or branch name). */
+  parent_step_id?: string | null
+  branch_key?: string | null
 }
 
 export interface WorkflowRunDetail extends WorkflowRunSummary {

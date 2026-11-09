@@ -366,19 +366,19 @@ async def test_a_worker_dying_mid_round_resumes_that_round_once(
         {"passed": True, "feedback": "좋습니다"},
     ]
     run_id = await _run(client, workflow_id)
-    real_decision = runner._decision
+    real_decision = runner._decision_branch
     seen = {"n": 0}
 
-    async def dies_in_round_two(*args: Any) -> None:
+    async def dies_in_round_two(*args: Any) -> Any:
         seen["n"] += 1
         if seen["n"] == 2:
             raise Crash  # round 2's review is stored, its decision is not
-        await real_decision(*args)
+        return await real_decision(*args)
 
-    monkeypatch.setattr(runner, "_decision", dies_in_round_two)
+    monkeypatch.setattr(runner, "_decision_branch", dies_in_round_two)
     with pytest.raises(Crash):
         await _job(run_id)
-    monkeypatch.setattr(runner, "_decision", real_decision)
+    monkeypatch.setattr(runner, "_decision_branch", real_decision)
     assert await _job(run_id) == {"outcome": "completed"}
     detail = (await client.get(f"/api/workflow-runs/{run_id}")).json()
     assert [(n, r) for n, r, _ in _trail(detail)].count(("review", 2)) == 1

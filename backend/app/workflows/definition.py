@@ -12,6 +12,7 @@ and the editor, AI edits and the checks read the same structure.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated, Any, Final, Literal
 
 from pydantic import (
@@ -28,18 +29,27 @@ from app.agent_runtime.structured_output import OutputSchemaError, check_output_
 
 SCHEMA_VERSION: Final = "moldy.workflow.v1"
 INPUT_REF: Final = "input"
+# Inside a ``for_each`` node's prompt: the current item (workflow-nodes-plan 3.2).
+ITEM_REF: Final = "item"
 MAX_NODES: Final = 50
 MAX_EDGES: Final = 200
 MAX_INPUTS: Final = 20
 MAX_SEGMENTS: Final = 100
 MAX_TEXT: Final = 8_000
 MAX_APPROVAL_MINUTES: Final = 7 * 24 * 60
+MAX_FOR_EACH: Final = 20
+MAX_PARALLEL: Final = 5
+MAX_CASES: Final = 10
 
 Identifier = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")]
 Pointer = Annotated[str, Field(pattern=r"^(/[^/]{1,64}){0,8}$")]
 Label = Annotated[str, Field(max_length=80)]
 Operator = Literal["eq", "ne", "gt", "gte", "lt", "lte", "contains", "exists"]
-EdgeWhen = Literal["true", "false", "approved", "rejected", "limit"]
+# Fixed exits (decision, approval, ask, loop limit, switch default) or a switch case name.
+EdgeWhen = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")]
+FIXED_EXITS: Final = frozenset(
+    {"true", "false", "approved", "rejected", "limit", "answered", "timeout", "default"}
+)
 MAX_ROUNDS: Final = 10
 
 
@@ -76,7 +86,8 @@ Template = Annotated[list[Segment], Field(max_length=MAX_SEGMENTS)]
 
 class WorkflowInput(_Strict):
     name: Identifier
-    type: Literal["string", "number", "integer", "boolean"] = "string"
+    # ``file``: an upload id; agent steps that reference it get the file attached (N8).
+    type: Literal["string", "number", "integer", "boolean", "file"] = "string"
     required: bool = True
     label: Label | None = None
     max_length: int | None = Field(default=None, ge=1, le=100_000)
@@ -129,9 +140,16 @@ class _Node(_Strict):
     @field_validator("id")
     @classmethod
     def _not_reserved(cls, value: str) -> str:
-        if value == INPUT_REF:
-            raise ValueError(f"{INPUT_REF!r} is reserved for workflow inputs")
+        if value in (INPUT_REF, ITEM_REF):
+            raise ValueError(f"{value!r} is reserved")
         return value
+
+
+def _schema_subset(value: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return check_output_schema(value)
+    except OutputSchemaError as exc:
+        raise ValueError(exc.message) from exc
 
 
 class StartNode(_Node):
@@ -147,10 +165,7 @@ class AgentNode(_Node):
     @field_validator("output_schema")
     @classmethod
     def _schema_in_subset(cls, value: dict[str, Any]) -> dict[str, Any]:
-        try:
-            return check_output_schema(value)
-        except OutputSchemaError as exc:
-            raise ValueError(exc.message) from exc
+        return _schema_subset(value)
 
 
 class Repeat(_Strict):
@@ -161,17 +176,149 @@ class Repeat(_Strict):
 
 class DecisionNode(_Node):
     type: Literal["decision_bool"]
-    condition: Condition
+    # ``rule`` compares values (``condition``); ``llm`` asks the system model ``question``
+    # (workflow-nodes-plan N3/N4). The judgment-model evaluator waits for item 22 (N9).
+    evaluator: Literal["rule", "llm"] = "rule"
+    condition: Condition | None = None
+    question: Template | None = None
     # Set when one exit goes back to an earlier step; the ``limit`` exit is then taken
     # once ``max_rounds`` rounds have run. Stored only when set.
     repeat: Repeat | None = None
 
+    @model_validator(mode="after")
+    def _evaluator_fields(self) -> DecisionNode:
+        if self.evaluator == "rule" and (self.condition is None or self.question is not None):
+            raise ValueError("a rule decision has a condition and no question")
+        if self.evaluator == "llm" and (self.question is None or self.condition is not None):
+            raise ValueError("an llm decision has a question and no condition")
+        return self
+
     @model_serializer(mode="wrap")
-    def _omit_repeat(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+    def _omit_unset(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         data = handler(self)
-        if self.repeat is None:
-            data.pop("repeat", None)
+        for key in ("repeat", "condition", "question"):
+            if data.get(key) is None:
+                data.pop(key, None)
+        if self.evaluator == "rule":
+            data.pop("evaluator", None)
         return data
+
+
+class SwitchCase(_Strict):
+    name: Identifier
+    value: str | int | float | bool
+
+    @field_validator("name")
+    @classmethod
+    def _not_fixed(cls, value: str) -> str:
+        if value in FIXED_EXITS:
+            raise ValueError(f"{value!r} is a reserved exit name")
+        return value
+
+
+class SwitchNode(_Node):
+    """Several exits by one value: the first case equal to it, else ``default``."""
+
+    type: Literal["switch"]
+    source: Identifier
+    path: Pointer = ""
+    cases: Annotated[list[SwitchCase], Field(max_length=MAX_CASES)] = []
+
+    @model_validator(mode="after")
+    def _unique_cases(self) -> SwitchNode:
+        names = [case.name for case in self.cases]
+        if len(set(names)) != len(names):
+            raise ValueError("case names must be unique")
+        return self
+
+
+class LlmNode(_Node):
+    """One call of the system model, no agent (summarize, convert, extract)."""
+
+    type: Literal["llm"]
+    prompt: Template
+    output_schema: dict[str, Any]
+
+    @field_validator("output_schema")
+    @classmethod
+    def _schema_in_subset(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _schema_subset(value)
+
+
+class AskNode(_Node):
+    """Ask the runner a question in the inbox; a written answer or the time limit."""
+
+    type: Literal["ask"]
+    question: Template
+    timeout_minutes: int | None = Field(default=None, ge=1, le=MAX_APPROVAL_MINUTES)
+
+
+class NotifyNode(_Node):
+    """One in-app notification to the runner; the run does not stop."""
+
+    type: Literal["notify"]
+    title: Template
+    body: Template = []
+
+
+class ForEachNode(_Node):
+    """The same agent once per item of an earlier list value (at most ``max_items``)."""
+
+    type: Literal["for_each"]
+    source: Identifier
+    path: Pointer = ""
+    agent_id: str = Field(pattern=r"^[0-9a-fA-F-]{36}$")
+    prompt: Template
+    output_schema: dict[str, Any]
+    max_items: int = Field(default=MAX_FOR_EACH, ge=1, le=MAX_FOR_EACH)
+
+    @field_validator("output_schema")
+    @classmethod
+    def _schema_in_subset(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _schema_subset(value)
+
+
+class ParallelBranch(_Strict):
+    name: Identifier
+    agent_id: str = Field(pattern=r"^[0-9a-fA-F-]{36}$")
+    prompt: Template
+    output_schema: dict[str, Any]
+
+    @field_validator("output_schema")
+    @classmethod
+    def _schema_in_subset(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _schema_subset(value)
+
+
+class ParallelNode(_Node):
+    """Several agents at once on the same values; their outputs merged by branch name."""
+
+    type: Literal["parallel"]
+    branches: Annotated[list[ParallelBranch], Field(max_length=MAX_PARALLEL)] = []
+
+    @model_validator(mode="after")
+    def _unique_branches(self) -> ParallelNode:
+        names = [branch.name for branch in self.branches]
+        if len(set(names)) != len(names):
+            raise ValueError("branch names must be unique")
+        return self
+
+
+ToolName = Literal["web_search", "web_scraper", "current_datetime"]
+# The arguments each read-only tool takes (N7).
+TOOL_ARGS: Final[dict[str, frozenset[str]]] = {
+    "web_search": frozenset({"query"}),
+    "web_scraper": frozenset({"url"}),
+    "current_datetime": frozenset(),
+}
+
+
+class ToolNode(_Node):
+    """A read-only built-in tool called directly (outside effects stay in agent steps)."""
+
+    type: Literal["tool"]
+    tool: ToolName
+    args: Annotated[dict[Identifier, Template], Field(max_length=10)] = {}
 
 
 class ApprovalNode(_Node):
@@ -198,9 +345,44 @@ class FailNode(_Node):
 
 
 Node = Annotated[
-    StartNode | AgentNode | DecisionNode | ApprovalNode | TransformNode | OutputNode | FailNode,
+    StartNode
+    | AgentNode
+    | DecisionNode
+    | ApprovalNode
+    | TransformNode
+    | OutputNode
+    | FailNode
+    | SwitchNode
+    | LlmNode
+    | AskNode
+    | NotifyNode
+    | ForEachNode
+    | ParallelNode
+    | ToolNode,
     Field(discriminator="type"),
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class AgentUse:
+    """An agent a node runs. ``key`` is the pin key: the node id, or ``node.branch``."""
+
+    key: str
+    node_id: str
+    agent_id: str
+
+
+def agent_uses(nodes: list[Any]) -> list[AgentUse]:
+    uses: list[AgentUse] = []
+    for node in nodes:
+        if isinstance(node, AgentNode | ForEachNode):
+            uses.append(AgentUse(node.id, node.id, node.agent_id))
+        elif isinstance(node, ParallelNode):
+            uses += [
+                AgentUse(f"{node.id}.{branch.name}", node.id, branch.agent_id)
+                for branch in node.branches
+            ]
+    return uses
 
 
 class Edge(_Strict):
@@ -241,11 +423,25 @@ def empty_definition() -> dict[str, Any]:
 
 
 __all__ = [
+    "FIXED_EXITS",
     "INPUT_REF",
+    "ITEM_REF",
     "MAX_NODES",
     "SCHEMA_VERSION",
+    "TOOL_ARGS",
     "AgentNode",
+    "AgentUse",
     "ApprovalNode",
+    "AskNode",
+    "ForEachNode",
+    "LlmNode",
+    "NotifyNode",
+    "ParallelBranch",
+    "ParallelNode",
+    "SwitchCase",
+    "SwitchNode",
+    "ToolNode",
+    "agent_uses",
     "Clause",
     "Condition",
     "DecisionNode",

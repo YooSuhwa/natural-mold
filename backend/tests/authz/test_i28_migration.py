@@ -61,12 +61,15 @@ def test_tables_match_the_models_and_downgrade_drops_them(lane) -> None:
     later.upgrade()
     chat = _load("i31_workflow_chat_tools")  # chat tools: the run's parent columns
     chat.upgrade()
+    nodes = _load("i32_workflow_nodes")  # child steps, file inputs
+    nodes.upgrade()
     inspector = inspect(connection)
     for model in (WorkflowRun, WorkflowStepRun):
         columns = {c["name"]: c["nullable"] for c in inspector.get_columns(model.__tablename__)}
         assert columns == {c.name: c.nullable for c in model.__table__.columns}
     uniques = {u["name"] for u in inspector.get_unique_constraints("workflow_step_runs")}
     assert {"uq_workflow_step_runs_node_round", "uq_workflow_step_runs_conversation_run"} <= uniques
+    nodes.downgrade()
     chat.downgrade()
     later.downgrade()
     module.downgrade()

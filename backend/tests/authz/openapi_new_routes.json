@@ -57455,6 +57455,17 @@
           ],
           "title": "Branch"
         },
+        "branch_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Branch Key"
+        },
         "conversation_id": {
           "anyOf": [
             {
@@ -57501,6 +57512,11 @@
           ],
           "title": "Finished At"
         },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
         "node_id": {
           "title": "Node Id",
           "type": "string"
@@ -57520,6 +57536,18 @@
             }
           ],
           "title": "Output"
+        },
+        "parent_step_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Step Id"
         },
         "position": {
           "title": "Position",
@@ -57548,6 +57576,7 @@
         }
       },
       "required": [
+        "id",
         "position",
         "node_id",
         "node_type",

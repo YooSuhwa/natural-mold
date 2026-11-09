@@ -9,6 +9,8 @@ import { ApiError } from '@/lib/api/client'
 import { useDecideApproval, useWorkflowRunApproval } from '@/lib/hooks/use-approvals'
 import type { WorkflowRunDetail } from '@/lib/types/workflow'
 
+import { AskAnswerForm } from './ask-answer-form'
+
 /** A waiting business approval is decided right here; a tool approval goes to the inbox. */
 export function RunApprovalCard({ run }: { run: WorkflowRunDetail }) {
   const t = useTranslations('workflows.runs')
@@ -37,6 +39,15 @@ export function RunApprovalCard({ run }: { run: WorkflowRunDetail }) {
   const action = request.actions[0]
   const args = (action?.args ?? {}) as { title?: string; body?: string }
   const unknownCheck = action?.name === 'workflow_unknown_check'
+  if (action?.name === 'workflow_ask') {
+    return (
+      <section className="moldy-status-surface moldy-status-warn flex flex-col gap-3 rounded-md p-4">
+        <h2 className="text-sm font-semibold">{args.title || t('askTitle')}</h2>
+        {args.body ? <p className="text-sm whitespace-pre-wrap">{args.body}</p> : null}
+        <AskAnswerForm requestId={request.id} />
+      </section>
+    )
+  }
   const send = (type: 'approve' | 'reject') =>
     decide.mutate(
       { id: request.id, decisions: [{ type }] },

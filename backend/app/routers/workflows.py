@@ -309,18 +309,8 @@ def _summary(run: runner.WorkflowRun, numbers: dict[uuid.UUID, int]) -> Workflow
 
 
 async def _detail(db: AsyncSession, run: runner.WorkflowRun) -> WorkflowRunDetail:
-    from sqlalchemy import select
-
-    from app.models.conversation import Conversation
-
     steps = await runner.list_steps(db, run)
-    parent_agent_id = (
-        await db.scalar(
-            select(Conversation.agent_id).where(Conversation.id == run.parent_conversation_id)
-        )
-        if run.parent_conversation_id is not None
-        else None
-    )
+    parent_agent_id = await runner.parent_agent_id(db, run)
     return WorkflowRunDetail.model_validate(
         {
             **_summary(run, await runner.version_numbers(db, [run])).model_dump(),

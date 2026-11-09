@@ -149,6 +149,10 @@ def args_model(workflow_id: uuid.UUID, inputs: list[WorkflowInput]) -> type[Base
     plus the injected tool call id (hidden from the model)."""
     fields: dict[str, Any] = {"tool_call_id": (Annotated[str, InjectedToolCallId], ...)}
     for item in inputs:
+        if item.type == "file":
+            # A chat model has no upload to give: a required file input makes the run
+            # refuse to start, and the tool answers why (workflow-nodes-plan N8).
+            continue
         kind = _TYPES[item.type]
         constraints: dict[str, Any] = {"description": item.label or item.name}
         if item.max_length is not None:

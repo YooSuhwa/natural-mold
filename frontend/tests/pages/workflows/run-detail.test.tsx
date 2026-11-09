@@ -84,6 +84,7 @@ describe('RunDetailClient approval card', () => {
 describe('RunDetailClient loop rounds', () => {
   it('lists each round of a looping step separately', async () => {
     const step = (position: number, round: number, branch: string | null) => ({
+      id: `s-${position}`,
       position,
       node_id: position % 2 ? 'draft' : 'passed',
       node_type: position % 2 ? 'agent' : 'decision_bool',
@@ -107,5 +108,69 @@ describe('RunDetailClient loop rounds', () => {
     expect(timeline.querySelectorAll('li')).toHaveLength(4)
     expect(screen.getAllByText('2회차')).toHaveLength(2)
     expect(screen.getByText('한도 초과')).toBeInTheDocument()
+  })
+})
+
+describe('RunDetailClient nodes plan', () => {
+  const base = {
+    round: 1,
+    status: 'completed' as const,
+    branch: null,
+    output: null,
+    error_code: null,
+    error_message: null,
+    conversation_id: null,
+    started_at: null,
+    finished_at: null,
+  }
+
+  it('lists the children of a for_each step under it, by item', () => {
+    state.run = {
+      ...run('completed'),
+      steps: [
+        { ...base, id: 'p', position: 1, node_id: 'each', node_type: 'for_each' },
+        ...[0, 1].map((n) => ({
+          ...base,
+          id: `c${n}`,
+          position: 1,
+          node_id: `each.${n}`,
+          node_type: 'agent' as const,
+          parent_step_id: 'p',
+          branch_key: String(n),
+        })),
+        { ...base, id: 'r', position: 2, node_id: 'route', node_type: 'switch', branch: 'news' },
+      ],
+    }
+    state.requests = []
+    render(<RunDetailClient workflowId="wf-1" runId="run-1" />)
+    const children = screen.getByRole('list', { name: '하위 실행' })
+    expect(children.querySelectorAll('li')).toHaveLength(2)
+    expect(screen.getByText('항목 1')).toBeInTheDocument()
+    expect(screen.getByText('항목 2')).toBeInTheDocument()
+    expect(screen.getByText('news')).toBeInTheDocument() // a switch case keeps its own name
+  })
+
+  it('answers an ask step with written text', async () => {
+    state.decide.mockReset()
+    state.run = run('waiting')
+    state.requests = [
+      {
+        id: 'req-2',
+        kind: 'business',
+        workflow_run_id: 'run-1',
+        actions: [{ name: 'workflow_ask', args: { title: '확인 질문', body: '어느 지역인가요?' } }],
+      },
+    ]
+    render(<RunDetailClient workflowId="wf-1" runId="run-1" />)
+    expect(screen.getByText('어느 지역인가요?')).toBeInTheDocument()
+    const send = screen.getByRole('button', { name: '답 보내기' })
+    expect(send).toBeDisabled()
+    await userEvent.type(screen.getByRole('textbox', { name: '답' }), '서울')
+    await userEvent.click(send)
+    expect(state.decide.mock.calls[0][0]).toEqual({
+      id: 'req-2',
+      decisions: [{ type: 'approve', message: '서울' }],
+    })
+    expect(screen.queryByRole('button', { name: '거절' })).toBeNull()
   })
 })

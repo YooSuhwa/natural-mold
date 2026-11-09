@@ -41,24 +41,31 @@ from app.models.workflow import (
 )
 from app.services import audit_service
 from app.services.conversation_run_state import request_cancel_run
-from app.workflows import agent_step
+from app.workflows import agent_step, fanout, node_steps
 from app.workflows import approvals as workflow_approvals
 from app.workflows.checks import loop_shape
 from app.workflows.definition import (
     AgentNode,
     ApprovalNode,
+    AskNode,
     DecisionNode,
     FailNode,
+    ForEachNode,
+    LlmNode,
     Node,
+    NotifyNode,
     OutputNode,
+    ParallelNode,
     StartNode,
+    SwitchNode,
+    ToolNode,
     TransformNode,
     WorkflowDefinition,
     WorkflowInput,
 )
 from app.workflows.pins import agent_fingerprints
 from app.workflows.service import agent_issues, agent_node_issues, get_workflow, parse_definition
-from app.workflows.values import agent_prompt, evaluate, field_value, render
+from app.workflows.values import agent_prompt, evaluate, field_value, render, resolve, switch_case
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +75,10 @@ RUN_FINISHED: Final = audit_actions.WORKFLOW_RUN_FINISH
 RUN_CANCELED: Final = audit_actions.WORKFLOW_RUN_CANCEL
 STEP_UNKNOWN: Final = audit_actions.WORKFLOW_STEP_UNKNOWN
 LOOP_LIMIT: Final = audit_actions.WORKFLOW_LOOP_LIMIT
+NOTIFY_KIND: Final = "workflow.notify"
+# Nodes run outside the run's transaction with no outside effect: run again when cut off.
+_RERUN: Final = ("llm", "decision_bool", "tool")
+_FANOUT: Final = ("for_each", "parallel")
 
 
 def run_not_found() -> NotFoundError:
@@ -91,7 +102,13 @@ def _input_problems(inputs: list[WorkflowInput], raw: dict[str, Any]) -> list[di
             if item.required:
                 problems.append({"name": item.name, "message": "필수 입력입니다"})
             continue
-        expected = {"string": str, "number": int | float, "integer": int, "boolean": bool}
+        expected = {
+            "string": str,
+            "number": int | float,
+            "integer": int,
+            "boolean": bool,
+            "file": str,  # an upload id, checked against the runner's uploads at start
+        }
         wrong = isinstance(value, bool) and item.type != "boolean"
         if wrong or not isinstance(value, expected[item.type]):
             problems.append({"name": item.name, "message": f"{item.type} 값이어야 합니다"})
@@ -138,6 +155,7 @@ async def start_run(
             details={"problems": problems},
         )
     await _check_agents(db, context, definition, version)
+    files = await _input_files(db, context, definition.inputs, inputs)
     run = WorkflowRun(
         workflow_id=workflow.id,
         version_id=version.id,
@@ -145,11 +163,19 @@ async def start_run(
         org_id=workflow.org_id,
         tenant_id=workflow.tenant_id,
         status="queued",
-        input=dict(inputs),
+        input={**inputs, **{name: item["filename"] for name, item in files.items()}},
+        files={
+            name: {"id": str(item["row"].id), "filename": item["filename"]}
+            for name, item in files.items()
+        }
+        or None,
         **(parent or {}),
     )
     db.add(run)
     await db.flush()
+    for item in files.values():
+        # Kept for the run's agent steps: the never-sent upload sweep skips a sent file.
+        item["row"].message_id = f"workflow-run:{run.id}"
     job = await enqueue(
         db,
         context,
@@ -165,6 +191,47 @@ async def start_run(
     run.job_id = job.id
     await db.flush()
     return run
+
+
+async def _input_files(
+    db: AsyncSession, context: OrgContext, inputs: list[WorkflowInput], raw: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """``file`` inputs (N8): the runner's own unsent uploads, by input name."""
+    from app.authz.scoping import private_scope_predicate
+    from app.models.message_attachment import MessageAttachment
+
+    found: dict[str, dict[str, Any]] = {}
+    problems: list[dict[str, str]] = []
+    for item in inputs:
+        value = raw.get(item.name)
+        if item.type != "file" or value is None:
+            continue
+        try:
+            upload_id = uuid.UUID(str(value))
+        except ValueError:
+            upload_id = None
+        row = None
+        if upload_id is not None:
+            row = await db.scalar(
+                select(MessageAttachment).where(
+                    MessageAttachment.id == upload_id,
+                    private_scope_predicate(MessageAttachment, context),
+                    MessageAttachment.conversation_id.is_(None),
+                    MessageAttachment.message_id.is_(None),
+                )
+            )
+        if row is None:
+            problems.append({"name": item.name, "message": "올린 파일을 찾을 수 없습니다"})
+            continue
+        found[item.name] = {"row": row, "filename": row.filename}
+    if problems:
+        raise AppError(
+            "WORKFLOW_INPUT_INVALID",
+            "입력값을 확인하세요",
+            status=422,
+            details={"problems": problems},
+        )
+    return found
 
 
 async def _check_agents(
@@ -219,6 +286,17 @@ async def get_run_for_tool_call(
     return run
 
 
+async def parent_agent_id(db: AsyncSession, run: WorkflowRun) -> uuid.UUID | None:
+    """The agent of the chat that started the run (the run page links back to it)."""
+    if run.parent_conversation_id is None:
+        return None
+    from app.models.conversation import Conversation
+
+    return await db.scalar(
+        select(Conversation.agent_id).where(Conversation.id == run.parent_conversation_id)
+    )
+
+
 async def list_runs(
     db: AsyncSession, context: OrgContext, workflow_id: uuid.UUID, *, limit: int = 50
 ) -> list[WorkflowRun]:
@@ -247,7 +325,13 @@ async def list_steps(db: AsyncSession, run: WorkflowRun) -> list[WorkflowStepRun
     stmt = (
         select(WorkflowStepRun)
         .where(WorkflowStepRun.run_id == run.id)
-        .order_by(WorkflowStepRun.position)
+        # A step before its children (they share its position).
+        .order_by(
+            WorkflowStepRun.position,
+            WorkflowStepRun.parent_step_id.is_not(None),
+            WorkflowStepRun.created_at,
+            WorkflowStepRun.id,
+        )
     )
     return list((await db.execute(stmt)).scalars().all())
 
@@ -307,9 +391,14 @@ def _successor(definition: WorkflowDefinition, step: WorkflowStepRun) -> Node | 
 def _values(run: WorkflowRun, steps: list[WorkflowStepRun]) -> dict[str, Any]:
     values: dict[str, Any] = {"input": run.input}
     for step in steps:
-        if step.status == "completed":
+        if step.status == "completed" and step.parent_step_id is None:
             values[step.node_id] = step.output
     return values
+
+
+def _main(steps: list[WorkflowStepRun]) -> list[WorkflowStepRun]:
+    """The run's chain: the rows without a parent (children belong to their step)."""
+    return [step for step in steps if step.parent_step_id is None]
 
 
 async def _audit_finish(db: AsyncSession, run: WorkflowRun) -> None:
@@ -392,9 +481,22 @@ async def _advance(
         _finish(run, "failed", "version_gone", "게시 버전이 없습니다")
         return None, None
     definition = WorkflowDefinition.model_validate(version.definition)
-    steps = await list_steps(db, run)
+    steps = _main(await list_steps(db, run))
     last = steps[-1] if steps else None
     if last is not None and last.status != "completed":
+        in_flight = last.status in ("queued", "running")
+        if in_flight and (last.node_type in _RERUN or last.node_type in _FANOUT):
+            # Model and tool steps run again; a fanout step continues its children.
+            return last, next(n for n in definition.nodes if n.id == last.node_id)
+        if last.node_type in _FANOUT and last.status == "unknown":
+            child = next(
+                (c for c in await fanout.children(db, last.id) if c.status == "unknown"), None
+            )
+            _end_from_step(run, last)
+            if child is not None:
+                node = next((n for n in definition.nodes if n.id == last.node_id), None)
+                await _ask_about_unknown(db, run, child, node)
+            return None, None
         if last.node_type == "agent" and last.status in ("queued", "running"):
             recovered = await agent_step.recover(db, last)
             if recovered is None:
@@ -434,26 +536,62 @@ async def _advance(
         )
         step.input = {"prompt": agent_prompt(node.prompt, values)}
         return step, node
-    if isinstance(node, DecisionNode):
-        await _decision(db, run, definition, node, position, round_no, values, context)
+    if isinstance(node, DecisionNode) and node.evaluator == "rule" and node.condition:
+        decision = evaluate(node.condition, values)
+        branch, decision = await _decision_branch(
+            db, run, definition, node, round_no, decision, context
+        )
+        await _step_row(
+            db,
+            run,
+            node,
+            position,
+            output=decision,
+            branch=branch,
+            round=round_no,
+            status="completed",
+            finished_at=_now(),
+        )
         return None, None
+    if isinstance(node, LlmNode | DecisionNode | ToolNode):
+        step = await _step_row(db, run, node, position, status="queued", round=round_no)
+        if (
+            not isinstance(node, ToolNode)
+            and context is not None
+            and await _usage_limited(db, context)
+        ):
+            _record(
+                step,
+                agent_step.StepOutcome(
+                    "failed", error_code="usage_limit", error_message="사용 한도에 도달했습니다"
+                ),
+            )
+            _end_from_step(run, step)
+            return None, None
+        return step, node
+    if isinstance(node, ForEachNode | ParallelNode):
+        step = await _step_row(db, run, node, position, status="queued", round=round_no)
+        await fanout.start(db, run, step, node, values)
+        if step.status == "failed":
+            _end_from_step(run, step)
+            return None, None
+        return (None, None) if step.status == "completed" else (step, node)
     await _simple_node(db, run, node, position, values, round_no)
     return None, None
 
 
-async def _decision(
+async def _decision_branch(
     db: AsyncSession,
     run: WorkflowRun,
     definition: WorkflowDefinition,
     node: DecisionNode,
-    position: int,
     round_no: int,
-    values: dict[str, Any],
+    decision: dict[str, Any],
     context: OrgContext | None,
-) -> None:
-    """Evaluate the rule. An exit that loops back is taken while rounds and usage are left;
-    otherwise the ``limit`` exit is, with the reason on the step and in the audit."""
-    decision = evaluate(node.condition, values)
+) -> tuple[str, dict[str, Any]]:
+    """The exit for a decision record. An exit that loops back is taken while rounds and
+    usage are left; otherwise the ``limit`` exit is, with the reason on the step and in the
+    audit."""
     branch = "true" if decision["value"] else "false"
     loops = {(loop.decision, loop.when) for loop in loop_shape(definition).loops}
     if (node.id, branch) in loops and node.repeat is not None:
@@ -467,17 +605,7 @@ async def _decision(
             branch = "limit"
             await _audit_loop_limit(db, run, node, round_no, reason)
         decision = {**decision, "round": round_no, "max_rounds": node.repeat.max_rounds}
-    await _step_row(
-        db,
-        run,
-        node,
-        position,
-        output=decision,
-        branch=branch,
-        round=round_no,
-        status="completed",
-        finished_at=_now(),
-    )
+    return branch, decision
 
 
 async def _usage_limited(db: AsyncSession, context: OrgContext) -> bool:
@@ -539,14 +667,44 @@ async def _simple_node(
         step = await _step_row(db, run, node, position, status="waiting", round=round_no)
         await workflow_approvals.request(db, run, step, node, values)
         run.status = "waiting"
+    elif isinstance(node, AskNode):
+        # The runner's written answer in the inbox (N5); its time limit takes ``timeout``.
+        step = await _step_row(db, run, node, position, status="waiting", round=round_no)
+        await workflow_approvals.request_ask(db, run, step, node, values)
+        run.status = "waiting"
+    elif isinstance(node, SwitchNode):
+        value = resolve(values, node.source, node.path)
+        case = switch_case(node.cases, value)
+        output = {"value": value, "case": case}
+        await _step_row(db, run, node, position, output=output, branch=case, **done)
+    elif isinstance(node, NotifyNode):
+        # The notice and the step row commit together: one notice per step (3.1).
+        await _step_row(db, run, node, position, output={"sent": True}, **done)
+        await _notify(db, run, node, values)
 
 
-def _record(step: WorkflowStepRun, outcome: agent_step.StepOutcome) -> None:
-    step.status = outcome.status
-    step.output = outcome.output
-    step.error_code = outcome.error_code
-    step.error_message = outcome.error_message
-    step.finished_at = _now()
+async def _notify(
+    db: AsyncSession, run: WorkflowRun, node: NotifyNode, values: dict[str, Any]
+) -> None:
+    from app.authz.notifications import Target, notify
+
+    workflow = await db.get(Workflow, run.workflow_id)
+    await notify(
+        db,
+        kind=NOTIFY_KIND,
+        recipients=[run.user_id],
+        tenant_id=run.tenant_id,
+        org_id=run.org_id,
+        target=Target("workflow_run", run.id, workflow.name if workflow else None),
+        payload={
+            "title": render(node.title, values)[:200],
+            "body": render(node.body, values)[:1000],
+        },
+        link=f"/workflows/{run.workflow_id}/runs/{run.id}",
+    )
+
+
+_record = agent_step.record
 
 
 def _end_from_step(run: WorkflowRun, step: WorkflowStepRun) -> None:
@@ -583,6 +741,14 @@ async def run_job(job: JobContext) -> dict[str, Any]:
             context = _context(job, run)
             step, node = await _advance(db, run, context)
             prepared: agent_step.PreparedStep | agent_step.StepOutcome | None = None
+            outside: dict[str, Any] | None = None  # values for a model/tool step
+            title = ""
+            if step is not None and node is not None and not isinstance(node, AgentNode):
+                workflow = await db.get(Workflow, run.workflow_id)
+                title = f"{workflow.name if workflow else '워크플로'} · {node.label or node.id}"
+                if not isinstance(node, ForEachNode | ParallelNode):
+                    outside = _values(run, await list_steps(db, run))
+                step.status, step.started_at = "running", _now()
             if step is not None and isinstance(node, AgentNode):
                 # Checked again at every agent step (3.6): archived, or no longer runnable
                 # by the runner since the run started (or while it waited for a decision).
@@ -600,7 +766,11 @@ async def run_job(job: JobContext) -> dict[str, Any]:
                     db,
                     context,
                     step,
-                    node,
+                    agent_step.StepAgent(
+                        agent_id=node.agent_id,
+                        output_schema=node.output_schema,
+                        files=fanout.referenced_files(node.prompt, run),
+                    ),
                     prompt=str((step.input or {}).get("prompt", "")),
                     title=title,
                 )
@@ -615,6 +785,12 @@ async def run_job(job: JobContext) -> dict[str, Any]:
             await db.commit()
             if finished or run.status in ("waiting", "unknown"):
                 return {"outcome": run.status}
+        if step is not None and isinstance(node, ForEachNode | ParallelNode):
+            await fanout.run_children(job.session, context, run_id, step.id, node, title)
+            continue
+        if step is not None and outside is not None and node is not None:
+            await _run_outside(job, context, run_id, step.id, node, outside)
+            continue
         if isinstance(prepared, agent_step.PreparedStep) and step is not None:
             outcome = await agent_step.execute(context, step, prepared)
             async with job.session() as db:
@@ -631,6 +807,36 @@ async def run_job(job: JobContext) -> dict[str, Any]:
                 if stored is not None:
                     _record(stored, outcome)
                 await db.commit()
+
+
+async def _run_outside(
+    job: JobContext,
+    context: OrgContext,
+    run_id: uuid.UUID,
+    step_id: uuid.UUID,
+    node: Node,
+    values: dict[str, Any],
+) -> None:
+    """A model or tool step, outside the run's transaction; stored with its exit."""
+    if isinstance(node, ToolNode):
+        outcome = await node_steps.run_tool_node(node, values)
+    elif isinstance(node, LlmNode | DecisionNode):
+        outcome = await node_steps.run_model_node(context, node, values, session=job.session)
+    else:  # pragma: no cover - _advance only returns the kinds above
+        raise TypeError(node.type)
+    async with job.session() as db:
+        run = await _locked(db, run_id)
+        stored = await db.get(WorkflowStepRun, step_id, with_for_update=True)
+        if run is None or stored is None or stored.status != "running":
+            return
+        _record(stored, outcome)
+        if outcome.status == "completed" and isinstance(node, DecisionNode):
+            version = await db.get(WorkflowVersion, run.version_id)
+            definition = WorkflowDefinition.model_validate(version.definition if version else {})
+            stored.branch, stored.output = await _decision_branch(
+                db, run, definition, node, stored.round, dict(outcome.output or {}), context
+            )
+        await db.commit()
 
 
 def register_jobs() -> None:

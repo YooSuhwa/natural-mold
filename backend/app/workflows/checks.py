@@ -21,17 +21,27 @@ from typing import Any, Final
 
 from app.workflows.definition import (
     INPUT_REF,
+    ITEM_REF,
+    MAX_PARALLEL,
+    TOOL_ARGS,
     AgentNode,
     ApprovalNode,
+    AskNode,
     Clause,
     DecisionNode,
     Edge,
     FailNode,
+    ForEachNode,
+    LlmNode,
     Node,
+    NotifyNode,
     OutputNode,
+    ParallelNode,
     Ref,
     RefSegment,
     StartNode,
+    SwitchNode,
+    ToolNode,
     TransformNode,
     WorkflowDefinition,
 )
@@ -40,10 +50,12 @@ _TERMINAL: Final = (OutputNode, FailNode)
 _BRANCHES: Final[dict[type, frozenset[str]]] = {
     DecisionNode: frozenset({"true", "false"}),
     ApprovalNode: frozenset({"approved", "rejected"}),
+    AskNode: frozenset({"answered", "timeout"}),
 }
 # What a reference may point at, per node kind (agents: their output schema).
-_DECISION_FIELDS: Final = frozenset({"value", "confidence", "band", "evaluator"})
+_DECISION_FIELDS: Final = frozenset({"value", "confidence", "band", "evaluator", "reason"})
 _APPROVAL_FIELDS: Final = frozenset({"decision", "comment"})
+_SWITCH_FIELDS: Final = frozenset({"value", "case"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,8 +231,10 @@ def _loop_rules(
             issues.append(Issue("loop_overlap", message, loop.decision))
         seen.add(loop.decision)
         for member in sorted(loop.body):
-            if isinstance(nodes[member], ApprovalNode | OutputNode | FailNode):
-                message = "반복 안에는 승인, 최종 출력, 실패 종료 노드를 둘 수 없습니다"
+            if isinstance(nodes[member], ApprovalNode | AskNode | OutputNode | FailNode):
+                message = (
+                    "반복 안에는 승인, 사람에게 묻기, 최종 출력, 실패 종료 노드를 둘 수 없습니다"
+                )
                 issues.append(Issue("loop_body_kind", message, member))
         for edge in forward.edges:
             leaves = edge.from_ in loop.body and edge.to not in loop.body
@@ -243,6 +257,8 @@ def _node_edges(node: Node, whens: list[str | None], incoming: int) -> list[Issu
             issues.append(Issue("end_has_outgoing", "끝 노드에서 나가는 연결이 있습니다", node.id))
         return issues
     expected = _BRANCHES.get(type(node))
+    if isinstance(node, SwitchNode):
+        expected = frozenset({*(case.name for case in node.cases), "default"})
     if isinstance(node, DecisionNode):
         whens = [when for when in whens if when != "limit"]  # a loop's exit: _loop_rules
     if expected is None:
@@ -256,8 +272,33 @@ def _node_edges(node: Node, whens: list[str | None], incoming: int) -> list[Issu
 
 
 def _node_fields(node: Node) -> list[Issue]:
-    if isinstance(node, AgentNode) and not node.prompt:
+    if isinstance(node, AgentNode | ForEachNode) and not node.prompt:
         return [Issue("empty_prompt", "에이전트에 보낼 내용이 비어 있습니다", node.id)]
+    if isinstance(node, LlmNode) and not node.prompt:
+        return [Issue("empty_prompt", "모델에 보낼 내용이 비어 있습니다", node.id)]
+    if isinstance(node, DecisionNode) and node.evaluator == "llm" and not node.question:
+        return [Issue("empty_question", "모델에 물을 질문이 비어 있습니다", node.id)]
+    if isinstance(node, SwitchNode) and not node.cases:
+        return [Issue("switch_no_cases", "경우를 하나 이상 정하세요", node.id)]
+    if isinstance(node, AskNode):
+        issues = [] if node.question else [Issue("empty_question", "질문이 비어 있습니다", node.id)]
+        if node.timeout_minutes is None:
+            issues.append(Issue("ask_no_timeout", "답을 기다릴 시간 제한을 정하세요", node.id))
+        return issues
+    if isinstance(node, NotifyNode) and not node.title:
+        return [Issue("empty_title", "알림 제목이 비어 있습니다", node.id)]
+    if isinstance(node, ParallelNode):
+        if not 2 <= len(node.branches) <= MAX_PARALLEL:
+            message = f"병렬 에이전트는 2~{MAX_PARALLEL}개여야 합니다"
+            return [Issue("parallel_branches", message, node.id)]
+        if any(not branch.prompt for branch in node.branches):
+            return [Issue("empty_prompt", "에이전트에 보낼 내용이 비어 있습니다", node.id)]
+    if isinstance(node, ToolNode):
+        missing = sorted(TOOL_ARGS[node.tool] - {k for k, v in node.args.items() if v})
+        extra = sorted(set(node.args) - TOOL_ARGS[node.tool])
+        if missing or extra:
+            names = ", ".join(missing + extra)
+            return [Issue("tool_args", f"도구 인자를 확인하세요: {names}", node.id)]
     if isinstance(node, ApprovalNode):
         issues = [] if node.title else [Issue("empty_title", "승인 제목이 비어 있습니다", node.id)]
         if node.timeout_minutes is None:
@@ -330,16 +371,26 @@ def _topological(definition: WorkflowDefinition) -> list[str]:
 
 def _refs(node: Node) -> Iterator[Ref | Clause]:
     templates: list[list[Any]] = []
-    if isinstance(node, AgentNode):
+    if isinstance(node, AgentNode | LlmNode | ForEachNode):
         templates = [node.prompt]
-    elif isinstance(node, ApprovalNode):
+    elif isinstance(node, ApprovalNode | NotifyNode):
         templates = [node.title, node.body]
+    elif isinstance(node, AskNode):
+        templates = [node.question]
     elif isinstance(node, TransformNode):
         templates = [node.template, *node.fields.values()]
     elif isinstance(node, OutputNode):
         templates = list(node.fields.values())
+    elif isinstance(node, ParallelNode):
+        templates = [branch.prompt for branch in node.branches]
+    elif isinstance(node, ToolNode):
+        templates = list(node.args.values())
     elif isinstance(node, DecisionNode):
-        yield from node.condition.clauses
+        if node.condition is not None:
+            yield from node.condition.clauses
+        templates = [node.question or []]
+    if isinstance(node, SwitchNode | ForEachNode):
+        yield Ref(node=node.source, path=node.path)
     for template in templates:
         for segment in template:
             if isinstance(segment, RefSegment):
@@ -361,6 +412,11 @@ def _references(definition: WorkflowDefinition, loops: list[Loop]) -> list[Issue
             target, path = (
                 (ref.source, ref.path) if isinstance(ref, Clause) else (ref.node, ref.path)
             )
+            if target == ITEM_REF:
+                if not isinstance(node, ForEachNode):
+                    message = "항목(item) 값은 항목마다 노드 안에서만 쓸 수 있습니다"
+                    issues.append(Issue("ref_item_scope", message, node.id))
+                continue
             if isinstance(ref, Ref) and ref.previous:
                 if target not in body or target in upstream[node.id]:
                     message = (
@@ -375,7 +431,26 @@ def _references(definition: WorkflowDefinition, loops: list[Loop]) -> list[Issue
             issue = _reference_issue(target, path, node.id, nodes, inputs, upstream[node.id])
             if issue is not None:
                 issues.append(issue)
+        if isinstance(node, ForEachNode) and (
+            node.source == INPUT_REF or node.source in upstream[node.id]
+        ):
+            source = nodes.get(node.source)
+            if source is None or not _is_list(source, node.path.split("/")[1:]):
+                message = "항목마다 노드의 대상은 목록(배열) 값이어야 합니다"
+                issues.append(Issue("for_each_not_list", message, node.id))
     return issues
+
+
+def _is_list(node: Node, parts: list[str]) -> bool:
+    schema = _output_schema(node)
+    if schema is None:
+        return False
+    current: dict[str, Any] | None = schema
+    for part in parts:
+        current = _schema_child(current, part)
+        if current is None:
+            return False
+    return current.get("type") == "array"
 
 
 def _reference_issue(
@@ -401,13 +476,45 @@ def _reference_issue(
     return None
 
 
+def _output_schema(node: Node) -> dict[str, Any] | None:
+    """The JSON shape of a node's output, for nodes whose output has a declared shape."""
+    if isinstance(node, AgentNode | LlmNode):
+        return node.output_schema
+    if isinstance(node, ForEachNode):
+        return {
+            "type": "object",
+            "properties": {
+                "items": {"type": "array", "items": node.output_schema},
+                "count": {"type": "integer"},
+            },
+        }
+    if isinstance(node, ParallelNode):
+        return {
+            "type": "object",
+            "properties": {branch.name: branch.output_schema for branch in node.branches},
+        }
+    return None
+
+
 def _path_exists(node: Node, parts: list[str]) -> bool:
-    if isinstance(node, AgentNode):
-        return _schema_has(node.output_schema, parts)
+    schema = _output_schema(node)
+    if schema is not None:
+        return _schema_has(schema, parts)
+    fields: frozenset[str] | None = None
     if isinstance(node, DecisionNode):
-        return len(parts) == 1 and parts[0] in _DECISION_FIELDS
-    if isinstance(node, ApprovalNode):
-        return len(parts) == 1 and parts[0] in _APPROVAL_FIELDS
+        fields = _DECISION_FIELDS
+    elif isinstance(node, ApprovalNode):
+        fields = _APPROVAL_FIELDS
+    elif isinstance(node, SwitchNode):
+        fields = _SWITCH_FIELDS
+    elif isinstance(node, AskNode):
+        fields = frozenset({"answer"})
+    elif isinstance(node, NotifyNode):
+        fields = frozenset({"sent"})
+    elif isinstance(node, ToolNode):
+        fields = frozenset({"result"})
+    if fields is not None:
+        return len(parts) == 1 and parts[0] in fields
     if isinstance(node, TransformNode):
         return parts == ["text"] or (
             len(parts) == 2 and parts[0] == "fields" and parts[1] in node.fields
@@ -415,14 +522,23 @@ def _path_exists(node: Node, parts: list[str]) -> bool:
     return False  # start and end nodes produce nothing to reference
 
 
+def _schema_child(node: dict[str, Any] | None, part: str) -> dict[str, Any] | None:
+    if node is None:
+        return None
+    if node.get("type") == "object" and part in node.get("properties", {}):
+        child: dict[str, Any] = node["properties"][part]
+        return child
+    if node.get("type") == "array" and part.isdigit():
+        item: dict[str, Any] = node["items"]
+        return item
+    return None
+
+
 def _schema_has(schema: dict[str, Any], parts: list[str]) -> bool:
-    node: dict[str, Any] = schema
+    node: dict[str, Any] | None = schema
     for part in parts:
-        if node.get("type") == "object" and part in node.get("properties", {}):
-            node = node["properties"][part]
-        elif node.get("type") == "array" and part.isdigit():
-            node = node["items"]
-        else:
+        node = _schema_child(node, part)
+        if node is None:
             return False
     return True
 

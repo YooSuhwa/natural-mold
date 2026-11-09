@@ -11,7 +11,7 @@ import json
 from collections.abc import Mapping
 from typing import Any, Final
 
-from app.workflows.definition import Clause, Condition, Ref, RefSegment, TextSegment
+from app.workflows.definition import Clause, Condition, Ref, RefSegment, SwitchCase, TextSegment
 
 _MISSING: Final = object()
 DATA_NOTE: Final = (
@@ -117,4 +117,18 @@ def evaluate(condition: Condition, values: Mapping[str, Any]) -> dict[str, Any]:
     return {"value": value, "confidence": 1.0, "band": "high", "evaluator": "rule"}
 
 
-__all__ = ["DATA_NOTE", "agent_prompt", "clause_holds", "evaluate", "field_value", "render"]
+def switch_case(cases: list[SwitchCase], value: Any) -> str:
+    """The first case whose value equals ``value`` (as ``eq`` compares), else ``default``."""
+    return next((case.name for case in cases if _equal(value, case.value)), "default")
+
+
+__all__ = [
+    "DATA_NOTE",
+    "agent_prompt",
+    "clause_holds",
+    "evaluate",
+    "field_value",
+    "render",
+    "resolve",
+    "switch_case",
+]

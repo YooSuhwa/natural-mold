@@ -194,6 +194,7 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
         const input = definition.inputs.find((item) => `/${item.name}` === path)
         return `${t('kind.start')} · ${input?.label || field}`
       }
+      if (node === 'item') return field ? `${t('settings.item')} · ${field}` : t('settings.item')
       return field ? `${titleOf(node).title} · ${field}` : titleOf(node).title
     },
     [definition, t, titleOf],
@@ -253,7 +254,11 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
   const selected = definition.nodes.find((node) => node.id === selectedId) ?? null
   const agentCount = new Set(
     definition.nodes.flatMap((node) =>
-      node.type === 'agent' && node.agent_id ? [node.agent_id] : [],
+      node.type === 'agent' || node.type === 'for_each'
+        ? [node.agent_id]
+        : node.type === 'parallel'
+          ? node.branches.map((branch) => branch.agent_id)
+          : [],
     ),
   ).size
   const dirty = status !== 'saved'

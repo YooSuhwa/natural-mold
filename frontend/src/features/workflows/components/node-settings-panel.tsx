@@ -19,10 +19,21 @@ import type {
 
 import { exitsOf, loopCandidates, nextCandidates } from '../lib/editor-commands'
 import { MAX_ROUNDS } from '../lib/loops'
+import { branchLabel } from '../lib/node-catalog'
 import { contractLine } from '../lib/schema-rows'
 import { referencedValues } from '../lib/template-text'
 import { upstreamValues } from '../lib/upstream-values'
 import { ConditionEditor, InputsEditor, OutputSchemaEditor } from './field-editors'
+import {
+  AskSettings,
+  DecisionQuestion,
+  ForEachSettings,
+  LlmSettings,
+  NotifySettings,
+  ParallelSettings,
+  SwitchSettings,
+  ToolSettings,
+} from './node-settings-kinds'
 import { TemplateField, type LabelOf } from './template-field'
 
 const SELECT_CLASS =
@@ -75,6 +86,7 @@ export function NodeSettingsPanel({
       onCommit={(segments) => onChange(apply(segments))}
     />
   )
+  const kindProps = { values, labelOf, field, onChange }
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
@@ -129,31 +141,52 @@ export function NodeSettingsPanel({
               role="radiogroup"
               aria-label={t('settings.evaluator')}
             >
-              {(['rule', 'llm', 'model'] as const).map((kind) => (
-                <Button
-                  key={kind}
-                  type="button"
-                  size="sm"
-                  variant={kind === 'rule' ? 'default' : 'outline'}
-                  role="radio"
-                  aria-checked={kind === 'rule'}
-                  disabled={kind !== 'rule'}
-                  title={kind === 'rule' ? undefined : t('settings.evaluatorLater')}
-                >
-                  {t(`settings.evaluatorKind.${kind}`)}
-                </Button>
-              ))}
+              {(['rule', 'llm', 'model'] as const).map((kind) => {
+                const current = (node.evaluator ?? 'rule') === kind
+                return (
+                  <Button
+                    key={kind}
+                    type="button"
+                    size="sm"
+                    variant={current ? 'default' : 'outline'}
+                    role="radio"
+                    aria-checked={current}
+                    // The judgment-model way waits for item 22 (workflow-nodes-plan N9).
+                    disabled={kind === 'model'}
+                    title={kind === 'model' ? t('settings.evaluatorLater') : undefined}
+                    onClick={() => {
+                      if (current || kind === 'model') return
+                      onChange(
+                        kind === 'llm'
+                          ? { ...node, evaluator: 'llm', condition: null, question: [] }
+                          : {
+                              ...node,
+                              evaluator: 'rule',
+                              question: null,
+                              condition: { all: [{ source: 'input', path: '', op: 'exists' }] },
+                            },
+                      )
+                    }}
+                  >
+                    {t(`settings.evaluatorKind.${kind}`)}
+                  </Button>
+                )
+              })}
             </div>
             <p className="text-xs text-muted-foreground">{t('settings.evaluatorLater')}</p>
           </Section>
-          <Section title={t('settings.condition')}>
-            <ConditionEditor
-              condition={node.condition}
-              values={values}
-              labelOf={labelOf}
-              onChange={(condition) => onChange({ ...node, condition })}
-            />
-          </Section>
+          {node.evaluator === 'llm' ? (
+            <DecisionQuestion node={node} field={field} />
+          ) : (
+            <Section title={t('settings.condition')}>
+              <ConditionEditor
+                condition={node.condition ?? { all: [] }}
+                values={values}
+                labelOf={labelOf}
+                onChange={(condition) => onChange({ ...node, condition })}
+              />
+            </Section>
+          )}
           {node.repeat ? (
             <Section title={t('loop.title')}>
               <Input
@@ -253,6 +286,14 @@ export function NodeSettingsPanel({
           />
         </Section>
       ) : null}
+
+      {node.type === 'switch' ? <SwitchSettings node={node} {...kindProps} /> : null}
+      {node.type === 'llm' ? <LlmSettings node={node} {...kindProps} /> : null}
+      {node.type === 'ask' ? <AskSettings node={node} {...kindProps} /> : null}
+      {node.type === 'notify' ? <NotifySettings node={node} {...kindProps} /> : null}
+      {node.type === 'for_each' ? <ForEachSettings node={node} {...kindProps} /> : null}
+      {node.type === 'parallel' ? <ParallelSettings node={node} {...kindProps} /> : null}
+      {node.type === 'tool' ? <ToolSettings node={node} {...kindProps} /> : null}
 
       <NextSteps definition={definition} node={node} labelOf={labelOf} onNext={onNext} />
 
@@ -409,7 +450,7 @@ function NextSteps({
             ? t('settings.nextStep')
             : when === 'limit'
               ? t('loop.onLimit')
-              : t('settings.nextOn', { branch: t(`branch.${when}`) })
+              : t('settings.nextOn', { branch: branchLabel(t, when) })
         return (
           <label key={when ?? 'next'} className="flex flex-col gap-1 text-xs">
             {label}
