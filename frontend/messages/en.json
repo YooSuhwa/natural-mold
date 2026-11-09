@@ -7699,7 +7699,14 @@
       "toolArg": {
         "query": "Search query",
         "url": "Address"
-      }
+      },
+      "approver": "Approver",
+      "approverKind": {
+        "runner": "The person who runs it",
+        "owner": "The workflow owner",
+        "named": "A named person (not in the share list)"
+      },
+      "approverHint": "A named approver must be able to run this workflow. If they cannot when it runs, the runner decides."
     },
     "versions": {
       "open": "Versions",
@@ -7853,6 +7860,9 @@
       "disable": "Turn off",
       "enable": "Turn on",
       "removeWebhook": "Delete webhook {name}"
+    },
+    "sharing": {
+      "runOnly": "Run only"
     }
   }
 }

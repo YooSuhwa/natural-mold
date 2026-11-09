@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
 import { useAgents } from '@/lib/hooks/use-agents'
+import { useResourceAccess } from '@/lib/hooks/use-resource-sharing'
 import {
   MAX_CASES,
   MAX_FOR_EACH,
@@ -12,6 +13,7 @@ import {
   TOOL_ARGS,
   type ParallelBranch,
   type TemplateSegment,
+  type WorkflowApprover,
   type WorkflowNode,
   type WorkflowToolName,
 } from '@/lib/types/workflow'
@@ -444,5 +446,59 @@ export function ToolSettings({
         ),
       )}
     </>
+  )
+}
+
+/**
+ * Who decides an approval (workflow-starts-sharing-plan 3.4): the runner, the workflow's
+ * owner, or a person it is shared with. A named person who loses access hands the decision
+ * back to the runner at run time; publishing checks they can run it.
+ */
+export function ApproverSettings({
+  node,
+  workflowId,
+  canShare,
+  onChange,
+}: {
+  node: Extract<WorkflowNode, { type: 'approval' }>
+  workflowId: string
+  canShare: boolean
+  onChange: (node: WorkflowNode) => void
+}) {
+  const t = useTranslations('workflows.settings')
+  const access = useResourceAccess('workflow', workflowId, canShare)
+  const people = (access.data?.items ?? []).filter(
+    (entry) => entry.principal.type === 'user' && entry.source !== 'owner',
+  )
+  const current = node.approver ?? { kind: 'runner' as const }
+  const value = current.kind === 'user' ? `user:${current.user_id}` : current.kind
+  const named = current.kind === 'user' ? current.user_id : null
+  const choose = (next: string) => {
+    let approver: WorkflowApprover | null = null
+    if (next === 'owner') approver = { kind: 'owner' }
+    if (next.startsWith('user:')) approver = { kind: 'user', user_id: next.slice(5) }
+    onChange({ ...node, approver })
+  }
+  return (
+    <Section title={t('approver')}>
+      <select
+        className={SELECT_CLASS}
+        value={value}
+        aria-label={t('approver')}
+        onChange={(event) => choose(event.target.value)}
+      >
+        <option value="runner">{t('approverKind.runner')}</option>
+        <option value="owner">{t('approverKind.owner')}</option>
+        {people.map((entry) => (
+          <option key={entry.principal.id} value={`user:${entry.principal.id}`}>
+            {entry.principal.display_name ?? entry.principal.id}
+          </option>
+        ))}
+        {named && !people.some((entry) => entry.principal.id === named) ? (
+          <option value={`user:${named}`}>{t('approverKind.named')}</option>
+        ) : null}
+      </select>
+      <p className="text-xs text-muted-foreground">{t('approverHint')}</p>
+    </Section>
   )
 }

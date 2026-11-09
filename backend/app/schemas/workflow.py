@@ -48,6 +48,9 @@ class WorkflowSummary(BaseModel):
 
 class WorkflowDetail(WorkflowSummary):
     draft_definition: dict[str, Any]
+    # Sharing (starts plan 3.3): what the caller may do here, and whether it owns it.
+    my_permissions: list[str] = Field(default_factory=list)
+    is_owner: bool = True
 
 
 class WorkflowIssue(BaseModel):

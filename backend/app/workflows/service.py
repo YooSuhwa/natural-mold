@@ -1,10 +1,11 @@
 """Workflow drafts, checks and publishing (workflow-plan 3.1-3.3, 3.6, W1).
 
-Owner only in 1차 (Q5): every query is ``private_scoped`` to the caller and organization,
-so another person's workflow is a plain 404. A draft save names the revision it edited;
-a stale one is a 409 and nothing is written. Publishing re-checks the draft it was given
-(the same revision), pins each agent node's settings fingerprint (Q1) and freezes an
-immutable version.
+Access goes through ``authz.workflow_access`` (starts plan 3.3): the owner's own workflows
+in legacy mode; shared ones by ``can_run``/``can_edit``/``can_delete`` once the type is
+enforced. Another person's workflow without a grant is a plain 404. A draft save names the
+revision it edited; a stale one is a 409 and nothing is written. Publishing re-checks the
+draft it was given (the same revision), pins each agent node's settings fingerprint (Q1)
+and freezes an immutable version.
 """
 
 from __future__ import annotations
@@ -22,7 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.conversation_agent_checks import current_authz, require_agent_permission
 from app.authz.org_context import OrgContext
-from app.authz.scoping import private_scope_predicate, private_scoped
+from app.authz.scoping import private_scope_predicate
+from app.authz.workflow_access import authorize_workflow, visible_workflows
+from app.authz.workflow_access import workflow_not_found as _workflow_not_found
 from app.exceptions import AppError, ConflictError, NotFoundError
 from app.models.agent import Agent
 from app.models.model import Model
@@ -35,7 +38,7 @@ STANDARD_PROFILE: Final = "standard"
 
 
 def workflow_not_found() -> NotFoundError:
-    return NotFoundError("WORKFLOW_NOT_FOUND", "워크플로를 찾을 수 없습니다")
+    return _workflow_not_found()
 
 
 def workflow_version_not_found() -> NotFoundError:
@@ -99,23 +102,20 @@ async def create_workflow(
 async def list_workflows(
     db: AsyncSession, context: OrgContext, *, include_archived: bool = False
 ) -> list[Workflow]:
-    stmt = private_scoped(select(Workflow), Workflow, context)
-    if not include_archived:
-        stmt = stmt.where(Workflow.archived_at.is_(None))
-    stmt = stmt.order_by(Workflow.updated_at.desc(), Workflow.id)
-    return list((await db.execute(stmt)).scalars().all())
+    """The caller's own workflows and those shared with it (``can_run``)."""
+    return await visible_workflows(db, context, include_archived=include_archived)
 
 
 async def get_workflow(
-    db: AsyncSession, context: OrgContext, workflow_id: uuid.UUID, *, for_update: bool = False
+    db: AsyncSession,
+    context: OrgContext,
+    workflow_id: uuid.UUID,
+    *,
+    permission: str = "can_run",
+    for_update: bool = False,
 ) -> Workflow:
-    stmt = private_scoped(select(Workflow).where(Workflow.id == workflow_id), Workflow, context)
-    if for_update:
-        stmt = stmt.with_for_update()
-    workflow = (await db.execute(stmt)).scalar_one_or_none()
-    if workflow is None:
-        raise workflow_not_found()
-    return workflow
+    """The workflow if the caller holds ``permission`` (sharing: starts plan 3.3)."""
+    return await authorize_workflow(db, context, workflow_id, permission, for_update=for_update)
 
 
 async def save_draft(
@@ -129,7 +129,7 @@ async def save_draft(
     description: str | None = None,
 ) -> Workflow:
     """Write the draft the caller edited from ``revision``; a newer draft wins (409)."""
-    workflow = await get_workflow(db, context, workflow_id, for_update=True)
+    workflow = await get_workflow(db, context, workflow_id, permission="can_edit", for_update=True)
     if workflow.archived_at is not None:
         raise archived_workflow()
     if workflow.draft_revision != revision:
@@ -149,7 +149,28 @@ async def save_draft(
 async def check_workflow(db: AsyncSession, context: OrgContext, workflow: Workflow) -> list[Issue]:
     """Everything that would stop the current draft from publishing."""
     definition = parse_definition(workflow.draft_definition)
-    return graph_issues(definition) + await agent_issues(db, context, definition)
+    return (
+        graph_issues(definition)
+        + await agent_issues(db, context, definition)
+        + await approver_issues(workflow, definition)
+    )
+
+
+async def approver_issues(workflow: Workflow, definition: WorkflowDefinition) -> list[Issue]:
+    """A named approver must be able to run the workflow (starts plan 3.4)."""
+    from app.workflows.approvals import may_run
+    from app.workflows.definition import ApprovalNode
+
+    issues: list[Issue] = []
+    for node in definition.nodes:
+        if not isinstance(node, ApprovalNode) or node.approver is None:
+            continue
+        if node.approver.kind == "user" and not await may_run(
+            workflow, uuid.UUID(str(node.approver.user_id))
+        ):
+            message = "지정한 결정자가 이 워크플로를 실행할 수 없습니다. 먼저 공유하세요"
+            issues.append(Issue("approver_no_access", message, node.id))
+    return issues
 
 
 async def agent_issues(
@@ -221,13 +242,17 @@ async def publish(
     db: AsyncSession, context: OrgContext, workflow_id: uuid.UUID, *, revision: int
 ) -> PublishResult:
     """Freeze the draft at ``revision`` into the next version, pinning its agents."""
-    workflow = await get_workflow(db, context, workflow_id, for_update=True)
+    workflow = await get_workflow(db, context, workflow_id, permission="can_edit", for_update=True)
     if workflow.archived_at is not None:
         raise archived_workflow()
     if workflow.draft_revision != revision:
         raise stale_draft(workflow.draft_revision)
     definition = parse_definition(workflow.draft_definition)
-    issues = graph_issues(definition) + await agent_issues(db, context, definition)
+    issues = (
+        graph_issues(definition)
+        + await agent_issues(db, context, definition)
+        + await approver_issues(workflow, definition)
+    )
     if issues:
         raise AppError(
             "WORKFLOW_CHECK_FAILED",
@@ -337,7 +362,9 @@ async def workflows_using_agent(
 
 async def archive(db: AsyncSession, context: OrgContext, workflow_id: uuid.UUID) -> Workflow:
     """Idempotent: archiving an archived workflow keeps its first archive time."""
-    workflow = await get_workflow(db, context, workflow_id, for_update=True)
+    workflow = await get_workflow(
+        db, context, workflow_id, permission="can_delete", for_update=True
+    )
     if workflow.archived_at is None:
         now = _now()
         workflow.archived_at = now

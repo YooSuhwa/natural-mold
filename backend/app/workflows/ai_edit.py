@@ -155,7 +155,9 @@ answers) and "/count".
 "web_scraper" (args {"url": template}) or "current_datetime" (no args). Output "/result" \
 (text). Anything that sends, writes or changes something belongs in an agent step.
 - approval: the runner approves. `title` and `body` are templates, `timeout_minutes` \
-(1..10080) is required. Two exits: "approved" and "rejected" (a timeout takes "rejected").
+(1..10080) is required. Two exits: "approved" and "rejected" (a timeout takes "rejected"). \
+Leave out `approver` (the runner decides) unless asked: {"kind": "owner"} for the workflow's \
+owner.
 - transform: `fields` maps names to templates (and/or `template`); its output is \
 "/fields/<name>" (or "/text").
 - output: `fields` maps names to templates; the run's result. Ends the run.
@@ -542,7 +544,7 @@ async def assist(
     from app.services.system_credential_resolver import SystemModelNotConfiguredError
     from app.workflows import service
 
-    workflow = await service.get_workflow(db, context, workflow_id)
+    workflow = await service.get_workflow(db, context, workflow_id, permission="can_edit")
     if workflow.archived_at is not None:
         raise service.archived_workflow()  # the same 409s as a draft save
     if workflow.draft_revision != revision:

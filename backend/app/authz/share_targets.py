@@ -28,8 +28,9 @@ from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.skill import Skill
 from app.models.tool import Tool
+from app.models.workflow import Workflow
 
-ShareRow = Agent | Skill | Tool | McpServer | Credential
+ShareRow = Agent | Skill | Tool | McpServer | Credential | Workflow
 FULL_LEVELS: Final = ("consumer", "viewer", "editor", "manager")
 
 
@@ -39,6 +40,8 @@ class ShareType:
     model: type[ShareRow]
     min_visible: str
     levels: tuple[str, ...] = FULL_LEVELS
+    # Ownership transfer needs ``can_govern``; a type without it has no transfer route.
+    transferable: bool = True
 
 
 SHARE_TYPES: Final[dict[str, ShareType]] = {
@@ -47,6 +50,10 @@ SHARE_TYPES: Final[dict[str, ShareType]] = {
     "tool": ShareType("tool", Tool, "can_use"),
     "mcp_server": ShareType("mcp_server", McpServer, "can_use"),
     "credential": ShareType("credential", Credential, "can_use", ("consumer", "manager")),
+    # Workflows (starts plan S6): run it, or edit and publish it. Runs stay the runner's own.
+    "workflow": ShareType(
+        "workflow", Workflow, "can_run", ("consumer", "editor"), transferable=False
+    ),
 }
 
 

@@ -27,7 +27,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
-from app.authz.scoping import private_scoped
 from app.exceptions import AppError, ValidationError
 from app.models.agent_workflow import AgentWorkflowLink
 from app.models.workflow import RUN_TERMINAL, Workflow, WorkflowRun, WorkflowVersion
@@ -76,6 +75,20 @@ def _broken_reason(workflow: Workflow | None) -> str | None:
     return None
 
 
+async def _runnable(
+    db: AsyncSession, context: OrgContext, workflow_id: uuid.UUID
+) -> Workflow | None:
+    """The workflow if this person may run it (their own, or shared to run: starts plan 3.3)."""
+    from app.authz.workflow_access import authorize_workflow
+
+    try:
+        return await authorize_workflow(db, context, workflow_id, "can_run")
+    except AppError as exc:
+        if exc.status in (403, 404):
+            return None
+        raise
+
+
 async def list_links(
     db: AsyncSession, context: OrgContext, agent_id: uuid.UUID
 ) -> list[LinkedWorkflow]:
@@ -89,11 +102,7 @@ async def list_links(
     ).scalars()
     rows = []
     for link in links:
-        workflow = await db.scalar(
-            private_scoped(
-                select(Workflow).where(Workflow.id == link.workflow_id), Workflow, context
-            )
-        )
+        workflow = await _runnable(db, context, link.workflow_id)
         reason = _broken_reason(workflow)
         rows.append(
             LinkedWorkflow(
@@ -119,14 +128,12 @@ async def set_links(
     if len(unique) > MAX_LINKS:
         raise ValidationError("WORKFLOW_TOOLS_TOO_MANY", f"워크플로 도구는 {MAX_LINKS}개까지입니다")
     for workflow_id in unique:
-        workflow = await db.scalar(
-            private_scoped(select(Workflow).where(Workflow.id == workflow_id), Workflow, context)
-        )
+        workflow = await _runnable(db, context, workflow_id)
         reason = _broken_reason(workflow)
         if reason is not None:
             raise AppError(
                 "WORKFLOW_TOOL_UNAVAILABLE",
-                "게시된 내 워크플로만 도구로 붙일 수 있습니다",
+                "실행할 수 있는 게시된 워크플로만 도구로 붙일 수 있습니다",
                 status=422,
                 details={"workflow_id": str(workflow_id), "reason": reason},
             )
@@ -252,11 +259,7 @@ async def specs_for_agent(
         )
     ).scalars()
     for link in links:
-        workflow = await db.scalar(
-            private_scoped(
-                select(Workflow).where(Workflow.id == link.workflow_id), Workflow, context
-            )
-        )
+        workflow = await _runnable(db, context, link.workflow_id)
         definition = await _published(db, workflow) if workflow is not None else None
         if workflow is None or definition is None:
             continue

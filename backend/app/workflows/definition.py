@@ -321,11 +321,34 @@ class ToolNode(_Node):
     args: Annotated[dict[Identifier, Template], Field(max_length=10)] = {}
 
 
+class Approver(_Strict):
+    """Who decides an approval (starts plan 3.4): the runner, the workflow's owner, or a
+    named person who may run the workflow."""
+
+    kind: Literal["runner", "owner", "user"]
+    user_id: str | None = Field(default=None, pattern=r"^[0-9a-fA-F-]{36}$")
+
+    @model_validator(mode="after")
+    def _user_needs_id(self) -> Approver:
+        if (self.kind == "user") != (self.user_id is not None):
+            raise ValueError("a named approver has a user_id, and only it")
+        return self
+
+
 class ApprovalNode(_Node):
     type: Literal["approval"]
     title: Template
     body: Template = []
     timeout_minutes: int | None = Field(default=None, ge=1, le=MAX_APPROVAL_MINUTES)
+    # The runner when unset (stored only when set).
+    approver: Approver | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_approver(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = handler(self)
+        if self.approver is None:
+            data.pop("approver", None)
+        return data
 
 
 class TransformNode(_Node):
@@ -432,6 +455,7 @@ __all__ = [
     "AgentNode",
     "AgentUse",
     "ApprovalNode",
+    "Approver",
     "AskNode",
     "ForEachNode",
     "LlmNode",

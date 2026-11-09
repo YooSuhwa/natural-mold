@@ -123,8 +123,9 @@ def _register(kind: ShareType) -> None:
         ("GET", "/grants", list_grants, GrantList, 200),
         ("POST", "/grants", create_grant, GrantView, 201),
         ("GET", "/access", get_access, AccessList, 200),
-        ("POST", "/transfer", transfer_ownership, OwnershipTransferResult, 200),
     ]
+    if kind.transferable:
+        routes.append(("POST", "/transfer", transfer_ownership, OwnershipTransferResult, 200))
     for method, suffix, endpoint, model, status in routes:
         router.add_api_route(
             base + suffix,

@@ -17467,6 +17467,143 @@
         ]
       }
     },
+    "/api/resources/workflow/{resource_id}/access": {
+      "get": {
+        "operationId": "get_access_workflow_api_resources_workflow__resource_id__access_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Access Workflow",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/workflow/{resource_id}/grants": {
+      "get": {
+        "operationId": "list_grants_workflow_api_resources_workflow__resource_id__grants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Grants Workflow",
+        "tags": [
+          "sharing"
+        ]
+      },
+      "post": {
+        "operationId": "create_grant_workflow_api_resources_workflow__resource_id__grants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Grant Workflow",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
     "/api/shares/{share_token}": {
       "get": {
         "description": "Resolve a share token to a read-only conversation snapshot.\n\nThe full message list is included so the public page renders in a single\nround-trip (vs. fetching share + messages separately). For very long\nconversations a future revision may paginate.",
@@ -57542,6 +57679,18 @@
           "format": "uuid",
           "title": "Id",
           "type": "string"
+        },
+        "is_owner": {
+          "default": true,
+          "title": "Is Owner",
+          "type": "boolean"
+        },
+        "my_permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "My Permissions",
+          "type": "array"
         },
         "name": {
           "title": "Name",

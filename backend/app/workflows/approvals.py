@@ -55,6 +55,36 @@ def _interrupt_id(step: WorkflowStepRun) -> str:
     return f"workflow:{step.id}"
 
 
+async def may_run(workflow: Workflow, user_id: uuid.UUID) -> bool:
+    """Whether ``user_id`` may run the workflow (a designated approver must, plan 3.4)."""
+    from app.authz.conversation_agent_checks import current_authz
+    from app.authz.principal import Principal
+
+    if user_id == workflow.user_id:
+        return True
+    authz = current_authz()
+    if not authz.enforces("workflow"):
+        return False  # legacy: only the owner can see the workflow
+    context = OrgContext(org_id=workflow.org_id, tenant_id=workflow.tenant_id, user_id=user_id)
+    return await authz.check(Principal.for_user(context), "can_run", f"workflow:{workflow.id}")
+
+
+async def _decider(
+    db: AsyncSession, run: WorkflowRun, node: ApprovalNode
+) -> tuple[uuid.UUID, str | None]:
+    """The approver; the runner instead (with the reason) when the named one lost access."""
+    approver = node.approver
+    if approver is None or approver.kind == "runner":
+        return run.user_id, None
+    workflow = await db.get(Workflow, run.workflow_id)
+    if workflow is None:
+        return run.user_id, "workflow_gone"
+    target = workflow.user_id if approver.kind == "owner" else uuid.UUID(str(approver.user_id))
+    if target == run.user_id or await may_run(workflow, target):
+        return target, None
+    return run.user_id, "approver_no_access"
+
+
 async def request(
     db: AsyncSession,
     run: WorkflowRun,
@@ -64,9 +94,19 @@ async def request(
 ) -> ApprovalRequest:
     title = render(node.title, values)[:500]
     body = render(node.body, values)[:4000]
-    args = {"title": title, "body": body, "node_id": node.id}
+    decider, fallback = await _decider(db, run, node)
+    args: dict[str, Any] = {"title": title, "body": body, "node_id": node.id}
+    if fallback is not None:
+        args["approver_fallback"] = fallback
     return await _business_request(
-        db, run, step, ACTION_NAME, args, _interrupt_id(step), node.timeout_minutes or 1440
+        db,
+        run,
+        step,
+        ACTION_NAME,
+        args,
+        _interrupt_id(step),
+        node.timeout_minutes or 1440,
+        decider=decider,
     )
 
 
@@ -121,6 +161,7 @@ async def _business_request(
     minutes: int,
     *,
     decisions: tuple[str, ...] = DECISIONS,
+    decider: uuid.UUID | None = None,
 ) -> ApprovalRequest:
     workflow = await db.get(Workflow, run.workflow_id)
     actions = [
@@ -146,7 +187,8 @@ async def _business_request(
         source="workflow",
         subject_user_id=run.user_id,
         requester_user_id=run.user_id,
-        decider_user_id=run.user_id,
+        # The runner unless the approval node names someone else (plan 3.4).
+        decider_user_id=decider or run.user_id,
         actions=actions,
         args_digest=service.digest(actions),
         expires_at=service.now() + timedelta(minutes=minutes),

@@ -7699,7 +7699,14 @@
       "toolArg": {
         "query": "검색어",
         "url": "주소"
-      }
+      },
+      "approver": "결정자",
+      "approverKind": {
+        "runner": "실행한 사람",
+        "owner": "워크플로 소유자",
+        "named": "지정한 사람(공유 목록에 없음)"
+      },
+      "approverHint": "지정한 사람은 이 워크플로를 실행할 수 있어야 합니다. 실행할 때 권한이 없으면 실행한 사람이 결정합니다."
     },
     "versions": {
       "open": "버전 기록",
@@ -7853,6 +7860,9 @@
       "disable": "끄기",
       "enable": "켜기",
       "removeWebhook": "{name} 웹훅 지우기"
+    },
+    "sharing": {
+      "runOnly": "실행만 가능"
     }
   }
 }

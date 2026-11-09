@@ -87,6 +87,8 @@ export type WorkflowNode =
       title: TemplateSegment[]
       body?: TemplateSegment[]
       timeout_minutes?: number | null
+      /** Who decides; the runner when unset (workflow-starts-sharing-plan 3.4). */
+      approver?: WorkflowApprover | null
     })
   | (NodeBase & {
       type: 'transform'
@@ -119,6 +121,10 @@ export type WorkflowNode =
       tool: WorkflowToolName
       args?: Record<string, TemplateSegment[]>
     })
+
+export type WorkflowApprover =
+  | { kind: 'runner' | 'owner'; user_id?: null }
+  | { kind: 'user'; user_id: string }
 
 export interface SwitchCase {
   name: string
@@ -180,6 +186,9 @@ export interface WorkflowSummary {
 
 export interface WorkflowDetail extends WorkflowSummary {
   draft_definition: WorkflowDefinition
+  /** Sharing: what the caller may do (can_run, can_edit, can_share, can_delete). */
+  my_permissions?: string[]
+  is_owner?: boolean
 }
 
 export interface WorkflowIssue {

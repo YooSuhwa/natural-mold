@@ -25,6 +25,7 @@ import { referencedValues } from '../lib/template-text'
 import { upstreamValues } from '../lib/upstream-values'
 import { ConditionEditor, InputsEditor, OutputSchemaEditor } from './field-editors'
 import {
+  ApproverSettings,
   AskSettings,
   DecisionQuestion,
   ForEachSettings,
@@ -40,6 +41,9 @@ const SELECT_CLASS =
   'h-9 w-full rounded-md border bg-background px-2 text-sm focus-visible:ring-2 focus-visible:ring-ring'
 
 type Props = {
+  workflowId: string
+  /** The caller manages sharing: the approver list can name the people it is shared with. */
+  canShare?: boolean
   definition: WorkflowDefinition
   node: WorkflowNode
   labelOf: LabelOf
@@ -61,6 +65,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 /** The right-hand step settings (workflow-plan 3.7, appendix D): one form per node kind. */
 export function NodeSettingsPanel({
+  workflowId,
+  canShare = false,
   definition,
   node,
   labelOf,
@@ -236,6 +242,12 @@ export function NodeSettingsPanel({
             />
             <p className="text-xs text-muted-foreground">{t('settings.timeoutHint')}</p>
           </Section>
+          <ApproverSettings
+            node={node}
+            workflowId={workflowId}
+            canShare={canShare}
+            onChange={onChange}
+          />
         </>
       ) : null}
 

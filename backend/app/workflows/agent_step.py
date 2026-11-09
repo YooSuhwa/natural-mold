@@ -145,7 +145,8 @@ async def prepare(
         conversation = await db.get(Conversation, step.conversation_id)
         if conversation is None:
             return StepOutcome("failed", error_code="conversation_gone")
-        agent = await chat_service.get_agent_with_tools(db, agent_id, context)
+        # The runner's own agent, or one shared to run (the same load as a chat run, F-06).
+        agent = await chat_service.get_run_agent_with_tools(db, agent_id, context)
         if agent is None:
             return StepOutcome("failed", error_code="agent_unavailable")
         runtime_policy = snapshot_from_conversation(conversation)

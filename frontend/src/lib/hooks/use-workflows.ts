@@ -23,11 +23,11 @@ export function useWorkflow(id: string) {
 }
 
 /** Issues of one saved draft revision: a new revision is a new key, never a stale list. */
-export function useWorkflowIssues(id: string, revision: number | undefined) {
+export function useWorkflowIssues(id: string, revision: number | undefined, enabled = true) {
   return useQuery({
     queryKey: workflowQueryKeys.issues(id, revision ?? 0),
     queryFn: () => workflowsApi.issues(id),
-    enabled: revision !== undefined,
+    enabled: enabled && revision !== undefined,
   })
 }
 

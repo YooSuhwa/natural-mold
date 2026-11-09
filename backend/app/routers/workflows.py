@@ -7,13 +7,18 @@ is a different, older path (``agent_runtime_api``); this API lives under ``/api/
 from __future__ import annotations
 
 import uuid
+from typing import Final
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz import audit_actions
+from app.authz import audit_actions, workflow_access
 from app.authz.org_context import OrgContext
-from app.authz.policies import PRIVATE, authz_policy
+from app.authz.policies import CANDIDATES, PRIVATE, RES, ResourcePolicy, authz_policy
+from app.authz.resource_lifecycle import apply_lifecycle, on_resource_created
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.authz.workflow_access import WORKFLOW_MIN_VISIBLE
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.schemas.workflow import (
     WorkflowAgentUsage,
@@ -39,8 +44,16 @@ from app.workflows import ai_edit, runner, service
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 runs_router = APIRouter(prefix="/api/workflow-runs", tags=["workflows"])
 
-WORKFLOWS = PRIVATE("workflows")
-WORKFLOW = PRIVATE("workflows", param="workflow_id")
+WORKFLOWS = PRIVATE("workflows")  # creating one: the caller's own row
+# Sharing (starts plan 3.3): the list is candidates confirmed by ``can_run``; a workflow's
+# routes need ``can_run`` (see, run), ``can_edit`` (draft, publish) or ``can_delete``.
+LIST = CANDIDATES("workflow", "can_run")
+
+
+def _res(permission: str) -> ResourcePolicy:
+    return RES("workflow", permission, param="workflow_id", min_visible=WORKFLOW_MIN_VISIBLE)
+
+
 RUN = PRIVATE("workflow_runs", param="run_id")
 RUNS = PRIVATE("workflow_runs")
 
@@ -66,7 +79,7 @@ async def _audit(
 
 
 @router.get("", response_model=list[WorkflowSummary])
-@authz_policy(WORKFLOWS)
+@authz_policy(LIST)
 async def list_workflows(
     include_archived: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
@@ -77,7 +90,7 @@ async def list_workflows(
 
 
 @router.get("/using-agent/{agent_id}", response_model=list[WorkflowAgentUsage])
-@authz_policy(WORKFLOWS)
+@authz_policy(LIST)
 async def workflows_using_agent(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -98,6 +111,17 @@ async def workflows_using_agent(
     ]
 
 
+_PERMISSIONS: Final = ["can_run", "can_edit", "can_share", "can_delete"]
+
+
+async def _view(context: OrgContext, workflow: service.Workflow) -> WorkflowDetail:
+    """The detail with what the caller may do (the editor's buttons, sharing)."""
+    detail = WorkflowDetail.model_validate(workflow)
+    held = await workflow_access.my_permissions(context, workflow, list(_PERMISSIONS))
+    owner = workflow.user_id == context.user_id and workflow.org_id == context.org_id
+    return detail.model_copy(update={"my_permissions": held, "is_owner": owner})
+
+
 @router.post("", response_model=WorkflowDetail, status_code=201)
 @authz_policy(WORKFLOWS)
 async def create_workflow(
@@ -106,29 +130,32 @@ async def create_workflow(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
     _csrf: None = Depends(verify_csrf),
 ):
     workflow = await service.create_workflow(
         db, context, name=body.name, description=body.description
     )
     await _audit(db, user, request, audit_actions.WORKFLOW_CREATE, workflow)
+    created = await on_resource_created(db, workflow, mode=authz.mode)
     await db.commit()
-    return workflow
+    await apply_lifecycle(created, authz)
+    return await _view(context, workflow)
 
 
 @router.get("/{workflow_id}", response_model=WorkflowDetail)
-@authz_policy(WORKFLOW)
+@authz_policy(_res("can_run"))
 async def get_workflow(
     workflow_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
 ):
-    return await service.get_workflow(db, context, workflow_id)
+    return await _view(context, await service.get_workflow(db, context, workflow_id))
 
 
 @router.put("/{workflow_id}/draft", response_model=WorkflowDetail)
-@authz_policy(WORKFLOW)
+@authz_policy(_res("can_edit"))
 async def save_draft(
     workflow_id: uuid.UUID,
     body: WorkflowDraftUpdate,
@@ -147,18 +174,18 @@ async def save_draft(
         description=body.description,
     )
     await db.commit()
-    return workflow
+    return await _view(context, workflow)
 
 
 @router.get("/{workflow_id}/issues", response_model=WorkflowIssues)
-@authz_policy(WORKFLOW)
+@authz_policy(_res("can_edit"))
 async def check_workflow(
     workflow_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
 ):
-    workflow = await service.get_workflow(db, context, workflow_id)
+    workflow = await service.get_workflow(db, context, workflow_id, permission="can_edit")
     issues = await service.check_workflow(db, context, workflow)
     return WorkflowIssues(
         draft_revision=workflow.draft_revision,
@@ -167,7 +194,7 @@ async def check_workflow(
 
 
 @router.post("/{workflow_id}/assist", response_model=WorkflowAssistResponse)
-@authz_policy(WORKFLOW)
+@authz_policy(_res("can_edit"))
 async def assist_workflow(
     workflow_id: uuid.UUID,
     body: WorkflowAssistRequest,
@@ -197,7 +224,7 @@ async def assist_workflow(
 
 
 @router.post("/{workflow_id}/publish", response_model=WorkflowVersionDetail, status_code=201)
-@authz_policy(WORKFLOW)
+@authz_policy(_res("can_edit"))
 async def publish_workflow(
     workflow_id: uuid.UUID,
     body: WorkflowPublish,
@@ -225,7 +252,7 @@ async def publish_workflow(
 
 
 @router.get("/{workflow_id}/versions", response_model=list[WorkflowVersionSummary])
-@authz_policy(WORKFLOW)
+@authz_policy(_res("can_run"))
 async def list_versions(
     workflow_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -236,7 +263,7 @@ async def list_versions(
 
 
 @router.get("/{workflow_id}/versions/{version_no}", response_model=WorkflowVersionDetail)
-@authz_policy(WORKFLOW)
+@authz_policy(_res("can_run"))
 async def get_version(
     workflow_id: uuid.UUID,
     version_no: int,
@@ -248,7 +275,7 @@ async def get_version(
 
 
 @router.post("/{workflow_id}/archive", response_model=WorkflowDetail)
-@authz_policy(WORKFLOW)
+@authz_policy(_res("can_delete"))
 async def archive_workflow(
     workflow_id: uuid.UUID,
     request: Request,
@@ -257,16 +284,17 @@ async def archive_workflow(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ):
-    already = (await service.get_workflow(db, context, workflow_id)).archived_at is not None
+    found = await service.get_workflow(db, context, workflow_id, permission="can_delete")
+    already = found.archived_at is not None
     workflow = await service.archive(db, context, workflow_id)
     if not already:
         await _audit(db, user, request, audit_actions.WORKFLOW_ARCHIVE, workflow)
     await db.commit()
-    return workflow
+    return await _view(context, workflow)
 
 
 @router.post("/{workflow_id}/runs", response_model=WorkflowRunSummary, status_code=201)
-@authz_policy(WORKFLOW)
+@authz_policy(_res("can_run"))
 async def start_run(
     workflow_id: uuid.UUID,
     body: WorkflowRunStart,
@@ -295,7 +323,7 @@ async def start_run(
 
 
 @router.get("/{workflow_id}/runs", response_model=list[WorkflowRunSummary])
-@authz_policy(WORKFLOW)
+@authz_policy(_res("can_run"))
 async def list_runs(
     workflow_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

@@ -33,6 +33,7 @@ from app.models.organization import (
 from app.models.organization_group import Group, GroupMember, OrgCapabilityGrant
 from app.models.skill import Skill
 from app.models.tool import Tool
+from app.models.workflow import Workflow
 
 YIELD_PER = 1000
 PLATFORM: Final = "platform"
@@ -77,6 +78,14 @@ async def _resources(db: AsyncSession, tenant: Scope) -> tuple[rows.ResourceRow,
     for kind, model in (("skill", Skill), ("tool", Tool), ("mcp_server", McpServer)):
         query = select(model.id, model.org_id, model.user_id, model.is_system)
         found += await _stream(db, query, model.tenant_id, tenant, _resource(kind))
+    # Workflows (starts plan 3.3): org and owner, never platform rows.
+    found += await _stream(
+        db,
+        select(Workflow.id, Workflow.org_id, Workflow.user_id),
+        Workflow.tenant_id,
+        tenant,
+        lambda i, o, u: rows.ResourceRow("workflow", i, o, u),
+    )
     return tuple(found)
 
 
