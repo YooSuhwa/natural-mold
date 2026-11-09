@@ -160,3 +160,20 @@ class WorkflowAssistResponse(BaseModel):
     definition: dict[str, Any] | None = None
     issues: list[WorkflowIssue] = []
     base_revision: int
+
+
+class AgentWorkflowToolsUpdate(BaseModel):
+    """The workflows an agent may call as chat tools, in order (workflow-tool-plan 3.1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workflow_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)
+
+
+class AgentWorkflowTool(BaseModel):
+    workflow_id: uuid.UUID
+    name: str
+    description: str | None = None
+    published_version_no: int | None = None
+    usable: bool
+    broken_reason: str | None = None

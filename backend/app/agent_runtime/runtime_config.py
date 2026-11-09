@@ -167,6 +167,10 @@ class AgentConfig:
     # block the root agent's model calls carry (never the system prompt, the checkpoint or
     # a child agent), and the scopes ``search_memory`` may read (``None``: no tool).
     memory_run_id: str | None = field(default=None, kw_only=True)
+    # Workflow tools (workflow-tool-plan 3.1): the person's published workflows this agent
+    # links, read when the chat config is built; preparation turns them into tools for the
+    # root chat run only (``WorkflowToolSpec``, no database access during preparation).
+    workflow_tools: list[Any] = field(default_factory=list, kw_only=True)
     memory_recall_block: str | None = field(default=None, kw_only=True)
     memory_search_scopes: str | None = field(default=None, kw_only=True)
     # Workflow W0 (plan 3.2): the JSON the root agent must answer with, inside the subset

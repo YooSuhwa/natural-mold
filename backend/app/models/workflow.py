@@ -108,6 +108,11 @@ class WorkflowRun(RequiredOrgScope, Base):
         *resource_scope_constraints("workflow_runs", system=False),
         CheckConstraint(_in("status", RUN_STATUSES), name="ck_workflow_runs_status"),
         Index("ix_workflow_runs_workflow_created", "workflow_id", "created_at"),
+        UniqueConstraint(
+            "parent_conversation_id",
+            "parent_tool_call_id",
+            name="uq_workflow_runs_parent_tool_call",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -128,6 +133,17 @@ class WorkflowRun(RequiredOrgScope, Base):
     current_node: Mapped[str | None] = mapped_column(String(64), nullable=True)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     job_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    # Started by an agent's workflow tool in chat (workflow-tool-plan 3.2): the conversation,
+    # the tool call (the idempotency key: a resumed tool call finds its run again), the chat
+    # run that called it, and when the chat was resumed with the result.
+    parent_conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
+    )
+    parent_tool_call_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    parent_conversation_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversation_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    chat_resumed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)

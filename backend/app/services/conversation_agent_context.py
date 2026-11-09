@@ -164,6 +164,9 @@ async def resolve_agent_context(
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
     )
+    from app.workflows.chat_tool import specs_for_agent
+
+    cfg.workflow_tools = await specs_for_agent(db, context, agent.id)
     if include_subagents:
         cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
             agent,

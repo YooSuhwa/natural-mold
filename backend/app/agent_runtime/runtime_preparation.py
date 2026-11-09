@@ -132,6 +132,11 @@ async def prepare_runtime_components_impl(
                 run_path=cfg.run_path,
             )
         )
+    if include_agent_memory_file and include_ask_user and not is_trigger_mode:
+        # Workflow tools belong to the root chat run only (workflow-tool-plan T4, T7).
+        from app.workflows.chat_tool import workflow_tools_for_run
+
+        langchain_tools.extend(workflow_tools_for_run(cfg, run_id))
     mark_timing("tools_ms")
 
     configured_middleware_types = {

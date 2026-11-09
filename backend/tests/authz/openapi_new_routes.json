@@ -3330,6 +3330,110 @@
         ]
       }
     },
+    "/api/agents/{agent_id}/workflow-tools": {
+      "get": {
+        "description": "Published workflows this agent may call in chat (workflow-tool-plan 3.1).",
+        "operationId": "list_agent_workflow_tools_api_agents__agent_id__workflow_tools_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentWorkflowTool"
+                  },
+                  "title": "Response List Agent Workflow Tools Api Agents  Agent Id  Workflow Tools Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agent Workflow Tools",
+        "tags": [
+          "agents"
+        ]
+      },
+      "put": {
+        "description": "Replace them; each must be the person's published workflow (owners only, T6).",
+        "operationId": "set_agent_workflow_tools_api_agents__agent_id__workflow_tools_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentWorkflowToolsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentWorkflowTool"
+                  },
+                  "title": "Response Set Agent Workflow Tools Api Agents  Agent Id  Workflow Tools Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Agent Workflow Tools",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/api/approvals": {
       "get": {
         "operationId": "list_approvals_api_approvals_get",
@@ -30541,6 +30645,80 @@
         }
       },
       "title": "AgentUpdate",
+      "type": "object"
+    },
+    "AgentWorkflowTool": {
+      "properties": {
+        "broken_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Broken Reason"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "published_version_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published Version No"
+        },
+        "usable": {
+          "title": "Usable",
+          "type": "boolean"
+        },
+        "workflow_id": {
+          "format": "uuid",
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "name",
+        "usable"
+      ],
+      "title": "AgentWorkflowTool",
+      "type": "object"
+    },
+    "AgentWorkflowToolsUpdate": {
+      "additionalProperties": false,
+      "description": "The workflows an agent may call as chat tools, in order (workflow-tool-plan 3.1).",
+      "properties": {
+        "workflow_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Workflow Ids",
+          "type": "array"
+        }
+      },
+      "title": "AgentWorkflowToolsUpdate",
       "type": "object"
     },
     "ApprovalAction": {

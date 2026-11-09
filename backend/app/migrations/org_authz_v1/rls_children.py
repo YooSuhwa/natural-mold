@@ -49,6 +49,8 @@ CHILDREN: Final = MappingProxyType(
         "agent_subagents": _rule(
             Parent("agents", "parent_agent_id"), Parent("agents", "sub_agent_id")
         ),
+        # Workflow chat tools (workflow-tool-plan 3.1): the agent's and the workflow's company.
+        "agent_workflows": _rule(Parent("agents", "agent_id"), Parent("workflows", "workflow_id")),
         "agent_memory_settings": _rule(Parent("agents", "agent_id")),
         "agent_user_preferences": _rule(Parent("agents", "agent_id")),
         "agent_api_key_deployments": _rule(

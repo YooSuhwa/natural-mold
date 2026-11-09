@@ -46,7 +46,9 @@ from app.scheduler import (
     register_retention_sweep_job,
     register_skill_draft_gc_job,
     register_skill_runtime_cleanup_job,
+    register_workflow_chat_resume_job,
     release_scheduler_leader,
+    resume_workflow_chats,
     retention_sweep_run,
     rotate_credentials_to_active_key,
     scheduler_leader_is_healthy,
@@ -109,6 +111,8 @@ async def run_leader_scheduler_job(job_id: LeaderSchedulerJobId) -> None:
             await authz_job_run(job_id)
         case LeaderSchedulerJobId.APPROVAL_SWEEP:
             await sweep_approvals()
+        case LeaderSchedulerJobId.WORKFLOW_CHAT_RESUME:
+            await resume_workflow_chats()
         case LeaderSchedulerJobId.RETENTION_SWEEP:
             await retention_sweep_run()
         case LeaderSchedulerJobId.TENANT_PURGE:
@@ -200,6 +204,7 @@ async def activate_scheduler() -> None:
     register_tenant_purge_job()
     register_tenant_export_gc_job()
     register_approval_sweep_job()
+    register_workflow_chat_resume_job()
     trigger_count = await reconcile_trigger_jobs()
     if scheduler_was_started:
         scheduler.resume()

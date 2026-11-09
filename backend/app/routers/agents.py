@@ -42,6 +42,7 @@ from app.schemas.agent_lifecycle import (
     AgentRestoreResponse,
 )
 from app.schemas.skill import SkillBrief
+from app.schemas.workflow import AgentWorkflowTool, AgentWorkflowToolsUpdate
 from app.services import (
     agent_access_views,
     agent_service,
@@ -57,6 +58,7 @@ from app.services.agent_update_service import linked_targets
 from app.services.conversation_run_worker import get_run_task_registry
 from app.services.image_preview import get_or_create_image_preview_async
 from app.tools.registry import registry as tool_registry
+from app.workflows import chat_tool as workflow_chat_tool
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 middleware_router = APIRouter(tags=["middlewares"])
@@ -395,6 +397,43 @@ async def purge_archived_agent(
     )
     response.status_code = 200 if receipt.state == "completed" else 202
     return receipt
+
+
+@router.get("/{agent_id}/workflow-tools", response_model=list[AgentWorkflowTool])
+@authz_policy(RES("agent", "can_run", param="agent_id", min_visible="can_run"))
+async def list_agent_workflow_tools(
+    agent_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
+):
+    """Published workflows this agent may call in chat (workflow-tool-plan 3.1)."""
+    agent = await agent_access_views.authorized_agent(db, authz, context, agent_id, "can_run")
+    _require_standard_profile(agent)
+    return [
+        AgentWorkflowTool(**vars(link))
+        for link in await workflow_chat_tool.list_links(db, context, agent.id)
+    ]
+
+
+@router.put("/{agent_id}/workflow-tools", response_model=list[AgentWorkflowTool])
+@authz_policy(RES("agent", "can_edit", param="agent_id", min_visible="can_run"))
+async def set_agent_workflow_tools(
+    agent_id: uuid.UUID,
+    body: AgentWorkflowToolsUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+):
+    """Replace them; each must be the person's published workflow (owners only, T6)."""
+    agent = await agent_access_views.authorized_agent(db, authz, context, agent_id, "can_edit")
+    _require_standard_profile(agent)
+    links = await workflow_chat_tool.set_links(db, context, agent.id, body.workflow_ids)
+    await db.commit()
+    return [AgentWorkflowTool(**vars(link)) for link in links]
 
 
 @router.post("/{agent_id}/image", response_model=GenerateImageResponse)

@@ -103,9 +103,18 @@ def _input_problems(inputs: list[WorkflowInput], raw: dict[str, Any]) -> list[di
 
 
 async def start_run(
-    db: AsyncSession, context: OrgContext, workflow_id: uuid.UUID, inputs: dict[str, Any]
+    db: AsyncSession,
+    context: OrgContext,
+    workflow_id: uuid.UUID,
+    inputs: dict[str, Any],
+    *,
+    parent: dict[str, Any] | None = None,
 ) -> WorkflowRun:
-    """Check and queue a run of the published version (committed by the caller)."""
+    """Check and queue a run of the published version (committed by the caller).
+
+    ``parent``: the chat that started it through a workflow tool (``parent_conversation_id``,
+    ``parent_tool_call_id``, ``parent_conversation_run_id``; workflow-tool-plan 3.2).
+    """
     workflow = await get_workflow(db, context, workflow_id)
     if workflow.archived_at is not None:
         raise ConflictError("WORKFLOW_ARCHIVED", "보관한 워크플로는 실행할 수 없습니다")
@@ -137,6 +146,7 @@ async def start_run(
         tenant_id=workflow.tenant_id,
         status="queued",
         input=dict(inputs),
+        **(parent or {}),
     )
     db.add(run)
     await db.flush()

@@ -54,6 +54,8 @@ UNPINNED_TABLES: Final = frozenset(
         "agent_deployments",
         "agent_triggers",
         "agent_user_preferences",
+        # Chat-only tools: a workflow step never gets them (workflow-tool-plan T4).
+        "agent_workflows",
         "daily_spend_agent",
         "marketplace_installations",
         "marketplace_publication_links",
