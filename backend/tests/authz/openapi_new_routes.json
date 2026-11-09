@@ -25462,6 +25462,61 @@
         ]
       }
     },
+    "/api/workflow-runs/by-tool-call": {
+      "get": {
+        "description": "The run a chat's workflow tool call started (the chat card, workflow-tool-plan 3.5).",
+        "operationId": "get_run_for_tool_call_api_workflow_runs_by_tool_call_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tool_call_id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Tool Call Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run For Tool Call",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
     "/api/workflow-runs/{run_id}": {
       "get": {
         "operationId": "get_run_api_workflow_runs__run_id__get",
@@ -57166,6 +57221,30 @@
           ],
           "title": "Output"
         },
+        "parent_agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Agent Id"
+        },
+        "parent_conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Conversation Id"
+        },
         "started_at": {
           "anyOf": [
             {
@@ -57297,6 +57376,18 @@
           "format": "uuid",
           "title": "Id",
           "type": "string"
+        },
+        "parent_conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Conversation Id"
         },
         "started_at": {
           "anyOf": [

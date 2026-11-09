@@ -9,4 +9,7 @@ export const workflowQueryKeys = {
   runs: (id: string) => ['workflows', 'runs', id] as const,
   run: (runId: string) => ['workflows', 'run', runId] as const,
   usingAgent: (agentId: string) => ['workflows', 'using-agent', agentId] as const,
+  agentTools: (agentId: string) => ['workflows', 'agent-tools', agentId] as const,
+  toolCallRun: (conversationId: string, toolCallId: string) =>
+    ['workflows', 'tool-call-run', conversationId, toolCallId] as const,
 }

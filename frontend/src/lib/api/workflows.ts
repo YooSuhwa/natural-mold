@@ -1,5 +1,6 @@
 import { apiFetch } from './client'
 import type {
+  AgentWorkflowTool,
   WorkflowAssistResponse,
   WorkflowAssistTurn,
   WorkflowDefinition,
@@ -53,6 +54,17 @@ export const workflowsApi = {
   cancelRun: (runId: string) =>
     apiFetch<WorkflowRunDetail>(`/api/workflow-runs/${encodeURIComponent(runId)}/cancel`, {
       method: 'POST',
+    }),
+  runForToolCall: (conversationId: string, toolCallId: string) =>
+    apiFetch<WorkflowRunDetail>(
+      `/api/workflow-runs/by-tool-call?conversation_id=${encodeURIComponent(conversationId)}&tool_call_id=${encodeURIComponent(toolCallId)}`,
+    ),
+  agentTools: (agentId: string) =>
+    apiFetch<AgentWorkflowTool[]>(`/api/agents/${encodeURIComponent(agentId)}/workflow-tools`),
+  setAgentTools: (agentId: string, workflowIds: string[]) =>
+    apiFetch<AgentWorkflowTool[]>(`/api/agents/${encodeURIComponent(agentId)}/workflow-tools`, {
+      method: 'PUT',
+      body: JSON.stringify({ workflow_ids: workflowIds }),
     }),
   usingAgent: (agentId: string) =>
     apiFetch<WorkflowAgentUsage[]>(`/api/workflows/using-agent/${encodeURIComponent(agentId)}`),

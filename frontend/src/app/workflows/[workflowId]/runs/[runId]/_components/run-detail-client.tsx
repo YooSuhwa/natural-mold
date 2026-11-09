@@ -9,9 +9,8 @@ import { ApiErrorState } from '@/components/shared/api-error-state'
 import { PageShell } from '@/components/shared/page-shell'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { RunApprovalCard } from '@/features/workflows/components/run-approval-card'
 import { RunStatusChip, StepStatusIcon } from '@/features/workflows/components/run-status'
-import { ApiError } from '@/lib/api/client'
-import { useDecideApproval, useWorkflowRunApproval } from '@/lib/hooks/use-approvals'
 import {
   useCancelWorkflowRun,
   useWorkflow,
@@ -85,6 +84,20 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WorkflowRunDeta
               <span className="text-sm">{t('atNode', { node: labelOf(run.current_node) })}</span>
             ) : null}
           </div>
+          {run.parent_conversation_id ? (
+            <p className="text-xs">
+              {run.parent_agent_id ? (
+                <Link
+                  href={`/agents/${run.parent_agent_id}/conversations/${run.parent_conversation_id}`}
+                  className="text-primary-strong underline"
+                >
+                  {t('fromChat')}
+                </Link>
+              ) : (
+                t('fromChat')
+              )}
+            </p>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             {t('meta', {
               id: run.id.slice(0, 8),
@@ -150,7 +163,7 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WorkflowRunDeta
           ) : null}
         </ol>
         <div className="flex flex-col gap-4 lg:col-span-2">
-          <ApprovalCard run={run} />
+          <RunApprovalCard run={run} />
           {current ? <StepDetail step={current} label={labelOf(current.node_id)} /> : null}
           {run.output ? (
             <section className="moldy-panel flex flex-col gap-2 p-4">
@@ -192,64 +205,6 @@ function StepDetail({ step, label }: { step: WorkflowStepRun; label: string }) {
         <p className="text-sm text-muted-foreground">{t('unknownHint')}</p>
       ) : null}
       {step.output ? <JsonBlock value={step.output} /> : null}
-    </section>
-  )
-}
-
-/** A waiting business approval is decided right here; a tool approval goes to the inbox. */
-function ApprovalCard({ run }: { run: WorkflowRunDetail }) {
-  const t = useTranslations('workflows.runs')
-  // Waiting on a decision, or on the check of a step whose result is unknown (W4).
-  const stopped = run.status === 'waiting' || run.status === 'unknown'
-  const pending = useWorkflowRunApproval(run.id, run.status, run.current_node, stopped)
-  const decide = useDecideApproval()
-  const request = pending.data
-  if (!stopped || !request) return null
-  if (request.kind !== 'business') {
-    return (
-      <section className="moldy-status-surface moldy-status-warn flex flex-col gap-2 rounded-md p-4">
-        <h2 className="text-sm font-semibold">{t('toolApprovalTitle')}</h2>
-        <p className="text-sm">{t('toolApprovalHint')}</p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="self-start"
-          render={<Link href="/approvals" />}
-        >
-          {t('openInbox')}
-        </Button>
-      </section>
-    )
-  }
-  const action = request.actions[0]
-  const args = (action?.args ?? {}) as { title?: string; body?: string }
-  const unknownCheck = action?.name === 'workflow_unknown_check'
-  const send = (type: 'approve' | 'reject') =>
-    decide.mutate(
-      { id: request.id, decisions: [{ type }] },
-      {
-        onError: (error) =>
-          toast.error(error instanceof ApiError ? error.message : t('decideFailed')),
-      },
-    )
-  return (
-    <section className="moldy-status-surface moldy-status-warn flex flex-col gap-3 rounded-md p-4">
-      <h2 className="text-sm font-semibold">{args.title || t('approvalTitle')}</h2>
-      {args.body ? <p className="text-sm whitespace-pre-wrap">{args.body}</p> : null}
-      <p className="text-xs">{t(unknownCheck ? 'unknownCheckHint' : 'businessApprovalHint')}</p>
-      <div className="flex gap-2">
-        <Button size="sm" disabled={decide.isPending} onClick={() => send('approve')}>
-          {t(unknownCheck ? 'retryStep' : 'approve')}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={decide.isPending}
-          onClick={() => send('reject')}
-        >
-          {t(unknownCheck ? 'failRun' : 'reject')}
-        </Button>
-      </div>
     </section>
   )
 }

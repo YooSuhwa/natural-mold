@@ -117,6 +117,33 @@ export function useCancelWorkflowRun(runId: string) {
   })
 }
 
+/** The run a chat's workflow tool call started; polled until it ends (the chat card). */
+export function useToolCallWorkflowRun(conversationId: string | undefined, toolCallId: string) {
+  return useQuery({
+    queryKey: workflowQueryKeys.toolCallRun(conversationId ?? '', toolCallId),
+    queryFn: () => workflowsApi.runForToolCall(conversationId ?? '', toolCallId),
+    enabled: Boolean(conversationId && toolCallId),
+    retry: false,
+    refetchInterval: (query) =>
+      query.state.data && RUN_TERMINAL.includes(query.state.data.status) ? false : RUN_POLL_MS,
+  })
+}
+
+export function useAgentWorkflowTools(agentId: string) {
+  return useQuery({
+    queryKey: workflowQueryKeys.agentTools(agentId),
+    queryFn: () => workflowsApi.agentTools(agentId),
+  })
+}
+
+export function useSetAgentWorkflowTools(agentId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (workflowIds: string[]) => workflowsApi.setAgentTools(agentId, workflowIds),
+    onSuccess: (tools) => qc.setQueryData(workflowQueryKeys.agentTools(agentId), tools),
+  })
+}
+
 export function useWorkflowsUsingAgent(agentId: string) {
   return useQuery({
     queryKey: workflowQueryKeys.usingAgent(agentId),

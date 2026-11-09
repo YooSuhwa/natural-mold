@@ -42,6 +42,7 @@ runs_router = APIRouter(prefix="/api/workflow-runs", tags=["workflows"])
 WORKFLOWS = PRIVATE("workflows")
 WORKFLOW = PRIVATE("workflows", param="workflow_id")
 RUN = PRIVATE("workflow_runs", param="run_id")
+RUNS = PRIVATE("workflow_runs")
 
 
 async def _audit(
@@ -308,14 +309,41 @@ def _summary(run: runner.WorkflowRun, numbers: dict[uuid.UUID, int]) -> Workflow
 
 
 async def _detail(db: AsyncSession, run: runner.WorkflowRun) -> WorkflowRunDetail:
+    from sqlalchemy import select
+
+    from app.models.conversation import Conversation
+
     steps = await runner.list_steps(db, run)
+    parent_agent_id = (
+        await db.scalar(
+            select(Conversation.agent_id).where(Conversation.id == run.parent_conversation_id)
+        )
+        if run.parent_conversation_id is not None
+        else None
+    )
     return WorkflowRunDetail.model_validate(
         {
             **_summary(run, await runner.version_numbers(db, [run])).model_dump(),
+            "parent_agent_id": parent_agent_id,
             "input": run.input,
             "output": run.output,
             "steps": [WorkflowStepRunOut.model_validate(step) for step in steps],
         }
+    )
+
+
+@runs_router.get("/by-tool-call", response_model=WorkflowRunDetail)
+@authz_policy(RUNS)
+async def get_run_for_tool_call(
+    conversation_id: uuid.UUID = Query(),
+    tool_call_id: str = Query(min_length=1, max_length=128),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+):
+    """The run a chat's workflow tool call started (the chat card, workflow-tool-plan 3.5)."""
+    return await _detail(
+        db, await runner.get_run_for_tool_call(db, context, conversation_id, tool_call_id)
     )
 
 

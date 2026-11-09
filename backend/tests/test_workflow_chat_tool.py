@@ -334,3 +334,55 @@ async def test_linking_a_workflow_tool_does_not_change_the_agent_fingerprint(
         f"/api/agents/{agent.id}/workflow-tools", json={"workflow_ids": [workflow["id"]]}
     )
     assert await agent_fingerprints(db, [agent.id]) == before
+
+
+@pytest.mark.asyncio
+async def test_the_chat_card_finds_the_run_of_its_tool_call_and_no_one_elses(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    _, _, agent = await seed_agent(db)
+    await db.commit()
+    workflow = await _published(client, db, str(agent.id))
+    from app.models.workflow import WorkflowVersion
+
+    version_id = (await db.execute(sa.select(WorkflowVersion.id))).scalar_one()
+    conversation_id = uuid.uuid4()
+    mine = WorkflowRun(
+        workflow_id=uuid.UUID(workflow["id"]),
+        version_id=version_id,
+        user_id=TEST_USER_ID,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        status="waiting",
+        input={},
+        parent_conversation_id=conversation_id,
+        parent_tool_call_id="call-9",
+    )
+    theirs = WorkflowRun(
+        workflow_id=uuid.UUID(workflow["id"]),
+        version_id=version_id,
+        user_id=uuid.uuid4(),
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        status="waiting",
+        input={},
+        parent_conversation_id=conversation_id,
+        parent_tool_call_id="call-10",
+    )
+    db.add_all([mine, theirs])
+    await db.commit()
+    path = "/api/workflow-runs/by-tool-call"
+    found = await client.get(
+        path, params={"conversation_id": str(conversation_id), "tool_call_id": "call-9"}
+    )
+    assert found.status_code == 200
+    body = found.json()
+    assert (body["id"], body["status"], body["parent_conversation_id"]) == (
+        str(mine.id),
+        "waiting",
+        str(conversation_id),
+    )
+    other = await client.get(
+        path, params={"conversation_id": str(conversation_id), "tool_call_id": "call-10"}
+    )
+    assert other.status_code == 404

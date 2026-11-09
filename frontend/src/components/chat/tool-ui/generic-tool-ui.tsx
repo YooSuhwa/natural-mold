@@ -10,6 +10,7 @@ import { useIsToolGroupChild } from './tool-group-child-context'
 import { useMcpToolServer, useToolIcon } from './tool-icon-context'
 import { SearchRender } from './search-tool-ui'
 import { looksLikeSearchResults } from './search-tool-data'
+import { isWorkflowToolName, WorkflowToolCard } from './workflow-tool-ui'
 import { ChatImage } from '@/components/chat/chat-image'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
@@ -272,6 +273,9 @@ export function GenericToolFallback({
   // shape 기반 검색 라우팅 — 이름 매칭이 어긋난 검색 도구(사용자가 이름을
   // 바꾼 registry 도구, MCP 검색 도구)도 결과가 검색 shape이면 리치 카드로
   // 렌더한다. 판정은 보수적(results|items 배열 + title + url|link 필수).
+  if (isWorkflowToolName(toolName) && toolCallId) {
+    return <WorkflowToolCard toolCallId={toolCallId} result={result} />
+  }
   if (looksLikeSearchResults(result)) {
     return <SearchRender args={args as Record<string, unknown>} result={result} status={status} />
   }

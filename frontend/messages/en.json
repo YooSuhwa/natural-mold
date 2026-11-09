@@ -7366,6 +7366,33 @@
     "published": "Published v{version}",
     "updated": "Edited {time}",
     "open": "Open",
+    "chatTool": {
+      "label": "Workflow {name}",
+      "workflow": "Workflow",
+      "openRun": "Run details",
+      "cancel": "Cancel workflow",
+      "cancelFailed": "Couldn't cancel",
+      "waitingHint": "The chat continues with the result once the workflow ends. Decide any approval below or in the inbox.",
+      "notStarted": "The workflow did not start: {reason}",
+      "starting": "Starting the workflow…",
+      "settings": {
+        "title": "Workflows to call in chat",
+        "hint": "The agent runs these workflows as tools during a chat. Only your published workflows can be added.",
+        "linked": "Added workflows",
+        "unknown": "(not found)",
+        "broken": {
+          "workflow_archived": "archived",
+          "workflow_not_published": "not published",
+          "workflow_unavailable": "unavailable"
+        },
+        "remove": "Remove {name}",
+        "add": "Workflow to add",
+        "pick": "Choose a workflow",
+        "none": "No published workflows to add",
+        "addButton": "Add",
+        "saveFailed": "Couldn't save"
+      }
+    },
     "loop": {
       "title": "Loop",
       "maxRounds": "Max rounds",
@@ -7657,6 +7684,7 @@
       "restoreFailed": "Couldn't restore the draft."
     },
     "runs": {
+      "fromChat": "Started from chat",
       "round": "round {round}",
       "open": "Runs",
       "listTitle": "{name} runs",

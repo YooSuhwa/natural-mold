@@ -146,6 +146,18 @@ export interface WorkflowRunSummary {
   created_at: string
   started_at: string | null
   finished_at: string | null
+  /** Started by a chat's workflow tool: the conversation it came from (workflow-tool-plan). */
+  parent_conversation_id?: string | null
+}
+
+/** A published workflow an agent may call as a chat tool (workflow-tool-plan 3.1). */
+export interface AgentWorkflowTool {
+  workflow_id: string
+  name: string
+  description: string | null
+  published_version_no: number | null
+  usable: boolean
+  broken_reason: string | null
 }
 
 export type WorkflowStepStatus =
@@ -174,6 +186,8 @@ export interface WorkflowStepRun {
 }
 
 export interface WorkflowRunDetail extends WorkflowRunSummary {
+  /** The agent of the chat that started it, for the link back (workflow-tool-plan 3.5). */
+  parent_agent_id?: string | null
   input: Record<string, unknown>
   output: Record<string, unknown> | null
   steps: WorkflowStepRun[]

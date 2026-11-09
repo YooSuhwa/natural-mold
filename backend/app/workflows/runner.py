@@ -201,6 +201,24 @@ async def get_run(
     return run
 
 
+async def get_run_for_tool_call(
+    db: AsyncSession, context: OrgContext, conversation_id: uuid.UUID, tool_call_id: str
+) -> WorkflowRun:
+    """The run a chat's workflow tool call started (workflow-tool-plan 3.5, the chat card)."""
+    stmt = private_scoped(
+        select(WorkflowRun).where(
+            WorkflowRun.parent_conversation_id == conversation_id,
+            WorkflowRun.parent_tool_call_id == tool_call_id,
+        ),
+        WorkflowRun,
+        context,
+    )
+    run = (await db.execute(stmt)).scalar_one_or_none()
+    if run is None:
+        raise run_not_found()
+    return run
+
+
 async def list_runs(
     db: AsyncSession, context: OrgContext, workflow_id: uuid.UUID, *, limit: int = 50
 ) -> list[WorkflowRun]:

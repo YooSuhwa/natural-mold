@@ -59,3 +59,33 @@ async def test_the_scripted_model_answers_workflow_editing_through_the_server_ch
 
     asked = await ai_edit.propose(empty, agents, "E2E_WORKFLOW_ASK 흐름", [], model=model)
     assert asked.kind == "question"
+
+
+@pytest.mark.asyncio
+async def test_the_scripted_chat_model_calls_a_workflow_tool_then_answers_with_its_result() -> None:
+    """workflow-tool-plan: the marker makes it call the first workflow tool, then report back."""
+    from langchain_core.messages import AIMessage, ToolMessage
+    from langchain_core.tools import StructuredTool
+    from pydantic import BaseModel
+
+    class Args(BaseModel):
+        inquiry: str
+
+    tool = StructuredTool.from_function(
+        coroutine=lambda inquiry: inquiry, name="workflow_abc", description="x", args_schema=Args
+    )
+    bound = E2EScriptedChatModel().bind_tools([tool])
+    ask = HumanMessage("E2E_CALL_WORKFLOW 환불해 주세요")
+    first = await bound.ainvoke([ask])
+    (call,) = first.tool_calls
+    assert (call["name"], call["args"]) == ("workflow_abc", {"inquiry": ask.content})
+    reply = await bound.ainvoke(
+        [
+            ask,
+            AIMessage(content="", tool_calls=[call]),
+            ToolMessage('{"status": "completed"}', tool_call_id=call["id"], name="workflow_abc"),
+        ]
+    )
+    assert "워크플로 결과를 받았어요" in reply.content
+    plain = await bound.ainvoke([HumanMessage("안녕")])
+    assert not plain.tool_calls

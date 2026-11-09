@@ -95,6 +95,8 @@ class WorkflowRunSummary(BaseModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    # Started by a chat's workflow tool (workflow-tool-plan 3.4): the conversation it came from.
+    parent_conversation_id: uuid.UUID | None = None
 
 
 class WorkflowStepRunOut(BaseModel):
@@ -116,6 +118,8 @@ class WorkflowStepRunOut(BaseModel):
 
 
 class WorkflowRunDetail(WorkflowRunSummary):
+    # The agent of the conversation that started it (the run page links back to the chat).
+    parent_agent_id: uuid.UUID | None = None
     input: dict[str, Any]
     output: dict[str, Any] | None
     steps: list[WorkflowStepRunOut]
