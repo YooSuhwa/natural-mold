@@ -864,8 +864,15 @@ async def system_model_call(context: OrgContext) -> ModelCall:
 
 
 async def book_job_usage(
-    db: AsyncSession, context: OrgContext, model_name: str, outcome: Outcome
+    db: AsyncSession,
+    context: OrgContext,
+    model_name: str,
+    outcome: Outcome,
+    *,
+    invoker_type: str = "job",
 ) -> None:
+    """Book a system-model call as the person's usage (``invoker_type`` "user" when the
+    person asked for it on a screen, e.g. the workflow AI editor)."""
     if outcome.tokens_in == 0 and outcome.tokens_out == 0:
         return
     db.add(
@@ -878,7 +885,7 @@ async def book_job_usage(
             completion_tokens=outcome.tokens_out,
             total_tokens=outcome.tokens_in + outcome.tokens_out,
             caller_user_id=context.user_id,
-            invoker_type="job",
+            invoker_type=invoker_type,
         )
     )
     await db.commit()

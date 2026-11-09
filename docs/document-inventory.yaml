@@ -126,6 +126,9 @@ documents:
   - path: backend/evals/memory_writes/REPORT.md
     lifecycle: generated-evidence
     status: generated
+  - path: backend/evals/workflow_edit/REPORT.md
+    lifecycle: generated-evidence
+    status: generated
   - path: docs/ARCHITECTURE.md
     lifecycle: canonical-current
     status: current
