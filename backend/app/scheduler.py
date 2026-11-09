@@ -509,10 +509,17 @@ async def health_check_all_active() -> dict[str, int]:
     from app.services import health_check as health_check_service
 
     async with platform_session("scheduler.health_check", maker=async_session) as db:
-        return await health_check_service.check_all_active(
+        counters = await health_check_service.check_all_active(
             db,
             session_factory=platform_sessions("scheduler.health_check", maker=async_session),
         )
+        try:
+            counters["history_pruned"] = await health_check_service.prune_history(
+                db, retention_days=settings.health_check_history_retention_days
+            )
+        except Exception:  # noqa: BLE001 — keep cron alive
+            logger.exception("health check history prune failed; will retry next run")
+        return counters
 
 
 def register_health_check_job() -> None:

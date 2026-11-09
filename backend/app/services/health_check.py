@@ -19,10 +19,10 @@ import logging
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.mcp_probe_scope import require_mcp_probe_scope
@@ -301,6 +301,17 @@ async def check_all_active(
 
     logger.info("health check sweep finished: %s", counters)
     return counters
+
+
+async def prune_history(db: AsyncSession, *, retention_days: int) -> int:
+    """Delete history rows older than ``retention_days``; returns how many."""
+
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=retention_days)
+    result = await db.execute(
+        delete(HealthCheckHistory).where(HealthCheckHistory.checked_at < cutoff)
+    )
+    await db.commit()
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 # ---------------------------------------------------------------------------

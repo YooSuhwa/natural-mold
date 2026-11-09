@@ -124,8 +124,8 @@ class Settings(AuthzSettings):
     orphan_attachment_gc_retention_hours: int = 24
     # Model catalog refresh (APScheduler crontab format; default: every 6 hours)
     catalog_update_cron: str = "0 */6 * * *"
-    # Retention window for ``health_check_history`` rows. The cleanup job is a
-    # follow-up; the value is wired now so deployments can configure ahead.
+    # Retention window for ``health_check_history`` rows; the daily health check
+    # sweep deletes older rows after probing.
     health_check_history_retention_days: int = 90
 
     # MCP

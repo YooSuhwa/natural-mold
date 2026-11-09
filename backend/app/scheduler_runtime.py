@@ -160,6 +160,7 @@ async def reconcile_trigger_jobs() -> int:
         for job_id in stale_job_ids:
             scheduler.remove_job(job_id)
 
+        unscheduled = 0
         for trigger in triggers:
             if _is_schedulable(trigger, now):
                 schedule_config = {**trigger.schedule_config, "timezone": trigger.timezone}
@@ -169,18 +170,28 @@ async def reconcile_trigger_jobs() -> int:
                 )
                 if get_trigger_job_schedule_fingerprint(trigger.id) == schedule_fingerprint:
                     trigger.next_run_at = get_trigger_job_next_run_at(trigger.id)
-                else:
+                    continue
+                try:
                     trigger.next_run_at = add_trigger_job(
                         trigger.id,
                         trigger.trigger_type,
                         schedule_config,
                     )
+                except Exception:  # noqa: BLE001 — one bad schedule must not stop the others
+                    # A bad cron, timezone or date (legacy rows, hand edits) would otherwise
+                    # abort activation and leave every job paused. Left active so a fix
+                    # to the schedule picks it up on the next reconcile.
+                    logger.exception(
+                        "Trigger %s has an unusable schedule; not scheduled", trigger.id
+                    )
+                    trigger.next_run_at = None
+                    unscheduled += 1
                 continue
             if trigger.status == "active":
                 trigger.status = "completed"
             trigger.next_run_at = None
         await db.commit()
-        return len(schedulable_ids)
+        return len(schedulable_ids) - unscheduled
 
 
 async def activate_scheduler() -> None:
