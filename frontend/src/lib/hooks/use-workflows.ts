@@ -4,7 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { workflowsApi } from '@/lib/api/workflows'
 import { workflowQueryKeys } from '@/lib/query-keys/workflows'
-import { RUN_TERMINAL, type WorkflowDefinition, type WorkflowDetail } from '@/lib/types/workflow'
+import {
+  RUN_TERMINAL,
+  type WorkflowAssistTurn,
+  type WorkflowDefinition,
+  type WorkflowDetail,
+} from '@/lib/types/workflow'
 
 export function useWorkflows() {
   return useQuery({ queryKey: workflowQueryKeys.list, queryFn: workflowsApi.list })
@@ -33,6 +38,14 @@ export function useCreateWorkflow() {
       return workflowsApi.saveDraft(created.id, { revision: created.draft_revision, definition })
     },
     onSettled: () => qc.invalidateQueries({ queryKey: workflowQueryKeys.list }),
+  })
+}
+
+/** AI editing (W5): asks for a proposal; nothing is saved, so no cache to invalidate. */
+export function useWorkflowAssist(id: string) {
+  return useMutation({
+    mutationFn: (body: { revision: number; message: string; history: WorkflowAssistTurn[] }) =>
+      workflowsApi.assist(id, body),
   })
 }
 

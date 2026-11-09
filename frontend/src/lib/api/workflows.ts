@@ -1,5 +1,7 @@
 import { apiFetch } from './client'
 import type {
+  WorkflowAssistResponse,
+  WorkflowAssistTurn,
   WorkflowDefinition,
   WorkflowDetail,
   WorkflowAgentUsage,
@@ -24,6 +26,14 @@ export const workflowsApi = {
     body: { revision: number; definition?: WorkflowDefinition; name?: string },
   ) => apiFetch<WorkflowDetail>(`${path(id)}/draft`, { method: 'PUT', body: JSON.stringify(body) }),
   issues: (id: string) => apiFetch<WorkflowIssues>(`${path(id)}/issues`),
+  assist: (
+    id: string,
+    body: { revision: number; message: string; history: WorkflowAssistTurn[] },
+  ) =>
+    apiFetch<WorkflowAssistResponse>(`${path(id)}/assist`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   publish: (id: string, revision: number) =>
     apiFetch<WorkflowVersionSummary>(`${path(id)}/publish`, {
       method: 'POST',
