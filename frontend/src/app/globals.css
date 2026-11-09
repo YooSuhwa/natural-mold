@@ -879,6 +879,11 @@
       linear-gradient(135deg, var(--moldy-mint), var(--moldy-sky), var(--moldy-violet)) border-box;
   }
 
+  /* Workflow loops (workflow-loop-plan 3.4): the back-edge is dashed. */
+  .moldy-flow-loop .react-flow__edge-path {
+    stroke-dasharray: 6 4;
+  }
+
   /* Workflow version comparison: connection colours (nodes use border-status-* classes). */
   .moldy-flow-diff-added .react-flow__edge-path {
     stroke: var(--status-success);

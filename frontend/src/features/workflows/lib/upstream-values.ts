@@ -5,43 +5,19 @@
  */
 import type { WorkflowDefinition, WorkflowNode } from '@/lib/types/workflow'
 
+import { dominatorsOf, forwardOf, loopContaining } from './loops'
+
 export interface UpstreamValue {
   node: string // node id, or "input"
   path: string // JSON pointer
   type: string
+  /** In a loop: the last round's value of a later step (empty in the first round). */
+  previous?: boolean
 }
 
+/** Dominators on the forward graph (a loop's back-edge never makes a step "before"). */
 export function dominators(definition: WorkflowDefinition): Map<string, Set<string>> {
-  const preceding = new Map<string, string[]>(definition.nodes.map((node) => [node.id, []]))
-  const following = new Map<string, string[]>(definition.nodes.map((node) => [node.id, []]))
-  for (const edge of definition.edges) {
-    if (!preceding.has(edge.to) || !following.has(edge.from)) continue
-    preceding.get(edge.to)?.push(edge.from)
-    following.get(edge.from)?.push(edge.to)
-  }
-  const start = definition.nodes.find((node) => node.type === 'start')
-  const result = new Map<string, Set<string>>()
-  if (!start) return result
-  const indegree = new Map(
-    definition.nodes.map((node) => [node.id, preceding.get(node.id)?.length ?? 0]),
-  )
-  const queue = definition.nodes
-    .filter((node) => indegree.get(node.id) === 0)
-    .map((node) => node.id)
-  while (queue.length > 0) {
-    const current = queue.shift() as string
-    const parents = (preceding.get(current) ?? []).filter((parent) => result.has(parent))
-    if (current === start.id) result.set(current, new Set())
-    else if (parents.length > 0) {
-      const sets = parents.map((parent) => new Set([...(result.get(parent) ?? []), parent]))
-      result.set(current, new Set([...sets[0]].filter((id) => sets.every((set) => set.has(id)))))
-    }
-    for (const child of following.get(current) ?? []) {
-      indegree.set(child, (indegree.get(child) ?? 0) - 1)
-      if (indegree.get(child) === 0) queue.push(child)
-    }
-  }
-  return result
+  return dominatorsOf(forwardOf(definition))
 }
 
 function schemaValues(schema: unknown, prefix: string, out: { path: string; type: string }[]) {
@@ -96,6 +72,16 @@ export function upstreamValues(definition: WorkflowDefinition, nodeId: string): 
   for (const node of definition.nodes) {
     if (!before.has(node.id)) continue
     for (const output of outputsOf(node)) values.push({ node: node.id, ...output })
+  }
+  // Later steps of the same loop: their previous round, for a rewrite that needs feedback.
+  const loop = loopContaining(definition, nodeId)
+  if (loop) {
+    for (const node of definition.nodes) {
+      if (!loop.body.has(node.id) || node.id === nodeId || before.has(node.id)) continue
+      for (const output of outputsOf(node)) {
+        values.push({ node: node.id, ...output, previous: true })
+      }
+    }
   }
   return values
 }

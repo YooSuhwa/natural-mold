@@ -7366,6 +7366,16 @@
     "published": "Published v{version}",
     "updated": "Edited {time}",
     "open": "Open",
+    "loop": {
+      "title": "Loop",
+      "maxRounds": "Max rounds",
+      "maxRoundsHint": "How many times the steps it goes back to may run (the first time included, 1-{max}). Then it takes 'When the limit is reached'.",
+      "onLimit": "When the limit is reached",
+      "goBack": "↺ Go back (loop)",
+      "backTo": "↺ Back to {step}",
+      "badge": "↺ up to {count}",
+      "badgeUnset": "↺ no limit set"
+    },
     "ai": {
       "tabs": "Side panel",
       "settingsTab": "Settings",
@@ -7504,6 +7514,7 @@
       "needsPublish": "Publish first to run"
     },
     "settings": {
+      "previousRound": "Previous round",
       "nextSteps": "Next steps",
       "nextStep": "When done",
       "nextOn": "When {branch}",

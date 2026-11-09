@@ -7366,6 +7366,16 @@
     "published": "게시 v{version}",
     "updated": "수정 {time}",
     "open": "열기",
+    "loop": {
+      "title": "반복",
+      "maxRounds": "최대 횟수",
+      "maxRoundsHint": "되돌아가는 단계들이 실행되는 최대 횟수예요(처음 포함, 1~{max}). 다 쓰면 '한도를 넘으면' 단계로 갑니다.",
+      "onLimit": "한도를 넘으면",
+      "goBack": "↺ 되돌아가기(반복)",
+      "backTo": "↺ {step}(으)로 돌아가기",
+      "badge": "↺ 최대 {count}회",
+      "badgeUnset": "↺ 횟수 미정"
+    },
     "ai": {
       "tabs": "오른쪽 패널",
       "settingsTab": "설정",
@@ -7504,6 +7514,7 @@
       "needsPublish": "게시한 뒤 실행할 수 있어요"
     },
     "settings": {
+      "previousRound": "앞 회차",
       "nextSteps": "다음 단계",
       "nextStep": "끝나면",
       "nextOn": "{branch}일 때",
