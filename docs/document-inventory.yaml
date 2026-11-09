@@ -372,6 +372,10 @@ documents:
   - path: docs/e2e-coverage.md
     lifecycle: canonical-current
     status: current
+  - path: docs/exec-plans/active/agents-api-plan.md
+    lifecycle: active-plan
+    status: active
+    index: active-plan
   - path: docs/exec-plans/active/approval-modes-plan.md
     lifecycle: active-plan
     status: active
