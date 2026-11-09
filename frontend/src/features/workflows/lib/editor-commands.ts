@@ -136,6 +136,54 @@ export function connect(definition: WorkflowDefinition, edge: WorkflowEdge): Wor
   return { ...definition, edges: [...replaced, { ...edge, when: edge.when ?? null }] }
 }
 
+/** Nodes a path from ``from`` reaches (``from`` included). */
+function reachableFrom(definition: WorkflowDefinition, from: string): Set<string> {
+  const seen = new Set<string>([from])
+  const queue = [from]
+  while (queue.length > 0) {
+    const current = queue.shift() as string
+    for (const edge of definition.edges) {
+      if (edge.from === current && !seen.has(edge.to)) {
+        seen.add(edge.to)
+        queue.push(edge.to)
+      }
+    }
+  }
+  return seen
+}
+
+/**
+ * Where an exit of ``nodeId`` may lead: any node but the start, itself, and a node that
+ * already leads back here (no loops in the first version, plan 3.2).
+ */
+export function nextCandidates(definition: WorkflowDefinition, nodeId: string): WorkflowNode[] {
+  return definition.nodes.filter(
+    (node) =>
+      node.type !== 'start' &&
+      node.id !== nodeId &&
+      !reachableFrom(definition, node.id).has(nodeId),
+  )
+}
+
+/** Point one exit of ``nodeId`` at ``target`` (``null`` disconnects that exit). */
+export function setNext(
+  definition: WorkflowDefinition,
+  nodeId: string,
+  when: EdgeWhen | null,
+  target: string | null,
+): WorkflowDefinition {
+  if (target === null) {
+    return {
+      ...definition,
+      edges: definition.edges.filter(
+        (edge) => !(edge.from === nodeId && (edge.when ?? null) === when),
+      ),
+    }
+  }
+  if (!nextCandidates(definition, nodeId).some((node) => node.id === target)) return definition
+  return connect(definition, { from: nodeId, to: target, when })
+}
+
 export function removeEdge(definition: WorkflowDefinition, edge: WorkflowEdge): WorkflowDefinition {
   return { ...definition, edges: definition.edges.filter((item) => !sameEdge(item, edge)) }
 }

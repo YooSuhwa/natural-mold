@@ -111,6 +111,18 @@ test.describe('workflow AI editing', () => {
     await expect(nodes).toHaveCount(1)
     await page.getByRole('button', { name: '다시 하기' }).click()
     await expect(nodes).toHaveCount(3)
+
+    // Re-wiring by hand: cut the research step's exit, the checks flag the dead end, wire it back.
+    await page.getByRole('tab', { name: '설정' }).click()
+    await nodes.filter({ hasText: '자료 조사' }).click()
+    const next = page.getByLabel('끝나면')
+    await expect(next).toHaveValue('done')
+    await next.selectOption('')
+    await expect(page.locator('.react-flow__edge')).toHaveCount(1)
+    await expect(page.getByText(/확인할 것 \d+개/).first()).toBeVisible(SLOW)
+    await next.selectOption('done')
+    await expect(page.locator('.react-flow__edge')).toHaveCount(2)
+    await expect(page.getByText('게시할 수 있어요').first()).toBeVisible(SLOW)
   })
 
   test('an ambiguous request is asked back without a proposal', async ({ page }) => {

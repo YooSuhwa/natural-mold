@@ -51,6 +51,7 @@ import {
   nextId,
   redo,
   removeNode,
+  setNext,
   startHistory,
   undo,
   updateNode,
@@ -500,6 +501,7 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
                   labelOf={labelOf}
                   onChange={(node) => change(updateNode(definition, node.id, () => node))}
                   onInputsChange={(inputs) => change({ ...definition, inputs })}
+                  onNext={(when, target) => change(setNext(definition, selected.id, when, target))}
                   onDelete={() => {
                     change(removeNode(definition, selected.id))
                     setSelectedId(null)

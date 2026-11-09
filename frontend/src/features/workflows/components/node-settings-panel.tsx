@@ -10,12 +10,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAgents } from '@/lib/hooks/use-agents'
 import { cn } from '@/lib/utils'
 import type {
+  EdgeWhen,
   TemplateSegment,
   WorkflowDefinition,
   WorkflowInput,
   WorkflowNode,
 } from '@/lib/types/workflow'
 
+import { branchesOf, nextCandidates } from '../lib/editor-commands'
 import { contractLine } from '../lib/schema-rows'
 import { referencedValues } from '../lib/template-text'
 import { upstreamValues } from '../lib/upstream-values'
@@ -31,6 +33,8 @@ type Props = {
   labelOf: LabelOf
   onChange: (node: WorkflowNode) => void
   onInputsChange: (inputs: WorkflowInput[]) => void
+  /** Point one exit at another step (``null`` disconnects it). */
+  onNext: (when: EdgeWhen | null, target: string | null) => void
   onDelete: () => void
 }
 
@@ -50,6 +54,7 @@ export function NodeSettingsPanel({
   labelOf,
   onChange,
   onInputsChange,
+  onNext,
   onDelete,
 }: Props) {
   const t = useTranslations('workflows')
@@ -224,6 +229,8 @@ export function NodeSettingsPanel({
         </Section>
       ) : null}
 
+      <NextSteps definition={definition} node={node} labelOf={labelOf} onNext={onNext} />
+
       {node.type !== 'start' ? (
         <Button variant="outline" size="sm" onClick={onDelete}>
           <Trash2Icon className="size-4" aria-hidden />
@@ -345,6 +352,55 @@ function FieldTemplates({
           event.currentTarget.value = ''
         }}
       />
+    </Section>
+  )
+}
+
+/** Where each exit leads: re-wiring without deleting and adding the step again. */
+function NextSteps({
+  definition,
+  node,
+  labelOf,
+  onNext,
+}: {
+  definition: WorkflowDefinition
+  node: WorkflowNode
+  labelOf: LabelOf
+  onNext: (when: EdgeWhen | null, target: string | null) => void
+}) {
+  const t = useTranslations('workflows')
+  const exits = branchesOf(node.type)
+  if (exits.length === 0) return null
+  const candidates = nextCandidates(definition, node.id)
+  return (
+    <Section title={t('settings.nextSteps')}>
+      {exits.map((when) => {
+        const current = definition.edges.find(
+          (edge) => edge.from === node.id && (edge.when ?? null) === when,
+        )
+        const label =
+          when === null
+            ? t('settings.nextStep')
+            : t('settings.nextOn', { branch: t(`branch.${when}`) })
+        return (
+          <label key={when ?? 'next'} className="flex flex-col gap-1 text-xs">
+            {label}
+            <select
+              className={SELECT_CLASS}
+              value={current?.to ?? ''}
+              onChange={(event) => onNext(when, event.target.value || null)}
+            >
+              <option value="">{t('settings.noNext')}</option>
+              {candidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {labelOf(candidate.id, '')}
+                </option>
+              ))}
+            </select>
+          </label>
+        )
+      })}
+      <p className="text-xs text-muted-foreground">{t('settings.nextHint')}</p>
     </Section>
   )
 }

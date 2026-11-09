@@ -7503,6 +7503,11 @@
       "needsPublish": "Publish first to run"
     },
     "settings": {
+      "nextSteps": "Next steps",
+      "nextStep": "When done",
+      "nextOn": "When {branch}",
+      "noNext": "Not connected",
+      "nextHint": "Steps that would lead back here are not listed. A step left unconnected shows up in the checks.",
       "nodeLabel": "Node name",
       "inputs": "Run inputs",
       "inputsHint": "The fields the run form asks for.",
