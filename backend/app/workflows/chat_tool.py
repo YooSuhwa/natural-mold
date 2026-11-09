@@ -203,6 +203,7 @@ async def _find_or_start(
         workflow_id,
         inputs,
         parent={
+            "started_from": "chat_tool",
             "parent_conversation_id": conversation_id,
             "parent_tool_call_id": tool_call_id,
             "parent_conversation_run_id": conversation_run_id,

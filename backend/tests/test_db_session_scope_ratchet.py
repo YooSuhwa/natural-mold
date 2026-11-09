@@ -55,6 +55,10 @@ PLATFORM_REASONS: dict[str, str] = {
     "jobs.worker": "순번 5 job worker: claims due jobs of every company; runs each in its own",
     "workflow.chat_resume": "workflow tools: leader lists ended runs a chat waits for, of every "
     "company; each is resumed in its own company session",
+    "workflow.schedule_sweep": "workflow schedules: leader lists due schedules of every company; "
+    "each fires in its own company session",
+    "workflow.webhook": "workflow webhooks: find the webhook by its public address before any "
+    "company is known (the token then picks the company and runner)",
     "audit.platform_event": "8.9 audit: platform events (denied before a company)",
     "skill_evaluation.reconcile": "8.9 restart: leader lists companies of interrupted runs (H-07)",
     "skill_evaluation.system_skill": "8.9 system skills have no company: platform scope (H-07)",

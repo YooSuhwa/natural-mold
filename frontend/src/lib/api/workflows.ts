@@ -9,7 +9,11 @@ import type {
   WorkflowIssues,
   WorkflowRunDetail,
   WorkflowRunSummary,
+  WorkflowSchedule,
+  WorkflowScheduleInput,
   WorkflowSummary,
+  WorkflowWebhook,
+  WorkflowWebhookCreated,
   WorkflowVersionDetail,
   WorkflowVersionSummary,
 } from '@/lib/types/workflow'
@@ -69,4 +73,42 @@ export const workflowsApi = {
   usingAgent: (agentId: string) =>
     apiFetch<WorkflowAgentUsage[]>(`/api/workflows/using-agent/${encodeURIComponent(agentId)}`),
   archive: (id: string) => apiFetch<WorkflowDetail>(`${path(id)}/archive`, { method: 'POST' }),
+  schedules: (id: string) => apiFetch<WorkflowSchedule[]>(`${path(id)}/schedules`),
+  createSchedule: (id: string, body: WorkflowScheduleInput) =>
+    apiFetch<WorkflowSchedule>(`${path(id)}/schedules`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateSchedule: (
+    scheduleId: string,
+    body: { schedule?: WorkflowScheduleInput; status?: WorkflowSchedule['status'] },
+  ) =>
+    apiFetch<WorkflowSchedule>(`/api/workflow-schedules/${encodeURIComponent(scheduleId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteSchedule: (scheduleId: string) =>
+    apiFetch<void>(`/api/workflow-schedules/${encodeURIComponent(scheduleId)}`, {
+      method: 'DELETE',
+    }),
+  webhooks: (id: string) => apiFetch<WorkflowWebhook[]>(`${path(id)}/webhooks`),
+  createWebhook: (id: string, name: string) =>
+    apiFetch<WorkflowWebhookCreated>(`${path(id)}/webhooks`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  rotateWebhook: (webhookId: string) =>
+    apiFetch<WorkflowWebhookCreated>(
+      `/api/workflow-webhooks/${encodeURIComponent(webhookId)}/token`,
+      { method: 'POST' },
+    ),
+  updateWebhook: (webhookId: string, status: WorkflowWebhook['status']) =>
+    apiFetch<WorkflowWebhook>(`/api/workflow-webhooks/${encodeURIComponent(webhookId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+  deleteWebhook: (webhookId: string) =>
+    apiFetch<void>(`/api/workflow-webhooks/${encodeURIComponent(webhookId)}`, {
+      method: 'DELETE',
+    }),
 }

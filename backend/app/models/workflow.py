@@ -93,6 +93,7 @@ RUN_STATUSES = (
     "canceled",
 )
 RUN_TERMINAL = frozenset({"completed", "failed", "canceled"})
+RUN_STARTS = ("manual", "chat_tool", "schedule", "webhook")
 STEP_STATUSES = ("queued", "running", "waiting", "completed", "failed", "unknown", "canceled")
 
 
@@ -113,6 +114,7 @@ class WorkflowRun(RequiredOrgScope, Base):
             "parent_tool_call_id",
             name="uq_workflow_runs_parent_tool_call",
         ),
+        CheckConstraint(_in("started_from", RUN_STARTS), name="ck_workflow_runs_started_from"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -144,6 +146,16 @@ class WorkflowRun(RequiredOrgScope, Base):
         ForeignKey("conversation_runs.id", ondelete="SET NULL"), nullable=True
     )
     chat_resumed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # How it started (workflow-starts-sharing-plan 3.1-3.2) and the schedule or webhook.
+    started_from: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="manual", server_default="manual"
+    )
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_schedules.id", ondelete="SET NULL"), nullable=True
+    )
+    webhook_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_webhooks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # ``file`` inputs (workflow-nodes-plan N8): ``{name: {"id", "filename"}}``; the input
     # itself holds the file name, which is what templates see.
     files: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
@@ -208,6 +220,7 @@ class WorkflowStepRun(RequiredOrgScope, Base):
 
 
 __all__ = [
+    "RUN_STARTS",
     "RUN_STATUSES",
     "RUN_TERMINAL",
     "STEP_STATUSES",

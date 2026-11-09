@@ -7787,13 +7787,72 @@
       },
       "askTitle": "Question",
       "children": "Child runs",
-      "item": "Item {n}"
+      "item": "Item {n}",
+      "startedFrom": {
+        "chat_tool": "Chat",
+        "schedule": "Schedule",
+        "webhook": "Webhook"
+      }
     },
     "ask": {
       "answer": "Answer",
       "placeholder": "Write your answer",
       "send": "Send answer",
       "failed": "Could not send the answer"
+    },
+    "starts": {
+      "schedulesTitle": "Schedules",
+      "schedulesHint": "Runs at a set time or interval with set inputs. Runs are recorded under the person who made the schedule; three failed starts in a row pause it.",
+      "addSchedule": "Add schedule",
+      "needsPublish": "Publish before scheduling",
+      "scheduleList": "Schedules",
+      "newSchedule": "New schedule",
+      "every": "Every {minutes} min",
+      "onceAt": "Once at {at}",
+      "dailyAt": "Daily at {time}",
+      "cronAt": "Repeats: {expression}",
+      "scheduleStatus": {
+        "active": "On",
+        "paused": "Paused"
+      },
+      "nextRun": "Next run {at}",
+      "pause": "Pause",
+      "resume": "Resume",
+      "removeSchedule": "Delete schedule {name}",
+      "defaultName": "Scheduled run",
+      "scheduleName": "Schedule name",
+      "kindLabel": "Repeat",
+      "kind": {
+        "daily": "Daily",
+        "interval": "Interval",
+        "cron": "Custom (cron)",
+        "once": "Once"
+      },
+      "time": "Time",
+      "minutes": "Interval (minutes)",
+      "expression": "Cron expression",
+      "at": "Run at",
+      "save": "Save schedule",
+      "cancel": "Cancel",
+      "created": "Schedule created",
+      "failed": "Could not save",
+      "webhooksTitle": "Webhooks",
+      "webhooksHint": "An outside system starts runs with this address and token and reads results with the same token. Runs are recorded under the person who made the webhook.",
+      "defaultHookName": "Outside system",
+      "hookName": "Webhook name",
+      "addWebhook": "Create webhook",
+      "tokenOnce": "The {name} token is shown only now. Keep it somewhere safe.",
+      "tokenSaved": "I saved it",
+      "webhookList": "Webhooks",
+      "hookStatus": {
+        "active": "On",
+        "disabled": "Off"
+      },
+      "tokenHint": "Token …{hint}",
+      "rotate": "New token",
+      "disable": "Turn off",
+      "enable": "Turn on",
+      "removeWebhook": "Delete webhook {name}"
     }
   }
 }

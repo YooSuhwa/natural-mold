@@ -7787,13 +7787,72 @@
       },
       "askTitle": "질문",
       "children": "하위 실행",
-      "item": "항목 {n}"
+      "item": "항목 {n}",
+      "startedFrom": {
+        "chat_tool": "채팅",
+        "schedule": "예약",
+        "webhook": "웹훅"
+      }
     },
     "ask": {
       "answer": "답",
       "placeholder": "답을 적어 주세요",
       "send": "답 보내기",
       "failed": "답을 보내지 못했습니다"
+    },
+    "starts": {
+      "schedulesTitle": "예약",
+      "schedulesHint": "정한 시각이나 간격에 정한 입력으로 실행합니다. 실행은 예약을 만든 사람 이름으로 남고, 세 번 연속 시작하지 못하면 멈춥니다.",
+      "addSchedule": "예약 추가",
+      "needsPublish": "게시한 뒤 예약할 수 있습니다",
+      "scheduleList": "예약 목록",
+      "newSchedule": "새 예약",
+      "every": "{minutes}분마다",
+      "onceAt": "{at}에 한 번",
+      "dailyAt": "매일 {time}",
+      "cronAt": "반복: {expression}",
+      "scheduleStatus": {
+        "active": "켜짐",
+        "paused": "멈춤"
+      },
+      "nextRun": "다음 실행 {at}",
+      "pause": "멈추기",
+      "resume": "다시 켜기",
+      "removeSchedule": "{name} 예약 지우기",
+      "defaultName": "예약 실행",
+      "scheduleName": "예약 이름",
+      "kindLabel": "반복 방식",
+      "kind": {
+        "daily": "매일",
+        "interval": "간격",
+        "cron": "직접 입력(cron)",
+        "once": "한 번"
+      },
+      "time": "시각",
+      "minutes": "간격(분)",
+      "expression": "cron 식",
+      "at": "실행 시각",
+      "save": "예약 저장",
+      "cancel": "취소",
+      "created": "예약을 만들었습니다",
+      "failed": "저장하지 못했습니다",
+      "webhooksTitle": "웹훅",
+      "webhooksHint": "외부 시스템이 이 주소와 토큰으로 실행을 시작하고 같은 토큰으로 결과를 읽습니다. 실행은 웹훅을 만든 사람 이름으로 남습니다.",
+      "defaultHookName": "외부 시스템",
+      "hookName": "웹훅 이름",
+      "addWebhook": "웹훅 만들기",
+      "tokenOnce": "{name} 토큰은 지금 한 번만 보입니다. 안전한 곳에 보관하세요.",
+      "tokenSaved": "보관했어요",
+      "webhookList": "웹훅 목록",
+      "hookStatus": {
+        "active": "켜짐",
+        "disabled": "꺼짐"
+      },
+      "tokenHint": "토큰 …{hint}",
+      "rotate": "토큰 다시 만들기",
+      "disable": "끄기",
+      "enable": "켜기",
+      "removeWebhook": "{name} 웹훅 지우기"
     }
   }
 }

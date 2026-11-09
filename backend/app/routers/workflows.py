@@ -284,7 +284,11 @@ async def start_run(
         target_type="workflow_run",
         target_id=run.id,
         request=request,
-        metadata={"workflow_id": str(workflow_id), "version_id": str(run.version_id)},
+        metadata={
+            "workflow_id": str(workflow_id),
+            "version_id": str(run.version_id),
+            "started_from": "manual",
+        },
     )
     await db.commit()
     return _summary(run, await runner.version_numbers(db, [run]))

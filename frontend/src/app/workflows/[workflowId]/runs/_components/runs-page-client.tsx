@@ -8,6 +8,10 @@ import { PageShell } from '@/components/shared/page-shell'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { RunStatusChip } from '@/features/workflows/components/run-status'
+import {
+  WorkflowSchedules,
+  WorkflowWebhooks,
+} from '@/features/workflows/components/workflow-starts'
 import { useWorkflow, useWorkflowRuns } from '@/lib/hooks/use-workflows'
 import { formatDisplayDateTime } from '@/lib/utils/display-format'
 
@@ -28,6 +32,13 @@ export function RunsPageClient({ workflowId }: { workflowId: string }) {
         </Button>
       }
     >
+      <div className="mb-4 grid gap-4 lg:grid-cols-2">
+        <WorkflowSchedules
+          workflowId={workflowId}
+          versionNo={workflow.data?.published_version_no ?? null}
+        />
+        <WorkflowWebhooks workflowId={workflowId} />
+      </div>
       {runs.isPending ? (
         <Skeleton className="h-40 w-full" />
       ) : runs.data && runs.data.length > 0 ? (
@@ -48,6 +59,11 @@ export function RunsPageClient({ workflowId }: { workflowId: string }) {
                 <span className="text-sm text-muted-foreground">
                   {formatDisplayDateTime(run.created_at)}
                 </span>
+                {run.started_from && run.started_from !== 'manual' ? (
+                  <span className="moldy-status-surface moldy-status-info rounded-full px-2 py-0.5 text-xs">
+                    {t(`startedFrom.${run.started_from}`)}
+                  </span>
+                ) : null}
                 {run.error_message ? (
                   <span className="min-w-0 flex-1 truncate text-sm text-status-danger">
                     {run.error_message}

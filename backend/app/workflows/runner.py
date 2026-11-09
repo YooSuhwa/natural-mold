@@ -89,7 +89,7 @@ def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _input_problems(inputs: list[WorkflowInput], raw: dict[str, Any]) -> list[dict[str, str]]:
+def input_problems(inputs: list[WorkflowInput], raw: dict[str, Any]) -> list[dict[str, str]]:
     declared = {item.name: item for item in inputs}
     problems = [
         {"name": name, "message": "선언하지 않은 입력입니다"}
@@ -129,8 +129,10 @@ async def start_run(
 ) -> WorkflowRun:
     """Check and queue a run of the published version (committed by the caller).
 
-    ``parent``: the chat that started it through a workflow tool (``parent_conversation_id``,
-    ``parent_tool_call_id``, ``parent_conversation_run_id``; workflow-tool-plan 3.2).
+    ``parent``: run columns that say where it started: ``started_from`` and the chat that
+    started it through a workflow tool (``parent_conversation_id``, ``parent_tool_call_id``,
+    ``parent_conversation_run_id``; workflow-tool-plan 3.2), or the schedule or webhook
+    (``schedule_id``, ``webhook_id``; workflow-starts-sharing-plan 3.1-3.2).
     """
     workflow = await get_workflow(db, context, workflow_id)
     if workflow.archived_at is not None:
@@ -146,7 +148,7 @@ async def start_run(
     if version is None:
         raise ConflictError("WORKFLOW_NOT_PUBLISHED", "게시한 버전이 없습니다")
     definition = parse_definition(version.definition)
-    problems = _input_problems(definition.inputs, inputs)
+    problems = input_problems(definition.inputs, inputs)
     if problems:
         raise AppError(
             "WORKFLOW_INPUT_INVALID",

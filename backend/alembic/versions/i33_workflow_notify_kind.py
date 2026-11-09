@@ -1,4 +1,5 @@
-"""The workflow notify step's notification kind (workflow-nodes-plan N6): ``workflow.notify``.
+"""Workflow notification kinds: the notify step's ``workflow.notify`` (workflow-nodes-plan N6)
+and ``workflow.schedule_paused`` (a schedule stopped after failed starts, starts plan 3.1).
 
 Downgrade deletes those notifications and restores the earlier kind list.
 """
@@ -37,7 +38,7 @@ _KINDS_BEFORE = (
     "emergency_stop.released",
     "memory.consolidation_stopped",
 )
-_NEW_KINDS = ("workflow.notify",)
+_NEW_KINDS = ("workflow.notify", "workflow.schedule_paused")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:

@@ -97,6 +97,8 @@ class WorkflowRunSummary(BaseModel):
     finished_at: datetime | None
     # Started by a chat's workflow tool (workflow-tool-plan 3.4): the conversation it came from.
     parent_conversation_id: uuid.UUID | None = None
+    # manual | chat_tool | schedule | webhook (workflow-starts-sharing-plan 3.1-3.2).
+    started_from: str = "manual"
 
 
 class WorkflowStepRunOut(BaseModel):
@@ -186,3 +188,78 @@ class AgentWorkflowTool(BaseModel):
     published_version_no: int | None = None
     usable: bool
     broken_reason: str | None = None
+
+
+# --- schedules and webhooks (workflow-starts-sharing-plan 3.1-3.2) ---------------------
+
+
+class WorkflowScheduleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    kind: Literal["interval", "cron", "once"]
+    config: dict[str, Any]
+    timezone: str = Field(default="Asia/Seoul", max_length=64)
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowScheduleUpdate(BaseModel):
+    schedule: WorkflowScheduleIn | None = None
+    status: Literal["active", "paused"] | None = None
+
+
+class WorkflowScheduleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workflow_id: uuid.UUID
+    name: str
+    kind: str
+    config: dict[str, Any]
+    timezone: str
+    inputs: dict[str, Any]
+    status: str
+    next_run_at: datetime | None
+    last_run_at: datetime | None
+    last_run_id: uuid.UUID | None
+    failure_count: int
+    last_error: str | None
+    created_at: datetime
+
+
+class WorkflowWebhookIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class WorkflowWebhookUpdate(BaseModel):
+    status: Literal["active", "disabled"]
+
+
+class WorkflowWebhookOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workflow_id: uuid.UUID
+    name: str
+    public_id: str
+    token_hint: str
+    status: str
+    last_used_at: datetime | None
+    created_at: datetime
+
+
+class WorkflowWebhookCreated(WorkflowWebhookOut):
+    # Shown once: only its hash is kept.
+    token: str
+
+
+class WorkflowHookStart(BaseModel):
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowHookRun(BaseModel):
+    run_id: uuid.UUID
+    status: str
+    output: dict[str, Any] | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    finished_at: datetime | None = None

@@ -229,6 +229,49 @@ export interface WorkflowRunSummary {
   finished_at: string | null
   /** Started by a chat's workflow tool: the conversation it came from (workflow-tool-plan). */
   parent_conversation_id?: string | null
+  /** How it started (workflow-starts-sharing-plan). */
+  started_from?: WorkflowRunStart
+}
+
+export type WorkflowRunStart = 'manual' | 'chat_tool' | 'schedule' | 'webhook'
+
+/** A schedule: fixed inputs at a time or interval; its maker is the runner. */
+export interface WorkflowSchedule {
+  id: string
+  workflow_id: string
+  name: string
+  kind: 'interval' | 'cron' | 'once'
+  config: { minutes?: number; expression?: string; at?: string }
+  timezone: string
+  inputs: Record<string, unknown>
+  status: 'active' | 'paused'
+  next_run_at: string | null
+  last_run_at: string | null
+  last_run_id: string | null
+  failure_count: number
+  last_error: string | null
+  created_at: string
+}
+
+export type WorkflowScheduleInput = Pick<
+  WorkflowSchedule,
+  'name' | 'kind' | 'config' | 'timezone' | 'inputs'
+>
+
+/** A webhook an outside system starts runs with (its token is shown once). */
+export interface WorkflowWebhook {
+  id: string
+  workflow_id: string
+  name: string
+  public_id: string
+  token_hint: string
+  status: 'active' | 'disabled'
+  last_used_at: string | null
+  created_at: string
+}
+
+export interface WorkflowWebhookCreated extends WorkflowWebhook {
+  token: string
 }
 
 /** A published workflow an agent may call as a chat tool (workflow-tool-plan 3.1). */
