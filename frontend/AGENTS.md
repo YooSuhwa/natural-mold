@@ -90,6 +90,7 @@ E2E auth failure를 고칠 때 먼저 확인할 것:
 - mock-only 테스트가 `PW_SKIP_BACKEND=1`에서 `/api/auth/me`를 mock하고 있는지
 - CSRF가 필요한 API 직접 호출에 `X-CSRF-Token`이 포함되어 있는지
 - `beforeAll`에서 받은 CSRF 토큰을 각 테스트·`afterAll`의 `request`에 재사용하지 않는지 — 테스트마다 `request` 컨텍스트(와 CSRF 쿠키)가 달라 `csrf_mismatch` 403이 나고, 응답을 확인하지 않으면 만든 리소스 ID가 `undefined`가 되어 엉뚱한 단계에서 실패한다(도구 승인 E2E). 변경 호출이 필요한 테스트 안에서 다시 로그인한다
+- 회사 가드레일 정책(도구 위험 조치 등)을 바꾸는 스펙은 `e2e/helpers/company-guardrails.ts`의 `saveCompanyPolicy`/`restoreCompanyPolicy`로 시작 전 값을 저장하고 `afterAll`에서 되돌리는지 — 정책은 같은 백엔드의 모든 스펙이 공유해서, 남겨 두면 뒤에 도는 승인 카드 스펙(hitl-approval 등)이 카드 없이 실행돼 실패한다. 이미 오염된 로컬 DB라면 저장값도 오염돼 있으니 그 DB의 `tenants.settings`에서 `guardrails`를 지우고 다시 돌린다
 
 ### 병렬 실행 시 UI 단언 타임아웃
 

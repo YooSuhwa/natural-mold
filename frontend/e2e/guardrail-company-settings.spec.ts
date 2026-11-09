@@ -13,6 +13,11 @@ import {
   test,
   expect,
 } from './fixtures'
+import {
+  restoreCompanyPolicy,
+  saveCompanyPolicy,
+  type SavedCompanyPolicy,
+} from './helpers/company-guardrails'
 import { isSeededScriptedModel } from './helpers/scripted-model'
 
 // Company guardrails (guardrail-minimum-plan.md §3.4) on a real backend: the E2E user is
@@ -57,6 +62,15 @@ async function putPolicy(
 
 test.describe('Company guardrails (company admin)', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
+
+  // These tests rewrite the shared company policy; put it back for the specs after them.
+  let saved: SavedCompanyPolicy | undefined
+  test.beforeAll(async ({ request }) => {
+    saved = await saveCompanyPolicy(request)
+  })
+  test.afterAll(async ({ request }) => {
+    if (saved) await restoreCompanyPolicy(request, saved)
+  })
 
   test('sets an enforced policy and publishes a company template', async ({ page }) => {
     const csrf = await loginApi(page.request)

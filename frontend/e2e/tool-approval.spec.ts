@@ -1,6 +1,12 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
 
+import {
+  restoreCompanyPolicy,
+  saveCompanyPolicy,
+  type SavedCompanyPolicy,
+} from './helpers/company-guardrails'
+
 // approval-modes-plan: tool approval end to end on the keyless scripted model. The company
 // opens code execution to agents ("기본 승인, 에이전트가 풀 수 있음"); execute_in_skill then
 // still asks by default, offers "이 대화 동안 묻지 않기" on its card, and after that runs
@@ -31,7 +37,7 @@ async function getJson<T>(request: APIRequestContext, url: string): Promise<T> {
 async function setCodeExecution(
   request: APIRequestContext,
   csrf: Record<string, string>,
-  action: 'approval' | 'approval_relaxable',
+  action: 'approval_relaxable',
 ): Promise<void> {
   const orgs = await getJson<{ tenant_id: string; is_active: boolean }[]>(
     request,
@@ -89,8 +95,10 @@ test.describe('tool approval modes', () => {
 
   let csrf: Record<string, string>
   let agentId = ''
+  let saved: SavedCompanyPolicy | undefined
 
   test.beforeAll(async ({ request }) => {
+    saved = await saveCompanyPolicy(request)
     csrf = await login(request)
     await setCodeExecution(request, csrf, 'approval_relaxable')
     const items = await getJson<
@@ -129,8 +137,8 @@ test.describe('tool approval modes', () => {
 
   test.afterAll(async ({ request }) => {
     csrf = await login(request)
-    await setCodeExecution(request, csrf, 'approval')
     if (agentId) await request.delete(`${API}/api/agents/${agentId}`, { headers: csrf })
+    if (saved) await restoreCompanyPolicy(request, saved)
   })
 
   test('a conversation grant lifts the card for later calls', async ({ page, request }) => {
