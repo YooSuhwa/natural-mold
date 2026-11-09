@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import time
 from collections.abc import Callable, Sequence
@@ -759,6 +760,66 @@ def workflow_output_args(properties: dict[str, Any], human_text: str) -> dict[st
     return {name: _scripted_value(spec, yes) for name, spec in properties.items()}
 
 
+# Workflow AI editing (순번 23 W5): the scripted model answers the ``WorkflowEdit`` tool. On an
+# empty draft it builds start → research agent → output from the first offered agent; the
+# ask marker makes it ask back instead.
+WORKFLOW_EDIT_TOOL = "WorkflowEdit"
+WORKFLOW_ASK_MARKER = "E2E_WORKFLOW_ASK"
+
+
+def workflow_edit_args(payload_text: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(payload_text)
+    except (json.JSONDecodeError, TypeError):
+        payload = {}
+    request = str(payload.get("request", ""))
+    agents = payload.get("agents") or []
+    nodes = (payload.get("draft") or {}).get("nodes") or []
+    if WORKFLOW_ASK_MARKER in request or not agents or len(nodes) > 1:
+        return {"kind": "question", "message": "어떤 자료를 다루는 흐름인가요?"}
+    agent_id = agents[0]["id"]
+    return {
+        "kind": "edit",
+        "message": "주제를 받아 조사하고 요약을 결과로 내보냅니다.",
+        "plan": ["주제 입력 추가", "조사 단계 추가", "결과 출력 추가"],
+        "commands": [
+            {
+                "op": "set_inputs",
+                "inputs": [{"name": "topic", "type": "string", "label": "주제"}],
+            },
+            {
+                "op": "add_node",
+                "node": {
+                    "id": "research",
+                    "type": "agent",
+                    "label": "자료 조사",
+                    "agent_id": agent_id,
+                    "prompt": [
+                        {"text": "주제: "},
+                        {"ref": {"node": "input", "path": "/topic"}},
+                    ],
+                    "output_schema": {
+                        "type": "object",
+                        "properties": {"summary": {"type": "string"}},
+                        "required": ["summary"],
+                    },
+                },
+            },
+            {
+                "op": "add_node",
+                "node": {
+                    "id": "done",
+                    "type": "output",
+                    "label": "요약 출력",
+                    "fields": {"summary": [{"ref": {"node": "research", "path": "/summary"}}]},
+                },
+            },
+            {"op": "connect", "from": "start", "to": "research"},
+            {"op": "connect", "from": "research", "to": "done"},
+        ],
+    }
+
+
 class E2EScriptedChatModel(BaseChatModel):
     """Deterministic dev-only model for document artifact E2E tests."""
 
@@ -810,6 +871,11 @@ class E2EScriptedChatModel(BaseChatModel):
         if skill_eval_response is not None:
             return ChatResult(generations=[ChatGeneration(message=skill_eval_response)])
         human_text = self._latest_human_text(messages)
+        if WORKFLOW_EDIT_TOOL in self._bound_tool_names:
+            args = workflow_edit_args(human_text)
+            call = {"name": WORKFLOW_EDIT_TOOL, "args": args, "id": "e2e-workflow-edit"}
+            message = AIMessage(content="", tool_calls=[call])
+            return ChatResult(generations=[ChatGeneration(message=message)])
         if self._workflow_output_args is not None and not isinstance(messages[-1], ToolMessage):
             args = workflow_output_args(self._workflow_output_args, human_text)
             call = {"name": WORKFLOW_OUTPUT_TOOL, "args": args, "id": "e2e-workflow-output"}

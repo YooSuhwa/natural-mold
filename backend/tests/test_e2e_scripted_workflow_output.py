@@ -31,3 +31,31 @@ async def test_the_scripted_model_answers_in_the_schema(text: str, urgent: bool)
     outcome = structured_outcome(result, SCHEMA)
     assert outcome.status == "ok"
     assert outcome.value == {"category": "refund", "urgent": urgent, "note": "E2E 응답", "count": 1}
+
+
+@pytest.mark.asyncio
+async def test_the_scripted_model_answers_workflow_editing_through_the_server_checks() -> None:
+    """W5: on an empty draft it builds start → agent → output that passes the checks; the ask
+    marker makes it ask back."""
+    from app.workflows import ai_edit
+    from app.workflows.checks import graph_issues
+    from app.workflows.definition import WorkflowDefinition, empty_definition
+
+    bound = E2EScriptedChatModel().bind_tools([ai_edit.tool_spec()], tool_choice="WorkflowEdit")
+
+    async def model(messages: list) -> ai_edit.ModelTurn:
+        reply = await bound.ainvoke(messages)
+        (call,) = reply.tool_calls
+        return ai_edit.ModelTurn(call["args"], reply, call["id"])
+
+    agents = [ai_edit.OfferedAgent("11111111-1111-4111-8111-111111111111", "조사", "")]
+    empty = WorkflowDefinition.model_validate(empty_definition())
+    proposal = await ai_edit.propose(empty, agents, "조사 흐름", [], model=model)
+    assert (proposal.kind, proposal.attempts, proposal.issues) == ("proposal", 1, [])
+    assert proposal.definition is not None
+    built = WorkflowDefinition.model_validate(proposal.definition)
+    assert [node.id for node in built.nodes] == ["start", "research", "done"]
+    assert graph_issues(built) == []
+
+    asked = await ai_edit.propose(empty, agents, "E2E_WORKFLOW_ASK 흐름", [], model=model)
+    assert asked.kind == "question"

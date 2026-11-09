@@ -180,3 +180,18 @@ export interface WorkflowAgentUsage {
 }
 
 export const RUN_TERMINAL: readonly WorkflowRunStatus[] = ['completed', 'failed', 'canceled']
+
+/** AI editing (W5): a question back, or a proposed draft that is not saved yet. */
+export interface WorkflowAssistTurn {
+  role: 'user' | 'assistant'
+  text: string
+}
+
+export interface WorkflowAssistResponse {
+  kind: 'question' | 'proposal' | 'failed'
+  message: string
+  plan: string[]
+  definition: WorkflowDefinition | null
+  issues: WorkflowIssue[]
+  base_revision: number
+}

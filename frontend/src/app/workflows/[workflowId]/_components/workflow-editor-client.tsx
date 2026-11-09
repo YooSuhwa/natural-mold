@@ -18,6 +18,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { ApiErrorState } from '@/components/shared/api-error-state'
+import { CountedTabs } from '@/components/shared/counted-tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -36,6 +37,7 @@ import type {
   WorkflowEdge,
 } from '@/lib/types/workflow'
 import { AddNodeDialog, type AddChoice } from '@/features/workflows/components/add-node-dialog'
+import { AiEditPanel, type PendingProposal } from '@/features/workflows/components/ai-edit-panel'
 import { IssuesList } from '@/features/workflows/components/issues-list'
 import { NodeSettingsPanel } from '@/features/workflows/components/node-settings-panel'
 import { RunDialog } from '@/features/workflows/components/run-dialog'
@@ -55,8 +57,18 @@ import {
   type History,
 } from '@/features/workflows/lib/editor-commands'
 import { nodeTitle } from '@/features/workflows/lib/node-title'
+import { diffDefinitions } from '@/features/workflows/lib/version-diff'
+import type { WorkflowAssistResponse } from '@/lib/types/workflow'
+import { cn } from '@/lib/utils'
 
 const AUTOSAVE_MS = 800
+// A proposal that adds, removes or changes this many steps shows its plan before the diff.
+const LARGE_CHANGE = 3
+const DIFF_TONE = {
+  added: 'moldy-status-success',
+  removed: 'moldy-status-danger',
+  changed: 'moldy-status-warn',
+} as const
 
 const WorkflowCanvas = dynamic(
   () =>
@@ -111,6 +123,8 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
   const [addTarget, setAddTarget] = useState<AddTarget | null>(null)
   const [showContract, setShowContract] = useState(true)
   const [running, setRunning] = useState(false)
+  const [panel, setPanel] = useState<'settings' | 'ai'>('settings')
+  const [proposal, setProposal] = useState<PendingProposal | null>(null)
   const router = useRouter()
   const save = useSaveWorkflowDraft(detail.id)
   const publish = usePublishWorkflow(detail.id)
@@ -251,6 +265,44 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
     })
   }
 
+  const proposed = proposal?.response.definition ?? null
+  const review = proposal?.reviewing && proposed ? diffDefinitions(definition, proposed) : null
+  const proposalIssueCounts = new Map<string, number>()
+  for (const issue of proposal?.response.issues ?? []) {
+    if (issue.node_id) {
+      proposalIssueCounts.set(issue.node_id, (proposalIssueCounts.get(issue.node_id) ?? 0) + 1)
+    }
+  }
+  const proposalTitleOf = (nodeId: string) =>
+    nodeTitle(
+      proposed?.nodes.some((node) => node.id === nodeId) ? proposed : definition,
+      nodeId,
+      agentNames,
+      t,
+    )
+  const onProposal = (response: WorkflowAssistResponse) => {
+    if (!response.definition) return
+    const { counts } = diffDefinitions(definition, response.definition)
+    const size = counts.added + counts.removed + counts.changed
+    setProposal({ response, reviewing: size < LARGE_CHANGE })
+  }
+  const acceptProposal = () => {
+    if (!proposed || !proposal) return
+    // The proposal changes the draft it was made on; an edit since then would be lost.
+    if (revision !== proposal.response.base_revision || status !== 'saved') {
+      toast.error(t('ai.stale'))
+    } else {
+      change(proposed)
+      setSelectedId(null)
+      toast.success(t('ai.applied'))
+    }
+    setProposal(null)
+  }
+  const discardProposal = () => {
+    setProposal(null)
+    toast(t('ai.discarded'))
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
@@ -344,17 +396,69 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
         </Button>
       </header>
       <div className="flex min-h-0 flex-1">
-        <div className="hidden min-h-0 flex-1 md:block">
-          <WorkflowCanvas
-            definition={definition}
-            titleOf={titleOf}
-            showDetail={showContract}
-            issueCounts={issueCounts}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            onInsert={(edge) => setAddTarget({ kind: 'edge', edge })}
-            onAddAfter={(nodeId, when) => setAddTarget({ kind: 'after', nodeId, when })}
-          />
+        <div className="hidden min-h-0 flex-1 flex-col md:flex">
+          {review && proposal ? (
+            <div
+              className="moldy-status-surface moldy-status-info flex flex-wrap items-center gap-2 border-b px-4 py-2"
+              role="region"
+              aria-label={t('ai.reviewTitle')}
+            >
+              <span className="text-sm font-medium">{t('ai.reviewTitle')}</span>
+              <ul className="flex flex-wrap gap-1" aria-label={t('versions.summary')}>
+                {(['added', 'removed', 'changed'] as const).map((kind) => (
+                  <li
+                    key={kind}
+                    className={cn(
+                      'moldy-status-surface rounded-full px-2 py-0.5 text-xs',
+                      DIFF_TONE[kind],
+                    )}
+                  >
+                    {t(`versions.count.${kind}`, { count: review.counts[kind] })}
+                  </li>
+                ))}
+              </ul>
+              {proposal.response.issues.length > 0 ? (
+                <span className="text-xs text-status-danger">
+                  {t('ai.issues', { count: proposal.response.issues.length })}
+                </span>
+              ) : null}
+              <span className="flex-1" />
+              <Button size="sm" variant="outline" onClick={discardProposal}>
+                {t('ai.discard')}
+              </Button>
+              <Button size="sm" onClick={acceptProposal}>
+                {t('ai.accept')}
+              </Button>
+            </div>
+          ) : null}
+          <div className="min-h-0 flex-1">
+            {review ? (
+              <WorkflowCanvas
+                // A new canvas fits the proposal into view; the draft canvas does the same
+                // when the review closes.
+                key="review"
+                definition={review.merged}
+                titleOf={proposalTitleOf}
+                showDetail={showContract}
+                issueCounts={proposalIssueCounts}
+                selectedId={null}
+                onSelect={() => undefined}
+                diff={review}
+              />
+            ) : (
+              <WorkflowCanvas
+                key="draft"
+                definition={definition}
+                titleOf={titleOf}
+                showDetail={showContract}
+                issueCounts={issueCounts}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onInsert={(edge) => setAddTarget({ kind: 'edge', edge })}
+                onAddAfter={(nodeId, when) => setAddTarget({ kind: 'after', nodeId, when })}
+              />
+            )}
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-4 md:hidden">
           <StepList
@@ -366,26 +470,50 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
           />
         </div>
         <aside className="hidden w-96 shrink-0 flex-col gap-6 overflow-auto border-l p-4 md:flex">
-          {selected ? (
-            <NodeSettingsPanel
-              key={selected.id}
-              definition={definition}
-              node={selected}
-              labelOf={labelOf}
-              onChange={(node) => change(updateNode(definition, node.id, () => node))}
-              onInputsChange={(inputs) => change({ ...definition, inputs })}
-              onDelete={() => {
-                change(removeNode(definition, selected.id))
-                setSelectedId(null)
-              }}
+          <CountedTabs
+            value={panel}
+            onValueChange={(value) => setPanel(value === 'ai' ? 'ai' : 'settings')}
+            ariaLabel={t('ai.tabs')}
+            tabs={[
+              { value: 'settings', label: t('ai.settingsTab') },
+              { value: 'ai', label: t('ai.tab') },
+            ]}
+          />
+          {panel === 'ai' ? (
+            <AiEditPanel
+              workflowId={detail.id}
+              revision={revision}
+              canSend={status === 'saved'}
+              proposal={proposal}
+              onProposal={onProposal}
+              onReview={() =>
+                setProposal((current) => (current ? { ...current, reviewing: true } : current))
+              }
             />
           ) : (
-            <p className="text-sm text-muted-foreground">{t('editor.selectHint')}</p>
+            <>
+              {selected ? (
+                <NodeSettingsPanel
+                  key={selected.id}
+                  definition={definition}
+                  node={selected}
+                  labelOf={labelOf}
+                  onChange={(node) => change(updateNode(definition, node.id, () => node))}
+                  onInputsChange={(inputs) => change({ ...definition, inputs })}
+                  onDelete={() => {
+                    change(removeNode(definition, selected.id))
+                    setSelectedId(null)
+                  }}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">{t('editor.selectHint')}</p>
+              )}
+              <section className="flex flex-col gap-2">
+                <h2 className="text-sm font-semibold">{t('editor.issuesTitle')}</h2>
+                <IssuesList issues={issueList} onSelect={setSelectedId} />
+              </section>
+            </>
           )}
-          <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-semibold">{t('editor.issuesTitle')}</h2>
-            <IssuesList issues={issueList} onSelect={setSelectedId} />
-          </section>
         </aside>
       </div>
       {running && detail.published_version_no ? (
