@@ -116,15 +116,55 @@ round's value of a later step in the same loop (empty in round 1), so a rewrite 
 review's feedback. Recovery, the unknown-step check and cancel are unchanged: they work from
 the step rows, and a step cut off mid-round is still never re-run on its own.
 
+### 10. A published workflow as a chat tool (workflow-tool-plan)
+
+An agent may carry published workflows as tools (`agent_workflows`, unpinned: a workflow step
+never gets them). Only a root chat run builds them (`run_path="chat"`), from specs read when the
+config is built, so preparation stays DB-free. A call finds or starts the run by its tool call
+(`parent_conversation_id` + `parent_tool_call_id` are unique), then interrupts the chat with
+`workflow_wait`; the resume value is never trusted, the tool re-reads the run. The leader's 5s
+sweep (`chat_resume.resume_finished_chats`) resumes the chat through the same command path an
+expired approval uses, once (`chat_resumed_at`). The chat card shows the run, decides its
+business approval and cancels it. A workflow with a required file input cannot start from chat.
+
+### 11. The remaining nodes (workflow-nodes-plan)
+
+`switch` (case names are exits), `llm` and the `llm` decision (the system `text_primary` model,
+answering a schema-checked `WorkflowOutput` tool, booked to the runner), `ask` (a business
+request whose only decision is a written answer; expiry takes `timeout`), `notify` (one
+in-app notice per step, `workflow.notify`), `tool` (read-only `web_search`, `web_scraper`,
+`current_datetime`) and `file` inputs (the runner's unsent uploads; each referencing agent step
+gets its own copy attached). Model and tool steps have no outside effect and run outside the
+run's transaction, so a step cut off midway is simply run again; they do not start past the
+usage limit. `for_each` and `parallel` keep one child row per agent execution
+(`parent_step_id`, `branch_key`, `node_id = <node>.<key>`), each the envelope of its agent run
+under section 5; children run in batches with nothing in flight between batches, an unknown
+child is asked about on its own, and tools that need approval are refused inside a child
+(no single resume point). Pins cover every agent a node runs (`agent_uses`: node id, or
+`node.branch`). The run's chain is the rows without a parent.
+
+### 12. Schedules, webhooks, sharing and approvers (workflow-starts-sharing-plan)
+
+`workflow_schedules` (interval, cron, once) fire from the leader's 30s sweep; a due row is
+claimed by a compare-and-set on `next_run_at`, and three refused starts in a row pause it and
+notify its maker. `workflow_webhooks` start runs with a secret token (only its hash is kept;
+any mismatch is the same 404) and read the runs they started. Either way the maker is the
+runner, `workflow_runs.started_from` and the audit say how it started, and file inputs are not
+accepted. Sharing uses the OpenFGA `workflow` type with `consumer` (run) and `editor` (edit,
+publish); legacy mode keeps owner-only, runs stay the runner's own, and agent steps load a
+shared agent the way a chat run does. An approval node may name its decider: the runner
+(default), the owner, or a person who can run the workflow (checked at publish and again when
+the request is made; without access the runner decides and the request says why).
+
 ## Consequences
 
-- Parallel branches, merges, item-by-item loops and LLM or judgment-model decisions still need
-  a real graph runner (the decision record already uses the `{value, confidence, band,
-  evaluator}` shape of plan 22.5); conditional loops do not (section 9).
+- Graph-wide parallel branches and merges, multi-step sub-flows per item and the
+  judgment-model evaluator (plan item 22) still need more; the remaining needs are covered by
+  the single-line runner (sections 9 and 11).
 - The fingerprint is checked when a run starts. A setting changed while a run waits is used by
   the later steps of that run; only availability is checked per step. Pinning revisions
   (Q1 A) is the way out if that becomes a requirement.
-- Owners only (Q5): the runner is the approver. Sharing and approver rules come with the
-  OpenFGA `workflow` type.
+- Sharing and approvers (section 12) replace the owner-only first version; a workflow has no
+  ownership transfer (the type has no `can_govern`).
 - The E2E stack starts a job worker next to the backend (`buildJobWorkerCommand` in
   `frontend/scripts/e2e-lane-runtime.mjs`), so every scripted run exercises the real topology.
