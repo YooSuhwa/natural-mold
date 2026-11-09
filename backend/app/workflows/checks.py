@@ -1,5 +1,12 @@
 """Whether a parsed definition can run (workflow-plan 3.3): the graph and its references.
 
+Loops (workflow-loop-plan 3.2): the only cycle allowed is a **back-edge** from a decision's
+``true``/``false`` exit to a step that runs before it on every path. Its **body** (the steps
+from that target to the decision) is checked as a unit: a ``repeat`` limit and a ``limit``
+exit are required, bodies may not overlap, hold no approval/output/fail step, and leave
+only through the decision. Everything else (reachability, branches, references) is checked
+on the **forward** graph, the definition without its back-edges.
+
 Pure: no database. Agent existence, archive state, permission and model support are
 checked by ``service.agent_issues`` and appended to the same list. Every problem is an
 ``Issue`` the editor shows in its "확인할 것" list; publishing needs none.
@@ -9,7 +16,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Final
 
 from app.workflows.definition import (
@@ -18,6 +25,7 @@ from app.workflows.definition import (
     ApprovalNode,
     Clause,
     DecisionNode,
+    Edge,
     FailNode,
     Node,
     OutputNode,
@@ -48,12 +56,34 @@ class Issue:
         return {"code": self.code, "message": self.message, "node_id": self.node_id}
 
 
+@dataclass(frozen=True, slots=True)
+class Loop:
+    """A back-edge ``decision --when--> target`` and the steps it runs again."""
+
+    decision: str
+    when: str | None
+    target: str
+    body: frozenset[str] = field(default_factory=frozenset)
+
+
+@dataclass(frozen=True, slots=True)
+class LoopShape:
+    loops: list[Loop]
+    forward: WorkflowDefinition  # the definition without its back-edges
+    issues: list[Issue]
+
+
 def graph_issues(definition: WorkflowDefinition) -> list[Issue]:
-    """Structure, branches, reachability and cycles, then references."""
+    """Structure, branches, reachability and cycles, then loops, then references."""
     issues = _structure(definition)
-    if any(issue.code in ("edge_unknown_node", "cycle") for issue in issues):
-        return issues  # ancestry is meaningless on a broken or cyclic graph
-    return issues + _references(definition)
+    if any(issue.code == "edge_unknown_node" for issue in issues):
+        return issues  # a broken graph has no meaningful shape
+    shape = loop_shape(definition)
+    issues += shape.issues
+    if any(issue.code == "cycle" for issue in issues):
+        return issues  # ancestry is meaningless on a cyclic graph
+    issues += _reachability(shape.forward)
+    return issues + _references(shape.forward, shape.loops)
 
 
 def _structure(definition: WorkflowDefinition) -> list[Issue]:
@@ -80,18 +110,126 @@ def _structure(definition: WorkflowDefinition) -> list[Issue]:
     for node in definition.nodes:
         issues += _node_edges(node, outgoing[node.id], incoming[node.id])
         issues += _node_fields(node)
-    if any(issue.code == "edge_unknown_node" for issue in issues):
-        return issues
-    if _has_cycle(definition):
-        issues.append(Issue("cycle", "연결이 순환합니다 (1차에는 반복이 없습니다)"))
-        return issues
-    if len(starts) == 1:
-        reached = _reachable(definition, starts[0].id)
-        issues += [
-            Issue("unreachable", "시작에서 닿지 않는 노드입니다", node.id)
-            for node in definition.nodes
-            if node.id not in reached
+    return issues
+
+
+def _reachability(forward: WorkflowDefinition) -> list[Issue]:
+    starts = [node for node in forward.nodes if isinstance(node, StartNode)]
+    if len(starts) != 1:
+        return []
+    reached = _reachable(forward, starts[0].id)
+    return [
+        Issue("unreachable", "시작에서 닿지 않는 노드입니다", node.id)
+        for node in forward.nodes
+        if node.id not in reached
+    ]
+
+
+def loop_shape(definition: WorkflowDefinition) -> LoopShape:
+    """Find the back-edges (depth-first from start), check them, and the forward graph."""
+    nodes = {node.id: node for node in definition.nodes}
+    starts = [node.id for node in definition.nodes if isinstance(node, StartNode)]
+    back = _back_edges(definition, starts[0]) if len(starts) == 1 else []
+    forward = definition.model_copy(
+        update={"edges": [edge for edge in definition.edges if edge not in back]}
+    )
+    if _has_cycle(forward):
+        return LoopShape([], forward, [Issue("cycle", "연결이 순환합니다")])
+    issues: list[Issue] = []
+    dominators = _dominators(forward, starts[0]) if starts else {}
+    loops: list[Loop] = []
+    for edge in back:
+        source = nodes[edge.from_]
+        if edge.to not in dominators.get(edge.from_, set()):
+            issues.append(Issue("cycle", "연결이 순환합니다"))
+            return LoopShape([], forward, issues)
+        if not isinstance(source, DecisionNode) or edge.when not in ("true", "false"):
+            message = "되돌아가는 연결은 판단 노드의 예/아니오 갈래에서만 둘 수 있습니다"
+            issues.append(Issue("loop_from_not_decision", message, edge.from_))
+            continue
+        loops.append(Loop(edge.from_, edge.when, edge.to, _body(forward, edge.to, edge.from_)))
+    issues += _loop_rules(definition, forward, loops)
+    return LoopShape(loops, forward, issues)
+
+
+def _back_edges(definition: WorkflowDefinition, start: str) -> list[Edge]:
+    """Edges to a node still on the depth-first path (the classic retreating edges)."""
+    out: dict[str, list[Edge]] = defaultdict(list)
+    for edge in definition.edges:
+        out[edge.from_].append(edge)
+    back: list[Edge] = []
+    on_path: set[str] = set()
+    done: set[str] = set()
+
+    def visit(node: str) -> None:
+        on_path.add(node)
+        for edge in out[node]:
+            if edge.to in on_path:
+                back.append(edge)
+            elif edge.to not in done:
+                visit(edge.to)
+        on_path.discard(node)
+        done.add(node)
+
+    visit(start)
+    return back
+
+
+def _body(forward: WorkflowDefinition, target: str, decision: str) -> frozenset[str]:
+    preceding: dict[str, list[str]] = defaultdict(list)
+    for edge in forward.edges:
+        preceding[edge.to].append(edge.from_)
+    reaches_decision, queue = {decision}, deque([decision])
+    while queue:
+        for parent in preceding[queue.popleft()]:
+            if parent not in reaches_decision:
+                reaches_decision.add(parent)
+                queue.append(parent)
+    return frozenset(reaches_decision & _reachable(forward, target))
+
+
+def _loop_rules(
+    definition: WorkflowDefinition, forward: WorkflowDefinition, loops: list[Loop]
+) -> list[Issue]:
+    nodes = {node.id: node for node in definition.nodes}
+    issues: list[Issue] = []
+    looping = {loop.decision for loop in loops}
+    for node in definition.nodes:
+        if not isinstance(node, DecisionNode):
+            continue
+        limit = [
+            edge for edge in definition.edges if edge.from_ == node.id and edge.when == "limit"
         ]
+        if node.id not in looping:
+            if node.repeat is not None or limit:
+                message = "되돌아가는 연결이 없는데 반복 설정이나 한도 초과 갈래가 있습니다"
+                issues.append(Issue("loop_settings_without_loop", message, node.id))
+            continue
+        if node.repeat is None:
+            issues.append(Issue("loop_limit_missing", "반복 최대 횟수를 정하세요", node.id))
+        if not limit:
+            message = "반복 한도를 넘었을 때 갈 단계(한도 초과 갈래)를 연결하세요"
+            issues.append(Issue("loop_limit_exit_missing", message, node.id))
+    seen: set[str] = set()
+    for loop in sorted(loops, key=lambda item: item.decision):
+        if loop.decision in seen or any(
+            other is not loop and other.body & loop.body for other in loops
+        ):
+            message = "반복끼리 겹치거나 반복 안에 반복을 둘 수 없습니다"
+            issues.append(Issue("loop_overlap", message, loop.decision))
+        seen.add(loop.decision)
+        for member in sorted(loop.body):
+            if isinstance(nodes[member], ApprovalNode | OutputNode | FailNode):
+                message = "반복 안에는 승인, 최종 출력, 실패 종료 노드를 둘 수 없습니다"
+                issues.append(Issue("loop_body_kind", message, member))
+        for edge in forward.edges:
+            leaves = edge.from_ in loop.body and edge.to not in loop.body
+            if leaves and edge.from_ != loop.decision:
+                message = "반복 밖으로는 반복을 정하는 판단 노드에서만 나갈 수 있습니다"
+                issues.append(Issue("loop_exit", message, edge.from_))
+            if edge.from_ == loop.decision and edge.when == "limit" and edge.to in loop.body:
+                message = "한도 초과 갈래는 반복 밖의 단계로 이어야 합니다"
+                issues.append(Issue("loop_exit", message, edge.from_))
     return issues
 
 
@@ -105,6 +243,8 @@ def _node_edges(node: Node, whens: list[str | None], incoming: int) -> list[Issu
             issues.append(Issue("end_has_outgoing", "끝 노드에서 나가는 연결이 있습니다", node.id))
         return issues
     expected = _BRANCHES.get(type(node))
+    if isinstance(node, DecisionNode):
+        whens = [when for when in whens if when != "limit"]  # a loop's exit: _loop_rules
     if expected is None:
         if whens != [None]:
             issues.append(Issue("needs_one_next", "다음 노드 연결이 하나 필요합니다", node.id))
@@ -206,7 +346,8 @@ def _refs(node: Node) -> Iterator[Ref | Clause]:
                 yield segment.ref
 
 
-def _references(definition: WorkflowDefinition) -> list[Issue]:
+def _references(definition: WorkflowDefinition, loops: list[Loop]) -> list[Issue]:
+    """References on the forward graph; ``previous`` ones only inside the owner's loop."""
     nodes = {node.id: node for node in definition.nodes}
     inputs = {item.name for item in definition.inputs}
     starts = [node.id for node in definition.nodes if isinstance(node, StartNode)]
@@ -215,10 +356,22 @@ def _references(definition: WorkflowDefinition) -> list[Issue]:
     for node in definition.nodes:
         if node.id not in upstream:
             continue  # unreachable nodes are reported once, as ``unreachable``
+        body = next((loop.body for loop in loops if node.id in loop.body), frozenset())
         for ref in _refs(node):
             target, path = (
                 (ref.source, ref.path) if isinstance(ref, Clause) else (ref.node, ref.path)
             )
+            if isinstance(ref, Ref) and ref.previous:
+                if target not in body or target in upstream[node.id]:
+                    message = (
+                        "앞 회차 값은 같은 반복 안에서 이 단계보다 뒤에 오는 단계만 쓸 수 있습니다"
+                    )
+                    issues.append(Issue("ref_previous_scope", message, node.id))
+                elif not _path_exists(nodes[target], path.split("/")[1:]):
+                    issues.append(
+                        Issue("ref_bad_path", f"{target!r}에 {path!r} 값이 없습니다", node.id)
+                    )
+                continue
             issue = _reference_issue(target, path, node.id, nodes, inputs, upstream[node.id])
             if issue is not None:
                 issues.append(issue)
@@ -274,4 +427,4 @@ def _schema_has(schema: dict[str, Any], parts: list[str]) -> bool:
     return True
 
 
-__all__ = ["Issue", "graph_issues"]
+__all__ = ["Issue", "Loop", "LoopShape", "graph_issues", "loop_shape"]

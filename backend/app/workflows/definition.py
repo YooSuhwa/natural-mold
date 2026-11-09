@@ -14,7 +14,15 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from app.agent_runtime.structured_output import OutputSchemaError, check_output_schema
 
@@ -31,7 +39,8 @@ Identifier = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")]
 Pointer = Annotated[str, Field(pattern=r"^(/[^/]{1,64}){0,8}$")]
 Label = Annotated[str, Field(max_length=80)]
 Operator = Literal["eq", "ne", "gt", "gte", "lt", "lte", "contains", "exists"]
-EdgeWhen = Literal["true", "false", "approved", "rejected"]
+EdgeWhen = Literal["true", "false", "approved", "rejected", "limit"]
+MAX_ROUNDS: Final = 10
 
 
 class _Strict(BaseModel):
@@ -41,6 +50,16 @@ class _Strict(BaseModel):
 class Ref(_Strict):
     node: Identifier
     path: Pointer = ""
+    # A loop (workflow-loop-plan 3.1): the previous round's value of a later step in the
+    # same loop; empty in the first round. Stored only when set.
+    previous: bool = False
+
+    @model_serializer(mode="wrap")
+    def _omit_default(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = handler(self)
+        if not self.previous:
+            data.pop("previous", None)
+        return data
 
 
 class TextSegment(_Strict):
@@ -134,9 +153,25 @@ class AgentNode(_Node):
             raise ValueError(exc.message) from exc
 
 
+class Repeat(_Strict):
+    """How often a loop through this decision may run (rounds include the first)."""
+
+    max_rounds: int = Field(ge=1, le=MAX_ROUNDS)
+
+
 class DecisionNode(_Node):
     type: Literal["decision_bool"]
     condition: Condition
+    # Set when one exit goes back to an earlier step; the ``limit`` exit is then taken
+    # once ``max_rounds`` rounds have run. Stored only when set.
+    repeat: Repeat | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_repeat(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = handler(self)
+        if self.repeat is None:
+            data.pop("repeat", None)
+        return data
 
 
 class ApprovalNode(_Node):
@@ -219,6 +254,7 @@ __all__ = [
     "Node",
     "OutputNode",
     "Ref",
+    "Repeat",
     "RefSegment",
     "StartNode",
     "TextSegment",

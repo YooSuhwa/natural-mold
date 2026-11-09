@@ -71,14 +71,15 @@ def _sibling_ref(raw: dict[str, Any]) -> None:
             ["branch_missing", "edge_unknown_node", "edge_unknown_node"]
             + ["needs_one_next", "no_end"],
         ),
-        (_cycle, ["cycle", "needs_one_next"]),
+        # A step that leads back is a loop only from a decision exit (workflow-loop-plan 3.2).
+        (_cycle, ["loop_from_not_decision", "needs_one_next"]),
         (_orphan, ["unreachable"]),
         (_drop_edge("is_urgent", "false"), ["branch_missing"]),
         (_drop_edge("draft"), ["needs_one_next", "unreachable"]),
         (lambda raw: raw["edges"].append({"from": "done", "to": "fail"}), ["end_has_outgoing"]),
         (
             lambda raw: raw["edges"].append({"from": "draft", "to": "start"}),
-            ["cycle", "needs_one_next", "start_has_incoming"],
+            ["loop_from_not_decision", "needs_one_next", "start_has_incoming"],
         ),
         (_set("review", timeout_minutes=None), ["approval_no_timeout"]),
         (_set("review", title=[]), ["empty_title"]),

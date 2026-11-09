@@ -62,7 +62,8 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WorkflowRunDeta
   const tk = useTranslations('workflows')
   const version = useWorkflowVersion(workflowId, run.version_no)
   const cancel = useCancelWorkflowRun(run.id)
-  const [selected, setSelected] = useState<string | null>(null)
+  // Steps are told apart by position: a loop runs the same node again (one row per round).
+  const [selected, setSelected] = useState<number | null>(null)
   const nodes = new Map((version.data?.definition.nodes ?? []).map((node) => [node.id, node]))
   const labelOf = (nodeId: string) => {
     const node = nodes.get(nodeId)
@@ -71,7 +72,7 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WorkflowRunDeta
   const finished = RUN_TERMINAL.includes(run.status)
   const completed = run.steps.filter((step) => step.status === 'completed').length
   const current =
-    run.steps.find((step) => step.node_id === selected) ??
+    run.steps.find((step) => step.position === selected) ??
     run.steps.find((step) => step.status !== 'completed') ??
     run.steps.at(-1)
   return (
@@ -118,19 +119,24 @@ function RunBody({ workflowId, run }: { workflowId: string; run: WorkflowRunDeta
           aria-label={t('timeline')}
         >
           {run.steps.map((step) => (
-            <li key={step.node_id}>
+            <li key={step.position}>
               <button
                 type="button"
-                onClick={() => setSelected(step.node_id)}
+                onClick={() => setSelected(step.position)}
                 className={cn(
                   'flex w-full items-start gap-3 rounded-md px-2 py-2 text-left hover:bg-accent',
-                  current?.node_id === step.node_id && 'bg-accent',
+                  current?.position === step.position && 'bg-accent',
                 )}
               >
                 <StepStatusIcon status={step.status} />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">
                     {labelOf(step.node_id)}
+                    {step.round > 1 ? (
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                        {t('round', { round: step.round })}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
                     {stepSummary(step, tk)}

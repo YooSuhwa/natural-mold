@@ -57256,6 +57256,11 @@
           "title": "Position",
           "type": "integer"
         },
+        "round": {
+          "default": 1,
+          "title": "Round",
+          "type": "integer"
+        },
         "started_at": {
           "anyOf": [
             {

@@ -34,6 +34,8 @@ const EXIT_OFFSET: Record<EdgeWhen | 'next', number> = {
   approved: -0.5,
   false: 0.5,
   rejected: 0.5,
+  // A loop's "limit" exit (workflow-loop-plan): further right, past the "no" child.
+  limit: 1,
 }
 
 export function layout(definition: WorkflowDefinition): Map<string, Placed> {

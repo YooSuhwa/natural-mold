@@ -115,6 +115,9 @@ WORKFLOW_RUN_FINISH: Final = "workflow.run_finish"
 WORKFLOW_RUN_CANCEL: Final = "workflow.run_cancel"
 # W4: an agent step stopped with no stored result (3.5); the runner is asked to check it.
 WORKFLOW_STEP_UNKNOWN: Final = "workflow.step_unknown"
+# Loops (workflow-loop-plan 3.3): a loop hit its round limit (or the usage limit) and took
+# its ``limit`` exit. Once per loop exit, not per round.
+WORKFLOW_LOOP_LIMIT: Final = "workflow.loop_limit"
 # H-01 access requests (14.1 "요청"); expiry is a status change, not an audit action.
 ACCESS_REQUEST_CREATE: Final = "access_request.create"
 ACCESS_REQUEST_APPROVE: Final = "access_request.approve"
