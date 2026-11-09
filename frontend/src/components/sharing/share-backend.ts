@@ -87,10 +87,14 @@ export interface ShareBackend {
 
 const FULL_LEVELS: readonly ShareLevel[] = ['consumer', 'viewer', 'editor', 'manager']
 const CREDENTIAL_LEVELS: readonly ShareLevel[] = ['consumer', 'manager']
+// Workflows: run it, or edit and publish it (workflow-starts-sharing-plan S6).
+const WORKFLOW_LEVELS: readonly ShareLevel[] = ['consumer', 'editor']
 
 /** 10.1 levels per resource type (backend `share_targets.SHARE_TYPES`). */
 export function shareLevelsFor(type: ShareResourceType): readonly ShareLevel[] {
-  return type === 'credential' ? CREDENTIAL_LEVELS : FULL_LEVELS
+  if (type === 'credential') return CREDENTIAL_LEVELS
+  if (type === 'workflow') return WORKFLOW_LEVELS
+  return FULL_LEVELS
 }
 
 function isShareLevel(value: string): value is ShareLevel {

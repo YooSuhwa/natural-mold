@@ -216,18 +216,19 @@ async def test_the_model_sees_the_draft_and_runnable_agents_only(
 
 
 @pytest.mark.asyncio
-async def test_an_edit_that_does_not_apply_goes_back_once_then_fails(
+async def test_an_edit_that_does_not_apply_goes_back_twice_then_fails(
     client: AsyncClient, db: AsyncSession, model: list[FakeModel]
 ) -> None:
     await seed_agent(db)
     _, _, theirs = await seed_agent(db, user_id=uuid.uuid4())
     await db.commit()
     workflow = await _create(client)
-    model.append(FakeModel(build(str(theirs.id)), build(str(theirs.id))))
+    model.append(FakeModel(*(build(str(theirs.id)) for _ in range(ai_edit.REPAIRS + 1))))
 
     body = (await _assist(client, workflow, "분류 흐름")).json()
     assert (body["kind"], body["definition"]) == ("failed", None)
-    first, second = model[0].seen
+    assert len(model[0].seen) == ai_edit.REPAIRS + 1
+    first, second = model[0].seen[:2]
     note = second[-1]
     assert isinstance(note, ToolMessage) and note.tool_call_id == "call-1"
     assert f"agent_id {theirs.id} is not an offered agent" in note.content
@@ -254,18 +255,18 @@ async def test_a_reply_that_is_not_the_tool_shape_is_retried(
 async def test_checks_still_apply_to_a_proposal_that_keeps_an_issue(
     client: AsyncClient, db: AsyncSession, model: list[FakeModel]
 ) -> None:
-    """A graph the checks reject is sent back once; if it stays, the issues are reported and
-    the accepted draft still cannot be published."""
+    """A graph the checks reject is sent back (``REPAIRS`` times); if it stays, the issues are
+    reported and the accepted draft still cannot be published."""
     _, _, agent = await seed_agent(db)
     await db.commit()
     workflow = await _create(client)
     dangling = build(str(agent.id))
     dangling["commands"] = dangling["commands"][:-1]  # classify leads nowhere
-    model.append(FakeModel(dangling, dangling))
+    model.append(FakeModel(*(dangling for _ in range(ai_edit.REPAIRS + 1))))
 
     body = (await _assist(client, workflow, "분류 흐름")).json()
     assert body["kind"] == "proposal"
-    assert len(model[0].seen) == 2
+    assert len(model[0].seen) == ai_edit.REPAIRS + 1
     assert "check " in model[0].seen[1][-1].content
     assert body["issues"] and all(issue["code"] for issue in body["issues"])
 
@@ -339,7 +340,6 @@ def test_commands_apply_in_order_and_name_what_failed() -> None:
     ("command", "problem"),
     [
         (RemoveNode(op="remove_node", node_id="start"), "the start node cannot be removed"),
-        (RemoveNode(op="remove_node", node_id="nope"), "no node 'nope'"),
         (
             AddNode.model_validate({"op": "add_node", "node": {"id": "fail", "type": "fail"}}),
             "node id 'fail' is already used",
@@ -358,10 +358,6 @@ def test_commands_apply_in_order_and_name_what_failed() -> None:
             Connect.model_validate({"op": "connect", "from": "start", "to": "ghost"}),
             "no node 'ghost'",
         ),
-        (
-            ai_edit.Disconnect.model_validate({"op": "disconnect", "from": "start", "to": "done"}),
-            "no edge start -> done",
-        ),
     ],
 )
 def test_commands_that_cannot_apply_are_refused(command: Any, problem: str) -> None:
@@ -369,6 +365,61 @@ def test_commands_that_cannot_apply_are_refused(command: Any, problem: str) -> N
     result, problems = apply_commands(_q3(agent), [command], {agent})
     assert result is None
     assert problems == [f"command 1 ({command.op}): {problem}"]
+
+
+def test_removing_what_is_absent_changes_nothing() -> None:
+    """The end state is the same (a model sometimes "clears" an empty draft first)."""
+    agent = str(uuid.uuid4())
+    base = _q3(agent)
+    absent = [
+        RemoveNode(op="remove_node", node_id="nope"),
+        ai_edit.Disconnect.model_validate({"op": "disconnect", "from": "start", "to": "done"}),
+    ]
+    result, problems = apply_commands(base, absent, {agent})
+    assert problems == [] and result is not None and result.dump() == base.dump()
+
+
+def test_a_connect_before_its_add_node_still_applies() -> None:
+    base = WorkflowDefinition.model_validate(empty_definition())
+    commands = [
+        Connect.model_validate({"op": "connect", "from": "start", "to": "done"}),
+        AddNode.model_validate(
+            {"op": "add_node", "node": {"id": "done", "type": "output", "fields": {}}}
+        ),
+    ]
+    result, problems = apply_commands(base, commands, set())
+    assert problems == [] and result is not None
+    assert [(edge.from_, edge.to) for edge in result.edges] == [("start", "done")]
+
+
+@pytest.mark.asyncio
+async def test_an_edit_that_changes_nothing_goes_back() -> None:
+    """The message says what changes but the commands change nothing: repair, then fail."""
+    agent = str(uuid.uuid4())
+    base = _q3(agent)
+    seen: list[Any] = []
+
+    async def model(messages: list[Any]) -> ai_edit.ModelTurn:
+        seen.append(messages)
+        args = {"kind": "edit", "message": "기한을 바꿨어요", "commands": []}
+        return ai_edit.ModelTurn(args=args, raw=AIMessage(content=""), tool_call_id=None)
+
+    proposal = await ai_edit.propose(
+        base, [ai_edit.OfferedAgent(agent, "A", "")], "기한을 2시간으로", [], model=model
+    )
+    assert (proposal.kind, proposal.attempts) == ("failed", ai_edit.REPAIRS + 1)
+    assert proposal.problems == [ai_edit.NO_CHANGE]
+    assert ai_edit.NO_CHANGE in str(seen[1][-1].content)
+
+
+def test_a_name_error_comes_back_with_the_naming_rule() -> None:
+    turn = ai_edit.ModelTurn(args={}, raw=AIMessage(content=""), tool_call_id=None)
+    repaired = ai_edit._repair_messages(  # noqa: SLF001
+        turn, ["fields.최종글.[key]: String should match pattern '^[A-Za-z_][A-Za-z0-9_]{0,63}$'"]
+    )
+    assert ai_edit.NAME_HINT in str(repaired[-1].content)
+    missing = ai_edit._repair_messages(turn, ["command 3 (connect): no node 'write_reply'"])  # noqa: SLF001
+    assert ai_edit.MISSING_HINT in str(missing[-1].content)
 
 
 def test_a_result_that_breaks_the_schema_is_reported() -> None:

@@ -127,7 +127,7 @@ export function loopsOf(definition: WorkflowDefinition): Loop[] {
       ? [
           {
             decision: edge.from,
-            when: edge.when,
+            when: edge.when as 'true' | 'false',
             target: edge.to,
             body: bodyOf(forward, edge.to, edge.from),
           },

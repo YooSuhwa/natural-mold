@@ -14,6 +14,8 @@ const AGENT_MESSAGE_NAMESPACES = [
   'guardrails',
   // The emergency stop button of the agent settings (plan 17.4).
   'emergencyStop',
+  // Workflow chat tools: the chat card, its approval and the settings panel (workflow-tool-plan).
+  'workflows',
 ] as const
 
 export default function AgentsLayout({ children }: { children: ReactNode }) {

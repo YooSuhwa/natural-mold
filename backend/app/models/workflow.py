@@ -93,6 +93,7 @@ RUN_STATUSES = (
     "canceled",
 )
 RUN_TERMINAL = frozenset({"completed", "failed", "canceled"})
+RUN_STARTS = ("manual", "chat_tool", "schedule", "webhook")
 STEP_STATUSES = ("queued", "running", "waiting", "completed", "failed", "unknown", "canceled")
 
 
@@ -108,6 +109,12 @@ class WorkflowRun(RequiredOrgScope, Base):
         *resource_scope_constraints("workflow_runs", system=False),
         CheckConstraint(_in("status", RUN_STATUSES), name="ck_workflow_runs_status"),
         Index("ix_workflow_runs_workflow_created", "workflow_id", "created_at"),
+        UniqueConstraint(
+            "parent_conversation_id",
+            "parent_tool_call_id",
+            name="uq_workflow_runs_parent_tool_call",
+        ),
+        CheckConstraint(_in("started_from", RUN_STARTS), name="ck_workflow_runs_started_from"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -128,6 +135,30 @@ class WorkflowRun(RequiredOrgScope, Base):
     current_node: Mapped[str | None] = mapped_column(String(64), nullable=True)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     job_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    # Started by an agent's workflow tool in chat (workflow-tool-plan 3.2): the conversation,
+    # the tool call (the idempotency key: a resumed tool call finds its run again), the chat
+    # run that called it, and when the chat was resumed with the result.
+    parent_conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
+    )
+    parent_tool_call_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    parent_conversation_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversation_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    chat_resumed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # How it started (workflow-starts-sharing-plan 3.1-3.2) and the schedule or webhook.
+    started_from: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="manual", server_default="manual"
+    )
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_schedules.id", ondelete="SET NULL"), nullable=True
+    )
+    webhook_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_webhooks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # ``file`` inputs (workflow-nodes-plan N8): ``{name: {"id", "filename"}}``; the input
+    # itself holds the file name, which is what templates see.
+    files: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_now_naive, nullable=False)
@@ -158,13 +189,20 @@ class WorkflowStepRun(RequiredOrgScope, Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
-    node_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # A child row (one agent of a ``for_each``/``parallel`` step) is ``<node>.<key>``.
+    node_id: Mapped[str] = mapped_column(String(130), nullable=False)
     round: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     node_type: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     input: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     output: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    branch: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    branch: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Child rows (workflow-nodes-plan 3.1): the step that runs them and the item index or
+    # branch name. The main chain is the rows without a parent.
+    parent_step_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_step_runs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    branch_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     agent_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
     )
@@ -182,6 +220,7 @@ class WorkflowStepRun(RequiredOrgScope, Base):
 
 
 __all__ = [
+    "RUN_STARTS",
     "RUN_STATUSES",
     "RUN_TERMINAL",
     "STEP_STATUSES",

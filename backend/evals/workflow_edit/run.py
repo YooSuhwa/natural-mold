@@ -21,7 +21,12 @@ from langchain_core.messages import AIMessage, convert_to_openai_messages
 
 from app.workflows.ai_edit import ModelTurn, OfferedAgent, propose, tool_spec
 from app.workflows.checks import loop_shape
-from app.workflows.definition import RefSegment, WorkflowDefinition, empty_definition
+from app.workflows.definition import (
+    RefSegment,
+    WorkflowDefinition,
+    agent_uses,
+    empty_definition,
+)
 from evals.memory_recall.gateway import _hash, _post
 
 HERE = Path(__file__).parent
@@ -188,6 +193,41 @@ CASES = [
         check="loop",
     ),
     Case("ambiguous", "문서 처리하는 흐름 하나 만들어 줘.", kind="question"),
+    # The remaining nodes (workflow-nodes-plan): for_each + llm, switch, ask + notify, llm decision.
+    Case(
+        "fanout_research",
+        "주제를 입력받아 웹 조사 에이전트가 하위 주제 목록을 만들고, "
+        "하위 주제마다 웹 조사 에이전트로 자세히 조사한 다음, "
+        "조사 결과 전체를 에이전트 없이 모델로 한 번에 요약해서 출력해 줘.",
+        kinds=frozenset({"start", "agent", "for_each", "llm", "output"}),
+        agents=(RESEARCH,),
+    ),
+    Case(
+        "switch_triage",
+        "분류 결과의 category가 refund면 담당자 승인을 거쳐 답변을 쓰고, bug면 바로 답변 작성 "
+        "에이전트가 답변을 쓰고, 그 밖의 값이면 실패로 끝내도록 여러 갈래 판단으로 바꿔 줘. "
+        "긴급 여부 판단은 빼.",
+        start="q3",
+        kinds=frozenset({"start", "agent", "switch", "approval", "output", "fail"}),
+        check="switch_cases",
+    ),
+    Case(
+        "ask_then_notify",
+        "주간 보고 에이전트가 보고서를 쓰기 전에 나에게 이번 주에 강조할 점을 물어보고 "
+        "(하루 안에 답이 없으면 실패로 끝내), 그 답을 반영해 보고서를 쓴 뒤 "
+        "나에게 앱 알림을 보내고 보고서를 내보내 줘.",
+        kinds=frozenset({"start", "ask", "agent", "notify", "output", "fail"}),
+        agents=(WEEKLY,),
+    ),
+    Case(
+        "llm_judge",
+        "고객 문의를 받아 답변 작성 에이전트가 답변을 쓰면, "
+        "답변이 정중한지는 규칙으로 정할 수 없으니 모델이 판단하게 해서 "
+        "정중하면 답변을 내보내고 아니면 실패로 끝내 줘.",
+        kinds=frozenset({"start", "agent", "decision_bool", "output", "fail"}),
+        agents=(WRITE,),
+        check="llm_decision",
+    ),
 ]
 
 
@@ -308,7 +348,7 @@ def score(case: Case, base: WorkflowDefinition, proposal: Any) -> tuple[bool, li
     kinds = {node.type for node in definition.nodes}
     if not case.kinds <= kinds:
         notes.append(f"missing kinds {sorted(case.kinds - kinds)}")
-    used = [node.agent_id for node in definition.nodes if node.type == "agent"]
+    used = [use.agent_id for use in agent_uses(list(definition.nodes))]
     if case.agents and sorted(set(used)) != sorted(set(case.agents)):
         notes.append(f"agents {used}")
     if case.check == "research_order":
@@ -325,6 +365,18 @@ def score(case: Case, base: WorkflowDefinition, proposal: Any) -> tuple[bool, li
             notes.append("output does not have two fields")
     if case.check == "loop":
         notes += _loop_notes(definition)
+    if case.check == "switch_cases":
+        switches = [node for node in definition.nodes if node.type == "switch"]
+        values = {str(case.value) for node in switches for case in node.cases}
+        if not switches or not {"refund", "bug"} <= values:
+            notes.append(f"switch cases {sorted(values)}")
+    llm_decisions = [
+        node
+        for node in definition.nodes
+        if node.type == "decision_bool" and node.evaluator == "llm"
+    ]
+    if case.check == "llm_decision" and not llm_decisions:
+        notes.append("no llm decision")
     if case.check == "only_timeout":
         before = {node.id: node.model_dump() for node in base.nodes}
         after = {node.id: node.model_dump() for node in definition.nodes}

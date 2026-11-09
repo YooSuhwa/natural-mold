@@ -586,6 +586,12 @@
           "name": "memory_run_id"
         },
         {
+          "annotation": "list[Any]",
+          "default": "value:_HAS_DEFAULT_FACTORY_CLASS",
+          "kind": "keyword_only",
+          "name": "workflow_tools"
+        },
+        {
           "annotation": "str | None",
           "default": "none",
           "kind": "keyword_only",

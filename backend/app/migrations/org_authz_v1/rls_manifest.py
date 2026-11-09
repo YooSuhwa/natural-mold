@@ -93,8 +93,10 @@ DIRECT_TENANT: Final = frozenset(
         "token_usages",
         "tools",
         "workflow_runs",  # workflow runs (순번 23, workflow-plan 3.4)
+        "workflow_schedules",  # scheduled workflow runs (workflow-starts-sharing-plan 3.1)
         "workflow_step_runs",  # workflow steps and agent step envelopes (workflow-plan 3.4)
         "workflow_versions",  # published workflow definitions (순번 23, workflow-plan 3.1)
+        "workflow_webhooks",  # webhook starts (workflow-starts-sharing-plan 3.2)
         "workflows",  # workflow drafts (순번 23, workflow-plan 3.1)
     }
 )

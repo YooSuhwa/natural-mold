@@ -26,3 +26,5 @@ class LeaderSchedulerJobId(StrEnum):
     TENANT_PURGE = "tenant_purge"
     TENANT_EXPORT_GC = "tenant_export_gc"
     APPROVAL_SWEEP = "approval_sweep"
+    WORKFLOW_CHAT_RESUME = "workflow_chat_resume"
+    WORKFLOW_SCHEDULES = "workflow_schedules"

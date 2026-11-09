@@ -755,6 +755,56 @@ def register_approval_sweep_job() -> None:
     )
 
 
+WORKFLOW_CHAT_RESUME_JOB_ID = "workflow_chat_resume"
+
+
+async def resume_workflow_chats() -> None:
+    """Workflow tools (workflow-tool-plan 3.2): resume chats whose workflow run has ended."""
+    from app.workflows.chat_resume import resume_finished_chats
+
+    await resume_finished_chats()
+
+
+def register_workflow_chat_resume_job() -> None:
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        return
+    scheduler.add_job(
+        _leader_job_runner(),
+        IntervalTrigger(seconds=5),
+        id=WORKFLOW_CHAT_RESUME_JOB_ID,
+        args=[LeaderSchedulerJobId.WORKFLOW_CHAT_RESUME],
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+
+
+WORKFLOW_SCHEDULES_JOB_ID = "workflow_schedules"
+
+
+async def fire_workflow_schedules() -> None:
+    """Workflow schedules (workflow-starts-sharing-plan 3.1): start every due one once."""
+    from app.workflows.starts import fire_due
+
+    await fire_due()
+
+
+def register_workflow_schedules_job() -> None:
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        return
+    scheduler.add_job(
+        _leader_job_runner(),
+        IntervalTrigger(seconds=30),
+        id=WORKFLOW_SCHEDULES_JOB_ID,
+        args=[LeaderSchedulerJobId.WORKFLOW_SCHEDULES],
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+
+
 CONVERSATION_QUEUE_RECOVERY_JOB_ID = "conversation_queue_recovery"
 
 

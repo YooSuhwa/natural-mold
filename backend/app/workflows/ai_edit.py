@@ -38,6 +38,7 @@ from app.workflows.definition import (
     Node,
     WorkflowDefinition,
     WorkflowInput,
+    agent_uses,
 )
 
 TOOL_NAME: Final = "WorkflowEdit"
@@ -46,8 +47,22 @@ MAX_PLAN: Final = 20
 MAX_TEXT: Final = 2_000
 MAX_AGENTS: Final = 100
 MAX_DESCRIPTION: Final = 300
-# One more model turn after a reply that does not validate, apply or pass the graph checks.
-REPAIRS: Final = 1
+# Up to two more model turns after a reply that does not validate, apply or pass the checks
+# (the nodes plan doubled the schema; gpt-5.4-mini needed a second repair in the eval).
+REPAIRS: Final = 2
+NO_CHANGE: Final = (
+    "the commands change nothing in the draft: send the add_node/update_node/connect/... "
+    "commands that make the change you describe (update_node sends the whole node with the "
+    "changed fields)"
+)
+MISSING_HINT: Final = (
+    "a node you connect must already be in the draft or be added with add_node in this same "
+    "reply: send the add_node commands for those nodes too"
+)
+NAME_HINT: Final = (
+    "ids, input names, field names, case and branch names must be ASCII snake_case such as "
+    "final_text; put Korean words in `label`"
+)
 
 
 class _Command(BaseModel):
@@ -129,9 +144,34 @@ Use only the keys type, properties, required, items, enum and description (no mi
 maxLength, format, pattern, default or other keywords).
 - decision_bool: `condition` = {"all": [clauses]} or {"any": [clauses]}; a clause is \
 {"source": node id or "input", "path": "/field", "op": eq|ne|gt|gte|lt|lte|contains|exists, \
-"value": ...}. Two exits: when "true" and when "false".
+"value": ...}. Two exits: when "true" and when "false". For a judgement no rule can make \
+(is this answer good enough, is the tone polite) use "evaluator": "llm" with a `question` \
+template instead of `condition`: the system model answers yes/no with a confidence and a \
+reason ("/value", "/confidence", "/band", "/reason").
+- switch: several exits by one value: `source` (node id or "input") and `path`, `cases` = \
+[{"name": snake_case exit name, "value": the value to match}] (1..10). Exits: each case name \
+and "default" (no case matched); all must be connected. Output "/value", "/case".
+- llm: one call of the system model without an agent (summarize, translate, extract): \
+`prompt` template and `output_schema` (as for agent). Use an agent instead when the step \
+needs tools, knowledge or the agent's instructions.
+- ask: asks the runner a question and waits for a written answer: `question` template and \
+`timeout_minutes` (required). Exits "answered" (output "/answer") and "timeout".
+- notify: sends the runner an in-app notification (`title`, `body` templates) and goes on. \
+Output "/sent".
+- for_each: runs one offered agent once per item of an earlier list value: `source` and \
+`path` must point at an array in an earlier node's output schema, `agent_id`, `prompt` \
+(the current item is {"ref": {"node": "item", "path": ""}}, or "/<field>" of an object \
+item), `output_schema` for one item, `max_items` (1..20). Output "/items" (the list of \
+answers) and "/count".
+- parallel: 2..5 agents at once on the same values: `branches` = [{"name", "agent_id", \
+"prompt", "output_schema"}]. Output "/<branch name>/<field>".
+- tool: calls a read-only tool directly: `tool` is "web_search" (args {"query": template}), \
+"web_scraper" (args {"url": template}) or "current_datetime" (no args). Output "/result" \
+(text). Anything that sends, writes or changes something belongs in an agent step.
 - approval: the runner approves. `title` and `body` are templates, `timeout_minutes` \
-(1..10080) is required. Two exits: "approved" and "rejected" (a timeout takes "rejected").
+(1..10080) is required. Two exits: "approved" and "rejected" (a timeout takes "rejected"). \
+Leave out `approver` (the runner decides) unless asked: {"kind": "owner"} for the workflow's \
+owner.
 - transform: `fields` maps names to templates (and/or `template`); its output is \
 "/fields/<name>" (or "/text").
 - output: `fields` maps names to templates; the run's result. Ends the run.
@@ -142,15 +182,20 @@ A template is a list of segments: {"text": "..."} or {"ref": {"node": "<id>", "p
 reference may only name a node that runs before this one on every path from start (so a \
 node after a decision may not read a node that only one branch runs).
 
-Edges: {"from", "to", "when"}; `when` is set only on the exits of decision_bool and \
-approval. Every exit must be connected and every node reachable from start.
+Edges: {"from", "to", "when"}; `when` is set only on the exits of decision_bool, switch, \
+approval and ask. Every exit must be connected and every node reachable from start.
+
+Inputs: {"name", "type": string|number|integer|boolean|file, "label", "required"}. A file \
+input is a file the runner uploads; an agent step whose prompt references it gets the file \
+attached (other steps see its name). Declare every input you reference with set_inputs in \
+the same reply.
 
 Loops: the only way back is a decision_bool's "true" or "false" exit connected to a step \
 that runs before it on every path (for example: draft → review → passed? with "false" back \
 to draft). Such a decision needs "repeat": {"max_rounds": 1..10} (use 3 unless asked) and a \
 "limit" exit to a step outside the loop (fail, an approval, or any later step), taken when \
 the rounds run out. Inside a loop (the steps from the target back to the decision) there may \
-be no approval, output or fail step, no other loop, and no exit except the decision's. A step \
+be no approval, ask, output or fail step, no other loop, and no exit except the decision's. A step \
 in a loop may read the previous round's value of a later step in the same loop with \
 {"ref": {"node": "<id>", "path": "/<field>", "previous": true}} (empty in the first round). \
 A step that is redone because a check failed must get that check's feedback this way in its \
@@ -158,8 +203,12 @@ prompt (for example the review's feedback in the draft prompt), or it would only
 itself. Any other cycle is refused.
 
 Commands: add_node (a node whose id is not in the draft yet), update_node (an id already \
-in the draft; send the whole node again), remove_node (also drops its edges), connect, \
-disconnect, set_inputs (the whole list). Keep what the person did not ask to change. If the \
+in the draft; send the whole node again with the change), remove_node (also drops its \
+edges), connect, disconnect, set_inputs (the whole list). Keep what the person did not ask \
+to change. Every change you describe in `message` must be in the commands. Ids, input \
+names, field names and case names are ASCII snake_case (Korean goes in `label`). Add only \
+the agent steps the request asks for or plainly needs; do not add extra checks or \
+classifications nobody asked for. If the \
 request is ambiguous (it does not say what the workflow should do, which agent should do a \
 step, or what should happen on a branch), ask one short question with kind "question" and \
 no commands instead of guessing. If no offered agent fits a step, say so in a question.
@@ -245,12 +294,19 @@ def apply_commands(
     def index(node_id: str) -> int | None:
         return next((i for i, node in enumerate(nodes) if node["id"] == node_id), None)
 
-    for number, command in enumerate(commands, start=1):
+    # Node commands first, then edge commands (each kept in order): a model often connects a
+    # node it adds later in the same reply (eval: gpt); the result is the same graph.
+    numbered = list(enumerate(commands, start=1))
+    ordered = [item for item in numbered if not isinstance(item[1], Connect | Disconnect)] + [
+        item for item in numbered if isinstance(item[1], Connect | Disconnect)
+    ]
+    for number, command in ordered:
         where = f"command {number} ({command.op})"
         if isinstance(command, AddNode | UpdateNode):
             node = command.node.model_dump(mode="json", by_alias=True)
-            if node["type"] == "agent" and node["agent_id"] not in agent_ids:
-                problems.append(f"{where}: agent_id {node['agent_id']} is not an offered agent")
+            stray = [u.agent_id for u in agent_uses([command.node]) if u.agent_id not in agent_ids]
+            if stray:
+                problems.append(f"{where}: agent_id {stray[0]} is not an offered agent")
                 continue
             position = index(node["id"])
             if isinstance(command, AddNode):
@@ -269,8 +325,8 @@ def apply_commands(
         elif isinstance(command, RemoveNode):
             position = index(command.node_id)
             if position is None:
-                problems.append(f"{where}: no node {command.node_id!r}")
-            elif nodes[position]["type"] == "start":
+                continue  # already absent: the result is the same (eval: a model "clears" first)
+            if nodes[position]["type"] == "start":
                 problems.append(f"{where}: the start node cannot be removed")
             else:
                 nodes.pop(position)
@@ -294,9 +350,7 @@ def apply_commands(
                     and (command.when is None or edge["when"] == command.when)
                 )
             ]
-            if len(kept) == len(edges):
-                problems.append(f"{where}: no edge {command.from_} -> {command.to}")
-            edges[:] = kept
+            edges[:] = kept  # an edge that is not there is already disconnected
         elif isinstance(command, SetInputs):
             raw["inputs"] = [item.model_dump(mode="json") for item in command.inputs]
     if problems:
@@ -344,10 +398,26 @@ def _repair_messages(turn: ModelTurn, problems: list[str]) -> list[Any]:
     from langchain_core.messages import HumanMessage, ToolMessage
 
     note = "The edit was not applied. Fix these problems and call WorkflowEdit again:\n- "
-    text = note + "\n- ".join(problems[:20])
+    shown = problems[:20]
+    if any("A-Za-z_" in problem for problem in shown):
+        shown = [*shown, NAME_HINT]
+    if any(": no node " in problem for problem in shown):
+        shown = [*shown, MISSING_HINT]
+    text = note + "\n- ".join(shown)
     if turn.tool_call_id:
         return [turn.raw, ToolMessage(content=text, tool_call_id=turn.tool_call_id)]
     return [turn.raw, HumanMessage(content=text)]
+
+
+def _ids(definition: WorkflowDefinition, commands: list[Any]) -> list[str]:
+    """The node ids the draft would have after the reply's node commands (for a repair)."""
+    ids = [node.id for node in definition.nodes]
+    for command in commands:
+        if isinstance(command, AddNode) and command.node.id not in ids:
+            ids.append(command.node.id)
+        elif isinstance(command, RemoveNode) and command.node_id in ids:
+            ids.remove(command.node_id)
+    return ids
 
 
 def unwrapped(args: dict[str, Any] | None) -> dict[str, Any]:
@@ -402,6 +472,14 @@ async def propose(
                     attempts=attempt + 1,
                 )
             proposed, problems = apply_commands(definition, reply.commands, agent_ids)
+            if any(": no node " in problem for problem in problems):
+                problems = [
+                    *problems,
+                    f"node ids after your node commands: {_ids(definition, reply.commands)}",
+                ]
+            if proposed is not None and proposed.dump() == definition.dump():
+                # The message says what changes, the commands change nothing (eval: gpt).
+                proposed, problems = None, [NO_CHANGE]
             if proposed is not None:
                 graph = graph_issues(proposed)
                 if not graph or attempt == REPAIRS:
@@ -513,7 +591,7 @@ async def assist(
     from app.services.system_credential_resolver import SystemModelNotConfiguredError
     from app.workflows import service
 
-    workflow = await service.get_workflow(db, context, workflow_id)
+    workflow = await service.get_workflow(db, context, workflow_id, permission="can_edit")
     if workflow.archived_at is not None:
         raise service.archived_workflow()  # the same 409s as a draft save
     if workflow.draft_revision != revision:

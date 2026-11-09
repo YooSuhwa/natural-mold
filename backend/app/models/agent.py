@@ -17,6 +17,7 @@ from app.models.tool import AgentToolLink
 
 if TYPE_CHECKING:
     from app.models.agent_subagent import AgentSubAgentLink
+    from app.models.agent_workflow import AgentWorkflowLink
 
 # Runtime profile (skill-studio phase 1, AD-1). ``standard`` rows are normal
 # user agents; anything else is a hidden per-user runtime row that must be
@@ -119,6 +120,13 @@ class Agent(RequiredOrgScope, Base):
     )
     skill_links: Mapped[list[AgentSkillLink]] = relationship(
         cascade="all, delete-orphan",
+    )
+    # Published workflows this agent may call as chat tools (workflow-tool-plan).
+    workflow_links: Mapped[list[AgentWorkflowLink]] = relationship(
+        "AgentWorkflowLink",
+        cascade="all, delete-orphan",
+        order_by="AgentWorkflowLink.position",
+        lazy="selectin",
     )
     sub_agent_links: Mapped[list[AgentSubAgentLink]] = relationship(
         "AgentSubAgentLink",

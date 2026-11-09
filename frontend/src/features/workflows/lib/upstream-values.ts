@@ -41,11 +41,40 @@ export function outputsOf(node: WorkflowNode): { path: string; type: string }[] 
       schemaValues(node.output_schema, '', out)
       return out
     }
+    case 'llm': {
+      const out: { path: string; type: string }[] = []
+      schemaValues(node.output_schema, '', out)
+      return out
+    }
+    case 'for_each': {
+      const out: { path: string; type: string }[] = [
+        { path: '/items', type: 'object[]' },
+        { path: '/count', type: 'integer' },
+      ]
+      return out
+    }
+    case 'parallel': {
+      const out: { path: string; type: string }[] = []
+      for (const branch of node.branches) schemaValues(branch.output_schema, `/${branch.name}`, out)
+      return out
+    }
     case 'decision_bool':
       return [
         { path: '/value', type: 'boolean' },
         { path: '/confidence', type: 'number' },
+        ...(node.evaluator === 'llm' ? [{ path: '/reason', type: 'string' }] : []),
       ]
+    case 'switch':
+      return [
+        { path: '/value', type: 'any' },
+        { path: '/case', type: 'string' },
+      ]
+    case 'ask':
+      return [{ path: '/answer', type: 'string' }]
+    case 'notify':
+      return [{ path: '/sent', type: 'boolean' }]
+    case 'tool':
+      return [{ path: '/result', type: 'string' }]
     case 'approval':
       return [
         { path: '/decision', type: 'string' },
@@ -61,12 +90,32 @@ export function outputsOf(node: WorkflowNode): { path: string; type: string }[] 
   }
 }
 
+/** The item a for_each node's prompt reads: the whole item, or its fields for objects. */
+function itemValues(definition: WorkflowDefinition, nodeId: string): UpstreamValue[] {
+  const node = definition.nodes.find((item) => item.id === nodeId)
+  if (node?.type !== 'for_each') return []
+  const source = definition.nodes.find((item) => item.id === node.source)
+  let schema: unknown = source && 'output_schema' in source ? source.output_schema : undefined
+  for (const part of node.path.split('/').slice(1)) {
+    const current = schema as { properties?: Record<string, unknown> } | undefined
+    schema = current?.properties?.[part]
+  }
+  const items = (schema as { items?: { type?: string } } | undefined)?.items
+  const values: UpstreamValue[] = [{ node: 'item', path: '', type: items?.type ?? 'any' }]
+  const fields: { path: string; type: string }[] = []
+  schemaValues(items, '', fields)
+  return [...values, ...fields.map((field) => ({ node: 'item', ...field }))]
+}
+
 export function upstreamValues(definition: WorkflowDefinition, nodeId: string): UpstreamValue[] {
-  const values: UpstreamValue[] = definition.inputs.map((item) => ({
-    node: 'input',
-    path: `/${item.name}`,
-    type: item.type,
-  }))
+  const values: UpstreamValue[] = [
+    ...definition.inputs.map((item) => ({
+      node: 'input',
+      path: `/${item.name}`,
+      type: item.type,
+    })),
+    ...itemValues(definition, nodeId),
+  ]
   const before = dominators(definition).get(nodeId)
   if (!before) return values
   for (const node of definition.nodes) {

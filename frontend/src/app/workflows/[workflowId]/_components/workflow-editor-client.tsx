@@ -40,6 +40,7 @@ import { AddNodeDialog, type AddChoice } from '@/features/workflows/components/a
 import { AiEditPanel, type PendingProposal } from '@/features/workflows/components/ai-edit-panel'
 import { IssuesList } from '@/features/workflows/components/issues-list'
 import { NodeSettingsPanel } from '@/features/workflows/components/node-settings-panel'
+import { ResourceShareButton } from '@/components/sharing/resource-share-button'
 import { RunDialog } from '@/features/workflows/components/run-dialog'
 import { StepList } from '@/features/workflows/components/step-list'
 import {
@@ -129,7 +130,10 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
   const router = useRouter()
   const save = useSaveWorkflowDraft(detail.id)
   const publish = usePublishWorkflow(detail.id)
-  const issues = useWorkflowIssues(detail.id, revision)
+  // Shared to run only (starts plan 3.3): the draft is read-only and has no issue list.
+  const canEdit = detail.my_permissions?.includes('can_edit') ?? true
+  const canShare = detail.my_permissions?.includes('can_share') ?? false
+  const issues = useWorkflowIssues(detail.id, revision, canEdit)
   const agents = useAgents()
   const definition = history.present
 
@@ -170,10 +174,14 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
     return () => clearTimeout(timer)
   }, [definition, flush])
 
-  const change = useCallback((next: WorkflowDefinition) => {
-    setHistory((current) => apply(current, next))
-    setStatus('pending')
-  }, [])
+  const change = useCallback(
+    (next: WorkflowDefinition) => {
+      if (!canEdit) return
+      setHistory((current) => apply(current, next))
+      setStatus('pending')
+    },
+    [canEdit],
+  )
   const step = useCallback((move: (history: History) => History) => {
     setHistory(move)
     setStatus('pending')
@@ -194,6 +202,7 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
         const input = definition.inputs.find((item) => `/${item.name}` === path)
         return `${t('kind.start')} · ${input?.label || field}`
       }
+      if (node === 'item') return field ? `${t('settings.item')} · ${field}` : t('settings.item')
       return field ? `${titleOf(node).title} · ${field}` : titleOf(node).title
     },
     [definition, t, titleOf],
@@ -253,7 +262,11 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
   const selected = definition.nodes.find((node) => node.id === selectedId) ?? null
   const agentCount = new Set(
     definition.nodes.flatMap((node) =>
-      node.type === 'agent' && node.agent_id ? [node.agent_id] : [],
+      node.type === 'agent' || node.type === 'for_each'
+        ? [node.agent_id]
+        : node.type === 'parallel'
+          ? node.branches.map((branch) => branch.agent_id)
+          : [],
     ),
   ).size
   const dirty = status !== 'saved'
@@ -330,49 +343,67 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
             {t('editor.reuse', { count: agentCount })}
           </p>
         </div>
-        <SaveBadge status={status} onReload={onReload} />
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t('editor.undo')}
-          disabled={history.past.length === 0}
-          onClick={() => step(undo)}
-        >
-          <Undo2Icon className="size-4" aria-hidden />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t('editor.redo')}
-          disabled={history.future.length === 0}
-          onClick={() => step(redo)}
-        >
-          <Redo2Icon className="size-4" aria-hidden />
-        </Button>
-        <Button variant="outline" size="sm" onClick={openAddForSelection}>
-          <PlusIcon className="size-4" aria-hidden />
-          <span title={t('editor.addNodeShortcut')}>{t('editor.addNode')}</span>
-        </Button>
-        <Button
-          variant={showContract ? 'secondary' : 'ghost'}
-          size="sm"
-          aria-pressed={showContract}
-          onClick={() => setShowContract((value) => !value)}
-        >
-          <TableIcon className="size-4" aria-hidden />
-          {t('editor.contract')}
-        </Button>
-        <Badge variant={blocked ? 'destructive' : 'outline'}>
-          {blocked ? t('editor.issues', { count: issueList.length }) : t('editor.noIssues')}
-        </Badge>
-        <Button
-          size="sm"
-          disabled={dirty || blocked || publish.isPending}
-          title={blocked ? t('editor.publishBlocked', { count: issueList.length }) : undefined}
-          onClick={onPublish}
-        >
-          {publish.isPending ? t('editor.publishing') : t('editor.publish')}
-        </Button>
+        {canEdit ? (
+          <SaveBadge status={status} onReload={onReload} />
+        ) : (
+          <span className="moldy-status-surface moldy-status-info rounded-full px-2 py-0.5 text-xs">
+            {t('sharing.runOnly')}
+          </span>
+        )}
+        {canShare ? (
+          <ResourceShareButton
+            resourceType="workflow"
+            resourceId={detail.id}
+            resourceName={detail.name}
+            myPermissions={detail.my_permissions}
+          />
+        ) : null}
+        {canEdit ? (
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t('editor.undo')}
+              disabled={history.past.length === 0}
+              onClick={() => step(undo)}
+            >
+              <Undo2Icon className="size-4" aria-hidden />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t('editor.redo')}
+              disabled={history.future.length === 0}
+              onClick={() => step(redo)}
+            >
+              <Redo2Icon className="size-4" aria-hidden />
+            </Button>
+            <Button variant="outline" size="sm" onClick={openAddForSelection}>
+              <PlusIcon className="size-4" aria-hidden />
+              <span title={t('editor.addNodeShortcut')}>{t('editor.addNode')}</span>
+            </Button>
+            <Button
+              variant={showContract ? 'secondary' : 'ghost'}
+              size="sm"
+              aria-pressed={showContract}
+              onClick={() => setShowContract((value) => !value)}
+            >
+              <TableIcon className="size-4" aria-hidden />
+              {t('editor.contract')}
+            </Button>
+            <Badge variant={blocked ? 'destructive' : 'outline'}>
+              {blocked ? t('editor.issues', { count: issueList.length }) : t('editor.noIssues')}
+            </Badge>
+            <Button
+              size="sm"
+              disabled={dirty || blocked || publish.isPending}
+              title={blocked ? t('editor.publishBlocked', { count: issueList.length }) : undefined}
+              onClick={onPublish}
+            >
+              {publish.isPending ? t('editor.publishing') : t('editor.publish')}
+            </Button>
+          </>
+        ) : null}
         <Button
           size="sm"
           variant="outline"
@@ -484,7 +515,7 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
             <AiEditPanel
               workflowId={detail.id}
               revision={revision}
-              canSend={status === 'saved'}
+              canSend={canEdit && status === 'saved'}
               proposal={proposal}
               onProposal={onProposal}
               onReview={() =>
@@ -496,6 +527,8 @@ function Editor({ detail, onReload }: { detail: WorkflowDetail; onReload: () => 
               {selected ? (
                 <NodeSettingsPanel
                   key={selected.id}
+                  workflowId={detail.id}
+                  canShare={canShare}
                   definition={definition}
                   node={selected}
                   labelOf={labelOf}

@@ -11,6 +11,10 @@ An agent step whose result is unknown (3.5: accepted, never stored) asks the run
 same way (W4): approving runs the step again in a fresh conversation (the runner checked
 the earlier one did nothing that must not repeat), rejecting or letting it expire ends the
 run as failed. The step is never run again without that answer.
+
+An ``ask`` node (workflow-nodes-plan N5) asks the runner a question the same way: the only
+decision is ``approve`` with the written answer as its message (the ``answered`` branch);
+expiry takes the ``timeout`` branch.
 """
 
 from __future__ import annotations
@@ -28,19 +32,57 @@ from app.authz.org_context import OrgContext
 from app.jobs.service import EnqueueRequest, enqueue
 from app.models.approval_request import ApprovalRequest
 from app.models.workflow import Workflow, WorkflowRun, WorkflowStepRun
-from app.workflows.definition import ApprovalNode
+from app.workflows.definition import ApprovalNode, AskNode
 from app.workflows.values import render
 
 BUSINESS: Final = "business"
 ACTION_NAME: Final = "workflow_approval"
 UNKNOWN_ACTION: Final = "workflow_unknown_check"
+ASK_ACTION: Final = "workflow_ask"
 DECISIONS: Final = ("approve", "reject")
+MAX_ANSWER: Final = 2_000  # the inbox decision message limit
+
+
+class AnswerRequired(ValueError):
+    """An ``ask`` request decided without a written answer."""
+
+
 # Long enough to look at the conversation; unanswered, the run ends as failed.
 UNKNOWN_CHECK_MINUTES: Final = 7 * 24 * 60
 
 
 def _interrupt_id(step: WorkflowStepRun) -> str:
     return f"workflow:{step.id}"
+
+
+async def may_run(workflow: Workflow, user_id: uuid.UUID) -> bool:
+    """Whether ``user_id`` may run the workflow (a designated approver must, plan 3.4)."""
+    from app.authz.conversation_agent_checks import current_authz
+    from app.authz.principal import Principal
+
+    if user_id == workflow.user_id:
+        return True
+    authz = current_authz()
+    if not authz.enforces("workflow"):
+        return False  # legacy: only the owner can see the workflow
+    context = OrgContext(org_id=workflow.org_id, tenant_id=workflow.tenant_id, user_id=user_id)
+    return await authz.check(Principal.for_user(context), "can_run", f"workflow:{workflow.id}")
+
+
+async def _decider(
+    db: AsyncSession, run: WorkflowRun, node: ApprovalNode
+) -> tuple[uuid.UUID, str | None]:
+    """The approver; the runner instead (with the reason) when the named one lost access."""
+    approver = node.approver
+    if approver is None or approver.kind == "runner":
+        return run.user_id, None
+    workflow = await db.get(Workflow, run.workflow_id)
+    if workflow is None:
+        return run.user_id, "workflow_gone"
+    target = workflow.user_id if approver.kind == "owner" else uuid.UUID(str(approver.user_id))
+    if target == run.user_id or await may_run(workflow, target):
+        return target, None
+    return run.user_id, "approver_no_access"
 
 
 async def request(
@@ -52,9 +94,40 @@ async def request(
 ) -> ApprovalRequest:
     title = render(node.title, values)[:500]
     body = render(node.body, values)[:4000]
-    args = {"title": title, "body": body, "node_id": node.id}
+    decider, fallback = await _decider(db, run, node)
+    args: dict[str, Any] = {"title": title, "body": body, "node_id": node.id}
+    if fallback is not None:
+        args["approver_fallback"] = fallback
     return await _business_request(
-        db, run, step, ACTION_NAME, args, _interrupt_id(step), node.timeout_minutes or 1440
+        db,
+        run,
+        step,
+        ACTION_NAME,
+        args,
+        _interrupt_id(step),
+        node.timeout_minutes or 1440,
+        decider=decider,
+    )
+
+
+async def request_ask(
+    db: AsyncSession,
+    run: WorkflowRun,
+    step: WorkflowStepRun,
+    node: AskNode,
+    values: dict[str, Any],
+) -> ApprovalRequest:
+    question = render(node.question, values)[:4000]
+    args = {"title": (node.label or "질문")[:500], "body": question, "node_id": node.id}
+    return await _business_request(
+        db,
+        run,
+        step,
+        ASK_ACTION,
+        args,
+        _interrupt_id(step),
+        node.timeout_minutes or 1440,
+        decisions=("approve",),
     )
 
 
@@ -86,13 +159,16 @@ async def _business_request(
     args: dict[str, Any],
     interrupt_id: str,
     minutes: int,
+    *,
+    decisions: tuple[str, ...] = DECISIONS,
+    decider: uuid.UUID | None = None,
 ) -> ApprovalRequest:
     workflow = await db.get(Workflow, run.workflow_id)
     actions = [
         {
             "name": name,
             "args": args,
-            "allowed_decisions": list(DECISIONS),
+            "allowed_decisions": list(decisions),
             "description": args["title"],
         }
     ]
@@ -111,7 +187,8 @@ async def _business_request(
         source="workflow",
         subject_user_id=run.user_id,
         requester_user_id=run.user_id,
-        decider_user_id=run.user_id,
+        # The runner unless the approval node names someone else (plan 3.4).
+        decider_user_id=decider or run.user_id,
         actions=actions,
         args_digest=service.digest(actions),
         expires_at=service.now() + timedelta(minutes=minutes),
@@ -147,20 +224,26 @@ async def settle(
     run = await db.get(WorkflowRun, row.workflow_run_id, with_for_update=True)
     if step is None or run is None:
         return
-    if row.actions and row.actions[0].get("name") == UNKNOWN_ACTION:
+    action = row.actions[0].get("name") if row.actions else None
+    if action == UNKNOWN_ACTION:
         await _settle_unknown(db, row, run, step, approved=decision == "approve")
         return
     if step.status != "waiting":
         return
     approved = decision == "approve"
+    if action == ASK_ACTION:
+        answered = approved and row.status != "expired"
+        step.branch = "answered" if answered else "timeout"
+        step.output = {"answer": comment if answered else None}
+    else:
+        step.branch = "approved" if approved else "rejected"
+        step.output = {
+            "decision": "approved"
+            if approved
+            else ("expired" if row.status == "expired" else "rejected"),
+            "comment": comment,
+        }
     step.status = "completed"
-    step.branch = "approved" if approved else "rejected"
-    step.output = {
-        "decision": "approved"
-        if approved
-        else ("expired" if row.status == "expired" else "rejected"),
-        "comment": comment,
-    }
     step.finished_at = service.now().replace(tzinfo=None)
     if run.status == "waiting":
         run.status = "running"
@@ -196,6 +279,12 @@ async def _settle_unknown(
     step.status, step.output, step.error_code, step.error_message = "queued", None, None, None
     step.conversation_id = step.conversation_run_id = step.finished_at = None
     step.started_at = service.now().replace(tzinfo=None)
+    if step.parent_step_id is not None:
+        # A child of a for_each/parallel step: its parent runs the rest of its children.
+        parent = await db.get(WorkflowStepRun, step.parent_step_id, with_for_update=True)
+        if parent is not None and parent.status == "unknown":
+            parent.status, parent.error_code, parent.error_message = "running", None, None
+            parent.finished_at = None
     run.status, run.error_code, run.error_message = "running", None, None
     await _resume(db, run, row)
     await db.flush()
@@ -210,8 +299,13 @@ async def decide(
     actor_id: uuid.UUID,
 ) -> ApprovalRequest:
     """The runner's answer (inbox). ``service.ApprovalStale`` when already decided."""
-    if decision not in DECISIONS:
+    allowed = (row.actions[0].get("allowed_decisions") if row.actions else None) or DECISIONS
+    if decision not in DECISIONS or decision not in allowed:
         raise ValueError(decision)
+    if row.actions and row.actions[0].get("name") == ASK_ACTION:
+        comment = (comment or "").strip()[:MAX_ANSWER]
+        if not comment:
+            raise AnswerRequired("an answer is required")
     await service.claim_business(db, row, decision=decision, channel="inbox", actor_id=actor_id)
     await settle(db, row, decision=decision, comment=comment)
     return row
@@ -244,6 +338,8 @@ async def pending_for_run(db: AsyncSession, run_id: uuid.UUID) -> list[ApprovalR
 
 
 __all__ = [
+    "ASK_ACTION",
+    "AnswerRequired",
     "BUSINESS",
     "UNKNOWN_ACTION",
     "cancel_for_run",
@@ -251,6 +347,7 @@ __all__ = [
     "expire",
     "pending_for_run",
     "request",
+    "request_ask",
     "request_unknown_check",
     "settle",
 ]

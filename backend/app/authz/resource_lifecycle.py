@@ -50,8 +50,9 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.skill import Skill
 from app.models.tool import Tool
+from app.models.workflow import Workflow
 
-LifecycleRow = Agent | Skill | Tool | McpServer | Credential | MarketplaceItem | McpTool
+LifecycleRow = Agent | Skill | Tool | McpServer | Credential | MarketplaceItem | McpTool | Workflow
 _RESOURCE_TYPES: dict[type, str] = {
     Agent: "agent",
     Skill: "skill",
@@ -60,6 +61,7 @@ _RESOURCE_TYPES: dict[type, str] = {
     Credential: "credential",
     MarketplaceItem: "marketplace_item",
     McpTool: "mcp_tool",
+    Workflow: "workflow",
 }
 
 
@@ -99,6 +101,8 @@ def source_row(row: LifecycleRow) -> rows.Row:
             )
         case McpTool():
             return rows.McpToolRow(row.id, row.server_id)
+        case Workflow():
+            return rows.ResourceRow("workflow", row.id, row.org_id, row.user_id)
 
 
 def _active(mode: AuthzMode | None) -> bool:

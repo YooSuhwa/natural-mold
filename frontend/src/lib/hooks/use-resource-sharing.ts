@@ -9,6 +9,7 @@ import { grantQueryKeys } from '@/lib/query-keys/grants'
 import { mcpServerQueryKeys } from '@/lib/query-keys/mcp-servers'
 import { skillQueryKeys } from '@/lib/query-keys/skills'
 import { toolQueryKeys } from '@/lib/query-keys/tools'
+import { workflowQueryKeys } from '@/lib/query-keys/workflows'
 import type { GrantCreate, OwnershipTransfer, ShareResourceType } from '@/lib/types/grant'
 
 /** Resource list roots refreshed after any sharing change (owner badges, menus). */
@@ -18,6 +19,7 @@ const RESOURCE_ROOTS: Record<ShareResourceType, readonly string[]> = {
   tool: toolQueryKeys.all,
   mcp_server: mcpServerQueryKeys.all,
   credential: credentialQueryKeys.all,
+  workflow: workflowQueryKeys.all,
 }
 
 export function useResourceAccess(type: ShareResourceType, id: string, enabled = true) {

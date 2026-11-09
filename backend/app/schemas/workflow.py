@@ -48,6 +48,9 @@ class WorkflowSummary(BaseModel):
 
 class WorkflowDetail(WorkflowSummary):
     draft_definition: dict[str, Any]
+    # Sharing (starts plan 3.3): what the caller may do here, and whether it owns it.
+    my_permissions: list[str] = Field(default_factory=list)
+    is_owner: bool = True
 
 
 class WorkflowIssue(BaseModel):
@@ -95,11 +98,16 @@ class WorkflowRunSummary(BaseModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    # Started by a chat's workflow tool (workflow-tool-plan 3.4): the conversation it came from.
+    parent_conversation_id: uuid.UUID | None = None
+    # manual | chat_tool | schedule | webhook (workflow-starts-sharing-plan 3.1-3.2).
+    started_from: str = "manual"
 
 
 class WorkflowStepRunOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    id: uuid.UUID
     position: int
     node_id: str
     node_type: str
@@ -113,9 +121,15 @@ class WorkflowStepRunOut(BaseModel):
     conversation_id: uuid.UUID | None
     started_at: datetime | None
     finished_at: datetime | None
+    # A child row (workflow-nodes-plan 3.1): one agent of a for_each/parallel step, keyed by
+    # item index or branch name. The run's chain is the rows without a parent.
+    parent_step_id: uuid.UUID | None = None
+    branch_key: str | None = None
 
 
 class WorkflowRunDetail(WorkflowRunSummary):
+    # The agent of the conversation that started it (the run page links back to the chat).
+    parent_agent_id: uuid.UUID | None = None
     input: dict[str, Any]
     output: dict[str, Any] | None
     steps: list[WorkflowStepRunOut]
@@ -160,3 +174,95 @@ class WorkflowAssistResponse(BaseModel):
     definition: dict[str, Any] | None = None
     issues: list[WorkflowIssue] = []
     base_revision: int
+
+
+class AgentWorkflowToolsUpdate(BaseModel):
+    """The workflows an agent may call as chat tools, in order (workflow-tool-plan 3.1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workflow_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)
+
+
+class AgentWorkflowTool(BaseModel):
+    workflow_id: uuid.UUID
+    name: str
+    description: str | None = None
+    published_version_no: int | None = None
+    usable: bool
+    broken_reason: str | None = None
+
+
+# --- schedules and webhooks (workflow-starts-sharing-plan 3.1-3.2) ---------------------
+
+
+class WorkflowScheduleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    kind: Literal["interval", "cron", "once"]
+    config: dict[str, Any]
+    timezone: str = Field(default="Asia/Seoul", max_length=64)
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowScheduleUpdate(BaseModel):
+    schedule: WorkflowScheduleIn | None = None
+    status: Literal["active", "paused"] | None = None
+
+
+class WorkflowScheduleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workflow_id: uuid.UUID
+    name: str
+    kind: str
+    config: dict[str, Any]
+    timezone: str
+    inputs: dict[str, Any]
+    status: str
+    next_run_at: datetime | None
+    last_run_at: datetime | None
+    last_run_id: uuid.UUID | None
+    failure_count: int
+    last_error: str | None
+    created_at: datetime
+
+
+class WorkflowWebhookIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class WorkflowWebhookUpdate(BaseModel):
+    status: Literal["active", "disabled"]
+
+
+class WorkflowWebhookOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workflow_id: uuid.UUID
+    name: str
+    public_id: str
+    token_hint: str
+    status: str
+    last_used_at: datetime | None
+    created_at: datetime
+
+
+class WorkflowWebhookCreated(WorkflowWebhookOut):
+    # Shown once: only its hash is kept.
+    token: str
+
+
+class WorkflowHookStart(BaseModel):
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowHookRun(BaseModel):
+    run_id: uuid.UUID
+    status: str
+    output: dict[str, Any] | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    finished_at: datetime | None = None

@@ -12,10 +12,13 @@ A step whose run was accepted but whose result was never stored is **not run aga
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import shutil
 import uuid
-from dataclasses import dataclass
-from typing import Any, Final
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Final, Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +31,7 @@ from app.authz.org_context import OrgContext
 from app.exceptions import AppError
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.message_attachment import MessageAttachment
 from app.models.workflow import WorkflowStepRun
 from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import chat_service
@@ -45,7 +49,7 @@ from app.services.conversation_runtime_policy import (
     ensure_conversation_runtime_policy,
     snapshot_from_conversation,
 )
-from app.workflows.definition import AgentNode
+from app.storage.paths import ForeignTenantPathError, upload_file_path
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +70,33 @@ class PreparedStep:
     conversation_id: uuid.UUID
     config: Any
     prompt: str
+    # The input messages (the human message carries the attached files' references).
+    messages: list[Any] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class StepAgent:
+    """What one agent execution of a step runs: an agent node, or a child row of a
+    ``for_each``/``parallel`` step (workflow-nodes-plan 3.1)."""
+
+    agent_id: str
+    output_schema: dict[str, Any]
+    # ``wait``: a tool that needs approval waits in the inbox (agent nodes, W2c). Child rows
+    # use ``block`` (the call is refused): their parent has no single resume point.
+    unattended: Literal["wait", "block"] = "wait"
+    # ``file`` inputs the prompt references: ``[{"id", "filename"}]`` (N8).
+    files: tuple[dict[str, str], ...] = ()
+
+
+def record(step: WorkflowStepRun, outcome: StepOutcome) -> None:
+    """Store an outcome on its step row."""
+    from datetime import UTC, datetime
+
+    step.status = outcome.status
+    step.output = outcome.output
+    step.error_code = outcome.error_code
+    step.error_message = outcome.error_message
+    step.finished_at = datetime.now(UTC).replace(tzinfo=None)
 
 
 async def recover(db: AsyncSession, step: WorkflowStepRun) -> StepOutcome | None:
@@ -94,7 +125,7 @@ async def prepare(
     db: AsyncSession,
     context: OrgContext,
     step: WorkflowStepRun,
-    node: AgentNode,
+    node: StepAgent,
     *,
     prompt: str,
     title: str,
@@ -114,7 +145,8 @@ async def prepare(
         conversation = await db.get(Conversation, step.conversation_id)
         if conversation is None:
             return StepOutcome("failed", error_code="conversation_gone")
-        agent = await chat_service.get_agent_with_tools(db, agent_id, context)
+        # The runner's own agent, or one shared to run (the same load as a chat run, F-06).
+        agent = await chat_service.get_run_agent_with_tools(db, agent_id, context)
         if agent is None:
             return StepOutcome("failed", error_code="agent_unavailable")
         runtime_policy = snapshot_from_conversation(conversation)
@@ -131,7 +163,8 @@ async def prepare(
         )
         cfg.output_schema = node.output_schema
         # A tool call that needs approval waits for the runner in the inbox (W2c).
-        cfg.unattended_approval = "wait"
+        cfg.unattended_approval = node.unattended
+        attachment_ids = await _attach_files(db, context, step, conversation.id, node.files)
         accepted = await accept_owned_execution(
             db,
             OwnedExecutionRequest(
@@ -143,10 +176,81 @@ async def prepare(
                 envelope=ExecutionEnvelopeRef("workflow", step.id),
             ),
         )
+        messages: list[Any] = [{"role": "user", "content": prompt}]
+        if attachment_ids:
+            from app.services.chat.attachment_inputs import prepare_attachment_inputs
+
+            messages, inputs = await prepare_attachment_inputs(
+                db,
+                run_id=accepted.run_id,
+                conversation_id=conversation.id,
+                context=context,
+                model_id=str(agent.model_id) if agent.model_id else None,
+                attachment_ids=attachment_ids,
+                input_payload=messages,
+                tag_input=True,
+            )
+            cfg.attachment_inputs = inputs
     except AppError as exc:
         code = "emergency_stop" if exc.code == STOPPED_CODE else exc.code.lower()
         return StepOutcome("failed", error_code=code[:80], error_message=exc.message)
-    return PreparedStep(accepted.run_id, conversation.id, cfg, prompt)
+    except FileNotFoundError:
+        return StepOutcome(
+            "failed", error_code="file_gone", error_message="입력 파일을 찾을 수 없습니다"
+        )
+    return PreparedStep(accepted.run_id, conversation.id, cfg, prompt, messages)
+
+
+async def _attach_files(
+    db: AsyncSession,
+    context: OrgContext,
+    step: WorkflowStepRun,
+    conversation_id: uuid.UUID,
+    files: tuple[dict[str, str], ...],
+) -> list[uuid.UUID]:
+    """Copy each input file into the step's conversation as its own attachment.
+
+    A copy, not a shared row: an upload belongs to one conversation and deleting that
+    conversation deletes its blob, so steps never share one. ``message_id`` marks the
+    copy as sent (the never-sent upload sweep skips it).
+    """
+    ids: list[uuid.UUID] = []
+    for item in files:
+        source = await db.get(MessageAttachment, uuid.UUID(item["id"]))
+        if source is None or source.user_id != context.user_id:
+            raise FileNotFoundError(item["id"])
+        try:
+            origin = upload_file_path(source.storage_path, source.tenant_id)
+        except ForeignTenantPathError as exc:
+            raise FileNotFoundError(item["id"]) from exc
+        copy_id = uuid.uuid4()
+        target = origin.with_name(f"{copy_id}{origin.suffix}")
+        await asyncio.to_thread(_copy_file, origin, target)
+        db.add(
+            MessageAttachment(
+                id=copy_id,
+                user_id=source.user_id,
+                org_id=source.org_id,
+                tenant_id=source.tenant_id,
+                conversation_id=conversation_id,
+                message_id=f"workflow-step:{step.id}",
+                filename=source.filename,
+                mime_type=source.mime_type,
+                size_bytes=source.size_bytes,
+                storage_path=str(target),
+                url=f"/api/uploads/{copy_id}",
+            )
+        )
+        ids.append(copy_id)
+    if ids:
+        await db.flush()
+    return ids
+
+
+def _copy_file(origin: Path, target: Path) -> None:
+    if not origin.is_file():
+        raise FileNotFoundError(str(origin))
+    shutil.copyfile(origin, target)
 
 
 async def execute(
@@ -160,7 +264,7 @@ async def execute(
     async def operation() -> Any:
         result = await execute_agent_invoke_structured(
             prepared.config,
-            [{"role": "user", "content": prepared.prompt}],
+            prepared.messages or [{"role": "user", "content": prepared.prompt}],
             run_id=str(prepared.run_id),
             moldy_source="workflow",
         )
@@ -200,4 +304,12 @@ async def execute(
     )
 
 
-__all__ = ["PreparedStep", "StepOutcome", "execute", "prepare", "recover"]
+__all__ = [
+    "PreparedStep",
+    "StepAgent",
+    "StepOutcome",
+    "execute",
+    "prepare",
+    "record",
+    "recover",
+]

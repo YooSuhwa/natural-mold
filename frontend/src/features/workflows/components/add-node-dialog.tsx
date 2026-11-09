@@ -7,7 +7,7 @@ import { DialogShell } from '@/components/shared/dialog-shell'
 import { Input } from '@/components/ui/input'
 import { useAgents } from '@/lib/hooks/use-agents'
 
-import type { AddableType } from '../lib/editor-commands'
+import { AGENT_KINDS, type AddableType } from '../lib/editor-commands'
 import { ADDABLE_KINDS, NODE_ICONS } from '../lib/node-catalog'
 
 export type AddChoice = { type: AddableType; agentId?: string; label?: string }
@@ -51,6 +51,8 @@ function AddNodeDialogInner({
     onOpenChange(false)
   }
   const AgentIcon = NODE_ICONS.agent
+  // Kinds that run an agent start on the first agent the person can use (changed in settings).
+  const firstAgent = agents.data?.[0]
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="md">
       <DialogShell.Header title={t('addDialog.title')} />
@@ -94,12 +96,16 @@ function AddNodeDialogInner({
           ) : null}
           {kinds.map((kind) => {
             const Icon = NODE_ICONS[kind]
+            const needsAgent = AGENT_KINDS.includes(kind)
             return (
               <button
                 key={kind}
                 type="button"
-                className="hover:bg-accent focus-visible:bg-accent disabled:cursor-default flex items-center gap-3 rounded-md px-2 py-2 text-left"
-                onClick={() => choose({ type: kind })}
+                disabled={needsAgent && !firstAgent}
+                className="hover:bg-accent focus-visible:bg-accent disabled:cursor-default disabled:opacity-50 flex items-center gap-3 rounded-md px-2 py-2 text-left"
+                onClick={() =>
+                  choose(needsAgent ? { type: kind, agentId: firstAgent?.id } : { type: kind })
+                }
               >
                 <Icon className="size-4 shrink-0" aria-hidden />
                 <span className="min-w-0">

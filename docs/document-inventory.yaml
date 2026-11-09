@@ -392,7 +392,19 @@ documents:
     lifecycle: active-plan
     status: active
     index: active-plan
+  - path: docs/exec-plans/active/workflow-nodes-plan.md
+    lifecycle: active-plan
+    status: active
+    index: active-plan
   - path: docs/exec-plans/active/workflow-plan.md
+    lifecycle: active-plan
+    status: active
+    index: active-plan
+  - path: docs/exec-plans/active/workflow-starts-sharing-plan.md
+    lifecycle: active-plan
+    status: active
+    index: active-plan
+  - path: docs/exec-plans/active/workflow-tool-plan.md
     lifecycle: active-plan
     status: active
     index: active-plan

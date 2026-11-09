@@ -125,8 +125,9 @@ async def _views(
         target, link = None, row.link
         if row.target_type is not None:
             # H-06 usage warnings name the recipient's own limit, not a shared resource;
-            # approval notices go only to the request's own decider (17.2).
-            own = row.target_type in {"usage_limit", "approval_request"}
+            # approval notices go only to the request's own decider (17.2); a workflow's
+            # notify step writes only to the run's own runner (workflow-nodes-plan N6).
+            own = row.target_type in {"usage_limit", "approval_request", "workflow_run"}
             key = f"{row.target_type}:{row.target_id}"
             disclosed = row.kind == "grant.received" and key in shared
             visible = own or key in kept or disclosed

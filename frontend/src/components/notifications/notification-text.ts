@@ -60,6 +60,9 @@ export function notificationText(item: NotificationView, t: Translate): string {
       return t('kinds.emergencyStopReleased', values)
     case 'memory.consolidation_stopped':
       return t('kinds.memoryConsolidationStopped', values)
+    case 'workflow.notify':
+      // The workflow's own notify step: its rendered title (workflow-nodes-plan N6).
+      return t('kinds.workflowNotify', { ...values, title: field(item, 'title') ?? '' })
     case 'mcp_tool.review_needed':
       return t('kinds.mcpToolReviewNeeded', values)
     case 'connection.owner_needed':

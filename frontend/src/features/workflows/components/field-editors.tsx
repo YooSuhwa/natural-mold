@@ -35,7 +35,7 @@ type CommitInputProps = Omit<
 
 /** A text input that reports once, on blur (one edit = one undo step); a new value from
  * outside (undo, another field) remounts it. */
-function CommitInput(props: CommitInputProps) {
+export function CommitInput(props: CommitInputProps) {
   return <CommitInputInner key={props.value} {...props} />
 }
 
@@ -159,6 +159,44 @@ export function OutputSchemaEditor({
         {t('addField')}
       </Button>
     </div>
+  )
+}
+
+/** One earlier value (node + path) from the values this node may use. */
+export function ValuePicker({
+  source,
+  path,
+  values,
+  labelOf,
+  label,
+  onChange,
+}: {
+  source: string
+  path: string
+  values: readonly UpstreamValue[]
+  labelOf: LabelOf
+  label: string
+  onChange: (source: string, path: string) => void
+}) {
+  const t = useTranslations('workflows.settings')
+  const known = values.some((item) => item.node === source && item.path === path)
+  return (
+    <select
+      className={SELECT_CLASS}
+      value={`${source}|${path}`}
+      aria-label={label}
+      onChange={(event) => {
+        const [nextSource, nextPath] = event.target.value.split('|')
+        onChange(nextSource, nextPath)
+      }}
+    >
+      {known ? null : <option value={`${source}|${path}`}>{t('pickValue')}</option>}
+      {values.map((item) => (
+        <option key={`${item.node}${item.path}`} value={`${item.node}|${item.path}`}>
+          {labelOf(item.node, item.path)}
+        </option>
+      ))}
+    </select>
   )
 }
 
@@ -328,7 +366,7 @@ export function InputsEditor({
                 })
               }
             >
-              {(['string', 'number', 'integer', 'boolean'] as const).map((type) => (
+              {(['string', 'number', 'integer', 'boolean', 'file'] as const).map((type) => (
                 <option key={type} value={type}>
                   {t(`type.${type}`)}
                 </option>

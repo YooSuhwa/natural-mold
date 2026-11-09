@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import uuid
 from collections.abc import Callable, Sequence
 from copy import deepcopy
 from typing import Any
@@ -749,7 +750,9 @@ def _scripted_value(schema: dict[str, Any], yes: bool) -> Any:
     if kind in ("integer", "number"):
         return 1
     if kind == "array":
-        return []
+        # Two items, so a workflow's for_each step runs more than once (workflow-nodes-plan).
+        item = schema.get("items") or {}
+        return [_scripted_value(item, yes), _scripted_value(item, yes)]
     if kind == "object":
         return {}
     return "E2E 응답"
@@ -764,6 +767,10 @@ def workflow_output_args(properties: dict[str, Any], human_text: str) -> dict[st
 # empty draft it builds start → research agent → output from the first offered agent; the
 # ask marker makes it ask back instead.
 WORKFLOW_EDIT_TOOL = "WorkflowEdit"
+# Workflow chat tools (workflow-tool-plan): with this marker the scripted chat model calls the
+# first bound ``workflow_<id>`` tool with the message as its first argument, then answers with
+# the tool's result.
+WORKFLOW_CALL_MARKER = "E2E_CALL_WORKFLOW"
 WORKFLOW_ASK_MARKER = "E2E_WORKFLOW_ASK"
 
 
@@ -827,6 +834,7 @@ class E2EScriptedChatModel(BaseChatModel):
     slow_stream_delay_seconds: float = 0.75
     _bound_tool_names: tuple[str, ...] = PrivateAttr(default_factory=tuple)
     _workflow_output_args: dict[str, Any] | None = PrivateAttr(default=None)
+    _workflow_chat_tool: tuple[str, str] | None = PrivateAttr(default=None)
 
     @property
     def _llm_type(self) -> str:
@@ -846,6 +854,11 @@ class E2EScriptedChatModel(BaseChatModel):
                 names.append(tool.name)
                 if tool.name == WORKFLOW_OUTPUT_TOOL:
                     clone._workflow_output_args = dict(tool.args)  # noqa: SLF001
+                if tool.name.startswith("workflow_") and clone._workflow_chat_tool is None:  # noqa: SLF001
+                    schema = tool.tool_call_schema
+                    fields = list(getattr(schema, "model_fields", {}) or {})
+                    if fields:
+                        clone._workflow_chat_tool = (tool.name, fields[0])  # noqa: SLF001
             elif isinstance(tool, dict):
                 if isinstance(tool.get("name"), str):
                     names.append(tool["name"])
@@ -871,6 +884,19 @@ class E2EScriptedChatModel(BaseChatModel):
         if skill_eval_response is not None:
             return ChatResult(generations=[ChatGeneration(message=skill_eval_response)])
         human_text = self._latest_human_text(messages)
+        if self._workflow_chat_tool is not None and WORKFLOW_CALL_MARKER in human_text:
+            name, argument = self._workflow_chat_tool
+            last = messages[-1] if messages else None
+            if isinstance(last, ToolMessage) and last.name == name:
+                answer = AIMessage(content=f"워크플로 결과를 받았어요: {_message_text(last)[:300]}")
+                return ChatResult(generations=[ChatGeneration(message=answer)])
+            call = {
+                "name": name,
+                "args": {argument: human_text},
+                "id": f"e2e-wf-{uuid.uuid4().hex[:8]}",
+            }
+            message = AIMessage(content="", tool_calls=[call])
+            return ChatResult(generations=[ChatGeneration(message=message)])
         if WORKFLOW_EDIT_TOOL in self._bound_tool_names:
             args = workflow_edit_args(human_text)
             call = {"name": WORKFLOW_EDIT_TOOL, "args": args, "id": "e2e-workflow-edit"}

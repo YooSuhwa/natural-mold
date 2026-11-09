@@ -2,7 +2,13 @@
  * Resource sharing types — mirror backend `app/schemas/grant.py` (plan 9.7, 10.1-10.2, 10.7).
  */
 
-export type ShareResourceType = 'agent' | 'skill' | 'tool' | 'mcp_server' | 'credential'
+export type ShareResourceType =
+  | 'agent'
+  | 'skill'
+  | 'tool'
+  | 'mcp_server'
+  | 'credential'
+  | 'workflow'
 export type GrantPrincipalType = 'user' | 'group' | 'organization'
 export type ShareLevel = 'consumer' | 'viewer' | 'editor' | 'manager'
 export type AccessLevel = ShareLevel | 'owner' | 'governor'

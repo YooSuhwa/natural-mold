@@ -139,6 +139,12 @@ tuples:
   - { user: organization:sales, relation: allowed_org, object: credential:tenant-llm }
   - { user: organization:sales#member, relation: consumer, object: credential:tenant-llm }
   - { user: organization:acme#member, relation: consumer, object: credential:tenant-llm }
+  # 워크플로: bob 소유, dave 실행, carol 편집, 다른 조직 eve에게 잘못 기록된 실행 튜플
+  - { user: organization:acme, relation: org, object: workflow:intake }
+  - { user: user:bob, relation: owner, object: workflow:intake }
+  - { user: user:dave, relation: consumer, object: workflow:intake }
+  - { user: user:carol, relation: editor, object: workflow:intake }
+  - { user: user:eve, relation: consumer, object: workflow:intake }
 
 tests:
   - name: 조직 역할과 기능 권한
@@ -178,6 +184,20 @@ tests:
       - user: agent:hr-bot
         object: agent:policy-sub
         assertions: { can_run: true }
+  - name: 워크플로 공유 단계
+    check:
+      - user: user:dave
+        object: workflow:intake
+        assertions: { can_run: true, can_edit: false, can_share: false, can_delete: false }
+      - user: user:carol
+        object: workflow:intake
+        assertions: { can_run: true, can_edit: true, can_share: false, can_delete: false }
+      - user: user:bob
+        object: workflow:intake
+        assertions: { can_run: true, can_edit: true, can_share: true, can_delete: true }
+      - user: user:eve
+        object: workflow:intake
+        assertions: { can_run: false }
   - name: 기간 한정 실행 권한
     check:
       - user: user:carol

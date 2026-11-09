@@ -3330,6 +3330,110 @@
         ]
       }
     },
+    "/api/agents/{agent_id}/workflow-tools": {
+      "get": {
+        "description": "Published workflows this agent may call in chat (workflow-tool-plan 3.1).",
+        "operationId": "list_agent_workflow_tools_api_agents__agent_id__workflow_tools_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentWorkflowTool"
+                  },
+                  "title": "Response List Agent Workflow Tools Api Agents  Agent Id  Workflow Tools Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agent Workflow Tools",
+        "tags": [
+          "agents"
+        ]
+      },
+      "put": {
+        "description": "Replace them; each must be the person's published workflow (owners only, T6).",
+        "operationId": "set_agent_workflow_tools_api_agents__agent_id__workflow_tools_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentWorkflowToolsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentWorkflowTool"
+                  },
+                  "title": "Response Set Agent Workflow Tools Api Agents  Agent Id  Workflow Tools Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Agent Workflow Tools",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/api/approvals": {
       "get": {
         "operationId": "list_approvals_api_approvals_get",
@@ -17363,6 +17467,143 @@
         ]
       }
     },
+    "/api/resources/workflow/{resource_id}/access": {
+      "get": {
+        "operationId": "get_access_workflow_api_resources_workflow__resource_id__access_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Access Workflow",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
+    "/api/resources/workflow/{resource_id}/grants": {
+      "get": {
+        "operationId": "list_grants_workflow_api_resources_workflow__resource_id__grants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Grants Workflow",
+        "tags": [
+          "sharing"
+        ]
+      },
+      "post": {
+        "operationId": "create_grant_workflow_api_resources_workflow__resource_id__grants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Resource Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Grant Workflow",
+        "tags": [
+          "sharing"
+        ]
+      }
+    },
     "/api/shares/{share_token}": {
       "get": {
         "description": "Resolve a share token to a read-only conversation snapshot.\n\nThe full message list is included so the public page renders in a single\nround-trip (vs. fetching share + messages separately). For very long\nconversations a future revision may paginate.",
@@ -25358,6 +25599,61 @@
         ]
       }
     },
+    "/api/workflow-runs/by-tool-call": {
+      "get": {
+        "description": "The run a chat's workflow tool call started (the chat card, workflow-tool-plan 3.5).",
+        "operationId": "get_run_for_tool_call_api_workflow_runs_by_tool_call_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tool_call_id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Tool Call Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run For Tool Call",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
     "/api/workflow-runs/{run_id}": {
       "get": {
         "operationId": "get_run_api_workflow_runs__run_id__get",
@@ -25439,6 +25735,223 @@
           }
         },
         "summary": "Cancel Run",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflow-schedules/{schedule_id}": {
+      "delete": {
+        "operationId": "delete_schedule_api_workflow_schedules__schedule_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Schedule",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "patch": {
+        "operationId": "update_schedule_api_workflow_schedules__schedule_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Schedule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowScheduleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Schedule",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflow-webhooks/{webhook_id}": {
+      "delete": {
+        "operationId": "delete_webhook_api_workflow_webhooks__webhook_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Webhook Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Webhook",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "patch": {
+        "operationId": "update_webhook_api_workflow_webhooks__webhook_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Webhook Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowWebhookUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowWebhookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Webhook",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/workflow-webhooks/{webhook_id}/token": {
+      "post": {
+        "operationId": "rotate_webhook_token_api_workflow_webhooks__webhook_id__token_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhook_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Webhook Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowWebhookCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rotate Webhook Token",
         "tags": [
           "workflows"
         ]
@@ -25965,6 +26478,104 @@
         ]
       }
     },
+    "/api/workflows/{workflow_id}/schedules": {
+      "get": {
+        "operationId": "list_schedules_api_workflows__workflow_id__schedules_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowScheduleOut"
+                  },
+                  "title": "Response List Schedules Api Workflows  Workflow Id  Schedules Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Schedules",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "post": {
+        "operationId": "create_schedule_api_workflows__workflow_id__schedules_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowScheduleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Schedule",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
     "/api/workflows/{workflow_id}/versions": {
       "get": {
         "operationId": "list_versions_api_workflows__workflow_id__versions_get",
@@ -26064,6 +26675,104 @@
         ]
       }
     },
+    "/api/workflows/{workflow_id}/webhooks": {
+      "get": {
+        "operationId": "list_webhooks_api_workflows__workflow_id__webhooks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowWebhookOut"
+                  },
+                  "title": "Response List Webhooks Api Workflows  Workflow Id  Webhooks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Webhooks",
+        "tags": [
+          "workflows"
+        ]
+      },
+      "post": {
+        "operationId": "create_webhook_api_workflows__workflow_id__webhooks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowWebhookIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowWebhookCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Webhook",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
     "/auth/callback/{connection_id}": {
       "get": {
         "operationId": "sso_callback_auth_callback__connection_id__get",
@@ -26153,6 +26862,142 @@
         "summary": "Sso Callback",
         "tags": [
           "auth sso"
+        ]
+      }
+    },
+    "/hooks/workflows/{public_id}/runs": {
+      "post": {
+        "operationId": "hook_start_hooks_workflows__public_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowHookStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowHookRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hook Start",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/hooks/workflows/{public_id}/runs/{run_id}": {
+      "get": {
+        "operationId": "hook_read_hooks_workflows__public_id__runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowHookRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hook Read",
+        "tags": [
+          "workflows"
         ]
       }
     },
@@ -30541,6 +31386,80 @@
         }
       },
       "title": "AgentUpdate",
+      "type": "object"
+    },
+    "AgentWorkflowTool": {
+      "properties": {
+        "broken_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Broken Reason"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "published_version_no": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published Version No"
+        },
+        "usable": {
+          "title": "Usable",
+          "type": "boolean"
+        },
+        "workflow_id": {
+          "format": "uuid",
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "name",
+        "usable"
+      ],
+      "title": "AgentWorkflowTool",
+      "type": "object"
+    },
+    "AgentWorkflowToolsUpdate": {
+      "additionalProperties": false,
+      "description": "The workflows an agent may call as chat tools, in order (workflow-tool-plan 3.1).",
+      "properties": {
+        "workflow_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Workflow Ids",
+          "type": "array"
+        }
+      },
+      "title": "AgentWorkflowToolsUpdate",
       "type": "object"
     },
     "ApprovalAction": {
@@ -56761,6 +57680,18 @@
           "title": "Id",
           "type": "string"
         },
+        "is_owner": {
+          "default": true,
+          "title": "Is Owner",
+          "type": "boolean"
+        },
+        "my_permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "My Permissions",
+          "type": "array"
+        },
         "name": {
           "title": "Name",
           "type": "string"
@@ -56847,6 +57778,88 @@
         "revision"
       ],
       "title": "WorkflowDraftUpdate",
+      "type": "object"
+    },
+    "WorkflowHookRun": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Code"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error Message"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finished At"
+        },
+        "output": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Output"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "created_at"
+      ],
+      "title": "WorkflowHookRun",
+      "type": "object"
+    },
+    "WorkflowHookStart": {
+      "properties": {
+        "inputs": {
+          "additionalProperties": true,
+          "title": "Inputs",
+          "type": "object"
+        }
+      },
+      "title": "WorkflowHookStart",
       "type": "object"
     },
     "WorkflowIssue": {
@@ -56988,6 +58001,30 @@
           ],
           "title": "Output"
         },
+        "parent_agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Agent Id"
+        },
+        "parent_conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Conversation Id"
+        },
         "started_at": {
           "anyOf": [
             {
@@ -56999,6 +58036,11 @@
             }
           ],
           "title": "Started At"
+        },
+        "started_from": {
+          "default": "manual",
+          "title": "Started From",
+          "type": "string"
         },
         "status": {
           "title": "Status",
@@ -57120,6 +58162,18 @@
           "title": "Id",
           "type": "string"
         },
+        "parent_conversation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Conversation Id"
+        },
         "started_at": {
           "anyOf": [
             {
@@ -57131,6 +58185,11 @@
             }
           ],
           "title": "Started At"
+        },
+        "started_from": {
+          "default": "manual",
+          "title": "Started From",
+          "type": "string"
         },
         "status": {
           "title": "Status",
@@ -57173,6 +58232,193 @@
       "title": "WorkflowRunSummary",
       "type": "object"
     },
+    "WorkflowScheduleIn": {
+      "properties": {
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "title": "Inputs",
+          "type": "object"
+        },
+        "kind": {
+          "enum": [
+            "interval",
+            "cron",
+            "once"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "timezone": {
+          "default": "Asia/Seoul",
+          "maxLength": 64,
+          "title": "Timezone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "config"
+      ],
+      "title": "WorkflowScheduleIn",
+      "type": "object"
+    },
+    "WorkflowScheduleOut": {
+      "properties": {
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "failure_count": {
+          "title": "Failure Count",
+          "type": "integer"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "title": "Inputs",
+          "type": "object"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Error"
+        },
+        "last_run_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Run At"
+        },
+        "last_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Run Id"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "next_run_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Run At"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "timezone": {
+          "title": "Timezone",
+          "type": "string"
+        },
+        "workflow_id": {
+          "format": "uuid",
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "workflow_id",
+        "name",
+        "kind",
+        "config",
+        "timezone",
+        "inputs",
+        "status",
+        "next_run_at",
+        "last_run_at",
+        "last_run_id",
+        "failure_count",
+        "last_error",
+        "created_at"
+      ],
+      "title": "WorkflowScheduleOut",
+      "type": "object"
+    },
+    "WorkflowScheduleUpdate": {
+      "properties": {
+        "schedule": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/WorkflowScheduleIn"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "active",
+                "paused"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        }
+      },
+      "title": "WorkflowScheduleUpdate",
+      "type": "object"
+    },
     "WorkflowStepRunOut": {
       "properties": {
         "branch": {
@@ -57185,6 +58431,17 @@
             }
           ],
           "title": "Branch"
+        },
+        "branch_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Branch Key"
         },
         "conversation_id": {
           "anyOf": [
@@ -57232,6 +58489,11 @@
           ],
           "title": "Finished At"
         },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
         "node_id": {
           "title": "Node Id",
           "type": "string"
@@ -57251,6 +58513,18 @@
             }
           ],
           "title": "Output"
+        },
+        "parent_step_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Step Id"
         },
         "position": {
           "title": "Position",
@@ -57279,6 +58553,7 @@
         }
       },
       "required": [
+        "id",
         "position",
         "node_id",
         "node_type",
@@ -57451,6 +58726,161 @@
         "published_at"
       ],
       "title": "WorkflowVersionSummary",
+      "type": "object"
+    },
+    "WorkflowWebhookCreated": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "last_used_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Used At"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "public_id": {
+          "title": "Public Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "token_hint": {
+          "title": "Token Hint",
+          "type": "string"
+        },
+        "workflow_id": {
+          "format": "uuid",
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "workflow_id",
+        "name",
+        "public_id",
+        "token_hint",
+        "status",
+        "last_used_at",
+        "created_at",
+        "token"
+      ],
+      "title": "WorkflowWebhookCreated",
+      "type": "object"
+    },
+    "WorkflowWebhookIn": {
+      "properties": {
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "WorkflowWebhookIn",
+      "type": "object"
+    },
+    "WorkflowWebhookOut": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "last_used_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Used At"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "public_id": {
+          "title": "Public Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "token_hint": {
+          "title": "Token Hint",
+          "type": "string"
+        },
+        "workflow_id": {
+          "format": "uuid",
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "workflow_id",
+        "name",
+        "public_id",
+        "token_hint",
+        "status",
+        "last_used_at",
+        "created_at"
+      ],
+      "title": "WorkflowWebhookOut",
+      "type": "object"
+    },
+    "WorkflowWebhookUpdate": {
+      "properties": {
+        "status": {
+          "enum": [
+            "active",
+            "disabled"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "WorkflowWebhookUpdate",
       "type": "object"
     },
     "app__models__conversation_run_input__JsonValue-Input": {

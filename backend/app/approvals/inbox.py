@@ -220,6 +220,8 @@ async def _decide_business(
     except service.ApprovalStale as exc:
         await db.rollback()
         raise InboxError("approval_stale", f"the approval request is already {exc.status}") from exc
+    except workflow_approvals.AnswerRequired as exc:
+        raise InboxError("answer_required", "an answer is required", 422) from exc
     await db.commit()
     await db.refresh(row)
     return row

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { EdgeWhen, WorkflowNodeType } from '@/lib/types/workflow'
 
-import { NODE_ICONS } from '../lib/node-catalog'
+import { NODE_ICONS, branchLabel } from '../lib/node-catalog'
 import type { DiffStatus } from '../lib/version-diff'
 
 export type WorkflowNodeData = {
@@ -50,6 +50,18 @@ export const KIND_TAG: Record<WorkflowNodeType, string> = {
   transform: 'FX',
   output: 'OUT',
   fail: 'X',
+  switch: 'SW',
+  llm: 'AI',
+  ask: '?',
+  notify: '!',
+  for_each: 'EA',
+  parallel: '||',
+  tool: 'T',
+}
+
+/** Where the ``index``-th of ``count`` exit handles sits along the card's bottom (percent). */
+export function handleLeft(index: number, count: number): number {
+  return ((index + 1) / (count + 1)) * 100
 }
 
 export function handleId(when: EdgeWhen | null): string {
@@ -106,16 +118,16 @@ export function WorkflowNodeCard({ id, data }: NodeProps<WorkflowFlowNode>) {
           id={handleId(when)}
           type="source"
           position={Position.Bottom}
-          className={cn(
-            exits.length === 2 && (index === 0 ? 'left-1/4' : 'left-3/4'),
-            exits.length === 3 && ['left-1/6', 'left-1/2', 'left-5/6'][index],
-          )}
+          // A switch may have up to eleven exits: spread evenly, not by fixed classes.
+          style={exits.length >= 2 ? { left: `${handleLeft(index, exits.length)}%` } : undefined}
         />
       ))}
       {exits.length >= 2 ? (
         <span className="pointer-events-none absolute inset-x-0 top-full mt-1 flex justify-around text-xs text-muted-foreground">
           {exits.map((when) => (
-            <span key={handleId(when)}>{when ? t(`branch.${when}`) : null}</span>
+            <span key={handleId(when)} className="max-w-20 truncate">
+              {when ? branchLabel(t, when) : null}
+            </span>
           ))}
         </span>
       ) : null}
@@ -128,7 +140,7 @@ export function WorkflowNodeCard({ id, data }: NodeProps<WorkflowFlowNode>) {
               variant="outline"
               className="nodrag size-6 rounded-full"
               aria-label={
-                when ? `${t('editor.addAfter')} · ${t(`branch.${when}`)}` : t('editor.addAfter')
+                when ? `${t('editor.addAfter')} · ${branchLabel(t, when)}` : t('editor.addAfter')
               }
               onClick={(event) => {
                 event.stopPropagation()

@@ -30,14 +30,27 @@ export const ROW_GAP = 72
  * child sits right under the node, so a "no" line that skips down to a later row runs
  * behind that child's card.
  */
-const EXIT_OFFSET: Record<EdgeWhen | 'next', number> = {
+const EXIT_OFFSET: Partial<Record<EdgeWhen | 'next', number>> = {
   next: 0,
   true: -0.5,
   approved: -0.5,
+  answered: -0.5,
   false: 0.5,
   rejected: 0.5,
+  timeout: 0.5,
   // A loop's "limit" exit (workflow-loop-plan): further right, past the "no" child.
   limit: 1,
+}
+
+/** A switch's exits (its cases, then ``default``) spread under it like its handles. */
+function exitOffset(definition: WorkflowDefinition, from: string, when: EdgeWhen | null): number {
+  const fixed = EXIT_OFFSET[when ?? 'next']
+  if (fixed !== undefined) return fixed
+  const node = definition.nodes.find((item) => item.id === from)
+  if (node?.type !== 'switch') return 0
+  const exits = [...node.cases.map((item) => item.name), 'default']
+  const index = Math.max(0, exits.indexOf(when ?? 'default'))
+  return index - (exits.length - 1) / 2
 }
 
 export function layout(full: WorkflowDefinition): Map<string, Placed> {
@@ -51,7 +64,7 @@ export function layout(full: WorkflowDefinition): Map<string, Placed> {
   const children = new Map<string, string[]>(ids.map((id) => [id, []]))
   for (const edge of edges) {
     parents.get(edge.to)?.push(edge.from)
-    exits.get(edge.to)?.push(EXIT_OFFSET[edge.when ?? 'next'])
+    exits.get(edge.to)?.push(exitOffset(definition, edge.from, edge.when ?? null))
     children.get(edge.from)?.push(edge.to)
   }
 

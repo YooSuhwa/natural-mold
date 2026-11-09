@@ -19,6 +19,7 @@ from app.models.mcp_tool import McpTool
 from app.models.model import Model
 from app.models.skill import Skill
 from app.models.tool import Tool
+from app.models.workflow import Workflow
 
 _SCOPED = {
     "agent": Agent,
@@ -27,6 +28,7 @@ _SCOPED = {
     "mcp_server": McpServer,
     "credential": Credential,
     "marketplace_item": MarketplaceItem,
+    "workflow": Workflow,
 }
 
 
