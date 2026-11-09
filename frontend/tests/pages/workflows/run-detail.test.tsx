@@ -80,3 +80,32 @@ describe('RunDetailClient approval card', () => {
     expect(screen.queryByRole('button', { name: '다시 실행하고 계속' })).toBeNull()
   })
 })
+
+describe('RunDetailClient loop rounds', () => {
+  it('lists each round of a looping step separately', async () => {
+    const step = (position: number, round: number, branch: string | null) => ({
+      position,
+      node_id: position % 2 ? 'draft' : 'passed',
+      node_type: position % 2 ? 'agent' : 'decision_bool',
+      round,
+      status: 'completed',
+      branch,
+      output: null,
+      error_code: null,
+      error_message: null,
+      conversation_id: null,
+      started_at: null,
+      finished_at: null,
+    })
+    state.run = {
+      ...run('completed'),
+      steps: [step(1, 1, null), step(2, 1, 'false'), step(3, 2, null), step(4, 2, 'limit')],
+    }
+    state.requests = []
+    render(<RunDetailClient workflowId="wf-1" runId="run-1" />)
+    const timeline = screen.getByRole('list', { name: '단계' })
+    expect(timeline.querySelectorAll('li')).toHaveLength(4)
+    expect(screen.getAllByText('2회차')).toHaveLength(2)
+    expect(screen.getByText('한도 초과')).toBeInTheDocument()
+  })
+})

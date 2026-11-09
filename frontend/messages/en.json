@@ -7480,6 +7480,7 @@
       "fail": "Ends the run as failed"
     },
     "branch": {
+      "limit": "limit reached",
       "true": "Yes",
       "false": "No",
       "approved": "Approved",
@@ -7622,6 +7623,7 @@
       "restoreFailed": "Couldn't restore the draft."
     },
     "runs": {
+      "round": "round {round}",
       "open": "Runs",
       "listTitle": "{name} runs",
       "listDescription": "Newest first.",

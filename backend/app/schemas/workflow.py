@@ -103,6 +103,8 @@ class WorkflowStepRunOut(BaseModel):
     position: int
     node_id: str
     node_type: str
+    # Loop round (workflow-loop-plan 3.3): 1, then +1 each time a loop runs the node again.
+    round: int = 1
     status: str
     branch: str | None
     output: dict[str, Any] | None

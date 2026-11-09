@@ -7480,6 +7480,7 @@
       "fail": "정한 이유로 실패 처리합니다"
     },
     "branch": {
+      "limit": "한도 초과",
       "true": "예",
       "false": "아니오",
       "approved": "승인",
@@ -7622,6 +7623,7 @@
       "restoreFailed": "되돌리지 못했어요."
     },
     "runs": {
+      "round": "{round}회차",
       "open": "실행 기록",
       "listTitle": "{name} 실행 기록",
       "listDescription": "최근 실행부터 보여 줍니다.",

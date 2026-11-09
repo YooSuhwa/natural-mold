@@ -144,7 +144,9 @@ class WorkflowStepRun(RequiredOrgScope, Base):
     __table_args__ = (
         *resource_scope_constraints("workflow_step_runs", system=False),
         CheckConstraint(_in("status", STEP_STATUSES), name="ck_workflow_step_runs_status"),
-        UniqueConstraint("run_id", "node_id", name="uq_workflow_step_runs_node"),
+        # One row per node and loop round (workflow-loop-plan 3.3); earlier rounds are kept.
+        UniqueConstraint("run_id", "node_id", "round", name="uq_workflow_step_runs_node_round"),
+        CheckConstraint("round >= 1", name="ck_workflow_step_runs_round"),
         UniqueConstraint("conversation_run_id", name="uq_workflow_step_runs_conversation_run"),
     )
 
@@ -157,6 +159,7 @@ class WorkflowStepRun(RequiredOrgScope, Base):
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     node_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    round: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     node_type: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     input: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)

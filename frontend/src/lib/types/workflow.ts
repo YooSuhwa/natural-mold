@@ -9,7 +9,8 @@ export type WorkflowNodeType =
   | 'output'
   | 'fail'
 
-export type EdgeWhen = 'true' | 'false' | 'approved' | 'rejected'
+/** ``limit``: a loop's exit once its rounds run out (workflow-loop-plan). */
+export type EdgeWhen = 'true' | 'false' | 'approved' | 'rejected' | 'limit'
 
 /** A template is a list of segments: literal text or a reference to an earlier value. */
 export type TextSegment = { text: string }
@@ -154,6 +155,8 @@ export interface WorkflowStepRun {
   position: number
   node_id: string
   node_type: WorkflowNodeType
+  /** 1, then +1 each time a loop runs the node again. */
+  round: number
   status: WorkflowStepStatus
   branch: EdgeWhen | null
   output: Record<string, unknown> | null

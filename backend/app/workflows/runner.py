@@ -1,8 +1,11 @@
 """Starting, running and canceling workflow runs (workflow-plan 3.4-3.5, W2a).
 
-A run walks its published version one node at a time. 1차 has no loops or parallel
-branches, so a run is a single chain: the next node is the successor of the last finished
-step along the branch it took. The step rows are the only progress record (no separate
+A run walks its published version one node at a time. There are no parallel branches,
+so a run is a single chain: the next node is the successor of the last finished step along
+the branch it took. A loop (workflow-loop-plan) is a decision exit that leads back: the
+steps it reaches run again as a new **round** (a new row each; earlier rounds are kept), and
+once the decision has run ``repeat.max_rounds`` times (or the usage limit is reached) it
+takes its ``limit`` exit instead. The step rows are the only progress record (no separate
 graph checkpoint): a reclaimed job reads them and continues, finished steps are never run
 again, and an agent step that was accepted but never stored is ``unknown`` (3.5).
 
@@ -40,6 +43,7 @@ from app.services import audit_service
 from app.services.conversation_run_state import request_cancel_run
 from app.workflows import agent_step
 from app.workflows import approvals as workflow_approvals
+from app.workflows.checks import loop_shape
 from app.workflows.definition import (
     AgentNode,
     ApprovalNode,
@@ -63,6 +67,7 @@ RUN_STARTED: Final = audit_actions.WORKFLOW_RUN_START
 RUN_FINISHED: Final = audit_actions.WORKFLOW_RUN_FINISH
 RUN_CANCELED: Final = audit_actions.WORKFLOW_RUN_CANCEL
 STEP_UNKNOWN: Final = audit_actions.WORKFLOW_STEP_UNKNOWN
+LOOP_LIMIT: Final = audit_actions.WORKFLOW_LOOP_LIMIT
 
 
 def run_not_found() -> NotFoundError:
@@ -351,7 +356,7 @@ async def _step_row(
 
 
 async def _advance(
-    db: AsyncSession, run: WorkflowRun
+    db: AsyncSession, run: WorkflowRun, context: OrgContext | None = None
 ) -> tuple[WorkflowStepRun | None, Node | None]:
     """Settle the run's state; return an agent step to execute outside this transaction."""
     version = await db.get(WorkflowVersion, run.version_id)
@@ -388,26 +393,105 @@ async def _advance(
     run.current_node = node.id
     values = _values(run, steps)
     position = len(steps)
+    round_no = 1 + sum(1 for step in steps if step.node_id == node.id)
     if isinstance(node, AgentNode):
         step = await _step_row(
-            db, run, node, position, status="queued", agent_id=uuid.UUID(node.agent_id)
+            db,
+            run,
+            node,
+            position,
+            status="queued",
+            agent_id=uuid.UUID(node.agent_id),
+            round=round_no,
         )
         step.input = {"prompt": agent_prompt(node.prompt, values)}
         return step, node
-    await _simple_node(db, run, node, position, values)
+    if isinstance(node, DecisionNode):
+        await _decision(db, run, definition, node, position, round_no, values, context)
+        return None, None
+    await _simple_node(db, run, node, position, values, round_no)
     return None, None
 
 
-async def _simple_node(
-    db: AsyncSession, run: WorkflowRun, node: Node, position: int, values: dict[str, Any]
+async def _decision(
+    db: AsyncSession,
+    run: WorkflowRun,
+    definition: WorkflowDefinition,
+    node: DecisionNode,
+    position: int,
+    round_no: int,
+    values: dict[str, Any],
+    context: OrgContext | None,
 ) -> None:
-    done: dict[str, Any] = {"status": "completed", "finished_at": _now()}
+    """Evaluate the rule. An exit that loops back is taken while rounds and usage are left;
+    otherwise the ``limit`` exit is, with the reason on the step and in the audit."""
+    decision = evaluate(node.condition, values)
+    branch = "true" if decision["value"] else "false"
+    loops = {(loop.decision, loop.when) for loop in loop_shape(definition).loops}
+    if (node.id, branch) in loops and node.repeat is not None:
+        reason = None
+        if round_no >= node.repeat.max_rounds:
+            reason = "max_rounds"
+        elif context is not None and await _usage_limited(db, context):
+            reason = "usage_limit"
+        if reason is not None:
+            decision = {**decision, "limit_reached": True, "reason": reason}
+            branch = "limit"
+            await _audit_loop_limit(db, run, node, round_no, reason)
+        decision = {**decision, "round": round_no, "max_rounds": node.repeat.max_rounds}
+    await _step_row(
+        db,
+        run,
+        node,
+        position,
+        output=decision,
+        branch=branch,
+        round=round_no,
+        status="completed",
+        finished_at=_now(),
+    )
+
+
+async def _usage_limited(db: AsyncSession, context: OrgContext) -> bool:
+    from app.services.memory_consolidation import usage_limited
+
+    return await usage_limited(db, context)
+
+
+async def _audit_loop_limit(
+    db: AsyncSession, run: WorkflowRun, node: DecisionNode, rounds: int, reason: str
+) -> None:
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=run.user_id,
+        owner_user_id=run.user_id,
+        action=LOOP_LIMIT,
+        target_type="workflow_run",
+        target_id=run.id,
+        target_owner_user_id=run.user_id,
+        outcome="failure",
+        reason_code=reason,
+        metadata={
+            "workflow_id": str(run.workflow_id),
+            "decision_node_id": node.id,
+            "rounds": rounds,
+            "reason": reason,
+        },
+    )
+
+
+async def _simple_node(
+    db: AsyncSession,
+    run: WorkflowRun,
+    node: Node,
+    position: int,
+    values: dict[str, Any],
+    round_no: int = 1,
+) -> None:
+    done: dict[str, Any] = {"status": "completed", "finished_at": _now(), "round": round_no}
     if isinstance(node, StartNode):
         await _step_row(db, run, node, position, output=dict(run.input), **done)
-    elif isinstance(node, DecisionNode):
-        decision = evaluate(node.condition, values)
-        branch = "true" if decision["value"] else "false"
-        await _step_row(db, run, node, position, output=decision, branch=branch, **done)
     elif isinstance(node, TransformNode):
         output = {
             "text": render(node.template, values),
@@ -424,7 +508,7 @@ async def _simple_node(
         _finish(run, "failed", "workflow_fail_node", node.reason or "실패 종료 노드")
     elif isinstance(node, ApprovalNode):
         # The run waits for the runner's decision in the approval inbox (W2b).
-        step = await _step_row(db, run, node, position, status="waiting")
+        step = await _step_row(db, run, node, position, status="waiting", round=round_no)
         await workflow_approvals.request(db, run, step, node, values)
         run.status = "waiting"
 
@@ -469,7 +553,7 @@ async def run_job(job: JobContext) -> dict[str, Any]:
             if run.status == "queued":
                 run.status, run.started_at = "running", _now()
             context = _context(job, run)
-            step, node = await _advance(db, run)
+            step, node = await _advance(db, run, context)
             prepared: agent_step.PreparedStep | agent_step.StepOutcome | None = None
             if step is not None and isinstance(node, AgentNode):
                 # Checked again at every agent step (3.6): archived, or no longer runnable

@@ -29,8 +29,8 @@ PRIOR = (
 )
 
 
-def _load() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("i28_test", VERSIONS / "i28_workflow_runs.py")
+def _load(name: str = "i28_workflow_runs") -> ModuleType:
+    spec = importlib.util.spec_from_file_location(f"{name}_test", VERSIONS / f"{name}.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -57,12 +57,15 @@ def test_chain() -> None:
 def test_tables_match_the_models_and_downgrade_drops_them(lane) -> None:
     connection, module = lane
     module.upgrade()
+    later = _load("i30_workflow_step_rounds")  # loop rounds: the models carry ``round``
+    later.upgrade()
     inspector = inspect(connection)
     for model in (WorkflowRun, WorkflowStepRun):
         columns = {c["name"]: c["nullable"] for c in inspector.get_columns(model.__tablename__)}
         assert columns == {c.name: c.nullable for c in model.__table__.columns}
     uniques = {u["name"] for u in inspector.get_unique_constraints("workflow_step_runs")}
-    assert {"uq_workflow_step_runs_node", "uq_workflow_step_runs_conversation_run"} <= uniques
+    assert {"uq_workflow_step_runs_node_round", "uq_workflow_step_runs_conversation_run"} <= uniques
+    later.downgrade()
     module.downgrade()
     remaining = set(inspect(connection).get_table_names())
     assert not {"workflow_runs", "workflow_step_runs"} & remaining
