@@ -9,9 +9,11 @@ import {
   freeExits,
   insertOnEdge,
   newNode,
+  nextCandidates,
   nextId,
   redo,
   removeNode,
+  setNext,
   startHistory,
   undo,
 } from '../editor-commands'
@@ -143,5 +145,49 @@ describe('layout', () => {
   it('survives a cycle in a draft', () => {
     const definition = connect(base(), { from: 'done', to: 'start', when: null })
     expect(layout(definition).size).toBe(2)
+  })
+})
+
+describe('choosing the next step', () => {
+  // start → decide (true → done, false → review) ; review → done ; spare unconnected
+  const graph = (): WorkflowDefinition => ({
+    schema_version: 'moldy.workflow.v1',
+    inputs: [],
+    nodes: [
+      { id: 'start', type: 'start' },
+      { id: 'decide', type: 'decision_bool', condition: { all: [] } },
+      { id: 'review', type: 'approval', title: [], timeout_minutes: 60 },
+      { id: 'done', type: 'output', fields: {} },
+      { id: 'spare', type: 'fail' },
+    ],
+    edges: [
+      { from: 'start', to: 'decide', when: null },
+      { from: 'decide', to: 'done', when: 'true' },
+      { from: 'decide', to: 'review', when: 'false' },
+      { from: 'review', to: 'done', when: 'approved' },
+    ],
+  })
+
+  it('offers every node but the start, itself and anything that leads back to it', () => {
+    const ids = (nodeId: string) => nextCandidates(graph(), nodeId).map((node) => node.id)
+    expect(ids('review')).toEqual(['done', 'spare'])
+    expect(ids('decide')).toEqual(['review', 'done', 'spare'])
+    // done is reached from start through decide, so start may not be offered anywhere.
+    expect(ids('start')).toEqual(['decide', 'review', 'done', 'spare'])
+  })
+
+  it('moves one exit to another node and keeps the other exits', () => {
+    const moved = setNext(graph(), 'decide', 'false', 'spare')
+    expect(moved.edges).toContainEqual({ from: 'decide', to: 'spare', when: 'false' })
+    expect(moved.edges).not.toContainEqual({ from: 'decide', to: 'review', when: 'false' })
+    expect(moved.edges).toContainEqual({ from: 'decide', to: 'done', when: 'true' })
+  })
+
+  it('disconnects an exit, and refuses a target that would make a loop', () => {
+    const cut = setNext(graph(), 'decide', 'true', null)
+    expect(cut.edges.some((edge) => edge.from === 'decide' && edge.when === 'true')).toBe(false)
+    const definition = graph()
+    expect(setNext(definition, 'review', 'rejected', 'decide')).toBe(definition)
+    expect(setNext(definition, 'review', 'rejected', 'start')).toBe(definition)
   })
 })
