@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { EdgeWhen, WorkflowNodeType } from '@/lib/types/workflow'
 
-import { branchesOf } from '../lib/editor-commands'
 import { NODE_ICONS } from '../lib/node-catalog'
 import type { DiffStatus } from '../lib/version-diff'
 
@@ -21,6 +20,8 @@ export type WorkflowNodeData = {
   showDetail: boolean
   issueCount: number
   selected: boolean
+  /** Every exit in this draft (a looping decision has a third, ``limit``). */
+  exits: (EdgeWhen | null)[]
   freeExits: (EdgeWhen | null)[]
   onAddAfter?: (nodeId: string, when: EdgeWhen | null) => void
   /** Set on the version comparison: added green, removed red, changed yellow. */
@@ -59,7 +60,7 @@ export function handleId(when: EdgeWhen | null): string {
 export function WorkflowNodeCard({ id, data }: NodeProps<WorkflowFlowNode>) {
   const t = useTranslations('workflows')
   const Icon = NODE_ICONS[data.type]
-  const exits = branchesOf(data.type)
+  const exits = data.exits
   return (
     <div
       className={cn(
@@ -105,10 +106,13 @@ export function WorkflowNodeCard({ id, data }: NodeProps<WorkflowFlowNode>) {
           id={handleId(when)}
           type="source"
           position={Position.Bottom}
-          className={cn(exits.length === 2 && (index === 0 ? 'left-1/4' : 'left-3/4'))}
+          className={cn(
+            exits.length === 2 && (index === 0 ? 'left-1/4' : 'left-3/4'),
+            exits.length === 3 && ['left-1/6', 'left-1/2', 'left-5/6'][index],
+          )}
         />
       ))}
-      {exits.length === 2 ? (
+      {exits.length >= 2 ? (
         <span className="pointer-events-none absolute inset-x-0 top-full mt-1 flex justify-around text-xs text-muted-foreground">
           {exits.map((when) => (
             <span key={handleId(when)}>{when ? t(`branch.${when}`) : null}</span>

@@ -11,6 +11,8 @@ import type {
   WorkflowNodeType,
 } from '@/lib/types/workflow'
 
+import { DEFAULT_MAX_ROUNDS, forwardOf, isBackEdge, loopTargets, loopsOf } from './loops'
+
 export type AddableType = Exclude<WorkflowNodeType, 'start'>
 
 /** The outgoing branches a node kind has; a plain node has one unnamed exit. */
@@ -98,14 +100,26 @@ export function appendAfter(
   return { ...definition, nodes: [...definition.nodes, node], edges }
 }
 
-/** The exits of a node that nothing is connected to yet. */
-export function freeExits(definition: WorkflowDefinition, nodeId: string): (EdgeWhen | null)[] {
+/** A node's exits in this draft: a looping decision also has ``limit`` (rounds ran out). */
+export function exitsOf(definition: WorkflowDefinition, nodeId: string): (EdgeWhen | null)[] {
   const node = definition.nodes.find((item) => item.id === nodeId)
   if (!node) return []
+  const exits = [...branchesOf(node.type)]
+  if (
+    node.type === 'decision_bool' &&
+    (node.repeat || loopsOf(definition).some((loop) => loop.decision === nodeId))
+  ) {
+    exits.push('limit')
+  }
+  return exits
+}
+
+/** The exits of a node that nothing is connected to yet. */
+export function freeExits(definition: WorkflowDefinition, nodeId: string): (EdgeWhen | null)[] {
   const used = new Set(
     definition.edges.filter((edge) => edge.from === nodeId).map((edge) => edge.when ?? null),
   )
-  return branchesOf(node.type).filter((when) => !used.has(when))
+  return exitsOf(definition, nodeId).filter((when) => !used.has(when))
 }
 
 /**
@@ -157,12 +171,27 @@ function reachableFrom(definition: WorkflowDefinition, from: string): Set<string
  * already leads back here (no loops in the first version, plan 3.2).
  */
 export function nextCandidates(definition: WorkflowDefinition, nodeId: string): WorkflowNode[] {
+  // On the forward graph: a loop's own back-edge must not make every step in it "lead back".
+  const forward = forwardOf(definition)
   return definition.nodes.filter(
     (node) =>
-      node.type !== 'start' &&
-      node.id !== nodeId &&
-      !reachableFrom(definition, node.id).has(nodeId),
+      node.type !== 'start' && node.id !== nodeId && !reachableFrom(forward, node.id).has(nodeId),
   )
+}
+
+/**
+ * Steps a decision's yes/no exit may lead back to (a loop, workflow-loop-plan): the steps
+ * before it on every path, except the start. Other exits and other kinds never loop.
+ */
+export function loopCandidates(
+  definition: WorkflowDefinition,
+  nodeId: string,
+  when: EdgeWhen | null,
+): WorkflowNode[] {
+  const node = definition.nodes.find((item) => item.id === nodeId)
+  if (node?.type !== 'decision_bool' || (when !== 'true' && when !== 'false')) return []
+  const targets = new Set(loopTargets(definition, nodeId))
+  return definition.nodes.filter((item) => targets.has(item.id))
 }
 
 /** Point one exit of ``nodeId`` at ``target`` (``null`` disconnects that exit). */
@@ -173,15 +202,50 @@ export function setNext(
   target: string | null,
 ): WorkflowDefinition {
   if (target === null) {
+    return withLoopSettings(
+      {
+        ...definition,
+        edges: definition.edges.filter(
+          (edge) => !(edge.from === nodeId && (edge.when ?? null) === when),
+        ),
+      },
+      nodeId,
+    )
+  }
+  const allowed =
+    nextCandidates(definition, nodeId).some((node) => node.id === target) ||
+    loopCandidates(definition, nodeId, when).some((node) => node.id === target)
+  if (!allowed) return definition
+  return withLoopSettings(connect(definition, { from: nodeId, to: target, when }), nodeId)
+}
+
+/**
+ * Keep a decision's loop settings in step with its edges: a new loop gets the default round
+ * limit; a decision that no longer loops loses its limit and its ``limit`` exit.
+ */
+function withLoopSettings(definition: WorkflowDefinition, nodeId: string): WorkflowDefinition {
+  const node = definition.nodes.find((item) => item.id === nodeId)
+  if (node?.type !== 'decision_bool') return definition
+  const loops = definition.edges.some(
+    (edge) => edge.from === nodeId && edge.when !== 'limit' && isBackEdge(definition, edge),
+  )
+  if (loops && !node.repeat) {
+    return updateNode(definition, nodeId, (item) => ({
+      ...item,
+      repeat: { max_rounds: DEFAULT_MAX_ROUNDS },
+    }))
+  }
+  if (
+    !loops &&
+    (node.repeat || definition.edges.some((e) => e.from === nodeId && e.when === 'limit'))
+  ) {
+    const cleared = updateNode(definition, nodeId, (item) => ({ ...item, repeat: null }))
     return {
-      ...definition,
-      edges: definition.edges.filter(
-        (edge) => !(edge.from === nodeId && (edge.when ?? null) === when),
-      ),
+      ...cleared,
+      edges: cleared.edges.filter((edge) => !(edge.from === nodeId && edge.when === 'limit')),
     }
   }
-  if (!nextCandidates(definition, nodeId).some((node) => node.id === target)) return definition
-  return connect(definition, { from: nodeId, to: target, when })
+  return definition
 }
 
 export function removeEdge(definition: WorkflowDefinition, edge: WorkflowEdge): WorkflowDefinition {

@@ -5,16 +5,21 @@ import '@xyflow/react/dist/style.css'
 import { useMemo } from 'react'
 
 import { useFlowColorMode } from '@/components/shared/use-flow-color-mode'
+import { cn } from '@/lib/utils'
 import type { EdgeWhen, WorkflowDefinition, WorkflowEdge } from '@/lib/types/workflow'
 
-import { freeExits } from '../lib/editor-commands'
+import { exitsOf, freeExits } from '../lib/editor-commands'
 import { layout, NODE_HEIGHT, NODE_WIDTH } from '../lib/layout'
+import { loopsOf } from '../lib/loops'
 import { edgeKey, type DiffStatus } from '../lib/version-diff'
 import { WorkflowEdgeLine, type WorkflowFlowEdge } from './workflow-edge'
+import { WorkflowLoopEdge, type WorkflowLoopFlowEdge } from './workflow-loop-edge'
 import { handleId, WorkflowNodeCard, type WorkflowFlowNode } from './workflow-node'
 
 const NODE_TYPES = { workflow: WorkflowNodeCard }
-const EDGE_TYPES = { workflow: WorkflowEdgeLine }
+const EDGE_TYPES = { workflow: WorkflowEdgeLine, loop: WorkflowLoopEdge }
+// How far the loop lane runs right of the widest step in the loop.
+const LANE_GAP = 40
 
 export interface CanvasProps {
   definition: WorkflowDefinition
@@ -44,8 +49,9 @@ export function WorkflowCanvas(props: CanvasProps) {
     onAddAfter,
     diff,
   } = props
+  const placed = useMemo(() => layout(definition), [definition])
+  const loops = useMemo(() => loopsOf(definition), [definition])
   const nodes = useMemo<WorkflowFlowNode[]>(() => {
-    const placed = layout(definition)
     return definition.nodes.map((node) => {
       const at = placed.get(node.id)
       return {
@@ -61,17 +67,45 @@ export function WorkflowCanvas(props: CanvasProps) {
           showDetail,
           issueCount: issueCounts.get(node.id) ?? 0,
           selected: node.id === selectedId,
+          exits: exitsOf(definition, node.id),
           freeExits: onAddAfter ? freeExits(definition, node.id) : [],
           onAddAfter,
           diff: diff?.nodes.get(node.id),
         },
       }
     })
-  }, [definition, titleOf, showDetail, issueCounts, selectedId, onAddAfter, diff])
-  const edges = useMemo<WorkflowFlowEdge[]>(
+  }, [definition, placed, titleOf, showDetail, issueCounts, selectedId, onAddAfter, diff])
+  const edges = useMemo<(WorkflowFlowEdge | WorkflowLoopFlowEdge)[]>(
     () =>
-      definition.edges.map((edge) => {
+      definition.edges.map((edge): WorkflowFlowEdge | WorkflowLoopFlowEdge => {
         const status = diff?.edges.get(edgeKey(edge))
+        const loop = loops.find(
+          (item) =>
+            item.decision === edge.from && item.when === edge.when && item.target === edge.to,
+        )
+        if (loop) {
+          const right = Math.max(
+            ...[...loop.body].map((id) => (placed.get(id)?.x ?? 0) + NODE_WIDTH),
+          )
+          const decision = definition.nodes.find((node) => node.id === loop.decision)
+          return {
+            id: edgeKey(edge),
+            source: edge.from,
+            sourceHandle: handleId(edge.when ?? null),
+            target: edge.to,
+            type: 'loop',
+            className: cn(
+              'moldy-flow-loop',
+              status && status !== 'same' && `moldy-flow-diff-${status}`,
+            ),
+            markerEnd: { type: MarkerType.ArrowClosed },
+            data: {
+              laneX: right + LANE_GAP,
+              maxRounds:
+                decision?.type === 'decision_bool' ? (decision.repeat?.max_rounds ?? null) : null,
+            },
+          }
+        }
         return {
           id: edgeKey(edge),
           source: edge.from,
@@ -83,7 +117,7 @@ export function WorkflowCanvas(props: CanvasProps) {
           data: onInsert ? { edge, onInsert } : undefined,
         }
       }),
-    [definition, onInsert, diff],
+    [definition, placed, loops, onInsert, diff],
   )
   return (
     <ReactFlow

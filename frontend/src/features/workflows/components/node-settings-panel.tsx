@@ -17,7 +17,8 @@ import type {
   WorkflowNode,
 } from '@/lib/types/workflow'
 
-import { branchesOf, nextCandidates } from '../lib/editor-commands'
+import { exitsOf, loopCandidates, nextCandidates } from '../lib/editor-commands'
+import { MAX_ROUNDS } from '../lib/loops'
 import { contractLine } from '../lib/schema-rows'
 import { referencedValues } from '../lib/template-text'
 import { upstreamValues } from '../lib/upstream-values'
@@ -153,6 +154,30 @@ export function NodeSettingsPanel({
               onChange={(condition) => onChange({ ...node, condition })}
             />
           </Section>
+          {node.repeat ? (
+            <Section title={t('loop.title')}>
+              <Input
+                key={`${node.id}:${node.repeat.max_rounds}`}
+                type="number"
+                min={1}
+                max={MAX_ROUNDS}
+                defaultValue={node.repeat.max_rounds}
+                aria-label={t('loop.maxRounds')}
+                onBlur={(event) => {
+                  const rounds = Math.min(
+                    MAX_ROUNDS,
+                    Math.max(1, Math.round(Number(event.target.value) || 1)),
+                  )
+                  if (rounds !== node.repeat?.max_rounds) {
+                    onChange({ ...node, repeat: { max_rounds: rounds } })
+                  }
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('loop.maxRoundsHint', { max: MAX_ROUNDS })}
+              </p>
+            </Section>
+          ) : null}
         </>
       ) : null}
 
@@ -369,7 +394,7 @@ function NextSteps({
   onNext: (when: EdgeWhen | null, target: string | null) => void
 }) {
   const t = useTranslations('workflows')
-  const exits = branchesOf(node.type)
+  const exits = exitsOf(definition, node.id)
   if (exits.length === 0) return null
   const candidates = nextCandidates(definition, node.id)
   return (
@@ -378,10 +403,13 @@ function NextSteps({
         const current = definition.edges.find(
           (edge) => edge.from === node.id && (edge.when ?? null) === when,
         )
+        const back = loopCandidates(definition, node.id, when)
         const label =
           when === null
             ? t('settings.nextStep')
-            : t('settings.nextOn', { branch: t(`branch.${when}`) })
+            : when === 'limit'
+              ? t('loop.onLimit')
+              : t('settings.nextOn', { branch: t(`branch.${when}`) })
         return (
           <label key={when ?? 'next'} className="flex flex-col gap-1 text-xs">
             {label}
@@ -396,6 +424,15 @@ function NextSteps({
                   {labelOf(candidate.id, '')}
                 </option>
               ))}
+              {back.length > 0 ? (
+                <optgroup label={t('loop.goBack')}>
+                  {back.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {t('loop.backTo', { step: labelOf(candidate.id, '') })}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
             </select>
           </label>
         )

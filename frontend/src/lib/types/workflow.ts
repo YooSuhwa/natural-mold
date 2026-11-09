@@ -14,7 +14,8 @@ export type EdgeWhen = 'true' | 'false' | 'approved' | 'rejected' | 'limit'
 
 /** A template is a list of segments: literal text or a reference to an earlier value. */
 export type TextSegment = { text: string }
-export type RefSegment = { ref: { node: string; path: string } }
+/** ``previous``: in a loop, the last round's value of a later step (workflow-loop-plan 3.1). */
+export type RefSegment = { ref: { node: string; path: string; previous?: boolean } }
 export type TemplateSegment = TextSegment | RefSegment
 
 export type ClauseOp = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'exists'
@@ -44,7 +45,12 @@ export type WorkflowNode =
       prompt: TemplateSegment[]
       output_schema: Record<string, unknown>
     })
-  | (NodeBase & { type: 'decision_bool'; condition: Condition })
+  | (NodeBase & {
+      type: 'decision_bool'
+      condition: Condition
+      /** Set when an exit leads back (a loop); rounds include the first. */
+      repeat?: { max_rounds: number } | null
+    })
   | (NodeBase & {
       type: 'approval'
       title: TemplateSegment[]

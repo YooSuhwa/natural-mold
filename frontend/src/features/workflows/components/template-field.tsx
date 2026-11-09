@@ -9,7 +9,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Textarea } from '@/components/ui/textarea'
 import type { TemplateSegment } from '@/lib/types/workflow'
 
-import { referencedValues, refToken, segmentsToText, textToSegments } from '../lib/template-text'
+import {
+  refKey,
+  refToken,
+  referencedValues,
+  segmentsToText,
+  textToSegments,
+} from '../lib/template-text'
 import type { UpstreamValue } from '../lib/upstream-values'
 
 export type LabelOf = (node: string, path: string) => string
@@ -74,12 +80,12 @@ function TemplateFieldInner({
     const area = box.current
     const at = area?.selectionStart ?? text.length
     const before = text.slice(0, at).replace(/\{\{$/, '')
-    const next = `${before}${refToken(item.node, item.path)}${text.slice(at)}`
+    const next = `${before}${refToken(item.node, item.path, item.previous === true)}${text.slice(at)}`
     setText(next)
     setPicking(false)
     commit(next)
   }
-  const known = new Set(values.map((item) => `${item.node}${item.path}`))
+  const known = new Set(values.map((item) => refKey(item)))
   const used = referencedValues(textToSegments(text))
   return (
     <div className="flex flex-col gap-1.5">
@@ -115,13 +121,14 @@ function TemplateFieldInner({
         <ul className="flex flex-wrap gap-1" aria-label={t('passedValues')}>
           {used.map((ref) => (
             <li
-              key={`${ref.node}${ref.path}`}
+              key={refKey(ref)}
               className={
-                known.has(`${ref.node}${ref.path}`)
+                known.has(refKey(ref))
                   ? 'moldy-status-surface moldy-status-info rounded-full px-2 py-0.5 text-xs'
                   : 'moldy-status-surface moldy-status-danger rounded-full px-2 py-0.5 text-xs'
               }
             >
+              {ref.previous ? `${t('previousRound')} · ` : ''}
               {labelOf(ref.node, ref.path)}
             </li>
           ))}
@@ -147,13 +154,16 @@ export function ValueList({
   return (
     <ul className="flex max-h-72 flex-col overflow-auto" aria-label={t('insertValue')}>
       {values.map((item) => (
-        <li key={`${item.node}${item.path}`}>
+        <li key={refKey(item)}>
           <button
             type="button"
             className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:bg-accent"
             onClick={() => onPick(item)}
           >
-            <span className="truncate">{labelOf(item.node, item.path)}</span>
+            <span className="truncate">
+              {item.previous ? `${t('previousRound')} · ` : ''}
+              {labelOf(item.node, item.path)}
+            </span>
             <span className="shrink-0 text-xs text-muted-foreground">{item.type}</span>
           </button>
         </li>

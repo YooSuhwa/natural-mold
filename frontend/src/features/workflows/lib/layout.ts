@@ -8,6 +8,8 @@
  */
 import type { EdgeWhen, WorkflowDefinition } from '@/lib/types/workflow'
 
+import { forwardOf } from './loops'
+
 export interface Placed {
   id: string
   x: number
@@ -38,7 +40,9 @@ const EXIT_OFFSET: Record<EdgeWhen | 'next', number> = {
   limit: 1,
 }
 
-export function layout(definition: WorkflowDefinition): Map<string, Placed> {
+export function layout(full: WorkflowDefinition): Map<string, Placed> {
+  // A loop's back-edge does not shape the layout: it is drawn beside the loop instead.
+  const definition = forwardOf(full)
   const ids = definition.nodes.map((node) => node.id)
   const known = new Set(ids)
   const edges = definition.edges.filter((edge) => known.has(edge.from) && known.has(edge.to))

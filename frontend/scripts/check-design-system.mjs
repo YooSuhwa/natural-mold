@@ -349,6 +349,12 @@ const INLINE_SVG_ALLOWLIST = [
 
 const STYLE_ATTRIBUTE_ALLOWLIST = [
   {
+    filePath: 'src/features/workflows/components/workflow-loop-edge.tsx',
+    reason: 'React Flow edge label position (EdgeLabelRenderer requires a transform)',
+    context:
+      /style=\{\{\s*transform:\s*`translate\(-50%, -50%\) translate\(\$\{lane\}px, \$\{labelY\}px\)`\s*\}\}/,
+  },
+  {
     filePath: 'src/features/workflows/components/workflow-edge.tsx',
     reason: 'React Flow edge label position (EdgeLabelRenderer requires a transform)',
     context: /style=\{\{\s*transform:\s*`translate\(-50%, -50%\) translate\(\$\{labelX\}px, \$\{labelY\}px\)`\s*\}\}/,
