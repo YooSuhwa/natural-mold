@@ -19,6 +19,7 @@ The active organization authorization program follows the supplied
 - [워크플로 나머지 노드 기획](active/workflow-nodes-plan.md) — 2026-11-09; decisions N1–N9 confirmed, done (feature/workflow-complete).
 - [워크플로 시작 경로(예약·웹훅)와 공유·결정자 기획](active/workflow-starts-sharing-plan.md) — 2026-11-09; decisions S1–S9 confirmed, done (feature/workflow-complete).
 - [워크플로를 채팅 도구로 부르기 기획](active/workflow-tool-plan.md) — 2026-11-09; decisions T1–T8 confirmed, done (feature/workflow-complete).
+- [순번 21 OpenAI Agents API 호환 상세 기획](active/agents-api-plan.md) — v1 2026-11-10; decisions Q1–Q12 confirmed (Q3, Q8 revised in review); A1 next.
 
 ## Completed
 
