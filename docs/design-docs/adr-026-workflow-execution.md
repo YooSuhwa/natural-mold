@@ -99,11 +99,28 @@ again. The model sees the draft, the person's runnable agents (id, name, descrip
 and the turns of this screen, never agent prompts, tools, credentials or run data. The call
 is booked to the person (`invoker_type="user"`).
 
+### 9. Bounded loops: a back-edge from a decision (workflow-loop-plan)
+
+The only cycle allowed is a back-edge from a `decision_bool`'s `true`/`false` exit to a step
+that runs before it on every path (`checks.loop_shape`; any other cycle is still `cycle`). The
+decision then needs `repeat.max_rounds` (1–10, the editor's default is 3) and a `limit` exit to
+a step outside the loop. Loops may not overlap or nest, hold no approval, output or fail step,
+and are left only through their decision. Reachability, branches, references and the editor
+layout use the forward graph (the definition without back-edges).
+
+Each time a loop runs a step again it is a new step row with the next `round` (unique per run,
+node and round; earlier rounds are kept). Once the decision has run `max_rounds` times, or the
+usage limit is reached before a new round, it takes `limit` instead, records the reason on the
+step and audits `workflow.loop_limit` once. A reference with `previous: true` reads the last
+round's value of a later step in the same loop (empty in round 1), so a rewrite sees the
+review's feedback. Recovery, the unknown-step check and cancel are unchanged: they work from
+the step rows, and a step cut off mid-round is still never re-run on its own.
+
 ## Consequences
 
-- Loops, parallel branches, merges and LLM or judgment-model decisions need a real graph
-  runner; that is when a StateGraph comes back into the design (the decision record already
-  uses the `{value, confidence, band, evaluator}` shape of plan 22.5).
+- Parallel branches, merges, item-by-item loops and LLM or judgment-model decisions still need
+  a real graph runner (the decision record already uses the `{value, confidence, band,
+  evaluator}` shape of plan 22.5); conditional loops do not (section 9).
 - The fingerprint is checked when a run starts. A setting changed while a run waits is used by
   the later steps of that run; only availability is checked per step. Pinning revisions
   (Q1 A) is the way out if that becomes a requirement.

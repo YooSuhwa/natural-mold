@@ -7403,6 +7403,29 @@
       "issues": "{count} things to check after applying"
     },
     "templates": {
+      "rewrite": {
+        "name": "Rewrite until it passes",
+        "hint": "Writes a draft and reviews it; if it fails, rewrites with the review's feedback, up to three times. Then you decide.",
+        "writerAgent": "Agent that writes the draft",
+        "reviewerAgent": "Agent that reviews it",
+        "inputLabel": "Topic and requirements",
+        "draft": "Write draft",
+        "draftPrompt": "Write a text that meets these requirements.\n\nRequirements: ",
+        "feedbackLabel": "\n\nLast review feedback (apply it if any): ",
+        "textHint": "The finished text",
+        "review": "Quality review",
+        "reviewPrompt": "Check whether the text below meets the requirements. Set passed to true if it does, otherwise false with specific fixes.\n\nRequirements: ",
+        "draftLabel": "\n\nText: ",
+        "passedHint": "true if it meets the requirements",
+        "feedbackHint": "What to fix",
+        "passed": "Passed?",
+        "done": "Output final text",
+        "escalate": "Manager check",
+        "escalateTitle": "Still failing the review after three rewrites: ",
+        "accepted": "Output after check",
+        "rejected": "End as rejected",
+        "rejectedReason": "The manager did not accept the last draft"
+      },
       "title": "Start from",
       "pickAgent": "Choose an agent",
       "blank": {

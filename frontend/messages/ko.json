@@ -7403,6 +7403,29 @@
       "issues": "적용하면 확인할 것 {count}개"
     },
     "templates": {
+      "rewrite": {
+        "name": "통과할 때까지 다시 쓰기",
+        "hint": "초안을 쓰고 검사해서, 통과하지 못하면 검사 의견을 반영해 최대 3번까지 다시 씁니다. 그래도 안 되면 내가 확인합니다.",
+        "writerAgent": "초안을 쓸 에이전트",
+        "reviewerAgent": "검사할 에이전트",
+        "inputLabel": "주제와 요구사항",
+        "draft": "초안 작성",
+        "draftPrompt": "다음 요구사항에 맞는 글을 쓰세요.\n\n요구사항: ",
+        "feedbackLabel": "\n\n지난 검사 의견(있으면 반영하세요): ",
+        "textHint": "완성한 글",
+        "review": "품질 검사",
+        "reviewPrompt": "아래 글이 요구사항을 충족하는지 검사하세요. 충족하면 passed를 true로, 아니면 false로 하고 고칠 점을 구체적으로 쓰세요.\n\n요구사항: ",
+        "draftLabel": "\n\n글: ",
+        "passedHint": "요구사항을 충족하면 true",
+        "feedbackHint": "고칠 점",
+        "passed": "통과했나",
+        "done": "완성본 출력",
+        "escalate": "담당자 확인",
+        "escalateTitle": "3번 고쳐도 검사를 통과하지 못했어요: ",
+        "accepted": "확인 후 출력",
+        "rejected": "거절 종료",
+        "rejectedReason": "담당자가 마지막 초안을 받아들이지 않았습니다"
+      },
       "title": "시작 방법",
       "pickAgent": "에이전트 선택",
       "blank": {

@@ -116,7 +116,21 @@
 | L-a | 정의(`repeat`, `limit` 갈래, `previous` 참조), 게시 검사 3.2 전부. **L-b와 한 PR로 합쳤다**(검사만 먼저 들어가면 반복이 든 워크플로가 게시는 되는데 실행기가 돌지 못하는 사이가 생긴다). 같은 PR에서 실행 상세가 단계를 순서로 구분하고 "N회차"·"한도 초과"를 보인다 | 규칙마다 거부 시험과 통과 시험, 되돌아가는 선이 아닌 순환은 계속 거부 |
 | L-b | 실행: i30 `round` 열과 유일 제약 교체, 회차 진행, 한도·사용 한도 → `limit`, `previous` 값, 감사 `workflow.loop_limit` | 통과/반복/한도 초과 세 경로, 회차별 기록 보존, 반복 중 worker 교체 뒤 같은 회차에서 이어 감, 결과 불명 재실행이 같은 회차, 뮤테이션 |
 | L-c | 편집기: 되돌아가기 후보, 반복 칸, 캔버스 점선·배지·세 번째 핸들, 값 넣기 "앞 회차", 화면 검사. **구현:** 서버와 같은 반복 판정(`lib/loops.ts`), 배치·다음 단계 후보·값 고르기는 되돌아가는 선을 뺀 그래프로 계산, 되돌아가기를 고르면 최대 횟수 3이 붙고 앞으로 다시 이으면 반복 설정과 한도 초과 갈래가 빠짐, 글자 칸 표기 `{{prev:노드.필드}}`(앞 회차 참조가 편집 중 사라지지 않게). 화면 검사는 서버 검사 결과를 그대로 쓴다 | vitest, 밝은·어두운 캡처 |
-| L-d | 실행 상세 회차 표시, AI 편집 확장과 평가, 템플릿, E2E(시험 모델로 반복·한도 초과), 사내 LiteLLM 한 번, ADR-026 보강 | 1장 기준 1~7 증거 |
+| L-d | 실행 상세 회차 표시, AI 편집 확장과 평가, 템플릿, E2E(시험 모델로 반복·한도 초과), 사내 LiteLLM 한 번, ADR-026 보강. **구현:** 템플릿 "통과할 때까지 다시 쓰기"(작성·검사 에이전트를 역할로 고름), AI 편집 프롬프트에 반복 규칙·예시, 감싼 도구 인자 한 겹 벗기기(`ai_edit.unwrapped`), `evals/workflow_edit`에 반복 사례, ADR-026 9절 | 1장 기준 1~7 증거(아래) |
+
+### 완료 증거 (2026-11-09, 1장 기준)
+
+| 기준 | 증거 |
+|---|---|
+| 1. 되돌아가 다시 실행, 회차별 기록 보존 | `tests/test_workflow_loops.py::test_a_failed_review_runs_the_loop_again_with_the_previous_feedback`(검사 실패 → 2회차 → 통과, 1회차 출력 보존, 최종 출력은 마지막 회차). E2E `frontend/e2e/workflow-loop.spec.ts`: 템플릿으로 화면에서 만들어 게시·실행, 실행 상세에 "3회차" 3개와 단계 행 `round` 1~3 |
+| 2. 최대 횟수 → 한도 초과 갈래, 사유가 기록과 감사에 | `test_the_limit_exit_after_the_last_round_is_audited`(`limit_reached`, `reason=max_rounds`, `workflow.loop_limit` 내용 단언), E2E 같은 spec(한도 초과 → 담당자 승인 → 완료, 감사 메타데이터 단언) |
+| 3. 무한 반복 설계 불가 | `test_the_repeat_limit_and_the_limit_exit_are_required`, `test_loop_settings_without_a_loop_are_refused`, `test_only_a_decision_may_lead_back`, `test_a_cycle_that_is_not_a_loop_is_still_refused`, `test_no_approval_output_or_fail_inside_a_loop`, `test_loops_may_not_overlap`, 상한 10은 정의 스키마(`Repeat.max_rounds le=10`)와 편집기 클램프 시험 |
+| 4. worker 교체 뒤 같은 회차에서 한 번만 | `test_a_worker_dying_mid_round_resumes_that_round_once` |
+| 5. 앞 회차 값 | 백엔드 1번 시험(2회차 프롬프트에 직전 검사 의견, 1회차는 빈 값), `test_previous_round_values_only_inside_the_loop_and_only_from_later_steps`, 프론트 `loops.test.ts`(값 고르기·`{{prev:}}` 왕복) |
+| 6. 화면 | 편집기 캔버스 점선·"↺ 최대 N회"·세 번째 갈래(PR #402, 밝은·어두운 캡처), 실행 상세 회차·"한도 초과"(PR #401, E2E) |
+| 7. 사용 한도 | `test_no_new_round_starts_past_the_usage_limit` |
+| 사내 LiteLLM 한 번 | `gpt-5.4-mini`로 템플릿 그대로 한 번: 3회차 모두 검사 의견을 반영해 초안이 바뀌었고, 검사 에이전트가 세 번 다 떨어뜨려(실제로는 모든 문장이 40자 이내인데 글자 수를 잘못 셈) 한도 초과 → 담당자 확인 → 승인 → 완료, 33초, 감사 7건(`workflow.loop_limit` 포함). 모델 판단이 틀릴 수 있어 횟수 한도와 사람 확인이 필요함을 보여 준다 |
+| AI 편집 | `evals/workflow_edit` 6사례 × 2모델 12/12(반복 사례 포함, REPORT.md). 평가로 찾은 4가지를 고쳤다(앞 회차 의견 미전달, 허용 안 되는 스키마 키, add/update 혼동, Claude의 감싼 인자) |
 
 ## 6. 위험
 

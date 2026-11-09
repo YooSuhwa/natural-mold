@@ -52,4 +52,20 @@ describe('creating a workflow', () => {
     await user.click(screen.getByRole('button', { name: '만들기' }))
     expect(state.create.mock.calls[0][0]).toEqual({ name: '빈 흐름', definition: undefined })
   })
+
+  it('asks for a writer and a reviewer for the rewrite template', async () => {
+    const user = userEvent.setup()
+    render(<WorkflowsPageClient />)
+    await user.click(screen.getByRole('button', { name: '새 워크플로' }))
+    await user.type(screen.getByLabelText('이름'), '보고서')
+    await user.click(screen.getByRole('radio', { name: '통과할 때까지 다시 쓰기' }))
+    await user.selectOptions(screen.getByLabelText('초안을 쓸 에이전트'), 'agent-a')
+    expect(screen.getByRole('button', { name: '만들기' })).toBeDisabled()
+    await user.selectOptions(screen.getByLabelText('검사할 에이전트'), 'agent-b')
+    await user.click(screen.getByRole('button', { name: '만들기' }))
+    const [{ definition }] = state.create.mock.calls[0]
+    expect(definition.nodes.find((node: { id: string }) => node.id === 'passed').repeat).toEqual({
+      max_rounds: 3,
+    })
+  })
 })

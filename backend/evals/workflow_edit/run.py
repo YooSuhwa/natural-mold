@@ -20,7 +20,8 @@ from typing import Any
 from langchain_core.messages import AIMessage, convert_to_openai_messages
 
 from app.workflows.ai_edit import ModelTurn, OfferedAgent, propose, tool_spec
-from app.workflows.definition import WorkflowDefinition, empty_definition
+from app.workflows.checks import loop_shape
+from app.workflows.definition import RefSegment, WorkflowDefinition, empty_definition
 from evals.memory_recall.gateway import _hash, _post
 
 HERE = Path(__file__).parent
@@ -46,8 +47,13 @@ AGENTS = [
         "웹 조사 에이전트",
         "주제에 대한 웹 자료 조사와 정리",
     ),
+    OfferedAgent(
+        "55555555-5555-4555-8555-555555555555",
+        "품질 검사 에이전트",
+        "글이 요구사항을 충족하는지 검사하고 고칠 점을 적음",
+    ),
 ]
-CLASSIFY, WRITE, WEEKLY, RESEARCH = (agent.id for agent in AGENTS)
+CLASSIFY, WRITE, WEEKLY, RESEARCH, REVIEW = (agent.id for agent in AGENTS)
 
 
 def _q3() -> WorkflowDefinition:
@@ -172,6 +178,15 @@ CASES = [
         kinds=frozenset({"start", "agent", "decision_bool", "approval", "output", "fail"}),
         check="only_timeout",
     ),
+    Case(
+        "rewrite_loop",
+        "요구사항을 입력받아 답변 작성 에이전트가 글을 쓰고 품질 검사 에이전트가 검사하게 해 줘. "
+        "통과하지 못하면 검사 의견을 반영해서 다시 쓰게 하고, 최대 3번까지만 해. "
+        "3번 해도 안 되면 내 승인을 받고, 승인하면 마지막 글을 내보내고 거절하면 실패로 끝내.",
+        kinds=frozenset({"start", "agent", "decision_bool", "approval", "output", "fail"}),
+        agents=(WRITE, REVIEW),
+        check="loop",
+    ),
     Case("ambiguous", "문서 처리하는 흐름 하나 만들어 줘.", kind="question"),
 ]
 
@@ -180,7 +195,10 @@ def _load_cache() -> dict[str, Any]:
     return json.loads(CACHE.read_text()) if CACHE.exists() else {}
 
 
-def gateway_model(name: str, cache: dict[str, Any], calls: list[int]):
+USED: set[str] = set()
+
+
+def gateway_model(name: str, cache: dict[str, Any], calls: list[int], used: set[str] = USED):
     """An ``EditModel`` over the gateway's chat completions, forcing the WorkflowEdit tool."""
 
     async def call(messages: list[Any]) -> ModelTurn:
@@ -191,6 +209,7 @@ def gateway_model(name: str, cache: dict[str, Any], calls: list[int]):
             "tool_choice": {"type": "function", "function": {"name": "WorkflowEdit"}},
         }
         key = _hash(json.dumps(body, ensure_ascii=False, sort_keys=True))
+        used.add(key)
         if key not in cache:
             calls[0] += 1
             reply = await asyncio.to_thread(_post, "/chat/completions", body)
@@ -244,6 +263,36 @@ class Result:
     definition: dict[str, Any] | None = None
 
 
+def _loop_notes(definition: WorkflowDefinition) -> list[str]:
+    """One bounded loop (3 rounds) whose limit asks for approval, and the rewrite reads the
+    previous round's review."""
+    loops = loop_shape(definition).loops
+    if len(loops) != 1:
+        return [f"loops {len(loops)}"]
+    (loop,) = loops
+    nodes = {node.id: node for node in definition.nodes}
+    notes: list[str] = []
+    decision = nodes[loop.decision]
+    rounds = (
+        decision.repeat.max_rounds if decision.type == "decision_bool" and decision.repeat else None
+    )
+    if rounds != 3:
+        notes.append(f"max_rounds {rounds}")
+    limit = [e for e in definition.edges if e.from_ == loop.decision and e.when == "limit"]
+    if not limit or nodes[limit[0].to].type != "approval":
+        notes.append("limit exit does not ask for approval")
+    reads_previous = any(
+        node.type == "agent"
+        and node.agent_id == WRITE
+        and any(isinstance(seg, RefSegment) and seg.ref.previous for seg in node.prompt)
+        for node in definition.nodes
+        if node.id in loop.body
+    )
+    if not reads_previous:
+        notes.append("the rewrite does not read the previous review")
+    return notes
+
+
 def score(case: Case, base: WorkflowDefinition, proposal: Any) -> tuple[bool, list[str]]:
     notes: list[str] = []
     if proposal.kind != case.kind:
@@ -274,6 +323,8 @@ def score(case: Case, base: WorkflowDefinition, proposal: Any) -> tuple[bool, li
         outputs = [node for node in definition.nodes if node.type == "output"]
         if not outputs or len(outputs[0].fields) < 2:
             notes.append("output does not have two fields")
+    if case.check == "loop":
+        notes += _loop_notes(definition)
     if case.check == "only_timeout":
         before = {node.id: node.model_dump() for node in base.nodes}
         after = {node.id: node.model_dump() for node in definition.nodes}
@@ -315,7 +366,9 @@ async def main() -> None:
                 )
             )
             CACHE.parent.mkdir(parents=True, exist_ok=True)
-            CACHE.write_text(json.dumps(cache, ensure_ascii=False, indent=1, sort_keys=True) + "\n")
+            # Only the replies this run used: a changed prompt leaves no stale entries behind.
+            kept = {key: cache[key] for key in sorted(USED) if key in cache}
+            CACHE.write_text(json.dumps(kept, ensure_ascii=False, indent=1, sort_keys=True) + "\n")
     (HERE / "results.json").write_text(
         json.dumps([r.__dict__ for r in results], ensure_ascii=False, indent=1, default=list) + "\n"
     )

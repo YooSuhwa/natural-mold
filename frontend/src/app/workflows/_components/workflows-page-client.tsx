@@ -19,7 +19,8 @@ import { useCreateWorkflow, useWorkflows } from '@/lib/hooks/use-workflows'
 import { getResourceTone } from '@/lib/resource-tones'
 import { formatDisplayDateTime } from '@/lib/utils/display-format'
 import {
-  inquiryTemplate,
+  buildTemplate,
+  TEMPLATE_ROLES,
   WORKFLOW_TEMPLATES,
   type WorkflowTemplate,
 } from '@/features/workflows/lib/templates'
@@ -120,19 +121,18 @@ function CreateDialog({
   onCreated: (id: string) => void
 }) {
   const t = useTranslations('workflows')
-  const tt = useTranslations('workflows.templates.inquiry')
+  const tt = useTranslations('workflows.templates')
   const [name, setName] = useState('')
   const [template, setTemplate] = useState<WorkflowTemplate>('blank')
-  const [classifier, setClassifier] = useState('')
-  const [writer, setWriter] = useState('')
+  const [picked, setPicked] = useState<Record<string, string>>({})
   const agents = useAgents()
   const create = useCreateWorkflow()
-  const needsAgents = template === 'inquiry' && (!classifier || !writer)
+  const roles = TEMPLATE_ROLES[template]
+  const needsAgents = roles.some((role) => !picked[role])
   const ready = name.trim() !== '' && !needsAgents && !create.isPending
   const submit = () => {
     if (!ready) return
-    const definition =
-      template === 'inquiry' ? inquiryTemplate({ classifier, writer }, tt) : undefined
+    const definition = buildTemplate(template, picked, tt)
     create.mutate(
       { name: name.trim(), definition },
       {
@@ -192,10 +192,15 @@ function CreateDialog({
             </label>
           ))}
         </fieldset>
-        {template === 'inquiry' ? (
+        {roles.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {agentSelect(tt('classifierAgent'), classifier, setClassifier)}
-            {agentSelect(tt('writerAgent'), writer, setWriter)}
+            {roles.map((role) => (
+              <div key={role}>
+                {agentSelect(tt(`${template}.${role}Agent`), picked[role] ?? '', (id) =>
+                  setPicked((current) => ({ ...current, [role]: id })),
+                )}
+              </div>
+            ))}
           </div>
         ) : null}
       </DialogShell.Body>
