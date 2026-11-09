@@ -380,3 +380,13 @@ def test_a_result_that_breaks_the_schema_is_reported() -> None:
     )
     assert result is None
     assert problems and problems[0].startswith("result: ")
+
+
+def test_arguments_nested_under_one_unknown_key_are_unwrapped_once() -> None:
+    """Claude through the gateway sometimes nests the whole call under one parameter name."""
+    reply = {"kind": "question", "message": "무엇을 할까요?"}
+    assert ai_edit.unwrapped({"$PARAMETER_NAME": reply}) == reply
+    assert ai_edit.unwrapped(reply) == reply
+    assert ai_edit.unwrapped({"kind": {"nested": True}}) == {"kind": {"nested": True}}
+    assert ai_edit.unwrapped({"x": "text"}) == {"x": "text"}
+    assert ai_edit.unwrapped(None) == {}
