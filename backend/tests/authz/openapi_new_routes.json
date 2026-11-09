@@ -3068,6 +3068,50 @@
         ]
       }
     },
+    "/api/agents/{agent_id}/tool-approval": {
+      "get": {
+        "description": "The settings, the company cap and every tool \u00d7 path as a run decides it.",
+        "operationId": "get_tool_approval_api_agents__agent_id__tool_approval_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolApprovalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tool Approval",
+        "tags": [
+          "tool-approval"
+        ]
+      }
+    },
     "/api/agents/{agent_id}/triggers": {
       "get": {
         "operationId": "list_agent_triggers_api_agents__agent_id__triggers_get",
@@ -7739,6 +7783,150 @@
         "tags": [
           "conversations",
           "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/tool-grants": {
+      "get": {
+        "operationId": "list_tool_grants_api_conversations__conversation_id__tool_grants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ToolGrantOut"
+                  },
+                  "title": "Response List Tool Grants Api Conversations  Conversation Id  Tool Grants Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tool Grants",
+        "tags": [
+          "tool-approval"
+        ]
+      },
+      "post": {
+        "description": "Allow a tool for this conversation (within the company cap, plan Q5).",
+        "operationId": "create_tool_grant_api_conversations__conversation_id__tool_grants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolGrantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolGrantOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Tool Grant",
+        "tags": [
+          "tool-approval"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/tool-grants/{tool}": {
+      "delete": {
+        "operationId": "revoke_tool_grant_api_conversations__conversation_id__tool_grants__tool__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "title": "Tool",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Tool Grant",
+        "tags": [
+          "tool-approval"
         ]
       }
     },
@@ -29657,6 +29845,7 @@
             "enum": [
               "allow",
               "approval",
+              "approval_relaxable",
               "block"
             ],
             "type": "string"
@@ -33061,6 +33250,64 @@
       "title": "CatalogPolicyView",
       "type": "object"
     },
+    "Clause": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "enum": [
+            "eq",
+            "ne",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "contains",
+            "exists",
+            "starts_with",
+            "ends_with"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "path": {
+          "default": "",
+          "pattern": "^(/[^/]{1,64}){0,8}$",
+          "title": "Path",
+          "type": "string"
+        },
+        "source": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+          "title": "Source",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "source",
+        "op"
+      ],
+      "title": "Clause",
+      "type": "object"
+    },
     "CompanySharedCredentialResponse": {
       "description": "A company shared credential the caller's organization may use (never its values).",
       "properties": {
@@ -33147,6 +33394,45 @@
         "detail"
       ],
       "title": "ComponentStatusOut",
+      "type": "object"
+    },
+    "Condition": {
+      "additionalProperties": false,
+      "properties": {
+        "all": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/Clause"
+              },
+              "maxItems": 20,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "All"
+        },
+        "any": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/Clause"
+              },
+              "maxItems": 20,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Any"
+        }
+      },
+      "title": "Condition",
       "type": "object"
     },
     "ConversationAgentBrief": {
@@ -37599,6 +37885,13 @@
     },
     "GuardrailPolicyOut": {
       "properties": {
+        "always_ask_tools": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Always Ask Tools",
+          "type": "array"
+        },
         "default_template": {
           "anyOf": [
             {
@@ -37643,6 +37936,7 @@
             "enum": [
               "allow",
               "approval",
+              "approval_relaxable",
               "block"
             ],
             "type": "string"
@@ -37679,6 +37973,23 @@
     },
     "GuardrailPolicyUpdate": {
       "properties": {
+        "always_ask_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 200,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Always Ask Tools"
+        },
         "default_template": {
           "anyOf": [
             {
@@ -37716,6 +38027,7 @@
                 "enum": [
                   "allow",
                   "approval",
+                  "approval_relaxable",
                   "block"
                 ],
                 "type": "string"
@@ -48456,6 +48768,16 @@
         "todo": {
           "$ref": "#/components/schemas/TodoPolicyV1"
         },
+        "tool_approval": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ToolApprovalPolicyV1-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "version": {
           "const": 1,
           "title": "Version",
@@ -48480,6 +48802,16 @@
         },
         "todo": {
           "$ref": "#/components/schemas/TodoPolicyV1"
+        },
+        "tool_approval": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ToolApprovalPolicyV1-Output"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "version": {
           "const": 1,
@@ -55187,6 +55519,283 @@
       "title": "TokenUsageBreakdown",
       "type": "object"
     },
+    "ToolApprovalCell": {
+      "properties": {
+        "delivery": {
+          "title": "Delivery",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "layer": {
+          "title": "Layer",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule"
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "layer",
+        "reason",
+        "delivery"
+      ],
+      "title": "ToolApprovalCell",
+      "type": "object"
+    },
+    "ToolApprovalPathsV1": {
+      "additionalProperties": false,
+      "description": "The agent's mode per run path (approval-modes-plan Q3/Q4): ``ask_all`` keeps the\nrisk-level defaults (today's behaviour); ``auto`` runs what the company cap allows.",
+      "properties": {
+        "api": {
+          "default": "ask_all",
+          "enum": [
+            "ask_all",
+            "auto"
+          ],
+          "title": "Api",
+          "type": "string"
+        },
+        "chat": {
+          "default": "ask_all",
+          "enum": [
+            "ask_all",
+            "auto"
+          ],
+          "title": "Chat",
+          "type": "string"
+        },
+        "trigger": {
+          "default": "ask_all",
+          "enum": [
+            "ask_all",
+            "auto"
+          ],
+          "title": "Trigger",
+          "type": "string"
+        },
+        "workflow": {
+          "default": "ask_all",
+          "enum": [
+            "ask_all",
+            "auto"
+          ],
+          "title": "Workflow",
+          "type": "string"
+        }
+      },
+      "title": "ToolApprovalPathsV1",
+      "type": "object"
+    },
+    "ToolApprovalPolicyV1-Input": {
+      "additionalProperties": false,
+      "description": "The agent's tool approval settings (approval-modes-plan 3.3, Q1).",
+      "properties": {
+        "paths": {
+          "$ref": "#/components/schemas/ToolApprovalPathsV1"
+        },
+        "tools": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/ToolApprovalToolV1-Input"
+          },
+          "maxProperties": 200,
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Tools",
+          "type": "object"
+        }
+      },
+      "title": "ToolApprovalPolicyV1",
+      "type": "object"
+    },
+    "ToolApprovalPolicyV1-Output": {
+      "additionalProperties": false,
+      "description": "The agent's tool approval settings (approval-modes-plan 3.3, Q1).",
+      "properties": {
+        "paths": {
+          "$ref": "#/components/schemas/ToolApprovalPathsV1"
+        },
+        "tools": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/ToolApprovalToolV1-Output"
+          },
+          "maxProperties": 200,
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Tools",
+          "type": "object"
+        }
+      },
+      "title": "ToolApprovalPolicyV1",
+      "type": "object"
+    },
+    "ToolApprovalTool": {
+      "properties": {
+        "cells": {
+          "items": {
+            "$ref": "#/components/schemas/ToolApprovalCell"
+          },
+          "title": "Cells",
+          "type": "array"
+        },
+        "grantable": {
+          "title": "Grantable",
+          "type": "boolean"
+        },
+        "level": {
+          "title": "Level",
+          "type": "string"
+        },
+        "locked": {
+          "title": "Locked",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "level",
+        "locked",
+        "grantable",
+        "cells"
+      ],
+      "title": "ToolApprovalTool",
+      "type": "object"
+    },
+    "ToolApprovalToolV1-Input": {
+      "additionalProperties": false,
+      "description": "One tool's setting: ``always`` ask, ``never`` ask (within the company cap), or ask\n``when`` the rule over the call's arguments holds (``source`` is ``args``).",
+      "properties": {
+        "mode": {
+          "enum": [
+            "always",
+            "never",
+            "when"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/Condition"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "ToolApprovalToolV1",
+      "type": "object"
+    },
+    "ToolApprovalToolV1-Output": {
+      "additionalProperties": false,
+      "description": "One tool's setting: ``always`` ask, ``never`` ask (within the company cap), or ask\n``when`` the rule over the call's arguments holds (``source`` is ``args``).",
+      "properties": {
+        "mode": {
+          "enum": [
+            "always",
+            "never",
+            "when"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/Condition"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "ToolApprovalToolV1",
+      "type": "object"
+    },
+    "ToolApprovalView": {
+      "description": "The agent's settings, the company cap and the effective table (\"\uc2e4\uc81c \uc801\uc6a9\").",
+      "properties": {
+        "company_actions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Company Actions",
+          "type": "object"
+        },
+        "company_always_ask": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Company Always Ask",
+          "type": "array"
+        },
+        "settings": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Settings"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/components/schemas/ToolApprovalTool"
+          },
+          "title": "Tools",
+          "type": "array"
+        }
+      },
+      "required": [
+        "settings",
+        "company_actions",
+        "company_always_ask",
+        "tools"
+      ],
+      "title": "ToolApprovalView",
+      "type": "object"
+    },
     "ToolBrief": {
       "properties": {
         "icon_id": {
@@ -55405,6 +56014,46 @@
         "kind"
       ],
       "title": "ToolFieldSchema",
+      "type": "object"
+    },
+    "ToolGrantCreate": {
+      "properties": {
+        "tool": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "ToolGrantCreate",
+      "type": "object"
+    },
+    "ToolGrantOut": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tool_name",
+        "created_at"
+      ],
+      "title": "ToolGrantOut",
       "type": "object"
     },
     "ToolInstanceResponse": {

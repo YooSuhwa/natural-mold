@@ -18,7 +18,9 @@ conversation with chat attachments needs the attachment-input middleware, which
 reads the upload rows and files per model call; the lease does not carry them.
 ``guardrail_policy``: a run whose guardrail rules ask for approval before a tool runs; those
 rules are ``interrupt_on`` predicates, which frozen inputs cannot hold. Other rules and tool
-risk actions are compiled into the lease (``prepared_run_compile``). ``unattended_approval``: a
+risk actions are compiled into the lease (``prepared_run_compile``). ``tool_approval``: the
+agent's tool approval settings or a conversation grant lift or condition an approval
+(approval-modes-plan), applied at assembly. ``unattended_approval``: a
 run nobody watches (schedule, Agent API) with a call that needs approval; that call waits for
 the approval inbox or answers BLOCKED (``app/approvals/unattended.py``), which the lease does
 not carry.
@@ -67,6 +69,7 @@ LEGACY_FALLBACK_REASONS: frozenset[str] = frozenset(
         "child_skills",
         "guardrail_policy",
         "unattended_approval",
+        "tool_approval",
         "llm_credential_missing",
         "memory_tools",
         "middleware",
@@ -158,3 +161,9 @@ def require_lease_supported(
         raise unsupported(f"{subject}agent_memory_file_write")
     if cfg.user_id is not None and memory_write_policy != "off":
         raise unsupported(f"{subject}memory_tools")
+    from app.approvals.tool_modes import plan_for
+
+    plan = plan_for(cfg)
+    if plan is not None and plan.relaxes:
+        # Tool approval settings (approval-modes-plan 3.2): conditional asks are predicates.
+        raise unsupported(f"{subject}tool_approval")

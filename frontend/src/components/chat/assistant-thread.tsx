@@ -23,6 +23,7 @@ import { MissionControlBar } from '@/components/chat/mission-control-bar'
 import { SubagentTeamStrip } from '@/components/chat/subagent-team-strip'
 import { MemoryRecallChip } from '@/components/chat/memory-recall-chip'
 import { ExcludedCapabilitiesBanner } from '@/components/chat/excluded-capabilities-banner'
+import { ConversationToolGrantChips } from '@/features/tool-approval/components/conversation-tool-grants'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { ChatConversationContext } from '@/components/chat/conversation-context'
 import {
@@ -178,6 +179,7 @@ export function AssistantThread({
           {!isBuilder ? <SubagentTeamStrip /> : null}
           {!isBuilder ? <MemoryRecallChip /> : null}
           {!isBuilder ? <ExcludedCapabilitiesBanner /> : null}
+          {!isBuilder ? <ConversationToolGrantChips /> : null}
           <ThreadPrimitive.Viewport
             ref={viewportRef}
             className="min-h-0 flex-1 overflow-y-auto"

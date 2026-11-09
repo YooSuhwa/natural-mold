@@ -26,6 +26,7 @@ from pydantic import (
 )
 
 from app.agent_runtime.structured_output import OutputSchemaError, check_output_schema
+from app.conditions import Clause, Condition
 
 SCHEMA_VERSION: Final = "moldy.workflow.v1"
 INPUT_REF: Final = "input"
@@ -44,7 +45,6 @@ MAX_CASES: Final = 10
 Identifier = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")]
 Pointer = Annotated[str, Field(pattern=r"^(/[^/]{1,64}){0,8}$")]
 Label = Annotated[str, Field(max_length=80)]
-Operator = Literal["eq", "ne", "gt", "gte", "lt", "lte", "contains", "exists"]
 # Fixed exits (decision, approval, ask, loop limit, switch default) or a switch case name.
 EdgeWhen = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")]
 FIXED_EXITS: Final = frozenset(
@@ -97,40 +97,6 @@ class WorkflowInput(_Strict):
         if self.max_length is not None and self.type != "string":
             raise ValueError("max_length is only for string inputs")
         return self
-
-
-class Clause(_Strict):
-    source: Identifier
-    path: Pointer = ""
-    op: Operator
-    value: str | int | float | bool | None = None
-
-    @model_validator(mode="after")
-    def _value_matches_op(self) -> Clause:
-        if self.op == "exists" and self.value is not None:
-            raise ValueError("exists takes no value")
-        if self.op in ("gt", "gte", "lt", "lte") and (
-            isinstance(self.value, bool) or not isinstance(self.value, int | float)
-        ):
-            raise ValueError(f"{self.op} needs a number")
-        if self.op == "contains" and not isinstance(self.value, str):
-            raise ValueError("contains needs text")
-        return self
-
-
-class Condition(_Strict):
-    all: Annotated[list[Clause], Field(min_length=1, max_length=20)] | None = None
-    any: Annotated[list[Clause], Field(min_length=1, max_length=20)] | None = None
-
-    @model_validator(mode="after")
-    def _one_group(self) -> Condition:
-        if (self.all is None) == (self.any is None):
-            raise ValueError("a condition is either all or any")
-        return self
-
-    @property
-    def clauses(self) -> list[Clause]:
-        return self.all or self.any or []
 
 
 class _Node(_Strict):

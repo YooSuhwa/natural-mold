@@ -36,6 +36,7 @@ function cloneRuntimePolicy(policy: RuntimePolicyV1 | null | undefined): Runtime
       policy.summarization.mode === 'auto'
         ? { mode: 'auto' }
         : { mode: 'preset', preset: policy.summarization.preset },
+    ...(policy.tool_approval ? { tool_approval: structuredClone(policy.tool_approval) } : {}),
   }
 }
 
@@ -48,7 +49,8 @@ function runtimePoliciesEqual(
     left.version !== right.version ||
     left.filesystem.mode !== right.filesystem.mode ||
     left.todo.enabled !== right.todo.enabled ||
-    left.summarization.mode !== right.summarization.mode
+    left.summarization.mode !== right.summarization.mode ||
+    JSON.stringify(left.tool_approval ?? null) !== JSON.stringify(right.tool_approval ?? null)
   ) {
     return false
   }

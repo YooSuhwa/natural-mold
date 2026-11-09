@@ -592,6 +592,12 @@
           "name": "workflow_tools"
         },
         {
+          "annotation": "frozenset[str]",
+          "default": "value:_HAS_DEFAULT_FACTORY_CLASS",
+          "kind": "keyword_only",
+          "name": "tool_grants"
+        },
+        {
           "annotation": "str | None",
           "default": "none",
           "kind": "keyword_only",
@@ -1186,6 +1192,12 @@
           "default": "none",
           "kind": "keyword_only",
           "name": "response_format"
+        },
+        {
+          "annotation": "Any | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "tool_approval"
         }
       ],
       "return": "Any"

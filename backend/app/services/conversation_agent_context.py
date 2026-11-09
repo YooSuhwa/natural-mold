@@ -167,6 +167,9 @@ async def resolve_agent_context(
     from app.workflows.chat_tool import specs_for_agent
 
     cfg.workflow_tools = await specs_for_agent(db, context, agent.id)
+    from app.approvals.tool_grants import live as live_tool_grants
+
+    cfg.tool_grants = await live_tool_grants(db, conversation_id)
     if include_subagents:
         cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
             agent,

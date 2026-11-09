@@ -34,6 +34,7 @@ from app.models.conversation_pinned_summary import ConversationPinnedSummary
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.conversation_run_metrics import ConversationRunMetrics
+from app.models.conversation_tool_grant import ConversationToolGrant
 from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.credential_default import CredentialDefault
@@ -136,6 +137,7 @@ __all__ = [
     "AgentSkillLink",
     "AgentSubAgentLink",
     "AgentWorkflowLink",
+    "ConversationToolGrant",
     "AgentToolLink",
     "AgentTrigger",
     "AgentTriggerRun",

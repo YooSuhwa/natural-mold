@@ -171,6 +171,8 @@ class AgentConfig:
     # links, read when the chat config is built; preparation turns them into tools for the
     # root chat run only (``WorkflowToolSpec``, no database access during preparation).
     workflow_tools: list[Any] = field(default_factory=list, kw_only=True)
+    # Tools the conversation's owner allowed for this conversation (approval-modes-plan Q5).
+    tool_grants: frozenset[str] = field(default_factory=frozenset, kw_only=True)
     memory_recall_block: str | None = field(default=None, kw_only=True)
     memory_search_scopes: str | None = field(default=None, kw_only=True)
     # Workflow W0 (plan 3.2): the JSON the root agent must answer with, inside the subset

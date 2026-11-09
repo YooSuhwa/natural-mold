@@ -12,7 +12,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.conditions import Condition
 
 type JsonScalar = str | int | float | bool | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -60,6 +62,56 @@ type SummarizationPolicyV1 = Annotated[
 ]
 
 
+ToolApprovalMode = Literal["ask_all", "auto"]
+MAX_TOOL_APPROVAL_TOOLS: Final = 200
+
+
+class ToolApprovalPathsV1(BaseModel):
+    """The agent's mode per run path (approval-modes-plan Q3/Q4): ``ask_all`` keeps the
+    risk-level defaults (today's behaviour); ``auto`` runs what the company cap allows."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    chat: ToolApprovalMode = "ask_all"
+    trigger: ToolApprovalMode = "ask_all"
+    workflow: ToolApprovalMode = "ask_all"
+    api: ToolApprovalMode = "ask_all"
+
+
+class ToolApprovalToolV1(BaseModel):
+    """One tool's setting: ``always`` ask, ``never`` ask (within the company cap), or ask
+    ``when`` the rule over the call's arguments holds (``source`` is ``args``)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    mode: Literal["always", "never", "when"]
+    rule: Condition | None = None
+
+    @model_validator(mode="after")
+    def _rule_for_when(self) -> ToolApprovalToolV1:
+        if (self.mode == "when") != (self.rule is not None):
+            raise ValueError("a when setting has a rule, and only it")
+        if self.rule is not None and any(c.source != "args" for c in self.rule.clauses):
+            raise ValueError("a tool rule reads the call's args only")
+        return self
+
+
+class ToolApprovalPolicyV1(BaseModel):
+    """The agent's tool approval settings (approval-modes-plan 3.3, Q1)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    paths: ToolApprovalPathsV1 = Field(default_factory=ToolApprovalPathsV1)
+    tools: Annotated[
+        dict[Annotated[str, Field(min_length=1, max_length=128)], ToolApprovalToolV1],
+        Field(max_length=MAX_TOOL_APPROVAL_TOOLS),
+    ] = Field(default_factory=dict)
+
+    @property
+    def is_default(self) -> bool:
+        return self.paths == ToolApprovalPathsV1() and not self.tools
+
+
 class RuntimePolicyV1(BaseModel):
     """Strict persisted runtime behavior policy, discriminated by version."""
 
@@ -69,6 +121,10 @@ class RuntimePolicyV1(BaseModel):
     filesystem: FilesystemPolicyV1 = Field(default_factory=FilesystemPolicyV1)
     todo: TodoPolicyV1 = Field(default_factory=TodoPolicyV1)
     summarization: SummarizationPolicyV1 = Field(default_factory=SummarizationAutoPolicyV1)
+    # Stored only when set, so a policy without it keeps its canonical JSON and hash.
+    tool_approval: ToolApprovalPolicyV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None or value.is_default
+    )
 
     @field_validator("version", mode="before")
     @classmethod
@@ -95,12 +151,15 @@ def runtime_policy_to_json(policy: RuntimePolicyV1) -> JsonObject:
             summarization: JsonObject = {"mode": "auto"}
         case SummarizationPresetPolicyV1(preset=preset):
             summarization = {"mode": "preset", "preset": preset}
-    return {
+    result: JsonObject = {
         "version": policy.version,
         "filesystem": {"mode": policy.filesystem.mode},
         "todo": {"enabled": policy.todo.enabled},
         "summarization": summarization,
     }
+    if policy.tool_approval is not None and not policy.tool_approval.is_default:
+        result["tool_approval"] = policy.tool_approval.model_dump(mode="json", exclude_none=True)
+    return result
 
 
 def canonical_runtime_policy_json(policy: RuntimePolicyV1) -> str:

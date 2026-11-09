@@ -111,6 +111,10 @@ ALLOWED: dict[tuple[str, str], str] = {
     ("services/chat/secrets.py", "build_tools_config"): "read-only response masking",
     ("services/chat/trigger_blocked_tools.py", "build_tools_config"): "trigger probe (plan)",
     ("services/chat/trigger_blocked_tools.py", "build_agent_skills"): "trigger probe (plan)",
+    ("approvals/tool_grants.py", "build_tools_config"): (
+        "tool approval view: run-time names and risk levels only, read-only (no run)"
+    ),
+    ("approvals/tool_grants.py", "build_agent_skills"): "tool approval view: has skills (no run)",
     ("agent_runtime/trigger_execution_materialization.py", "build_agent_skills"): (
         "claim without boundary skills (legacy callers)"
     ),

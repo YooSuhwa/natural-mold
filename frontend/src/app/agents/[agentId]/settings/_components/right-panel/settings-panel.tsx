@@ -9,6 +9,7 @@ import { RuntimePolicySettings } from '@/components/agent/runtime-policy-setting
 import { useGenerateAgentImage } from '@/lib/hooks/use-agents'
 import type { AgentIdentityMode, RuntimePolicyV1 } from '@/lib/types'
 import { AgentGuardrailCard } from '@/features/guardrails/components/agent-guardrail-card'
+import { ToolApprovalSettings } from '@/features/tool-approval/components/tool-approval-settings'
 import { AgentMemorySettingsSection } from './agent-memory-settings-section'
 import { IdentitySettingsSection } from './identity-settings-section'
 
@@ -102,6 +103,13 @@ export function SettingsPanel({
           onValueChange={onRuntimePolicyChange}
           contextWindow={modelContextWindow}
           surface="existing-agent"
+        />
+      ) : null}
+      {onRuntimePolicyChange ? (
+        <ToolApprovalSettings
+          agentId={agentId}
+          value={runtimePolicy}
+          onValueChange={onRuntimePolicyChange}
         />
       ) : null}
       <AgentMemorySettingsSection agentId={agentId} />

@@ -24,6 +24,7 @@ import {
 import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
 import type { Decision as StandardDecision } from '@/lib/types'
 import { CountdownBadge } from './countdown-badge'
+import { ConversationGrantButton } from '@/features/tool-approval/components/conversation-tool-grants'
 
 interface ApprovalArgs {
   /** 승인 대상 도구명 */
@@ -651,6 +652,8 @@ export function ApprovalCard({
           </label>
         </div>
       )}
+
+      {canApprove && !submitting ? <ConversationGrantButton tool={args?.tool_name} /> : null}
 
       {noReviewConfig && (
         <p data-testid="approval-no-review-config" className="text-xs text-muted-foreground">

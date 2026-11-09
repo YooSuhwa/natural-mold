@@ -93,6 +93,7 @@ CHILDREN: Final = MappingProxyType(
         "message_events": _rule(_CONVERSATION),
         "message_event_chunks": _rule(_CONVERSATION, Parent("message_events", "message_event_id")),
         "message_feedbacks": _rule(_CONVERSATION),
+        "conversation_tool_grants": _rule(_CONVERSATION),
         "skill_credential_bindings": _rule(
             Parent("skills", "skill_id"), Parent("credentials", "credential_id")
         ),

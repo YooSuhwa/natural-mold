@@ -107,9 +107,13 @@ async def update_agent(
     if data.middleware_configs is not None:
         agent.middleware_configs = [mc.model_dump() for mc in data.middleware_configs]
     if "runtime_policy" in data.model_fields_set:
+        before = _tool_approval_json(agent.runtime_policy)
         agent.runtime_policy = (
             runtime_policy_to_json(data.runtime_policy) if data.runtime_policy is not None else None
         )
+        after = _tool_approval_json(agent.runtime_policy)
+        if before != after:
+            await _tool_approval_changed(db, agent, context, before, after)
     if data.opener_questions is not None:
         agent.opener_questions = data.opener_questions
     if data.model_fallback_ids is not None:
@@ -169,6 +173,42 @@ async def update_agent(
         ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
     )
     return agent
+
+
+def _tool_approval_json(policy: Any) -> Any:
+    return (policy or {}).get("tool_approval") if isinstance(policy, dict) else None
+
+
+async def _tool_approval_changed(
+    db: AsyncSession, agent: Agent, context: OrgContext, before: Any, after: Any
+) -> None:
+    """Revoke the conversations' grants and audit the change (approval-modes-plan Q5, 3.6)."""
+    import hashlib
+    import json
+
+    from app.approvals.tool_grants import revoke_for_agent
+    from app.authz.audit_actions import AGENT_TOOL_APPROVAL_UPDATED
+    from app.services import audit_service
+
+    def digest(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = json.dumps(value, sort_keys=True, ensure_ascii=True)
+        return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+    revoked = await revoke_for_agent(db, agent.id)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=context.user_id,
+        owner_user_id=context.user_id,
+        action=AGENT_TOOL_APPROVAL_UPDATED,
+        target_type="agent",
+        target_id=agent.id,
+        target_owner_user_id=agent.user_id,
+        outcome="success",
+        metadata={"before": digest(before), "after": digest(after), "grants_revoked": revoked},
+    )
 
 
 def linked_targets(agent: Agent) -> list[tuple[Any, uuid.UUID]]:

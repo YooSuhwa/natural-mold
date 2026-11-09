@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { SettingsSectionCard } from '@/components/shared/settings-section-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useUpdateGuardrailPolicy } from '@/lib/hooks/use-guardrails'
 import type { GuardrailPolicy, ToolRiskActions } from '@/lib/types/guardrails'
 import {
@@ -31,7 +32,19 @@ export function GuardrailToolRiskForm({ tenantId, policy, readOnly }: GuardrailT
   const errorMessage = useGuardrailErrorMessage()
   const update = useUpdateGuardrailPolicy(tenantId)
   const [actions, setActions] = useState<ToolRiskActions>(policy.tool_risk)
-  const dirty = TOOL_RISK_LEVELS.some((level) => actions[level] !== policy.tool_risk[level])
+  const [alwaysAsk, setAlwaysAsk] = useState(() => (policy.always_ask_tools ?? []).join(', '))
+  const alwaysAskList = [
+    ...new Set(
+      alwaysAsk
+        .split(/[\s,]+/)
+        .map((name) => name.trim())
+        .filter(Boolean),
+    ),
+  ].sort()
+  const savedAlwaysAsk = [...(policy.always_ask_tools ?? [])].sort()
+  const dirty =
+    TOOL_RISK_LEVELS.some((level) => actions[level] !== policy.tool_risk[level]) ||
+    alwaysAskList.join(',') !== savedAlwaysAsk.join(',')
 
   function save() {
     update.mutate(
@@ -41,6 +54,7 @@ export function GuardrailToolRiskForm({ tenantId, policy, readOnly }: GuardrailT
           default_template: policy.default_template,
           locked_rules: policy.locked_rules,
           tool_risk: actions,
+          always_ask_tools: alwaysAskList,
         },
         version: policy.updated_at,
       },
@@ -84,6 +98,16 @@ export function GuardrailToolRiskForm({ tenantId, policy, readOnly }: GuardrailT
             </li>
           ))}
         </ul>
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span>{t('alwaysAsk')}</span>
+          <Input
+            value={alwaysAsk}
+            disabled={readOnly}
+            placeholder={t('alwaysAskPlaceholder')}
+            onChange={(event) => setAlwaysAsk(event.target.value)}
+          />
+          <span className="moldy-ui-caption text-muted-foreground">{t('alwaysAskHint')}</span>
+        </label>
         <p className="text-sm text-muted-foreground">{t('triggerNote')}</p>
         {readOnly ? null : (
           <Button disabled={!dirty || update.isPending} onClick={save}>

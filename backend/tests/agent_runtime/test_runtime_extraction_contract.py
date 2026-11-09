@@ -66,7 +66,8 @@ def test_factory_legacy_wrappers_keep_exact_signatures() -> None:
             "subagents: 'list[dict[str, Any]] | None' = None, runtime_policy: "
             "'ResolvedRuntimePolicy | None' = None, guard: 'Guard | None' = None, "
             "tool_risk: 'ToolRiskPolicy | None' = None, unattended: "
-            "'UnattendedMode | None' = None, response_format: 'Any | None' = None) -> 'Any'"
+            "'UnattendedMode | None' = None, response_format: 'Any | None' = None, "
+            "tool_approval: 'Any | None' = None) -> 'Any'"
         ),
     }
 

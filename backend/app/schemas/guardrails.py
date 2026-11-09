@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
 PolicyMode = Literal["off", "open", "default", "enforced"]
 RiskLevel = Literal["read_only", "write_internal", "external_mutation", "code_execution", "unknown"]
-RiskAction = Literal["allow", "approval", "block"]
+RiskAction = Literal["allow", "approval", "approval_relaxable", "block"]
 BindingMode = Literal["inherit", "template", "off"]
 
 
@@ -40,6 +40,8 @@ class GuardrailPolicyOut(BaseModel):
     locked_rules: list[str]
     # Every tool risk level with the company's action (defaults filled in).
     tool_risk: dict[RiskLevel, RiskAction]
+    # Tools a person always approves, whatever an agent's settings say (approval-modes-plan Q2).
+    always_ask_tools: list[str] = Field(default_factory=list)
     # False: the company has not saved a policy; the installation default applies.
     saved: bool
     templates: list[GuardrailTemplateChoice]
@@ -52,6 +54,9 @@ class GuardrailPolicyUpdate(BaseModel):
     locked_rules: list[str] = Field(default_factory=list, max_length=40)
     # Omitted: the saved tool risk actions stay as they are.
     tool_risk: dict[RiskLevel, RiskAction] | None = None
+    always_ask_tools: list[Annotated[str, Field(min_length=1, max_length=128)]] | None = Field(
+        default=None, max_length=200
+    )
 
 
 class GuardrailTemplateOut(BaseModel):
