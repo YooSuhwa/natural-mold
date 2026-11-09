@@ -35,18 +35,25 @@ class PinnedGuardrails:
 
 
 def _snapshot(rules: RuleSet | None, tool_risk: ToolRiskPolicy | None) -> dict[str, Any]:
-    return {
+    snapshot: dict[str, Any] = {
         "rules": rules_to_json(rules) if rules is not None else None,
         "tool_risk": dict(tool_risk.actions) if tool_risk is not None else None,
     }
+    if tool_risk is not None and tool_risk.always_ask:  # stored only when set (shape kept)
+        snapshot["always_ask_tools"] = sorted(tool_risk.always_ask)
+    return snapshot
 
 
 def _from_snapshot(record: dict[str, Any]) -> PinnedGuardrails:
     rules = record.get("rules")
     tool_risk = record.get("tool_risk")
+    always = record.get("always_ask_tools")
+    always_ask = (
+        frozenset(str(name) for name in always) if isinstance(always, list) else frozenset()
+    )
     return PinnedGuardrails(
         snapshot_from_json(rules) if isinstance(rules, dict) else None,
-        policy_from_actions(tool_risk) if isinstance(tool_risk, dict) else None,
+        policy_from_actions(tool_risk, always_ask) if isinstance(tool_risk, dict) else None,
     )
 
 

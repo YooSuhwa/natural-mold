@@ -277,6 +277,7 @@ def build_agent_impl(
     tool_risk: ToolRiskPolicy | None = None,
     unattended: UnattendedMode | None = None,
     response_format: Any | None = None,
+    tool_approval: Any | None = None,
 ) -> Any:
     resolved_backend = backend if backend is not None else StateBackend()
     compatible_middleware = bindings.with_compatibility(
@@ -285,6 +286,9 @@ def build_agent_impl(
         permissions=permissions,
     )
     if prepared_task_middleware is not None:
+        if tool_approval is not None and tool_approval.relaxes:
+            # Lease eligibility sends such runs down the ordinary path (``tool_approval``).
+            raise ValueError("prepared runs do not carry tool approval settings")
         # Prepared leases: every child is already a compiled base child (including
         # general-purpose) and the interceptor is the first app tool-call wrapper.
         if not subagents or any("runnable" not in spec for spec in subagents):
@@ -337,6 +341,19 @@ def build_agent_impl(
             )
             tools, interrupt_on = applied.tools, applied.interrupt_on
             compatible_middleware, compatible_subagents = applied.middleware, applied.subagents
+        if tool_approval is not None and tool_approval.relaxes:
+            # The root agent's own tool approval settings, under the company step (plan 3.1).
+            from app.approvals import tool_modes
+
+            settled = tool_modes.apply(interrupt_on, tools, tool_approval)
+            interrupt_on = settled.interrupt_on
+            if settled.auto_allowed and tool_approval.audit is not None:
+                compatible_middleware = [
+                    *compatible_middleware,
+                    tool_modes.AutoAllowedAuditMiddleware(
+                        settled.auto_allowed, tool_approval.audit
+                    ),
+                ]
         if guard is not None and has_approval_rules(guard.rules) and isinstance(interrupt_on, dict):
             # Rules that ask before a tool runs ride the standard approval path (③).
             interrupt_on = with_approvals(interrupt_on, tools, guard.rules)

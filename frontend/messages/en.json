@@ -3911,12 +3911,16 @@
       "action": {
         "allow": "Allow",
         "approval": "Approval",
-        "block": "Block"
+        "block": "Block",
+        "approval_relaxable": "Approval (agents may lift)"
       },
       "default": "Default",
       "triggerNote": "Scheduled runs have nobody to approve, so a run with non-read-only tools still stops. Blocked tools are not run, so they are left out of that check.",
       "save": "Save default actions",
-      "saved": "Default actions per tool risk level saved."
+      "saved": "Default actions per tool risk level saved.",
+      "alwaysAsk": "Tools a person always approves",
+      "alwaysAskPlaceholder": "send_mail, http_request",
+      "alwaysAskHint": "Tool names separated by commas. Agent settings and conversation grants cannot lift them."
     },
     "policy": {
       "title": "Company policy",
@@ -7863,6 +7867,66 @@
     },
     "sharing": {
       "runOnly": "Run only"
+    }
+  },
+  "toolApproval": {
+    "title": "Tool approval",
+    "description": "Decide whether a person is asked before a tool runs. Approvals the company requires cannot be changed.",
+    "becomesCustom": "Changing this saves the runtime policy as custom.",
+    "modes": "Mode per run path",
+    "modesHint": "Auto runs without asking only the risk levels the company opened. Schedules and the API wait or block by their own setting; workflows wait in the inbox.",
+    "path": {
+      "chat": "Chat",
+      "trigger": "Schedule",
+      "workflow": "Workflow",
+      "api": "API"
+    },
+    "mode": {
+      "ask_all": "Ask all",
+      "auto": "Auto"
+    },
+    "tools": "Per tool",
+    "noTools": "No tools are attached.",
+    "toolSetting": "Approval setting for {tool}",
+    "toolMode": {
+      "default": "Default (follows the mode)",
+      "always": "Always ask",
+      "never": "Never ask",
+      "when": "Conditional"
+    },
+    "level": {
+      "read_only": "Read only",
+      "write_internal": "Write (internal)",
+      "external_mutation": "External change",
+      "code_execution": "Code execution",
+      "unknown": "Unknown"
+    },
+    "effectiveFor": "Effective for {tool}",
+    "effectiveHint": "Computed from the saved settings. Save to see your changes here.",
+    "kind": {
+      "ask": "Ask",
+      "auto": "Auto",
+      "when": "Conditional",
+      "hidden": "Blocked"
+    },
+    "ruleAskWhen": "Ask when argument",
+    "ruleArg": "Argument name",
+    "ruleOp": "Comparison",
+    "ruleValue": "Value",
+    "op": {
+      "eq": "equals",
+      "ne": "differs from",
+      "contains": "contains",
+      "starts_with": "starts with",
+      "ends_with": "ends with",
+      "exists": "is present"
+    },
+    "grant": {
+      "button": "Don't ask for this tool in this conversation",
+      "done": "Allowed {tool} for this conversation",
+      "failed": "Could not allow it",
+      "chipsLabel": "Tools allowed in this conversation",
+      "revoke": "Revoke {tool}"
     }
   }
 }

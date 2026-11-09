@@ -195,7 +195,13 @@ def _refuse_unattended_approvals(
             raise unsupported("unattended_approval")
     for config in root.mcp_configs:
         risk = risk_from_tool_config(dict(config))
-        allowed = cfg.tool_risk is not None and cfg.tool_risk.action(risk.risk_level) != "approval"
+        name = str(config.get("mcp_tool_name") or config.get("name") or "")
+        allowed = (
+            cfg.tool_risk is not None
+            # ``block``: the call is refused, never asked; ``approval_relaxable`` still asks.
+            and cfg.tool_risk.action(risk.risk_level) in ("allow", "block")
+            and name not in cfg.tool_risk.always_ask
+        )
         if risk.requires_approval and not allowed:
             raise unsupported("unattended_approval")
 

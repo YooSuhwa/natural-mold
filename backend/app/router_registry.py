@@ -89,6 +89,7 @@ def include_app_routers(app: FastAPI) -> None:
         tenant_sso,
         tenant_sso_connections,
         tenant_usage,
+        tool_approval,
         tools,
         triggers,
         uploads,
@@ -191,6 +192,7 @@ def include_app_routers(app: FastAPI) -> None:
     app.include_router(workflows.router)
     app.include_router(workflows.runs_router)
     app.include_router(workflow_starts.router)
+    app.include_router(tool_approval.router)
 
     if settings.e2e_test_helpers_enabled:
         from app.routers import e2e_chat_run_helpers, e2e_mcp_apps_helpers

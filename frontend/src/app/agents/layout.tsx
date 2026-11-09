@@ -16,6 +16,8 @@ const AGENT_MESSAGE_NAMESPACES = [
   'emergencyStop',
   // Workflow chat tools: the chat card, its approval and the settings panel (workflow-tool-plan).
   'workflows',
+  // Tool approval: the settings panel, the approval card's grant and the chips (approval-modes-plan).
+  'toolApproval',
 ] as const
 
 export default function AgentsLayout({ children }: { children: ReactNode }) {

@@ -29,7 +29,10 @@ from app.tools.risk import (
     risk_from_tool_config,
 )
 
-RiskAction = Literal["allow", "approval", "block"]
+# ``approval_relaxable``: asked by default, but an agent's tool approval settings may run it
+# without asking (approval-modes-plan Q2); ``approval`` stays forced.
+RiskAction = Literal["allow", "approval", "approval_relaxable", "block"]
+MAX_ALWAYS_ASK: Final = 200
 ACTIONS: Final = frozenset(get_args(RiskAction))
 LEVELS: Final = tuple(level.value for level in ToolRiskLevel)
 SETTINGS_KEY: Final = "tool_risk"
@@ -52,6 +55,8 @@ class InvalidToolRiskError(ValueError):
 @dataclass(frozen=True, slots=True)
 class ToolRiskPolicy:
     actions: Mapping[str, RiskAction]
+    # Tools a person always approves, whatever any agent setting says (plan Q2).
+    always_ask: frozenset[str] = frozenset()
 
     def action(self, level: ToolRiskLevel | str) -> RiskAction:
         key = level.value if isinstance(level, ToolRiskLevel) else level
@@ -59,7 +64,9 @@ class ToolRiskPolicy:
 
     @property
     def is_default(self) -> bool:
-        return all(self.action(level) == DEFAULT_ACTIONS[level] for level in LEVELS)
+        return not self.always_ask and all(
+            self.action(level) == DEFAULT_ACTIONS[level] for level in LEVELS
+        )
 
 
 def actions_from_json(raw: Any) -> dict[str, RiskAction]:
@@ -80,12 +87,35 @@ def actions_from_json(raw: Any) -> dict[str, RiskAction]:
     return result
 
 
-def policy_from_actions(actions: Mapping[str, str] | None) -> ToolRiskPolicy | None:
-    """``None`` when every level keeps its default (nothing to apply)."""
-    if not actions:
+def always_ask_from_json(raw: Any) -> frozenset[str]:
+    """The company's always-ask tool names; raises on a malformed list."""
+    if raw is None:
+        return frozenset()
+    if not isinstance(raw, list) or len(raw) > MAX_ALWAYS_ASK:
+        raise InvalidToolRiskError(f"always_ask_tools must be a list of at most {MAX_ALWAYS_ASK}")
+    if not all(isinstance(name, str) and 0 < len(name) <= 128 for name in raw):
+        raise InvalidToolRiskError("always_ask_tools must name tools")
+    return frozenset(raw)
+
+
+def policy_from_actions(
+    actions: Mapping[str, str] | None, always_ask: frozenset[str] = frozenset()
+) -> ToolRiskPolicy | None:
+    """``None`` when every level keeps its default and no tool is always asked."""
+    if not actions and not always_ask:
         return None
-    policy = ToolRiskPolicy(actions_from_json(actions))
+    policy = ToolRiskPolicy(actions_from_json(actions), frozenset(always_ask))
     return None if policy.is_default else policy
+
+
+def level_of(tool: BaseTool | str) -> ToolRiskLevel:
+    """A tool's risk level (Deep Agents' own tools by name)."""
+    return _level(tool)
+
+
+def approval_entry(tool: BaseTool | str) -> dict[str, Any]:
+    """The interrupt entry that asks before this tool runs."""
+    return _approval_entry(tool)
 
 
 def _level(tool: BaseTool | str) -> ToolRiskLevel:
@@ -142,7 +172,9 @@ def interrupts_for(
         action = policy.action(_level(tool))
         if action == "block":
             result.pop(name, None)
-        elif action == "approval":
+        elif action in ("approval", "approval_relaxable") or name in policy.always_ask:
+            # Relaxable asks too; only the root agent's own settings may lift it afterwards
+            # (``app.approvals.tool_modes``), never a child's or the default.
             if not result.get(name):
                 result[name] = _approval_entry(tool)
         elif name in result and result[name] == _default_entry(tool):

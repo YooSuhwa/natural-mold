@@ -121,6 +121,7 @@ describe('CompanyGuardrailsContent (회사 가드레일)', () => {
         default_template: 'builtin:kr-default',
         locked_rules: [],
         tool_risk: { ...DEFAULT_TOOL_RISK, external_mutation: 'block', read_only: 'approval' },
+        always_ask_tools: [],
       },
       VERSION,
     )

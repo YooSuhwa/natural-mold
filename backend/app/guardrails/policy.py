@@ -35,6 +35,7 @@ from app.guardrails.tool_risk import (
     InvalidToolRiskError,
     ToolRiskPolicy,
     actions_from_json,
+    always_ask_from_json,
     policy_from_actions,
 )
 from app.models.guardrail_template import (
@@ -59,8 +60,10 @@ class CompanyPolicy:
     mode: str
     default_template: str | None = None
     locked_rules: frozenset[str] = frozenset()
-    # Risk level → allow / approval / block (tool_risk.py); every level present.
+    # Risk level → allow / approval / approval_relaxable / block (tool_risk.py); every level.
     tool_risk: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_ACTIONS))
+    # Tools a person always approves (approval-modes-plan Q2).
+    always_ask_tools: frozenset[str] = frozenset()
 
 
 def policy_from_settings(values: dict[str, Any] | None) -> CompanyPolicy | None:
@@ -70,6 +73,7 @@ def policy_from_settings(values: dict[str, Any] | None) -> CompanyPolicy | None:
     locked = raw.get("locked_rules") or []
     try:
         tool_risk = actions_from_json(raw.get("tool_risk"))
+        always_ask = always_ask_from_json(raw.get("always_ask_tools"))
     except InvalidToolRiskError:
         # Only the policy API writes this and it validates; anything else is unreadable.
         raise GuardrailPolicyError("the stored tool risk policy is not valid") from None
@@ -78,16 +82,20 @@ def policy_from_settings(values: dict[str, Any] | None) -> CompanyPolicy | None:
         raw.get("default_template") or None,
         frozenset(str(rule) for rule in locked if isinstance(rule, str)),
         tool_risk,
+        always_ask,
     )
 
 
 def policy_to_settings(policy: CompanyPolicy) -> dict[str, Any]:
-    return {
+    stored: dict[str, Any] = {
         "mode": policy.mode,
         "default_template": policy.default_template,
         "locked_rules": sorted(policy.locked_rules),
         "tool_risk": dict(policy.tool_risk),
     }
+    if policy.always_ask_tools:  # stored only when set: earlier policies keep their shape
+        stored["always_ask_tools"] = sorted(policy.always_ask_tools)
+    return stored
 
 
 def installation_policy() -> CompanyPolicy:
@@ -216,4 +224,4 @@ async def resolve_tool_risk(
         return None
     tenant = await db.get(Tenant, tenant_id)
     saved = policy_from_settings(tenant.settings if tenant else None)
-    return policy_from_actions(saved.tool_risk) if saved else None
+    return policy_from_actions(saved.tool_risk, saved.always_ask_tools) if saved else None

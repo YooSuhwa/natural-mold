@@ -89,6 +89,7 @@ E2E auth failure를 고칠 때 먼저 확인할 것:
   shell을 기대하는지
 - mock-only 테스트가 `PW_SKIP_BACKEND=1`에서 `/api/auth/me`를 mock하고 있는지
 - CSRF가 필요한 API 직접 호출에 `X-CSRF-Token`이 포함되어 있는지
+- `beforeAll`에서 받은 CSRF 토큰을 각 테스트·`afterAll`의 `request`에 재사용하지 않는지 — 테스트마다 `request` 컨텍스트(와 CSRF 쿠키)가 달라 `csrf_mismatch` 403이 나고, 응답을 확인하지 않으면 만든 리소스 ID가 `undefined`가 되어 엉뚱한 단계에서 실패한다(도구 승인 E2E). 변경 호출이 필요한 테스트 안에서 다시 로그인한다
 
 ### 병렬 실행 시 UI 단언 타임아웃
 

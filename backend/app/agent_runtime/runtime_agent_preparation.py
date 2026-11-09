@@ -71,6 +71,15 @@ def _scoped_runtime_backend(
     )
 
 
+def _tool_approval_kwargs(cfg: Any) -> dict[str, Any]:
+    """The run's tool approval plan, passed only when it changes anything (approval-modes-plan),
+    so builders and test doubles that predate it keep their signature."""
+    from app.approvals.tool_modes import plan_for
+
+    plan = plan_for(cfg)
+    return {"tool_approval": plan} if plan is not None and plan.relaxes else {}
+
+
 def _structured_output_kwargs(cfg: AgentConfig) -> dict[str, Any]:
     """``response_format`` for a run that declares an output schema (workflow W0).
 
@@ -289,6 +298,7 @@ async def _prepare_agent(
         tool_risk=cfg.tool_risk,
         unattended=components.unattended,
         **_structured_output_kwargs(cfg),
+        **_tool_approval_kwargs(cfg),
     )
     timings["build_agent_ms"] = int((time.perf_counter() - build_started) * 1000)
     last_mark = time.perf_counter()

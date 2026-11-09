@@ -18,7 +18,8 @@ export type ToolRiskLevel =
   | 'external_mutation'
   | 'code_execution'
   | 'unknown'
-export type ToolRiskAction = 'allow' | 'approval' | 'block'
+/** ``approval_relaxable``: asked by default, but an agent's tool approval settings may lift it. */
+export type ToolRiskAction = 'allow' | 'approval' | 'approval_relaxable' | 'block'
 /** Every risk level with the company's action (defaults filled in by the server). */
 export type ToolRiskActions = Record<ToolRiskLevel, ToolRiskAction>
 
@@ -46,6 +47,8 @@ export interface GuardrailPolicy {
   default_template: string | null
   locked_rules: string[]
   tool_risk: ToolRiskActions
+  /** Tools a person always approves, whatever an agent's settings say. */
+  always_ask_tools?: string[]
   /** False: the company has not saved a policy; the installation default applies. */
   saved: boolean
   templates: GuardrailTemplateChoice[]
@@ -59,6 +62,8 @@ export interface GuardrailPolicyUpdate {
   locked_rules: string[]
   /** Omitted: the saved actions stay. */
   tool_risk?: ToolRiskActions
+  /** Omitted: the saved list stays. */
+  always_ask_tools?: string[]
 }
 
 export interface GuardrailTemplate {

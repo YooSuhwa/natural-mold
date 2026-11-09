@@ -152,6 +152,7 @@ async def policy_view(db: AsyncSession, tenant: Tenant) -> GuardrailPolicyOut:
         default_template=effective.default_template,
         locked_rules=sorted(effective.locked_rules),
         tool_risk=dict(effective.tool_risk),  # type: ignore[arg-type]
+        always_ask_tools=sorted(effective.always_ask_tools),
         saved=saved is not None,
         templates=await template_choices(db, tenant.id),
         updated_at=tenant.updated_at,
@@ -184,8 +185,17 @@ async def update_policy(
         if payload.tool_risk is not None
         else dict(previous.tool_risk if previous else DEFAULT_ACTIONS)
     )
+    always_ask = (
+        frozenset(payload.always_ask_tools)
+        if payload.always_ask_tools is not None
+        else (previous.always_ask_tools if previous else frozenset())
+    )
     policy = guardrail_policy.CompanyPolicy(
-        payload.mode, payload.default_template, frozenset(payload.locked_rules), tool_risk
+        payload.mode,
+        payload.default_template,
+        frozenset(payload.locked_rules),
+        tool_risk,
+        always_ask,
     )
     tenant.settings = {
         **(tenant.settings or {}),

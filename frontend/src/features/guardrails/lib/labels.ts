@@ -35,7 +35,12 @@ export const TOOL_RISK_LEVELS: readonly ToolRiskLevel[] = [
   'code_execution',
   'unknown',
 ]
-export const TOOL_RISK_ACTIONS: readonly ToolRiskAction[] = ['allow', 'approval', 'block']
+export const TOOL_RISK_ACTIONS: readonly ToolRiskAction[] = [
+  'allow',
+  'approval_relaxable',
+  'approval',
+  'block',
+]
 /** The server's defaults (`app/guardrails/tool_risk.py`): read-only runs, the rest asks. */
 export const DEFAULT_TOOL_RISK: Readonly<Record<ToolRiskLevel, ToolRiskAction>> = {
   read_only: 'allow',
