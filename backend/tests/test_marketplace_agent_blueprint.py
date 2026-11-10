@@ -2397,6 +2397,7 @@ async def test_tool_approval_settings_travel_by_name_and_land_on_the_new_rows(
     agent = await db.get(Agent, uuid.UUID(body["id"]))
     assert agent is not None
     await db.refresh(agent)
+    assert agent.runtime_policy is not None
     assert agent.runtime_policy["tool_approval"]["tools"] == {
         f"mcp:{mcp_tool_id}": {"mode": "always"},
         "ghost": {"mode": "never"},
