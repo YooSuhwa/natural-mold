@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.authz import registration
 from app.authz.candidates import candidate_predicate
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import (
@@ -125,6 +126,7 @@ async def create_tool(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    await registration.admit(db, context, "tool")
     if tool_registry.get(data.definition_key) is None:
         raise HTTPException(status_code=400, detail=f"unknown definition '{data.definition_key}'")
     await require_credential_use(

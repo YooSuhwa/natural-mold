@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz import registration
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
 from app.authz.runtime import get_authz
@@ -99,6 +100,8 @@ async def start_skill_builder(
     await require_system_llm(db, user=user, request=request)
     source_skill_id = data.source_skill_id if data.mode is SkillBuilderMode.IMPROVE else None
     await authorize_builder_target(db, authz, context, source_skill_id)
+    if source_skill_id is None:
+        await registration.admit(db, context, "skill")
     try:
         session = await skill_builder_service.create_session(
             db,

@@ -167,6 +167,33 @@ export interface ToolPolicyTarget {
   risk_level?: string | null
 }
 
+/** Who may register a kind of resource (tool-governance-plan 3.6). */
+export type RegistrationKind = 'mcp_server' | 'tool' | 'skill' | 'agent'
+
+export interface RegistrationRule {
+  /** `granted`: only people who hold the kind's capability, or a company admin. */
+  who: 'members' | 'granted'
+  /** `on`: what a person without the capability registers waits for an admin. */
+  review: 'off' | 'on'
+  /** `private`: such a person cannot share what they registered. */
+  member_sharing: 'shareable' | 'private'
+}
+
+export interface RegistrationRuleView extends RegistrationRule {
+  /** Whether this kind can be held for review at all. */
+  reviewable: boolean
+}
+
+export interface RegistrationSettings {
+  kinds: Record<RegistrationKind, RegistrationRuleView>
+  saved: boolean
+  updated_at: string
+}
+
+export interface RegistrationSettingsUpdate {
+  kinds: Partial<Record<RegistrationKind, RegistrationRule>>
+}
+
 export interface ToolPolicyImpactAgent {
   id: string
   name: string

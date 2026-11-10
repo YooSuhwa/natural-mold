@@ -3969,6 +3969,46 @@
         "risky_without_asking": "This tool's risk level is {level}, and it will run without asking. This is recorded in the audit log."
       }
     },
+    "registration": {
+      "title": "Registration",
+      "description": "Set who may register tools, MCP servers, skills and agents, whether an administrator checks them first, and whether the person who registered one may share it. A change applies from the next registration.",
+      "readOnly": "The registration rules your company set. A company administrator changes them.",
+      "kind": {
+        "mcp_server": "MCP servers",
+        "tool": "Tools",
+        "skill": "Skills",
+        "agent": "Agents"
+      },
+      "field": {
+        "who": "Who may register",
+        "review": "Administrator check",
+        "member_sharing": "Sharing what members register"
+      },
+      "choice": {
+        "who": { "members": "Every member", "granted": "Permitted people only" },
+        "review": { "off": "Use without a check", "on": "Use after a check" },
+        "member_sharing": { "shareable": "Can be shared", "private": "Owner only" }
+      },
+      "hint": {
+        "who": {
+          "members": "Every company member can register one.",
+          "granted": "Only people with the registration permission and company administrators can register one."
+        },
+        "review": {
+          "off": "It can be used as soon as it is registered.",
+          "on": "What a person without the registration permission registers can be used after an administrator approves it."
+        },
+        "member_sharing": {
+          "shareable": "The person who registered it can share it with other people or teams.",
+          "private": "What a person without the registration permission registers stays with them and cannot be shared."
+        }
+      },
+      "choiceLabel": "{kind}: {field}",
+      "capabilityNote": "The registration permission comes from an organization role (builder, admin) or an individual grant.",
+      "rolesLink": "Go to roles",
+      "save": "Save registration rules",
+      "saved": "Registration rules saved."
+    },
     "policy": {
       "title": "Company policy",
       "description": "Applies to every agent run. Changes apply from the next run; running runs and runs waiting for approval keep their rules.",

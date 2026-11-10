@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 PolicyMode = Literal["off", "open", "default", "enforced"]
 RiskLevel = Literal["read_only", "write_internal", "external_mutation", "code_execution", "unknown"]
@@ -191,3 +191,33 @@ class ToolPolicyImpactOut(BaseModel):
     agents: list[ToolPolicyImpactAgent]
     total: int
     warnings: list[ToolPolicyWarning] = Field(default_factory=list)
+
+
+# --- company registration settings (tool-governance-plan 3.6) ---------------------------
+
+RegistrationKind = Literal["mcp_server", "tool", "skill", "agent"]
+
+
+class RegistrationRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    who: Literal["members", "granted"] = "members"
+    review: Literal["off", "on"] = "off"
+    member_sharing: Literal["shareable", "private"] = "shareable"
+
+
+class RegistrationRuleOut(RegistrationRule):
+    # Whether this kind can be held for an administrator's review at all.
+    reviewable: bool
+
+
+class RegistrationSettingsOut(BaseModel):
+    kinds: dict[RegistrationKind, RegistrationRuleOut]
+    saved: bool
+    updated_at: datetime
+
+
+class RegistrationSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kinds: dict[RegistrationKind, RegistrationRule]

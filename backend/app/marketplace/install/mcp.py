@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz import registration
 from app.authz.catalog_scope import load_private_installation
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scoped
@@ -147,6 +148,8 @@ async def _install_mcp_item(
         await db.flush()
         return existing
 
+    # Installing makes a server row: the company's registration rule decides (plan 3.6).
+    await registration.admit(db, context, "mcp_server")
     server = McpServer(
         id=uuid.uuid4(),
         user_id=context.user_id,

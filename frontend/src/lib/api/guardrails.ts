@@ -9,6 +9,8 @@ import type {
   GuardrailTemplateCreate,
   GuardrailTemplateUpdate,
   GuardrailTemplateVersion,
+  RegistrationSettings,
+  RegistrationSettingsUpdate,
   ToolPolicy,
   ToolPolicyImpact,
   ToolPolicySaved,
@@ -83,6 +85,17 @@ export const toolPoliciesApi = {
   impact: (tenantId: string, key: string, data: ToolPolicyUpdate) =>
     apiFetch<ToolPolicyImpact>(toolPolicyPath(tenantId, key, '/impact'), {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+}
+
+/** Who may register tools, MCP servers, skills and agents (tool-governance-plan 3.6). */
+export const registrationApi = {
+  get: (tenantId: string) => apiFetch<RegistrationSettings>(base(tenantId, '/registration')),
+  put: (tenantId: string, data: RegistrationSettingsUpdate, version: string) =>
+    apiFetch<RegistrationSettings>(base(tenantId, '/registration'), {
+      method: 'PUT',
+      headers: tenantVersionHeader(version),
       body: JSON.stringify(data),
     }),
 }

@@ -12,6 +12,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz import registration
 from app.authz.audit_actions import TOOL_APPROVAL_DEFAULT_UPDATED
 from app.authz.org_context import OrgContext
 from app.authz.policies import CANDIDATES, CAP, CATALOG, RES, authz_policy
@@ -246,6 +247,7 @@ async def probe_mcp_server(
     """
 
     await gate_cap(authz, context, "cap_register_mcp")
+    await registration.admit(db, context, "mcp_server")
     transport = payload.transport
     url = payload.url
     headers: dict[str, Any] = dict(payload.headers or {})

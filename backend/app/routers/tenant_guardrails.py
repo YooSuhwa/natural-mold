@@ -23,13 +23,15 @@ from app.schemas.guardrails import (
     GuardrailTemplateRevert,
     GuardrailTemplateUpdate,
     GuardrailTemplateVersionOut,
+    RegistrationSettingsOut,
+    RegistrationSettingsUpdate,
     ToolPolicyImpactOut,
     ToolPolicyListOut,
     ToolPolicySaved,
     ToolPolicyTarget,
     ToolPolicyUpdate,
 )
-from app.services import guardrails_admin, tool_policies_admin
+from app.services import guardrails_admin, registration_admin, tool_policies_admin
 from app.services.tenants.versioning import etag
 from app.tenancy.admin_context import TenantAdminContext
 
@@ -220,3 +222,36 @@ async def preview_tool_policy_impact(
     context: TenantAdminContext = Depends(company_context),
 ) -> ToolPolicyImpactOut:
     return await tool_policies_admin.impact(db, context, resource_key, payload)
+
+
+# --- who may register tools, MCP servers, skills, agents (tool-governance-plan 3.6) -----
+
+
+@router.get("/registration", response_model=RegistrationSettingsOut)
+@authz_policy(SELF)
+async def get_registration_settings(
+    context: TenantAdminContext = Depends(company_context),
+) -> JSONResponse:
+    result = registration_admin.view(context.tenant)
+    return JSONResponse(
+        content=result.model_dump(mode="json"), headers={"ETag": etag(result.updated_at)}
+    )
+
+
+@router.put("/registration", response_model=RegistrationSettingsOut)
+@authz_policy(GOVERNANCE)
+async def put_registration_settings(
+    payload: RegistrationSettingsUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+    context: TenantAdminContext = Depends(company_context),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> JSONResponse:
+    result = await registration_admin.update(
+        _mutation(db, request, user, if_match), context, payload
+    )
+    return JSONResponse(
+        content=result.model_dump(mode="json"), headers={"ETag": etag(result.updated_at)}
+    )

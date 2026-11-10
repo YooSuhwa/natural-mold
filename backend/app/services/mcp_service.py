@@ -18,6 +18,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.authz import registration
 from app.authz.candidates import candidate_predicate
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import (
@@ -234,6 +235,7 @@ async def create_server(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    await registration.admit(db, context, "mcp_server")
     validate_payload_consistency(data.transport, data.url, data.command, data.credential_id)
     if data.credential_id is not None:
         await require_credential_use(
@@ -274,6 +276,7 @@ async def create_server_from_registry_entry(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    await registration.admit(db, context, "mcp_server")
 
     transport = entry.get("transport")
     url = entry.get("url")
@@ -378,6 +381,7 @@ async def import_servers(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    await registration.admit(db, context, "mcp_server")
 
     result = McpImportResult()
     user_id = context.user_id

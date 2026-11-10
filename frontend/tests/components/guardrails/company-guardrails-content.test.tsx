@@ -20,6 +20,7 @@ const guardrailsApi = vi.hoisted(() => ({
   revertTemplate: vi.fn(),
 }))
 
+const registrationApi = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }))
 const toolPoliciesApi = vi.hoisted(() => ({
   list: vi.fn(),
   targets: vi.fn(),
@@ -31,7 +32,7 @@ vi.mock(
   '@/lib/api/organizations',
   async () => (await import('../organizations/org-admin-mocks')).orgApiMock,
 )
-vi.mock('@/lib/api/guardrails', () => ({ guardrailsApi, toolPoliciesApi }))
+vi.mock('@/lib/api/guardrails', () => ({ guardrailsApi, registrationApi, toolPoliciesApi }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const rule = (id: string, overrides: Partial<GuardrailRule> = {}): GuardrailRule => ({
@@ -93,6 +94,21 @@ describe('CompanyGuardrailsContent (회사 가드레일)', () => {
     guardrailsApi.listTemplates.mockResolvedValue([template()])
     toolPoliciesApi.list.mockResolvedValue({ policies: [] })
     toolPoliciesApi.targets.mockResolvedValue([])
+    registrationApi.get.mockResolvedValue({
+      kinds: {
+        mcp_server: {
+          who: 'members',
+          review: 'off',
+          member_sharing: 'shareable',
+          reviewable: true,
+        },
+        tool: { who: 'members', review: 'off', member_sharing: 'shareable', reviewable: true },
+        skill: { who: 'members', review: 'off', member_sharing: 'shareable', reviewable: false },
+        agent: { who: 'members', review: 'off', member_sharing: 'shareable', reviewable: false },
+      },
+      saved: false,
+      updated_at: VERSION,
+    })
   })
 
   it('lets a company admin enforce the default and lock a rule', async () => {

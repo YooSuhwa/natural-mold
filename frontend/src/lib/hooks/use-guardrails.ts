@@ -2,7 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { agentGuardrailsApi, guardrailsApi, toolPoliciesApi } from '@/lib/api/guardrails'
+import {
+  agentGuardrailsApi,
+  guardrailsApi,
+  registrationApi,
+  toolPoliciesApi,
+} from '@/lib/api/guardrails'
 import { agentQueryKeys } from '@/lib/query-keys/agents'
 import { tenantAdminKeys } from '@/lib/query-keys/tenant-admin'
 import { toolApprovalQueryKeys } from '@/lib/query-keys/tool-approval'
@@ -11,6 +16,7 @@ import type {
   GuardrailPolicyUpdate,
   GuardrailTemplateCreate,
   GuardrailTemplateUpdate,
+  RegistrationSettingsUpdate,
   ToolPolicyUpdate,
 } from '@/lib/types/guardrails'
 import { useTenantMutation } from './use-tenant-admin'
@@ -116,6 +122,23 @@ export function useToolPolicyImpact(tenantId: string) {
   return useMutation({
     mutationFn: ({ key, data }: ToolPolicyInput) => toolPoliciesApi.impact(tenantId, key, data),
   })
+}
+
+/** Company members read who may register what; company admins change it. */
+export function useRegistrationSettings(tenantId: string) {
+  return useQuery({
+    queryKey: tenantAdminKeys.registration(tenantId),
+    queryFn: () => registrationApi.get(tenantId),
+    retry: false,
+  })
+}
+
+export function useUpdateRegistrationSettings(tenantId: string) {
+  return useTenantMutation(
+    tenantId,
+    ({ data, version }: { data: RegistrationSettingsUpdate; version: string }) =>
+      registrationApi.put(tenantId, data, version),
+  )
 }
 
 export function useAgentGuardrails(agentId: string) {

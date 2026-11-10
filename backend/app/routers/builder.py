@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz import registration
 from app.authz.agent_delegations import commit_and_apply
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_prefix import mark_org_writer
@@ -79,6 +80,7 @@ async def start_build(
 ):
     """빌드 세션을 시작한다."""
     await authz.require_cap(context, "cap_create_agent", legacy=True)
+    await registration.admit(db, context, "agent")
     return await builder_service.create_session(db, context, data.user_request)
 
 

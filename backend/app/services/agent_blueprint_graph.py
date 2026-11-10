@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz import registration
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.attach_rules import require_attachable
 from app.authz.org_context import OrgContext
@@ -136,6 +137,10 @@ async def plan_graph(db: AsyncSession, request: GraphRequest) -> GraphPlan:
 async def apply_graph(db: AsyncSession, plan: GraphPlan) -> None:
     """The only dependency mutation boundary; use the final preallocated IDs."""
     scope = plan.context
+    if plan.tools.creations:
+        await registration.admit(db, scope, "tool")
+    if plan.mcp.servers:
+        await registration.admit(db, scope, "mcp_server")
     for draft in plan.tools.creations:
         db.add(
             Tool(

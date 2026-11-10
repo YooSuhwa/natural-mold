@@ -22064,6 +22064,116 @@
         ]
       }
     },
+    "/api/tenants/{tenant_id}/guardrails/registration": {
+      "get": {
+        "operationId": "get_registration_settings_api_tenants__tenant_id__guardrails_registration_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Registration Settings",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "put": {
+        "operationId": "put_registration_settings_api_tenants__tenant_id__guardrails_registration_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Registration Settings",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
     "/api/tenants/{tenant_id}/guardrails/templates": {
       "get": {
         "operationId": "list_guardrail_templates_api_tenants__tenant_id__guardrails_templates_get",
@@ -48564,6 +48674,141 @@
         "password"
       ],
       "title": "RegisterRequest",
+      "type": "object"
+    },
+    "RegistrationRule": {
+      "additionalProperties": false,
+      "properties": {
+        "member_sharing": {
+          "default": "shareable",
+          "enum": [
+            "shareable",
+            "private"
+          ],
+          "title": "Member Sharing",
+          "type": "string"
+        },
+        "review": {
+          "default": "off",
+          "enum": [
+            "off",
+            "on"
+          ],
+          "title": "Review",
+          "type": "string"
+        },
+        "who": {
+          "default": "members",
+          "enum": [
+            "members",
+            "granted"
+          ],
+          "title": "Who",
+          "type": "string"
+        }
+      },
+      "title": "RegistrationRule",
+      "type": "object"
+    },
+    "RegistrationRuleOut": {
+      "additionalProperties": false,
+      "properties": {
+        "member_sharing": {
+          "default": "shareable",
+          "enum": [
+            "shareable",
+            "private"
+          ],
+          "title": "Member Sharing",
+          "type": "string"
+        },
+        "review": {
+          "default": "off",
+          "enum": [
+            "off",
+            "on"
+          ],
+          "title": "Review",
+          "type": "string"
+        },
+        "reviewable": {
+          "title": "Reviewable",
+          "type": "boolean"
+        },
+        "who": {
+          "default": "members",
+          "enum": [
+            "members",
+            "granted"
+          ],
+          "title": "Who",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reviewable"
+      ],
+      "title": "RegistrationRuleOut",
+      "type": "object"
+    },
+    "RegistrationSettingsOut": {
+      "properties": {
+        "kinds": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/RegistrationRuleOut"
+          },
+          "propertyNames": {
+            "enum": [
+              "mcp_server",
+              "tool",
+              "skill",
+              "agent"
+            ]
+          },
+          "title": "Kinds",
+          "type": "object"
+        },
+        "saved": {
+          "title": "Saved",
+          "type": "boolean"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kinds",
+        "saved",
+        "updated_at"
+      ],
+      "title": "RegistrationSettingsOut",
+      "type": "object"
+    },
+    "RegistrationSettingsUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "kinds": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/RegistrationRule"
+          },
+          "propertyNames": {
+            "enum": [
+              "mcp_server",
+              "tool",
+              "skill",
+              "agent"
+            ]
+          },
+          "title": "Kinds",
+          "type": "object"
+        }
+      },
+      "required": [
+        "kinds"
+      ],
+      "title": "RegistrationSettingsUpdate",
       "type": "object"
     },
     "RequestUser": {
