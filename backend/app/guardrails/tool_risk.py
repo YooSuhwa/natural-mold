@@ -21,6 +21,7 @@ from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
 
+from app.tools.keys import ToolRef, ref_of
 from app.tools.risk import (
     ToolRiskLevel,
     default_deepagents_interrupt_policy,
@@ -61,6 +62,10 @@ class ToolRiskPolicy:
     def action(self, level: ToolRiskLevel | str) -> RiskAction:
         key = level.value if isinstance(level, ToolRiskLevel) else level
         return self.actions.get(key, DEFAULT_ACTIONS.get(key, "approval"))
+
+    def always_asks(self, ref: ToolRef) -> bool:
+        """Named by its resource key, or by name (lists saved before keys; every match asks)."""
+        return ref.key in self.always_ask or ref.name in self.always_ask
 
     @property
     def is_default(self) -> bool:
@@ -172,7 +177,7 @@ def interrupts_for(
         action = policy.action(_level(tool))
         if action == "block":
             result.pop(name, None)
-        elif action in ("approval", "approval_relaxable") or name in policy.always_ask:
+        elif action in ("approval", "approval_relaxable") or policy.always_asks(ref_of(tool)):
             # Relaxable asks too; only the root agent's own settings may lift it afterwards
             # (``app.approvals.tool_modes``), never a child's or the default.
             if not result.get(name):

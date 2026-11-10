@@ -44,16 +44,20 @@ function GrantButton({
   const view = useToolApproval(agentId)
   const grants = useToolGrants(conversationId)
   const { grant } = useToolGrantMutations(conversationId)
-  const row = view.data?.tools.find((item) => item.name === tool)
+  // The card knows the tool by name; a name two tools share cannot say which one to allow.
+  const named = view.data?.tools.filter((item) => item.name === tool) ?? []
+  const row = named.length === 1 ? named[0] : undefined
   if (!row?.grantable) return null
-  if (grants.data?.some((item) => item.tool_name === tool)) return null
+  if (grants.data?.some((item) => item.tool_name === row.key || item.tool_name === tool)) {
+    return null
+  }
   return (
     <button
       type="button"
       className="text-xs text-primary-strong underline disabled:opacity-50"
       disabled={grant.isPending}
       onClick={() =>
-        grant.mutate(tool, {
+        grant.mutate(row.key, {
           onSuccess: () => toast.success(t('done', { tool })),
           onError: (error) => toast.error(error instanceof ApiError ? error.message : t('failed')),
         })
@@ -67,11 +71,19 @@ function GrantButton({
 /** The tools allowed for this conversation, each revocable (above the thread). */
 export function ConversationToolGrantChips() {
   const conversationId = useChatConversationId()
-  return conversationId ? <GrantChips conversationId={conversationId} /> : null
+  const agentId = useAgentId()
+  return conversationId ? <GrantChips conversationId={conversationId} agentId={agentId} /> : null
 }
 
-function GrantChips({ conversationId }: { conversationId: string }) {
+function GrantChips({ conversationId, agentId }: { conversationId: string; agentId?: string }) {
   const t = useTranslations('toolApproval.grant')
+  const view = useToolApproval(agentId)
+  // A grant is stored under the tool's key; people read its name.
+  const label = (key: string) => {
+    const row = view.data?.tools.find((item) => item.key === key)
+    if (!row) return key
+    return row.source ? `${row.name} (${row.source})` : row.name
+  }
   const grants = useToolGrants(conversationId)
   const { revoke } = useToolGrantMutations(conversationId)
   const items = grants.data ?? []
@@ -89,11 +101,11 @@ function GrantChips({ conversationId }: { conversationId: string }) {
           key={item.id}
           className="moldy-status-surface moldy-status-info flex items-center gap-1 rounded-full px-2 py-0.5"
         >
-          <span className="font-mono">{item.tool_name}</span>
+          <span className="font-mono">{label(item.tool_name)}</span>
           <button
             type="button"
             className="rounded-full hover:bg-accent"
-            aria-label={t('revoke', { tool: item.tool_name })}
+            aria-label={t('revoke', { tool: label(item.tool_name) })}
             disabled={revoke.isPending}
             onClick={() => revoke.mutate(item.tool_name)}
           >

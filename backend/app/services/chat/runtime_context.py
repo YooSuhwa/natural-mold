@@ -246,6 +246,7 @@ async def build_tools_config(
                 # _build_mcp_tools branches on these keys (``mcp_server_url``).
                 "mcp_server_url": server.url,
                 "mcp_server_id": str(server.id),
+                "mcp_server_name": server.name,
                 "mcp_tool_id": str(mcp_tool.id),
                 "mcp_tool_name": mcp_tool.name,
                 # D11: the model is shown the reviewed definition, not what the server

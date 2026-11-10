@@ -55667,6 +55667,10 @@
           "title": "Grantable",
           "type": "boolean"
         },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
         "level": {
           "title": "Level",
           "type": "string"
@@ -55678,9 +55682,21 @@
         "name": {
           "title": "Name",
           "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source"
         }
       },
       "required": [
+        "key",
         "name",
         "level",
         "locked",
@@ -55784,6 +55800,14 @@
             "$ref": "#/components/schemas/ToolApprovalTool"
           },
           "title": "Tools",
+          "type": "array"
+        },
+        "unresolved": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Unresolved",
           "type": "array"
         }
       },

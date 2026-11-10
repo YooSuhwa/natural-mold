@@ -39,6 +39,7 @@ from app.guardrails.events import RunScope, parse_uuid
 from app.guardrails.run import effective_rules
 from app.guardrails.tool_risk import interrupts_for
 from app.storage.paths import run_data_path_or_none
+from app.tools.keys import ref_from_config
 from app.tools.risk import risk_from_tool_config, unattended_interrupt_policy
 
 _STORED_SKILL_RULES = (
@@ -200,7 +201,9 @@ def _refuse_unattended_approvals(
             cfg.tool_risk is not None
             # ``block``: the call is refused, never asked; ``approval_relaxable`` still asks.
             and cfg.tool_risk.action(risk.risk_level) in ("allow", "block")
-            and name not in cfg.tool_risk.always_ask
+            and not cfg.tool_risk.always_asks(
+                ref_from_config({"definition_key": "mcp", **config}, name=name)
+            )
         )
         if risk.requires_approval and not allowed:
             raise unsupported("unattended_approval")

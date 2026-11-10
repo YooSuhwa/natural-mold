@@ -29,6 +29,7 @@ from app.models.audit_event import AuditEvent
 from app.models.conversation import Conversation
 from app.models.conversation_tool_grant import ConversationToolGrant
 from app.models.tool import AgentToolLink, Tool
+from app.tools.keys import ToolRef, ref_from_config, ref_of, resolve
 from app.tools.risk import ToolRiskLevel
 from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, seed_agent
@@ -323,6 +324,11 @@ async def test_the_effective_table_shows_each_path(client: AsyncClient, db: Asyn
     assert view["settings"]["paths"]["workflow"] == "auto"
 
 
+async def _mail_key(client: AsyncClient, agent: Agent) -> str:
+    view = (await client.get(f"/api/agents/{agent.id}/tool-approval")).json()
+    return next(tool["key"] for tool in view["tools"] if tool["name"] == "send_mail")
+
+
 async def _conversation(db: AsyncSession, agent: Agent) -> Conversation:
     from app.services import chat_service
     from tests.authz.unit_scope_fixture import unit_context
@@ -354,7 +360,11 @@ async def test_a_grant_needs_a_lifted_cap_and_is_audited(
     assert made.status_code == 201, made.text
     again = await client.post(url, json={"tool": "send_mail"})
     assert again.json()["id"] == made.json()["id"]  # one live grant per tool
-    assert [g["tool_name"] for g in (await client.get(url)).json()] == ["send_mail"]
+    # Stored under the tool's key, whichever way the caller named it.
+    key = await _mail_key(client, agent)
+    assert key.startswith("tool:")
+    assert [g["tool_name"] for g in (await client.get(url)).json()] == [key]
+    assert (await client.post(url, json={"tool": key})).json()["id"] == made.json()["id"]
     unknown = await client.post(url, json={"tool": "not_a_tool"})
     assert unknown.status_code == 422
     revoked = await client.delete(f"{url}/send_mail")
@@ -370,6 +380,14 @@ async def test_a_grant_needs_a_lifted_cap_and_is_audited(
         .all()
     )
     assert sorted(actions) == ["approval.grant_created", "approval.grant_revoked"]
+    created = await db.scalar(
+        sa.select(AuditEvent).where(AuditEvent.action == "approval.grant_created")
+    )
+    assert created is not None and created.event_metadata is not None
+    assert (created.event_metadata["tool"], created.event_metadata["tool_key"]) == (
+        "send_mail",
+        key,
+    )
 
 
 @pytest.mark.asyncio
@@ -467,3 +485,143 @@ def test_a_run_pins_the_always_ask_list_with_the_actions() -> None:
     assert pinned.tool_risk.action("external_mutation") == "approval_relaxable"
     plain = _snapshot(None, _company({"external_mutation": "block"}))
     assert "always_ask_tools" not in plain  # earlier pins keep their shape
+
+
+# --- resource keys (tool-governance-plan 3.2) -----------------------------------------------
+
+A = ToolRef("mcp:a", "search", "mcp_server:1")
+B = ToolRef("mcp:b", "search", "mcp_server:2")
+
+
+def test_a_key_names_one_tool_where_two_share_a_name() -> None:
+    company = _company(RELAXED)
+    by_key = _settings(tools={"mcp:a": {"mode": "never"}})
+    assert decide(A, X, "chat", settings=by_key, company=company, ambiguous=True) == Decision(
+        "auto", "tool_never"
+    )
+    assert decide(B, X, "chat", settings=by_key, company=company, ambiguous=True) == Decision(
+        "ask", "risk_default"
+    )
+    # Saved by name: a setting that relaxes cannot tell the two apart, so neither is lifted.
+    never = _settings(tools={"search": {"mode": "never"}})
+    for ref in (A, B):
+        assert decide(ref, X, "chat", settings=never, company=company, ambiguous=True) == Decision(
+            "ask", "risk_default"
+        )
+    assert decide(A, X, "chat", settings=never, company=company) == Decision("auto", "tool_never")
+    # ...and one that tightens applies to both.
+    always = _settings(tools={"search": {"mode": "always"}})
+    for ref in (A, B):
+        assert decide(ref, X, "chat", settings=always, company=company, ambiguous=True) == Decision(
+            "ask", "tool_always"
+        )
+    # A key entry beats a name entry for its tool.
+    both = _settings(tools={"search": {"mode": "always"}, "mcp:a": {"mode": "never"}})
+    assert decide(A, X, "chat", settings=both, company=company, ambiguous=True).layer == (
+        "tool_never"
+    )
+
+
+def test_grants_and_company_lists_match_by_key_or_unique_name() -> None:
+    company = _company(RELAXED)
+    keyed = frozenset({"mcp:a"})
+    assert decide(A, X, "chat", settings=None, company=company, grants=keyed, ambiguous=True) == (
+        Decision("auto", "conversation_grant")
+    )
+    assert decide(B, X, "chat", settings=None, company=company, grants=keyed, ambiguous=True) == (
+        Decision("ask", "risk_default")
+    )
+    named = frozenset({"search"})  # a grant made before keys
+    assert decide(A, X, "chat", settings=None, company=company, grants=named).kind == "auto"
+    assert decide(A, X, "chat", settings=None, company=company, grants=named, ambiguous=True) == (
+        Decision("ask", "risk_default")
+    )
+    # The company's always-ask list tightens: a key hits one tool, a name every tool so named.
+    by_key = _company(RELAXED, frozenset({"mcp:b"}))
+    assert decide(A, X, "chat", settings=None, company=by_key).layer == "risk_default"
+    assert decide(B, X, "chat", settings=None, company=by_key).layer == "company_always"
+    by_name = _company(RELAXED, frozenset({"search"}))
+    assert {decide(ref, X, "chat", settings=None, company=by_name).layer for ref in (A, B)} == {
+        "company_always"
+    }
+
+
+class _Keyed(_Tool):
+    def __init__(self, name: str, ref: ToolRef) -> None:
+        super().__init__(name, X)
+        self.metadata["moldy_resource"] = {"key": ref.key, "name": ref.name, "server": ref.server}
+
+
+def test_apply_reads_settings_by_key_for_tools_a_run_renamed() -> None:
+    """Two servers expose ``search``; the run calls them ``srv_1_search`` / ``srv_2_search``."""
+    tools = [_Keyed("srv_1_search", A), _Keyed("srv_2_search", B)]
+    entry = {"allowed_decisions": ["approve", "reject"]}
+    interrupt_on = {"srv_1_search": dict(entry), "srv_2_search": dict(entry)}
+    plan = ToolApprovalPlan(
+        "chat",
+        settings=_settings(tools={"mcp:a": {"mode": "never"}, "mcp:b": {"mode": "always"}}),
+        company=_company(RELAXED),
+    )
+    applied = tool_modes.apply(interrupt_on, tools, plan)  # type: ignore[arg-type]
+    result = applied.interrupt_on or {}
+    assert "srv_1_search" not in result and applied.auto_allowed["srv_1_search"] == "tool_never"
+    assert "도구 설정: 항상 묻기" in result["srv_2_search"]["description"](
+        {"name": "srv_2_search", "args": {}}, None, None
+    )
+    # The old name setting ``never`` lifts neither (it names two tools).
+    named = ToolApprovalPlan(
+        "chat", settings=_settings(tools={"search": {"mode": "never"}}), company=_company(RELAXED)
+    )
+    kept = tool_modes.apply(interrupt_on, tools, named).interrupt_on or {}  # type: ignore[arg-type]
+    assert {"srv_1_search", "srv_2_search"} <= set(kept)
+
+
+def test_refs_come_from_the_tool_rows() -> None:
+    tool_id, server_id = uuid.uuid4(), uuid.uuid4()
+    mcp = {"definition_key": "mcp", "mcp_tool_id": tool_id, "mcp_server_id": server_id}
+    assert ref_from_config(mcp, name="search") == ToolRef(
+        f"mcp:{tool_id}", "search", f"mcp_server:{server_id}"
+    )
+    assert ref_from_config({"definition_key": "http_request", "tool_id": tool_id}, name="x") == (
+        ToolRef(f"tool:{tool_id}", "x")
+    )
+    assert ref_from_config({"definition_key": "builtin:web_search", "tool_id": tool_id}, name="w")
+    assert ref_from_config(
+        {"definition_key": "builtin:web_search", "tool_id": tool_id}, name="web_search"
+    ) == ToolRef("builtin:web_search", "web_search")
+    assert ref_of("write_file") == ToolRef("builtin:write_file", "write_file")
+    assert resolve([A, B], "mcp:b") == B
+    assert resolve([A, B], "search") is None  # two tools carry the name
+    assert resolve([A], "search") == A
+    assert resolve([A], "srv_1_search") is None
+
+
+@pytest.mark.asyncio
+async def test_the_view_keys_settings_and_reports_what_names_no_tool(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    agent = await _agent_with_mail(
+        db, {"tools": {"send_mail": {"mode": "always"}, "gone": {"mode": "never"}}}
+    )
+    view = (await client.get(f"/api/agents/{agent.id}/tool-approval")).json()
+    mail = next(tool for tool in view["tools"] if tool["name"] == "send_mail")
+    assert view["settings"]["tools"] == {mail["key"]: {"mode": "always"}}
+    assert view["unresolved"] == ["gone"]
+
+
+@pytest.mark.asyncio
+async def test_a_grant_made_by_name_is_revoked_by_key(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    agent = await _agent_with_mail(db)
+    conversation = await _conversation(db, agent)
+    db.add(
+        ConversationToolGrant(
+            conversation_id=conversation.id, tool_name="send_mail", granted_by=TEST_USER_ID
+        )
+    )
+    await db.commit()
+    key = await _mail_key(client, agent)
+    url = f"/api/conversations/{conversation.id}/tool-grants"
+    assert (await client.delete(f"{url}/{key}")).status_code == 204
+    assert (await client.get(url)).json() == []

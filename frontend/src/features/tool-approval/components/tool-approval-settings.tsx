@@ -1,6 +1,6 @@
 'use client'
 
-import { LockIcon } from 'lucide-react'
+import { LockIcon, XIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +14,7 @@ import type {
   ToolApprovalPolicyV1,
   ToolApprovalToolV1,
 } from '@/lib/types/runtime-policy'
-import type { ToolApprovalKind } from '@/lib/types/tool-approval'
+import type { ToolApprovalKind, ToolApprovalTool } from '@/lib/types/tool-approval'
 
 const PATHS: readonly ToolApprovalPath[] = ['chat', 'trigger', 'workflow', 'api']
 const OPS: readonly ToolApprovalClause['op'][] = [
@@ -64,13 +64,34 @@ export function ToolApprovalSettings({
     onValueChange({ ...(value ?? CUSTOM_POLICY), tool_approval: next })
   const setPath = (path: ToolApprovalPath, mode: 'ask_all' | 'auto') =>
     write({ ...settings, paths: { ...(settings.paths ?? {}), [path]: mode } })
-  const setTool = (name: string, next: ToolApprovalToolV1 | null) => {
-    const tools = { ...(settings.tools ?? {}) }
-    if (next) tools[name] = next
-    else delete tools[name]
-    write({ ...settings, tools })
-  }
   const tools = view.data?.tools ?? []
+  // A setting is saved under the tool's key. One saved by name (before keys) is read while
+  // that name means a single tool, and moves to the key on the next change.
+  const shared = new Set(
+    tools
+      .filter((tool) => tools.some((other) => other.name === tool.name && other !== tool))
+      .map((tool) => tool.name),
+  )
+  const entryOf = (tool: ToolApprovalTool) =>
+    settings.tools?.[tool.key] ?? (shared.has(tool.name) ? undefined : settings.tools?.[tool.name])
+  const setTool = (tool: ToolApprovalTool, next: ToolApprovalToolV1 | null) => {
+    const entries = { ...(settings.tools ?? {}) }
+    delete entries[tool.key]
+    if (!shared.has(tool.name)) delete entries[tool.name]
+    if (next) entries[tool.key] = next
+    write({ ...settings, tools: entries })
+  }
+  const known = new Set(
+    tools.flatMap((tool) => [tool.key, ...(shared.has(tool.name) ? [] : [tool.name])]),
+  )
+  const unresolved = view.data
+    ? Object.keys(settings.tools ?? {}).filter((name) => !known.has(name))
+    : []
+  const dropEntry = (name: string) => {
+    const entries = { ...(settings.tools ?? {}) }
+    delete entries[name]
+    write({ ...settings, tools: entries })
+  }
   return (
     <section className="moldy-card flex flex-col gap-4 p-4" aria-labelledby="tool-approval-title">
       <div className="flex flex-col gap-1">
@@ -110,12 +131,16 @@ export function ToolApprovalSettings({
         ) : (
           <ul className="flex flex-col divide-y" aria-label={t('tools')}>
             {tools.map((tool) => {
-              const current = settings.tools?.[tool.name]
+              const current = entryOf(tool)
               const choice: ToolChoice = current?.mode ?? 'default'
+              const label = tool.source ? `${tool.name} (${tool.source})` : tool.name
               return (
-                <li key={tool.name} className="flex flex-col gap-2 py-2">
+                <li key={tool.key} className="flex flex-col gap-2 py-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm">{tool.name}</span>
+                    {tool.source ? (
+                      <span className="text-xs text-muted-foreground">{tool.source}</span>
+                    ) : null}
                     <Badge variant="outline">{t(`level.${tool.level}`)}</Badge>
                     {tool.locked ? (
                       <span
@@ -130,17 +155,17 @@ export function ToolApprovalSettings({
                     <select
                       className={SELECT_CLASS}
                       value={choice}
-                      aria-label={t('toolSetting', { tool: tool.name })}
+                      aria-label={t('toolSetting', { tool: label })}
                       disabled={tool.locked}
                       onChange={(event) => {
                         const next = event.target.value as ToolChoice
-                        if (next === 'default') setTool(tool.name, null)
+                        if (next === 'default') setTool(tool, null)
                         else if (next === 'when') {
-                          setTool(tool.name, {
+                          setTool(tool, {
                             mode: 'when',
                             rule: { all: [{ source: 'args', path: '', op: 'exists' }] },
                           })
-                        } else setTool(tool.name, { mode: next })
+                        } else setTool(tool, { mode: next })
                       }}
                     >
                       {(['default', 'always', 'never', 'when'] as const).map((item) => (
@@ -152,16 +177,16 @@ export function ToolApprovalSettings({
                   </div>
                   {current?.mode === 'when' ? (
                     <RuleEditor
-                      tool={tool.name}
+                      tool={tool.key}
                       clause={current.rule?.all?.[0] ?? { source: 'args', path: '', op: 'exists' }}
                       onChange={(clause) =>
-                        setTool(tool.name, { mode: 'when', rule: { all: [clause] } })
+                        setTool(tool, { mode: 'when', rule: { all: [clause] } })
                       }
                     />
                   ) : null}
                   <ul
                     className="flex flex-wrap gap-1"
-                    aria-label={t('effectiveFor', { tool: tool.name })}
+                    aria-label={t('effectiveFor', { tool: label })}
                   >
                     {tool.cells.map((cell) => (
                       <li
@@ -182,6 +207,30 @@ export function ToolApprovalSettings({
           </ul>
         )}
         <p className="moldy-ui-caption text-muted-foreground">{t('effectiveHint')}</p>
+        {unresolved.length > 0 ? (
+          <div className="moldy-status-surface moldy-status-warn flex flex-col gap-2 rounded-md p-2">
+            <p className="text-xs">{t('unresolvedHint')}</p>
+            <ul className="flex flex-wrap gap-1" aria-label={t('unresolved')}>
+              {unresolved.map((name) => (
+                <li
+                  key={name}
+                  className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+                >
+                  <span className="font-mono">{name}</span>
+                  <span>· {t(`toolMode.${settings.tools?.[name]?.mode ?? 'default'}`)}</span>
+                  <button
+                    type="button"
+                    className="rounded-full hover:bg-accent"
+                    aria-label={t('unresolvedRemove', { tool: name })}
+                    onClick={() => dropEntry(name)}
+                  >
+                    <XIcon className="size-3" aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </section>
   )

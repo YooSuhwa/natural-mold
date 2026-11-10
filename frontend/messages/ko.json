@@ -7903,6 +7903,9 @@
     },
     "effectiveFor": "{tool} 실제 적용",
     "effectiveHint": "실제 적용은 저장된 설정으로 계산합니다. 바꾼 뒤 저장하면 반영됩니다.",
+    "unresolved": "확인이 필요한 설정",
+    "unresolvedHint": "이 설정은 지금 붙어 있는 도구 하나를 가리키지 않습니다(도구가 빠졌거나 이름이 같은 도구가 여럿). 지우고 위에서 다시 정해 주세요.",
+    "unresolvedRemove": "{tool} 설정 지우기",
     "kind": {
       "ask": "묻기",
       "auto": "자동",

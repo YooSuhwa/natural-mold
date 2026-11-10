@@ -1,11 +1,15 @@
 """Tool approval views and conversation grants (approval-modes-plan 3.3, 3.5, Q5).
 
-* ``agent_tools``: the agent's tools by their run-time names and risk levels (the names the
-  model calls them by, so a setting and a grant match the call).
+* ``agent_tools``: the agent's tools by resource key (``app.tools.keys``) with the name a
+  run gives them and their risk levels.
+* ``keyed_settings``: the agent's settings with names rewritten to keys where a name means
+  one tool; the rest are reported (the screen shows them as needing a look).
 * ``live`` / ``grant`` / ``revoke``: "allow for this conversation". Only the conversation's
   owner makes or revokes one (the routes gate the conversation), only for a tool the agent
-  has and ``tool_modes.grantable`` allows, and every change is audited. Changing the agent's
-  tool approval settings revokes its conversations' grants (``revoke_for_agent``).
+  has and ``tool_modes.grantable`` allows, and every change is audited. A grant is stored
+  under the tool's key; the caller may name the tool by key or by a name only one tool
+  carries (anything else is refused). Changing the agent's tool approval settings revokes
+  its conversations' grants (``revoke_for_agent``).
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from app.guardrails.tool_risk import ToolRiskPolicy, level_of
 from app.models.conversation import Conversation
 from app.models.conversation_tool_grant import ConversationToolGrant
 from app.services import audit_service
+from app.tools.keys import ToolRef, ambiguous_names, builtin_key, ref_from_config, resolve
 from app.tools.risk import ToolRiskLevel, execute_in_skill_risk, risk_from_tool_config
 
 FILESYSTEM_WRITE_TOOLS: Final = ("write_file", "edit_file")
@@ -51,23 +56,43 @@ def runtime_name(config: dict[str, Any]) -> str:
 
 async def agent_tools(
     db: AsyncSession, agent: Any, context: OrgContext
-) -> list[tuple[str, ToolRiskLevel]]:
+) -> list[tuple[ToolRef, ToolRiskLevel]]:
     """The root agent's tools a setting can name, with their risk levels."""
     from app.services.chat.runtime_context import build_agent_skills, build_tools_config
 
-    found: dict[str, ToolRiskLevel] = {}
+    found: dict[str, tuple[ToolRef, ToolRiskLevel]] = {}
     configs = await build_tools_config(
         agent, context=context, db=db, conversation_id=None, read_only=True
     )
     for config in configs:
-        found[runtime_name(config)] = risk_from_tool_config(config).risk_level
+        ref = ref_from_config(config, name=runtime_name(config))
+        found[ref.key] = (ref, risk_from_tool_config(config).risk_level)
     if build_agent_skills(agent, context):
-        found["execute_in_skill"] = execute_in_skill_risk().risk_level
+        ref = ToolRef(builtin_key("execute_in_skill"), "execute_in_skill")
+        found[ref.key] = (ref, execute_in_skill_risk().risk_level)
     policy = resolve_runtime_policy(agent.runtime_policy).effective
     if policy.filesystem.mode == "artifact_write":
         for name in FILESYSTEM_WRITE_TOOLS:
-            found.setdefault(name, level_of(name))
-    return sorted(found.items())
+            found.setdefault(builtin_key(name), (ToolRef(builtin_key(name), name), level_of(name)))
+    return sorted(found.values(), key=lambda item: (item[0].name, item[0].key))
+
+
+def keyed_settings(
+    settings: ToolApprovalPolicyV1 | None, refs: list[ToolRef]
+) -> tuple[ToolApprovalPolicyV1 | None, list[str]]:
+    """Settings keyed by resource key, and the entries that name no single tool."""
+    if settings is None or not settings.tools:
+        return settings, []
+    keys = {ref.key for ref in refs}
+    tools: dict[str, Any] = {}
+    unresolved: list[str] = []
+    for name, value in settings.tools.items():
+        ref = resolve(refs, name)
+        if ref is None:
+            unresolved.append(name)
+        elif name in keys or ref.key not in settings.tools:  # a key entry beats a name entry
+            tools[ref.key] = value
+    return settings.model_copy(update={"tools": tools}), sorted(unresolved)
 
 
 async def list_live(db: AsyncSession, conversation_id: uuid.UUID) -> list[ConversationToolGrant]:
@@ -115,36 +140,52 @@ async def grant(
     company: ToolRiskPolicy | None,
 ) -> ConversationToolGrant:
     """Allow ``tool`` for this conversation (idempotent while a live grant exists)."""
-    levels = dict(await agent_tools(db, agent, context))
-    level = levels.get(tool)
-    if level is None or not grantable(tool, level, settings=settings_of(agent), company=company):
+    tools = await agent_tools(db, agent, context)
+    levels = {ref.key: level for ref, level in tools}
+    refs = [ref for ref, _ in tools]
+    ref = resolve(refs, tool)
+    if ref is None or not grantable(
+        ref,
+        levels[ref.key],
+        settings=settings_of(agent),
+        company=company,
+        ambiguous=ref.name in ambiguous_names(refs),
+    ):
         raise not_grantable(tool)
+    level = levels[ref.key]
     existing = await db.scalar(
         select(ConversationToolGrant).where(
             ConversationToolGrant.conversation_id == conversation.id,
-            ConversationToolGrant.tool_name == tool,
+            ConversationToolGrant.tool_name == ref.key,
             ConversationToolGrant.revoked_at.is_(None),
         )
     )
     if existing is not None:
         return existing
     row = ConversationToolGrant(
-        conversation_id=conversation.id, tool_name=tool, granted_by=context.user_id
+        conversation_id=conversation.id, tool_name=ref.key, granted_by=context.user_id
     )
     db.add(row)
     await db.flush()
-    await _audit(db, context, conversation, APPROVAL_GRANT_CREATED, tool, level.value)
+    await _audit(db, context, conversation, APPROVAL_GRANT_CREATED, ref, level.value)
     return row
 
 
 async def revoke(
-    db: AsyncSession, context: OrgContext, conversation: Conversation, tool: str
+    db: AsyncSession,
+    context: OrgContext,
+    conversation: Conversation,
+    tool: str,
+    *,
+    ref: ToolRef | None = None,
 ) -> bool:
+    """Revoke the grant stored as ``tool``; with ``ref``, under its key or its name too."""
+    stored = {tool} | ({ref.key, ref.name} if ref is not None else set())
     result = await db.execute(
         update(ConversationToolGrant)
         .where(
             ConversationToolGrant.conversation_id == conversation.id,
-            ConversationToolGrant.tool_name == tool,
+            ConversationToolGrant.tool_name.in_(stored),
             ConversationToolGrant.revoked_at.is_(None),
         )
         .values(revoked_at=_now(), revoked_reason="revoked")
@@ -152,7 +193,9 @@ async def revoke(
     )
     revoked = bool(result.rowcount)  # type: ignore[attr-defined]
     if revoked:
-        await _audit(db, context, conversation, APPROVAL_GRANT_REVOKED, tool, None)
+        await _audit(
+            db, context, conversation, APPROVAL_GRANT_REVOKED, ref or ToolRef(tool, tool), None
+        )
     return revoked
 
 
@@ -176,7 +219,7 @@ async def _audit(
     context: OrgContext,
     conversation: Conversation,
     action: str,
-    tool: str,
+    tool: ToolRef,
     level: str | None,
 ) -> None:
     await audit_service.record_event(
@@ -190,7 +233,8 @@ async def _audit(
         target_owner_user_id=conversation.user_id,
         outcome="success",
         metadata={
-            "tool": tool,
+            "tool": tool.name,
+            "tool_key": tool.key,
             "risk_level": level,
             "agent_id": str(conversation.agent_id) if conversation.agent_id else None,
         },
@@ -201,6 +245,7 @@ __all__ = [
     "Conversation",
     "agent_tools",
     "grant",
+    "keyed_settings",
     "list_live",
     "live",
     "not_grantable",

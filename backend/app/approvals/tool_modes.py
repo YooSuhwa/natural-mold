@@ -18,6 +18,10 @@ API (``effective``) call ``decide`` — never two copies of these rules.
 
 The relaxing layers (3-5) apply to the root agent; a declarative child keeps the company and
 default asks (approvals only ever get stricter there, plan 3.1 "하위 에이전트").
+
+Settings name a tool by its resource key (``app.tools.keys``, tool-governance-plan 3.2). A
+setting saved under a tool name (before keys) is still read: one that tightens applies to
+every tool with that name, one that relaxes only when a single tool carries the name.
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ from typing import Any, Final, Literal
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.tools import BaseTool
 
-from app.agent_runtime.runtime_policy import ToolApprovalPolicyV1
+from app.agent_runtime.runtime_policy import ToolApprovalPolicyV1, ToolApprovalToolV1
 from app.authz.audit_actions import APPROVAL_AUTO_ALLOWED
 from app.conditions import Condition, holds
 from app.guardrails.tool_risk import (
@@ -39,6 +43,7 @@ from app.guardrails.tool_risk import (
     approval_entry,
     level_of,
 )
+from app.tools.keys import ToolRef, ambiguous_names, ref_of
 from app.tools.risk import ToolRiskLevel
 
 Kind = Literal["ask", "auto", "when", "hidden"]
@@ -77,8 +82,26 @@ def _action(company: ToolRiskPolicy | None, level: ToolRiskLevel) -> str:
     return company.action(level) if company is not None else DEFAULT_ACTIONS[level.value]
 
 
+def _ref(tool: ToolRef | str) -> ToolRef:
+    return tool if isinstance(tool, ToolRef) else ref_of(tool)
+
+
+def _setting(
+    settings: ToolApprovalPolicyV1 | None, ref: ToolRef, ambiguous: bool
+) -> ToolApprovalToolV1 | None:
+    if settings is None:
+        return None
+    found = settings.tools.get(ref.key)
+    if found is not None:
+        return found
+    named = settings.tools.get(ref.name)  # saved by name, before keys
+    if named is not None and ambiguous and named.mode == "never":
+        return None  # which tool it meant is unknown: the ask stays
+    return named
+
+
 def decide(
-    name: str,
+    tool: ToolRef | str,
     level: ToolRiskLevel,
     path: Path,
     *,
@@ -86,26 +109,33 @@ def decide(
     company: ToolRiskPolicy | None,
     grants: frozenset[str] = frozenset(),
     legacy_always: frozenset[str] = frozenset(),
+    ambiguous: bool = False,
 ) -> Decision:
-    """The decision for one tool on one path (pure; same inputs, same answer)."""
+    """The decision for one tool on one path (pure; same inputs, same answer).
+
+    ``tool`` is the tool's ref (a bare string is a built-in by that name); ``ambiguous``
+    says another tool of the same agent carries the same name.
+    """
+    ref = _ref(tool)
+    name = ref.name
     action = _action(company, level)
     if action == "block":
         return Decision("hidden", "company_block")
-    if company is not None and name in company.always_ask:
+    if company is not None and company.always_asks(ref):
         return Decision("ask", "company_always")
     if action == "approval":
         return Decision("ask", "company_forced")
-    setting = settings.tools.get(name) if settings is not None else None
+    setting = _setting(settings, ref, ambiguous)
     if setting is not None:
         if setting.mode == "always":
             return Decision("ask", "tool_always")
         if setting.mode == "when":
             return Decision("when", "tool_when", setting.rule)
         return Decision("auto", "tool_never")
-    if name in legacy_always:
+    if name in legacy_always or ref.key in legacy_always:
         # An ask the agent set through the human_in_the_loop middleware (before this feature).
         return Decision("ask", "tool_always")
-    if path == "chat" and name in grants:
+    if path == "chat" and (ref.key in grants or (name in grants and not ambiguous)):
         return Decision("auto", "conversation_grant")
     mode = getattr(settings.paths, path) if settings is not None else "ask_all"
     if mode == "auto":
@@ -117,14 +147,15 @@ def decide(
 
 
 def grantable(
-    name: str,
+    tool: ToolRef | str,
     level: ToolRiskLevel,
     *,
     settings: ToolApprovalPolicyV1 | None,
     company: ToolRiskPolicy | None,
+    ambiguous: bool = False,
 ) -> bool:
     """Whether "allow for this conversation" may lift this tool (plan Q5)."""
-    decision = decide(name, level, "chat", settings=settings, company=company)
+    decision = decide(tool, level, "chat", settings=settings, company=company, ambiguous=ambiguous)
     if decision.layer in ("company_block", "company_always", "company_forced", "tool_always"):
         return False
     if decision.kind == "auto":
@@ -151,16 +182,16 @@ class ToolApprovalPlan:
         has_settings = self.settings is not None and not self.settings.is_default
         return has_settings or (self.path == "chat" and bool(self.grants))
 
-    def decide(self, tool: BaseTool | str) -> Decision:
-        name = tool if isinstance(tool, str) else tool.name
+    def decide(self, tool: BaseTool | str, *, ambiguous: bool = False) -> Decision:
         return decide(
-            name,
+            ref_of(tool),
             level_of(tool),
             self.path,
             settings=self.settings,
             company=self.company,
             grants=self.grants,
             legacy_always=self.legacy_always,
+            ambiguous=ambiguous,
         )
 
 
@@ -255,9 +286,11 @@ def apply(
     result = dict(interrupt_on)
     auto: dict[str, str] = {}
     targets: list[BaseTool | str] = [*tools, *BUILTIN_TOOLS]
+    twice = ambiguous_names(ref_of(tool) for tool in targets)
     for tool in targets:
+        # ``interrupt_on`` is keyed by the name the model calls (a run may have renamed it).
         name = tool if isinstance(tool, str) else tool.name
-        decision = plan.decide(tool)
+        decision = plan.decide(tool, ambiguous=ref_of(tool).name in twice)
         if decision.kind == "hidden":
             result.pop(name, None)
             continue
@@ -288,7 +321,7 @@ DELIVERY: Final[dict[Path, str]] = {
 class Effective:
     """One cell of the "실제 적용" table."""
 
-    tool: str
+    tool: str  # the resource key
     level: str
     path: Path
     kind: Kind
@@ -299,7 +332,7 @@ class Effective:
 
 
 def effective(
-    tools: Iterable[tuple[str, ToolRiskLevel]],
+    tools: Iterable[tuple[ToolRef, ToolRiskLevel]],
     *,
     settings: ToolApprovalPolicyV1 | None,
     company: ToolRiskPolicy | None,
@@ -307,14 +340,22 @@ def effective(
 ) -> list[Effective]:
     """Every tool × path, as a run decides it (the same ``decide``)."""
     cells: list[Effective] = []
-    for name, level in tools:
+    listed = list(tools)
+    twice = ambiguous_names(ref for ref, _ in listed)
+    for ref, level in listed:
         for path in PATHS:
             decision = decide(
-                name, level, path, settings=settings, company=company, legacy_always=legacy_always
+                ref,
+                level,
+                path,
+                settings=settings,
+                company=company,
+                legacy_always=legacy_always,
+                ambiguous=ref.name in twice,
             )
             cells.append(
                 Effective(
-                    name,
+                    ref.key,
                     level.value,
                     path,
                     decision.kind,

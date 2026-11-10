@@ -6,10 +6,11 @@ import { toolApprovalApi } from '@/lib/api/tool-approval'
 import { toolApprovalQueryKeys } from '@/lib/query-keys/tool-approval'
 
 /** The agent's tool approval settings, the company cap and the effective table. */
-export function useToolApproval(agentId: string) {
+export function useToolApproval(agentId: string | undefined) {
   return useQuery({
-    queryKey: toolApprovalQueryKeys.view(agentId),
-    queryFn: () => toolApprovalApi.view(agentId),
+    queryKey: toolApprovalQueryKeys.view(agentId ?? ''),
+    queryFn: () => toolApprovalApi.view(agentId ?? ''),
+    enabled: !!agentId,
     retry: false,
   })
 }

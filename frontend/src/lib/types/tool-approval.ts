@@ -14,7 +14,11 @@ export interface ToolApprovalCell {
 }
 
 export interface ToolApprovalTool {
+  /** The resource key settings and grants are saved under (`mcp:<id>`, `tool:<id>`, `builtin:<name>`). */
+  key: string
   name: string
+  /** The MCP server it comes from (tells same-named tools apart). */
+  source?: string | null
   level: string
   /** The company decides it whatever the agent says. */
   locked: boolean
@@ -24,6 +28,8 @@ export interface ToolApprovalTool {
 
 export interface ToolApprovalView {
   settings: ToolApprovalPolicyV1 | null
+  /** Saved per-tool entries that name no single tool of the agent. */
+  unresolved?: string[]
   company_actions: Record<string, string>
   company_always_ask: string[]
   tools: ToolApprovalTool[]
@@ -31,6 +37,7 @@ export interface ToolApprovalView {
 
 export interface ToolGrant {
   id: string
+  /** The tool's resource key (a tool name on grants made before keys). */
   tool_name: string
   created_at: string
 }

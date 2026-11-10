@@ -36,6 +36,7 @@ from app.schemas.tool_approval import (
     ToolGrantOut,
 )
 from app.services import agent_access_views, chat_service
+from app.tools.keys import ambiguous_names, resolve
 
 router = APIRouter(tags=["tool-approval"])
 CONVERSATION = PRIVATE("conversations", param="conversation_id")
@@ -66,15 +67,22 @@ async def get_tool_approval(
     legacy = tool_modes.legacy_always_from(agent.middleware_configs)
     tools = await tool_grants.agent_tools(db, agent, context)
     cells = tool_modes.effective(tools, settings=settings, company=company, legacy_always=legacy)
+    refs = [ref for ref, _ in tools]
+    twice = ambiguous_names(refs)
+    shown, unresolved = tool_grants.keyed_settings(settings, refs)
     rows: list[ToolApprovalTool] = []
-    for name, level in tools:
-        mine = [cell for cell in cells if cell.tool == name]
+    for ref, level in tools:
+        mine = [cell for cell in cells if cell.tool == ref.key]
         rows.append(
             ToolApprovalTool(
-                name=name,
+                key=ref.key,
+                name=ref.name,
+                source=ref.source,
                 level=level.value,
                 locked=any(cell.layer in _COMPANY_LAYERS for cell in mine),
-                grantable=tool_modes.grantable(name, level, settings=settings, company=company),
+                grantable=tool_modes.grantable(
+                    ref, level, settings=settings, company=company, ambiguous=ref.name in twice
+                ),
                 cells=[
                     ToolApprovalCell(
                         path=cell.path,
@@ -91,7 +99,8 @@ async def get_tool_approval(
             )
         )
     return ToolApprovalView(
-        settings=settings.model_dump(mode="json", exclude_none=True) if settings else None,
+        settings=shown.model_dump(mode="json", exclude_none=True) if shown else None,
+        unresolved=unresolved,
         company_actions=dict(company.actions if company else DEFAULT_ACTIONS),
         company_always_ask=sorted(company.always_ask) if company else [],
         tools=rows,
@@ -148,6 +157,12 @@ async def revoke_tool_grant(
     db: AsyncSession = Depends(get_db),
     context: OrgContext = Depends(get_org_context),
 ) -> Response:
-    await tool_grants.revoke(db, context, conversation, tool)
+    ref = None
+    if conversation.agent_id is not None:
+        agent = await chat_service.get_run_agent_with_tools(db, conversation.agent_id, context)
+        if agent is not None:
+            tools = await tool_grants.agent_tools(db, agent, context)
+            ref = resolve([item for item, _ in tools], tool)
+    await tool_grants.revoke(db, context, conversation, tool, ref=ref)
     await db.commit()
     return Response(status_code=204)

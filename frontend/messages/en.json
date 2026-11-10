@@ -7903,6 +7903,9 @@
     },
     "effectiveFor": "Effective for {tool}",
     "effectiveHint": "Computed from the saved settings. Save to see your changes here.",
+    "unresolved": "Settings to check",
+    "unresolvedHint": "These settings do not point to a single attached tool (the tool was removed, or several tools share the name). Remove them and set the tool above.",
+    "unresolvedRemove": "Remove the {tool} setting",
     "kind": {
       "ask": "Ask",
       "auto": "Auto",

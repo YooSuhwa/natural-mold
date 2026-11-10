@@ -104,11 +104,46 @@ def _fallback_model_ids(agent: Agent) -> list[uuid.UUID]:
     return ids
 
 
+_APPROVAL_STRICTNESS = {"never": 0, "when": 1, "always": 2}
+
+
+def _portable_tool_approval(agent: Agent, tools: dict[str, Any]) -> dict[str, Any]:
+    """Per-tool approval settings by tool name: the publisher's row keys mean nothing in
+    the installer's workspace (tool-governance-plan 3.2). A key of a tool the agent no
+    longer has is dropped; where two entries land on one name the stricter one stays."""
+    from app.agent_runtime.tool_factory import _safe_tool_name
+
+    names = {f"mcp:{link.mcp_tool.id}": link.mcp_tool.name for link in agent.mcp_tool_links}
+    names |= {f"tool:{link.tool.id}": _safe_tool_name(link.tool.name) for link in agent.tool_links}
+    portable: dict[str, Any] = {}
+    for key, setting in tools.items():
+        if key.startswith(("mcp:", "tool:")):
+            name = names.get(key)
+            if name is None:
+                continue
+        else:
+            name = key
+        current = portable.get(name)
+        if current is None or (
+            _APPROVAL_STRICTNESS[setting["mode"]] > _APPROVAL_STRICTNESS[current["mode"]]
+        ):
+            portable[name] = setting
+    return portable
+
+
 def _portable_runtime_policy(agent: Agent) -> dict[str, Any] | None:
     """Parse agent policy storage into the only portable policy contract."""
     if agent.runtime_policy is None:
         return None
-    return canonicalize_portable_runtime_policy(agent.runtime_policy)
+    policy = canonicalize_portable_runtime_policy(agent.runtime_policy)
+    approval = policy.get("tool_approval")
+    if approval and approval.get("tools"):
+        policy["tool_approval"] = {
+            **approval,
+            "tools": _portable_tool_approval(agent, approval["tools"]),
+        }
+        policy = canonicalize_portable_runtime_policy(policy)
+    return policy
 
 
 def _credential_requirement(
