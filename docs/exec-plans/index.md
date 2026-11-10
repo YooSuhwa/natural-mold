@@ -14,6 +14,7 @@ The active organization authorization program follows the supplied
 
 - [순번 15 메모리 정책 상세 기획](active/memory-policy-plan.md) — v10 2026-11-07 (Anthropic memory post folded in); all decisions made (Q12 Nori, Q2 text-embedding-3-large provisional); PR-A next.
 - [도구 승인 모드 상세 기획](active/approval-modes-plan.md) — v2 2026-11-09; decisions Q1–Q9 confirmed, stage 1 (M1–M4) done (feature/approval-modes); M5 AI review after item 22.
+- [도구 거버넌스 상세 기획](active/tool-governance-plan.md) — v1 confirmed 2026-11-10; approval defaults, company per-tool limits, registration and visibility; decisions G1–G14 confirmed as recommended, implementation T1–T6 not started.
 - [순번 23 워크플로 1차 핵심 노드 상세 기획](active/workflow-plan.md) — v2 2026-11-08; decisions Q1–Q9 confirmed, W0–W5 merged (#384–#398).
 - [워크플로 반복(되돌아가기) 기획](active/workflow-loop-plan.md) — 2026-11-09; decisions L1–L7 confirmed, done (#401–#403).
 - [워크플로 나머지 노드 기획](active/workflow-nodes-plan.md) — 2026-11-09; decisions N1–N9 confirmed, done (feature/workflow-complete).
