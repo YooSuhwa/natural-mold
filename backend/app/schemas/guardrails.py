@@ -123,3 +123,71 @@ class AgentGuardrailUpdate(BaseModel):
     mode: BindingMode
     template_ref: str | None = Field(default=None, max_length=80)
     rule_overrides: dict[str, GuardrailRuleOverride] = Field(default_factory=dict, max_length=40)
+
+
+# --- company policy per tool (tool-governance-plan 3.4) ---------------------------------
+
+ApprovalModeName = Literal["always", "when", "never"]
+ToolPolicyKind = Literal["mcp_server", "mcp_tool", "tool", "builtin"]
+
+
+class ToolPolicyUpdate(BaseModel):
+    """Every field empty removes the policy (the tool follows its risk level again)."""
+
+    # None: the risk level decides; False: nobody can use the tool; True: usable even
+    # when its risk level is blocked (it still asks).
+    enabled: bool | None = None
+    default_mode: ApprovalModeName | None = None
+    # None: every mode; otherwise the modes an agent, a tool default or a grant may use.
+    allowed_modes: list[ApprovalModeName] | None = Field(default=None, min_length=1, max_length=3)
+    rule: dict[str, Any] | None = None  # the condition of a ``when`` default
+
+
+class ToolPolicyOut(BaseModel):
+    resource_key: str
+    resource_name: str
+    enabled: bool | None
+    default_mode: ApprovalModeName | None
+    allowed_modes: list[ApprovalModeName] | None
+    rule: dict[str, Any] | None
+    updated_at: datetime
+
+
+class ToolPolicyWarning(BaseModel):
+    code: Literal["risky_without_asking"]
+    risk_level: str | None = None
+
+
+class ToolPolicySaved(BaseModel):
+    policy: ToolPolicyOut | None  # None: the policy was removed
+    warnings: list[ToolPolicyWarning] = Field(default_factory=list)
+
+
+class ToolPolicyTarget(BaseModel):
+    """Something a policy can name: an MCP server, one of its tools, a tool, a built-in."""
+
+    key: str
+    name: str
+    kind: ToolPolicyKind
+    server_key: str | None = None
+    source: str | None = None  # the MCP server's name, for people
+    risk_level: str | None = None  # None for a server (its tools differ)
+
+
+class ToolPolicyListOut(BaseModel):
+    policies: list[ToolPolicyOut]
+
+
+class ToolPolicyImpactAgent(BaseModel):
+    id: uuid.UUID
+    name: str
+    tool_key: str
+    tool_name: str
+    mode: ApprovalModeName  # the agent's setting that stops applying
+    reason: Literal["disabled", "mode_not_allowed"]
+
+
+class ToolPolicyImpactOut(BaseModel):
+    agents: list[ToolPolicyImpactAgent]
+    total: int
+    warnings: list[ToolPolicyWarning] = Field(default_factory=list)

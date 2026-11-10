@@ -32,11 +32,14 @@ from app.guardrails.run import UnknownGuardrailTemplateError
 from app.guardrails.templates import BUILTIN_PREFIX, parse_ref, rules_from_json
 from app.guardrails.tool_risk import (
     DEFAULT_ACTIONS,
+    MAX_TOOL_POLICIES,
     InvalidToolRiskError,
+    ToolPolicy,
     ToolRiskPolicy,
     actions_from_json,
     always_ask_from_json,
     policy_from_actions,
+    tool_policy_from_json,
 )
 from app.models.guardrail_template import (
     AgentGuardrailBinding,
@@ -44,6 +47,7 @@ from app.models.guardrail_template import (
     GuardrailTemplateVersion,
 )
 from app.models.organization import Tenant
+from app.models.resource_policy import ResourcePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -224,4 +228,52 @@ async def resolve_tool_risk(
         return None
     tenant = await db.get(Tenant, tenant_id)
     saved = policy_from_settings(tenant.settings if tenant else None)
-    return policy_from_actions(saved.tool_risk, saved.always_ask_tools) if saved else None
+    tools = await tool_policies(db, tenant_id)
+    if saved is None:
+        return policy_from_actions(None, tools=tools)
+    return policy_from_actions(saved.tool_risk, saved.always_ask_tools, tools)
+
+
+def row_policy(row: ResourcePolicy) -> ToolPolicy:
+    return tool_policy_from_json(
+        {
+            "enabled": row.enabled,
+            "default_mode": row.default_mode,
+            "allowed_modes": row.allowed_modes,
+            "rule": row.rule,
+        }
+    )
+
+
+async def tool_policies(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, ToolPolicy]:
+    """The company-wide policy of each tool or MCP server, by resource key.
+
+    A row that cannot be read switches the tool off rather than dropping the policy: what the
+    company restricted must not open up because its row went bad.
+    """
+    rows = await db.scalars(
+        select(ResourcePolicy)
+        .where(ResourcePolicy.tenant_id == tenant_id, ResourcePolicy.org_id.is_(None))
+        .order_by(ResourcePolicy.resource_key)
+        .limit(MAX_TOOL_POLICIES)
+    )
+    found: dict[str, ToolPolicy] = {}
+    for row in rows:
+        try:
+            found[row.resource_key] = row_policy(row)
+        except InvalidToolRiskError:
+            logger.warning("tool policy %s is unreadable; the tool is off", row.resource_key)
+            found[row.resource_key] = ToolPolicy(False, None, None, None)
+    return found
+
+
+async def disabled_tools(db: AsyncSession, tenant_id: uuid.UUID) -> frozenset[str]:
+    """Keys the company has switched off now (read on a resume: off applies at once)."""
+    rows = await db.scalars(
+        select(ResourcePolicy.resource_key).where(
+            ResourcePolicy.tenant_id == tenant_id,
+            ResourcePolicy.org_id.is_(None),
+            ResourcePolicy.enabled.is_(False),
+        )
+    )
+    return frozenset(rows)

@@ -40,7 +40,6 @@ from app.tools.keys import ambiguous_names, resolve
 
 router = APIRouter(tags=["tool-approval"])
 CONVERSATION = PRIVATE("conversations", param="conversation_id")
-_COMPANY_LAYERS = frozenset({"company_block", "company_always", "company_forced"})
 
 
 async def _run_agent(db: AsyncSession, context: OrgContext, agent_id: uuid.UUID):  # type: ignore[no-untyped-def]
@@ -73,13 +72,15 @@ async def get_tool_approval(
     rows: list[ToolApprovalTool] = []
     for ref, level in tools:
         mine = [cell for cell in cells if cell.tool == ref.key]
+        bound = company.tool_policy(ref) if company is not None else None
         rows.append(
             ToolApprovalTool(
                 key=ref.key,
                 name=ref.name,
                 source=ref.source,
                 level=level.value,
-                locked=any(cell.layer in _COMPANY_LAYERS for cell in mine),
+                locked=any(cell.layer in tool_modes.COMPANY_FIXED for cell in mine),
+                allowed_modes=sorted(bound.allowed) if bound and bound.allowed else None,
                 grantable=tool_modes.grantable(
                     ref, level, settings=settings, company=company, ambiguous=ref.name in twice
                 ),

@@ -27,6 +27,8 @@ class ToolApprovalTool(BaseModel):
     level: str
     # The company decides this tool whatever the agent says (shown locked).
     locked: bool
+    # The modes the company lets this tool's setting use (None: every mode).
+    allowed_modes: list[str] | None = None
     grantable: bool
     cells: list[ToolApprovalCell]
 

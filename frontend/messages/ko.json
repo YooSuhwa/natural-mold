@@ -3922,6 +3922,53 @@
       "alwaysAskPlaceholder": "send_mail, http_request",
       "alwaysAskHint": "쉼표로 구분한 도구 이름. 에이전트 설정과 대화 허용으로도 풀 수 없습니다."
     },
+    "toolPolicies": {
+      "title": "도구별 정책",
+      "description": "도구나 MCP 서버마다 쓸 수 있는지, 어떤 승인 단계를 고를 수 있는지, 어떤 단계에서 시작하는지 정합니다. 위험 등급별 조치보다 먼저 적용되고 에이전트 설정으로 바꿀 수 없습니다. 바꾸면 다음 실행부터 적용되고, 사용 안 함은 승인을 기다리던 실행이 이어질 때도 적용됩니다.",
+      "readOnly": "회사가 도구마다 정해 둔 정책입니다. 변경은 회사 관리자가 합니다.",
+      "empty": "정해 둔 도구별 정책이 없습니다. 모든 도구가 위험 등급별 조치를 따릅니다.",
+      "add": "정책 추가",
+      "pick": "도구 또는 MCP 서버 선택",
+      "kind": {
+        "mcp_server": "MCP 서버",
+        "mcp_tool": "MCP 도구",
+        "tool": "도구",
+        "builtin": "기본 도구"
+      },
+      "edit": "편집",
+      "editOf": "{tool} 정책 편집",
+      "off": "사용 안 함",
+      "on": "사용",
+      "allowedSummary": "허용: {modes}",
+      "defaultSummary": "기본: {mode}",
+      "enabled": {
+        "label": "사용 여부",
+        "follow": "위험 등급을 따름",
+        "on": "사용(등급이 차단이어도)",
+        "off": "사용 안 함"
+      },
+      "offHint": "아무도 이 도구를 쓸 수 없고, 에이전트에게 보이지 않습니다.",
+      "allowed": "고를 수 있는 승인 단계",
+      "allowedHint": "빼 둔 단계는 에이전트 설정, 도구 기본값, 대화 허용 어디에서도 쓸 수 없습니다. 하나만 남기면 모든 에이전트가 그 단계로 고정됩니다.",
+      "default": "기본 단계",
+      "defaultNone": "없음(등급을 따름)",
+      "needsDefault": "단계를 제한하면 기본 단계를 골라야 합니다.",
+      "needsRule": "조건부에는 조건이 필요합니다. 인자 이름을 적어 주세요.",
+      "save": "저장",
+      "confirm": "이대로 저장",
+      "remove": "정책 삭제",
+      "cancel": "취소",
+      "saved": "도구별 정책을 저장했습니다.",
+      "removed": "도구별 정책을 삭제했습니다.",
+      "impactTitle": "저장하면 에이전트 설정 {count}건이 적용되지 않습니다.",
+      "impact": {
+        "disabled": "{agent} · {tool}: 도구를 쓸 수 없게 됩니다({mode} 설정).",
+        "mode_not_allowed": "{agent} · {tool}: {mode} 설정이 허용되지 않아 무시됩니다."
+      },
+      "warning": {
+        "risky_without_asking": "이 도구는 {level} 등급인데 묻지 않고 실행됩니다. 감사 기록에 남습니다."
+      }
+    },
     "policy": {
       "title": "회사 정책",
       "description": "모든 에이전트 실행에 적용됩니다. 바꾸면 다음 실행부터 적용되고, 진행 중인 실행과 승인 대기 중인 실행은 이전 규칙을 유지합니다.",
@@ -4061,7 +4108,9 @@
       "GUARDRAIL_TEMPLATE_VERSION_CURRENT": "이 버전은 이미 게시된 버전입니다.",
       "GUARDRAIL_TEMPLATE_VERSION_NOT_FOUND": "버전을 찾을 수 없습니다.",
       "GUARDRAIL_POLICY_ENFORCED": "회사 정책이 템플릿을 고정합니다.",
-      "GUARDRAIL_RULE_LOCKED": "회사가 잠근 규칙은 바꿀 수 없습니다."
+      "GUARDRAIL_RULE_LOCKED": "회사가 잠근 규칙은 바꿀 수 없습니다.",
+      "TOOL_POLICY_INVALID": "도구별 정책을 저장할 수 없습니다. 값을 확인해 주세요.",
+      "TOOL_POLICY_TARGET_NOT_FOUND": "도구를 찾을 수 없습니다."
     }
   },
   "guardrailModel": {
@@ -7898,6 +7947,7 @@
       "toolSetting": "{tool} 승인 기본값",
       "saveFailed": "승인 기본값을 저장하지 못했습니다."
     },
+    "companyAllows": "회사가 허용한 단계: {modes}",
     "toolMode": {
       "default": "기본(모드를 따름)",
       "always": "항상 묻기",

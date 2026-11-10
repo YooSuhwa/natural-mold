@@ -87,6 +87,7 @@ from app.models.organization_group import Group, GroupMember, OrgCapabilityGrant
 from app.models.organization_identity import SsoConnection, TenantDomain, UserIdentity
 from app.models.refresh_token import RefreshToken
 from app.models.resource_credential_binding import ResourceCredentialBinding
+from app.models.resource_policy import ResourcePolicy
 from app.models.share_link import ShareLink
 from app.models.skill import AgentSkillLink, Skill
 from app.models.skill_builder_session import SkillBuilderSession
@@ -197,6 +198,7 @@ __all__ = [
     "RefreshToken",
     "ResourceCredentialBinding",
     "ResourceGrant",
+    "ResourcePolicy",
     "ShareLink",
     "Skill",
     "SkillBuilderSession",

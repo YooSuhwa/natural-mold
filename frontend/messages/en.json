@@ -3922,6 +3922,53 @@
       "alwaysAskPlaceholder": "send_mail, http_request",
       "alwaysAskHint": "Tool names separated by commas. Agent settings and conversation grants cannot lift them."
     },
+    "toolPolicies": {
+      "title": "Policy per tool",
+      "description": "For each tool or MCP server, set whether it can be used, which approval modes can be picked and which mode it starts from. It applies before the action per risk level and agent settings cannot change it. A change applies from the next run; switching a tool off also applies when a run waiting for approval continues.",
+      "readOnly": "The policies your company set per tool. Company admins change them.",
+      "empty": "No tool has a policy of its own. Every tool follows the action for its risk level.",
+      "add": "Add a policy",
+      "pick": "Pick a tool or an MCP server",
+      "kind": {
+        "mcp_server": "MCP servers",
+        "mcp_tool": "MCP tools",
+        "tool": "Tools",
+        "builtin": "Built-in tools"
+      },
+      "edit": "Edit",
+      "editOf": "Edit the policy for {tool}",
+      "off": "Off",
+      "on": "On",
+      "allowedSummary": "Allowed: {modes}",
+      "defaultSummary": "Default: {mode}",
+      "enabled": {
+        "label": "Use",
+        "follow": "Follow the risk level",
+        "on": "On (even when the level is blocked)",
+        "off": "Off"
+      },
+      "offHint": "Nobody can use this tool and agents do not see it.",
+      "allowed": "Approval modes that can be picked",
+      "allowedHint": "A mode you leave out cannot be used in agent settings, tool defaults or conversation grants. Leaving one mode fixes every agent to it.",
+      "default": "Default mode",
+      "defaultNone": "None (follows the risk level)",
+      "needsDefault": "Pick a default mode when you limit the modes.",
+      "needsRule": "A conditional default needs a condition. Enter an argument name.",
+      "save": "Save",
+      "confirm": "Save anyway",
+      "remove": "Remove the policy",
+      "cancel": "Cancel",
+      "saved": "Saved the tool policy.",
+      "removed": "Removed the tool policy.",
+      "impactTitle": "Saving stops {count} agent settings from applying.",
+      "impact": {
+        "disabled": "{agent} · {tool}: the tool can no longer be used ({mode} setting).",
+        "mode_not_allowed": "{agent} · {tool}: the {mode} setting is not allowed and will be ignored."
+      },
+      "warning": {
+        "risky_without_asking": "This tool's risk level is {level}, and it will run without asking. This is recorded in the audit log."
+      }
+    },
     "policy": {
       "title": "Company policy",
       "description": "Applies to every agent run. Changes apply from the next run; running runs and runs waiting for approval keep their rules.",
@@ -4061,7 +4108,9 @@
       "GUARDRAIL_TEMPLATE_VERSION_CURRENT": "That version is already the published one.",
       "GUARDRAIL_TEMPLATE_VERSION_NOT_FOUND": "Version not found.",
       "GUARDRAIL_POLICY_ENFORCED": "The company policy fixes the template.",
-      "GUARDRAIL_RULE_LOCKED": "Rules the company locked cannot be changed."
+      "GUARDRAIL_RULE_LOCKED": "Rules the company locked cannot be changed.",
+      "TOOL_POLICY_INVALID": "The tool policy could not be saved. Check the values.",
+      "TOOL_POLICY_TARGET_NOT_FOUND": "The tool was not found."
     }
   },
   "guardrailModel": {
@@ -7898,6 +7947,7 @@
       "toolSetting": "Approval default for {tool}",
       "saveFailed": "Could not save the approval default."
     },
+    "companyAllows": "Modes your company allows: {modes}",
     "toolMode": {
       "default": "Default (follows the mode)",
       "always": "Always ask",

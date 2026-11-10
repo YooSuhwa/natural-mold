@@ -347,8 +347,9 @@ def build_agent_impl(
 
             settled = tool_modes.apply(interrupt_on, tools, tool_approval)
             interrupt_on = settled.interrupt_on
-            if tool_approval.defaults:
-                # A child's tools keep their own defaults, where they tighten.
+            if tool_approval.defaults or (tool_approval.company and tool_approval.company.tools):
+                # A child's tools keep the company's per-tool policy, and their own defaults
+                # where they tighten.
                 compatible_subagents = [
                     spec
                     if "runnable" in spec

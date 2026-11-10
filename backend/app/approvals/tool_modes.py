@@ -3,14 +3,21 @@
 Layers, top first; the first that decides wins, and nothing below the company layers can
 lift what they set:
 
-1. company ``block`` → the tool is hidden (and an emergency stop refuses the run earlier);
+1. company ``block``, or a tool the company switched off → the tool is hidden (and an
+   emergency stop refuses the run earlier);
 2. the company's always-ask tools, and a level the company forces (``approval``) → ask;
+   a tool the company fixed to one mode (tool-governance-plan 3.4) → that mode;
 3. the agent's per-tool setting: ``always`` → ask; ``when`` → ask while the rule over the
    call's args holds, else run; ``never`` → run;
 4. allowed for this conversation (chat only) → run;
-5. the tool's own default (its row's, else its MCP server's; tool-governance-plan 3.3):
+5. the company's default for the tool;
+6. the tool's own default (its row's, else its MCP server's; tool-governance-plan 3.3):
    ``always`` → ask; ``when`` → ask while the rule holds; ``never`` → run;
-6. the agent's mode for the run path: ``auto`` → run; ``ask_all`` → the risk default.
+7. the agent's mode for the run path: ``auto`` → run; ``ask_all`` → the risk default.
+
+Where the company restricted a tool's modes, layers 3-7 only count while their mode is one
+the company allows; a result outside them asks. A company policy for one tool wins over its
+level's action, in both directions.
 
 "Run" is only reachable where the company left the level ``allow`` or ``approval_relaxable``,
 because layer 2 decided everything else. Runs nobody watches turn an ask into a wait or a
@@ -18,9 +25,10 @@ BLOCKED answer afterwards (``app/approvals/unattended.py``); guardrail approval 
 their own conditional asks afterwards. The run assembly (``apply``) and the effective-settings
 API (``effective``) call ``decide`` — never two copies of these rules.
 
-The agent's layers (3, 4, 6) apply to the root agent; a declarative child keeps the company
-and default asks, and of a tool's own default only what tightens (``root=False``): approvals
-only ever get stricter there (plan 3.1 "하위 에이전트").
+The agent's layers (3, 4, 7) apply to the root agent; a declarative child keeps the company
+layers (also where they relax) and default asks, and of a tool's own default only what
+tightens (``root=False``): below the company, approvals only get stricter there (plan 3.1
+"하위 에이전트").
 
 Settings name a tool by its resource key (``app.tools.keys``, tool-governance-plan 3.2). A
 setting saved under a tool name (before keys) is still read: one that tightens applies to
@@ -42,6 +50,8 @@ from app.authz.audit_actions import APPROVAL_AUTO_ALLOWED
 from app.conditions import Condition, holds
 from app.guardrails.tool_risk import (
     DEFAULT_ACTIONS,
+    MODES,
+    ToolPolicy,
     ToolRiskPolicy,
     approval_entry,
     level_of,
@@ -61,6 +71,9 @@ REASONS: Final[dict[str, str]] = {
     "company_block": "회사 정책: 차단",
     "company_always": "회사 정책: 항상 사람이 승인",
     "company_forced": "회사 정책: 이 위험 등급은 승인 필요",
+    "company_tool_disabled": "회사 정책: 이 도구는 사용 금지",
+    "company_tool_locked": "회사 정책: 이 도구의 승인 방식 고정",
+    "company_tool_default": "회사 정책: 이 도구의 기본값",
     "tool_always": "도구 설정: 항상 묻기",
     "tool_when": "도구 설정: 조건이 맞으면 묻기",
     "tool_never": "도구 설정: 묻지 않기",
@@ -77,14 +90,47 @@ class Decision:
     kind: Kind
     layer: str
     rule: Condition | None = None
+    # A second rule that also asks when it holds (the company's, beside the agent's).
+    also: Condition | None = None
 
     @property
     def reason(self) -> str:
         return REASONS[self.layer]
 
 
+_ALL_MODES: Final = frozenset(MODES)
+# Layers no agent setting, conversation grant or tool default can change.
+COMPANY_FIXED: Final = frozenset(
+    {
+        "company_block",
+        "company_always",
+        "company_forced",
+        "company_tool_disabled",
+        "company_tool_locked",
+    }
+)
+
+
 def _action(company: ToolRiskPolicy | None, level: ToolRiskLevel) -> str:
     return company.action(level) if company is not None else DEFAULT_ACTIONS[level.value]
+
+
+def _company_rule(found: ToolPolicy | None) -> Condition | None:
+    """The rule of the company's ``when``; ``None`` when there is none or it cannot be read."""
+    if found is None or not found.rule:
+        return None
+    try:
+        return ToolApprovalToolV1.model_validate({"mode": "when", "rule": dict(found.rule)}).rule
+    except ValueError:
+        return None
+
+
+def _by_mode(mode: str, layer: str, rule: Condition | None) -> Decision:
+    if mode == "never":
+        return Decision("auto", layer)
+    if mode == "when" and rule is not None:
+        return Decision("when", layer, rule)
+    return Decision("ask", layer)  # ``always``, or a ``when`` whose rule cannot be read
 
 
 def _ref(tool: ToolRef | str) -> ToolRef:
@@ -140,29 +186,43 @@ def decide(
     """
     ref = _ref(tool)
     name = ref.name
-    action = _action(company, level)
-    if action == "block":
-        return Decision("hidden", "company_block")
+    found = company.tool_policy(ref) if company is not None else None
+    if company is not None and company.blocks(ref, level):
+        switched_off = found is not None and found.enabled is False
+        return Decision("hidden", "company_tool_disabled" if switched_off else "company_block")
+    action = company.tool_action(ref, level) if company is not None else _action(None, level)
     if company is not None and company.always_asks(ref):
         return Decision("ask", "company_always")
-    if action == "approval":
+    company_rule = _company_rule(found)
+    if found is not None and found.allowed is not None:
+        allowed = found.allowed  # the tool's own modes win over its level's action
+        if len(allowed) == 1:
+            return _by_mode(next(iter(allowed)), "company_tool_locked", company_rule)
+    elif action == "approval":
         return Decision("ask", "company_forced")
+    else:
+        allowed = _ALL_MODES
     if not root:
         settings, grants, legacy_always = None, frozenset(), frozenset()
     setting = _setting(settings, ref, ambiguous)
-    if setting is not None:
+    if setting is not None and setting.mode in allowed:
         if setting.mode == "always":
             return Decision("ask", "tool_always")
         if setting.mode == "when":
-            return Decision("when", "tool_when", setting.rule)
+            # Where the company forbids "never", its own rule keeps asking beside the agent's.
+            also = company_rule if "never" not in allowed else None
+            return Decision("when", "tool_when", setting.rule, also)
         return Decision("auto", "tool_never")
-    if name in legacy_always or ref.key in legacy_always:
+    if (name in legacy_always or ref.key in legacy_always) and "always" in allowed:
         # An ask the agent set through the human_in_the_loop middleware (before this feature).
         return Decision("ask", "tool_always")
-    if path == "chat" and (ref.key in grants or (name in grants and not ambiguous)):
+    lifts = "never" in allowed
+    if lifts and path == "chat" and (ref.key in grants or (name in grants and not ambiguous)):
         return Decision("auto", "conversation_grant")
+    if found is not None and found.default_mode is not None:
+        return _by_mode(found.default_mode, "company_tool_default", company_rule)
     default = _default(ref)
-    if default is not None:
+    if default is not None and default[0].mode in allowed:
         own, layer = default
         if own.mode == "always":
             return Decision("ask", layer)
@@ -171,11 +231,13 @@ def decide(
         if root:
             return Decision("auto", layer)
     mode = getattr(settings.paths, path) if settings is not None else "ask_all"
-    if mode == "auto":
+    if mode == "auto" and lifts:
         return Decision("auto", "agent_mode")
     asks_by_default = action == "approval_relaxable" or (
         action != "allow" and level != ToolRiskLevel.READ_ONLY
     )
+    if ("always" if asks_by_default else "never") not in allowed:
+        return Decision("ask", "company_tool_default")  # the usual answer is not allowed
     return Decision("ask" if asks_by_default else "auto", "risk_default")
 
 
@@ -188,11 +250,15 @@ def grantable(
     ambiguous: bool = False,
 ) -> bool:
     """Whether "allow for this conversation" may lift this tool (plan Q5)."""
-    decision = decide(tool, level, "chat", settings=settings, company=company, ambiguous=ambiguous)
-    if decision.layer in ("company_block", "company_always", "company_forced", "tool_always"):
+    ref = _ref(tool)
+    decision = decide(ref, level, "chat", settings=settings, company=company, ambiguous=ambiguous)
+    if decision.layer in COMPANY_FIXED or decision.layer == "tool_always":
         return False
     if decision.kind == "auto":
         return False  # nothing to lift
+    found = company.tool_policy(ref) if company is not None else None
+    if found is not None and found.allowed is not None:
+        return "never" in found.allowed  # the company said which modes this tool may take
     action = _action(company, level)
     return level in GRANTABLE_BY_DEFAULT or action in ("allow", "approval_relaxable")
 
@@ -221,7 +287,7 @@ class ToolApprovalPlan:
     @property
     def acts(self) -> bool:
         """``False`` when applying the plan would change nothing (the run skips it)."""
-        return self.relaxes or self.defaults
+        return self.relaxes or self.defaults or bool(self.company and self.company.tools)
 
     def decide(
         self, tool: BaseTool | str, *, ambiguous: bool = False, root: bool = True
@@ -316,10 +382,15 @@ def _described(entry: Mapping[str, Any], reason: str) -> dict[str, Any]:
     return {**dict(entry), "description": description}
 
 
-def _when(entry: Mapping[str, Any], rule: Condition, reason: str) -> dict[str, Any]:
+def _when(
+    entry: Mapping[str, Any], rule: Condition, reason: str, also: Condition | None = None
+) -> dict[str, Any]:
+    rules = [rule, also] if also is not None else [rule]
+
     def when(request: Any) -> bool:
         try:
-            return holds(rule, {"args": request.tool_call.get("args") or {}})
+            values = {"args": request.tool_call.get("args") or {}}
+            return any(holds(one, values) for one in rules)
         except Exception:  # noqa: BLE001 - a rule that cannot be read asks (plan 3.4)
             return True
 
@@ -365,7 +436,7 @@ def apply(
             if decision.layer != "risk_default":  # the default ask keeps its own wording
                 result[name] = _described(base, decision.reason)
         elif decision.kind == "when" and decision.rule is not None:
-            result[name] = _when(base, decision.rule, decision.reason)
+            result[name] = _when(base, decision.rule, decision.reason, decision.also)
         else:
             result.pop(name, None)
             if level_of(tool) != ToolRiskLevel.READ_ONLY:
@@ -379,14 +450,18 @@ def _tightened(
     result = dict(interrupt_on)
     for tool in tools:
         decision = plan.decide(tool, root=False)
-        if decision.layer not in ("tool_default", "server_default"):
+        company = decision.layer in ("company_tool_locked", "company_tool_default")
+        if not company and decision.layer not in ("tool_default", "server_default"):
             continue  # the company step already set the rest
         if decision.kind == "ask":
             result[tool.name] = _described(
                 result.get(tool.name) or approval_entry(tool), decision.reason
             )
-        elif decision.kind == "when" and decision.rule is not None and not result.get(tool.name):
-            result[tool.name] = _when(approval_entry(tool), decision.rule, decision.reason)
+        elif decision.kind == "when" and decision.rule is not None:
+            if company or not result.get(tool.name):
+                result[tool.name] = _when(approval_entry(tool), decision.rule, decision.reason)
+        elif company and decision.kind == "auto":
+            result.pop(tool.name, None)  # the company's own answer for this tool
     return result
 
 
@@ -453,6 +528,7 @@ def effective(
 
 __all__ = [
     "BUILTIN_TOOLS",
+    "COMPANY_FIXED",
     "DELIVERY",
     "PATHS",
     "REASONS",

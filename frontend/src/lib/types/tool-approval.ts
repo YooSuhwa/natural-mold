@@ -23,6 +23,8 @@ export interface ToolApprovalTool {
   /** The company decides it whatever the agent says. */
   locked: boolean
   grantable: boolean
+  /** The modes the company lets this tool use (`null`: every mode). */
+  allowed_modes?: ('always' | 'when' | 'never')[] | null
   cells: ToolApprovalCell[]
 }
 

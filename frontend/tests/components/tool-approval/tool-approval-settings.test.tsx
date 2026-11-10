@@ -1,7 +1,7 @@
 import { ConversationGrantButton } from '@/features/tool-approval/components/conversation-tool-grants'
 import { ToolApprovalSettings } from '@/features/tool-approval/components/tool-approval-settings'
 import type { RuntimePolicyV1 } from '@/lib/types/runtime-policy'
-import { render, screen, userEvent } from '../../test-utils'
+import { render, screen, userEvent, within } from '../../test-utils'
 
 const state = vi.hoisted(() => ({
   tools: [] as unknown[],
@@ -76,6 +76,43 @@ describe('ToolApprovalSettings', () => {
     )
     expect(screen.getByLabelText('execute_in_skill 승인 설정')).toBeDisabled()
     expect(screen.getAllByText('회사 정책: 이 위험 등급은 승인 필요').length).toBeGreaterThan(0)
+  })
+
+  it('offers only the modes the company allows for a tool', () => {
+    state.tools = [
+      {
+        key: 'tool:t1',
+        name: 'send_mail',
+        level: 'external_mutation',
+        locked: false,
+        grantable: true,
+        allowed_modes: ['always', 'when'],
+        cells: [cell('chat', 'ask')],
+      },
+      {
+        key: 'tool:t2',
+        name: 'read_mail',
+        level: 'read_only',
+        locked: false,
+        grantable: true,
+        allowed_modes: null,
+        cells: [cell('chat', 'auto')],
+      },
+    ]
+    const policy = {
+      ...POLICY,
+      tool_approval: { tools: { 'tool:t2': { mode: 'never' as const } } },
+    }
+    render(<ToolApprovalSettings agentId="agent-1" value={policy} onValueChange={vi.fn()} />)
+
+    const limited = within(screen.getByLabelText('send_mail 승인 설정'))
+    expect(limited.getByRole('option', { name: '묻지 않기' })).toBeDisabled()
+    expect(limited.getByRole('option', { name: '항상 묻기' })).toBeEnabled()
+    expect(limited.getByRole('option', { name: '조건부' })).toBeEnabled()
+    expect(limited.getByRole('option', { name: '기본(모드를 따름)' })).toBeEnabled()
+    expect(screen.getByText('회사가 허용한 단계: 항상 묻기, 조건부')).toBeInTheDocument()
+    const free = within(screen.getByLabelText('read_mail 승인 설정'))
+    expect(free.getByRole('option', { name: '묻지 않기' })).toBeEnabled()
   })
 
   it('starts a custom policy when the agent had the recommended one', async () => {

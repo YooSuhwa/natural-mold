@@ -9,6 +9,11 @@ import type {
   GuardrailTemplateCreate,
   GuardrailTemplateUpdate,
   GuardrailTemplateVersion,
+  ToolPolicy,
+  ToolPolicyImpact,
+  ToolPolicySaved,
+  ToolPolicyTarget,
+  ToolPolicyUpdate,
 } from '@/lib/types/guardrails'
 
 const base = (tenantId: string, rest = '') => tenantPath(tenantId, `/guardrails${rest}`)
@@ -55,6 +60,30 @@ export const guardrailsApi = {
     apiFetch<GuardrailTemplate>(templatePath(tenantId, id, '/archive'), {
       method: 'POST',
       headers: tenantVersionHeader(version),
+    }),
+}
+
+const toolPolicyPath = (tenantId: string, key: string, rest = '') =>
+  base(tenantId, `/tool-policies/${encodeURIComponent(key)}${rest}`)
+
+/** Company policy per tool or MCP server (tool-governance-plan 3.4). */
+export const toolPoliciesApi = {
+  list: (tenantId: string) =>
+    apiFetch<{ policies: ToolPolicy[] }>(base(tenantId, '/tool-policies')),
+  /** What a policy can name; company admins only. */
+  targets: (tenantId: string) =>
+    apiFetch<ToolPolicyTarget[]>(base(tenantId, '/tool-policies/targets')),
+  /** Every field empty removes the policy. */
+  save: (tenantId: string, key: string, data: ToolPolicyUpdate) =>
+    apiFetch<ToolPolicySaved>(toolPolicyPath(tenantId, key), {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  /** The agent settings that would stop applying; nothing is saved. */
+  impact: (tenantId: string, key: string, data: ToolPolicyUpdate) =>
+    apiFetch<ToolPolicyImpact>(toolPolicyPath(tenantId, key, '/impact'), {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 }
 

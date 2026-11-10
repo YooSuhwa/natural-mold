@@ -22515,6 +22515,220 @@
         ]
       }
     },
+    "/api/tenants/{tenant_id}/guardrails/tool-policies": {
+      "get": {
+        "operationId": "list_tool_policies_api_tenants__tenant_id__guardrails_tool_policies_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolPolicyListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tool Policies",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/tool-policies/targets": {
+      "get": {
+        "operationId": "list_tool_policy_targets_api_tenants__tenant_id__guardrails_tool_policies_targets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ToolPolicyTarget"
+                  },
+                  "title": "Response List Tool Policy Targets Api Tenants  Tenant Id  Guardrails Tool Policies Targets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tool Policy Targets",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/tool-policies/{resource_key}": {
+      "put": {
+        "operationId": "put_tool_policy_api_tenants__tenant_id__guardrails_tool_policies__resource_key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_key",
+            "required": true,
+            "schema": {
+              "title": "Resource Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolPolicySaved"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Tool Policy",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/tool-policies/{resource_key}/impact": {
+      "post": {
+        "operationId": "preview_tool_policy_impact_api_tenants__tenant_id__guardrails_tool_policies__resource_key__impact_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_key",
+            "required": true,
+            "schema": {
+              "title": "Resource Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolPolicyImpactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Tool Policy Impact",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
     "/api/tenants/{tenant_id}/invitations": {
       "get": {
         "operationId": "get_invitations_api_tenants__tenant_id__invitations_get",
@@ -55886,6 +56100,20 @@
     },
     "ToolApprovalTool": {
       "properties": {
+        "allowed_modes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Modes"
+        },
         "cells": {
           "items": {
             "$ref": "#/components/schemas/ToolApprovalCell"
@@ -56500,6 +56728,365 @@
         }
       },
       "title": "ToolPatch",
+      "type": "object"
+    },
+    "ToolPolicyImpactAgent": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "always",
+            "when",
+            "never"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "disabled",
+            "mode_not_allowed"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "tool_key": {
+          "title": "Tool Key",
+          "type": "string"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "tool_key",
+        "tool_name",
+        "mode",
+        "reason"
+      ],
+      "title": "ToolPolicyImpactAgent",
+      "type": "object"
+    },
+    "ToolPolicyImpactOut": {
+      "properties": {
+        "agents": {
+          "items": {
+            "$ref": "#/components/schemas/ToolPolicyImpactAgent"
+          },
+          "title": "Agents",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/components/schemas/ToolPolicyWarning"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "agents",
+        "total"
+      ],
+      "title": "ToolPolicyImpactOut",
+      "type": "object"
+    },
+    "ToolPolicyListOut": {
+      "properties": {
+        "policies": {
+          "items": {
+            "$ref": "#/components/schemas/ToolPolicyOut"
+          },
+          "title": "Policies",
+          "type": "array"
+        }
+      },
+      "required": [
+        "policies"
+      ],
+      "title": "ToolPolicyListOut",
+      "type": "object"
+    },
+    "ToolPolicyOut": {
+      "properties": {
+        "allowed_modes": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "always",
+                  "when",
+                  "never"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Modes"
+        },
+        "default_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "always",
+                "when",
+                "never"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Mode"
+        },
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Enabled"
+        },
+        "resource_key": {
+          "title": "Resource Key",
+          "type": "string"
+        },
+        "resource_name": {
+          "title": "Resource Name",
+          "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_key",
+        "resource_name",
+        "enabled",
+        "default_mode",
+        "allowed_modes",
+        "rule",
+        "updated_at"
+      ],
+      "title": "ToolPolicyOut",
+      "type": "object"
+    },
+    "ToolPolicySaved": {
+      "properties": {
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ToolPolicyOut"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/components/schemas/ToolPolicyWarning"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "policy"
+      ],
+      "title": "ToolPolicySaved",
+      "type": "object"
+    },
+    "ToolPolicyTarget": {
+      "description": "Something a policy can name: an MCP server, one of its tools, a tool, a built-in.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "mcp_server",
+            "mcp_tool",
+            "tool",
+            "builtin"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "risk_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Risk Level"
+        },
+        "server_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Server Key"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source"
+        }
+      },
+      "required": [
+        "key",
+        "name",
+        "kind"
+      ],
+      "title": "ToolPolicyTarget",
+      "type": "object"
+    },
+    "ToolPolicyUpdate": {
+      "description": "Every field empty removes the policy (the tool follows its risk level again).",
+      "properties": {
+        "allowed_modes": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "always",
+                  "when",
+                  "never"
+                ],
+                "type": "string"
+              },
+              "maxItems": 3,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Modes"
+        },
+        "default_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "always",
+                "when",
+                "never"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Mode"
+        },
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Enabled"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule"
+        }
+      },
+      "title": "ToolPolicyUpdate",
+      "type": "object"
+    },
+    "ToolPolicyWarning": {
+      "properties": {
+        "code": {
+          "const": "risky_without_asking",
+          "title": "Code",
+          "type": "string"
+        },
+        "risk_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Risk Level"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "ToolPolicyWarning",
       "type": "object"
     },
     "ToolRecommendation": {

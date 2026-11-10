@@ -171,3 +171,6 @@ def require_lease_supported(
     if has_default(cfg.tools_config):
         # A tool's own approval default (tool-governance-plan 3.3) is decided per run.
         raise unsupported(f"{subject}tool_default")
+    if cfg.tool_risk is not None and cfg.tool_risk.tools:
+        # A company policy for one tool (tool-governance-plan 3.4) is decided per run.
+        raise unsupported(f"{subject}tool_policy")

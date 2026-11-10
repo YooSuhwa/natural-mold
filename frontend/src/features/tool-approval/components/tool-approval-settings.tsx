@@ -169,12 +169,29 @@ export function ToolApprovalSettings({
                       }}
                     >
                       {(['default', 'always', 'never', 'when'] as const).map((item) => (
-                        <option key={item} value={item}>
+                        <option
+                          key={item}
+                          value={item}
+                          // A mode the company does not allow would be ignored by the run.
+                          disabled={
+                            item !== 'default' &&
+                            item !== choice &&
+                            tool.allowed_modes != null &&
+                            !tool.allowed_modes.includes(item)
+                          }
+                        >
                           {t(`toolMode.${item}`)}
                         </option>
                       ))}
                     </select>
                   </div>
+                  {tool.allowed_modes && !tool.locked ? (
+                    <p className="moldy-ui-caption text-muted-foreground">
+                      {t('companyAllows', {
+                        modes: tool.allowed_modes.map((item) => t(`toolMode.${item}`)).join(', '),
+                      })}
+                    </p>
+                  ) : null}
                   {current?.mode === 'when' ? (
                     <RuleEditor
                       tool={tool.key}

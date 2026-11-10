@@ -2,14 +2,16 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { agentGuardrailsApi, guardrailsApi } from '@/lib/api/guardrails'
+import { agentGuardrailsApi, guardrailsApi, toolPoliciesApi } from '@/lib/api/guardrails'
 import { agentQueryKeys } from '@/lib/query-keys/agents'
 import { tenantAdminKeys } from '@/lib/query-keys/tenant-admin'
+import { toolApprovalQueryKeys } from '@/lib/query-keys/tool-approval'
 import type {
   AgentGuardrailsUpdate,
   GuardrailPolicyUpdate,
   GuardrailTemplateCreate,
   GuardrailTemplateUpdate,
+  ToolPolicyUpdate,
 } from '@/lib/types/guardrails'
 import { useTenantMutation } from './use-tenant-admin'
 
@@ -74,6 +76,46 @@ export function useGuardrailTemplateMutations(tenantId: string) {
       guardrailsApi.archiveTemplate(tenantId, id, version),
     ),
   }
+}
+
+/** Company members read the per-tool policies; the catalog of targets is for admins. */
+export function useToolPolicies(tenantId: string) {
+  return useQuery({
+    queryKey: tenantAdminKeys.toolPolicies(tenantId),
+    queryFn: () => toolPoliciesApi.list(tenantId),
+    retry: false,
+  })
+}
+
+export function useToolPolicyTargets(tenantId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: tenantAdminKeys.toolPolicyTargets(tenantId),
+    queryFn: () => toolPoliciesApi.targets(tenantId),
+    enabled,
+    retry: false,
+  })
+}
+
+interface ToolPolicyInput {
+  key: string
+  data: ToolPolicyUpdate
+}
+
+export function useSaveToolPolicy(tenantId: string) {
+  const queryClient = useQueryClient()
+  return useTenantMutation(tenantId, async ({ key, data }: ToolPolicyInput) => {
+    const saved = await toolPoliciesApi.save(tenantId, key, data)
+    // Every agent's "what applies" table reads the company's per-tool policy.
+    void queryClient.invalidateQueries({ queryKey: toolApprovalQueryKeys.all })
+    return saved
+  })
+}
+
+/** A preview: it changes nothing, so no query is refreshed. */
+export function useToolPolicyImpact(tenantId: string) {
+  return useMutation({
+    mutationFn: ({ key, data }: ToolPolicyInput) => toolPoliciesApi.impact(tenantId, key, data),
+  })
 }
 
 export function useAgentGuardrails(agentId: string) {
