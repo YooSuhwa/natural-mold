@@ -26,6 +26,7 @@ from sqlalchemy import select
 
 from app.authz.credential_binding_scope import account_bindings, binding_of
 from app.authz.readiness_verdicts import LinkVerdicts
+from app.authz.registration_state import registered
 from app.credentials.run_resolution import RunCredentialResolver
 from app.mcp import review
 from app.models.agent import Agent
@@ -157,7 +158,7 @@ class LinkAssessor:
         info = None
         if self.verdicts.reason("tool", link.tool_id):
             item.result = "no_permission"
-        elif tool is None or not tool.enabled:
+        elif tool is None or not tool.enabled or not registered(tool):
             item.result = "unavailable"
         else:
             item.result, info = await self.credential(tool, "tool")
@@ -194,7 +195,12 @@ class LinkAssessor:
             info = None
             if self.verdicts.reason("mcp_tool", link.mcp_tool_id):
                 result: Result = "no_permission"
-            elif server is None or not review.is_usable(mcp_tool) or server.status in _DOWN_SERVER:
+            elif (
+                server is None
+                or not review.is_usable(mcp_tool)
+                or not registered(server)
+                or server.status in _DOWN_SERVER
+            ):
                 result = "unavailable"
             else:
                 if server.id not in states:

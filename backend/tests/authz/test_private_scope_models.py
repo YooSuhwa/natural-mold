@@ -27,8 +27,14 @@ _B08_ADDED_COLUMN_NULLABILITY = {
         "memory_external_content_at": True,  # 순번 15 (i21, memory plan 5.3-1)
     },
     # tool-governance (i36, plan 3.3): the tool's / server's own approval default.
-    "tools": {**_F04_MODES, "approval_default": True},
-    "mcp_servers": {**_F04_MODES, "approval_default": True},
+    # i38 (plan 3.7): registration review state; a server keeps the approved fingerprint.
+    "tools": {**_F04_MODES, "approval_default": True, "registration_state": False},
+    "mcp_servers": {
+        **_F04_MODES,
+        "approval_default": True,
+        "registration_state": False,
+        "registration_fingerprint": True,
+    },
     "credentials": {"allowed_hosts": True},
     "agents": {"llm_credential_delegated_by": True},  # F-01 (m86)
     "agent_triggers": {"approval_policy": False},  # 순번 13 (i18, plan 17.3)

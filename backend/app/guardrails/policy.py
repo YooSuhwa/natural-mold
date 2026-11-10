@@ -25,6 +25,7 @@ from typing import Any, Final
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz import company_catalog
 from app.config import settings
 from app.guardrails.approval import APPROVAL_PACKS
 from app.guardrails.rules import ACTION_STRENGTH, Rule, RuleSet, builtin
@@ -229,6 +230,8 @@ async def resolve_tool_risk(
     tenant = await db.get(Tenant, tenant_id)
     saved = policy_from_settings(tenant.settings if tenant else None)
     tools = await tool_policies(db, tenant_id)
+    for key in catalog_off(tenant.settings if tenant else None):
+        tools[key] = replace(tools.get(key, ToolPolicy()), enabled=False)
     if saved is None:
         return policy_from_actions(None, tools=tools)
     return policy_from_actions(saved.tool_risk, saved.always_ask_tools, tools)
@@ -267,6 +270,25 @@ async def tool_policies(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, Too
     return found
 
 
+def catalog_off(values: Mapping[str, Any] | None) -> frozenset[str]:
+    """Keys of the platform tools and MCP servers the company's catalog switches off.
+
+    The catalog's own effect travels as permission tuples, which only an enforcing install
+    reads; here the same switch is read at run time, so it holds in every mode (plan 3.4).
+    """
+    try:
+        items = company_catalog.stored_policy(values).items
+    except ValueError:
+        logger.warning("the company catalog policy is unreadable; its switches are not applied")
+        return frozenset()
+    prefix = {"tool": "tool:", "mcp_server": "mcp_server:"}
+    return frozenset(
+        f"{prefix[item.type]}{item.id}"
+        for item in items
+        if item.type in prefix and not item.enabled
+    )
+
+
 async def disabled_tools(db: AsyncSession, tenant_id: uuid.UUID) -> frozenset[str]:
     """Keys the company has switched off now (read on a resume: off applies at once)."""
     rows = await db.scalars(
@@ -276,4 +298,5 @@ async def disabled_tools(db: AsyncSession, tenant_id: uuid.UUID) -> frozenset[st
             ResourcePolicy.enabled.is_(False),
         )
     )
-    return frozenset(rows)
+    settings_ = await db.scalar(select(Tenant.settings).where(Tenant.id == tenant_id))
+    return frozenset(rows) | catalog_off(settings_)

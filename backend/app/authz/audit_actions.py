@@ -156,6 +156,13 @@ TOOL_APPROVAL_DEFAULT_UPDATED: Final = "tool.approval_default_updated"
 RESOURCE_POLICY_UPDATED: Final = "resource_policy.updated"
 # Who may register tools, MCP servers, skills and agents changed (plan 3.6, 3.10).
 REGISTRATION_SETTINGS_UPDATED: Final = "registration.settings_updated"
+# Registration review (plan 3.7, 3.10): sent to an administrator, decided, sent back.
+REGISTRATION_REQUESTED: Final = "registration.requested"
+REGISTRATION_APPROVED: Final = "registration.approved"
+REGISTRATION_REJECTED: Final = "registration.rejected"
+REGISTRATION_RESET: Final = "registration.reset"
+# One tool of a server blocked for named people or teams (plan 3.6).
+MCP_TOOL_BLOCK_UPDATED: Final = "mcp_tool.block_updated"
 # Emergency stop (순번 13, 17.4): applied to an agent, a person's agents or an MCP server.
 EMERGENCY_STOP_APPLY: Final = "emergency_stop.apply"
 EMERGENCY_STOP_RELEASE: Final = "emergency_stop.release"

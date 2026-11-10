@@ -89,6 +89,29 @@ class McpToolReviewRequest(BaseModel):
     fingerprint: str = Field(min_length=64, max_length=64)
 
 
+class McpToolBlockCreate(BaseModel):
+    """Keep one person or team from this tool (tool-governance-plan 3.6)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    principal_type: Literal["user", "group"]
+    principal_id: uuid.UUID
+
+
+class McpToolBlockView(BaseModel):
+    grant_id: uuid.UUID
+    principal_type: Literal["user", "group"]
+    principal_id: uuid.UUID
+    display_name: str | None = None
+    member_count: int | None = None
+    granted_by: uuid.UUID | None = None
+    granted_at: datetime
+
+
+class McpToolBlockList(BaseModel):
+    items: list[McpToolBlockView]
+
+
 class McpServerResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
@@ -113,6 +136,8 @@ class McpServerResponse(BaseModel):
     health_message: str | None = None
     # The approval default of every tool of this server that sets none of its own.
     approval_default: dict[str, Any] | None = None
+    # ``pending``/``rejected``: waits for an administrator; agents cannot use it (3.7).
+    registration_state: Literal["approved", "pending", "rejected"] = "approved"
     created_at: datetime
     updated_at: datetime
 

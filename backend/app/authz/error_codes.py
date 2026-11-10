@@ -59,6 +59,8 @@ ErrorCode = Literal[
     "transfer_blocked",
     "personal_account_shared",
     "credential_mode_not_per_user",
+    "registration_not_approved",
+    "registration_review_required",
     "credential_type_mismatch",
     "credential_mode_invalid",
     "credential_reshare_blocked",
@@ -152,6 +154,12 @@ ERRORS: Final[Mapping[ErrorCode, ErrorSpec]] = MappingProxyType(
         ),
         "credential_mode_not_per_user": ErrorSpec(
             409, "사용자별 연결 방식인 도구·MCP 서버에만 내 계정을 연결할 수 있습니다"
+        ),
+        "registration_not_approved": ErrorSpec(
+            409, "관리자 승인을 기다리는 도구·MCP 서버는 에이전트에 붙일 수 없습니다"
+        ),
+        "registration_review_required": ErrorSpec(
+            403, "관리자 승인을 거치는 MCP 서버의 도구는 관리자가 검토합니다"
         ),
         "credential_type_mismatch": ErrorSpec(
             422, "이 도구·MCP 서버에 연결할 수 없는 자격 증명 유형입니다"

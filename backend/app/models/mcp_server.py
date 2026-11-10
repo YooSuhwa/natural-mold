@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -43,6 +43,10 @@ class McpServer(CredentialModeColumns, NullableOrgScope, Base):
     __table_args__ = (
         *resource_scope_constraints("mcp_servers", system=True),
         credential_mode_check("mcp_servers"),
+        CheckConstraint(
+            "registration_state IN ('approved','pending','rejected')",
+            name="ck_mcp_servers_registration_state",
+        ),
         {"extend_existing": True},
     )
 
@@ -74,6 +78,13 @@ class McpServer(CredentialModeColumns, NullableOrgScope, Base):
     # "rule"}`` shaped like an agent's per-tool setting. A default, not a floor: whoever
     # attaches a tool to an agent may change it within what the company allows.
     approval_default: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Registration review (tool-governance-plan 3.7): ``pending`` / ``rejected`` servers
+    # are not attached to agents nor loaded into runs. The fingerprint is the connection
+    # an administrator approved; a different one sends the server back to ``pending``.
+    registration_state: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="approved", server_default="approved"
+    )
+    registration_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     credential_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True

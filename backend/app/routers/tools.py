@@ -22,10 +22,12 @@ from typing import cast
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.approvals import registrations
 from app.authz.audit_actions import TOOL_APPROVAL_DEFAULT_UPDATED
 from app.authz.org_context import OrgContext
 from app.authz.personal_accounts import require_unshared_for_personal
 from app.authz.policies import CANDIDATES, CAP, CATALOG, RES, authz_policy
+from app.authz.registration_state import effective_state
 from app.authz.resource_gate import gate_cap
 from app.authz.resource_lifecycle import apply_lifecycle, on_resource_created, on_resource_deleted
 from app.authz.runtime import get_authz
@@ -33,6 +35,7 @@ from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.error_codes import unknown_tool_definition
 from app.models.tool import Tool
+from app.schemas.approval import RegistrationState, RegistrationStatus
 from app.schemas.credential_binding import CredentialMode
 from app.schemas.tool import (
     ToolCreate,
@@ -69,6 +72,7 @@ def _to_response(tool: Tool) -> ToolInstanceResponse:
         credential_definition_key=tool.credential_definition_key,
         enabled=tool.enabled,
         approval_default=tool.approval_default,
+        registration_state=cast("RegistrationState", effective_state(tool)),
         last_used_at=tool.last_used_at,
         created_at=tool.created_at,
         updated_at=tool.updated_at,
@@ -213,6 +217,36 @@ async def set_tool_approval_default(
     await db.commit()
     await db.refresh(tool)
     return _to_response(tool)
+
+
+@crud_router.get("/{tool_id}/registration", response_model=RegistrationStatus)
+@authz_policy(RES("tool", "can_edit", param="tool_id", min_visible="can_use"))
+async def get_tool_registration(
+    tool_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
+) -> RegistrationStatus:
+    """Whether the tool waits for an administrator, and the last answer (plan 3.7)."""
+    tool = await tool_service.load_owned(db, tool_id, context, authz=authz, permission="can_edit")
+    return RegistrationStatus.model_validate(await registrations.status(db, tool))
+
+
+@crud_router.post("/{tool_id}/registration", response_model=RegistrationStatus)
+@authz_policy(RES("tool", "can_edit", param="tool_id", min_visible="can_use"))
+async def request_tool_registration(
+    tool_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+) -> RegistrationStatus:
+    """Ask the administrators again after a rejection or an expiry. Tool editors only."""
+    tool = await tool_service.load_owned(db, tool_id, context, authz=authz, permission="can_edit")
+    await registrations.request_again(db, context, tool)
+    await db.commit()
+    await db.refresh(tool)
+    return RegistrationStatus.model_validate(await registrations.status(db, tool))
 
 
 @crud_router.delete("/{tool_id}", status_code=204)
