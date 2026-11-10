@@ -8,7 +8,9 @@ lift what they set:
 3. the agent's per-tool setting: ``always`` → ask; ``when`` → ask while the rule over the
    call's args holds, else run; ``never`` → run;
 4. allowed for this conversation (chat only) → run;
-5. the agent's mode for the run path: ``auto`` → run; ``ask_all`` → the risk default.
+5. the tool's own default (its row's, else its MCP server's; tool-governance-plan 3.3):
+   ``always`` → ask; ``when`` → ask while the rule holds; ``never`` → run;
+6. the agent's mode for the run path: ``auto`` → run; ``ask_all`` → the risk default.
 
 "Run" is only reachable where the company left the level ``allow`` or ``approval_relaxable``,
 because layer 2 decided everything else. Runs nobody watches turn an ask into a wait or a
@@ -16,8 +18,9 @@ BLOCKED answer afterwards (``app/approvals/unattended.py``); guardrail approval 
 their own conditional asks afterwards. The run assembly (``apply``) and the effective-settings
 API (``effective``) call ``decide`` — never two copies of these rules.
 
-The relaxing layers (3-5) apply to the root agent; a declarative child keeps the company and
-default asks (approvals only ever get stricter there, plan 3.1 "하위 에이전트").
+The agent's layers (3, 4, 6) apply to the root agent; a declarative child keeps the company
+and default asks, and of a tool's own default only what tightens (``root=False``): approvals
+only ever get stricter there (plan 3.1 "하위 에이전트").
 
 Settings name a tool by its resource key (``app.tools.keys``, tool-governance-plan 3.2). A
 setting saved under a tool name (before keys) is still read: one that tightens applies to
@@ -62,6 +65,8 @@ REASONS: Final[dict[str, str]] = {
     "tool_when": "도구 설정: 조건이 맞으면 묻기",
     "tool_never": "도구 설정: 묻지 않기",
     "conversation_grant": "이 대화 동안 허용",
+    "tool_default": "도구 기본값",
+    "server_default": "MCP 서버 기본값",
     "agent_mode": "에이전트 모드: 자동",
     "risk_default": "위험 등급 기본값",
 }
@@ -100,6 +105,20 @@ def _setting(
     return named
 
 
+def _default(ref: ToolRef) -> tuple[ToolApprovalToolV1, str] | None:
+    """The tool's own default and the layer it came from; one that cannot be read asks."""
+    raw = ref.default
+    if not raw:
+        return None
+    layer = "server_default" if raw.get("layer") == "server" else "tool_default"
+    try:
+        return ToolApprovalToolV1.model_validate(
+            {"mode": raw.get("mode"), "rule": raw.get("rule")}
+        ), layer
+    except ValueError:
+        return ToolApprovalToolV1(mode="always"), layer
+
+
 def decide(
     tool: ToolRef | str,
     level: ToolRiskLevel,
@@ -110,11 +129,14 @@ def decide(
     grants: frozenset[str] = frozenset(),
     legacy_always: frozenset[str] = frozenset(),
     ambiguous: bool = False,
+    root: bool = True,
 ) -> Decision:
     """The decision for one tool on one path (pure; same inputs, same answer).
 
     ``tool`` is the tool's ref (a bare string is a built-in by that name); ``ambiguous``
-    says another tool of the same agent carries the same name.
+    says another tool of the same agent carries the same name. ``root=False`` decides a
+    declarative child's tool: the agent's own layers do not reach it, and the tool's default
+    cannot lift an ask there.
     """
     ref = _ref(tool)
     name = ref.name
@@ -125,6 +147,8 @@ def decide(
         return Decision("ask", "company_always")
     if action == "approval":
         return Decision("ask", "company_forced")
+    if not root:
+        settings, grants, legacy_always = None, frozenset(), frozenset()
     setting = _setting(settings, ref, ambiguous)
     if setting is not None:
         if setting.mode == "always":
@@ -137,6 +161,15 @@ def decide(
         return Decision("ask", "tool_always")
     if path == "chat" and (ref.key in grants or (name in grants and not ambiguous)):
         return Decision("auto", "conversation_grant")
+    default = _default(ref)
+    if default is not None:
+        own, layer = default
+        if own.mode == "always":
+            return Decision("ask", layer)
+        if own.mode == "when":
+            return Decision("when", layer, own.rule)
+        if root:
+            return Decision("auto", layer)
     mode = getattr(settings.paths, path) if settings is not None else "ask_all"
     if mode == "auto":
         return Decision("auto", "agent_mode")
@@ -176,13 +209,23 @@ class ToolApprovalPlan:
     # Who and where, for the audit of a risky call that ran without asking (plan Q9).
     audit: AuditTarget | None = None
 
+    # Some tool of the run (the root's or a child's) carries its own approval default.
+    defaults: bool = False
+
     @property
     def relaxes(self) -> bool:
-        """``False`` when the plan can only keep today's asks (no lease fallback needed)."""
+        """``False`` when the agent's settings can only keep today's asks."""
         has_settings = self.settings is not None and not self.settings.is_default
         return has_settings or (self.path == "chat" and bool(self.grants))
 
-    def decide(self, tool: BaseTool | str, *, ambiguous: bool = False) -> Decision:
+    @property
+    def acts(self) -> bool:
+        """``False`` when applying the plan would change nothing (the run skips it)."""
+        return self.relaxes or self.defaults
+
+    def decide(
+        self, tool: BaseTool | str, *, ambiguous: bool = False, root: bool = True
+    ) -> Decision:
         return decide(
             ref_of(tool),
             level_of(tool),
@@ -192,6 +235,7 @@ class ToolApprovalPlan:
             grants=self.grants,
             legacy_always=self.legacy_always,
             ambiguous=ambiguous,
+            root=root,
         )
 
 
@@ -215,6 +259,19 @@ def legacy_always_from(middleware_configs: Iterable[Mapping[str, Any]] | None) -
     return frozenset()
 
 
+def has_default(tools_config: Iterable[Mapping[str, Any]] | None) -> bool:
+    return any(config.get("approval_default") for config in tools_config or [])
+
+
+def _has_defaults(cfg: Any) -> bool:
+    if has_default(cfg.tools_config):
+        return True
+    for spec in getattr(cfg, "subagents_config", None) or []:
+        if any(ref_of(tool).default for tool in spec.get("tools") or []):
+            return True
+    return False
+
+
 def plan_for(cfg: Any) -> ToolApprovalPlan | None:
     """The run's plan from its pinned config; ``None`` on a path with no settings (subagent)."""
     path = cfg.run_path if cfg.run_path in PATHS else None
@@ -227,6 +284,7 @@ def plan_for(cfg: Any) -> ToolApprovalPlan | None:
         company=cfg.tool_risk,
         grants=frozenset(cfg.tool_grants),
         legacy_always=legacy_always_from(cfg.middleware_configs),
+        defaults=_has_defaults(cfg),
         audit=AuditTarget(
             getattr(context, "tenant_id", None),
             getattr(context, "org_id", None),
@@ -279,10 +337,18 @@ def apply(
     interrupt_on: dict[str, Any] | bool | None,
     tools: Iterable[BaseTool],
     plan: ToolApprovalPlan,
+    *,
+    root: bool = True,
 ) -> Applied:
-    """The root agent's ``interrupt_on`` with the plan's decisions (after the company step)."""
+    """An agent's ``interrupt_on`` with the plan's decisions (after the company step).
+
+    For a declarative child (``root=False``) an entry is only ever added: an ask the child
+    already has stays as it is.
+    """
     if not isinstance(interrupt_on, dict):
         return Applied(interrupt_on if isinstance(interrupt_on, dict) else None)
+    if not root:
+        return Applied(_tightened(interrupt_on, list(tools), plan))
     result = dict(interrupt_on)
     auto: dict[str, str] = {}
     targets: list[BaseTool | str] = [*tools, *BUILTIN_TOOLS]
@@ -305,6 +371,23 @@ def apply(
             if level_of(tool) != ToolRiskLevel.READ_ONLY:
                 auto[name] = decision.layer
     return Applied(result, auto)
+
+
+def _tightened(
+    interrupt_on: dict[str, Any], tools: list[BaseTool], plan: ToolApprovalPlan
+) -> dict[str, Any]:
+    result = dict(interrupt_on)
+    for tool in tools:
+        decision = plan.decide(tool, root=False)
+        if decision.layer not in ("tool_default", "server_default"):
+            continue  # the company step already set the rest
+        if decision.kind == "ask":
+            result[tool.name] = _described(
+                result.get(tool.name) or approval_entry(tool), decision.reason
+            )
+        elif decision.kind == "when" and decision.rule is not None and not result.get(tool.name):
+            result[tool.name] = _when(approval_entry(tool), decision.rule, decision.reason)
+    return result
 
 
 # How an ask reaches a person on each path (plan Q4): chat shows the card; a workflow step
@@ -384,6 +467,7 @@ __all__ = [
     "decide",
     "effective",
     "grantable",
+    "has_default",
     "legacy_always_from",
     "plan_for",
 ]

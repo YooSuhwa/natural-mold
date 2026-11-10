@@ -75,6 +75,8 @@ class ToolInstanceResponse(BaseModel):
     credential_mode: CredentialMode = "none"
     credential_definition_key: str | None = None
     enabled: bool = True
+    # The tool's own approval default (``{"mode", "rule"}``), or none.
+    approval_default: dict[str, Any] | None = None
     last_used_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

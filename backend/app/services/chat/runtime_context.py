@@ -40,6 +40,7 @@ from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink, Tool
 from app.outbound.destination import destination_config
 from app.skills.runtime import build_skills_for_agent
+from app.tools.keys import default_config
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +225,7 @@ async def build_tools_config(
                 "credentials": resolved.values.reveal() if resolved else None,
                 "credential_id": str(resolved.credential_id) if resolved else None,
                 "credential_destination": destination_config(resolved, identity, agent.user_id),
+                **default_config(tool.approval_default),
                 **actor,
             }
         )
@@ -253,6 +255,7 @@ async def build_tools_config(
                 # lists now (a changed version waits for review).
                 "mcp_approved_definition": review.approved_definition(mcp_tool),
                 "mcp_reviewed_fingerprint": mcp_tool.approved_fingerprint,
+                **default_config(mcp_tool.approval_default, server.approval_default),
                 "org_id": str(context.org_id),
                 "mcp_transport_headers": resolution.headers,
                 "credentials": resolution.credentials,

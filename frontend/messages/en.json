@@ -7888,6 +7888,16 @@
     "tools": "Per tool",
     "noTools": "No tools are attached.",
     "toolSetting": "Approval setting for {tool}",
+    "default": {
+      "hint": "The value an agent starts from when it attaches this. Each agent can change it, and it applies only within the company policy.",
+      "toolLabel": "Approval default",
+      "serverLabel": "Approval default for this server's tools",
+      "none": "No default",
+      "followServer": "Server default",
+      "column": "Approval default",
+      "toolSetting": "Approval default for {tool}",
+      "saveFailed": "Could not save the approval default."
+    },
     "toolMode": {
       "default": "Default (follows the mode)",
       "always": "Always ask",

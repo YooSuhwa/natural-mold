@@ -11272,6 +11272,60 @@
         ]
       }
     },
+    "/api/mcp-servers/{server_id}/approval-default": {
+      "put": {
+        "description": "The default of every tool of this server that sets none of its own. Managers only.",
+        "operationId": "set_server_approval_default_api_mcp_servers__server_id__approval_default_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDefaultUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Server Approval Default",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
     "/api/mcp-servers/{server_id}/credential-mode": {
       "put": {
         "operationId": "put_mcp_server_credential_mode_api_mcp_servers__server_id__credential_mode_put",
@@ -11406,6 +11460,70 @@
           }
         },
         "summary": "Test Server",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/mcp-servers/{server_id}/tools/{tool_id}/approval-default": {
+      "put": {
+        "description": "One MCP tool's own approval default (beats its server's). Server managers only.",
+        "operationId": "set_server_tool_approval_default_api_mcp_servers__server_id__tools__tool_id__approval_default_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDefaultUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpToolResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Server Tool Approval Default",
         "tags": [
           "mcp"
         ]
@@ -24974,6 +25092,61 @@
         ]
       }
     },
+    "/api/tools/{tool_id}/approval-default": {
+      "put": {
+        "description": "The tool's own approval default (tool-governance-plan 3.3). Tool editors only.",
+        "operationId": "set_tool_approval_default_api_tools__tool_id__approval_default_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDefaultUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolInstanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Tool Approval Default",
+        "tags": [
+          "tools",
+          "tools"
+        ]
+      }
+    },
     "/api/tools/{tool_id}/credential-mode": {
       "put": {
         "operationId": "put_tool_credential_mode_api_tools__tool_id__credential_mode_put",
@@ -31720,6 +31893,27 @@
         }
       },
       "title": "ApprovalAxes",
+      "type": "object"
+    },
+    "ApprovalDefaultUpdate": {
+      "additionalProperties": false,
+      "description": "A tool's (or MCP server's) own approval default; ``null`` clears it.",
+      "properties": {
+        "default": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ToolApprovalToolV1-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "default"
+      ],
+      "title": "ApprovalDefaultUpdate",
       "type": "object"
     },
     "ApprovalPage": {
@@ -41090,6 +41284,18 @@
     },
     "McpServerDetailResponse": {
       "properties": {
+        "approval_default": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Default"
+        },
         "args": {
           "items": {},
           "title": "Args",
@@ -41298,6 +41504,18 @@
     },
     "McpServerResponse": {
       "properties": {
+        "approval_default": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Default"
+        },
         "args": {
           "items": {},
           "title": "Args",
@@ -41742,6 +41960,18 @@
     },
     "McpToolResponse": {
       "properties": {
+        "approval_default": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Default"
+        },
         "created_at": {
           "format": "date-time",
           "title": "Created At",
@@ -56083,6 +56313,18 @@
     "ToolInstanceResponse": {
       "description": "Greenfield response for ``GET /api/tools/...``.",
       "properties": {
+        "approval_default": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Default"
+        },
         "created_at": {
           "format": "date-time",
           "title": "Created At",

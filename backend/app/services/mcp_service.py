@@ -619,6 +619,15 @@ async def record_import_audit(
 # -- Tool review (D11, app.mcp.review) -------------------------------------------------
 
 
+async def server_tool(db: AsyncSession, server: McpServer, tool_id: uuid.UUID) -> McpTool:
+    tool = await db.scalar(
+        select(McpTool).where(McpTool.id == tool_id, McpTool.server_id == server.id)
+    )
+    if tool is None:
+        raise NotFoundError("MCP_TOOL_NOT_FOUND", "MCP tool not found")
+    return tool
+
+
 async def review_tool(
     db: AsyncSession,
     *,
@@ -630,11 +639,7 @@ async def review_tool(
     request: Request,
 ) -> McpTool:
     """A server manager approves or rejects the version waiting for review (audited)."""
-    tool = await db.scalar(
-        select(McpTool).where(McpTool.id == tool_id, McpTool.server_id == server.id)
-    )
-    if tool is None:
-        raise NotFoundError("MCP_TOOL_NOT_FOUND", "MCP tool not found")
+    tool = await server_tool(db, server, tool_id)
     before = tool.review_state
     try:
         applied = review.decide(

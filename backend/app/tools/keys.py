@@ -32,6 +32,8 @@ class ToolRef:
     server: str | None = None  # ``mcp_server:<id>`` for an MCP tool
     # Where it comes from, for people (the MCP server's name); not part of its identity.
     source: str | None = field(default=None, compare=False)
+    # The tool's own approval default (``resolved_default``); a setting, not identity.
+    default: Mapping[str, Any] | None = field(default=None, compare=False)
 
 
 def is_key(value: str) -> bool:
@@ -46,9 +48,30 @@ def server_key(server_id: Any) -> str | None:
     return f"mcp_server:{server_id}" if server_id else None
 
 
+def resolved_default(
+    tool: Mapping[str, Any] | None, server: Mapping[str, Any] | None = None
+) -> dict[str, Any] | None:
+    """The default a tool carries: its own, else its server's (plan 3.3: tool → server)."""
+    for layer, value in (("tool", tool), ("server", server)):
+        if isinstance(value, Mapping) and value.get("mode"):
+            return {"mode": value["mode"], "rule": value.get("rule"), "layer": layer}
+    return None
+
+
+def default_config(
+    tool: Mapping[str, Any] | None, server: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """The ``approval_default`` entry of a tool config; absent when no default is set, so a
+    config without one is byte-for-byte what it was before defaults existed."""
+    found = resolved_default(tool, server)
+    return {"approval_default": found} if found else {}
+
+
 def ref_from_config(config: Mapping[str, Any], *, name: str) -> ToolRef:
     """The ref of a ``build_tools_config`` entry; ``name`` is its un-renamed run-time name."""
     definition = str(config.get("definition_key") or "")
+    default = config.get("approval_default")
+    default = default if isinstance(default, Mapping) else None
     if definition == "mcp":
         tool_id = config.get("mcp_tool_id")
         if tool_id:
@@ -57,17 +80,23 @@ def ref_from_config(config: Mapping[str, Any], *, name: str) -> ToolRef:
                 name,
                 server_key(config.get("mcp_server_id")),
                 config.get("mcp_server_name"),
+                default,
             )
         return ToolRef(builtin_key(name), name)
     tool_id = config.get("tool_id")
     if definition.startswith("builtin:") or not tool_id:
         return ToolRef(builtin_key(name), name)
-    return ToolRef(f"tool:{tool_id}", name)
+    return ToolRef(f"tool:{tool_id}", name, default=default)
 
 
 def attach_tool_ref(tool: BaseTool, ref: ToolRef) -> BaseTool:
     current = dict(getattr(tool, "metadata", None) or {})
-    current[KEY_METADATA] = {"key": ref.key, "name": ref.name, "server": ref.server}
+    current[KEY_METADATA] = {
+        "key": ref.key,
+        "name": ref.name,
+        "server": ref.server,
+        "default": dict(ref.default) if ref.default else None,
+    }
     try:
         tool.metadata = current
     except Exception:  # noqa: BLE001 - pydantic model fallback (as ``attach_tool_risk``)
@@ -81,7 +110,13 @@ def ref_of(tool: BaseTool | str) -> ToolRef:
         return ToolRef(builtin_key(tool), tool)
     raw = (getattr(tool, "metadata", None) or {}).get(KEY_METADATA)
     if isinstance(raw, Mapping) and raw.get("key"):
-        return ToolRef(str(raw["key"]), str(raw.get("name") or tool.name), raw.get("server"))
+        default = raw.get("default")
+        return ToolRef(
+            str(raw["key"]),
+            str(raw.get("name") or tool.name),
+            raw.get("server"),
+            default=default if isinstance(default, Mapping) else None,
+        )
     return ToolRef(builtin_key(tool.name), tool.name)
 
 
@@ -111,9 +146,11 @@ __all__ = [
     "ambiguous_names",
     "attach_tool_ref",
     "builtin_key",
+    "default_config",
     "is_key",
     "ref_from_config",
     "ref_of",
     "resolve",
+    "resolved_default",
     "server_key",
 ]

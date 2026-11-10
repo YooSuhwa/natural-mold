@@ -1,4 +1,5 @@
 import { apiFetch } from './client'
+import type { ToolApprovalToolV1 } from '@/lib/types/runtime-policy'
 import type {
   ToolCreateRequest,
   ToolDefinition,
@@ -30,6 +31,12 @@ export const toolsApi = {
       body: JSON.stringify(data),
     }),
   delete: (id: string) => apiFetch<void>(`/api/tools/${id}`, { method: 'DELETE' }),
+  /** The tool's own approval default (`null` clears it); tool editors only. */
+  setApprovalDefault: (id: string, value: ToolApprovalToolV1 | null) =>
+    apiFetch<ToolInstance>(`/api/tools/${id}/approval-default`, {
+      method: 'PUT',
+      body: JSON.stringify({ default: value }),
+    }),
 
   run: (id: string, runtime_args: Record<string, unknown> = {}) =>
     apiFetch<ToolRunResult>(`/api/tools/${id}/run`, {

@@ -1,6 +1,7 @@
 // MCP domain types — mirrors backend `app/schemas/mcp.py`.
 
 import type { CredentialMode } from './readiness'
+import type { ToolApprovalToolV1 } from './runtime-policy'
 
 export type McpTransport = 'stdio' | 'sse' | 'streamable_http'
 export type McpStatus = 'unknown' | 'connected' | 'auth_needed' | 'unreachable' | 'disabled'
@@ -28,6 +29,8 @@ export interface McpServer {
   health_status: string | null
   health_polled_at: string | null
   health_message: string | null
+  /** The default of every tool of this server that sets none of its own. */
+  approval_default?: ToolApprovalToolV1 | null
   created_at: string
   updated_at: string
 }
@@ -58,6 +61,8 @@ export interface McpTool {
   /** Set on a new tool, or on an approved tool whose server changed it. */
   pending_version: McpToolPendingVersion | null
   reviewed_at: string | null
+  /** The tool's own approval default; unset follows the server's. */
+  approval_default?: ToolApprovalToolV1 | null
   // S17 backend addition — null until first discovery run, refreshed each
   // probe so we can flag stale (unseen) tools without deleting their row.
   last_seen_at: string | null

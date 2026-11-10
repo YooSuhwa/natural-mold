@@ -25,7 +25,7 @@ const OPS: readonly ToolApprovalClause['op'][] = [
   'ends_with',
   'exists',
 ]
-const SELECT_CLASS =
+export const SELECT_CLASS =
   'h-8 rounded-md border bg-background px-2 text-sm focus-visible:ring-2 focus-visible:ring-ring'
 const KIND_TONE: Record<ToolApprovalKind, string> = {
   ask: 'moldy-status-warn',
@@ -237,7 +237,7 @@ export function ToolApprovalSettings({
 }
 
 /** "Ask when the argument … " — one comparison over the call's args. */
-function RuleEditor({
+export function RuleEditor({
   tool,
   clause,
   onChange,

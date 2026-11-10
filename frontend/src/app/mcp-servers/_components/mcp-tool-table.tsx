@@ -16,6 +16,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { formatDisplayDateTime } from '@/lib/utils/display-format'
+import { ApprovalDefaultControl } from '@/features/tool-approval/components/approval-default-control'
+import type { ToolApprovalToolV1 } from '@/lib/types/runtime-policy'
 import type {
   McpToolPendingVersion,
   McpToolReviewDecision,
@@ -40,6 +42,7 @@ interface McpToolLike {
   /** D11 review (persisted tools only). */
   review_state?: McpToolReviewState
   pending_version?: McpToolPendingVersion | null
+  approval_default?: ToolApprovalToolV1 | null
 }
 
 interface McpToolTableProps {
@@ -51,6 +54,8 @@ interface McpToolTableProps {
   onReview?: (toolId: string, decision: McpToolReviewDecision, fingerprint: string) => void
   /** The tool whose decision is being sent (its buttons are disabled). */
   reviewingToolId?: string | null
+  /** Server editors: set a tool's own approval default (`null` follows the server's). */
+  onApprovalDefault?: (toolId: string, value: ToolApprovalToolV1 | null) => void
 }
 
 function ReviewBadge({ tool }: { tool: McpToolLike }) {
@@ -185,8 +190,11 @@ export function McpToolTable({
   onToggle,
   onReview,
   reviewingToolId = null,
+  onApprovalDefault,
 }: McpToolTableProps) {
   const t = useTranslations('mcp.toolTable')
+  const ta = useTranslations('toolApproval.default')
+  const columns = 3 + (onToggle ? 1 : 0) + (onApprovalDefault ? 1 : 0)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   if (tools.length === 0) {
@@ -214,6 +222,7 @@ export function McpToolTable({
             {onToggle && <TableHead className="w-8" />}
             <TableHead className="w-1/3">{t('columns.tool')}</TableHead>
             <TableHead>{t('columns.description')}</TableHead>
+            {onApprovalDefault && <TableHead className="w-40 text-right">{ta('column')}</TableHead>}
             <TableHead className="w-20 text-right">{t('columns.schema')}</TableHead>
           </TableRow>
         </TableHeader>
@@ -264,6 +273,20 @@ export function McpToolTable({
                   <TableCell className="text-xs text-muted-foreground">
                     <ExpandableDescription text={tool.description} />
                   </TableCell>
+                  {onApprovalDefault && (
+                    <TableCell className="text-right">
+                      {tool.id ? (
+                        <ApprovalDefaultControl
+                          compact
+                          id={tool.id}
+                          label={ta('toolSetting', { tool: tool.name })}
+                          noneLabel={ta('followServer')}
+                          value={tool.approval_default}
+                          onChange={(value) => onApprovalDefault(tool.id as string, value)}
+                        />
+                      ) : null}
+                    </TableCell>
+                  )}
                   <TableCell className="text-right">
                     {hasSchema ? (
                       <Button
@@ -287,14 +310,14 @@ export function McpToolTable({
                 {persisted && tool.id && tool.pending_version ? (
                   <ReviewRow
                     tool={{ ...tool, id: tool.id, pending_version: tool.pending_version }}
-                    colSpan={onToggle ? 4 : 3}
+                    colSpan={columns}
                     onReview={onReview}
                     busy={reviewingToolId === tool.id}
                   />
                 ) : null}
                 {showSchema && hasSchema ? (
                   <TableRow>
-                    <TableCell colSpan={onToggle ? 4 : 3} className="bg-muted/30 p-0">
+                    <TableCell colSpan={columns} className="bg-muted/30 p-0">
                       <pre className="max-h-64 overflow-auto p-3 font-mono moldy-ui-caption leading-relaxed text-foreground/80">
                         {JSON.stringify(tool.input_schema, null, 2)}
                       </pre>

@@ -70,6 +70,10 @@ class McpServer(CredentialModeColumns, NullableOrgScope, Base):
     # at connect time using the linked credential's decrypted payload.
     env_vars: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=dict)
     headers: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=dict)
+    # The default for every tool of this server (tool-governance-plan 3.3): ``{"mode",
+    # "rule"}`` shaped like an agent's per-tool setting. A default, not a floor: whoever
+    # attaches a tool to an agent may change it within what the company allows.
+    approval_default: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     credential_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True

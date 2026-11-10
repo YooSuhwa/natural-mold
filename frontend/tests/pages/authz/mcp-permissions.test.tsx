@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '../../test-utils'
+import { render, screen, userEvent, waitFor } from '../../test-utils'
 import { McpServerDetailDialog } from '@/app/mcp-servers/_components/mcp-server-detail-dialog'
 import { McpServersPageClient } from '@/app/mcp-servers/_components/mcp-servers-page-client'
 import { ApiError } from '@/lib/api/errors'
@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
   permissions: null as string[] | null,
   org: { enforced: false, capabilities: [] as string[] },
   review: vi.fn(),
+  approvalDefault: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -27,6 +28,7 @@ vi.mock('@/lib/hooks/use-mcp-servers', () => ({
   useTestMcpServer: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDiscoverMcpTools: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useReviewMcpTool: () => ({ mutateAsync: state.review, isPending: false, variables: undefined }),
+  useSetMcpApprovalDefault: () => ({ mutateAsync: state.approvalDefault, isPending: false }),
 }))
 vi.mock('@/lib/hooks/use-health', () => ({
   useMcpHealth: () => ({ data: [] }),
@@ -206,6 +208,12 @@ describe('MCP server detail by permission level', () => {
     expect(await screen.findByRole('button', { name: /테스트/ })).toBeInTheDocument()
     expect(screen.getByLabelText('자격 증명')).toBeEnabled()
     expect(screen.queryByRole('button', { name: '삭제' })).not.toBeInTheDocument()
+    // Server editors set the server's approval default.
+    await userEvent.selectOptions(screen.getByLabelText('이 서버 도구의 승인 기본값'), 'never')
+    expect(state.approvalDefault).toHaveBeenCalledWith({
+      toolId: undefined,
+      value: { mode: 'never' },
+    })
   })
 
   it.each([
@@ -219,6 +227,7 @@ describe('MCP server detail by permission level', () => {
     expect(screen.queryByRole('button', { name: /테스트/ })).not.toBeInTheDocument()
     expect(screen.queryByTestId('mcp-health-check-now')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '삭제' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('이 서버 도구의 승인 기본값')).not.toBeInTheDocument()
   })
 
   it('none: 403 offers an access request; 503 is the shared outage state', () => {

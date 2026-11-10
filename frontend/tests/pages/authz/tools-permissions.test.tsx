@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '../../test-utils'
+import { render, screen, userEvent, waitFor } from '../../test-utils'
 import { ToolDetailDialog } from '@/app/tools/_components/tool-detail-dialog'
 import { ToolsPageClient } from '@/app/tools/_components/tools-page-client'
 import { ApiError } from '@/lib/api/errors'
@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
   error: null as unknown,
   permissions: null as string[] | null,
   org: { enforced: false, capabilities: [] as string[] },
+  approvalDefault: vi.fn(),
 }))
 
 vi.mock('@/lib/hooks/use-tools', () => ({
@@ -34,6 +35,7 @@ vi.mock('@/lib/hooks/use-tools', () => ({
   }),
   useUpdateTool: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteTool: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSetToolApprovalDefault: () => ({ mutateAsync: state.approvalDefault, isPending: false }),
   useRunTool: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 vi.mock('@/lib/hooks/use-credentials', () => ({ useCredentials: () => ({ data: [] }) }))
@@ -105,6 +107,9 @@ describe('tool detail by permission level', () => {
     expect(await screen.findByRole('button', { name: '실행' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '삭제' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /공유 설정 열기/ })).not.toBeInTheDocument()
+    // Tool editors set the tool's own approval default.
+    await userEvent.selectOptions(screen.getByLabelText('승인 기본값'), 'always')
+    expect(state.approvalDefault).toHaveBeenCalledWith({ id: 'tool-1', value: { mode: 'always' } })
   })
 
   it.each([
@@ -117,6 +122,7 @@ describe('tool detail by permission level', () => {
     await waitFor(() => expect(screen.getByText(/보기 전용이에요/)).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: '실행' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '삭제' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('승인 기본값')).not.toBeInTheDocument()
   })
 
   it('manager on a shared tool sees the share entry (my_permissions)', async () => {

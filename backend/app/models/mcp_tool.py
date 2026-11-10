@@ -73,6 +73,10 @@ class McpTool(Base):
     annotations_json: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=dict)
 
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # The tool's own approval default (tool-governance-plan 3.3): ``{"mode", "rule"}`` shaped
+    # like an agent's per-tool setting. A default, not a floor: whoever attaches the tool to
+    # an agent may change it within what the company allows.
+    approval_default: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # i16 review (app/mcp/review.py, decision D11). ``pending``: discovered, hidden until a
     # server manager approves it. ``approved``: usable; a changed live definition waits in

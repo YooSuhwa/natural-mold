@@ -17,7 +17,15 @@ import { CredentialPicker } from '@/components/credential/credential-picker'
 import { CredentialModeControl } from '@/components/readiness/credential-mode-control'
 import { ResourceShareButton, SharedWithMeBadge } from '@/components/sharing/resource-share-button'
 import { ToolRunPanel } from './tool-run-panel'
-import { useDeleteTool, useTool, useToolType, useUpdateTool } from '@/lib/hooks/use-tools'
+import { ApprovalDefaultControl } from '@/features/tool-approval/components/approval-default-control'
+import type { ToolApprovalToolV1 } from '@/lib/types/runtime-policy'
+import {
+  useDeleteTool,
+  useSetToolApprovalDefault,
+  useTool,
+  useToolType,
+  useUpdateTool,
+} from '@/lib/hooks/use-tools'
 import { useResourceAccess } from '@/lib/authz/use-resource-access'
 
 interface Props {
@@ -37,6 +45,8 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
   const { data: definition } = useToolType(tool?.definition_key)
   const update = useUpdateTool()
   const remove = useDeleteTool()
+  const approvalDefault = useSetToolApprovalDefault()
+  const ta = useTranslations('toolApproval.default')
   const [confirming, setConfirming] = useState(false)
   const errorMessage = useApiErrorMessage()
   const rows = useMemo(() => (tool ? [tool] : []), [tool])
@@ -44,6 +54,15 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
   // Plan 13.9: test runs and settings need can_edit, deletion can_delete.
   const canEdit = access.can(tool, 'can_edit')
   const canDelete = access.can(tool, 'can_delete')
+
+  async function handleApprovalDefault(value: ToolApprovalToolV1 | null) {
+    if (!tool) return
+    try {
+      await approvalDefault.mutateAsync({ id: tool.id, value })
+    } catch (e) {
+      toast.error(errorMessage(e, ta('saveFailed')))
+    }
+  }
 
   async function handleCredentialChange(next: string | null) {
     if (!tool) return
@@ -129,6 +148,16 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
                 credentialId={tool.credential_id}
                 definitionKey={tool.credential_definition_key ?? null}
                 acceptedKeys={definition.credential_definition_keys}
+              />
+            ) : null}
+
+            {canEdit ? (
+              <ApprovalDefaultControl
+                id={`tool-${tool.id}`}
+                label={ta('toolLabel')}
+                noneLabel={ta('none')}
+                value={tool.approval_default}
+                onChange={handleApprovalDefault}
               />
             ) : null}
 

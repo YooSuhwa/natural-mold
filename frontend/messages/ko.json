@@ -7888,6 +7888,16 @@
     "tools": "도구별 설정",
     "noTools": "붙어 있는 도구가 없습니다.",
     "toolSetting": "{tool} 승인 설정",
+    "default": {
+      "hint": "에이전트에 붙일 때 시작하는 값입니다. 에이전트마다 바꿀 수 있고, 회사 정책이 허용하는 범위에서만 적용됩니다.",
+      "toolLabel": "승인 기본값",
+      "serverLabel": "이 서버 도구의 승인 기본값",
+      "none": "기본값 없음",
+      "followServer": "서버 기본값",
+      "column": "승인 기본값",
+      "toolSetting": "{tool} 승인 기본값",
+      "saveFailed": "승인 기본값을 저장하지 못했습니다."
+    },
     "toolMode": {
       "default": "기본(모드를 따름)",
       "always": "항상 묻기",

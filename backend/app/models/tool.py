@@ -100,6 +100,10 @@ class Tool(CredentialModeColumns, NullableOrgScope, Base):
     )
 
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # The tool's own approval default (tool-governance-plan 3.3): ``{"mode", "rule"}`` shaped
+    # like an agent's per-tool setting. A default, not a floor: whoever attaches the tool to
+    # an agent may change it within what the company allows.
+    approval_default: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(

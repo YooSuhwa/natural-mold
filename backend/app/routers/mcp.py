@@ -12,6 +12,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.audit_actions import TOOL_APPROVAL_DEFAULT_UPDATED
 from app.authz.org_context import OrgContext
 from app.authz.policies import CANDIDATES, CAP, CATALOG, RES, authz_policy
 from app.authz.resource_gate import gate_cap
@@ -56,6 +57,7 @@ from app.schemas.mcp import (
     McpToolReviewRequest,
     McpToolWithServerResponse,
 )
+from app.schemas.tool_approval import ApprovalDefaultUpdate, default_change
 from app.services import mcp_registry as mcp_registry_service
 from app.services import mcp_service
 from app.services.mcp_server_view import (
@@ -99,6 +101,7 @@ def _server_to_response(server: McpServer, readable: bool = True) -> McpServerRe
         health_status=getattr(server, "health_status", None),
         health_polled_at=getattr(server, "health_polled_at", None),
         health_message=getattr(server, "health_message", None),
+        approval_default=server.approval_default,
         created_at=server.created_at,
         updated_at=server.updated_at,
     )
@@ -120,6 +123,7 @@ def _tool_to_response(tool: McpTool, server_url: str | None = None) -> McpToolRe
         review_state=tool.review_state,  # type: ignore[arg-type]  # CHECK-constrained
         pending_version=McpToolPendingVersion(**pending) if pending else None,
         reviewed_at=tool.reviewed_at,
+        approval_default=tool.approval_default,
         last_seen_at=getattr(tool, "last_seen_at", None),
         created_at=tool.created_at,
         updated_at=tool.updated_at,
@@ -627,6 +631,78 @@ async def review_server_tool(
         fingerprint=body.fingerprint,
         user=user,
         request=request,
+    )
+    await db.commit()
+    await db.refresh(tool)
+    await mcp_service.invalidate_runtime_mcp_cache()
+    return _tool_to_response(tool, server.url)
+
+
+# -- Approval defaults (tool-governance-plan 3.3) -----------------------------
+
+
+@router.put("/{server_id}/approval-default", response_model=McpServerResponse)
+@authz_policy(RES("mcp_server", "can_edit", param="server_id", min_visible="can_use"))
+async def set_server_approval_default(
+    server_id: uuid.UUID,
+    body: ApprovalDefaultUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+) -> McpServerResponse:
+    """The default of every tool of this server that sets none of its own. Managers only."""
+    server = await mcp_service.load_owned(
+        db, server_id, context, authz=authz, permission="can_edit"
+    )
+    before, server.approval_default = server.approval_default, body.stored()
+    await mcp_service.record_server_audit(
+        db,
+        user=user,
+        request=request,
+        action=TOOL_APPROVAL_DEFAULT_UPDATED,
+        server=server,
+        metadata={"scope": "mcp_server", **default_change(before, server.approval_default)},
+    )
+    await db.commit()
+    await db.refresh(server)
+    await mcp_service.invalidate_runtime_mcp_cache()
+    return _server_to_response(server)
+
+
+@router.put("/{server_id}/tools/{tool_id}/approval-default", response_model=McpToolResponse)
+@authz_policy(RES("mcp_server", "can_edit", param="server_id", min_visible="can_use"))
+async def set_server_tool_approval_default(
+    server_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    body: ApprovalDefaultUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+) -> McpToolResponse:
+    """One MCP tool's own approval default (beats its server's). Server managers only."""
+    server = await mcp_service.load_owned(
+        db, server_id, context, authz=authz, permission="can_edit"
+    )
+    tool = await mcp_service.server_tool(db, server, tool_id)
+    before, tool.approval_default = tool.approval_default, body.stored()
+    await mcp_service.record_server_audit(
+        db,
+        user=user,
+        request=request,
+        action=TOOL_APPROVAL_DEFAULT_UPDATED,
+        server=server,
+        metadata={
+            "scope": "mcp_tool",
+            "mcp_tool_id": str(tool.id),
+            "tool": tool.name,
+            **default_change(before, tool.approval_default),
+        },
     )
     await db.commit()
     await db.refresh(tool)

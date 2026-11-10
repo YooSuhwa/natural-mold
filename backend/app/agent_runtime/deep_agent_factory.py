@@ -286,7 +286,7 @@ def build_agent_impl(
         permissions=permissions,
     )
     if prepared_task_middleware is not None:
-        if tool_approval is not None and tool_approval.relaxes:
+        if tool_approval is not None and tool_approval.acts:
             # Lease eligibility sends such runs down the ordinary path (``tool_approval``).
             raise ValueError("prepared runs do not carry tool approval settings")
         # Prepared leases: every child is already a compiled base child (including
@@ -341,12 +341,30 @@ def build_agent_impl(
             )
             tools, interrupt_on = applied.tools, applied.interrupt_on
             compatible_middleware, compatible_subagents = applied.middleware, applied.subagents
-        if tool_approval is not None and tool_approval.relaxes:
+        if tool_approval is not None and tool_approval.acts:
             # The root agent's own tool approval settings, under the company step (plan 3.1).
             from app.approvals import tool_modes
 
             settled = tool_modes.apply(interrupt_on, tools, tool_approval)
             interrupt_on = settled.interrupt_on
+            if tool_approval.defaults:
+                # A child's tools keep their own defaults, where they tighten.
+                compatible_subagents = [
+                    spec
+                    if "runnable" in spec
+                    or "graph_id" in spec
+                    or not isinstance(spec.get("interrupt_on"), dict)
+                    else {
+                        **spec,
+                        "interrupt_on": tool_modes.apply(
+                            spec["interrupt_on"],
+                            spec.get("tools") or [],
+                            tool_approval,
+                            root=False,
+                        ).interrupt_on,
+                    }
+                    for spec in compatible_subagents
+                ]
             if settled.auto_allowed and tool_approval.audit is not None:
                 compatible_middleware = [
                     *compatible_middleware,

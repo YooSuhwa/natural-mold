@@ -150,6 +150,8 @@ APPROVAL_AUTO_ALLOWED: Final = "approval.auto_allowed"
 APPROVAL_GRANT_CREATED: Final = "approval.grant_created"
 APPROVAL_GRANT_REVOKED: Final = "approval.grant_revoked"
 AGENT_TOOL_APPROVAL_UPDATED: Final = "agent.tool_approval_updated"
+# Tool governance (tool-governance-plan 3.3): a tool's or MCP server's own default changed.
+TOOL_APPROVAL_DEFAULT_UPDATED: Final = "tool.approval_default_updated"
 # Emergency stop (순번 13, 17.4): applied to an agent, a person's agents or an MCP server.
 EMERGENCY_STOP_APPLY: Final = "emergency_stop.apply"
 EMERGENCY_STOP_RELEASE: Final = "emergency_stop.release"

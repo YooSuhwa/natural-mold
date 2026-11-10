@@ -22,6 +22,7 @@ from typing import cast
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.audit_actions import TOOL_APPROVAL_DEFAULT_UPDATED
 from app.authz.org_context import OrgContext
 from app.authz.personal_accounts import require_unshared_for_personal
 from app.authz.policies import CANDIDATES, CAP, CATALOG, RES, authz_policy
@@ -41,6 +42,7 @@ from app.schemas.tool import (
     ToolRunRequest,
     ToolRunResponse,
 )
+from app.schemas.tool_approval import ApprovalDefaultUpdate, default_change
 from app.services import tool_service
 from app.tools.execution_scope import ToolRunTarget
 from app.tools.registry import registry as tool_registry
@@ -66,6 +68,7 @@ def _to_response(tool: Tool) -> ToolInstanceResponse:
         credential_mode=cast("CredentialMode", tool.credential_mode or "none"),
         credential_definition_key=tool.credential_definition_key,
         enabled=tool.enabled,
+        approval_default=tool.approval_default,
         last_used_at=tool.last_used_at,
         created_at=tool.created_at,
         updated_at=tool.updated_at,
@@ -181,6 +184,34 @@ async def update_tool(
         },
     )
     await db.commit()
+    return _to_response(tool)
+
+
+@crud_router.put("/{tool_id}/approval-default", response_model=ToolInstanceResponse)
+@authz_policy(RES("tool", "can_edit", param="tool_id", min_visible="can_use"))
+async def set_tool_approval_default(
+    tool_id: uuid.UUID,
+    payload: ApprovalDefaultUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+) -> ToolInstanceResponse:
+    """The tool's own approval default (tool-governance-plan 3.3). Tool editors only."""
+    tool = await tool_service.load_owned(db, tool_id, context, authz=authz, permission="can_edit")
+    before, tool.approval_default = tool.approval_default, payload.stored()
+    await tool_service.record_tool_audit(
+        db,
+        user=user,
+        request=request,
+        action=TOOL_APPROVAL_DEFAULT_UPDATED,
+        tool=tool,
+        metadata={"scope": "tool", **default_change(before, tool.approval_default)},
+    )
+    await db.commit()
+    await db.refresh(tool)
     return _to_response(tool)
 
 

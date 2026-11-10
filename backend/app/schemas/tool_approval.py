@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agent_runtime.runtime_policy import ToolApprovalToolV1
+
 
 class ToolApprovalCell(BaseModel):
     path: str
@@ -39,6 +41,25 @@ class ToolApprovalView(BaseModel):
     company_actions: dict[str, str]
     company_always_ask: list[str]
     tools: list[ToolApprovalTool]
+
+
+class ApprovalDefaultUpdate(BaseModel):
+    """A tool's (or MCP server's) own approval default; ``null`` clears it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    default: ToolApprovalToolV1 | None
+
+    def stored(self) -> dict[str, Any] | None:
+        return self.default.model_dump(mode="json", exclude_none=True) if self.default else None
+
+
+def default_change(before: dict[str, Any] | None, after: dict[str, Any] | None) -> dict[str, Any]:
+    """Audit metadata of a default change: the modes, never the rule's values."""
+    return {
+        "before": (before or {}).get("mode"),
+        "after": (after or {}).get("mode"),
+    }
 
 
 class ToolGrantCreate(BaseModel):

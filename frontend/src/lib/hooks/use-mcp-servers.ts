@@ -3,6 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { mcpApi } from '@/lib/api/mcp'
 import { mcpServerQueryKeys } from '@/lib/query-keys/mcp-servers'
+import { toolApprovalQueryKeys } from '@/lib/query-keys/tool-approval'
+import type { ToolApprovalToolV1 } from '@/lib/types/runtime-policy'
 import { requiredQueryValue } from './required-query-value'
 import type {
   McpFromRegistryRequest,
@@ -91,6 +93,24 @@ export function useReviewMcpTool(serverId: string) {
       qc.invalidateQueries({ queryKey: mcpServerQueryKeys.detail(serverId) })
       qc.invalidateQueries({ queryKey: mcpServerQueryKeys.allTools })
     },
+  })
+}
+
+/** Approval defaults of a server (`toolId` unset) or of one of its tools. */
+export function useSetMcpApprovalDefault(serverId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { toolId?: string; value: ToolApprovalToolV1 | null }) => {
+      if (input.toolId) await mcpApi.setToolApprovalDefault(serverId, input.toolId, input.value)
+      else await mcpApi.setApprovalDefault(serverId, input.value)
+    },
+    // Returned, so the caller's promise settles once the fresh rows are in.
+    onSettled: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: mcpServerQueryKeys.detail(serverId) }),
+        qc.invalidateQueries({ queryKey: mcpServerQueryKeys.allTools }),
+        qc.invalidateQueries({ queryKey: toolApprovalQueryKeys.all }),
+      ]),
   })
 }
 

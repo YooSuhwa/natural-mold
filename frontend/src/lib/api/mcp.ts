@@ -1,4 +1,5 @@
 import { apiFetch } from './client'
+import type { ToolApprovalToolV1 } from '@/lib/types/runtime-policy'
 import type {
   McpDiscoverResult,
   McpExportResponse,
@@ -42,6 +43,17 @@ export const mcpApi = {
     apiFetch<McpTool>(`/api/mcp-servers/${serverId}/tools/${toolId}/review`, {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+  /** The server's approval default (`null` clears it); server editors only. */
+  setApprovalDefault: (serverId: string, value: ToolApprovalToolV1 | null) =>
+    apiFetch<McpServer>(`/api/mcp-servers/${serverId}/approval-default`, {
+      method: 'PUT',
+      body: JSON.stringify({ default: value }),
+    }),
+  setToolApprovalDefault: (serverId: string, toolId: string, value: ToolApprovalToolV1 | null) =>
+    apiFetch<McpTool>(`/api/mcp-servers/${serverId}/tools/${toolId}/approval-default`, {
+      method: 'PUT',
+      body: JSON.stringify({ default: value }),
     }),
   discover: (id: string) =>
     apiFetch<McpDiscoverResult>(`/api/mcp-servers/${id}/discover`, {
