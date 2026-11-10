@@ -2,6 +2,8 @@
 
 * ``agent_tools``: the agent's tools by resource key (``app.tools.keys``) with the name a
   run gives them and their risk levels.
+* ``agent_parts``: its skills (parts of ``execute_in_skill``) and its child agents (parts
+  of ``task``); a setting names these by key only (tool-governance-plan 3.8).
 * ``keyed_settings``: the agent's settings with names rewritten to keys where a name means
   one tool; the rest are reported (the screen shows them as needing a look).
 * ``live`` / ``grant`` / ``revoke``: "allow for this conversation". Only the conversation's
@@ -15,6 +17,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any, Final
 
@@ -30,7 +33,15 @@ from app.guardrails.tool_risk import ToolRiskPolicy, level_of
 from app.models.conversation import Conversation
 from app.models.conversation_tool_grant import ConversationToolGrant
 from app.services import audit_service
-from app.tools.keys import ToolRef, ambiguous_names, builtin_key, ref_from_config, resolve
+from app.tools.keys import (
+    ToolRef,
+    agent_ref,
+    ambiguous_names,
+    builtin_key,
+    ref_from_config,
+    resolve,
+    skill_ref,
+)
 from app.tools.risk import ToolRiskLevel, execute_in_skill_risk, risk_from_tool_config
 
 FILESYSTEM_WRITE_TOOLS: Final = ("write_file", "edit_file")
@@ -77,16 +88,43 @@ async def agent_tools(
     return sorted(found.values(), key=lambda item: (item[0].name, item[0].key))
 
 
+def agent_parts(agent: Any, context: OrgContext) -> list[tuple[ToolRef, str]]:
+    """The agent's skills and child agents as a setting names them, with their kind."""
+    from app.services.chat.runtime_context import build_agent_skills
+
+    found: dict[str, tuple[ToolRef, str]] = {}
+    for skill in build_agent_skills(agent, context):
+        ref = skill_ref(skill)
+        found[ref.key] = (ref, "skill")
+    for link in agent.sub_agent_links:
+        child = link.sub_agent
+        # A hidden agent is nobody's child on any screen (the run refuses it too).
+        if child is None or child.runtime_profile != "standard":
+            continue
+        ref = agent_ref(child.id, child.name)
+        found[ref.key] = (ref, "agent")
+    return sorted(found.values(), key=lambda item: (item[1] != "skill", item[0].name, item[0].key))
+
+
 def keyed_settings(
-    settings: ToolApprovalPolicyV1 | None, refs: list[ToolRef]
+    settings: ToolApprovalPolicyV1 | None,
+    refs: list[ToolRef],
+    parts: Iterable[ToolRef] = (),
 ) -> tuple[ToolApprovalPolicyV1 | None, list[str]]:
-    """Settings keyed by resource key, and the entries that name no single tool."""
+    """Settings keyed by resource key, and the entries that name no single tool.
+
+    ``parts`` (skills, child agents) are kept under their key and never found by name.
+    """
     if settings is None or not settings.tools:
         return settings, []
     keys = {ref.key for ref in refs}
+    part_keys = {part.key for part in parts}
     tools: dict[str, Any] = {}
     unresolved: list[str] = []
     for name, value in settings.tools.items():
+        if name in part_keys:
+            tools[name] = value
+            continue
         ref = resolve(refs, name)
         if ref is None:
             unresolved.append(name)
@@ -243,6 +281,7 @@ async def _audit(
 
 __all__ = [
     "Conversation",
+    "agent_parts",
     "agent_tools",
     "grant",
     "keyed_settings",

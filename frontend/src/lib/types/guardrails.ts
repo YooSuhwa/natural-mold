@@ -160,7 +160,8 @@ export interface ToolPolicySaved {
 export interface ToolPolicyTarget {
   key: string
   name: string
-  kind: 'mcp_server' | 'mcp_tool' | 'tool' | 'builtin'
+  /** `skill`: run through `execute_in_skill`. `agent`: handing work to it as a sub-agent. */
+  kind: 'mcp_server' | 'mcp_tool' | 'tool' | 'builtin' | 'skill' | 'agent'
   server_key?: string | null
   /** The MCP server's name. */
   source?: string | null

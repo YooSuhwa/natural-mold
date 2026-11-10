@@ -30,6 +30,7 @@ from app.guardrails.policy import resolve_tool_risk
 from app.guardrails.tool_risk import DEFAULT_ACTIONS
 from app.schemas.tool_approval import (
     ToolApprovalCell,
+    ToolApprovalPart,
     ToolApprovalTool,
     ToolApprovalView,
     ToolGrantCreate,
@@ -68,7 +69,40 @@ async def get_tool_approval(
     cells = tool_modes.effective(tools, settings=settings, company=company, legacy_always=legacy)
     refs = [ref for ref, _ in tools]
     twice = ambiguous_names(refs)
-    shown, unresolved = tool_grants.keyed_settings(settings, refs)
+    parts = tool_grants.agent_parts(agent, context)
+    shown, unresolved = tool_grants.keyed_settings(settings, refs, [ref for ref, _ in parts])
+    part_cells = tool_modes.effective_parts(
+        parts, settings=settings, company=company, legacy_always=legacy
+    )
+
+    def _cells(found: list[tool_modes.Effective]) -> list[ToolApprovalCell]:
+        return [
+            ToolApprovalCell(
+                path=cell.path,
+                kind=cell.kind,
+                layer=cell.layer,
+                reason=cell.reason,
+                delivery=cell.delivery,
+                rule=cell.rule.model_dump(mode="json", exclude_none=True) if cell.rule else None,
+            )
+            for cell in found
+        ]
+
+    part_rows: list[ToolApprovalPart] = []
+    for ref, kind in parts:
+        mine = [cell for cell in part_cells if cell.tool == ref.key]
+        bound = company.tool_policy(ref) if company is not None else None
+        part_rows.append(
+            ToolApprovalPart(
+                key=ref.key,
+                name=ref.source or ref.name,
+                kind=kind,  # type: ignore[arg-type]
+                level=mine[0].level if kind == "skill" and mine else None,
+                locked=any(cell.layer in tool_modes.COMPANY_FIXED for cell in mine),
+                allowed_modes=sorted(bound.allowed) if bound and bound.allowed else None,
+                cells=_cells(mine),
+            )
+        )
     rows: list[ToolApprovalTool] = []
     for ref, level in tools:
         mine = [cell for cell in cells if cell.tool == ref.key]
@@ -84,19 +118,7 @@ async def get_tool_approval(
                 grantable=tool_modes.grantable(
                     ref, level, settings=settings, company=company, ambiguous=ref.name in twice
                 ),
-                cells=[
-                    ToolApprovalCell(
-                        path=cell.path,
-                        kind=cell.kind,
-                        layer=cell.layer,
-                        reason=cell.reason,
-                        delivery=cell.delivery,
-                        rule=cell.rule.model_dump(mode="json", exclude_none=True)
-                        if cell.rule
-                        else None,
-                    )
-                    for cell in mine
-                ],
+                cells=_cells(mine),
             )
         )
     return ToolApprovalView(
@@ -105,6 +127,7 @@ async def get_tool_approval(
         company_actions=dict(company.actions if company else DEFAULT_ACTIONS),
         company_always_ask=sorted(company.always_ask) if company else [],
         tools=rows,
+        parts=part_rows,
     )
 
 

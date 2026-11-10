@@ -35,6 +35,7 @@ _B08_ADDED_COLUMN_NULLABILITY = {
         "registration_state": False,
         "registration_fingerprint": True,
     },
+    "skills": {"approval_default": True},  # i39 (plan 3.8): the skill's own default
     "credentials": {"allowed_hosts": True},
     "agents": {"llm_credential_delegated_by": True},  # F-01 (m86)
     "agent_triggers": {"approval_policy": False},  # 순번 13 (i18, plan 17.3)

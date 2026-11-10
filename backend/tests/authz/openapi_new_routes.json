@@ -19136,6 +19136,60 @@
         ]
       }
     },
+    "/api/skills/{skill_id}/approval-default": {
+      "put": {
+        "description": "The skill's own approval default (tool-governance-plan 3.8). Skill editors only.\n\nA setting, not content: it makes no revision.",
+        "operationId": "set_skill_approval_default_api_skills__skill_id__approval_default_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDefaultUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Skill Approval Default",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
     "/api/skills/{skill_id}/content": {
       "get": {
         "operationId": "get_text_content_api_skills__skill_id__content_get",
@@ -52100,6 +52154,18 @@
     },
     "SkillResponse": {
       "properties": {
+        "approval_default": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Default"
+        },
         "content_hash": {
           "anyOf": [
             {
@@ -56841,6 +56907,72 @@
       "title": "ToolApprovalCell",
       "type": "object"
     },
+    "ToolApprovalPart": {
+      "description": "A skill (run through ``execute_in_skill``) or a child agent (reached through ``task``).",
+      "properties": {
+        "allowed_modes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Modes"
+        },
+        "cells": {
+          "items": {
+            "$ref": "#/components/schemas/ToolApprovalCell"
+          },
+          "title": "Cells",
+          "type": "array"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "skill",
+            "agent"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Level"
+        },
+        "locked": {
+          "title": "Locked",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "name",
+        "kind",
+        "locked",
+        "cells"
+      ],
+      "title": "ToolApprovalPart",
+      "type": "object"
+    },
     "ToolApprovalPathsV1": {
       "additionalProperties": false,
       "description": "The agent's mode per run path (approval-modes-plan Q3/Q4): ``ask_all`` keeps the\nrisk-level defaults (today's behaviour); ``auto`` runs what the company cap allows.",
@@ -57072,6 +57204,14 @@
             "type": "string"
           },
           "title": "Company Always Ask",
+          "type": "array"
+        },
+        "parts": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/ToolApprovalPart"
+          },
+          "title": "Parts",
           "type": "array"
         },
         "settings": {
@@ -57789,7 +57929,9 @@
             "mcp_server",
             "mcp_tool",
             "tool",
-            "builtin"
+            "builtin",
+            "skill",
+            "agent"
           ],
           "title": "Kind",
           "type": "string"

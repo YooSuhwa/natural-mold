@@ -14,7 +14,11 @@ import type {
   ToolApprovalPolicyV1,
   ToolApprovalToolV1,
 } from '@/lib/types/runtime-policy'
-import type { ToolApprovalKind, ToolApprovalTool } from '@/lib/types/tool-approval'
+import type {
+  ToolApprovalKind,
+  ToolApprovalPart,
+  ToolApprovalTool,
+} from '@/lib/types/tool-approval'
 
 const PATHS: readonly ToolApprovalPath[] = ['chat', 'trigger', 'workflow', 'api']
 const OPS: readonly ToolApprovalClause['op'][] = [
@@ -81,9 +85,18 @@ export function ToolApprovalSettings({
     if (next) entries[tool.key] = next
     write({ ...settings, tools: entries })
   }
-  const known = new Set(
-    tools.flatMap((tool) => [tool.key, ...(shared.has(tool.name) ? [] : [tool.name])]),
-  )
+  // A skill or a sub-agent is only ever named by its key (a name means a tool).
+  const parts = view.data?.parts ?? []
+  const setPart = (part: ToolApprovalPart, next: ToolApprovalToolV1 | null) => {
+    const entries = { ...(settings.tools ?? {}) }
+    delete entries[part.key]
+    if (next) entries[part.key] = next
+    write({ ...settings, tools: entries })
+  }
+  const known = new Set([
+    ...tools.flatMap((tool) => [tool.key, ...(shared.has(tool.name) ? [] : [tool.name])]),
+    ...parts.map((part) => part.key),
+  ])
   const unresolved = view.data
     ? Object.keys(settings.tools ?? {}).filter((name) => !known.has(name))
     : []
@@ -130,99 +143,32 @@ export function ToolApprovalSettings({
           <p className="text-sm text-muted-foreground">{t('noTools')}</p>
         ) : (
           <ul className="flex flex-col divide-y" aria-label={t('tools')}>
-            {tools.map((tool) => {
-              const current = entryOf(tool)
-              const choice: ToolChoice = current?.mode ?? 'default'
-              const label = tool.source ? `${tool.name} (${tool.source})` : tool.name
-              return (
-                <li key={tool.key} className="flex flex-col gap-2 py-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm">{tool.name}</span>
-                    {tool.source ? (
-                      <span className="text-xs text-muted-foreground">{tool.source}</span>
-                    ) : null}
-                    <Badge variant="outline">{t(`level.${tool.level}`)}</Badge>
-                    {tool.locked ? (
-                      <span
-                        className="flex items-center gap-1 text-xs text-muted-foreground"
-                        title={tool.cells[0]?.reason}
-                      >
-                        <LockIcon className="size-3" aria-hidden />
-                        {tool.cells[0]?.reason}
-                      </span>
-                    ) : null}
-                    <span className="flex-1" />
-                    <select
-                      className={SELECT_CLASS}
-                      value={choice}
-                      aria-label={t('toolSetting', { tool: label })}
-                      disabled={tool.locked}
-                      onChange={(event) => {
-                        const next = event.target.value as ToolChoice
-                        if (next === 'default') setTool(tool, null)
-                        else if (next === 'when') {
-                          setTool(tool, {
-                            mode: 'when',
-                            rule: { all: [{ source: 'args', path: '', op: 'exists' }] },
-                          })
-                        } else setTool(tool, { mode: next })
-                      }}
-                    >
-                      {(['default', 'always', 'never', 'when'] as const).map((item) => (
-                        <option
-                          key={item}
-                          value={item}
-                          // A mode the company does not allow would be ignored by the run.
-                          disabled={
-                            item !== 'default' &&
-                            item !== choice &&
-                            tool.allowed_modes != null &&
-                            !tool.allowed_modes.includes(item)
-                          }
-                        >
-                          {t(`toolMode.${item}`)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {tool.allowed_modes && !tool.locked ? (
-                    <p className="moldy-ui-caption text-muted-foreground">
-                      {t('companyAllows', {
-                        modes: tool.allowed_modes.map((item) => t(`toolMode.${item}`)).join(', '),
-                      })}
-                    </p>
-                  ) : null}
-                  {current?.mode === 'when' ? (
-                    <RuleEditor
-                      tool={tool.key}
-                      clause={current.rule?.all?.[0] ?? { source: 'args', path: '', op: 'exists' }}
-                      onChange={(clause) =>
-                        setTool(tool, { mode: 'when', rule: { all: [clause] } })
-                      }
-                    />
-                  ) : null}
-                  <ul
-                    className="flex flex-wrap gap-1"
-                    aria-label={t('effectiveFor', { tool: label })}
-                  >
-                    {tool.cells.map((cell) => (
-                      <li
-                        key={cell.path}
-                        className={cn(
-                          'moldy-status-surface rounded-full px-2 py-0.5 text-xs',
-                          KIND_TONE[cell.kind],
-                        )}
-                        title={cell.reason}
-                      >
-                        {t(`path.${cell.path}`)} · {t(`kind.${cell.kind}`)}
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              )
-            })}
+            {tools.map((tool) => (
+              <ApprovalRow
+                key={tool.key}
+                row={tool}
+                current={entryOf(tool)}
+                onSet={(next) => setTool(tool, next)}
+              />
+            ))}
           </ul>
         )}
+        {parts.length > 0 ? (
+          <>
+            <h4 className="text-sm font-medium">{t('parts')}</h4>
+            <p className="moldy-ui-caption text-muted-foreground">{t('partsHint')}</p>
+            <ul className="flex flex-col divide-y" aria-label={t('parts')}>
+              {parts.map((part) => (
+                <ApprovalRow
+                  key={part.key}
+                  row={part}
+                  current={settings.tools?.[part.key]}
+                  onSet={(next) => setPart(part, next)}
+                />
+              ))}
+            </ul>
+          </>
+        ) : null}
         <p className="moldy-ui-caption text-muted-foreground">{t('effectiveHint')}</p>
         {unresolved.length > 0 ? (
           <div className="moldy-status-surface moldy-status-warn flex flex-col gap-2 rounded-md p-2">
@@ -250,6 +196,103 @@ export function ToolApprovalSettings({
         ) : null}
       </div>
     </section>
+  )
+}
+
+/** One tool, skill or sub-agent: its setting and how each run path decides it. */
+function ApprovalRow({
+  row: tool,
+  current,
+  onSet,
+}: {
+  row: ToolApprovalTool | ToolApprovalPart
+  current: ToolApprovalToolV1 | undefined
+  onSet: (next: ToolApprovalToolV1 | null) => void
+}) {
+  const t = useTranslations('toolApproval')
+  const kind = 'kind' in tool ? tool.kind : null
+  const source = 'source' in tool ? tool.source : null
+  const choice: ToolChoice = current?.mode ?? 'default'
+  const label = source ? `${tool.name} (${source})` : tool.name
+  return (
+    <li className="flex flex-col gap-2 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={kind ? 'text-sm' : 'font-mono text-sm'}>{tool.name}</span>
+        {source ? <span className="text-xs text-muted-foreground">{source}</span> : null}
+        {kind ? <Badge variant="secondary">{t(`partKind.${kind}`)}</Badge> : null}
+        {tool.level ? <Badge variant="outline">{t(`level.${tool.level}`)}</Badge> : null}
+        {tool.locked ? (
+          <span
+            className="flex items-center gap-1 text-xs text-muted-foreground"
+            title={tool.cells[0]?.reason}
+          >
+            <LockIcon className="size-3" aria-hidden />
+            {tool.cells[0]?.reason}
+          </span>
+        ) : null}
+        <span className="flex-1" />
+        <select
+          className={SELECT_CLASS}
+          value={choice}
+          aria-label={t('toolSetting', { tool: label })}
+          disabled={tool.locked}
+          onChange={(event) => {
+            const next = event.target.value as ToolChoice
+            if (next === 'default') onSet(null)
+            else if (next === 'when') {
+              onSet({
+                mode: 'when',
+                rule: { all: [{ source: 'args', path: '', op: 'exists' }] },
+              })
+            } else onSet({ mode: next })
+          }}
+        >
+          {(['default', 'always', 'never', 'when'] as const).map((item) => (
+            <option
+              key={item}
+              value={item}
+              // A mode the company does not allow would be ignored by the run.
+              disabled={
+                item !== 'default' &&
+                item !== choice &&
+                tool.allowed_modes != null &&
+                !tool.allowed_modes.includes(item)
+              }
+            >
+              {t(`toolMode.${item}`)}
+            </option>
+          ))}
+        </select>
+      </div>
+      {tool.allowed_modes && !tool.locked ? (
+        <p className="moldy-ui-caption text-muted-foreground">
+          {t('companyAllows', {
+            modes: tool.allowed_modes.map((item) => t(`toolMode.${item}`)).join(', '),
+          })}
+        </p>
+      ) : null}
+      {current?.mode === 'when' ? (
+        <RuleEditor
+          tool={tool.key}
+          clause={current.rule?.all?.[0] ?? { source: 'args', path: '', op: 'exists' }}
+          onChange={(clause) => onSet({ mode: 'when', rule: { all: [clause] } })}
+        />
+      ) : null}
+      <ul className="flex flex-wrap gap-1" aria-label={t('effectiveFor', { tool: label })}>
+        {tool.cells.map((cell) => (
+          <li
+            key={cell.path}
+            className={cn(
+              'moldy-status-surface rounded-full px-2 py-0.5 text-xs',
+              KIND_TONE[cell.kind],
+            )}
+            title={cell.reason}
+          >
+            {t(`path.${cell.path}`)} · {t(`kind.${cell.kind}`)}
+          </li>
+        ))}
+      </ul>
+    </li>
   )
 }
 

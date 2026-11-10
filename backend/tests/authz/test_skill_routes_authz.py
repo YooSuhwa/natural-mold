@@ -149,7 +149,7 @@ async def test_builder_target_needs_create_cap_or_source_edit():
         await authorize_builder_target(db, editor, context, source)
 
 
-def test_all_47_skill_family_routes_declare_a_reviewed_policy(test_app: FastAPI):
+def test_all_48_skill_family_routes_declare_a_reviewed_policy(test_app: FastAPI):
     routes = [
         route
         for route in test_app.routes
@@ -157,11 +157,11 @@ def test_all_47_skill_family_routes_declare_a_reviewed_policy(test_app: FastAPI)
         and route.path.startswith(("/api/skills", "/api/skill-builder"))
     ]
     policies = [policy_of(route.endpoint) for route in routes]
-    assert len(routes) == 47
+    assert len(routes) == 48
     kinds = sorted(policy.kind for policy in policies if policy is not None)
-    assert len(kinds) == 47 and "LEGACY" not in kinds
+    assert len(kinds) == 48 and "LEGACY" not in kinds
     assert {k: kinds.count(k) for k in set(kinds)} == {
-        "RES": 36,
+        "RES": 37,
         "CANDIDATES": 1,
         "CAP": 2,
         "PRIVATE": 8,

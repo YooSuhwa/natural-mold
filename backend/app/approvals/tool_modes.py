@@ -33,13 +33,18 @@ tightens (``root=False``): below the company, approvals only get stricter there 
 Settings name a tool by its resource key (``app.tools.keys``, tool-governance-plan 3.2). A
 setting saved under a tool name (before keys) is still read: one that tightens applies to
 every tool with that name, one that relaxes only when a single tool carries the name.
+
+A skill and a child agent are *parts* of one tool (``execute_in_skill``, ``task``): which
+part a call means is read from its arguments, and ``decide_part`` answers for that part
+(tool-governance-plan 3.8). A part with nothing of its own follows the whole tool, so an
+agent with no skill or delegation setting keeps the entry it had.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from langchain.agents.middleware import AgentMiddleware
@@ -56,7 +61,16 @@ from app.guardrails.tool_risk import (
     approval_entry,
     level_of,
 )
-from app.tools.keys import ToolRef, ambiguous_names, ref_of
+from app.tools.keys import (
+    DELEGATION_TOOL,
+    SKILL_TOOL,
+    ToolRef,
+    ambiguous_names,
+    builtin_key,
+    part_named,
+    parts_of,
+    ref_of,
+)
 from app.tools.risk import ToolRiskLevel
 
 Kind = Literal["ask", "auto", "when", "hidden"]
@@ -241,6 +255,74 @@ def decide(
     return Decision("ask" if asks_by_default else "auto", "risk_default")
 
 
+DELEGATION: Final = ToolRef(builtin_key(DELEGATION_TOOL), DELEGATION_TOOL)
+
+
+def _delegation_company(company: ToolRiskPolicy | None) -> ToolRiskPolicy | None:
+    """Handing work to a child agent has no risk level of its own (the child's tools carry
+    theirs), so only what the company said about that agent or about delegating counts."""
+    return replace(company, actions=dict(DEFAULT_ACTIONS)) if company is not None else None
+
+
+def decide_part(
+    part: ToolRef,
+    whole: ToolRef,
+    level: ToolRiskLevel,
+    path: Path,
+    *,
+    settings: ToolApprovalPolicyV1 | None,
+    company: ToolRiskPolicy | None,
+    grants: frozenset[str] = frozenset(),
+    legacy_always: frozenset[str] = frozenset(),
+    root: bool = True,
+) -> Decision:
+    """The decision for one part of a tool: a skill of ``execute_in_skill`` or a child agent
+    of ``task`` (pure). The part's own setting, company policy and default come first; where
+    it has none, what was said about the whole tool applies to it.
+
+    A part is only ever named by its key: a setting saved under a name means a tool, never
+    the skill or agent that happens to carry that name.
+    """
+    if company is not None and company.always_asks(whole):
+        return Decision("ask", "company_always")
+    if settings is not None:
+        saved = settings.tools
+        found = saved.get(part.key) or saved.get(whole.key) or saved.get(whole.name)
+        settings = settings.model_copy(update={"tools": {part.key: found} if found else {}})
+    granted = grants & {part.key, whole.key, whole.name}
+    asked = legacy_always & {whole.key, whole.name}
+    return decide(
+        part,
+        level,
+        path,
+        settings=settings,
+        company=company,
+        grants=frozenset({part.key}) if granted else frozenset(),
+        legacy_always=frozenset({part.key}) if asked else frozenset(),
+        root=root,
+    )
+
+
+def decide_child(
+    child: ToolRef,
+    path: Path,
+    *,
+    settings: ToolApprovalPolicyV1 | None,
+    company: ToolRiskPolicy | None,
+    grants: frozenset[str] = frozenset(),
+) -> Decision:
+    """Whether handing work to ``child`` asks first. Nothing saved: it does not."""
+    return decide_part(
+        child,
+        DELEGATION,
+        ToolRiskLevel.READ_ONLY,
+        path,
+        settings=settings,
+        company=_delegation_company(company),
+        grants=grants,
+    )
+
+
 def grantable(
     tool: ToolRef | str,
     level: ToolRiskLevel,
@@ -304,6 +386,24 @@ class ToolApprovalPlan:
             root=root,
         )
 
+    def decide_part(self, part: ToolRef, tool: BaseTool, *, root: bool = True) -> Decision:
+        return decide_part(
+            part,
+            ref_of(tool),
+            level_of(tool),
+            self.path,
+            settings=self.settings,
+            company=self.company,
+            grants=self.grants,
+            legacy_always=self.legacy_always,
+            root=root,
+        )
+
+    def decide_child(self, child: ToolRef) -> Decision:
+        return decide_child(
+            child, self.path, settings=self.settings, company=self.company, grants=self.grants
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class AuditTarget:
@@ -329,11 +429,15 @@ def has_default(tools_config: Iterable[Mapping[str, Any]] | None) -> bool:
     return any(config.get("approval_default") for config in tools_config or [])
 
 
+def _tool_has_default(tool: Any) -> bool:
+    return bool(ref_of(tool).default) or any(part.default for part in parts_of(tool).values())
+
+
 def _has_defaults(cfg: Any) -> bool:
-    if has_default(cfg.tools_config):
+    if has_default(cfg.tools_config) or has_default(getattr(cfg, "agent_skills", None)):
         return True
     for spec in getattr(cfg, "subagents_config", None) or []:
-        if any(ref_of(tool).default for tool in spec.get("tools") or []):
+        if any(_tool_has_default(tool) for tool in spec.get("tools") or []):
             return True
     return False
 
@@ -397,11 +501,62 @@ def _when(
     return {**_described(entry, reason), "when": when}
 
 
+def _dispatched(
+    entry: Mapping[str, Any], tool_name: str, parts: Mapping[str, Decision], whole: Decision
+) -> dict[str, Any]:
+    """An entry that answers by the part the call names. A call naming no known part gets
+    the whole tool's answer; arguments that cannot be read ask."""
+
+    def found(args: Any) -> Decision:
+        named = part_named(tool_name, args)
+        return parts.get(named, whole) if named else whole
+
+    def when(request: Any) -> bool:
+        try:
+            args = request.tool_call.get("args") or {}
+            decision = found(args)
+            if decision.kind == "auto":
+                return False
+            if decision.kind == "when" and decision.rule is not None:
+                rules = [decision.rule] if decision.also is None else [decision.rule, decision.also]
+                return any(holds(one, {"args": args}) for one in rules)
+            return True  # ``ask``, and a part the company switched off since
+        except Exception:  # noqa: BLE001 - a call that cannot be read asks (plan 3.4)
+            return True
+
+    def description(tool_call: Any, _state: Any, _runtime: Any) -> str:
+        try:
+            reason = found(tool_call.get("args") or {}).reason
+        except Exception:  # noqa: BLE001 - the card still says what is asked
+            reason = whole.reason
+        return (
+            f"승인이 필요합니다 ({reason}).\n\n도구: {tool_call.get('name')}\n"
+            f"인자: {_args_text(tool_call.get('args'))}"
+        )
+
+    return {**dict(entry), "description": description, "when": when}
+
+
+def _set_parts(
+    result: dict[str, Any],
+    name: str,
+    entry: Mapping[str, Any],
+    parts: Mapping[str, Decision],
+    whole: Decision,
+) -> None:
+    if whole.kind == "auto" and all(one.kind == "auto" for one in parts.values()):
+        result.pop(name, None)
+    else:
+        result[name] = _dispatched(entry, name, parts, whole)
+
+
 @dataclass(slots=True)
 class Applied:
     interrupt_on: dict[str, Any] | None
     # Tools at write level or above that will run without asking (audited when called).
     auto_allowed: dict[str, str] = field(default_factory=dict)
+    # The same per part: tool name → the part a call names → (the part's key, the layer).
+    auto_parts: dict[str, dict[str, tuple[str, str]]] = field(default_factory=dict)
 
 
 def apply(
@@ -410,11 +565,13 @@ def apply(
     plan: ToolApprovalPlan,
     *,
     root: bool = True,
+    children: Mapping[str, ToolRef] | None = None,
 ) -> Applied:
     """An agent's ``interrupt_on`` with the plan's decisions (after the company step).
 
     For a declarative child (``root=False``) an entry is only ever added: an ask the child
-    already has stays as it is.
+    already has stays as it is. ``children`` are the root's child agents by the name ``task``
+    calls them (tool-governance-plan 3.8).
     """
     if not isinstance(interrupt_on, dict):
         return Applied(interrupt_on if isinstance(interrupt_on, dict) else None)
@@ -422,6 +579,7 @@ def apply(
         return Applied(_tightened(interrupt_on, list(tools), plan))
     result = dict(interrupt_on)
     auto: dict[str, str] = {}
+    auto_parts: dict[str, dict[str, tuple[str, str]]] = {}
     targets: list[BaseTool | str] = [*tools, *BUILTIN_TOOLS]
     twice = ambiguous_names(ref_of(tool) for tool in targets)
     for tool in targets:
@@ -432,6 +590,21 @@ def apply(
             result.pop(name, None)
             continue
         base = result.get(name) or approval_entry(tool)
+        parts = parts_of(tool)
+        by_part = (
+            {slug: plan.decide_part(part, tool) for slug, part in parts.items()}
+            if not isinstance(tool, str)
+            else {}
+        )
+        if any(one != decision for one in by_part.values()):
+            _set_parts(result, name, base, by_part, decision)
+            if level_of(tool) != ToolRiskLevel.READ_ONLY:
+                auto_parts[name] = {
+                    slug: (parts[slug].key, one.layer)
+                    for slug, one in by_part.items()
+                    if one.kind == "auto"
+                }
+            continue
         if decision.kind == "ask":
             if decision.layer != "risk_default":  # the default ask keeps its own wording
                 result[name] = _described(base, decision.reason)
@@ -441,7 +614,28 @@ def apply(
             result.pop(name, None)
             if level_of(tool) != ToolRiskLevel.READ_ONLY:
                 auto[name] = decision.layer
-    return Applied(result, auto)
+    if children:
+        whole = plan.decide_child(DELEGATION)
+        by_child = {name: plan.decide_child(child) for name, child in children.items()}
+        if whole.kind != "auto" or any(one.kind != "auto" for one in by_child.values()):
+            _set_parts(result, DELEGATION_TOOL, approval_entry(DELEGATION_TOOL), by_child, whole)
+    return Applied(result, auto, {name: found for name, found in auto_parts.items() if found})
+
+
+_CHILD_COMPANY: Final = frozenset({"company_tool_locked", "company_tool_default"})
+_CHILD_OWN: Final = frozenset({"tool_default", "server_default"})
+
+
+def _child_part(decision: Decision, kept: Decision) -> Decision:
+    """A child's decision as ``_tightened`` applies it: the company's own answer for the
+    tool either way, the tool's default only where it adds an ask."""
+    if decision.kind in ("ask", "hidden") and decision.layer in COMPANY_FIXED:
+        return Decision("ask", decision.layer)
+    if decision.layer in _CHILD_COMPANY:
+        return decision
+    if decision.layer in _CHILD_OWN and decision.kind != "auto" and kept.kind == "auto":
+        return decision
+    return kept
 
 
 def _tightened(
@@ -450,8 +644,23 @@ def _tightened(
     result = dict(interrupt_on)
     for tool in tools:
         decision = plan.decide(tool, root=False)
-        company = decision.layer in ("company_tool_locked", "company_tool_default")
-        if not company and decision.layer not in ("tool_default", "server_default"):
+        by_part = {
+            slug: plan.decide_part(part, tool, root=False) for slug, part in parts_of(tool).items()
+        }
+        if any(one != decision for one in by_part.values()):
+            # What the child has now answers for a part whose own decision changes nothing.
+            kept = Decision("ask" if result.get(tool.name) else "auto", "risk_default")
+            settled = {slug: _child_part(one, kept) for slug, one in by_part.items()}
+            _set_parts(
+                result,
+                tool.name,
+                result.get(tool.name) or approval_entry(tool),
+                settled,
+                _child_part(decision, kept),
+            )
+            continue
+        company = decision.layer in _CHILD_COMPANY
+        if not company and decision.layer not in _CHILD_OWN:
             continue  # the company step already set the rest
         if decision.kind == "ask":
             result[tool.name] = _described(
@@ -526,6 +735,47 @@ def effective(
     return cells
 
 
+def effective_parts(
+    parts: Iterable[tuple[ToolRef, str]],
+    *,
+    settings: ToolApprovalPolicyV1 | None,
+    company: ToolRiskPolicy | None,
+    legacy_always: frozenset[str] = frozenset(),
+) -> list[Effective]:
+    """Every skill and child agent × path, as a run decides it (plan 3.8)."""
+    whole = ToolRef(builtin_key(SKILL_TOOL), SKILL_TOOL)
+    cells: list[Effective] = []
+    for ref, kind in parts:
+        for path in PATHS:
+            if kind == "skill":
+                level = ToolRiskLevel.CODE_EXECUTION
+                decision = decide_part(
+                    ref,
+                    whole,
+                    level,
+                    path,
+                    settings=settings,
+                    company=company,
+                    legacy_always=legacy_always,
+                )
+            else:
+                level = ToolRiskLevel.READ_ONLY
+                decision = decide_child(ref, path, settings=settings, company=company)
+            cells.append(
+                Effective(
+                    ref.key,
+                    level.value,
+                    path,
+                    decision.kind,
+                    decision.layer,
+                    decision.reason,
+                    DELIVERY[path],
+                    decision.rule,
+                )
+            )
+    return cells
+
+
 __all__ = [
     "BUILTIN_TOOLS",
     "COMPANY_FIXED",
@@ -541,7 +791,10 @@ __all__ = [
     "ToolApprovalPlan",
     "apply",
     "decide",
+    "decide_child",
+    "decide_part",
     "effective",
+    "effective_parts",
     "grantable",
     "has_default",
     "legacy_always_from",
@@ -555,16 +808,30 @@ class AutoAllowedAuditMiddleware(AgentMiddleware):
     Best effort: the call runs whether the audit row can be written or not.
     """
 
-    def __init__(self, layers: Mapping[str, str], target: AuditTarget) -> None:
+    def __init__(
+        self,
+        layers: Mapping[str, str],
+        target: AuditTarget,
+        parts: Mapping[str, Mapping[str, tuple[str, str]]] | None = None,
+    ) -> None:
         super().__init__()
         self.layers = dict(layers)
+        self.parts = {name: dict(found) for name, found in (parts or {}).items()}
         self.target = target
+
+    def _layer(self, call: Mapping[str, Any]) -> tuple[str, str | None] | None:
+        """The layer that let this call run, and the part it named (if the tool has parts)."""
+        tool = str(call.get("name"))
+        if tool in self.parts:
+            found = self.parts[tool].get(part_named(tool, call.get("args")) or "")
+            return (found[1], found[0]) if found else None
+        return (self.layers[tool], None) if tool in self.layers else None
 
     @property
     def name(self) -> str:  # type: ignore[override]
         return "MoldyToolApprovalAuditMiddleware"
 
-    async def _record(self, call: Mapping[str, Any]) -> None:
+    async def _record(self, call: Mapping[str, Any], layer: str, part: str | None) -> None:
         from app.authz.org_context import OrgContext
         from app.database import async_session, tenant_session
         from app.services import audit_service
@@ -585,11 +852,12 @@ class AutoAllowedAuditMiddleware(AgentMiddleware):
                     target_type="agent",
                     target_id=target.agent_id,
                     outcome="success",
-                    reason_code=self.layers[tool],
+                    reason_code=layer,
                     metadata={
                         "tool": tool,
-                        "layer": self.layers[tool],
+                        "layer": layer,
                         "thread_id": target.thread_id,
+                        **({"part": part} if part else {}),
                     },
                 )
                 await db.commit()
@@ -600,8 +868,9 @@ class AutoAllowedAuditMiddleware(AgentMiddleware):
 
     async def awrap_tool_call(self, request: Any, handler: Any) -> Any:
         call = request.tool_call
-        if call.get("name") in self.layers:
-            await self._record(call)
+        found = self._layer(call)
+        if found is not None:
+            await self._record(call, *found)
         return await handler(request)
 
     def wrap_tool_call(self, request: Any, handler: Any) -> Any:

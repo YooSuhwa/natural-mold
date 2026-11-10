@@ -15,7 +15,13 @@ import { PublishWizard } from '@/components/marketplace/publish-wizard'
 import { SkillCredentialBindingsPanel } from '@/components/skill/skill-credential-bindings-panel'
 import { SkillMetadataTab } from '@/components/skill/skill-metadata-tab'
 import type { SkillDetailTabSlots } from '@/components/skill/skill-detail-tab-shell'
-import { getSkillExportUrl, useDeleteSkill } from '@/lib/hooks/use-skills'
+import { ApprovalDefaultControl } from '@/features/tool-approval/components/approval-default-control'
+import {
+  getSkillExportUrl,
+  useDeleteSkill,
+  useSetSkillApprovalDefault,
+} from '@/lib/hooks/use-skills'
+import type { ToolApprovalToolV1 } from '@/lib/types/runtime-policy'
 import type { Skill } from '@/lib/types/skill'
 
 /**
@@ -41,6 +47,8 @@ export function SkillSettingsSections({
   const common = useTranslations('common')
   const router = useRouter()
   const removeSkill = useDeleteSkill()
+  const approvalDefault = useSetSkillApprovalDefault()
+  const ta = useTranslations('toolApproval.default')
   const errorMessage = useApiErrorMessage()
   const canPublish = useCanPublishMarketplace()
   const [publishOpen, setPublishOpen] = useState(false)
@@ -55,6 +63,14 @@ export function SkillSettingsSections({
       toast.error(
         errorMessage(error, error instanceof Error ? error.message : dialog('deleteFailed')),
       )
+    }
+  }
+
+  async function handleApprovalDefault(value: ToolApprovalToolV1 | null) {
+    try {
+      await approvalDefault.mutateAsync({ id: skill.id, value })
+    } catch (error) {
+      toast.error(errorMessage(error, ta('saveFailed')))
     }
   }
 
@@ -81,6 +97,18 @@ export function SkillSettingsSections({
           />
         </SettingsSection>
       </fieldset>
+
+      {canEdit ? (
+        <SettingsSection title={t('approvalTitle')}>
+          <ApprovalDefaultControl
+            id={`skill-${skill.id}`}
+            label={ta('skillLabel')}
+            noneLabel={ta('none')}
+            value={skill.approval_default}
+            onChange={handleApprovalDefault}
+          />
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection title={t('actionsTitle')}>
         <div className="flex flex-wrap items-center gap-2">

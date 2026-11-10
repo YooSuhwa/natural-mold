@@ -126,18 +126,20 @@ export function GuardrailToolPoliciesCard({
               onChange={(event) => add(event.target.value)}
             >
               <option value="">{t('pick')}</option>
-              {(['mcp_server', 'mcp_tool', 'tool', 'builtin'] as const).map((kind) => {
-                const items = free.filter((target) => target.kind === kind)
-                return items.length === 0 ? null : (
-                  <optgroup key={kind} label={t(`kind.${kind}`)}>
-                    {items.map((target) => (
-                      <option key={target.key} value={target.key}>
-                        {targetLabel(target)}
-                      </option>
-                    ))}
-                  </optgroup>
-                )
-              })}
+              {(['mcp_server', 'mcp_tool', 'tool', 'builtin', 'skill', 'agent'] as const).map(
+                (kind) => {
+                  const items = free.filter((target) => target.kind === kind)
+                  return items.length === 0 ? null : (
+                    <optgroup key={kind} label={t(`kind.${kind}`)}>
+                      {items.map((target) => (
+                        <option key={target.key} value={target.key}>
+                          {targetLabel(target)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )
+                },
+              )}
             </select>
           </label>
         ) : null}

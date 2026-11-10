@@ -107,6 +107,8 @@ class SkillRuntimeDescriptor:
     runtime_storage_path: Path
     execution_profile: dict[str, Any] | None = None
     credential_bindings: dict[str, ResolvedCredential] = field(default_factory=dict)
+    # The skill's own approval default (tool-governance-plan 3.8); a setting, not identity.
+    approval_default: dict[str, Any] | None = None
 
 
 @dataclass
@@ -253,6 +255,9 @@ def _build_descriptor_from_skill_dict(
         runtime_storage_path=original,
         execution_profile=(
             raw.get("execution_profile") if isinstance(raw.get("execution_profile"), dict) else None
+        ),
+        approval_default=(
+            raw.get("approval_default") if isinstance(raw.get("approval_default"), dict) else None
         ),
     )
 

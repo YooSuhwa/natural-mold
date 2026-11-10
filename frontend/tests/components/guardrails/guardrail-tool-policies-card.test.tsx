@@ -224,6 +224,29 @@ describe('GuardrailToolPoliciesCard (회사 도구별 정책)', () => {
     expect(toast.success).toHaveBeenCalledWith('도구별 정책을 삭제했습니다.')
   })
 
+  it('lets a policy name a skill or delegating to an agent, by its key', async () => {
+    toolPoliciesApi.targets.mockResolvedValue([
+      ...TARGETS,
+      { key: 'skill:k1', name: 'report', kind: 'skill', risk_level: 'code_execution' },
+      { key: 'agent:a1', name: 'Researcher', kind: 'agent', risk_level: null },
+    ])
+    render(<GuardrailToolPoliciesCard tenantId="tenant-1" isAdmin />)
+
+    const add = await screen.findByLabelText('정책 추가')
+    await waitFor(() => expect(add.querySelector('option[value="agent:a1"]')).not.toBeNull())
+    expect(add.querySelector('optgroup[label="스킬"] option[value="skill:k1"]')).not.toBeNull()
+    expect(
+      add.querySelector('optgroup[label="하위 에이전트로 맡기기"] option[value="agent:a1"]'),
+    ).not.toBeNull()
+
+    await pick('agent:a1')
+    await userEvent.selectOptions(editor().getByLabelText('사용 여부'), 'off')
+    await userEvent.click(editor().getByRole('button', { name: '저장' }))
+    await waitFor(() =>
+      expect(toolPoliciesApi.save.mock.calls.at(-1)?.slice(0, 2)).toEqual(['tenant-1', 'agent:a1']),
+    )
+  })
+
   it('keeps the editor open and says why when the save is refused', async () => {
     toolPoliciesApi.save.mockRejectedValue(new ApiError(422, 'TOOL_POLICY_INVALID', 'x'))
     render(<GuardrailToolPoliciesCard tenantId="tenant-1" isAdmin />)

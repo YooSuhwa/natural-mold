@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -33,6 +33,18 @@ class ToolApprovalTool(BaseModel):
     cells: list[ToolApprovalCell]
 
 
+class ToolApprovalPart(BaseModel):
+    """A skill (run through ``execute_in_skill``) or a child agent (reached through ``task``)."""
+
+    key: str  # ``skill:<id>`` / ``agent:<id>``: a setting names it by this key only
+    name: str
+    kind: Literal["skill", "agent"]
+    level: str | None = None  # a child agent has none of its own (its tools carry theirs)
+    locked: bool
+    allowed_modes: list[str] | None = None
+    cells: list[ToolApprovalCell]
+
+
 class ToolApprovalView(BaseModel):
     """The agent's settings, the company cap and the effective table ("실제 적용")."""
 
@@ -43,6 +55,7 @@ class ToolApprovalView(BaseModel):
     company_actions: dict[str, str]
     company_always_ask: list[str]
     tools: list[ToolApprovalTool]
+    parts: list[ToolApprovalPart] = []
 
 
 class ApprovalDefaultUpdate(BaseModel):

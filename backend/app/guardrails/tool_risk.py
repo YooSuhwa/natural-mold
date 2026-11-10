@@ -26,7 +26,7 @@ from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
 
-from app.tools.keys import ToolRef, ref_from_config, ref_of
+from app.tools.keys import ToolRef, ref_from_config, ref_of, skill_ref
 from app.tools.risk import (
     ToolRiskLevel,
     default_deepagents_interrupt_policy,
@@ -161,6 +161,11 @@ class ToolRiskPolicy:
             return not found.enabled
         return self.action(level) == "block"
 
+    def switched_off(self, ref: ToolRef) -> bool:
+        """The company turned this very resource (or the tool it is a part of) off."""
+        found = self.tool_policy(ref)
+        return found is not None and found.enabled is False
+
     def tool_action(self, ref: ToolRef, level: ToolRiskLevel | str) -> RiskAction:
         """The level's action as this tool gets it: a tool the company switched on inside a
         blocked level asks (the exception opens the tool, not its approval)."""
@@ -191,6 +196,16 @@ class ToolRiskPolicy:
             and not self.tools
             and all(self.action(level) == DEFAULT_ACTIONS[level] for level in LEVELS)
         )
+
+
+def skills_on(
+    company: ToolRiskPolicy | None, skills: list[dict[str, Any]] | None
+) -> list[dict[str, Any]] | None:
+    """The agent's skills minus those the company switched off: a run is not told they
+    exist and cannot run them (tool-governance-plan 3.8)."""
+    if company is None or not company.tools or not skills:
+        return skills
+    return [skill for skill in skills if not company.switched_off(skill_ref(skill))]
 
 
 def actions_from_json(raw: Any) -> dict[str, RiskAction]:

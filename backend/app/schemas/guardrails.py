@@ -128,7 +128,7 @@ class AgentGuardrailUpdate(BaseModel):
 # --- company policy per tool (tool-governance-plan 3.4) ---------------------------------
 
 ApprovalModeName = Literal["always", "when", "never"]
-ToolPolicyKind = Literal["mcp_server", "mcp_tool", "tool", "builtin"]
+ToolPolicyKind = Literal["mcp_server", "mcp_tool", "tool", "builtin", "skill", "agent"]
 
 
 class ToolPolicyUpdate(BaseModel):

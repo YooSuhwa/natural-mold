@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { render, screen, waitFor } from '../../test-utils'
+import { render, screen, userEvent, waitFor } from '../../test-utils'
 import { SkillTabPageClient } from '@/app/skills/[skillId]/_components/skill-tab-page-client'
 import { ApiError } from '@/lib/api/errors'
 import type { SkillDetailTabRender } from '@/components/skill/skill-detail-tab-shell'
@@ -8,6 +8,7 @@ import type { SkillDetailTabRender } from '@/components/skill/skill-detail-tab-s
 /** Plan 13.9 row 5 — skill studio tabs: readable with can_view, edits with can_edit,
  * delete can_delete, publish can_share; no can_view → shared 403/404 state. */
 const state = vi.hoisted(() => ({
+  setDefault: vi.fn(),
   query: {} as Record<string, unknown>,
   permissions: null as string[] | null,
 }))
@@ -16,6 +17,7 @@ vi.mock('@/lib/hooks/use-skills', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/hooks/use-skills')>()),
   useSkill: () => state.query,
   useDeleteSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSetSkillApprovalDefault: () => ({ mutateAsync: state.setDefault, isPending: false }),
 }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 function editor({ children }: { children: SkillDetailTabRender }): ReactNode {
@@ -54,6 +56,7 @@ const skill = {
   kind: 'text',
   used_by_count: 0,
   publication_summary: null,
+  approval_default: { mode: 'always' },
 }
 
 function load(permissions: string[] | null) {
@@ -102,10 +105,21 @@ describe('skill studio settings tab', () => {
     expect(screen.queryByRole('button', { name: /공개하기/ })).not.toBeInTheDocument()
   })
 
+  it('editor sets the approval default of the skill', async () => {
+    state.setDefault.mockReset().mockResolvedValue(undefined)
+    load(['can_use', 'can_view', 'can_edit'])
+    render(<SkillTabPageClient skillId="skill-1" tab="settings" />)
+    const control = await screen.findByLabelText('이 스킬의 승인 기본값')
+    expect(control).toHaveValue('always')
+    await userEvent.selectOptions(control, 'none')
+    expect(state.setDefault).toHaveBeenCalledWith({ id: 'skill-1', value: null })
+  })
+
   it('viewer gets a read-only form', async () => {
     load(['can_use', 'can_view'])
     render(<SkillTabPageClient skillId="skill-1" tab="settings" />)
     await waitFor(() => expect(screen.getByLabelText('이름')).toBeDisabled())
+    expect(screen.queryByLabelText('이 스킬의 승인 기본값')).not.toBeInTheDocument()
   })
 })
 

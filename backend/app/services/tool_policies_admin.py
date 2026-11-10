@@ -32,6 +32,7 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.organization import Tenant
 from app.models.resource_policy import ResourcePolicy
+from app.models.skill import Skill
 from app.models.tool import Tool
 from app.schemas.guardrails import (
     ToolPolicyImpactAgent,
@@ -48,7 +49,7 @@ from app.tenancy.admin_context import (
     TenantAdminTarget,
     load_tenant_admin_context,
 )
-from app.tools.keys import builtin_key, server_key
+from app.tools.keys import DELEGATION_TOOL, SKILL_TOOL, builtin_key, server_key
 from app.tools.risk import (
     ToolRiskLevel,
     execute_in_skill_risk,
@@ -79,6 +80,36 @@ def _mcp_level(tool: McpTool, server: McpServer) -> ToolRiskLevel:
         metadata=tool.annotations_json,
         config={"url": server.url, "name": tool.name, "description": tool.description},
     ).risk_level
+
+
+def _skill_target(skill: Skill) -> ToolPolicyTarget:
+    """A skill runs code through ``execute_in_skill``, whatever it says of itself (3.8)."""
+    return ToolPolicyTarget(
+        key=f"skill:{skill.id}",
+        name=skill.name,
+        kind="skill",
+        server_key=builtin_key(SKILL_TOOL),
+        risk_level=execute_in_skill_risk().risk_level.value,
+    )
+
+
+def _agent_target(agent: Agent) -> ToolPolicyTarget:
+    """An agent as something another agent hands work to: asking is before delegation."""
+    return ToolPolicyTarget(
+        key=f"agent:{agent.id}",
+        name=agent.name,
+        kind="agent",
+        server_key=builtin_key(DELEGATION_TOOL),
+    )
+
+
+def _agents(tenant_id: uuid.UUID) -> Any:
+    # A hidden or archived agent is nobody's child: no policy names it.
+    return (
+        Agent.tenant_id == tenant_id,
+        Agent.runtime_profile == "standard",
+        Agent.archived_at.is_(None),
+    )
 
 
 def _builtins() -> list[ToolPolicyTarget]:
@@ -162,6 +193,14 @@ async def _targets(db: AsyncSession, tenant_id: uuid.UUID) -> list[ToolPolicyTar
                 ).risk_level.value,
             )
         )
+    skills = await db.scalars(
+        select(Skill).where(_visible(Skill, tenant_id)).order_by(Skill.name, Skill.id)
+    )
+    result.extend(_skill_target(skill) for skill in skills)
+    agents = await db.scalars(
+        select(Agent).where(*_agents(tenant_id)).order_by(Agent.name, Agent.id)
+    )
+    result.extend(_agent_target(agent) for agent in agents)
     return [*result, *_builtins()]
 
 
@@ -216,6 +255,16 @@ async def _target(db: AsyncSession, tenant_id: uuid.UUID, key: str) -> ToolPolic
                 {"definition_key": row.definition_key}
             ).risk_level.value,
         )
+    if kind == "skill":
+        skill = await db.scalar(select(Skill).where(Skill.id == row_id, _visible(Skill, tenant_id)))
+        if skill is None:
+            raise missing
+        return _skill_target(skill)
+    if kind == "agent":
+        agent = await db.scalar(select(Agent).where(Agent.id == row_id, *_agents(tenant_id)))
+        if agent is None:
+            raise missing
+        return _agent_target(agent)
     raise missing
 
 
@@ -272,6 +321,8 @@ def warnings_for(target: ToolPolicyTarget, policy: ToolPolicy) -> list[ToolPolic
     """Allowed, but said out loud: a tool that changes things will run without asking."""
     if policy.enabled is False or policy.default_mode != "never":
         return []
+    if target.kind == "agent":
+        return []  # delegation itself changes nothing; the child's tools keep their own asks
     if target.risk_level == ToolRiskLevel.READ_ONLY.value:
         return []
     return [ToolPolicyWarning(code="risky_without_asking", risk_level=target.risk_level)]
@@ -359,7 +410,9 @@ async def impact(
             if (found := own.get(f"mcp:{tool.id}")) is None
             or (found.enabled is None and found.allowed is None)
         }
-    by_name = {name: tool_key for tool_key, name in names.items()}
+    # A skill or a child agent is named by its key alone, never by a name (3.8).
+    parts = target.kind in ("skill", "agent")
+    by_name = {} if parts else {name: tool_key for tool_key, name in names.items()}
     hits: list[ToolPolicyImpactAgent] = []
     agents = await db.scalars(
         select(Agent)

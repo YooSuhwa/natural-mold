@@ -24,6 +24,7 @@ from app.agent_runtime.runtime_preparation_support import RuntimePreparationBind
 from app.agent_runtime.tools.memory import build_memory_search_tool
 from app.guardrails.legacy import covered_by_guardrails
 from app.guardrails.run import effective_rules
+from app.guardrails.tool_risk import skills_on
 from app.tools.risk import unattended_interrupt_policy
 
 _STORED_FILESYSTEM_INTERRUPT_NAMES = frozenset(
@@ -57,6 +58,8 @@ async def prepare_runtime_components_impl(
 ) -> RuntimeComponents:
     """Build standard or trigger components before Deep Agents graph creation."""
     assert_pre_marker("prepare_runtime_components_impl")
+    # Skills the company switched off are not part of the run (plan 3.8).
+    cfg.agent_skills = skills_on(cfg.tool_risk, cfg.agent_skills)
 
     last_mark = bindings.perf_counter()
 

@@ -36,6 +36,7 @@ from app.approvals.unattended import UnattendedMode, apply_unattended
 from app.guardrails.approval import has_approval_rules, with_approvals
 from app.guardrails.middleware import Guard, guard_stack
 from app.guardrails.tool_risk import ToolRiskPolicy, apply_to_agent
+from app.tools.keys import ToolRef, agent_ref
 
 type _DeepAgentSubagent = SubAgent | CompiledSubAgent | AsyncSubAgent
 
@@ -226,6 +227,20 @@ def _guarded(
     return guarded_root, children
 
 
+# The trusted key a linked child agent's spec carries (``runtime_subagent_normalization``).
+_ACTOR_ID_KEY = "_moldy_actor_id"
+
+
+def _children(subagents: Any) -> dict[str, ToolRef]:
+    """The run's linked child agents by the name ``task`` calls them (plan 3.8)."""
+    found: dict[str, ToolRef] = {}
+    for spec in subagents or ():
+        name, agent_id = spec.get("name"), spec.get(_ACTOR_ID_KEY)
+        if isinstance(name, str) and agent_id:
+            found[name] = agent_ref(agent_id, name)
+    return found
+
+
 def _with_child_approvals(
     subagents: list[dict[str, Any]], parent: dict[str, Any], guard: Guard
 ) -> list[dict[str, Any]]:
@@ -345,7 +360,9 @@ def build_agent_impl(
             # The root agent's own tool approval settings, under the company step (plan 3.1).
             from app.approvals import tool_modes
 
-            settled = tool_modes.apply(interrupt_on, tools, tool_approval)
+            settled = tool_modes.apply(
+                interrupt_on, tools, tool_approval, children=_children(subagents)
+            )
             interrupt_on = settled.interrupt_on
             if tool_approval.defaults or (tool_approval.company and tool_approval.company.tools):
                 # A child's tools keep the company's per-tool policy, and their own defaults
@@ -366,11 +383,11 @@ def build_agent_impl(
                     }
                     for spec in compatible_subagents
                 ]
-            if settled.auto_allowed and tool_approval.audit is not None:
+            if (settled.auto_allowed or settled.auto_parts) and tool_approval.audit is not None:
                 compatible_middleware = [
                     *compatible_middleware,
                     tool_modes.AutoAllowedAuditMiddleware(
-                        settled.auto_allowed, tool_approval.audit
+                        settled.auto_allowed, tool_approval.audit, settled.auto_parts
                     ),
                 ]
         if guard is not None and has_approval_rules(guard.rules) and isinstance(interrupt_on, dict):

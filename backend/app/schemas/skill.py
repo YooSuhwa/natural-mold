@@ -108,6 +108,8 @@ class SkillResponse(BaseModel):
     size_bytes: int
     used_by_count: int
     package_metadata: dict[str, Any] | None
+    # The skill's own approval default (tool-governance-plan 3.8); None: the risk level decides.
+    approval_default: dict[str, Any] | None = None
     credential_requirements: list[dict[str, Any]] | None = None
     execution_profile: dict[str, Any] | None = None
     current_revision_id: uuid.UUID | None = None

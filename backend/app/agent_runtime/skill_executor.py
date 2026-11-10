@@ -30,6 +30,7 @@ from app.marketplace.skill_runtime import (
     SkillRuntimeDescriptor,
     SkillToolContext,
 )
+from app.tools.keys import attach_parts, skill_ref
 from app.tools.risk import attach_tool_risk, execute_in_skill_risk
 
 __all__ = [
@@ -331,5 +332,20 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             "Use this when SKILL.md instructs you to run a script. "
             "Output files (images etc.) will be in OUTPUT_FILES."
         ),
+    )
+    # Which skill a call means decides whether it asks (``app.approvals.tool_modes``).
+    attach_parts(
+        tool,
+        {
+            slug: skill_ref(
+                {
+                    "id": found.id,
+                    "slug": found.slug,
+                    "name": found.name,
+                    "approval_default": found.approval_default,
+                }
+            )
+            for slug, found in ctx.descriptors.items()
+        },
     )
     return attach_tool_risk(tool, execute_in_skill_risk())

@@ -28,6 +28,19 @@ export interface ToolApprovalTool {
   cells: ToolApprovalCell[]
 }
 
+/** A skill (run through `execute_in_skill`) or a sub-agent (reached through `task`). */
+export interface ToolApprovalPart {
+  /** `skill:<id>` or `agent:<id>`; a setting names it by this key only. */
+  key: string
+  name: string
+  kind: 'skill' | 'agent'
+  /** A sub-agent has no level of its own (its tools carry theirs). */
+  level: string | null
+  locked: boolean
+  allowed_modes?: ('always' | 'when' | 'never')[] | null
+  cells: ToolApprovalCell[]
+}
+
 export interface ToolApprovalView {
   settings: ToolApprovalPolicyV1 | null
   /** Saved per-tool entries that name no single tool of the agent. */
@@ -35,6 +48,7 @@ export interface ToolApprovalView {
   company_actions: Record<string, string>
   company_always_ask: string[]
   tools: ToolApprovalTool[]
+  parts?: ToolApprovalPart[]
 }
 
 export interface ToolGrant {

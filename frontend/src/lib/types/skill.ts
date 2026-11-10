@@ -6,6 +6,7 @@ import type {
   ResourceOriginSummary,
   ResourcePublicationSummary,
 } from './marketplace'
+import type { ToolApprovalToolV1 } from './runtime-policy'
 import type { SkillHealthSummary, SkillLatestEvaluationSummary } from './skill-evaluation'
 
 export type SkillKind = 'text' | 'package'
@@ -35,6 +36,8 @@ export interface Skill {
   package_metadata: Record<string, unknown> | null
   credential_requirements?: readonly SkillCredentialRequirement[] | null
   execution_profile: ExecutionProfile | null
+  /** The skill's own approval default (skill editors set it). */
+  approval_default?: ToolApprovalToolV1 | null
   current_revision_id?: string | null
   latest_evaluation_summary?: SkillLatestEvaluationSummary | null
   health?: SkillHealthSummary | null

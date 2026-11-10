@@ -121,6 +121,8 @@ def _portable_tool_approval(agent: Agent, tools: dict[str, Any]) -> dict[str, An
             name = names.get(key)
             if name is None:
                 continue
+        elif key.startswith(("skill:", "agent:")):
+            continue  # a part is named by its row alone; the installer's rows are other rows
         else:
             name = key
         current = portable.get(name)

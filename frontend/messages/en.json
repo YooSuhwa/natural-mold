@@ -3954,7 +3954,9 @@
         "mcp_server": "MCP servers",
         "mcp_tool": "MCP tools",
         "tool": "Tools",
-        "builtin": "Built-in tools"
+        "builtin": "Built-in tools",
+        "skill": "Skills",
+        "agent": "Delegating to agents"
       },
       "edit": "Edit",
       "editOf": "Edit the policy for {tool}",
@@ -4701,6 +4703,7 @@
       },
       "settings": {
         "metadataTitle": "Metadata",
+        "approvalTitle": "Approval before running",
         "credentialsTitle": "Credential bindings",
         "actionsTitle": "Publish · Export · Delete",
         "deleteHint": "Connected to {count} agents — deleting also removes those links.",
@@ -8055,10 +8058,17 @@
     },
     "tools": "Per tool",
     "noTools": "No tools are attached.",
+    "parts": "Skills and sub-agents",
+    "partsHint": "Choose whether to ask before a skill runs or before work is handed to a sub-agent. With nothing set, a skill follows the execute_in_skill setting and a sub-agent is not asked about.",
+    "partKind": {
+      "skill": "Skill",
+      "agent": "Sub-agent"
+    },
     "toolSetting": "Approval setting for {tool}",
     "default": {
       "hint": "The value an agent starts from when it attaches this. Each agent can change it, and it applies only within the company policy.",
       "toolLabel": "Approval default",
+      "skillLabel": "Approval default for this skill",
       "serverLabel": "Approval default for this server's tools",
       "none": "No default",
       "followServer": "Server default",

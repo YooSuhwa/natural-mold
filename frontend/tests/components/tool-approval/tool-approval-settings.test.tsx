@@ -5,6 +5,7 @@ import { render, screen, userEvent, within } from '../../test-utils'
 
 const state = vi.hoisted(() => ({
   tools: [] as unknown[],
+  parts: [] as unknown[],
   grants: [] as unknown[],
   grant: vi.fn(),
 }))
@@ -12,7 +13,7 @@ const state = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ useParams: () => ({ agentId: 'agent-1' }) }))
 vi.mock('@/components/chat/conversation-context', () => ({ useChatConversationId: () => 'conv-1' }))
 vi.mock('@/lib/hooks/use-tool-approval', () => ({
-  useToolApproval: () => ({ data: { tools: state.tools } }),
+  useToolApproval: () => ({ data: { tools: state.tools, parts: state.parts } }),
   useToolGrants: () => ({ data: state.grants }),
   useToolGrantMutations: () => ({
     grant: { isPending: false, mutate: state.grant },
@@ -38,6 +39,7 @@ const POLICY: RuntimePolicyV1 = {
 
 describe('ToolApprovalSettings', () => {
   beforeEach(() => {
+    state.parts = []
     state.tools = [
       {
         key: 'tool:t1',
@@ -76,6 +78,63 @@ describe('ToolApprovalSettings', () => {
     )
     expect(screen.getByLabelText('execute_in_skill 승인 설정')).toBeDisabled()
     expect(screen.getAllByText('회사 정책: 이 위험 등급은 승인 필요').length).toBeGreaterThan(0)
+  })
+
+  it('sets a skill and a child agent by their keys, never by a name', async () => {
+    state.parts = [
+      {
+        key: 'skill:k1',
+        // The same name as a tool: the setting must still land on the skill's key.
+        name: 'send_mail',
+        kind: 'skill',
+        level: 'code_execution',
+        locked: false,
+        cells: [cell('chat', 'ask')],
+      },
+      {
+        key: 'agent:a1',
+        name: 'Researcher',
+        kind: 'agent',
+        level: null,
+        locked: false,
+        cells: [cell('chat', 'auto')],
+      },
+      {
+        key: 'skill:k2',
+        name: 'locked_skill',
+        kind: 'skill',
+        level: 'code_execution',
+        locked: true,
+        allowed_modes: ['always'],
+        cells: [cell('chat', 'ask', '회사 정책: 이 도구는 고정')],
+      },
+    ]
+    const onChange = vi.fn()
+    const value = {
+      ...POLICY,
+      tool_approval: { tools: { 'skill:k1': { mode: 'always' as const } } },
+    }
+    render(<ToolApprovalSettings agentId="agent-1" value={value} onValueChange={onChange} />)
+
+    const parts = within(screen.getByRole('list', { name: '스킬과 하위 에이전트' }))
+    expect(parts.getByText('하위 에이전트')).toBeInTheDocument()
+    expect(parts.getByLabelText('send_mail 승인 설정')).toHaveValue('always')
+    // A saved skill key is a known setting, not one that "needs checking".
+    expect(screen.queryByRole('list', { name: '확인이 필요한 설정' })).not.toBeInTheDocument()
+
+    await userEvent.selectOptions(parts.getByLabelText('Researcher 승인 설정'), 'always')
+    expect(onChange.mock.calls[0][0].tool_approval.tools).toEqual({
+      'skill:k1': { mode: 'always' },
+      'agent:a1': { mode: 'always' },
+    })
+    await userEvent.selectOptions(parts.getByLabelText('send_mail 승인 설정'), 'default')
+    expect(onChange.mock.calls[1][0].tool_approval.tools ?? {}).toEqual({})
+    expect(parts.getByLabelText('locked_skill 승인 설정')).toBeDisabled()
+  })
+
+  it('shows no skill section for an agent without skills or child agents', () => {
+    render(<ToolApprovalSettings agentId="agent-1" value={POLICY} onValueChange={vi.fn()} />)
+    expect(screen.queryByText('스킬과 하위 에이전트')).not.toBeInTheDocument()
   })
 
   it('offers only the modes the company allows for a tool', () => {
