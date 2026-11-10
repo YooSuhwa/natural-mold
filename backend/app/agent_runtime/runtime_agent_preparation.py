@@ -77,7 +77,7 @@ def _tool_approval_kwargs(cfg: Any) -> dict[str, Any]:
     from app.approvals.tool_modes import plan_for
 
     plan = plan_for(cfg)
-    return {"tool_approval": plan} if plan is not None and plan.relaxes else {}
+    return {"tool_approval": plan} if plan is not None and plan.acts else {}
 
 
 def _structured_output_kwargs(cfg: AgentConfig) -> dict[str, Any]:

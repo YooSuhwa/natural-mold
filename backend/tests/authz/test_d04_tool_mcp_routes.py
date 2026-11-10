@@ -46,8 +46,10 @@ def test_every_d04_route_declares_a_reviewed_non_legacy_policy() -> None:
         if isinstance(route, APIRoute) and route.endpoint.__module__ in D04_MODULES
     ]
     kinds = {policy_kind(route.endpoint) for route in routes}
-    # +1 SELF: GET /api/credentials/company-shared (P2-3); +1 RES: tool review (D11)
-    assert len(routes) == 56
+    # +1 SELF: GET /api/credentials/company-shared (P2-3); +1 RES: tool review (D11);
+    # +3 RES: approval defaults of a tool, an MCP server and an MCP tool (tool governance T2)
+    # +7 RES: registration state/re-request of a tool and a server, blocks of an MCP tool (T5)
+    assert len(routes) == 66
     assert kinds == {"CATALOG", "CANDIDATES", "CAP", "RES", "SELF", "SUPER", "PUBLIC"}
 
 

@@ -19,6 +19,7 @@ from app.agent_runtime.mcp_tool_cache import identity_cache_key
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.mcp import decisions, gateway, sdk
 from app.mcp.apps import normalize_tool_ui_meta, tool_allows_visibility
+from app.tools.keys import attach_tool_ref, ref_from_config
 from app.tools.risk import attach_tool_risk, mcp_tool_risk
 
 logger = logging.getLogger(__name__)
@@ -257,6 +258,7 @@ def _wrap_selected_tool(
             tool_config or {}, risk_level=str(risk.risk_level.value), gateway=gateway.enabled()
         ),
     )
+    attach_tool_ref(wrapped, ref_from_config(risk_config, name=t.name))
     return attach_tool_risk(wrapped, risk)
 
 
@@ -334,6 +336,13 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
                     else _create_mcp_auth_stub(
                         tool_name, auth_error, plan.tool_configs[(key, tool_name)]
                     )
+                )
+                attach_tool_ref(
+                    stub,
+                    ref_from_config(
+                        {"definition_key": "mcp", **plan.tool_configs[(key, tool_name)]},
+                        name=tool_name,
+                    ),
                 )
                 collected.append((stub, key))
 

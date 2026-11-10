@@ -19,6 +19,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 
 from app.credentials.mcp_oauth_spec import token_destination_allowed
 from app.outbound.destination import CredentialDestination, OutboundBlockedError, check_destination
+from app.tools.keys import attach_tool_ref, ref_from_config
 from app.tools.risk import attach_tool_risk, mcp_tool_risk
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,10 @@ def split_blocked(configs: list[dict]) -> tuple[list[dict], list[BaseTool]]:
             continue
         name = str(config.get("mcp_tool_name") or config.get("name"))
         logger.warning("MCP tool %s blocked by credential destination: %s", name, reason)
-        stubs.append(_blocked_stub(name, reason))
+        stub = _blocked_stub(name, reason)
+        stubs.append(
+            attach_tool_ref(stub, ref_from_config({"definition_key": "mcp", **config}, name=name))
+        )
     return allowed, stubs
 
 

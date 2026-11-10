@@ -97,6 +97,10 @@ class Skill(NullableOrgScope, Base):
     # text skills accept a user-supplied label.
     version: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
+    # The skill's own approval default: ``{"mode", "rule"}`` or NULL (tool-governance-plan
+    # 3.3, 3.8). A starting value for agents that attach it, not a floor.
+    approval_default: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # Frontmatter / package metadata cache (e.g. ``{"name", "version", "files"}``).
     package_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=dict)
 

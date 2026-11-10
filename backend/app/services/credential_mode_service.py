@@ -17,6 +17,7 @@ from __future__ import annotations
 from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.approvals import registrations
 from app.authz import audit_actions
 from app.authz.error_codes import authorization_error
 from app.authz.org_context import OrgContext
@@ -28,6 +29,7 @@ from app.credentials.registry import registry as credential_registry
 from app.credentials.validation import require_user_credential
 from app.exceptions import AppError
 from app.models.credential import Credential
+from app.models.mcp_server import McpServer
 from app.models.tool import Tool
 from app.schemas.credential_binding import BindingResourceType, CredentialModeIn, CredentialModeOut
 from app.services import audit_service
@@ -103,6 +105,7 @@ async def set_mode(
     request: Request | None = None,
 ) -> CredentialModeOut:
     previous = row.credential_mode
+    before = registrations.fingerprint(row) if isinstance(row, McpServer) else None
     _require_consistent(row, payload.credential_mode)
     if previous == "per_user" != payload.credential_mode and row.credential_id is not None:
         await _require_reshare(db, ctx, authz, row)
@@ -112,6 +115,8 @@ async def set_mode(
         )
     row.credential_mode = payload.credential_mode
     await db.flush()
+    if isinstance(row, McpServer) and before is not None:
+        await registrations.recheck(db, ctx, row, before=before)  # how it authenticates (3.7)
     if payload.credential_mode != "per_user":
         await require_unshared_for_personal(db, ctx, row)  # 10.4: lends the owner's account
     kind = kind_of(row)

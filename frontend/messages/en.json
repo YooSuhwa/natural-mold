@@ -171,6 +171,10 @@
   },
   "common": {
     "apiError": {
+      "codes": {
+        "registrationNotApproved": "A tool or MCP server waiting for an administrator cannot be attached yet.",
+        "registrationReviewRequired": "Tools of an MCP server under administrator approval are reviewed by administrators."
+      },
       "unauthenticated": {
         "title": "Please sign in again",
         "description": "Your session has expired."
@@ -3603,7 +3607,24 @@
         "newDescription": "New description",
         "approve": "Approve",
         "reject": "Reject",
-        "managersOnly": "People who manage this server can review it."
+        "managersOnly": "People who manage this server can review it.",
+        "administratorsOnly": "This server goes through administrator approval. Administrators review this tool in the approval inbox."
+      },
+      "blocks": {
+        "toggle": "Restrict",
+        "toggleLabel": "Restrict who can use {tool}",
+        "help": "People and teams added here cannot use this tool. Runs already in progress are refused too.",
+        "pickerLabel": "Person or team to keep from {tool}",
+        "empty": "Nobody is restricted.",
+        "loadFailed": "Could not load the restrictions.",
+        "person": "Person",
+        "team": "Team · {count, plural, one {# member} other {# members}}",
+        "unknownPrincipal": "Unknown",
+        "unblock": "Remove",
+        "unblockLabel": "Remove the restriction on {name}",
+        "ownerRefused": "The server's owner cannot be restricted.",
+        "blockFailed": "Could not add the restriction.",
+        "unblockFailed": "Could not remove the restriction."
       }
     },
     "importDialog": {
@@ -3922,6 +3943,95 @@
       "alwaysAskPlaceholder": "send_mail, http_request",
       "alwaysAskHint": "Tool names separated by commas. Agent settings and conversation grants cannot lift them."
     },
+    "toolPolicies": {
+      "title": "Policy per tool",
+      "description": "For each tool or MCP server, set whether it can be used, which approval modes can be picked and which mode it starts from. It applies before the action per risk level and agent settings cannot change it. A change applies from the next run; switching a tool off also applies when a run waiting for approval continues.",
+      "readOnly": "The policies your company set per tool. Company admins change them.",
+      "empty": "No tool has a policy of its own. Every tool follows the action for its risk level.",
+      "add": "Add a policy",
+      "pick": "Pick a tool or an MCP server",
+      "kind": {
+        "mcp_server": "MCP servers",
+        "mcp_tool": "MCP tools",
+        "tool": "Tools",
+        "builtin": "Built-in tools",
+        "skill": "Skills",
+        "agent": "Delegating to agents"
+      },
+      "edit": "Edit",
+      "editOf": "Edit the policy for {tool}",
+      "off": "Off",
+      "on": "On",
+      "allowedSummary": "Allowed: {modes}",
+      "defaultSummary": "Default: {mode}",
+      "enabled": {
+        "label": "Use",
+        "follow": "Follow the risk level",
+        "on": "On (even when the level is blocked)",
+        "off": "Off"
+      },
+      "offHint": "Nobody can use this tool and agents do not see it.",
+      "allowed": "Approval modes that can be picked",
+      "allowedHint": "A mode you leave out cannot be used in agent settings, tool defaults or conversation grants. Leaving one mode fixes every agent to it.",
+      "default": "Default mode",
+      "defaultNone": "None (follows the risk level)",
+      "needsDefault": "Pick a default mode when you limit the modes.",
+      "needsRule": "A conditional default needs a condition. Enter an argument name.",
+      "save": "Save",
+      "confirm": "Save anyway",
+      "remove": "Remove the policy",
+      "cancel": "Cancel",
+      "saved": "Saved the tool policy.",
+      "removed": "Removed the tool policy.",
+      "impactTitle": "Saving stops {count} agent settings from applying.",
+      "impact": {
+        "disabled": "{agent} · {tool}: the tool can no longer be used ({mode} setting).",
+        "mode_not_allowed": "{agent} · {tool}: the {mode} setting is not allowed and will be ignored."
+      },
+      "warning": {
+        "risky_without_asking": "This tool's risk level is {level}, and it will run without asking. This is recorded in the audit log."
+      }
+    },
+    "registration": {
+      "title": "Registration",
+      "description": "Set who may register tools, MCP servers, skills and agents, whether an administrator checks them first, and whether the person who registered one may share it. A change applies from the next registration.",
+      "readOnly": "The registration rules your company set. A company administrator changes them.",
+      "kind": {
+        "mcp_server": "MCP servers",
+        "tool": "Tools",
+        "skill": "Skills",
+        "agent": "Agents"
+      },
+      "field": {
+        "who": "Who may register",
+        "review": "Administrator check",
+        "member_sharing": "Sharing what members register"
+      },
+      "choice": {
+        "who": { "members": "Every member", "granted": "Permitted people only" },
+        "review": { "off": "Use without a check", "on": "Use after a check" },
+        "member_sharing": { "shareable": "Can be shared", "private": "Owner only" }
+      },
+      "hint": {
+        "who": {
+          "members": "Every company member can register one.",
+          "granted": "Only people with the registration permission and company administrators can register one."
+        },
+        "review": {
+          "off": "It can be used as soon as it is registered.",
+          "on": "What a person without the registration permission registers can be used after an administrator approves it."
+        },
+        "member_sharing": {
+          "shareable": "The person who registered it can share it with other people or teams.",
+          "private": "What a person without the registration permission registers stays with them and cannot be shared."
+        }
+      },
+      "choiceLabel": "{kind}: {field}",
+      "capabilityNote": "The registration permission comes from an organization role (builder, admin) or an individual grant.",
+      "rolesLink": "Go to roles",
+      "save": "Save registration rules",
+      "saved": "Registration rules saved."
+    },
     "policy": {
       "title": "Company policy",
       "description": "Applies to every agent run. Changes apply from the next run; running runs and runs waiting for approval keep their rules.",
@@ -4061,7 +4171,9 @@
       "GUARDRAIL_TEMPLATE_VERSION_CURRENT": "That version is already the published one.",
       "GUARDRAIL_TEMPLATE_VERSION_NOT_FOUND": "Version not found.",
       "GUARDRAIL_POLICY_ENFORCED": "The company policy fixes the template.",
-      "GUARDRAIL_RULE_LOCKED": "Rules the company locked cannot be changed."
+      "GUARDRAIL_RULE_LOCKED": "Rules the company locked cannot be changed.",
+      "TOOL_POLICY_INVALID": "The tool policy could not be saved. Check the values.",
+      "TOOL_POLICY_TARGET_NOT_FOUND": "The tool was not found."
     }
   },
   "guardrailModel": {
@@ -4591,6 +4703,7 @@
       },
       "settings": {
         "metadataTitle": "Metadata",
+        "approvalTitle": "Approval before running",
         "credentialsTitle": "Credential bindings",
         "actionsTitle": "Publish · Export · Delete",
         "deleteHint": "Connected to {count} agents — deleting also removes those links.",
@@ -7271,7 +7384,45 @@
       "trigger": "Schedule",
       "api": "API",
       "subagent": "Subagent",
-      "workflow": "Workflow"
+      "workflow": "Workflow",
+      "registration": "Registration"
+    },
+    "registration": {
+      "unnamed": "Unnamed registration",
+      "type": {
+        "mcp_server": "MCP server",
+        "tool": "Tool"
+      },
+      "reason": {
+        "new": "New registration",
+        "changed": "Connection changed",
+        "tools": "Tool definitions changed"
+      },
+      "registrant": "Registered by",
+      "unknownRegistrant": "Unknown",
+      "transport": "Transport",
+      "url": "Address",
+      "command": "Command",
+      "definition": "Tool kind",
+      "toolDescription": "Description",
+      "credential": "Credential",
+      "credentialShared": "everyone uses the registrant's account",
+      "credentialPerUser": "each person connects their own",
+      "noCredential": "None",
+      "headerKeys": "Header names",
+      "envKeys": "Environment variable names",
+      "tools": "{count, plural, one {# tool} other {# tools}}",
+      "readOnly": "Read-only",
+      "change": {
+        "new": "New",
+        "changed": "Changed"
+      },
+      "noteLabel": "Note to the registrant",
+      "notePlaceholder": "Why you reject it or what to fix (optional, up to 200 characters)",
+      "note": "Administrator's note: {note}",
+      "approved": "Registration approved",
+      "rejected": "Registration rejected",
+      "stale": "This registration changed. Review the new details again."
     },
     "status": {
       "pending": "Waiting",
@@ -7869,6 +8020,26 @@
       "runOnly": "Run only"
     }
   },
+  "registration": {
+    "state": {
+      "pending": "Awaiting approval",
+      "rejected": "Registration rejected"
+    },
+    "notice": {
+      "pending": {
+        "title": "Waiting for an administrator",
+        "body": "Until it is approved it cannot be attached to agents and no run uses it. You can still test the connection and edit it."
+      },
+      "rejected": {
+        "title": "An administrator rejected this registration",
+        "body": "Fix it and ask again. Until it is approved it cannot be attached to agents."
+      },
+      "note": "Administrator's note: {note}",
+      "request": "Ask for approval again",
+      "requested": "Approval requested",
+      "requestFailed": "Could not request approval."
+    }
+  },
   "toolApproval": {
     "title": "Tool approval",
     "description": "Decide whether a person is asked before a tool runs. Approvals the company requires cannot be changed.",
@@ -7887,7 +8058,25 @@
     },
     "tools": "Per tool",
     "noTools": "No tools are attached.",
+    "parts": "Skills and sub-agents",
+    "partsHint": "Choose whether to ask before a skill runs or before work is handed to a sub-agent. With nothing set, a skill follows the execute_in_skill setting and a sub-agent is not asked about.",
+    "partKind": {
+      "skill": "Skill",
+      "agent": "Sub-agent"
+    },
     "toolSetting": "Approval setting for {tool}",
+    "default": {
+      "hint": "The value an agent starts from when it attaches this. Each agent can change it, and it applies only within the company policy.",
+      "toolLabel": "Approval default",
+      "skillLabel": "Approval default for this skill",
+      "serverLabel": "Approval default for this server's tools",
+      "none": "No default",
+      "followServer": "Server default",
+      "column": "Approval default",
+      "toolSetting": "Approval default for {tool}",
+      "saveFailed": "Could not save the approval default."
+    },
+    "companyAllows": "Modes your company allows: {modes}",
     "toolMode": {
       "default": "Default (follows the mode)",
       "always": "Always ask",
@@ -7903,6 +8092,9 @@
     },
     "effectiveFor": "Effective for {tool}",
     "effectiveHint": "Computed from the saved settings. Save to see your changes here.",
+    "unresolved": "Settings to check",
+    "unresolvedHint": "These settings do not point to a single attached tool (the tool was removed, or several tools share the name). Remove them and set the tool above.",
+    "unresolvedRemove": "Remove the {tool} setting",
     "kind": {
       "ask": "Ask",
       "auto": "Auto",

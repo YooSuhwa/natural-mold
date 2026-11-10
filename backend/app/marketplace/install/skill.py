@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz import registration
 from app.authz.catalog_scope import load_private_installation
 from app.authz.org_context import OrgContext
 from app.authz.skill_binding_scope import require_private_skill
@@ -100,6 +101,8 @@ async def _install_skill_item(
     """
 
     # ----- create new install -------------------------------------------
+    # Installing makes a skill row: the company's registration rule decides (plan 3.6).
+    await registration.admit(db, context, "skill")
     skill_id = uuid.uuid4()
     skill_dir = _skill_dir(skill_id, context.tenant_id)
     target = _target_for(skill_dir)

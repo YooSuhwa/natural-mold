@@ -11272,6 +11272,60 @@
         ]
       }
     },
+    "/api/mcp-servers/{server_id}/approval-default": {
+      "put": {
+        "description": "The default of every tool of this server that sets none of its own. Managers only.",
+        "operationId": "set_server_approval_default_api_mcp_servers__server_id__approval_default_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDefaultUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Server Approval Default",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
     "/api/mcp-servers/{server_id}/credential-mode": {
       "put": {
         "operationId": "put_mcp_server_credential_mode_api_mcp_servers__server_id__credential_mode_put",
@@ -11368,6 +11422,92 @@
         ]
       }
     },
+    "/api/mcp-servers/{server_id}/registration": {
+      "get": {
+        "description": "Whether the server waits for an administrator, and the last answer.",
+        "operationId": "get_server_registration_api_mcp_servers__server_id__registration_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Server Registration",
+        "tags": [
+          "mcp"
+        ]
+      },
+      "post": {
+        "description": "Ask the administrators again after a rejection or an expiry. Server editors only.",
+        "operationId": "request_server_registration_api_mcp_servers__server_id__registration_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Server Registration",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
     "/api/mcp-servers/{server_id}/test": {
       "post": {
         "operationId": "test_server_api_mcp_servers__server_id__test_post",
@@ -11411,9 +11551,246 @@
         ]
       }
     },
+    "/api/mcp-servers/{server_id}/tools/{tool_id}/approval-default": {
+      "put": {
+        "description": "One MCP tool's own approval default (beats its server's). Server managers only.",
+        "operationId": "set_server_tool_approval_default_api_mcp_servers__server_id__tools__tool_id__approval_default_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDefaultUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpToolResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Server Tool Approval Default",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/mcp-servers/{server_id}/tools/{tool_id}/blocks": {
+      "get": {
+        "description": "The people and teams kept from this tool. Server managers only.",
+        "operationId": "list_server_tool_blocks_api_mcp_servers__server_id__tools__tool_id__blocks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpToolBlockList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Server Tool Blocks",
+        "tags": [
+          "mcp"
+        ]
+      },
+      "post": {
+        "description": "Keep one person or team of the organization from this tool. Server managers only.\n\nTheir runs stop being given the tool and a call already under way is refused.",
+        "operationId": "block_server_tool_api_mcp_servers__server_id__tools__tool_id__blocks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpToolBlockCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpToolBlockView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Block Server Tool",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/mcp-servers/{server_id}/tools/{tool_id}/blocks/{grant_id}": {
+      "delete": {
+        "description": "Lift one block of this tool. Server managers only.",
+        "operationId": "unblock_server_tool_api_mcp_servers__server_id__tools__tool_id__blocks__grant_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tool Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "grant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unblock Server Tool",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
     "/api/mcp-servers/{server_id}/tools/{tool_id}/review": {
       "post": {
-        "description": "Approve or reject the tool version waiting for review (D11). Server managers only.",
+        "description": "Approve or reject the tool version waiting for review (D11). Server managers only.\n\nA server registered under review is the administrators' to review (plan G10): its\nmanager is the member whose registration is being checked.",
         "operationId": "review_server_tool_api_mcp_servers__server_id__tools__tool_id__review_post",
         "parameters": [
           {
@@ -18759,6 +19136,60 @@
         ]
       }
     },
+    "/api/skills/{skill_id}/approval-default": {
+      "put": {
+        "description": "The skill's own approval default (tool-governance-plan 3.8). Skill editors only.\n\nA setting, not content: it makes no revision.",
+        "operationId": "set_skill_approval_default_api_skills__skill_id__approval_default_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Skill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDefaultUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Skill Approval Default",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
     "/api/skills/{skill_id}/content": {
       "get": {
         "operationId": "get_text_content_api_skills__skill_id__content_get",
@@ -21946,6 +22377,116 @@
         ]
       }
     },
+    "/api/tenants/{tenant_id}/guardrails/registration": {
+      "get": {
+        "operationId": "get_registration_settings_api_tenants__tenant_id__guardrails_registration_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Registration Settings",
+        "tags": [
+          "company administration"
+        ]
+      },
+      "put": {
+        "operationId": "put_registration_settings_api_tenants__tenant_id__guardrails_registration_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Registration Settings",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
     "/api/tenants/{tenant_id}/guardrails/templates": {
       "get": {
         "operationId": "list_guardrail_templates_api_tenants__tenant_id__guardrails_templates_get",
@@ -22392,6 +22933,220 @@
           }
         },
         "summary": "List Guardrail Template Versions",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/tool-policies": {
+      "get": {
+        "operationId": "list_tool_policies_api_tenants__tenant_id__guardrails_tool_policies_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolPolicyListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tool Policies",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/tool-policies/targets": {
+      "get": {
+        "operationId": "list_tool_policy_targets_api_tenants__tenant_id__guardrails_tool_policies_targets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ToolPolicyTarget"
+                  },
+                  "title": "Response List Tool Policy Targets Api Tenants  Tenant Id  Guardrails Tool Policies Targets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tool Policy Targets",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/tool-policies/{resource_key}": {
+      "put": {
+        "operationId": "put_tool_policy_api_tenants__tenant_id__guardrails_tool_policies__resource_key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_key",
+            "required": true,
+            "schema": {
+              "title": "Resource Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolPolicySaved"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Tool Policy",
+        "tags": [
+          "company administration"
+        ]
+      }
+    },
+    "/api/tenants/{tenant_id}/guardrails/tool-policies/{resource_key}/impact": {
+      "post": {
+        "operationId": "preview_tool_policy_impact_api_tenants__tenant_id__guardrails_tool_policies__resource_key__impact_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_key",
+            "required": true,
+            "schema": {
+              "title": "Resource Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolPolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolPolicyImpactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Tool Policy Impact",
         "tags": [
           "company administration"
         ]
@@ -24974,6 +25729,61 @@
         ]
       }
     },
+    "/api/tools/{tool_id}/approval-default": {
+      "put": {
+        "description": "The tool's own approval default (tool-governance-plan 3.3). Tool editors only.",
+        "operationId": "set_tool_approval_default_api_tools__tool_id__approval_default_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDefaultUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolInstanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Tool Approval Default",
+        "tags": [
+          "tools",
+          "tools"
+        ]
+      }
+    },
     "/api/tools/{tool_id}/credential-mode": {
       "put": {
         "operationId": "put_tool_credential_mode_api_tools__tool_id__credential_mode_put",
@@ -25024,6 +25834,94 @@
         "summary": "Put Tool Credential Mode",
         "tags": [
           "credential-bindings"
+        ]
+      }
+    },
+    "/api/tools/{tool_id}/registration": {
+      "get": {
+        "description": "Whether the tool waits for an administrator, and the last answer (plan 3.7).",
+        "operationId": "get_tool_registration_api_tools__tool_id__registration_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tool Registration",
+        "tags": [
+          "tools",
+          "tools"
+        ]
+      },
+      "post": {
+        "description": "Ask the administrators again after a rejection or an expiry. Tool editors only.",
+        "operationId": "request_tool_registration_api_tools__tool_id__registration_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tool Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Tool Registration",
+        "tags": [
+          "tools",
+          "tools"
         ]
       }
     },
@@ -31722,6 +32620,27 @@
       "title": "ApprovalAxes",
       "type": "object"
     },
+    "ApprovalDefaultUpdate": {
+      "additionalProperties": false,
+      "description": "A tool's (or MCP server's) own approval default; ``null`` clears it.",
+      "properties": {
+        "default": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ToolApprovalToolV1-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "default"
+      ],
+      "title": "ApprovalDefaultUpdate",
+      "type": "object"
+    },
     "ApprovalPage": {
       "properties": {
         "items": {
@@ -31844,6 +32763,29 @@
             }
           ],
           "title": "Reason"
+        },
+        "resource_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resource Id"
+        },
+        "resource_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resource Type"
         },
         "source": {
           "title": "Source",
@@ -41090,6 +42032,18 @@
     },
     "McpServerDetailResponse": {
       "properties": {
+        "approval_default": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Default"
+        },
         "args": {
           "items": {},
           "title": "Args",
@@ -41245,6 +42199,16 @@
         },
         "name": {
           "title": "Name",
+          "type": "string"
+        },
+        "registration_state": {
+          "default": "approved",
+          "enum": [
+            "approved",
+            "pending",
+            "rejected"
+          ],
+          "title": "Registration State",
           "type": "string"
         },
         "status": {
@@ -41298,6 +42262,18 @@
     },
     "McpServerResponse": {
       "properties": {
+        "approval_default": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Default"
+        },
         "args": {
           "items": {},
           "title": "Args",
@@ -41453,6 +42429,16 @@
         },
         "name": {
           "title": "Name",
+          "type": "string"
+        },
+        "registration_state": {
+          "default": "approved",
+          "enum": [
+            "approved",
+            "pending",
+            "rejected"
+          ],
+          "title": "Registration State",
           "type": "string"
         },
         "status": {
@@ -41669,6 +42655,116 @@
       "title": "McpTestResponse",
       "type": "object"
     },
+    "McpToolBlockCreate": {
+      "additionalProperties": false,
+      "description": "Keep one person or team from this tool (tool-governance-plan 3.6).",
+      "properties": {
+        "principal_id": {
+          "format": "uuid",
+          "title": "Principal Id",
+          "type": "string"
+        },
+        "principal_type": {
+          "enum": [
+            "user",
+            "group"
+          ],
+          "title": "Principal Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "principal_type",
+        "principal_id"
+      ],
+      "title": "McpToolBlockCreate",
+      "type": "object"
+    },
+    "McpToolBlockList": {
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/McpToolBlockView"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "McpToolBlockList",
+      "type": "object"
+    },
+    "McpToolBlockView": {
+      "properties": {
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "grant_id": {
+          "format": "uuid",
+          "title": "Grant Id",
+          "type": "string"
+        },
+        "granted_at": {
+          "format": "date-time",
+          "title": "Granted At",
+          "type": "string"
+        },
+        "granted_by": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Granted By"
+        },
+        "member_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Member Count"
+        },
+        "principal_id": {
+          "format": "uuid",
+          "title": "Principal Id",
+          "type": "string"
+        },
+        "principal_type": {
+          "enum": [
+            "user",
+            "group"
+          ],
+          "title": "Principal Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grant_id",
+        "principal_type",
+        "principal_id",
+        "granted_at"
+      ],
+      "title": "McpToolBlockView",
+      "type": "object"
+    },
     "McpToolBrief": {
       "description": "Per-server MCP tool reference for agent responses.",
       "properties": {
@@ -41742,6 +42838,18 @@
     },
     "McpToolResponse": {
       "properties": {
+        "approval_default": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Default"
+        },
         "created_at": {
           "format": "date-time",
           "title": "Created At",
@@ -48122,6 +49230,229 @@
       "title": "RegisterRequest",
       "type": "object"
     },
+    "RegistrationRequestView": {
+      "description": "The last request for a tool or MCP server's registration (tool-governance-plan 3.7).",
+      "properties": {
+        "decided_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Decided At"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        },
+        "requested_at": {
+          "format": "date-time",
+          "title": "Requested At",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "requested_at"
+      ],
+      "title": "RegistrationRequestView",
+      "type": "object"
+    },
+    "RegistrationRule": {
+      "additionalProperties": false,
+      "properties": {
+        "member_sharing": {
+          "default": "shareable",
+          "enum": [
+            "shareable",
+            "private"
+          ],
+          "title": "Member Sharing",
+          "type": "string"
+        },
+        "review": {
+          "default": "off",
+          "enum": [
+            "off",
+            "on"
+          ],
+          "title": "Review",
+          "type": "string"
+        },
+        "who": {
+          "default": "members",
+          "enum": [
+            "members",
+            "granted"
+          ],
+          "title": "Who",
+          "type": "string"
+        }
+      },
+      "title": "RegistrationRule",
+      "type": "object"
+    },
+    "RegistrationRuleOut": {
+      "additionalProperties": false,
+      "properties": {
+        "member_sharing": {
+          "default": "shareable",
+          "enum": [
+            "shareable",
+            "private"
+          ],
+          "title": "Member Sharing",
+          "type": "string"
+        },
+        "review": {
+          "default": "off",
+          "enum": [
+            "off",
+            "on"
+          ],
+          "title": "Review",
+          "type": "string"
+        },
+        "reviewable": {
+          "title": "Reviewable",
+          "type": "boolean"
+        },
+        "who": {
+          "default": "members",
+          "enum": [
+            "members",
+            "granted"
+          ],
+          "title": "Who",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reviewable"
+      ],
+      "title": "RegistrationRuleOut",
+      "type": "object"
+    },
+    "RegistrationSettingsOut": {
+      "properties": {
+        "kinds": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/RegistrationRuleOut"
+          },
+          "propertyNames": {
+            "enum": [
+              "mcp_server",
+              "tool",
+              "skill",
+              "agent"
+            ]
+          },
+          "title": "Kinds",
+          "type": "object"
+        },
+        "saved": {
+          "title": "Saved",
+          "type": "boolean"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kinds",
+        "saved",
+        "updated_at"
+      ],
+      "title": "RegistrationSettingsOut",
+      "type": "object"
+    },
+    "RegistrationSettingsUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "kinds": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/RegistrationRule"
+          },
+          "propertyNames": {
+            "enum": [
+              "mcp_server",
+              "tool",
+              "skill",
+              "agent"
+            ]
+          },
+          "title": "Kinds",
+          "type": "object"
+        }
+      },
+      "required": [
+        "kinds"
+      ],
+      "title": "RegistrationSettingsUpdate",
+      "type": "object"
+    },
+    "RegistrationStatus": {
+      "description": "Whether a tool or MCP server may be used, as its registrant sees it.",
+      "properties": {
+        "administrators_review_tools": {
+          "default": false,
+          "title": "Administrators Review Tools",
+          "type": "boolean"
+        },
+        "can_request": {
+          "title": "Can Request",
+          "type": "boolean"
+        },
+        "request": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RegistrationRequestView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "enum": [
+            "approved",
+            "pending",
+            "rejected"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "can_request"
+      ],
+      "title": "RegistrationStatus",
+      "type": "object"
+    },
     "RequestUser": {
       "properties": {
         "display_name": {
@@ -50823,6 +52154,18 @@
     },
     "SkillResponse": {
       "properties": {
+        "approval_default": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Default"
+        },
         "content_hash": {
           "anyOf": [
             {
@@ -55564,6 +56907,72 @@
       "title": "ToolApprovalCell",
       "type": "object"
     },
+    "ToolApprovalPart": {
+      "description": "A skill (run through ``execute_in_skill``) or a child agent (reached through ``task``).",
+      "properties": {
+        "allowed_modes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Modes"
+        },
+        "cells": {
+          "items": {
+            "$ref": "#/components/schemas/ToolApprovalCell"
+          },
+          "title": "Cells",
+          "type": "array"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "skill",
+            "agent"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Level"
+        },
+        "locked": {
+          "title": "Locked",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "name",
+        "kind",
+        "locked",
+        "cells"
+      ],
+      "title": "ToolApprovalPart",
+      "type": "object"
+    },
     "ToolApprovalPathsV1": {
       "additionalProperties": false,
       "description": "The agent's mode per run path (approval-modes-plan Q3/Q4): ``ask_all`` keeps the\nrisk-level defaults (today's behaviour); ``auto`` runs what the company cap allows.",
@@ -55656,6 +57065,20 @@
     },
     "ToolApprovalTool": {
       "properties": {
+        "allowed_modes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Modes"
+        },
         "cells": {
           "items": {
             "$ref": "#/components/schemas/ToolApprovalCell"
@@ -55666,6 +57089,10 @@
         "grantable": {
           "title": "Grantable",
           "type": "boolean"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
         },
         "level": {
           "title": "Level",
@@ -55678,9 +57105,21 @@
         "name": {
           "title": "Name",
           "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source"
         }
       },
       "required": [
+        "key",
         "name",
         "level",
         "locked",
@@ -55767,6 +57206,14 @@
           "title": "Company Always Ask",
           "type": "array"
         },
+        "parts": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/ToolApprovalPart"
+          },
+          "title": "Parts",
+          "type": "array"
+        },
         "settings": {
           "anyOf": [
             {
@@ -55784,6 +57231,14 @@
             "$ref": "#/components/schemas/ToolApprovalTool"
           },
           "title": "Tools",
+          "type": "array"
+        },
+        "unresolved": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Unresolved",
           "type": "array"
         }
       },
@@ -56059,6 +57514,18 @@
     "ToolInstanceResponse": {
       "description": "Greenfield response for ``GET /api/tools/...``.",
       "properties": {
+        "approval_default": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Approval Default"
+        },
         "created_at": {
           "format": "date-time",
           "title": "Created At",
@@ -56142,6 +57609,16 @@
           "additionalProperties": true,
           "title": "Parameters",
           "type": "object"
+        },
+        "registration_state": {
+          "default": "approved",
+          "enum": [
+            "approved",
+            "pending",
+            "rejected"
+          ],
+          "title": "Registration State",
+          "type": "string"
         },
         "updated_at": {
           "format": "date-time",
@@ -56234,6 +57711,367 @@
         }
       },
       "title": "ToolPatch",
+      "type": "object"
+    },
+    "ToolPolicyImpactAgent": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "always",
+            "when",
+            "never"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "disabled",
+            "mode_not_allowed"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "tool_key": {
+          "title": "Tool Key",
+          "type": "string"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "tool_key",
+        "tool_name",
+        "mode",
+        "reason"
+      ],
+      "title": "ToolPolicyImpactAgent",
+      "type": "object"
+    },
+    "ToolPolicyImpactOut": {
+      "properties": {
+        "agents": {
+          "items": {
+            "$ref": "#/components/schemas/ToolPolicyImpactAgent"
+          },
+          "title": "Agents",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/components/schemas/ToolPolicyWarning"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "agents",
+        "total"
+      ],
+      "title": "ToolPolicyImpactOut",
+      "type": "object"
+    },
+    "ToolPolicyListOut": {
+      "properties": {
+        "policies": {
+          "items": {
+            "$ref": "#/components/schemas/ToolPolicyOut"
+          },
+          "title": "Policies",
+          "type": "array"
+        }
+      },
+      "required": [
+        "policies"
+      ],
+      "title": "ToolPolicyListOut",
+      "type": "object"
+    },
+    "ToolPolicyOut": {
+      "properties": {
+        "allowed_modes": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "always",
+                  "when",
+                  "never"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Modes"
+        },
+        "default_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "always",
+                "when",
+                "never"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Mode"
+        },
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Enabled"
+        },
+        "resource_key": {
+          "title": "Resource Key",
+          "type": "string"
+        },
+        "resource_name": {
+          "title": "Resource Name",
+          "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_key",
+        "resource_name",
+        "enabled",
+        "default_mode",
+        "allowed_modes",
+        "rule",
+        "updated_at"
+      ],
+      "title": "ToolPolicyOut",
+      "type": "object"
+    },
+    "ToolPolicySaved": {
+      "properties": {
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ToolPolicyOut"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/components/schemas/ToolPolicyWarning"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "policy"
+      ],
+      "title": "ToolPolicySaved",
+      "type": "object"
+    },
+    "ToolPolicyTarget": {
+      "description": "Something a policy can name: an MCP server, one of its tools, a tool, a built-in.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "mcp_server",
+            "mcp_tool",
+            "tool",
+            "builtin",
+            "skill",
+            "agent"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "risk_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Risk Level"
+        },
+        "server_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Server Key"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source"
+        }
+      },
+      "required": [
+        "key",
+        "name",
+        "kind"
+      ],
+      "title": "ToolPolicyTarget",
+      "type": "object"
+    },
+    "ToolPolicyUpdate": {
+      "description": "Every field empty removes the policy (the tool follows its risk level again).",
+      "properties": {
+        "allowed_modes": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "always",
+                  "when",
+                  "never"
+                ],
+                "type": "string"
+              },
+              "maxItems": 3,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Modes"
+        },
+        "default_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "always",
+                "when",
+                "never"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Default Mode"
+        },
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Enabled"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule"
+        }
+      },
+      "title": "ToolPolicyUpdate",
+      "type": "object"
+    },
+    "ToolPolicyWarning": {
+      "properties": {
+        "code": {
+          "const": "risky_without_asking",
+          "title": "Code",
+          "type": "string"
+        },
+        "risk_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Risk Level"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "ToolPolicyWarning",
       "type": "object"
     },
     "ToolRecommendation": {

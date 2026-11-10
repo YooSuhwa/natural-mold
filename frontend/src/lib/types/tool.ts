@@ -1,7 +1,9 @@
 // Tool domain types — mirrors backend `app/schemas/tool.py`.
 
+import type { RegistrationState } from './approval'
 import type { FieldDef } from './credential'
 import type { CredentialMode } from './readiness'
+import type { ToolApprovalToolV1 } from './runtime-policy'
 
 export interface ToolDefinition {
   key: string
@@ -25,6 +27,10 @@ export interface ToolInstance {
   credential_mode?: CredentialMode
   credential_definition_key?: string | null
   enabled: boolean
+  /** The tool's own approval default (an agent starts from it). */
+  approval_default?: ToolApprovalToolV1 | null
+  /** Anything but ``approved`` is neither attached to agents nor loaded into runs. */
+  registration_state?: RegistrationState
   last_used_at: string | null
   created_at: string
   updated_at: string

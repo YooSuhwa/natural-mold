@@ -1,4 +1,6 @@
 import { apiFetch } from './client'
+import type { RegistrationStatus } from '@/lib/types/approval'
+import type { ToolApprovalToolV1 } from '@/lib/types/runtime-policy'
 import type {
   McpDiscoverResult,
   McpExportResponse,
@@ -14,6 +16,7 @@ import type {
   McpServerUpdateRequest,
   McpTestResult,
   McpTool,
+  McpToolBlock,
   McpToolReviewDecision,
   McpToolWithServer,
 } from '@/lib/types/mcp'
@@ -42,6 +45,38 @@ export const mcpApi = {
     apiFetch<McpTool>(`/api/mcp-servers/${serverId}/tools/${toolId}/review`, {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+  /** The server's approval default (`null` clears it); server editors only. */
+  setApprovalDefault: (serverId: string, value: ToolApprovalToolV1 | null) =>
+    apiFetch<McpServer>(`/api/mcp-servers/${serverId}/approval-default`, {
+      method: 'PUT',
+      body: JSON.stringify({ default: value }),
+    }),
+  setToolApprovalDefault: (serverId: string, toolId: string, value: ToolApprovalToolV1 | null) =>
+    apiFetch<McpTool>(`/api/mcp-servers/${serverId}/tools/${toolId}/approval-default`, {
+      method: 'PUT',
+      body: JSON.stringify({ default: value }),
+    }),
+  /** Whether the server may be used yet, and the last request for it (server editors). */
+  registration: (serverId: string) =>
+    apiFetch<RegistrationStatus>(`/api/mcp-servers/${serverId}/registration`),
+  requestRegistration: (serverId: string) =>
+    apiFetch<RegistrationStatus>(`/api/mcp-servers/${serverId}/registration`, { method: 'POST' }),
+  /** People and teams kept from one tool (server managers). */
+  listToolBlocks: (serverId: string, toolId: string) =>
+    apiFetch<{ items: McpToolBlock[] }>(`/api/mcp-servers/${serverId}/tools/${toolId}/blocks`),
+  blockTool: (
+    serverId: string,
+    toolId: string,
+    data: { principal_type: 'user' | 'group'; principal_id: string },
+  ) =>
+    apiFetch<McpToolBlock>(`/api/mcp-servers/${serverId}/tools/${toolId}/blocks`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  unblockTool: (serverId: string, toolId: string, grantId: string) =>
+    apiFetch<void>(`/api/mcp-servers/${serverId}/tools/${toolId}/blocks/${grantId}`, {
+      method: 'DELETE',
     }),
   discover: (id: string) =>
     apiFetch<McpDiscoverResult>(`/api/mcp-servers/${id}/discover`, {

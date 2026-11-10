@@ -30,6 +30,9 @@ class ApprovalView(BaseModel):
     # ``None`` for a workflow approval node (``kind="business"``), which has no conversation.
     conversation_id: uuid.UUID | None
     workflow_run_id: uuid.UUID | None = None
+    # ``kind="registration"``: the tool or MCP server waiting for an administrator.
+    resource_type: str | None = None
+    resource_id: uuid.UUID | None = None
     trigger_id: uuid.UUID | None
     actions: list[ApprovalAction]
     attempt: int
@@ -95,3 +98,27 @@ class RunStatusView(BaseModel):
 
 class RunStatusPage(BaseModel):
     items: list[RunStatusView]
+
+
+RegistrationState = Literal["approved", "pending", "rejected"]
+
+
+class RegistrationRequestView(BaseModel):
+    """The last request for a tool or MCP server's registration (tool-governance-plan 3.7)."""
+
+    id: uuid.UUID
+    status: str
+    # The administrator's note on a rejection; a short code when the request was retired.
+    reason: str | None = None
+    requested_at: datetime
+    decided_at: datetime | None = None
+
+
+class RegistrationStatus(BaseModel):
+    """Whether a tool or MCP server may be used, as its registrant sees it."""
+
+    state: RegistrationState
+    can_request: bool
+    # An MCP server whose tool versions administrators review instead of its managers.
+    administrators_review_tools: bool = False
+    request: RegistrationRequestView | None = None

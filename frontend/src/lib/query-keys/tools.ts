@@ -7,6 +7,7 @@ export const toolQueryKeys = {
   all: ['tools'] as const,
   list: (params?: ToolListQueryParams) => ['tools', params ?? {}] as const,
   detail: (toolId: string | null | undefined) => ['tools', toolId] as const,
+  registration: (toolId: string) => ['tools', toolId, 'registration'] as const,
   types: ['tool-types'] as const,
   typeDetail: (definitionKey: string | null | undefined) => ['tool-types', definitionKey] as const,
 }

@@ -15,7 +15,7 @@ def to_runtime_dict(skill: Skill) -> dict[str, Any]:
     ORM rows.
     """
 
-    return {
+    found: dict[str, Any] = {
         "id": str(skill.id),
         "name": skill.name,
         "slug": skill.slug,
@@ -23,3 +23,7 @@ def to_runtime_dict(skill: Skill) -> dict[str, Any]:
         "storage_path": skill.storage_path or "",
         "description": skill.description or "",
     }
+    if skill.approval_default:
+        # Absent when unset, so a dict without one is what it was before defaults existed.
+        found["approval_default"] = dict(skill.approval_default)
+    return found

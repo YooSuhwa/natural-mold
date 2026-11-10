@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.approvals import registrations
 from app.authz.mcp_probe_scope import require_mcp_probe_scope
 from app.authz.notifications import Target, notify, resource_link, resource_managers
 from app.mcp import review
@@ -54,6 +55,9 @@ async def _server_tools(db: AsyncSession, server: McpServer) -> list[McpTool]:
 async def notify_review_needed(db: AsyncSession, server: McpServer, tools: list[McpTool]) -> None:
     """Tell the server's managers that tools wait for their review (company servers)."""
     if not tools or server.org_id is None or server.tenant_id is None:
+        return
+    # A server registered under review: its tool versions go to the administrators (G10).
+    if await registrations.tools_changed(db, server):
         return
     managers = await resource_managers(db, server.org_id, "mcp_server", server.id, mode="enforce")
     await notify(

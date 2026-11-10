@@ -23,8 +23,15 @@ from app.schemas.guardrails import (
     GuardrailTemplateRevert,
     GuardrailTemplateUpdate,
     GuardrailTemplateVersionOut,
+    RegistrationSettingsOut,
+    RegistrationSettingsUpdate,
+    ToolPolicyImpactOut,
+    ToolPolicyListOut,
+    ToolPolicySaved,
+    ToolPolicyTarget,
+    ToolPolicyUpdate,
 )
-from app.services import guardrails_admin
+from app.services import guardrails_admin, registration_admin, tool_policies_admin
 from app.services.tenants.versioning import etag
 from app.tenancy.admin_context import TenantAdminContext
 
@@ -163,4 +170,88 @@ async def revert_guardrail_template(
 ) -> GuardrailTemplateOut:
     return await guardrails_admin.revert_template(
         _mutation(db, request, user, if_match), context, template_id, payload
+    )
+
+
+# --- company policy per tool (tool-governance-plan 3.4) ---------------------------------
+
+
+@router.get("/tool-policies", response_model=ToolPolicyListOut)
+@authz_policy(SELF)
+async def list_tool_policies(
+    db: AsyncSession = Depends(get_db),
+    context: TenantAdminContext = Depends(company_context),
+) -> ToolPolicyListOut:
+    return ToolPolicyListOut(
+        policies=await tool_policies_admin.list_policies(db, context.tenant.id)
+    )
+
+
+@router.get("/tool-policies/targets", response_model=list[ToolPolicyTarget])
+@authz_policy(GOVERNANCE)
+async def list_tool_policy_targets(
+    db: AsyncSession = Depends(get_db),
+    context: TenantAdminContext = Depends(company_context),
+) -> list[ToolPolicyTarget]:
+    return await tool_policies_admin.targets(db, context)
+
+
+@router.put("/tool-policies/{resource_key}", response_model=ToolPolicySaved)
+@authz_policy(GOVERNANCE)
+async def put_tool_policy(
+    resource_key: str,
+    payload: ToolPolicyUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+    context: TenantAdminContext = Depends(company_context),
+) -> ToolPolicySaved:
+    return await tool_policies_admin.save(
+        _mutation(db, request, user), context, resource_key, payload
+    )
+
+
+@router.post("/tool-policies/{resource_key}/impact", response_model=ToolPolicyImpactOut)
+@authz_policy(GOVERNANCE)
+async def preview_tool_policy_impact(
+    resource_key: str,
+    payload: ToolPolicyUpdate,
+    db: AsyncSession = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),
+    context: TenantAdminContext = Depends(company_context),
+) -> ToolPolicyImpactOut:
+    return await tool_policies_admin.impact(db, context, resource_key, payload)
+
+
+# --- who may register tools, MCP servers, skills, agents (tool-governance-plan 3.6) -----
+
+
+@router.get("/registration", response_model=RegistrationSettingsOut)
+@authz_policy(SELF)
+async def get_registration_settings(
+    context: TenantAdminContext = Depends(company_context),
+) -> JSONResponse:
+    result = registration_admin.view(context.tenant)
+    return JSONResponse(
+        content=result.model_dump(mode="json"), headers={"ETag": etag(result.updated_at)}
+    )
+
+
+@router.put("/registration", response_model=RegistrationSettingsOut)
+@authz_policy(GOVERNANCE)
+async def put_registration_settings(
+    payload: RegistrationSettingsUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+    context: TenantAdminContext = Depends(company_context),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> JSONResponse:
+    result = await registration_admin.update(
+        _mutation(db, request, user, if_match), context, payload
+    )
+    return JSONResponse(
+        content=result.model_dump(mode="json"), headers={"ETag": etag(result.updated_at)}
     )

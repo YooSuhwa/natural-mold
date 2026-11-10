@@ -21,6 +21,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.approvals import registrations
+from app.authz import registration
 from app.authz.candidates import candidate_predicate
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import (
@@ -125,6 +127,7 @@ async def create_tool(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    admitted = await registration.admit(db, context, "tool")
     if tool_registry.get(data.definition_key) is None:
         raise HTTPException(status_code=400, detail=f"unknown definition '{data.definition_key}'")
     await require_credential_use(
@@ -144,6 +147,8 @@ async def create_tool(
     )
     db.add(tool)
     await db.flush()
+    if admitted.needs_review:
+        await registrations.hold(db, tool, actor_id=context.user_id)
     return tool
 
 
@@ -240,7 +245,7 @@ async def get_tools_catalog(db: AsyncSession, context: OrgContext) -> list[dict[
     tool_rows = await db.execute(
         resource_candidates(
             select(Tool.id, Tool.name, Tool.description, Tool.definition_key), Tool, context
-        )
+        ).where(Tool.registration_state == "approved")
     )
     items: list[dict[str, Any]] = [
         {
@@ -263,7 +268,11 @@ async def get_tools_catalog(db: AsyncSession, context: OrgContext) -> list[dict[
             McpServer.name.label("server_name"),
         )
         .join(McpServer, McpServer.id == McpTool.server_id)
-        .where(private_scope_predicate(McpServer, context), McpTool.review_state == "approved")
+        .where(
+            private_scope_predicate(McpServer, context),
+            McpTool.review_state == "approved",
+            McpServer.registration_state == "approved",
+        )
     )
     items.extend(
         {

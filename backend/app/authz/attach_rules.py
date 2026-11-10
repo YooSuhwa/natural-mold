@@ -31,6 +31,7 @@ from app.authz.org_context import OrgContext
 from app.authz.personal_account_carriers import Carrier, agent_carriers, with_parents
 from app.authz.personal_accounts import has_share_grants, personal_of
 from app.authz.principal import Principal
+from app.authz.registration_state import registered
 from app.authz.runtime import runtime_authz
 from app.authz.service_types import Verdict
 from app.models.agent import Agent
@@ -86,6 +87,31 @@ def _owns(row: AccountRow, ctx: OrgContext) -> bool:
     )
 
 
+async def _require_registered(
+    db: AsyncSession, tool_ids: set[UUID], mcp_tool_ids: set[UUID]
+) -> None:
+    """A tool or server still waiting for an administrator attaches to nothing (3.7)."""
+    waiting: list[dict[str, str]] = []
+    if tool_ids:
+        tools = await db.scalars(
+            select(Tool).where(Tool.id.in_(tool_ids), Tool.registration_state != "approved")
+        )
+        waiting += [{"resource_type": "tool", "resource_id": str(t.id)} for t in tools]
+    if mcp_tool_ids:
+        server_ids = select(McpTool.server_id).where(McpTool.id.in_(mcp_tool_ids))
+        servers = await db.scalars(select(McpServer).where(McpServer.id.in_(server_ids)))
+        waiting += [
+            {"resource_type": "mcp_server", "resource_id": str(s.id)}
+            for s in servers
+            if not registered(s)
+        ]
+    if waiting:
+        raise authorization_error(
+            "registration_not_approved",
+            {"resources": sorted(waiting, key=lambda r: (r["resource_type"], r["resource_id"]))},
+        )
+
+
 async def require_attachable(
     db: AsyncSession,
     ctx: OrgContext,
@@ -96,6 +122,7 @@ async def require_attachable(
 ) -> None:
     """D17: the actor needs ``can_share`` on every non-owned account resource it adds."""
     with db.no_autoflush:
+        await _require_registered(db, set(tool_ids), set(mcp_tool_ids))
         rows = await _account_rows(db, set(tool_ids), set(mcp_tool_ids), set(credential_ids))
     foreign = sorted(
         ((kind, row) for kind, row in rows if not _owns(row, ctx)),

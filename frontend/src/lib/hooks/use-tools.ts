@@ -3,6 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toolsApi } from '@/lib/api/tools'
 import { toolQueryKeys, type ToolListQueryParams } from '@/lib/query-keys/tools'
+import { toolApprovalQueryKeys } from '@/lib/query-keys/tool-approval'
+import type { ToolApprovalToolV1 } from '@/lib/types/runtime-policy'
 import type { ToolCreateRequest, ToolPatchRequest } from '@/lib/types/tool'
 import { requiredQueryValue } from './required-query-value'
 
@@ -55,6 +57,21 @@ export function useUpdateTool() {
       qc.invalidateQueries({ queryKey: toolQueryKeys.all })
       qc.invalidateQueries({ queryKey: toolQueryKeys.detail(id) })
     },
+  })
+}
+
+export function useSetToolApprovalDefault() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, value }: { id: string; value: ToolApprovalToolV1 | null }) =>
+      toolsApi.setApprovalDefault(id, value),
+    // Returned, so the caller's promise settles once the fresh row is in.
+    onSettled: (_data, _error, { id }) =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: toolQueryKeys.all }),
+        qc.invalidateQueries({ queryKey: toolQueryKeys.detail(id) }),
+        qc.invalidateQueries({ queryKey: toolApprovalQueryKeys.all }),
+      ]),
   })
 }
 

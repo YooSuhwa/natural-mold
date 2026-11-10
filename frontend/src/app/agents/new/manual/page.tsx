@@ -11,7 +11,7 @@ import { buildAgentCreateRequest } from '@/lib/agents/build-agent-create-request
 import { isRuntimePolicyCompatibleWithContextWindow } from '@/lib/agents/runtime-policy-validation'
 import { useCreateAgent } from '@/lib/hooks/use-agents'
 import { useModels } from '@/lib/hooks/use-models'
-import { useTools } from '@/lib/hooks/use-tools'
+import { useAttachableTools } from '@/lib/hooks/use-attachable-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
 import { useMiddlewares } from '@/lib/hooks/use-middlewares'
 import type { AgentIdentityMode, RuntimePolicyV1 } from '@/lib/types'
@@ -62,7 +62,7 @@ export default function ManualCreationPage() {
     isError: modelsError,
     refetch: refetchModels,
   } = useModels()
-  const { data: tools } = useTools()
+  const { data: tools } = useAttachableTools()
   const { data: skills } = useSkills()
   const { data: middlewares } = useMiddlewares()
   const createAgent = useCreateAgent()

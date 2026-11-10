@@ -27,7 +27,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz import denials
+from app.authz import denials, registration
 from app.authz.grants import GrantRequest, GrantService, GrantTarget
 from app.authz.notification_events import grant_received
 from app.authz.org_context import OrgContext
@@ -141,6 +141,7 @@ async def share(
     if not is_owner(row, ctx):
         check_self(ctx, body, held)
     await require_org_wide(db, authz, ctx, body)
+    await registration.require_shareable(db, ctx, kind.name)  # member_sharing (3.6)
     await require_no_personal_accounts(db, row)  # 10.4, E-05: before any confirmation
     await require_delegation_confirmed(db, kind, row, body, held)
     same = [g for g in held if g.relation == body.level]

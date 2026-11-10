@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.approvals import registrations
+from app.authz import registration
 from app.authz.catalog_scope import load_private_installation
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scoped
@@ -84,6 +86,7 @@ async def _install_mcp_item(
         # enumeration-safety convention.
         if server is None or server.user_id != user.id:
             raise marketplace_item_not_found()
+        before = registrations.fingerprint(server)
         if credential_id is not None:
             server.credential_id = credential_id
         await _materialize_mcp_tool_snapshot(
@@ -93,6 +96,7 @@ async def _install_mcp_item(
             preserve_enabled=True,
             context=context,
         )
+        await registrations.recheck(db, context, server, before=before)
         install_status = "needs_setup" if missing else "active"
         existing.install_status = install_status
         existing.is_dirty = False
@@ -133,6 +137,7 @@ async def _install_mcp_item(
         # enumeration-safety convention.
         if server is None or server.user_id != user.id:
             raise marketplace_item_not_found()
+        before = registrations.fingerprint(server)
         _apply_mcp_payload_to_server(
             server=server,
             payload=payload,
@@ -140,6 +145,7 @@ async def _install_mcp_item(
             credential_id=credential_id,
         )
         await _materialize_mcp_tool_snapshot(db, server=server, payload=payload)
+        await registrations.recheck(db, context, server, before=before)
         existing.version_id = version.id
         existing.install_status = install_status
         existing.is_dirty = False
@@ -147,6 +153,8 @@ async def _install_mcp_item(
         await db.flush()
         return existing
 
+    # Installing makes a server row: the company's registration rule decides (plan 3.6).
+    admitted = await registration.admit(db, context, "mcp_server")
     server = McpServer(
         id=uuid.uuid4(),
         user_id=context.user_id,
@@ -167,6 +175,8 @@ async def _install_mcp_item(
     db.add(server)
     await db.flush()
     await _materialize_mcp_tool_snapshot(db, server=server, payload=payload)
+    if admitted.needs_review:  # an install under review waits like any registration (3.7)
+        await registrations.hold(db, server, actor_id=context.user_id)
 
     installation = MarketplaceInstallation(
         id=uuid.uuid4(),
@@ -253,6 +263,7 @@ async def _overwrite_mcp_installation(
         context=context,
         server=server,
     )
+    before = registrations.fingerprint(server)
     _apply_mcp_payload_to_server(
         server=server,
         payload=payload,
@@ -260,6 +271,7 @@ async def _overwrite_mcp_installation(
         credential_id=server.credential_id,
     )
     await _materialize_mcp_tool_snapshot(db, server=server, payload=payload, context=context)
+    await registrations.recheck(db, context, server, before=before)
     installation.version_id = latest.id
     installation.install_status = install_status
     installation.is_dirty = False

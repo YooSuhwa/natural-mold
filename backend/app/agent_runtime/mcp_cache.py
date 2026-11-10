@@ -138,6 +138,21 @@ class MCPToolWithRetry(BaseTool):
             logger.warning("emergency stop check failed for MCP server %s", context.server_id)
             return True
 
+    async def _refused(self) -> str | None:
+        """Switched off, no longer registered or blocked for this person (plan 3.11)."""
+        context = self._decision_context
+        if context is None or not context.tool_id:
+            return None
+        from app.authz import tool_blocks
+
+        try:
+            return await tool_blocks.call_refusal(
+                context.tenant_id, context.org_id, context.user_id, uuid.UUID(context.tool_id)
+            )
+        except Exception:  # noqa: BLE001 - unknown state: refuse the call
+            logger.warning("tool availability check failed for MCP tool %s", context.tool_id)
+            return "availability_unknown"
+
     async def _arun(
         self,
         *args: Any,
@@ -161,6 +176,11 @@ class MCPToolWithRetry(BaseTool):
             # 17.4: an emergency-stopped MCP server takes no call.
             await decided("denied", "emergency_stop", 0)
             message = f"[MCP Tool Error] {self.name}: this MCP server is emergency-stopped"
+            return (message, None) if self.response_format == "content_and_artifact" else message
+        refusal = await self._refused()
+        if refusal is not None:
+            await decided("denied", refusal, 0)
+            message = f"[MCP Tool Error] {self.name}: this tool is not available to you now"
             return (message, None) if self.response_format == "content_and_artifact" else message
         for attempt in range(self._max_retries):
             try:

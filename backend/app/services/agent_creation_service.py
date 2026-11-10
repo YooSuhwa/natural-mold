@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.identity import make_agent_runtime_name, validate_identity_mode
 from app.agent_runtime.runtime_policy import runtime_policy_to_json
+from app.authz import registration
 from app.authz.agent_delegations import (
     added_keys,
     lock_delegations,
@@ -22,6 +23,7 @@ from app.authz.organization_execution_gateway import require_execution_prefix
 from app.authz.organization_execution_prefix import mark_org_writer
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.scoping import private_scope_predicate, resource_candidates
+from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.mcp_tool import AgentMcpToolLink
@@ -98,6 +100,13 @@ async def _install_template_skills(
         except HTTPException:
             logger.warning("template skill %r auto-install failed; skipping", slug, exc_info=True)
             continue
+        except AppError as error:
+            # The company lets only some people register skills (plan 3.6): the agent is
+            # still made, without the skill this person may not add.
+            if error.code != "capability_required":
+                raise
+            logger.warning("template skill %r not installed: registration is restricted", slug)
+            continue
         if installation.installed_skill_id is not None:
             skill_ids.append(installation.installed_skill_id)
 
@@ -120,6 +129,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, context: OrgContext)
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    await registration.admit(db, context, "agent")
     # Parent creation gate: Tenant -> Organization -> owner memberships -> User,
     # freshly revalidated, before the Agent insert (archived org denies).
     await require_execution_prefix(db, context)

@@ -25,7 +25,7 @@ from fastapi import Request
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.approvals import service
+from app.approvals import registrations, service
 from app.approvals.recording import INBOX_LINK
 from app.approvals.waiters import abandon_best_effort
 from app.authz.conversation_scope import load_private_conversation
@@ -160,13 +160,15 @@ async def decide(
 ) -> ApprovalRequest:
     """The decider's answer from the inbox; resumes the run (``InboxError`` otherwise)."""
     row = await db.get(ApprovalRequest, approval_id)
-    if row is None or row.decider_user_id != user.id:
+    if row is None or not await _decides(db, row, user, context):
         raise InboxError("approval_not_found", "approval request not found", 404)
     if row.status != "pending":
         raise InboxError("approval_stale", f"the approval request is already {row.status}")
     if service.aware(row.expires_at) <= service.now():
         raise InboxError("approval_expired", "the approval request has expired")
     _check_decisions(row, decisions)
+    if row.kind == "registration":
+        return await _decide_registration(db, row, decisions, user=user)
     if row.kind == "business":
         return await _decide_business(db, row, decisions, user=user, context=context)
     if row.conversation_id is None:
@@ -192,6 +194,49 @@ async def decide(
         channel="inbox",
     )
     await db.refresh(row)
+    return row
+
+
+async def _decides(
+    db: AsyncSession, row: ApprovalRequest, user: CurrentUser, context: OrgContext
+) -> bool:
+    """A registration is decided by administrators, anything else by its one decider."""
+    if row.kind == "registration":
+        return await registrations.can_decide(db, row, context)
+    return row.decider_user_id == user.id
+
+
+async def _decide_registration(
+    db: AsyncSession,
+    row: ApprovalRequest,
+    decisions: Sequence[Mapping[str, Any]],
+    *,
+    user: CurrentUser,
+) -> ApprovalRequest:
+    """A tool or MCP server a member registered (tool-governance-plan 3.7)."""
+    if len(decisions) != 1:
+        raise InboxError("invalid_decision", "one decision per registration", 422)
+    decision = decisions[0]
+    try:
+        await registrations.decide(
+            db,
+            row,
+            decision=str(decision.get("type")),
+            message=decision.get("message"),
+            actor_id=user.id,
+        )
+    except registrations.RegistrationStale as exc:
+        await db.commit()  # the card now shows what changed
+        raise InboxError("approval_stale", str(exc)) from exc
+    except service.ApprovalStale as exc:
+        await db.rollback()
+        raise InboxError("approval_stale", f"the approval request is already {exc.status}") from exc
+    await db.commit()
+    await db.refresh(row)
+    if row.resource_type == "mcp_server":  # its tool versions may have been decided
+        from app.agent_runtime.mcp_cache import clear_mcp_tool_cache
+
+        await clear_mcp_tool_cache()
     return row
 
 
@@ -283,6 +328,10 @@ async def _expire_one(due: _Due) -> None:
             await workflow_approvals.expire(db, row)
             await db.commit()
             return
+        if row.kind == "registration":
+            await registrations.expire(db, row)
+            await db.commit()
+            return
         user = await _subject(db, due.subject_user_id)
         conversation: Conversation | None = None
         if user is not None:
@@ -360,7 +409,11 @@ async def notify_expiring() -> int:
             await notify(
                 db,
                 kind="approval.expiring",
-                recipients=[row.decider_user_id],
+                recipients=(
+                    await registrations.deciders(db, row)
+                    if row.kind == "registration"
+                    else [row.decider_user_id]
+                ),
                 tenant_id=row.tenant_id,
                 org_id=row.org_id,
                 target=Target("approval_request", row.id, row.agent_name),

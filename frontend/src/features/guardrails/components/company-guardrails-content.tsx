@@ -10,6 +10,8 @@ import {
 } from '@/features/company-settings/components/company-admin-gate'
 import { useGuardrailPolicy } from '@/lib/hooks/use-guardrails'
 import { GuardrailPolicyForm } from './guardrail-policy-form'
+import { GuardrailRegistrationCard } from './guardrail-registration-card'
+import { GuardrailToolPoliciesCard } from './guardrail-tool-policies-card'
 import { GuardrailTemplatesCard } from './guardrail-templates-card'
 import { GuardrailToolRiskForm } from './guardrail-tool-risk-form'
 
@@ -43,6 +45,8 @@ function GuardrailsBody({ scope }: { scope: CompanyScope }) {
         policy={policy.data}
         readOnly={!scope.isAdmin}
       />
+      <GuardrailToolPoliciesCard tenantId={scope.tenantId} isAdmin={scope.isAdmin} />
+      <GuardrailRegistrationCard tenantId={scope.tenantId} isAdmin={scope.isAdmin} />
       {scope.isAdmin ? (
         <GuardrailTemplatesCard tenantId={scope.tenantId} choices={policy.data.templates} />
       ) : null}

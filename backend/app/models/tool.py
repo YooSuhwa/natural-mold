@@ -52,6 +52,10 @@ class Tool(CredentialModeColumns, NullableOrgScope, Base):
     __table_args__ = (
         *resource_scope_constraints("tools", system=True),
         CheckConstraint(
+            "registration_state IN ('approved','pending','rejected')",
+            name="ck_tools_registration_state",
+        ),
+        CheckConstraint(
             "(is_system = false) OR (user_id IS NULL)",
             name="ck_tools_system_user_null",
         ),
@@ -100,6 +104,14 @@ class Tool(CredentialModeColumns, NullableOrgScope, Base):
     )
 
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # The tool's own approval default (tool-governance-plan 3.3): ``{"mode", "rule"}`` shaped
+    # like an agent's per-tool setting. A default, not a floor: whoever attaches the tool to
+    # an agent may change it within what the company allows.
+    approval_default: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Registration review (tool-governance-plan 3.7): only ``approved`` tools are used.
+    registration_state: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="approved", server_default="approved"
+    )
 
     last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(

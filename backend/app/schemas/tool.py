@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -75,6 +75,10 @@ class ToolInstanceResponse(BaseModel):
     credential_mode: CredentialMode = "none"
     credential_definition_key: str | None = None
     enabled: bool = True
+    # The tool's own approval default (``{"mode", "rule"}``), or none.
+    approval_default: dict[str, Any] | None = None
+    # ``pending``/``rejected``: waits for an administrator; agents cannot use it (3.7).
+    registration_state: Literal["approved", "pending", "rejected"] = "approved"
     last_used_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

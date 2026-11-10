@@ -64,5 +64,9 @@ def guardrail_versions(rules: RuleSet | None, tool_risk: Any) -> dict[str, str]:
         "rules": rules_to_json(rules) if rules is not None else None,
         "tool_risk": dict(tool_risk.actions) if tool_risk is not None else None,
     }
+    if tool_risk is not None and tool_risk.tools:  # only when set: earlier digests are kept
+        snapshot["tool_policies"] = {
+            key: value.to_json() for key, value in sorted(tool_risk.tools.items())
+        }
     encoded = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
     return {"guardrails": hashlib.sha256(encoded.encode()).hexdigest()}

@@ -33,6 +33,9 @@ export const ROOT_MESSAGE_NAMESPACES = [
   // family (agents, skills, tools, MCP, credentials, marketplace) — plan 13.1.
   'sharing',
   'sidebar',
+  // Approval modes show wherever a tool is set up or asked about: the chat approval card
+  // (also in the root side chat), tool, MCP server and skill screens, company settings.
+  'toolApproval',
 ] as const
 
 export type MessageNamespace = string

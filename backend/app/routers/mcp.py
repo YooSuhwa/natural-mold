@@ -12,8 +12,13 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.approvals import registrations
+from app.authz import registration, tool_blocks
+from app.authz.audit_actions import MCP_TOOL_BLOCK_UPDATED, TOOL_APPROVAL_DEFAULT_UPDATED
+from app.authz.delegation_sweep import revalidate_object
 from app.authz.org_context import OrgContext
 from app.authz.policies import CANDIDATES, CAP, CATALOG, RES, authz_policy
+from app.authz.registration_state import effective_state
 from app.authz.resource_gate import gate_cap
 from app.authz.resource_lifecycle import (
     LifecycleChange,
@@ -34,6 +39,7 @@ from app.mcp.auth import resolve_mcp_auth
 from app.mcp.client import connect_and_list
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
+from app.schemas.approval import RegistrationState, RegistrationStatus
 from app.schemas.credential_binding import CredentialMode
 from app.schemas.mcp import (
     McpDiscoverResponse,
@@ -51,11 +57,15 @@ from app.schemas.mcp import (
     McpServerResponse,
     McpServerUpdate,
     McpTestResponse,
+    McpToolBlockCreate,
+    McpToolBlockList,
+    McpToolBlockView,
     McpToolPendingVersion,
     McpToolResponse,
     McpToolReviewRequest,
     McpToolWithServerResponse,
 )
+from app.schemas.tool_approval import ApprovalDefaultUpdate, default_change
 from app.services import mcp_registry as mcp_registry_service
 from app.services import mcp_service
 from app.services.mcp_server_view import (
@@ -99,6 +109,8 @@ def _server_to_response(server: McpServer, readable: bool = True) -> McpServerRe
         health_status=getattr(server, "health_status", None),
         health_polled_at=getattr(server, "health_polled_at", None),
         health_message=getattr(server, "health_message", None),
+        approval_default=server.approval_default,
+        registration_state=cast("RegistrationState", effective_state(server)),
         created_at=server.created_at,
         updated_at=server.updated_at,
     )
@@ -120,6 +132,7 @@ def _tool_to_response(tool: McpTool, server_url: str | None = None) -> McpToolRe
         review_state=tool.review_state,  # type: ignore[arg-type]  # CHECK-constrained
         pending_version=McpToolPendingVersion(**pending) if pending else None,
         reviewed_at=tool.reviewed_at,
+        approval_default=tool.approval_default,
         last_seen_at=getattr(tool, "last_seen_at", None),
         created_at=tool.created_at,
         updated_at=tool.updated_at,
@@ -242,6 +255,7 @@ async def probe_mcp_server(
     """
 
     await gate_cap(authz, context, "cap_register_mcp")
+    await registration.admit(db, context, "mcp_server")
     transport = payload.transport
     url = payload.url
     headers: dict[str, Any] = dict(payload.headers or {})
@@ -603,7 +617,7 @@ async def discover_server_tools(
 
 
 @router.post("/{server_id}/tools/{tool_id}/review", response_model=McpToolResponse)
-@authz_policy(RES("mcp_server", "can_edit", param="server_id", min_visible="can_use"))
+@authz_policy(RES("mcp_server", "can_share", param="server_id", min_visible="can_use"))
 async def review_server_tool(
     server_id: uuid.UUID,
     tool_id: uuid.UUID,
@@ -615,10 +629,15 @@ async def review_server_tool(
     _csrf: None = Depends(verify_csrf),
     authz: AuthzService = Depends(get_authz),
 ) -> McpToolResponse:
-    """Approve or reject the tool version waiting for review (D11). Server managers only."""
+    """Approve or reject the tool version waiting for review (D11). Server managers only.
+
+    A server registered under review is the administrators' to review (plan G10): its
+    manager is the member whose registration is being checked.
+    """
     server = await mcp_service.load_owned(
-        db, server_id, context, authz=authz, permission="can_edit"
+        db, server_id, context, authz=authz, permission="can_share"
     )
+    await mcp_service.require_tool_reviewer(db, server, context)
     tool = await mcp_service.review_tool(
         db,
         server=server,
@@ -627,6 +646,116 @@ async def review_server_tool(
         fingerprint=body.fingerprint,
         user=user,
         request=request,
+    )
+    await db.commit()
+    await db.refresh(tool)
+    await mcp_service.invalidate_runtime_mcp_cache()
+    return _tool_to_response(tool, server.url)
+
+
+# -- Registration review (tool-governance-plan 3.7) ---------------------------
+
+
+@router.get("/{server_id}/registration", response_model=RegistrationStatus)
+@authz_policy(RES("mcp_server", "can_edit", param="server_id", min_visible="can_use"))
+async def get_server_registration(
+    server_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
+) -> RegistrationStatus:
+    """Whether the server waits for an administrator, and the last answer."""
+    server = await mcp_service.load_owned(
+        db, server_id, context, authz=authz, permission="can_edit"
+    )
+    return RegistrationStatus.model_validate(await registrations.status(db, server))
+
+
+@router.post("/{server_id}/registration", response_model=RegistrationStatus)
+@authz_policy(RES("mcp_server", "can_edit", param="server_id", min_visible="can_use"))
+async def request_server_registration(
+    server_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+) -> RegistrationStatus:
+    """Ask the administrators again after a rejection or an expiry. Server editors only."""
+    server = await mcp_service.load_owned(
+        db, server_id, context, authz=authz, permission="can_edit"
+    )
+    await registrations.request_again(db, context, server)
+    await db.commit()
+    await db.refresh(server)
+    await mcp_service.invalidate_runtime_mcp_cache()
+    return RegistrationStatus.model_validate(await registrations.status(db, server))
+
+
+# -- Approval defaults (tool-governance-plan 3.3) -----------------------------
+
+
+@router.put("/{server_id}/approval-default", response_model=McpServerResponse)
+@authz_policy(RES("mcp_server", "can_edit", param="server_id", min_visible="can_use"))
+async def set_server_approval_default(
+    server_id: uuid.UUID,
+    body: ApprovalDefaultUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+) -> McpServerResponse:
+    """The default of every tool of this server that sets none of its own. Managers only."""
+    server = await mcp_service.load_owned(
+        db, server_id, context, authz=authz, permission="can_edit"
+    )
+    before, server.approval_default = server.approval_default, body.stored()
+    await mcp_service.record_server_audit(
+        db,
+        user=user,
+        request=request,
+        action=TOOL_APPROVAL_DEFAULT_UPDATED,
+        server=server,
+        metadata={"scope": "mcp_server", **default_change(before, server.approval_default)},
+    )
+    await db.commit()
+    await db.refresh(server)
+    await mcp_service.invalidate_runtime_mcp_cache()
+    return _server_to_response(server)
+
+
+@router.put("/{server_id}/tools/{tool_id}/approval-default", response_model=McpToolResponse)
+@authz_policy(RES("mcp_server", "can_edit", param="server_id", min_visible="can_use"))
+async def set_server_tool_approval_default(
+    server_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    body: ApprovalDefaultUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+) -> McpToolResponse:
+    """One MCP tool's own approval default (beats its server's). Server managers only."""
+    server = await mcp_service.load_owned(
+        db, server_id, context, authz=authz, permission="can_edit"
+    )
+    tool = await mcp_service.server_tool(db, server, tool_id)
+    before, tool.approval_default = tool.approval_default, body.stored()
+    await mcp_service.record_server_audit(
+        db,
+        user=user,
+        request=request,
+        action=TOOL_APPROVAL_DEFAULT_UPDATED,
+        server=server,
+        metadata={
+            "scope": "mcp_tool",
+            "mcp_tool_id": str(tool.id),
+            "tool": tool.name,
+            **default_change(before, tool.approval_default),
+        },
     )
     await db.commit()
     await db.refresh(tool)
@@ -652,3 +781,127 @@ async def get_registry_entry(key: str) -> McpRegistryEntry:
     if entry is None:
         raise unknown_registry_entry(key)
     return McpRegistryEntry(**entry)
+
+
+# -- Blocking a tool for people or teams (tool-governance-plan 3.6) -----------
+
+
+def _block_view(block: tool_blocks.Block) -> McpToolBlockView:
+    return McpToolBlockView.model_validate(block, from_attributes=True)
+
+
+@router.get("/{server_id}/tools/{tool_id}/blocks", response_model=McpToolBlockList)
+@authz_policy(RES("mcp_server", "can_share", param="server_id", min_visible="can_use"))
+async def list_server_tool_blocks(
+    server_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    context: OrgContext = Depends(get_org_context),
+    authz: AuthzService = Depends(get_authz),
+) -> McpToolBlockList:
+    """The people and teams kept from this tool. Server managers only."""
+    server = await mcp_service.load_owned(
+        db, server_id, context, authz=authz, permission="can_share"
+    )
+    tool = await mcp_service.server_tool(db, server, tool_id)
+    blocks = await tool_blocks.list_blocks(db, context, tool)
+    return McpToolBlockList(items=[_block_view(block) for block in blocks])
+
+
+@router.post(
+    "/{server_id}/tools/{tool_id}/blocks", response_model=McpToolBlockView, status_code=201
+)
+@authz_policy(RES("mcp_server", "can_share", param="server_id", min_visible="can_use"))
+async def block_server_tool(
+    server_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    body: McpToolBlockCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+) -> McpToolBlockView:
+    """Keep one person or team of the organization from this tool. Server managers only.
+
+    Their runs stop being given the tool and a call already under way is refused.
+    """
+    server = await mcp_service.load_owned(
+        db, server_id, context, authz=authz, permission="can_share"
+    )
+    tool = await mcp_service.server_tool(db, server, tool_id)
+    change = await tool_blocks.block(
+        db, context, server, tool, body.principal_type, body.principal_id
+    )
+    await mcp_service.record_server_audit(
+        db,
+        user=user,
+        request=request,
+        action=MCP_TOOL_BLOCK_UPDATED,
+        server=server,
+        metadata=_block_metadata(
+            tool, change.grant.principal_type, change.grant.principal_id, True
+        ),
+    )
+    grant_id = change.grant.id
+    await db.commit()
+    await _blocks_changed(authz, context, tool.id, change.outbox_ids)
+    blocks = await tool_blocks.list_blocks(db, context, tool)
+    return _block_view(next(block for block in blocks if block.grant_id == grant_id))
+
+
+@router.delete("/{server_id}/tools/{tool_id}/blocks/{grant_id}", status_code=204)
+@authz_policy(RES("mcp_server", "can_share", param="server_id", min_visible="can_use"))
+async def unblock_server_tool(
+    server_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    grant_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+) -> None:
+    """Lift one block of this tool. Server managers only."""
+    server = await mcp_service.load_owned(
+        db, server_id, context, authz=authz, permission="can_share"
+    )
+    tool = await mcp_service.server_tool(db, server, tool_id)
+    change = await tool_blocks.unblock(db, context, tool, grant_id)
+    await mcp_service.record_server_audit(
+        db,
+        user=user,
+        request=request,
+        action=MCP_TOOL_BLOCK_UPDATED,
+        server=server,
+        metadata=_block_metadata(
+            tool, change.grant.principal_type, change.grant.principal_id, False
+        ),
+    )
+    await db.commit()
+    await _blocks_changed(authz, context, tool.id, change.outbox_ids)
+
+
+def _block_metadata(
+    tool: McpTool, principal_type: str, principal_id: uuid.UUID, blocked: bool
+) -> dict[str, Any]:
+    return {
+        "mcp_tool_id": str(tool.id),
+        "tool": tool.name,
+        "principal_type": principal_type,
+        "principal_id": str(principal_id),
+        "blocked": blocked,
+    }
+
+
+async def _blocks_changed(
+    authz: AuthzService, context: OrgContext, tool_id: uuid.UUID, outbox_ids: tuple[uuid.UUID, ...]
+) -> None:
+    """After the commit: push the tuples, re-check delegations and drop cached tools."""
+    await apply_lifecycle(LifecycleChange(outbox_ids), authz)
+    await revalidate_object(
+        authz, context.org_id, context.tenant_id, ("mcp_tool", tool_id), trigger="mcp_tool_block"
+    )
+    await mcp_service.invalidate_runtime_mcp_cache()

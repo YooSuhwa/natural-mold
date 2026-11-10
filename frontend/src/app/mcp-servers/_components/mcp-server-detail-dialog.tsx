@@ -19,16 +19,22 @@ import { CredentialModeControl } from '@/components/readiness/credential-mode-co
 import { useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { McpHealthSection } from './mcp-health-section'
 import { McpToolTable } from './mcp-tool-table'
+import { ApprovalDefaultControl } from '@/features/tool-approval/components/approval-default-control'
+import type { ToolApprovalToolV1 } from '@/lib/types/runtime-policy'
 import type { McpToolReviewDecision } from '@/lib/types/mcp'
 import {
   useDeleteMcpServer,
   useDiscoverMcpTools,
   useReviewMcpTool,
+  useSetMcpApprovalDefault,
   useMcpServer,
   useTestMcpServer,
   useUpdateMcpServer,
 } from '@/lib/hooks/use-mcp-servers'
 import { useResourceAccess } from '@/lib/authz/use-resource-access'
+import { RegistrationBadge } from '@/features/registration/components/registration-badge'
+import { RegistrationNotice } from '@/features/registration/components/registration-notice'
+import { useRegistrationStatus } from '@/lib/hooks/use-registration'
 
 interface Props {
   serverId: string | null
@@ -49,6 +55,8 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
   const test = useTestMcpServer()
   const discover = useDiscoverMcpTools()
   const review = useReviewMcpTool(serverId ?? '')
+  const approvalDefault = useSetMcpApprovalDefault(serverId ?? '')
+  const ta = useTranslations('toolApproval.default')
   const [confirming, setConfirming] = useState(false)
   const errorMessage = useApiErrorMessage()
   const rows = useMemo(() => (server ? [server] : []), [server])
@@ -62,6 +70,10 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
     [credentialTypes],
   )
   const canDelete = access.can(server, 'can_delete')
+  // Plan G13: reviewing a tool's definition and blocking people from it are the managers'.
+  const canManage = access.can(server, 'can_share')
+  const registration = useRegistrationStatus('mcp_server', serverId ?? '', canEdit)
+  const administratorsReview = registration.data?.administrators_review_tools === true
 
   async function handleTest() {
     if (!server) return
@@ -102,6 +114,17 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
     } catch (e) {
       // 409: the server changed the tool again; the refreshed row shows the newer version.
       toast.error(errorMessage(e, t('toast.reviewFailed')))
+    }
+  }
+
+  async function handleApprovalDefault(
+    toolId: string | undefined,
+    value: ToolApprovalToolV1 | null,
+  ) {
+    try {
+      await approvalDefault.mutateAsync({ toolId, value })
+    } catch (e) {
+      toast.error(errorMessage(e, ta('saveFailed')))
     }
   }
 
@@ -166,12 +189,19 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
                     {t('system')}
                   </span>
                 ) : null}
+                <RegistrationBadge state={server.registration_state} />
                 <StatusChip variant={server.health_status ?? server.status} />
               </div>
             }
           />
           <DialogShell.Body>
             <PermissionsLoadError error={access.error} onRetry={() => void access.refetch()} />
+            <RegistrationNotice
+              type="mcp_server"
+              id={server.id}
+              state={server.registration_state}
+              canEdit={canEdit}
+            />
             {canEdit ? (
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={handleTest} disabled={test.isPending}>
@@ -223,6 +253,16 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
               />
             ) : null}
 
+            {canEdit ? (
+              <ApprovalDefaultControl
+                id={`server-${server.id}`}
+                label={ta('serverLabel')}
+                noneLabel={ta('none')}
+                value={server.approval_default}
+                onChange={(value) => handleApprovalDefault(undefined, value)}
+              />
+            ) : null}
+
             <McpHealthSection serverId={server.id} canCheck={canEdit} />
 
             <div className="space-y-1.5">
@@ -231,7 +271,10 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
               </h3>
               <McpToolTable
                 tools={server.tools}
-                onReview={canEdit ? handleReview : undefined}
+                onReview={canManage && !administratorsReview ? handleReview : undefined}
+                administratorsReview={administratorsReview}
+                blocksServerId={canManage && !server.is_system ? server.id : undefined}
+                onApprovalDefault={canEdit ? handleApprovalDefault : undefined}
                 reviewingToolId={review.isPending ? (review.variables?.toolId ?? null) : null}
               />
             </div>

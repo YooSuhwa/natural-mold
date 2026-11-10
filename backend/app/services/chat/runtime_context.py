@@ -18,8 +18,10 @@ from sqlalchemy.orm import contains_eager, selectinload
 
 from app.agent_runtime.identity import AgentRunIdentity
 from app.agent_runtime.mcp_auth_context import mcp_auth_fields
+from app.authz import tool_blocks
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
+from app.authz.registration_state import registered
 from app.authz.run_agent_loader import attach_shared_conversation_agent
 from app.authz.run_agent_scope import require_runnable_agent
 from app.authz.runtime_access_planner import RuntimeAccessPlan
@@ -40,6 +42,7 @@ from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink, Tool
 from app.outbound.destination import destination_config
 from app.skills.runtime import build_skills_for_agent
+from app.tools.keys import default_config
 
 logger = logging.getLogger(__name__)
 
@@ -211,8 +214,8 @@ async def build_tools_config(
 
     for link in plan.tool_links if plan is not None else agent.tool_links:
         tool = link.tool
-        if tool is None or not tool.enabled:
-            continue
+        if tool is None or not tool.enabled or not registered(tool):
+            continue  # switched off, or still waiting for an administrator (3.7)
         resolved = await resolver.tool(tool)
         configs.append(
             {
@@ -224,15 +227,32 @@ async def build_tools_config(
                 "credentials": resolved.values.reveal() if resolved else None,
                 "credential_id": str(resolved.credential_id) if resolved else None,
                 "credential_destination": destination_config(resolved, identity, agent.user_id),
+                **default_config(tool.approval_default),
                 **actor,
             }
         )
 
-    for mcp_link in plan.mcp_tool_links if plan is not None else agent.mcp_tool_links:
+    mcp_links = list(plan.mcp_tool_links if plan is not None else agent.mcp_tool_links)
+    # A tool this person (or one of their teams) is kept from is not loaded (plan 3.6).
+    blocked = (
+        await tool_blocks.blocked_tool_ids(
+            db,
+            context.org_id,
+            runtime_actor_user_id,
+            [link.mcp_tool.id for link in mcp_links if link.mcp_tool is not None],
+        )
+        if db is not None
+        else set()
+    )
+    for mcp_link in mcp_links:
         mcp_tool = mcp_link.mcp_tool
         if mcp_tool is None or not review.is_usable(mcp_tool) or mcp_tool.server is None:
             continue
+        if mcp_tool.id in blocked:
+            continue
         server = mcp_tool.server
+        if not registered(server):
+            continue
         resolution = await resolver.mcp(server)
         if resolution is None:
             continue
@@ -246,12 +266,14 @@ async def build_tools_config(
                 # _build_mcp_tools branches on these keys (``mcp_server_url``).
                 "mcp_server_url": server.url,
                 "mcp_server_id": str(server.id),
+                "mcp_server_name": server.name,
                 "mcp_tool_id": str(mcp_tool.id),
                 "mcp_tool_name": mcp_tool.name,
                 # D11: the model is shown the reviewed definition, not what the server
                 # lists now (a changed version waits for review).
                 "mcp_approved_definition": review.approved_definition(mcp_tool),
                 "mcp_reviewed_fingerprint": mcp_tool.approved_fingerprint,
+                **default_config(mcp_tool.approval_default, server.approval_default),
                 "org_id": str(context.org_id),
                 "mcp_transport_headers": resolution.headers,
                 "credentials": resolution.credentials,

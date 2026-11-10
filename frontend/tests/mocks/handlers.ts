@@ -27,12 +27,30 @@ import {
 
 const API_BASE = 'http://localhost:8001'
 
+const APPROVED_REGISTRATION = {
+  state: 'approved',
+  can_request: false,
+  administrators_review_tools: false,
+  request: null,
+}
+
 export const handlers = [
   // ── Organizations (sidebar switcher; empty list renders nothing) ──
   http.get(`${API_BASE}/api/approvals/pending-count`, () => HttpResponse.json({ count: 0 })),
   http.get(`${API_BASE}/api/me/organizations`, () => {
     return HttpResponse.json([])
   }),
+
+  // ── Registration review and MCP tool blocks (approved, nobody blocked) ──
+  http.get(`${API_BASE}/api/mcp-servers/:id/registration`, () =>
+    HttpResponse.json(APPROVED_REGISTRATION),
+  ),
+  http.get(`${API_BASE}/api/tools/:id/registration`, () =>
+    HttpResponse.json(APPROVED_REGISTRATION),
+  ),
+  http.get(`${API_BASE}/api/mcp-servers/:id/tools/:toolId/blocks`, () =>
+    HttpResponse.json({ items: [] }),
+  ),
 
   // ── Agents ─────────────────────────────────────────────────────
   http.get(`${API_BASE}/api/agents`, () => {

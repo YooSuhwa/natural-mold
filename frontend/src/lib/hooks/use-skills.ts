@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { skillsApi } from '@/lib/api/skills'
 import { isNotFoundError } from '@/lib/api/error-ui'
 import { skillQueryKeys, type SkillListQueryParams } from '@/lib/query-keys/skills'
+import { toolApprovalQueryKeys } from '@/lib/query-keys/tool-approval'
+import type { ToolApprovalToolV1 } from '@/lib/types/runtime-policy'
 import { requiredQueryValue } from './required-query-value'
 import type {
   SkillContentUpdateRequest,
@@ -82,6 +84,21 @@ export function useUpdateSkillMetadata() {
       qc.invalidateQueries({ queryKey: skillQueryKeys.all })
       qc.invalidateQueries({ queryKey: skillQueryKeys.detail(id) })
     },
+  })
+}
+
+export function useSetSkillApprovalDefault() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, value }: { id: string; value: ToolApprovalToolV1 | null }) =>
+      skillsApi.setApprovalDefault(id, value),
+    // Returned, so the caller's promise settles once the fresh row is in.
+    onSettled: (_data, _error, { id }) =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: skillQueryKeys.all }),
+        qc.invalidateQueries({ queryKey: skillQueryKeys.detail(id) }),
+        qc.invalidateQueries({ queryKey: toolApprovalQueryKeys.all }),
+      ]),
   })
 }
 

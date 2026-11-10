@@ -8,6 +8,7 @@ import pytest
 from langchain_core.tools import BaseTool, StructuredTool
 
 from app.agent_runtime.mcp_preparation import McpPreparationError, prepare_mcp_tools
+from app.tools.keys import ref_of
 
 PATH_SECRET = "sk-path-secret-123"
 
@@ -42,8 +43,11 @@ async def test_auth_injection_is_scoped_per_server_and_names_are_opaque() -> Non
         return [_tool("search", calls)]
 
     configs = [
-        _config("search", "https://a.test/mcp", "token-a"),
-        _config("search", f"https://b.test/mcp/{PATH_SECRET}", "token-b"),
+        {**_config("search", "https://a.test/mcp", "token-a"), "mcp_tool_id": "tool-a"},
+        {
+            **_config("search", f"https://b.test/mcp/{PATH_SECRET}", "token-b"),
+            "mcp_tool_id": "tool-b",
+        },
     ]
     prepared = await prepare_mcp_tools(
         configs, per_server_timeout=1.0, total_timeout=2.0, discover=discover
@@ -56,6 +60,9 @@ async def test_auth_injection_is_scoped_per_server_and_names_are_opaque() -> Non
     }
     names = sorted(item.tool_name for item in prepared.tools)
     assert len(set(names)) == 2 and all(n.startswith("srv_") for n in names)
+    # The rename keeps each tool's resource key and the name its settings were saved under.
+    refs = sorted((ref_of(item.tool).key, ref_of(item.tool).name) for item in prepared.tools)
+    assert refs == [("mcp:tool-a", "search"), ("mcp:tool-b", "search")]
     assert {item.mcp_tool_name for item in prepared.tools} == {"search"}
     assert PATH_SECRET not in repr([item.digest_fields() for item in prepared.tools])
     assert len({item.header_digest for item in prepared.tools}) == 2

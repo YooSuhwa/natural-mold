@@ -22,8 +22,10 @@ from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.error_codes import agent_not_found
+from app.guardrails.tool_risk import skills_on
 from app.models.agent import Agent
 from app.services import chat_service
+from app.tools.keys import agent_ref
 
 
 def _uuid_from_config(value: str | None, *, fallback: str | None = None) -> uuid.UUID:
@@ -120,6 +122,7 @@ async def build_subagents_config(
     display_names: dict[str, str] = {}
 
     plan = parent_cfg.access_plan  # F-06: the links the parent's run may bind
+    company = parent_cfg.tool_risk
     for link in plan.sub_agent_links if plan is not None else parent_agent.sub_agent_links:
         child = link.sub_agent
         if child is None:
@@ -131,6 +134,8 @@ async def build_subagents_config(
             context.tenant_id,
         ):
             raise agent_not_found()
+        if company is not None and company.switched_off(agent_ref(child.id, child.name)):
+            continue  # the company switched this agent off as a sub-agent (plan 3.8)
         if child.model is None:
             raise ValueError(f"linked subagent {child.id} has no model bound")
 
@@ -162,7 +167,7 @@ async def build_subagents_config(
             runtime_policy=parent_cfg.runtime_policy,
             model_params=child.model_params,
             middleware_configs=child.middleware_configs,
-            agent_skills=child_runtime.agent_skills or None,
+            agent_skills=skills_on(company, child_runtime.agent_skills) or None,
             agent_id=str(child.id),
             agent_name=child.name,
             provider_api_keys={child.model.provider: child_api_key} if child_api_key else None,

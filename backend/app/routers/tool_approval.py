@@ -30,16 +30,17 @@ from app.guardrails.policy import resolve_tool_risk
 from app.guardrails.tool_risk import DEFAULT_ACTIONS
 from app.schemas.tool_approval import (
     ToolApprovalCell,
+    ToolApprovalPart,
     ToolApprovalTool,
     ToolApprovalView,
     ToolGrantCreate,
     ToolGrantOut,
 )
 from app.services import agent_access_views, chat_service
+from app.tools.keys import ambiguous_names, resolve
 
 router = APIRouter(tags=["tool-approval"])
 CONVERSATION = PRIVATE("conversations", param="conversation_id")
-_COMPANY_LAYERS = frozenset({"company_block", "company_always", "company_forced"})
 
 
 async def _run_agent(db: AsyncSession, context: OrgContext, agent_id: uuid.UUID):  # type: ignore[no-untyped-def]
@@ -66,35 +67,67 @@ async def get_tool_approval(
     legacy = tool_modes.legacy_always_from(agent.middleware_configs)
     tools = await tool_grants.agent_tools(db, agent, context)
     cells = tool_modes.effective(tools, settings=settings, company=company, legacy_always=legacy)
+    refs = [ref for ref, _ in tools]
+    twice = ambiguous_names(refs)
+    parts = tool_grants.agent_parts(agent, context)
+    shown, unresolved = tool_grants.keyed_settings(settings, refs, [ref for ref, _ in parts])
+    part_cells = tool_modes.effective_parts(
+        parts, settings=settings, company=company, legacy_always=legacy
+    )
+
+    def _cells(found: list[tool_modes.Effective]) -> list[ToolApprovalCell]:
+        return [
+            ToolApprovalCell(
+                path=cell.path,
+                kind=cell.kind,
+                layer=cell.layer,
+                reason=cell.reason,
+                delivery=cell.delivery,
+                rule=cell.rule.model_dump(mode="json", exclude_none=True) if cell.rule else None,
+            )
+            for cell in found
+        ]
+
+    part_rows: list[ToolApprovalPart] = []
+    for ref, kind in parts:
+        mine = [cell for cell in part_cells if cell.tool == ref.key]
+        bound = company.tool_policy(ref) if company is not None else None
+        part_rows.append(
+            ToolApprovalPart(
+                key=ref.key,
+                name=ref.source or ref.name,
+                kind=kind,  # type: ignore[arg-type]
+                level=mine[0].level if kind == "skill" and mine else None,
+                locked=any(cell.layer in tool_modes.COMPANY_FIXED for cell in mine),
+                allowed_modes=sorted(bound.allowed) if bound and bound.allowed else None,
+                cells=_cells(mine),
+            )
+        )
     rows: list[ToolApprovalTool] = []
-    for name, level in tools:
-        mine = [cell for cell in cells if cell.tool == name]
+    for ref, level in tools:
+        mine = [cell for cell in cells if cell.tool == ref.key]
+        bound = company.tool_policy(ref) if company is not None else None
         rows.append(
             ToolApprovalTool(
-                name=name,
+                key=ref.key,
+                name=ref.name,
+                source=ref.source,
                 level=level.value,
-                locked=any(cell.layer in _COMPANY_LAYERS for cell in mine),
-                grantable=tool_modes.grantable(name, level, settings=settings, company=company),
-                cells=[
-                    ToolApprovalCell(
-                        path=cell.path,
-                        kind=cell.kind,
-                        layer=cell.layer,
-                        reason=cell.reason,
-                        delivery=cell.delivery,
-                        rule=cell.rule.model_dump(mode="json", exclude_none=True)
-                        if cell.rule
-                        else None,
-                    )
-                    for cell in mine
-                ],
+                locked=any(cell.layer in tool_modes.COMPANY_FIXED for cell in mine),
+                allowed_modes=sorted(bound.allowed) if bound and bound.allowed else None,
+                grantable=tool_modes.grantable(
+                    ref, level, settings=settings, company=company, ambiguous=ref.name in twice
+                ),
+                cells=_cells(mine),
             )
         )
     return ToolApprovalView(
-        settings=settings.model_dump(mode="json", exclude_none=True) if settings else None,
+        settings=shown.model_dump(mode="json", exclude_none=True) if shown else None,
+        unresolved=unresolved,
         company_actions=dict(company.actions if company else DEFAULT_ACTIONS),
         company_always_ask=sorted(company.always_ask) if company else [],
         tools=rows,
+        parts=part_rows,
     )
 
 
@@ -148,6 +181,12 @@ async def revoke_tool_grant(
     db: AsyncSession = Depends(get_db),
     context: OrgContext = Depends(get_org_context),
 ) -> Response:
-    await tool_grants.revoke(db, context, conversation, tool)
+    ref = None
+    if conversation.agent_id is not None:
+        agent = await chat_service.get_run_agent_with_tools(db, conversation.agent_id, context)
+        if agent is not None:
+            tools = await tool_grants.agent_tools(db, agent, context)
+            ref = resolve([item for item, _ in tools], tool)
+    await tool_grants.revoke(db, context, conversation, tool, ref=ref)
     await db.commit()
     return Response(status_code=204)

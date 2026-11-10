@@ -15,6 +15,7 @@ const SETTINGS_MESSAGE_NAMESPACES = [
   'shared',
   'systemCredentials',
   'systemLlm',
+  'systemStatus',
   'usage',
 ] as const
 

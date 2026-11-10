@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.approvals import registrations
+from app.authz import registration
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.attach_rules import require_attachable
 from app.authz.org_context import OrgContext
@@ -136,6 +139,11 @@ async def plan_graph(db: AsyncSession, request: GraphRequest) -> GraphPlan:
 async def apply_graph(db: AsyncSession, plan: GraphPlan) -> None:
     """The only dependency mutation boundary; use the final preallocated IDs."""
     scope = plan.context
+    hold_tools = hold_servers = False
+    if plan.tools.creations:
+        hold_tools = (await registration.admit(db, scope, "tool")).needs_review
+    if plan.mcp.servers:
+        hold_servers = (await registration.admit(db, scope, "mcp_server")).needs_review
     for draft in plan.tools.creations:
         db.add(
             Tool(
@@ -191,3 +199,14 @@ async def apply_graph(db: AsyncSession, plan: GraphPlan) -> None:
             .execution_options(autoflush=False)
         )
     await db.flush()
+    # Under review the imported tools and servers wait for an administrator (3.7): the
+    # agent keeps its links, and its runs load them once they are approved.
+    held: list[tuple[type[Tool] | type[McpServer], Any]] = []
+    if hold_tools:
+        held += [(Tool, draft.id) for draft in plan.tools.creations]
+    if hold_servers:
+        held += [(McpServer, server.id) for server in plan.mcp.servers]
+    for model, row_id in held:
+        row = await db.get(model, row_id, populate_existing=True)
+        if row is not None:
+            await registrations.hold(db, row, actor_id=scope.user_id)

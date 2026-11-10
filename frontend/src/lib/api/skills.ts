@@ -8,6 +8,7 @@ import type {
   SkillMetadataUpdateRequest,
   SkillTextContent,
 } from '@/lib/types/skill'
+import type { ToolApprovalToolV1 } from '@/lib/types/runtime-policy'
 
 export const skillsApi = {
   list: (params?: { kind?: SkillKind; q?: string }) => {
@@ -27,6 +28,12 @@ export const skillsApi = {
     apiFetch<Skill>(`/api/skills/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    }),
+  /** The skill's own approval default (`null` clears it); skill editors only. */
+  setApprovalDefault: (id: string, value: ToolApprovalToolV1 | null) =>
+    apiFetch<Skill>(`/api/skills/${id}/approval-default`, {
+      method: 'PUT',
+      body: JSON.stringify({ default: value }),
     }),
   putContent: (id: string, data: SkillContentUpdateRequest) =>
     apiFetch<Skill>(`/api/skills/${id}/content`, {

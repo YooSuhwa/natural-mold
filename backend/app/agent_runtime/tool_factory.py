@@ -43,6 +43,7 @@ from app.outbound.destination import (
     guarded_destination,
 )
 from app.tools.domain import ToolDefinition, ToolRunContext
+from app.tools.keys import ToolRef, attach_tool_ref, builtin_key, ref_from_config
 from app.tools.parameters import FieldKind
 from app.tools.registry import registry as tool_registry
 from app.tools.risk import attach_tool_risk, builtin_tool_risk, risk_from_definition
@@ -523,7 +524,8 @@ def create_builtin_tool(definition_key: str) -> BaseTool | None:
     builder = _BUILTIN_BUILDERS.get(definition_key)
     if builder is None:
         return None
-    return attach_tool_risk(builder(), builtin_tool_risk(definition_key))
+    tool = attach_tool_risk(builder(), builtin_tool_risk(definition_key))
+    return attach_tool_ref(tool, ToolRef(builtin_key(tool.name), tool.name))
 
 
 # ---------------------------------------------------------------------------
@@ -706,6 +708,7 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
         description=description,
         args_schema=args_schema,
     )
+    attach_tool_ref(tool, ref_from_config(tool_config, name=safe_name))
     return attach_tool_risk(tool, risk_from_definition(definition))
 
 

@@ -21,10 +21,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
-from sqlalchemy import ColumnElement, func, or_, select, update
+from sqlalchemy import ColumnElement, and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_redaction import redact_protocol_data
+from app.authz import registration
 from app.authz.audit_actions import (
     APPROVAL_DECIDED,
     APPROVAL_EXPIRED,
@@ -417,18 +418,32 @@ async def pending_for_run(db: AsyncSession, run_id: uuid.UUID) -> list[ApprovalR
     )
 
 
-def _mine(context: OrgContext) -> tuple[ColumnElement[bool], ...]:
-    """The caller's requests to decide in the current organization (or the company's)."""
-    return (
+async def _mine(db: AsyncSession, context: OrgContext) -> ColumnElement[bool]:
+    """The caller's requests to decide in the current organization (or the company's).
+
+    A registration request has no one decider (tool-governance-plan G9): company
+    administrators see the company's, an organization's administrators see theirs.
+    """
+    own = and_(
+        ApprovalRequest.kind != "registration",
         ApprovalRequest.decider_user_id == context.user_id,
         or_(ApprovalRequest.org_id == context.org_id, ApprovalRequest.org_id.is_(None)),
     )
+    scope = await registration.decider_scope(db, context)
+    if scope is None:
+        return own
+    registrations = and_(
+        ApprovalRequest.kind == "registration", ApprovalRequest.tenant_id == context.tenant_id
+    )
+    if scope == "organization":
+        registrations = and_(registrations, ApprovalRequest.org_id == context.org_id)
+    return or_(own, registrations)
 
 
 async def list_for_decider(
     db: AsyncSession, context: OrgContext, *, pending: bool, limit: int
 ) -> list[ApprovalRequest]:
-    query = select(ApprovalRequest).where(*_mine(context))
+    query = select(ApprovalRequest).where(await _mine(db, context))
     if pending:
         query = query.where(ApprovalRequest.status == "pending").order_by(
             ApprovalRequest.expires_at
@@ -444,7 +459,7 @@ async def pending_count(db: AsyncSession, context: OrgContext) -> int:
     count = await db.scalar(
         select(func.count())
         .select_from(ApprovalRequest)
-        .where(*_mine(context), ApprovalRequest.status == "pending")
+        .where(await _mine(db, context), ApprovalRequest.status == "pending")
     )
     return int(count or 0)
 

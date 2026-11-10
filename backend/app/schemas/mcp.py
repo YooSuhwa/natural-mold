@@ -76,6 +76,8 @@ class McpToolResponse(BaseModel):
     review_state: Literal["pending", "approved", "rejected"] = "approved"
     pending_version: McpToolPendingVersion | None = None
     reviewed_at: datetime | None = None
+    # The tool's own approval default (``{"mode", "rule"}``); none follows the server's.
+    approval_default: dict[str, Any] | None = None
     last_seen_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
@@ -85,6 +87,29 @@ class McpToolReviewRequest(BaseModel):
     decision: Literal["approve", "reject"]
     # The version the manager looked at; a newer one arriving in between is a conflict.
     fingerprint: str = Field(min_length=64, max_length=64)
+
+
+class McpToolBlockCreate(BaseModel):
+    """Keep one person or team from this tool (tool-governance-plan 3.6)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    principal_type: Literal["user", "group"]
+    principal_id: uuid.UUID
+
+
+class McpToolBlockView(BaseModel):
+    grant_id: uuid.UUID
+    principal_type: Literal["user", "group"]
+    principal_id: uuid.UUID
+    display_name: str | None = None
+    member_count: int | None = None
+    granted_by: uuid.UUID | None = None
+    granted_at: datetime
+
+
+class McpToolBlockList(BaseModel):
+    items: list[McpToolBlockView]
 
 
 class McpServerResponse(BaseModel):
@@ -109,6 +134,10 @@ class McpServerResponse(BaseModel):
     health_status: str | None = None
     health_polled_at: datetime | None = None
     health_message: str | None = None
+    # The approval default of every tool of this server that sets none of its own.
+    approval_default: dict[str, Any] | None = None
+    # ``pending``/``rejected``: waits for an administrator; agents cannot use it (3.7).
+    registration_state: Literal["approved", "pending", "rejected"] = "approved"
     created_at: datetime
     updated_at: datetime
 

@@ -29,6 +29,7 @@ from app.models.audit_event import AuditEvent
 from app.models.conversation import Conversation
 from app.models.conversation_tool_grant import ConversationToolGrant
 from app.models.tool import AgentToolLink, Tool
+from app.tools.keys import ToolRef, ref_from_config, ref_of, resolve
 from app.tools.risk import ToolRiskLevel
 from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, seed_agent
@@ -213,7 +214,7 @@ def test_a_policy_without_tool_approval_keeps_its_hash() -> None:
 class _Tool:
     def __init__(self, name: str, level: ToolRiskLevel) -> None:
         self.name = name
-        self.metadata = {"moldy_risk": {"risk_level": level.value}}
+        self.metadata: dict[str, Any] = {"moldy_risk": {"risk_level": level.value}}
 
 
 def test_apply_lifts_conditions_and_records_what_runs_unasked(
@@ -323,6 +324,11 @@ async def test_the_effective_table_shows_each_path(client: AsyncClient, db: Asyn
     assert view["settings"]["paths"]["workflow"] == "auto"
 
 
+async def _mail_key(client: AsyncClient, agent: Agent) -> str:
+    view = (await client.get(f"/api/agents/{agent.id}/tool-approval")).json()
+    return next(tool["key"] for tool in view["tools"] if tool["name"] == "send_mail")
+
+
 async def _conversation(db: AsyncSession, agent: Agent) -> Conversation:
     from app.services import chat_service
     from tests.authz.unit_scope_fixture import unit_context
@@ -354,7 +360,11 @@ async def test_a_grant_needs_a_lifted_cap_and_is_audited(
     assert made.status_code == 201, made.text
     again = await client.post(url, json={"tool": "send_mail"})
     assert again.json()["id"] == made.json()["id"]  # one live grant per tool
-    assert [g["tool_name"] for g in (await client.get(url)).json()] == ["send_mail"]
+    # Stored under the tool's key, whichever way the caller named it.
+    key = await _mail_key(client, agent)
+    assert key.startswith("tool:")
+    assert [g["tool_name"] for g in (await client.get(url)).json()] == [key]
+    assert (await client.post(url, json={"tool": key})).json()["id"] == made.json()["id"]
     unknown = await client.post(url, json={"tool": "not_a_tool"})
     assert unknown.status_code == 422
     revoked = await client.delete(f"{url}/send_mail")
@@ -370,6 +380,14 @@ async def test_a_grant_needs_a_lifted_cap_and_is_audited(
         .all()
     )
     assert sorted(actions) == ["approval.grant_created", "approval.grant_revoked"]
+    created = await db.scalar(
+        sa.select(AuditEvent).where(AuditEvent.action == "approval.grant_created")
+    )
+    assert created is not None and created.event_metadata is not None
+    assert (created.event_metadata["tool"], created.event_metadata["tool_key"]) == (
+        "send_mail",
+        key,
+    )
 
 
 @pytest.mark.asyncio
@@ -467,3 +485,484 @@ def test_a_run_pins_the_always_ask_list_with_the_actions() -> None:
     assert pinned.tool_risk.action("external_mutation") == "approval_relaxable"
     plain = _snapshot(None, _company({"external_mutation": "block"}))
     assert "always_ask_tools" not in plain  # earlier pins keep their shape
+
+
+# --- resource keys (tool-governance-plan 3.2) -----------------------------------------------
+
+A = ToolRef("mcp:a", "search", "mcp_server:1")
+B = ToolRef("mcp:b", "search", "mcp_server:2")
+
+
+def test_a_key_names_one_tool_where_two_share_a_name() -> None:
+    company = _company(RELAXED)
+    by_key = _settings(tools={"mcp:a": {"mode": "never"}})
+    assert decide(A, X, "chat", settings=by_key, company=company, ambiguous=True) == Decision(
+        "auto", "tool_never"
+    )
+    assert decide(B, X, "chat", settings=by_key, company=company, ambiguous=True) == Decision(
+        "ask", "risk_default"
+    )
+    # Saved by name: a setting that relaxes cannot tell the two apart, so neither is lifted.
+    never = _settings(tools={"search": {"mode": "never"}})
+    for ref in (A, B):
+        assert decide(ref, X, "chat", settings=never, company=company, ambiguous=True) == Decision(
+            "ask", "risk_default"
+        )
+    assert decide(A, X, "chat", settings=never, company=company) == Decision("auto", "tool_never")
+    # ...and one that tightens applies to both.
+    always = _settings(tools={"search": {"mode": "always"}})
+    for ref in (A, B):
+        assert decide(ref, X, "chat", settings=always, company=company, ambiguous=True) == Decision(
+            "ask", "tool_always"
+        )
+    # A key entry beats a name entry for its tool.
+    both = _settings(tools={"search": {"mode": "always"}, "mcp:a": {"mode": "never"}})
+    assert decide(A, X, "chat", settings=both, company=company, ambiguous=True).layer == (
+        "tool_never"
+    )
+
+
+def test_grants_and_company_lists_match_by_key_or_unique_name() -> None:
+    company = _company(RELAXED)
+    keyed = frozenset({"mcp:a"})
+    assert decide(A, X, "chat", settings=None, company=company, grants=keyed, ambiguous=True) == (
+        Decision("auto", "conversation_grant")
+    )
+    assert decide(B, X, "chat", settings=None, company=company, grants=keyed, ambiguous=True) == (
+        Decision("ask", "risk_default")
+    )
+    named = frozenset({"search"})  # a grant made before keys
+    assert decide(A, X, "chat", settings=None, company=company, grants=named).kind == "auto"
+    assert decide(A, X, "chat", settings=None, company=company, grants=named, ambiguous=True) == (
+        Decision("ask", "risk_default")
+    )
+    # The company's always-ask list tightens: a key hits one tool, a name every tool so named.
+    by_key = _company(RELAXED, frozenset({"mcp:b"}))
+    assert decide(A, X, "chat", settings=None, company=by_key).layer == "risk_default"
+    assert decide(B, X, "chat", settings=None, company=by_key).layer == "company_always"
+    by_name = _company(RELAXED, frozenset({"search"}))
+    assert {decide(ref, X, "chat", settings=None, company=by_name).layer for ref in (A, B)} == {
+        "company_always"
+    }
+
+
+class _Keyed(_Tool):
+    def __init__(self, name: str, ref: ToolRef) -> None:
+        super().__init__(name, X)
+        self.metadata["moldy_resource"] = {"key": ref.key, "name": ref.name, "server": ref.server}
+
+
+def test_apply_reads_settings_by_key_for_tools_a_run_renamed() -> None:
+    """Two servers expose ``search``; the run calls them ``srv_1_search`` / ``srv_2_search``."""
+    tools = [_Keyed("srv_1_search", A), _Keyed("srv_2_search", B)]
+    entry = {"allowed_decisions": ["approve", "reject"]}
+    interrupt_on = {"srv_1_search": dict(entry), "srv_2_search": dict(entry)}
+    plan = ToolApprovalPlan(
+        "chat",
+        settings=_settings(tools={"mcp:a": {"mode": "never"}, "mcp:b": {"mode": "always"}}),
+        company=_company(RELAXED),
+    )
+    applied = tool_modes.apply(interrupt_on, tools, plan)  # type: ignore[arg-type]
+    result = applied.interrupt_on or {}
+    assert "srv_1_search" not in result and applied.auto_allowed["srv_1_search"] == "tool_never"
+    assert "도구 설정: 항상 묻기" in result["srv_2_search"]["description"](
+        {"name": "srv_2_search", "args": {}}, None, None
+    )
+    # The old name setting ``never`` lifts neither (it names two tools).
+    named = ToolApprovalPlan(
+        "chat", settings=_settings(tools={"search": {"mode": "never"}}), company=_company(RELAXED)
+    )
+    kept = tool_modes.apply(interrupt_on, tools, named).interrupt_on or {}  # type: ignore[arg-type]
+    assert {"srv_1_search", "srv_2_search"} <= set(kept)
+
+
+def test_refs_come_from_the_tool_rows() -> None:
+    tool_id, server_id = uuid.uuid4(), uuid.uuid4()
+    mcp = {"definition_key": "mcp", "mcp_tool_id": tool_id, "mcp_server_id": server_id}
+    assert ref_from_config(mcp, name="search") == ToolRef(
+        f"mcp:{tool_id}", "search", f"mcp_server:{server_id}"
+    )
+    assert ref_from_config({"definition_key": "http_request", "tool_id": tool_id}, name="x") == (
+        ToolRef(f"tool:{tool_id}", "x")
+    )
+    assert ref_from_config({"definition_key": "builtin:web_search", "tool_id": tool_id}, name="w")
+    assert ref_from_config(
+        {"definition_key": "builtin:web_search", "tool_id": tool_id}, name="web_search"
+    ) == ToolRef("builtin:web_search", "web_search")
+    assert ref_of("write_file") == ToolRef("builtin:write_file", "write_file")
+    assert resolve([A, B], "mcp:b") == B
+    assert resolve([A, B], "search") is None  # two tools carry the name
+    assert resolve([A], "search") == A
+    assert resolve([A], "srv_1_search") is None
+
+
+@pytest.mark.asyncio
+async def test_the_view_keys_settings_and_reports_what_names_no_tool(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    agent = await _agent_with_mail(
+        db, {"tools": {"send_mail": {"mode": "always"}, "gone": {"mode": "never"}}}
+    )
+    view = (await client.get(f"/api/agents/{agent.id}/tool-approval")).json()
+    mail = next(tool for tool in view["tools"] if tool["name"] == "send_mail")
+    assert view["settings"]["tools"] == {mail["key"]: {"mode": "always"}}
+    assert view["unresolved"] == ["gone"]
+
+
+@pytest.mark.asyncio
+async def test_a_grant_made_by_name_is_revoked_by_key(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    agent = await _agent_with_mail(db)
+    conversation = await _conversation(db, agent)
+    db.add(
+        ConversationToolGrant(
+            conversation_id=conversation.id, tool_name="send_mail", granted_by=TEST_USER_ID
+        )
+    )
+    await db.commit()
+    key = await _mail_key(client, agent)
+    url = f"/api/conversations/{conversation.id}/tool-grants"
+    assert (await client.delete(f"{url}/{key}")).status_code == 204
+    assert (await client.get(url)).json() == []
+
+
+# --- a tool's own default (tool-governance-plan 3.3) ------------------------------------------
+
+
+def _with_default(mode: str, layer: str = "tool", rule: Any = None, name: str = "mail") -> ToolRef:
+    return ToolRef(
+        "mcp:d", name, "mcp_server:1", default={"mode": mode, "rule": rule, "layer": layer}
+    )
+
+
+@pytest.mark.parametrize(
+    ("ref", "level", "company", "kwargs", "expected"),
+    [
+        # ``always`` tightens everywhere, a read-only tool and a child agent included.
+        (_with_default("always"), R, None, {}, ("ask", "tool_default")),
+        (_with_default("always"), R, None, {"root": False}, ("ask", "tool_default")),
+        (_with_default("always", "server"), X, RELAXED, {}, ("ask", "server_default")),
+        (_with_default("when", rule=RULE), X, RELAXED, {}, ("when", "tool_default")),
+        (_with_default("when", rule=RULE), X, RELAXED, {"root": False}, ("when", "tool_default")),
+        # ``never`` lifts an ask only where the company lets it, and only for the root agent.
+        (_with_default("never"), X, RELAXED, {}, ("auto", "tool_default")),
+        (_with_default("never", "server"), X, RELAXED, {}, ("auto", "server_default")),
+        (_with_default("never"), X, RELAXED, {"root": False}, ("ask", "risk_default")),
+        (_with_default("never"), X, None, {}, ("ask", "company_forced")),
+        (
+            _with_default("never"),
+            X,
+            {"external_mutation": "block"},
+            {},
+            ("hidden", "company_block"),
+        ),
+        # What the agent or the conversation says is more specific than the tool's default.
+        (
+            _with_default("always"),
+            X,
+            RELAXED,
+            {"settings": {"tools": {"mcp:d": {"mode": "never"}}}},
+            ("auto", "tool_never"),
+        ),
+        (
+            _with_default("never"),
+            X,
+            RELAXED,
+            {"settings": {"tools": {"mcp:d": {"mode": "always"}}}},
+            ("ask", "tool_always"),
+        ),
+        (
+            _with_default("always"),
+            X,
+            RELAXED,
+            {"grants": frozenset({"mcp:d"})},
+            ("auto", "conversation_grant"),
+        ),
+        # The default is more specific than the path's mode.
+        (
+            _with_default("always"),
+            X,
+            RELAXED,
+            {"settings": {"paths": {"chat": "auto"}}},
+            ("ask", "tool_default"),
+        ),
+        # A child agent is out of the agent's own layers: only the default speaks there.
+        (
+            _with_default("always"),
+            X,
+            RELAXED,
+            {"settings": {"tools": {"mcp:d": {"mode": "never"}}}, "root": False},
+            ("ask", "tool_default"),
+        ),
+        # A default that cannot be read asks.
+        (_with_default("sometimes"), R, None, {}, ("ask", "tool_default")),
+        (_with_default("when"), R, None, {}, ("ask", "tool_default")),
+    ],
+)
+def test_the_tool_default_layer(
+    ref: ToolRef,
+    level: ToolRiskLevel,
+    company: dict[str, str] | None,
+    kwargs: dict[str, Any],
+    expected: tuple[str, str],
+) -> None:
+    settings = kwargs.pop("settings", None) if "settings" in kwargs else None
+    decision = decide(
+        ref,
+        level,
+        "chat",
+        settings=_settings(**settings) if settings else None,
+        company=_company(company) if company is not None else None,
+        **{key: value for key, value in kwargs.items() if key != "settings"},
+    )
+    assert (decision.kind, decision.layer) == expected
+
+
+def test_a_tool_default_beats_its_servers_and_leaves_plain_configs_alone() -> None:
+    from app.tools.keys import default_config, resolved_default
+
+    own, server = {"mode": "never"}, {"mode": "always"}
+    assert resolved_default(own, server) == {"mode": "never", "rule": None, "layer": "tool"}
+    assert resolved_default(None, server) == {"mode": "always", "rule": None, "layer": "server"}
+    assert resolved_default({}, None) is None
+    assert default_config(None, None) == {}  # a config without a default is what it was
+    assert default_config(None, {"mode": "when", "rule": RULE}) == {
+        "approval_default": {"mode": "when", "rule": RULE, "layer": "server"}
+    }
+    tool_id, server_id = uuid.uuid4(), uuid.uuid4()
+    config = {
+        "definition_key": "mcp",
+        "mcp_tool_id": tool_id,
+        "mcp_server_id": server_id,
+        **default_config(None, server),
+    }
+    ref = ref_from_config(config, name="send")
+    assert ref.default == {"mode": "always", "rule": None, "layer": "server"}
+    # The default is a setting, not identity: the ref still equals the plain one.
+    assert ref == ToolRef(f"mcp:{tool_id}", "send", f"mcp_server:{server_id}")
+    registered = ref_from_config(
+        {"definition_key": "http_request", "tool_id": tool_id, **default_config(own)}, name="x"
+    )
+    assert registered.default == {"mode": "never", "rule": None, "layer": "tool"}
+
+
+class _Defaulted(_Tool):
+    def __init__(self, name: str, level: ToolRiskLevel, mode: str, rule: Any = None) -> None:
+        super().__init__(name, level)
+        self.metadata["moldy_resource"] = {
+            "key": f"mcp:{name}",
+            "name": name,
+            "server": None,
+            "default": {"mode": mode, "rule": rule, "layer": "tool"},
+        }
+
+
+def test_a_child_agent_only_gains_asks_from_tool_defaults() -> None:
+    entry = {"allowed_decisions": ["approve", "reject"]}
+    tools = [
+        _Defaulted("lookup", R, "always"),
+        _Defaulted("mail", X, "never"),
+        _Defaulted("post", X, "when", RULE),
+        _Defaulted("note", W, "when", RULE),
+        _Tool("plain", X),
+    ]
+    interrupt_on = {"mail": dict(entry), "post": dict(entry), "plain": dict(entry)}
+    plan = ToolApprovalPlan(
+        "chat",
+        settings=_settings(tools={"mcp:lookup": {"mode": "never"}}, paths={"chat": "auto"}),
+        company=_company({**RELAXED, "write_internal": "allow"}),
+        defaults=True,
+    )
+    result = tool_modes.apply(interrupt_on, tools, plan, root=False).interrupt_on or {}  # type: ignore[arg-type]
+    # ``always`` adds an ask the child did not have (the root's ``never`` does not reach it).
+    assert "도구 기본값" in result["lookup"]["description"](
+        {"name": "lookup", "args": {}}, None, None
+    )
+    # ``never`` lifts nothing; an existing ask is not narrowed to a condition.
+    assert result["mail"] == entry and result["post"] == entry and result["plain"] == entry
+    # ``when`` adds a conditional ask where there was none.
+    when = result["note"]["when"]
+    assert when(SimpleNamespace(tool_call={"args": {"to": "a@corp.com"}})) is True
+    assert when(SimpleNamespace(tool_call={"args": {"to": "a@other.com"}})) is False
+    # The root applies the same defaults both ways.
+    rooted = tool_modes.apply(interrupt_on, tools, plan)  # type: ignore[arg-type]
+    assert "mail" not in (rooted.interrupt_on or {})
+    assert rooted.auto_allowed["mail"] == "tool_default"
+
+
+def test_runs_with_tool_defaults_take_the_ordinary_path() -> None:
+    from app.agent_runtime.prepared_run_input_policy import is_legacy_fallback
+
+    assert is_legacy_fallback("tool_default")
+    assert is_legacy_fallback("child:helper:tool_default")
+    assert tool_modes.has_default([{"approval_default": {"mode": "always"}}])
+    assert not tool_modes.has_default([{"definition_key": "mcp"}, {"approval_default": None}])
+    assert not tool_modes.has_default(None)
+    plain = ToolApprovalPlan("chat")
+    assert not plain.acts
+    assert ToolApprovalPlan("chat", defaults=True).acts
+    assert not ToolApprovalPlan("chat", defaults=True).relaxes
+
+
+async def _mcp_tool(db: AsyncSession, agent: Agent | None = None) -> tuple[Any, Any]:
+    from app.models.mcp_server import McpServer
+    from app.models.mcp_tool import AgentMcpToolLink, McpTool
+
+    server = McpServer(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        user_id=TEST_USER_ID,
+        name="Mail",
+        transport="streamable_http",
+        url="https://mcp.example.com",
+    )
+    db.add(server)
+    await db.flush()
+    tool = McpTool(
+        server_id=server.id, name="send", enabled=True, input_schema={}, review_state="approved"
+    )
+    db.add(tool)
+    await db.flush()
+    if agent is not None:
+        db.add(AgentMcpToolLink(agent_id=agent.id, mcp_tool_id=tool.id))
+    await db.commit()
+    return server, tool
+
+
+@pytest.mark.asyncio
+async def test_a_tool_editor_sets_and_clears_the_default_and_the_table_follows(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    agent = await _agent_with_mail(db)
+    tool_id = (await db.scalars(sa.select(AgentToolLink.tool_id))).one()
+    url = f"/api/tools/{tool_id}/approval-default"
+
+    assert (await client.put(url, json={"default": {"mode": "when"}})).status_code == 422
+    assert (await client.put(url, json={"default": {"mode": "never"}, "x": 1})).status_code == 422
+    assert (await client.put(url, json={})).status_code == 422
+    missing = f"/api/tools/{uuid.uuid4()}/approval-default"
+    assert (await client.put(missing, json={"default": None})).status_code == 404
+
+    set_ = await client.put(url, json={"default": {"mode": "when", "rule": RULE}})
+    assert set_.status_code == 200, set_.text
+    assert set_.json()["approval_default"]["mode"] == "when"
+    view = (await client.get(f"/api/agents/{agent.id}/tool-approval")).json()
+    mail = next(tool for tool in view["tools"] if tool["name"] == "send_mail")
+    # The company's default keeps external mutations forced: the tool's default cannot speak.
+    assert {cell["layer"] for cell in mail["cells"]} == {"company_forced"}
+
+    # An update over an existing default (not only the first write).
+    again = await client.put(url, json={"default": {"mode": "always"}})
+    assert again.json()["approval_default"] == {"mode": "always"}
+    cleared = await client.put(url, json={"default": None})
+    assert cleared.status_code == 200 and cleared.json()["approval_default"] is None
+    assert (await client.get(f"/api/tools/{tool_id}")).json()["approval_default"] is None
+
+    rows = (
+        await db.scalars(
+            sa.select(AuditEvent)
+            .where(AuditEvent.action == "tool.approval_default_updated")
+            .order_by(AuditEvent.created_at, AuditEvent.id)
+        )
+    ).all()
+    metas = [row.event_metadata or {} for row in rows]
+    changes = sorted((meta["before"] or "", meta["after"] or "") for meta in metas)
+    assert changes == [("", "when"), ("always", ""), ("when", "always")]
+    assert {(row.target_type, str(row.target_id), row.outcome) for row in rows} == {
+        ("tool", str(tool_id), "success")
+    }
+    assert all(meta["scope"] == "tool" for meta in metas)
+    assert "corp.com" not in str(metas)  # modes, never the rule
+
+
+@pytest.mark.asyncio
+async def test_mcp_defaults_reach_the_agents_table_tool_before_server(
+    client: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, agent = await seed_agent(db)
+    server, tool = await _mcp_tool(db, agent)
+    server_url = f"/api/mcp-servers/{server.id}/approval-default"
+    tool_url = f"/api/mcp-servers/{server.id}/tools/{tool.id}/approval-default"
+
+    async def layers() -> set[str]:
+        view = (await client.get(f"/api/agents/{agent.id}/tool-approval")).json()
+        send = next(item for item in view["tools"] if item["name"] == "send")
+        return {cell["layer"] for cell in send["cells"]}
+
+    from app.routers import tool_approval as route
+
+    async def relaxed(*_: Any) -> ToolRiskPolicy:
+        return _company(RELAXED)
+
+    monkeypatch.setattr(route, "resolve_tool_risk", relaxed)
+    assert (await client.put(server_url, json={"default": {"mode": "always"}})).status_code == 200
+    assert await layers() == {"server_default"}
+    set_ = await client.put(tool_url, json={"default": {"mode": "when", "rule": RULE}})
+    assert set_.status_code == 200, set_.text
+    assert set_.json()["approval_default"]["mode"] == "when"
+    assert await layers() == {"tool_default"}
+    assert (await client.put(tool_url, json={"default": None})).json()["approval_default"] is None
+    assert await layers() == {"server_default"}
+    listed = (await client.get(f"/api/mcp-servers/{server.id}")).json()
+    assert listed["approval_default"] == {"mode": "always"}
+
+    # A tool of another server is not reachable through this server's route.
+    other, foreign = await _mcp_tool(db)
+    crossed = f"/api/mcp-servers/{server.id}/tools/{foreign.id}/approval-default"
+    assert (await client.put(crossed, json={"default": {"mode": "always"}})).status_code == 404
+    await db.refresh(foreign)
+    assert foreign.approval_default is None and other.approval_default is None
+
+    rows = (
+        await db.scalars(
+            sa.select(AuditEvent).where(AuditEvent.action == "tool.approval_default_updated")
+        )
+    ).all()
+    metas = [row.event_metadata or {} for row in rows]
+    by_scope = {(meta["scope"], meta["before"], meta["after"]) for meta in metas}
+    assert by_scope == {
+        ("mcp_server", None, "always"),
+        ("mcp_tool", None, "when"),
+        ("mcp_tool", "when", None),
+    }
+    assert {(row.target_type, str(row.target_id)) for row in rows} == {
+        ("mcp_server", str(server.id))
+    }
+    assert {meta["tool"] for meta in metas if meta["scope"] == "mcp_tool"} == {"send"}
+
+
+@pytest.mark.asyncio
+async def test_someone_elses_tool_and_server_keep_their_defaults(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    from tests.conftest import make_user
+
+    other = await make_user(db)
+    server, mcp_tool = await _mcp_tool(db)
+    tool = Tool(
+        user_id=other.id,
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        definition_key="http_request",
+        name="theirs",
+        parameters={},
+    )
+    db.add(tool)
+    server.user_id = other.id
+    await db.commit()
+    body = {"default": {"mode": "never"}}
+    for url in (
+        f"/api/tools/{tool.id}/approval-default",
+        f"/api/mcp-servers/{server.id}/approval-default",
+        f"/api/mcp-servers/{server.id}/tools/{mcp_tool.id}/approval-default",
+    ):
+        assert (await client.put(url, json=body)).status_code == 404, url
+    for row in (tool, server, mcp_tool):
+        await db.refresh(row)
+        assert row.approval_default is None
+    assert not (
+        await db.scalars(
+            sa.select(AuditEvent).where(AuditEvent.action == "tool.approval_default_updated")
+        )
+    ).all()

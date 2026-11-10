@@ -4,7 +4,7 @@ import { use } from 'react'
 import dynamic from 'next/dynamic'
 import { useAgent } from '@/lib/hooks/use-agents'
 import { useModels } from '@/lib/hooks/use-models'
-import { useTools } from '@/lib/hooks/use-tools'
+import { useAttachableTools } from '@/lib/hooks/use-attachable-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
 import { useMiddlewares } from '@/lib/hooks/use-middlewares'
 import { useTriggers } from '@/lib/hooks/use-triggers'
@@ -38,7 +38,7 @@ export default function VisualSettingsPage({ params }: { params: Promise<{ agent
   const { agentId } = use(params)
   const { data: agent, isLoading: agentLoading } = useAgent(agentId)
   const { data: models } = useModels()
-  const { data: tools } = useTools()
+  const { data: tools } = useAttachableTools(agent?.tools)
   const { data: skills } = useSkills()
   const { data: middlewares } = useMiddlewares()
   const { data: triggers } = useTriggers(agentId)

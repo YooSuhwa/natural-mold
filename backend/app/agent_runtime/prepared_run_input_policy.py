@@ -70,6 +70,7 @@ LEGACY_FALLBACK_REASONS: frozenset[str] = frozenset(
         "guardrail_policy",
         "unattended_approval",
         "tool_approval",
+        "tool_default",
         "llm_credential_missing",
         "memory_tools",
         "middleware",
@@ -161,9 +162,15 @@ def require_lease_supported(
         raise unsupported(f"{subject}agent_memory_file_write")
     if cfg.user_id is not None and memory_write_policy != "off":
         raise unsupported(f"{subject}memory_tools")
-    from app.approvals.tool_modes import plan_for
+    from app.approvals.tool_modes import has_default, plan_for
 
     plan = plan_for(cfg)
     if plan is not None and plan.relaxes:
         # Tool approval settings (approval-modes-plan 3.2): conditional asks are predicates.
         raise unsupported(f"{subject}tool_approval")
+    if has_default(cfg.tools_config):
+        # A tool's own approval default (tool-governance-plan 3.3) is decided per run.
+        raise unsupported(f"{subject}tool_default")
+    if cfg.tool_risk is not None and cfg.tool_risk.tools:
+        # A company policy for one tool (tool-governance-plan 3.4) is decided per run.
+        raise unsupported(f"{subject}tool_policy")

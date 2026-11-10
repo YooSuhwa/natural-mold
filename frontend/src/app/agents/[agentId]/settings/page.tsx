@@ -14,7 +14,7 @@ import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useModels } from '@/lib/hooks/use-models'
-import { useTools } from '@/lib/hooks/use-tools'
+import { useAttachableTools } from '@/lib/hooks/use-attachable-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
 import { useMiddlewares } from '@/lib/hooks/use-middlewares'
 import { useTriggers, useDeleteTrigger } from '@/lib/hooks/use-triggers'
@@ -66,7 +66,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     refetch: refetchAgent,
   } = useAgent(agentId)
   const { data: models } = useModels()
-  const { data: tools } = useTools()
+  const { data: tools } = useAttachableTools(agent?.tools)
   const { data: skills } = useSkills()
   const { data: middlewares } = useMiddlewares()
   const { data: triggers } = useTriggers(agentId)

@@ -8,7 +8,7 @@ import { AlertCircleIcon, LockKeyholeIcon, SearchXIcon } from 'lucide-react'
 import { PermissionRequiredState } from '@/components/access-requests/permission-required-state'
 import { ReadinessDialog } from '@/components/readiness/readiness-dialog'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { mapApiErrorToUiState, type ApiErrorUiKind } from '@/lib/api/client'
+import { ApiError, mapApiErrorToUiState, type ApiErrorUiKind } from '@/lib/api/client'
 import type { RequestLevel, RequestableType } from '@/lib/types/access-request'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +24,12 @@ export const API_ERROR_MESSAGE_KEY: Record<ApiErrorUiKind, string> = {
   quota_exceeded: 'quotaExceeded',
   authz_unavailable: 'authzUnavailable',
   unknown: 'unknown',
+}
+
+/** Refusals that say more than their status: the message names what to do next. */
+const API_ERROR_CODE_MESSAGE_KEY: Record<string, string | undefined> = {
+  registration_not_approved: 'registrationNotApproved',
+  registration_review_required: 'registrationReviewRequired',
 }
 
 export interface ApiErrorResource {
@@ -115,6 +121,8 @@ export function ApiErrorState({ error, resource, onRetry, children }: ApiErrorSt
 export function useApiErrorMessage(): (error: unknown, fallback: string) => string {
   const t = useTranslations('common.apiError')
   return (error, fallback) => {
+    const code = error instanceof ApiError ? API_ERROR_CODE_MESSAGE_KEY[error.code] : undefined
+    if (code) return t(`codes.${code}`)
     const { kind } = mapApiErrorToUiState(error)
     return kind === 'unknown' ? fallback : t(`${API_ERROR_MESSAGE_KEY[kind]}.description`)
   }

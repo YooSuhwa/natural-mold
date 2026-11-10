@@ -10,7 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
-from app.agent_runtime.runtime_policy import RuntimePolicyV1
+from app.agent_runtime.runtime_policy import (
+    RuntimePolicyV1,
+    resolve_runtime_policy,
+    runtime_policy_to_json,
+)
 from app.authz.company_catalog import model_scope
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
@@ -176,6 +180,31 @@ def _validated_runtime_policy(agent_spec: dict[str, Any]) -> RuntimePolicyV1 | N
     return parse_portable_runtime_policy(agent_spec["runtime_policy"])
 
 
+async def _rekey_tool_approval(db: AsyncSession, agent: Agent, context: OrgContext) -> None:
+    """Attach the blueprint's per-tool approval settings (saved by tool name) to this
+    agent's own tool rows; a name that means no single tool stays as it is and the
+    settings screen reports it (tool-governance-plan 3.2)."""
+    from app.approvals import tool_grants
+    from app.services.chat.run_agents import get_run_agent_with_tools
+
+    settings = tool_grants.settings_of(agent)
+    if settings is None or not settings.tools:
+        return
+    loaded = await get_run_agent_with_tools(db, agent.id, context)
+    if loaded is None:
+        return
+    refs = [ref for ref, _level in await tool_grants.agent_tools(db, loaded, context)]
+    keyed, unresolved = tool_grants.keyed_settings(settings, refs)
+    if keyed is None:
+        return
+    tools = {**keyed.tools, **{name: settings.tools[name] for name in unresolved}}
+    policy = resolve_runtime_policy(agent.runtime_policy).effective
+    agent.runtime_policy = runtime_policy_to_json(
+        policy.model_copy(update={"tool_approval": settings.model_copy(update={"tools": tools})})
+    )
+    await db.flush()
+
+
 def _credential_requirements(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
     raw_setup = spec.get("setup")
     setup = raw_setup if isinstance(raw_setup, dict) else {}
@@ -333,6 +362,7 @@ async def create_agent_from_blueprint(
         agent.llm_credential_id = credential_bindings["llm"]
     blueprint.created_agent_count = source.created_agent_count + 1
     await db.flush()
+    await _rekey_tool_approval(db, agent, actor_context)
     return agent
 
 

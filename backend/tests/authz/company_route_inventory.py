@@ -167,6 +167,14 @@ GUARDRAIL_ROUTES: Final[dict[str, CompanyRoute]] = {
     f"POST {_GR}/templates/{{template_id}}/archive": CompanyRoute("GOVERNANCE", 200, True),
     f"GET {_GR}/templates/{{template_id}}/versions": CompanyRoute("SELF", 200, False),
     f"POST {_GR}/templates/{{template_id}}/revert": CompanyRoute("GOVERNANCE", 200, True),
+    # Who may register (tool-governance-plan 3.6): the tenant lock like the policy.
+    f"GET {_GR}/registration": CompanyRoute("SELF", 200, False),
+    f"PUT {_GR}/registration": CompanyRoute("GOVERNANCE", 200, True),
+    # Company policy per tool (tool-governance-plan 3.4): one row a write, no shared lock.
+    f"GET {_GR}/tool-policies": CompanyRoute("SELF", 200, False),
+    f"GET {_GR}/tool-policies/targets": CompanyRoute("GOVERNANCE", 200, False),
+    f"PUT {_GR}/tool-policies/{{resource_key}}": CompanyRoute("GOVERNANCE", 200, False),
+    f"POST {_GR}/tool-policies/{{resource_key}}/impact": CompanyRoute("GOVERNANCE", 200, False),
 }
 # File downloads stream the archive and have no JSON response model.
 FILE_ROUTES: Final = frozenset({f"GET {_A}/{{tenant_id}}/exports/{{export_id}}/download"})

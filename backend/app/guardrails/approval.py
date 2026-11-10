@@ -68,13 +68,37 @@ def _entry(rules: RuleSet) -> dict[str, Any]:
     return {"allowed_decisions": ["approve", "reject"], "when": when, "description": description}
 
 
+def _either(own: dict[str, Any], rule: dict[str, Any], rules: RuleSet) -> dict[str, Any]:
+    """Asks when the tool's own condition or the rule's holds; the card says which."""
+    own_when, rule_when = own["when"], rule["when"]
+    own_text = own.get("description")
+
+    def when(request: Any) -> bool:
+        return bool(own_when(request)) or bool(rule_when(request))
+
+    def description(tool_call: Any, state: Any, runtime: Any) -> str:
+        if approval_entities(rules, tool_call.get("args")):
+            return rule["description"](tool_call, state, runtime)
+        if callable(own_text):
+            return str(own_text(tool_call, state, runtime))
+        return str(own_text or f"승인이 필요합니다.\n\n도구: {tool_call.get('name')}")
+
+    return {**own, "when": when, "description": description}
+
+
 def with_approvals(
     interrupt_on: dict[str, Any], tools: Iterable[BaseTool], rules: RuleSet
 ) -> dict[str, Any]:
-    """``interrupt_on`` plus a conditional approval for every tool that has none yet."""
+    """``interrupt_on`` plus a conditional approval for every tool that has none yet.
+
+    A tool that asks only for some calls (its own ``when``) asks for the rule's calls too.
+    """
     result = dict(interrupt_on)
     entry = _entry(rules)
     for name in [*(tool.name for tool in tools), *_BUILTIN_TOOLS]:
-        if not result.get(name):
+        current = result.get(name)
+        if not current:
             result[name] = entry
+        elif isinstance(current, dict) and callable(current.get("when")):
+            result[name] = _either(current, entry, rules)
     return result

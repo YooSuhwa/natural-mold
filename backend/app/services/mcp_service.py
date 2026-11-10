@@ -18,7 +18,10 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.approvals import registrations
+from app.authz import registration
 from app.authz.candidates import candidate_predicate
+from app.authz.error_codes import authorization_error
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import (
     PrivateResourceActor,
@@ -184,6 +187,8 @@ async def list_all_tools(
     )
     # D11: only reviewed tools can be attached (pending ones show on the server screen).
     stmt = stmt.where(McpTool.review_state == "approved")
+    # 3.7: nor the tools of a server still waiting for an administrator.
+    stmt = stmt.where(McpServer.registration_state == "approved")
     rows = [
         (tool, server_name)
         for tool, server_name in (
@@ -234,6 +239,7 @@ async def create_server(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    admitted = await registration.admit(db, context, "mcp_server")
     validate_payload_consistency(data.transport, data.url, data.command, data.credential_id)
     if data.credential_id is not None:
         await require_credential_use(
@@ -257,6 +263,8 @@ async def create_server(
     db.add(server)
     await remember_server_host(db, server.credential_id, server.url, context.user_id)
     await db.flush()
+    if admitted.needs_review:
+        await registrations.hold(db, server, actor_id=context.user_id)
     return server
 
 
@@ -274,6 +282,7 @@ async def create_server_from_registry_entry(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    admitted = await registration.admit(db, context, "mcp_server")
 
     transport = entry.get("transport")
     url = entry.get("url")
@@ -302,6 +311,8 @@ async def create_server_from_registry_entry(
     db.add(server)
     await remember_server_host(db, server.credential_id, server.url, context.user_id)
     await db.flush()
+    if admitted.needs_review:
+        await registrations.hold(db, server, actor_id=context.user_id)
     return server
 
 
@@ -315,6 +326,7 @@ async def update_server(
 ) -> McpServer:
     fields_set = data.model_fields_set
     server = await _reload(db, server.id, context, authz)
+    before = registrations.fingerprint(server)
 
     if "name" in fields_set and data.name is not None:
         server.name = data.name
@@ -350,6 +362,7 @@ async def update_server(
     validate_payload_consistency(server.transport, server.url, server.command, changed)
     await remember_server_host(db, server.credential_id, server.url, context.user_id)
     await db.flush()
+    await registrations.recheck(db, context, server, before=before)
     return server
 
 
@@ -378,6 +391,9 @@ async def import_servers(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    admitted = await registration.admit(db, context, "mcp_server")
+    held: list[McpServer] = []
+    edited: list[tuple[McpServer, str]] = []
 
     result = McpImportResult()
     user_id = context.user_id
@@ -474,10 +490,13 @@ async def import_servers(
                 )
                 db.add(server)
                 by_name[name] = server
+                if admitted.needs_review:
+                    held.append(server)
                 result.created += 1
                 if created is not None:
                     created.append(server)
             else:
+                edited.append((existing, registrations.fingerprint(existing)))
                 existing.description = entry.description
                 existing.transport = transport
                 existing.url = entry.url
@@ -491,6 +510,10 @@ async def import_servers(
             result.errors.append(McpImportError(name=name, reason=str(exc)))
 
     await db.flush()
+    for server in held:
+        await registrations.hold(db, server, actor_id=context.user_id)
+    for server, before in edited:
+        await registrations.recheck(db, context, server, before=before)
     return result
 
 
@@ -619,6 +642,25 @@ async def record_import_audit(
 # -- Tool review (D11, app.mcp.review) -------------------------------------------------
 
 
+async def server_tool(db: AsyncSession, server: McpServer, tool_id: uuid.UUID) -> McpTool:
+    tool = await db.scalar(
+        select(McpTool).where(McpTool.id == tool_id, McpTool.server_id == server.id)
+    )
+    if tool is None:
+        raise NotFoundError("MCP_TOOL_NOT_FOUND", "MCP tool not found")
+    return tool
+
+
+async def require_tool_reviewer(db: AsyncSession, server: McpServer, context: OrgContext) -> None:
+    """Tool versions of a server under registration review go to administrators (G10)."""
+    if not await registrations.reviewed_by_administrators(db, server):
+        return
+    scope = await registration.decider_scope(db, context)
+    if scope == "company" or (scope == "organization" and server.org_id == context.org_id):
+        return
+    raise authorization_error("registration_review_required")
+
+
 async def review_tool(
     db: AsyncSession,
     *,
@@ -630,11 +672,7 @@ async def review_tool(
     request: Request,
 ) -> McpTool:
     """A server manager approves or rejects the version waiting for review (audited)."""
-    tool = await db.scalar(
-        select(McpTool).where(McpTool.id == tool_id, McpTool.server_id == server.id)
-    )
-    if tool is None:
-        raise NotFoundError("MCP_TOOL_NOT_FOUND", "MCP tool not found")
+    tool = await server_tool(db, server, tool_id)
     before = tool.review_state
     try:
         applied = review.decide(

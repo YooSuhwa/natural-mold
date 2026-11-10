@@ -79,6 +79,7 @@ DIRECT_TENANT: Final = frozenset(
         "organizations",
         "resource_credential_bindings",
         "resource_grants",
+        "resource_policies",  # company policy per tool or MCP server (tool-governance 3.4)
         "share_links",
         "skill_builder_sessions",
         "skills",

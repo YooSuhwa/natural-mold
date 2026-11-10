@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.audit_actions import TOOL_APPROVAL_DEFAULT_UPDATED
 from app.authz.org_context import OrgContext
 from app.authz.policies import CANDIDATES, CAP, RES, authz_policy
 from app.authz.resource_lifecycle import apply_lifecycle
@@ -42,6 +43,7 @@ from app.schemas.skill_feedback import (
     SkillFeedbackUpsertRequest,
 )
 from app.schemas.skill_usage import SkillUsageDailyPointResponse, SkillUsageSummaryResponse
+from app.schemas.tool_approval import ApprovalDefaultUpdate, default_change
 from app.services import skill_feedback_service, skill_revision_mutations, skill_usage_service
 from app.skills import service as skill_service
 from app.skills.creation import TextSkillCreation
@@ -189,6 +191,37 @@ async def patch_skill_metadata(
     )
     await db.commit()
     return await serialize_skill(db, updated, ResourceViewContext(user, context))
+
+
+@router.put("/{skill_id}/approval-default", response_model=SkillResponse)
+@authz_policy(RES("skill", "can_edit", param="skill_id", min_visible=SKILL_MIN_VISIBLE))
+async def set_skill_approval_default(
+    skill_id: uuid.UUID,
+    payload: ApprovalDefaultUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    context: OrgContext = Depends(get_org_context),
+    _csrf: None = Depends(verify_csrf),
+    authz: AuthzService = Depends(get_authz),
+):
+    """The skill's own approval default (tool-governance-plan 3.8). Skill editors only.
+
+    A setting, not content: it makes no revision.
+    """
+    skill = await authorize_skill(db, authz, context, skill_id, "can_edit")
+    before, skill.approval_default = skill.approval_default, payload.stored()
+    await record_skill_audit(
+        db,
+        user=user,
+        request=request,
+        action=TOOL_APPROVAL_DEFAULT_UPDATED,
+        skill=skill,
+        metadata={"scope": "skill", **default_change(before, skill.approval_default)},
+    )
+    await db.commit()
+    await db.refresh(skill)
+    return await serialize_skill(db, skill, ResourceViewContext(user, context))
 
 
 @router.put("/{skill_id}/content", response_model=SkillResponse)

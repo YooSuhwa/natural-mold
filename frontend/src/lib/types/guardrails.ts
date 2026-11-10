@@ -1,4 +1,5 @@
 /** Guardrail policy, templates and agent choice (backend `app/schemas/guardrails.py`). */
+import type { ToolApprovalRule } from './runtime-policy'
 
 export type GuardrailPolicyMode = 'off' | 'open' | 'default' | 'enforced'
 export type GuardrailStage = 'input' | 'llm_send' | 'tool_args' | 'tool_result' | 'output'
@@ -124,4 +125,87 @@ export interface AgentGuardrailsUpdate {
   mode: AgentGuardrailMode
   template_ref: string | null
   rule_overrides: Record<string, GuardrailRuleOverride>
+}
+
+/** Company policy for one tool or MCP server (tool-governance-plan 3.4). */
+export type ToolPolicyMode = 'always' | 'when' | 'never'
+
+export interface ToolPolicyUpdate {
+  /** `null`: the risk level decides; `false`: nobody can use it. */
+  enabled: boolean | null
+  default_mode: ToolPolicyMode | null
+  /** `null`: every mode is allowed. */
+  allowed_modes: ToolPolicyMode[] | null
+  /** The condition of a `when` default. */
+  rule: ToolApprovalRule | null
+}
+
+export interface ToolPolicy extends ToolPolicyUpdate {
+  resource_key: string
+  resource_name: string
+  updated_at: string
+}
+
+export interface ToolPolicyWarning {
+  code: 'risky_without_asking'
+  risk_level?: string | null
+}
+
+export interface ToolPolicySaved {
+  /** `null`: the policy was removed. */
+  policy: ToolPolicy | null
+  warnings: ToolPolicyWarning[]
+}
+
+export interface ToolPolicyTarget {
+  key: string
+  name: string
+  /** `skill`: run through `execute_in_skill`. `agent`: handing work to it as a sub-agent. */
+  kind: 'mcp_server' | 'mcp_tool' | 'tool' | 'builtin' | 'skill' | 'agent'
+  server_key?: string | null
+  /** The MCP server's name. */
+  source?: string | null
+  risk_level?: string | null
+}
+
+/** Who may register a kind of resource (tool-governance-plan 3.6). */
+export type RegistrationKind = 'mcp_server' | 'tool' | 'skill' | 'agent'
+
+export interface RegistrationRule {
+  /** `granted`: only people who hold the kind's capability, or a company admin. */
+  who: 'members' | 'granted'
+  /** `on`: what a person without the capability registers waits for an admin. */
+  review: 'off' | 'on'
+  /** `private`: such a person cannot share what they registered. */
+  member_sharing: 'shareable' | 'private'
+}
+
+export interface RegistrationRuleView extends RegistrationRule {
+  /** Whether this kind can be held for review at all. */
+  reviewable: boolean
+}
+
+export interface RegistrationSettings {
+  kinds: Record<RegistrationKind, RegistrationRuleView>
+  saved: boolean
+  updated_at: string
+}
+
+export interface RegistrationSettingsUpdate {
+  kinds: Partial<Record<RegistrationKind, RegistrationRule>>
+}
+
+export interface ToolPolicyImpactAgent {
+  id: string
+  name: string
+  tool_key: string
+  tool_name: string
+  mode: ToolPolicyMode
+  reason: 'disabled' | 'mode_not_allowed'
+}
+
+export interface ToolPolicyImpact {
+  agents: ToolPolicyImpactAgent[]
+  total: number
+  warnings: ToolPolicyWarning[]
 }

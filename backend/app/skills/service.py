@@ -17,6 +17,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz import registration
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import (
     PrivateResourceActor,
@@ -117,6 +118,7 @@ async def create_text_skill(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    await registration.admit(db, context, "skill")
 
     name, slug, description, content, version = (
         creation.name,
@@ -163,6 +165,7 @@ async def create_package_skill(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
+    await registration.admit(db, context, "skill")
 
     zip_bytes, name_override, slug_override = (
         creation.zip_bytes,

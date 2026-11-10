@@ -20,11 +20,19 @@ const guardrailsApi = vi.hoisted(() => ({
   revertTemplate: vi.fn(),
 }))
 
+const registrationApi = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }))
+const toolPoliciesApi = vi.hoisted(() => ({
+  list: vi.fn(),
+  targets: vi.fn(),
+  save: vi.fn(),
+  impact: vi.fn(),
+}))
+
 vi.mock(
   '@/lib/api/organizations',
   async () => (await import('../organizations/org-admin-mocks')).orgApiMock,
 )
-vi.mock('@/lib/api/guardrails', () => ({ guardrailsApi }))
+vi.mock('@/lib/api/guardrails', () => ({ guardrailsApi, registrationApi, toolPoliciesApi }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const rule = (id: string, overrides: Partial<GuardrailRule> = {}): GuardrailRule => ({
@@ -84,6 +92,23 @@ describe('CompanyGuardrailsContent (회사 가드레일)', () => {
     orgApiMock.meOrganizationsApi.list.mockResolvedValue([makeOrganization()])
     guardrailsApi.getPolicy.mockResolvedValue(policy())
     guardrailsApi.listTemplates.mockResolvedValue([template()])
+    toolPoliciesApi.list.mockResolvedValue({ policies: [] })
+    toolPoliciesApi.targets.mockResolvedValue([])
+    registrationApi.get.mockResolvedValue({
+      kinds: {
+        mcp_server: {
+          who: 'members',
+          review: 'off',
+          member_sharing: 'shareable',
+          reviewable: true,
+        },
+        tool: { who: 'members', review: 'off', member_sharing: 'shareable', reviewable: true },
+        skill: { who: 'members', review: 'off', member_sharing: 'shareable', reviewable: false },
+        agent: { who: 'members', review: 'off', member_sharing: 'shareable', reviewable: false },
+      },
+      saved: false,
+      updated_at: VERSION,
+    })
   })
 
   it('lets a company admin enforce the default and lock a rule', async () => {
@@ -157,6 +182,8 @@ describe('CompanyGuardrailsContent (회사 가드레일)', () => {
     ).toBeDisabled()
     expect(screen.queryByText('회사 템플릿')).not.toBeInTheDocument()
     expect(guardrailsApi.listTemplates).not.toHaveBeenCalled()
+    expect(await screen.findByText(/정해 둔 도구별 정책이 없습니다/)).toBeInTheDocument()
+    expect(toolPoliciesApi.targets).not.toHaveBeenCalled()
   })
 
   it('edits a draft rule and publishes the template', async () => {

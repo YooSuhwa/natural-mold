@@ -2322,3 +2322,97 @@ async def test_create_agent_from_blueprint_accepts_known_middleware_config(
     assert agent is not None
     assert agent.middleware_configs is not None
     assert [row["type"] for row in agent.middleware_configs] == ["summarization"]
+
+
+@pytest.mark.asyncio
+async def test_tool_approval_settings_travel_by_name_and_land_on_the_new_rows(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """A blueprint names tools by name; the created agent's settings name its own rows,
+    and publishing that agent names them by name again (tool-governance-plan 3.2)."""
+    await _ensure_test_user(db)
+    model = Model(
+        id=uuid.uuid4(),
+        provider="openai",
+        model_name="gpt-5-mini",
+        display_name="GPT-5 Mini",
+        is_default=True,
+        is_visible=True,
+    )
+    tool = Tool(
+        id=uuid.uuid4(),
+        user_id=None,
+        is_system=True,
+        name="Current DateTime",
+        definition_key="builtin:current_datetime",
+        parameters={},
+        enabled=True,
+    )
+    skill = Skill(
+        id=uuid.uuid4(),
+        user_id=TEST_USER_ID,
+        name="Research Skill",
+        slug="research-skill",
+        kind="text",
+        storage_path="skills/research/SKILL.md",
+        content_hash="d" * 64,
+        size_bytes=100,
+        origin_kind="created_by_me",
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+    )
+    db.add_all([model, tool, skill])
+    item, version = await _make_agent_item_with_dependencies(db)
+    payload = dict(version.payload)
+    payload["agent"] = {
+        **payload["agent"],
+        "runtime_policy": {
+            "version": 1,
+            "tool_approval": {
+                "tools": {"search_docs": {"mode": "always"}, "ghost": {"mode": "never"}}
+            },
+        },
+    }
+    capabilities = dict(payload["capabilities"])
+    mcp_tool = dict(capabilities["mcp_tools"][0])
+    mcp_tool["server"] = {**mcp_tool["server"], "headers": {}}  # publishable without a bind
+    capabilities["mcp_tools"] = [mcp_tool]
+    payload["capabilities"] = capabilities
+    version.payload = payload
+    await db.commit()
+
+    install_response = await client.post(
+        f"/api/marketplace/items/{item.id}/install", json={"install_mode": "new_copy"}
+    )
+    assert install_response.status_code == 201, install_response.text
+    blueprint_id = install_response.json()["installed_agent_blueprint_id"]
+    create_response = await client.post(
+        f"/api/agent-blueprints/{blueprint_id}/create-agent", json={}
+    )
+    assert create_response.status_code == 201, create_response.text
+    body = create_response.json()
+    mcp_tool_id = body["mcp_tools"][0]["id"]
+
+    agent = await db.get(Agent, uuid.UUID(body["id"]))
+    assert agent is not None
+    await db.refresh(agent)
+    assert agent.runtime_policy is not None
+    assert agent.runtime_policy["tool_approval"]["tools"] == {
+        f"mcp:{mcp_tool_id}": {"mode": "always"},
+        "ghost": {"mode": "never"},
+    }
+
+    publish_response = await client.post(
+        f"/api/marketplace/items/from-agent/{agent.id}",
+        json={"visibility": "private", "name": "Republished"},
+    )
+    assert publish_response.status_code == 201, publish_response.text
+    published = await db.get(
+        MarketplaceVersion, uuid.UUID(publish_response.json()["latest_version"]["id"])
+    )
+    assert published is not None
+    assert published.payload["agent"]["runtime_policy"]["tool_approval"]["tools"] == {
+        "search_docs": {"mode": "always"},
+        "ghost": {"mode": "never"},
+    }
