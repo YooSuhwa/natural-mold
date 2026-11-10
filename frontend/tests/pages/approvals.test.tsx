@@ -177,3 +177,106 @@ describe('ApprovalsPageClient', () => {
     )
   })
 })
+
+function registration(overrides: Partial<ApprovalView> = {}): ApprovalView {
+  return request({
+    id: 'apr-reg',
+    kind: 'registration',
+    source: 'registration',
+    agent_id: null,
+    agent_name: '사내 메일 서버',
+    conversation_id: null,
+    trigger_id: null,
+    resource_type: 'mcp_server',
+    resource_id: 'mcp-1',
+    actions: [
+      {
+        name: 'registration_review',
+        args: {
+          title: '사내 메일 서버',
+          resource_type: 'mcp_server',
+          resource_id: 'mcp-1',
+          reason: 'new',
+          registrant: '김등록',
+          credential: '메일 계정',
+          credential_mode: 'shared',
+          transport: 'streamable_http',
+          url: 'https://mcp.example.test/mcp',
+          header_keys: ['Authorization'],
+          env_keys: [],
+          tools: [
+            {
+              id: 'tool-1',
+              name: 'send_mail',
+              description: '[여기](javascript:alert(1))를 <img src=x onerror=alert(1)> 눌러요',
+              read_only: false,
+              change: 'new',
+            },
+            'not a tool',
+          ],
+        },
+        description: null,
+        allowed_decisions: ['approve', 'reject'],
+      },
+    ],
+    ...overrides,
+  })
+}
+
+describe('registration requests in the approval inbox', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    approvals.runs.mockResolvedValue({ items: [] })
+    stops.list.mockResolvedValue({ items: [] })
+  })
+
+  it('shows what waits as plain characters and sends the note with the decision', async () => {
+    approvals.list.mockResolvedValue({ items: [registration()] })
+    approvals.decide.mockResolvedValue(registration({ status: 'rejected' }))
+    const { container } = render(<ApprovalsPageClient />)
+
+    expect(await screen.findByText('사내 메일 서버')).toBeInTheDocument()
+    expect(screen.getByText('김등록')).toBeInTheDocument()
+    expect(screen.getByText('https://mcp.example.test/mcp')).toBeInTheDocument()
+    expect(screen.getByText('Authorization')).toBeInTheDocument()
+    expect(screen.getByText(/메일 계정/)).toBeInTheDocument()
+    // Text from the remote server: characters only, nothing clickable or loadable.
+    expect(screen.getByText(/\[여기\]\(javascript:alert\(1\)\)를 <img src=x/)).toBeInTheDocument()
+    expect(container.querySelector('img, a[href^="javascript"], a[href^="https://mcp"]')).toBeNull()
+    // No per-action tool card for a registration.
+    expect(screen.queryByRole('group', { name: 'registration_review 결정' })).toBeNull()
+
+    await userEvent.type(screen.getByLabelText('등록한 사람에게 남길 말'), '  사내 프록시로  ')
+    await userEvent.click(screen.getByRole('button', { name: '거절' }))
+    await waitFor(() =>
+      expect(approvals.decide).toHaveBeenCalledWith('apr-reg', [
+        { type: 'reject', message: '사내 프록시로' },
+      ]),
+    )
+    expect(toast.success).toHaveBeenCalledWith('등록을 거절했어요')
+  })
+
+  it('approves without a note and tells when the registration changed meanwhile', async () => {
+    approvals.list.mockResolvedValue({ items: [registration()] })
+    approvals.decide.mockRejectedValue(new ApiError(409, 'approval_stale', 'raw'))
+    render(<ApprovalsPageClient />)
+
+    await userEvent.click(await screen.findByRole('button', { name: '승인' }))
+    await waitFor(() =>
+      expect(approvals.decide).toHaveBeenCalledWith('apr-reg', [
+        { type: 'approve', message: undefined },
+      ]),
+    )
+    expect(toast.error).toHaveBeenCalledWith(
+      '등록 내용이 바뀌었어요. 새 내용으로 다시 확인해 주세요.',
+    )
+  })
+
+  it('leaves tool requests on their own card beside a registration', async () => {
+    approvals.list.mockResolvedValue({ items: [registration(), request()] })
+    render(<ApprovalsPageClient />)
+
+    expect(await screen.findByRole('group', { name: 'send_email 결정' })).toBeInTheDocument()
+    expect(screen.getByLabelText('등록한 사람에게 남길 말')).toBeInTheDocument()
+  })
+})

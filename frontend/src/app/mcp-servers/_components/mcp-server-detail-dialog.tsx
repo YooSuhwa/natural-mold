@@ -32,6 +32,9 @@ import {
   useUpdateMcpServer,
 } from '@/lib/hooks/use-mcp-servers'
 import { useResourceAccess } from '@/lib/authz/use-resource-access'
+import { RegistrationBadge } from '@/features/registration/components/registration-badge'
+import { RegistrationNotice } from '@/features/registration/components/registration-notice'
+import { useRegistrationStatus } from '@/lib/hooks/use-registration'
 
 interface Props {
   serverId: string | null
@@ -67,6 +70,10 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
     [credentialTypes],
   )
   const canDelete = access.can(server, 'can_delete')
+  // Plan G13: reviewing a tool's definition and blocking people from it are the managers'.
+  const canManage = access.can(server, 'can_share')
+  const registration = useRegistrationStatus('mcp_server', serverId ?? '', canEdit)
+  const administratorsReview = registration.data?.administrators_review_tools === true
 
   async function handleTest() {
     if (!server) return
@@ -182,12 +189,19 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
                     {t('system')}
                   </span>
                 ) : null}
+                <RegistrationBadge state={server.registration_state} />
                 <StatusChip variant={server.health_status ?? server.status} />
               </div>
             }
           />
           <DialogShell.Body>
             <PermissionsLoadError error={access.error} onRetry={() => void access.refetch()} />
+            <RegistrationNotice
+              type="mcp_server"
+              id={server.id}
+              state={server.registration_state}
+              canEdit={canEdit}
+            />
             {canEdit ? (
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={handleTest} disabled={test.isPending}>
@@ -257,7 +271,9 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
               </h3>
               <McpToolTable
                 tools={server.tools}
-                onReview={canEdit ? handleReview : undefined}
+                onReview={canManage && !administratorsReview ? handleReview : undefined}
+                administratorsReview={administratorsReview}
+                blocksServerId={canManage && !server.is_system ? server.id : undefined}
                 onApprovalDefault={canEdit ? handleApprovalDefault : undefined}
                 reviewingToolId={review.isPending ? (review.variables?.toolId ?? null) : null}
               />

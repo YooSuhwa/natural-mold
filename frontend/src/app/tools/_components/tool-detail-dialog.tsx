@@ -27,6 +27,7 @@ import {
   useUpdateTool,
 } from '@/lib/hooks/use-tools'
 import { useResourceAccess } from '@/lib/authz/use-resource-access'
+import { RegistrationNotice } from '@/features/registration/components/registration-notice'
 
 interface Props {
   toolId: string | null
@@ -128,6 +129,12 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
           />
           <DialogShell.Body>
             <PermissionsLoadError error={access.error} onRetry={() => void access.refetch()} />
+            <RegistrationNotice
+              type="tool"
+              id={tool.id}
+              state={tool.registration_state}
+              canEdit={canEdit}
+            />
             {definition?.credential_definition_keys.length ? (
               <div className="space-y-1.5">
                 <label className="text-xs font-medium">{t('credential')}</label>

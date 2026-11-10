@@ -4,6 +4,7 @@ import { useCanPublishMarketplace } from '@/components/marketplace/use-marketpla
 import { Activity, ChevronRight, Server } from 'lucide-react'
 
 import { StatusChip } from '@/components/shared/status-chip'
+import { RegistrationBadge } from '@/features/registration/components/registration-badge'
 import { ResourceShareButton, SharedWithMeBadge } from '@/components/sharing/resource-share-button'
 import { Button } from '@/components/ui/button'
 import {
@@ -87,6 +88,7 @@ export function McpServerCard({
           variant={healthEntry?.status ?? server.status}
           className={resourceStatusChipClassName}
         />
+        <RegistrationBadge state={server.registration_state} />
       </ResourceListCard.StatusRow>
 
       <ResourceListCard.MetaRow>

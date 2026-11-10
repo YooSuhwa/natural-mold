@@ -31,6 +31,7 @@ import type {
 } from '@/lib/types/approval'
 import { AskAnswerForm } from '@/features/workflows/components/ask-answer-form'
 
+import { RegistrationRequestCard } from './registration-request-card'
 import { ReleaseStopDialog } from './release-stop-dialog'
 
 export type ApprovalTab = 'pending' | 'done' | 'runs' | 'stops'
@@ -70,7 +71,11 @@ function RequestList({ status }: { status: 'pending' | 'done' }) {
     <ul className="space-y-3">
       {page.data.items.map((request) => (
         <li key={request.id}>
-          <RequestCard request={request} />
+          {request.kind === 'registration' ? (
+            <RegistrationRequestCard request={request} />
+          ) : (
+            <RequestCard request={request} />
+          )}
         </li>
       ))}
     </ul>

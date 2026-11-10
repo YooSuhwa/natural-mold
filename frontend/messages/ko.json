@@ -171,6 +171,10 @@
   },
   "common": {
     "apiError": {
+      "codes": {
+        "registrationNotApproved": "관리자 승인을 기다리는 도구나 MCP 서버는 아직 연결할 수 없어요.",
+        "registrationReviewRequired": "관리자 승인을 거치는 MCP 서버의 도구는 관리자가 검토해요."
+      },
       "unauthenticated": {
         "title": "다시 로그인해 주세요",
         "description": "로그인이 만료되었어요."
@@ -3603,7 +3607,24 @@
         "newDescription": "바뀐 설명",
         "approve": "승인",
         "reject": "거절",
-        "managersOnly": "서버를 관리하는 사람이 검토할 수 있어요."
+        "managersOnly": "서버를 관리하는 사람이 검토할 수 있어요.",
+        "administratorsOnly": "관리자 승인을 거치는 서버예요. 이 도구는 관리자가 승인함에서 검토해요."
+      },
+      "blocks": {
+        "toggle": "사용 제한",
+        "toggleLabel": "{tool} 사용 제한 설정",
+        "help": "여기에 추가한 사람과 팀은 이 도구를 쓸 수 없어요. 실행 중인 작업에서도 바로 막혀요.",
+        "pickerLabel": "{tool} 도구를 못 쓰게 할 사람 또는 팀",
+        "empty": "제한한 사람이나 팀이 없어요.",
+        "loadFailed": "제한 목록을 불러오지 못했어요.",
+        "person": "사람",
+        "team": "팀 · {count}명",
+        "unknownPrincipal": "알 수 없는 대상",
+        "unblock": "해제",
+        "unblockLabel": "{name} 제한 해제",
+        "ownerRefused": "서버 소유자는 제한할 수 없어요.",
+        "blockFailed": "제한하지 못했어요.",
+        "unblockFailed": "제한을 해제하지 못했어요."
       }
     },
     "importDialog": {
@@ -7360,7 +7381,45 @@
       "trigger": "예약",
       "api": "API",
       "subagent": "하위 에이전트",
-      "workflow": "워크플로"
+      "workflow": "워크플로",
+      "registration": "등록"
+    },
+    "registration": {
+      "unnamed": "이름 없는 등록",
+      "type": {
+        "mcp_server": "MCP 서버",
+        "tool": "도구"
+      },
+      "reason": {
+        "new": "새 등록",
+        "changed": "연결 정보 변경",
+        "tools": "도구 정의 변경"
+      },
+      "registrant": "등록한 사람",
+      "unknownRegistrant": "알 수 없음",
+      "transport": "연결 방식",
+      "url": "주소",
+      "command": "실행 명령",
+      "definition": "도구 종류",
+      "toolDescription": "설명",
+      "credential": "인증 정보",
+      "credentialShared": "등록한 사람의 계정을 함께 사용",
+      "credentialPerUser": "사용하는 사람이 각자 연결",
+      "noCredential": "없음",
+      "headerKeys": "헤더 이름",
+      "envKeys": "환경 변수 이름",
+      "tools": "도구 {count}개",
+      "readOnly": "읽기 전용",
+      "change": {
+        "new": "새 도구",
+        "changed": "바뀜"
+      },
+      "noteLabel": "등록한 사람에게 남길 말",
+      "notePlaceholder": "거절하는 이유나 고칠 점을 적어 주세요 (선택, 200자까지)",
+      "note": "관리자가 남긴 말: {note}",
+      "approved": "등록을 승인했어요",
+      "rejected": "등록을 거절했어요",
+      "stale": "등록 내용이 바뀌었어요. 새 내용으로 다시 확인해 주세요."
     },
     "status": {
       "pending": "대기",
@@ -7956,6 +8015,26 @@
     },
     "sharing": {
       "runOnly": "실행만 가능"
+    }
+  },
+  "registration": {
+    "state": {
+      "pending": "승인 대기",
+      "rejected": "등록 거절됨"
+    },
+    "notice": {
+      "pending": {
+        "title": "관리자 승인을 기다리고 있어요",
+        "body": "승인되기 전에는 에이전트에 연결할 수 없고 실행에도 쓰이지 않아요. 연결 테스트와 수정은 할 수 있어요."
+      },
+      "rejected": {
+        "title": "관리자가 등록을 거절했어요",
+        "body": "내용을 고친 뒤 다시 요청할 수 있어요. 승인되기 전에는 에이전트에 연결할 수 없어요."
+      },
+      "note": "관리자가 남긴 말: {note}",
+      "request": "다시 승인 요청",
+      "requested": "관리자에게 승인을 요청했어요",
+      "requestFailed": "승인을 요청하지 못했어요."
     }
   },
   "toolApproval": {

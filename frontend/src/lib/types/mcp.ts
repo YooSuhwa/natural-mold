@@ -1,6 +1,7 @@
 // MCP domain types — mirrors backend `app/schemas/mcp.py`.
 
 import type { CredentialMode } from './readiness'
+import type { RegistrationState } from './approval'
 import type { ToolApprovalToolV1 } from './runtime-policy'
 
 export type McpTransport = 'stdio' | 'sse' | 'streamable_http'
@@ -31,8 +32,21 @@ export interface McpServer {
   health_message: string | null
   /** The default of every tool of this server that sets none of its own. */
   approval_default?: ToolApprovalToolV1 | null
+  /** Anything but ``approved`` is neither attached to agents nor loaded into runs. */
+  registration_state?: RegistrationState
   created_at: string
   updated_at: string
+}
+
+/** One person or team kept from an MCP tool (server managers only). */
+export interface McpToolBlock {
+  grant_id: string
+  principal_type: 'user' | 'group'
+  principal_id: string
+  display_name: string | null
+  member_count: number | null
+  granted_by: string | null
+  granted_at: string
 }
 
 /** A tool definition waiting for a server manager's review (backend app/mcp/review.py). */

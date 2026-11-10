@@ -1,4 +1,7 @@
+import { http, HttpResponse } from 'msw'
+
 import { render, screen, userEvent, waitFor } from '../../test-utils'
+import { server } from '../../setup'
 import { McpServerDetailDialog } from '@/app/mcp-servers/_components/mcp-server-detail-dialog'
 import { McpServersPageClient } from '@/app/mcp-servers/_components/mcp-servers-page-client'
 import { ApiError } from '@/lib/api/errors'
@@ -100,6 +103,7 @@ function renderDetail() {
 }
 
 const FINGERPRINT = 'a'.repeat(64)
+const MANAGER = ['can_use', 'can_view', 'can_edit', 'can_share']
 
 function pendingTool(overrides: Partial<McpTool> = {}): McpTool {
   return {
@@ -132,9 +136,9 @@ describe('MCP tool review (D11)', () => {
     state.review.mockReset()
   })
 
-  it('an editor approves a new tool with the version shown', async () => {
+  it('a manager approves a new tool with the version shown', async () => {
     state.server = { ...makeServer(), tools: [pendingTool()] }
-    state.permissions = ['can_use', 'can_view', 'can_edit']
+    state.permissions = MANAGER
     renderDetail()
 
     expect(await screen.findByText('검토 대기')).toBeInTheDocument()
@@ -164,7 +168,7 @@ describe('MCP tool review (D11)', () => {
         }),
       ],
     }
-    state.permissions = ['can_use', 'can_view', 'can_edit']
+    state.permissions = MANAGER
     renderDetail()
 
     expect(await screen.findByText('변경 검토 대기')).toBeInTheDocument()
@@ -175,13 +179,109 @@ describe('MCP tool review (D11)', () => {
     )
   })
 
-  it('someone who cannot edit the server sees the state but no decision buttons', async () => {
+  // G13: reviewing a tool definition is the manager's, not the editor's.
+  it.each([
+    ['viewer', ['can_use', 'can_view']],
+    ['editor', ['can_use', 'can_view', 'can_edit']],
+  ])('%s sees the state but no decision buttons', async (_level, permissions) => {
     state.server = { ...makeServer(), tools: [pendingTool()] }
-    state.permissions = ['can_use', 'can_view']
+    state.permissions = permissions
     renderDetail()
 
-    expect(await screen.findByText('서버를 관리하는 사람이 검토할 수 있어요.')).toBeInTheDocument()
+    // Wait for the permissions to land before reading what they leave out.
+    await waitFor(() =>
+      permissions.includes('can_edit')
+        ? expect(screen.getByLabelText('자격 증명')).toBeEnabled()
+        : expect(screen.getByLabelText('자격 증명')).toBeDisabled(),
+    )
+    expect(screen.getByText('서버를 관리하는 사람이 검토할 수 있어요.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '승인' })).not.toBeInTheDocument()
+  })
+
+  it('a server under registration review leaves its tools to the administrators', async () => {
+    server.use(
+      http.get('http://localhost:8001/api/mcp-servers/mcp-1/registration', () =>
+        HttpResponse.json({
+          state: 'approved',
+          can_request: false,
+          administrators_review_tools: true,
+          request: null,
+        }),
+      ),
+    )
+    state.server = { ...makeServer(), tools: [pendingTool()] }
+    state.permissions = MANAGER
+    renderDetail()
+
+    expect(
+      await screen.findByText(
+        '관리자 승인을 거치는 서버예요. 이 도구는 관리자가 승인함에서 검토해요.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '승인' })).not.toBeInTheDocument()
+    expect(state.review).not.toHaveBeenCalled()
+  })
+})
+
+describe('MCP tool blocks (tool-governance 3.6)', () => {
+  beforeEach(() => {
+    state.error = null
+    state.permissions = null
+  })
+
+  const approvedTool = () =>
+    pendingTool({ review_state: 'approved', pending_version: null, reviewed_at: '2026-10-02' })
+
+  it('a manager opens the block list of one tool and lifts a block', async () => {
+    const removed = vi.fn()
+    server.use(
+      http.get('http://localhost:8001/api/mcp-servers/mcp-1/tools/tool-1/blocks', () =>
+        HttpResponse.json({
+          items: [
+            {
+              grant_id: 'grant-1',
+              principal_type: 'group',
+              principal_id: 'group-1',
+              display_name: '영업팀',
+              member_count: 4,
+              granted_by: 'me',
+              granted_at: '2026-11-01T00:00:00Z',
+            },
+          ],
+        }),
+      ),
+      http.delete(
+        'http://localhost:8001/api/mcp-servers/mcp-1/tools/tool-1/blocks/:grantId',
+        ({ params }) => {
+          removed(params.grantId)
+          return new HttpResponse(null, { status: 204 })
+        },
+      ),
+    )
+    state.server = { ...makeServer(), tools: [approvedTool()] }
+    state.permissions = MANAGER
+    renderDetail()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'send_mail 사용 제한 설정' }))
+    expect(await screen.findByText('영업팀')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '영업팀 제한 해제' }))
+    await waitFor(() => expect(removed).toHaveBeenCalledWith('grant-1'))
+  })
+
+  it.each([
+    ['editor', ['can_use', 'can_view', 'can_edit'], false],
+    ['viewer', ['can_use', 'can_view'], false],
+    ['manager of a system server', MANAGER, true],
+  ])('%s has no block control', async (_level, permissions, isSystem) => {
+    state.server = { ...makeServer({ is_system: isSystem }), tools: [approvedTool()] }
+    state.permissions = permissions
+    renderDetail()
+
+    expect(await screen.findByText('send_mail')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText('자격 증명')).toBeInTheDocument())
+    expect(
+      screen.queryByRole('button', { name: 'send_mail 사용 제한 설정' }),
+    ).not.toBeInTheDocument()
   })
 })
 

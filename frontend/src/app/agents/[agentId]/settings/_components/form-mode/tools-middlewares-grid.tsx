@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 import { WrenchIcon, LayersIcon, ServerIcon, SparklesIcon } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useTools } from '@/lib/hooks/use-tools'
+import { useAttachableTools } from '@/lib/hooks/use-attachable-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
 import { useAllMcpTools } from '@/lib/hooks/use-mcp-servers'
 import { useMiddlewares } from '@/lib/hooks/use-middlewares'
@@ -75,7 +75,7 @@ function ToolsSkillsBox({
 }) {
   const t = useTranslations('agent.settings.toolsSkills')
   const [open, setOpen] = useState(false)
-  const { data: tools } = useTools()
+  const { data: tools } = useAttachableTools(selectedToolIds)
   const { data: skills } = useSkills()
   const { data: mcpTools } = useAllMcpTools()
 
