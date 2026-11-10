@@ -6,6 +6,8 @@ const MCP_MESSAGE_NAMESPACES = [
   'emergencyStop',
   'marketplace',
   'mcp',
+  // The registrant's notice and badge for a server waiting for an administrator.
+  'registration',
   'shared',
 ] as const
 
