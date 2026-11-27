@@ -1,9 +1,11 @@
 import { EventType } from '@ag-ui/core'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '../../../../tests/test-utils'
 import { createAgUiChatSession, type AgUiChatSessionState } from '@/lib/ag-ui/chat-history'
 import { parseWireChatSnapshot } from '@/lib/ag-ui/chat-history-types'
 import { useCanceledRunSummary } from '@/lib/ag-ui/use-canceled-run-summary'
+import { conversationRunKeys } from '@/lib/hooks/use-conversation-runs'
 import type { ConversationRun } from '@/lib/types'
 import { ChatConversationContext } from '../conversation-context'
 import { CanceledRunSummary, CanceledRunSummaryContext, MessageRunSummary } from '../run-summary'
@@ -64,14 +66,22 @@ const canceledRun: ConversationRun = {
   },
 }
 
-function observeHttp(detailStatus = 200) {
+const runningRun: ConversationRun = {
+  ...canceledRun,
+  status: 'running',
+  cancel_requested_at: null,
+  completed_at: null,
+  metrics: null,
+}
+
+function observeHttp(detailStatus = 200, detail = canceledRun) {
   const requests: string[] = []
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input), 'http://localhost')
     const path = url.pathname + url.search
     requests.push(`${init?.method ?? 'GET'} ${path}`)
     if (path === detailPath) {
-      return Response.json(detailStatus === 200 ? canceledRun : { detail: 'Forbidden' }, {
+      return Response.json(detailStatus === 200 ? detail : { detail: 'Forbidden' }, {
         status: detailStatus,
       })
     }
@@ -188,6 +198,52 @@ describe('cancellation before the first AG-UI assistant frame', () => {
     render(<Summary state={session.getSnapshot()} latest={{ ...canceledRun, id: olderId }} />)
     expect(screen.queryByTestId('run-summary')).not.toBeInTheDocument()
     expect(requests).toEqual([])
+    session.dispose()
+  })
+
+  it('rechecks a fresh running detail after the selected branch confirms cancellation', async () => {
+    const requests = observeHttp()
+    const session = sessionFor()
+    await session.history.load()
+    const client = new QueryClient({
+      defaultOptions: { queries: { staleTime: 30_000, retry: false } },
+    })
+    const key = conversationRunKeys.detail(threadId, physicalId)
+    client.setQueryData(key, runningRun)
+    render(
+      <QueryClientProvider client={client}>
+        <Summary state={session.getSnapshot()} />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByTestId('run-summary')).toHaveAttribute('data-run-id', physicalId)
+    expect(client.getQueryData(key)).toEqual(canceledRun)
+    expect(requests).toEqual([`GET ${detailPath}`])
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining(detailPath),
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    session.dispose()
+  })
+
+  it('hides a listed cancellation once the selected run detail reports it is still running', async () => {
+    const requests = observeHttp(200, runningRun)
+    const client = new QueryClient({
+      defaultOptions: { queries: { staleTime: 30_000, retry: false } },
+    })
+    const session = sessionFor()
+    await session.history.load()
+    render(
+      <QueryClientProvider client={client}>
+        <Summary state={session.getSnapshot()} latest={canceledRun} />
+      </QueryClientProvider>,
+    )
+    await waitFor(() =>
+      expect(client.getQueryData(conversationRunKeys.detail(threadId, physicalId))).toEqual(
+        runningRun,
+      ),
+    )
+    await waitFor(() => expect(screen.queryByTestId('run-summary')).not.toBeInTheDocument())
+    expect(requests).toEqual([`GET ${detailPath}`])
     session.dispose()
   })
 

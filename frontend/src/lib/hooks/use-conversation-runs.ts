@@ -25,12 +25,18 @@ export function useActiveConversationRun(conversationId: string, enabled = true)
   })
 }
 
-export function useConversationRun(conversationId: string, runId: string | null, enabled = true) {
+export function useConversationRun(
+  conversationId: string,
+  runId: string | null,
+  enabled = true,
+  options?: { staleTime: number },
+) {
   return useQuery({
     queryKey: conversationRunKeys.detail(conversationId, runId ?? 'none'),
     queryFn: () => conversationRunsApi.get(conversationId, runId ?? ''),
     enabled: enabled && !!conversationId && !!runId,
     refetchOnWindowFocus: false,
+    ...options,
   })
 }
 
