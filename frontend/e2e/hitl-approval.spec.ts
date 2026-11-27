@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
+import { observeApprovalCard } from './helpers/approval-card-observations'
 
 // HITL tool approval — reject path. execute_in_skill carries a default
 // interrupt policy (tool risk metadata), so a scripted document run pauses on
@@ -88,6 +89,7 @@ test.describe('HITL tool approval — reject', () => {
 
   test('rejecting an execute_in_skill approval skips the tool', async ({ page, request }) => {
     test.setTimeout(120_000)
+    const observer = observeApprovalCard(page, { apiBase: API, conversationId, agentId })
     await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
 
     const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
@@ -96,7 +98,14 @@ test.describe('HITL tool approval — reject', () => {
     await composer.press('Enter')
 
     // 1. The tool call pauses on an approval card before executing.
-    await expect(page.getByText('승인이 필요합니다').last()).toBeVisible({ timeout: 30_000 })
+    try {
+      await expect(page.getByText('승인이 필요합니다').last()).toBeVisible({ timeout: 30_000 })
+    } catch (error) {
+      await observer.attachOnFailure(test.info()).catch(() => undefined)
+      throw error
+    } finally {
+      observer.dispose()
+    }
 
     // 2. Reject → confirm.
     await page.getByRole('button', { name: '거부', exact: true }).last().click()
@@ -107,9 +116,7 @@ test.describe('HITL tool approval — reject', () => {
     // 수락되어야 한다 (재시도 문구가 뜨면 레이스 회귀).
     const rejectedBadge = page.getByText('거부됨').last()
     await expect(rejectedBadge).toBeVisible({ timeout: 30_000 })
-    await expect(
-      page.getByText('승인 응답을 전송하지 못했습니다. 다시 시도하세요.'),
-    ).toHaveCount(0)
+    await expect(page.getByText('승인 응답을 전송하지 못했습니다. 다시 시도하세요.')).toHaveCount(0)
 
     // 4. The tool never ran → no document artifact was produced.
     await expect
