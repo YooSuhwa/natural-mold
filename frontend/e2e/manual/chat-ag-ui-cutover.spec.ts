@@ -3,7 +3,9 @@ import type { APIRequestContext, Page } from '@playwright/test'
 import { z } from 'zod'
 
 import { API_BASE, apiDeleteOk, apiGetJson, apiJson, expect, test } from '../fixtures'
-import { queueState, sendForStrategy } from '../chat-message-queue-actions'
+import { inputHasExactHuman, queueState } from '../chat-message-queue-actions'
+import { parseConversationRunStartUrl } from '../../scripts/e2e-run-start-response'
+import { commandMethod, waitForAcceptedRunStart as waitForV3Start } from '../helpers/run-start'
 import {
   company,
   databaseState,
@@ -20,7 +22,6 @@ import {
   REPORT_FILE,
   expectFinalTextVisible,
   sendMessage,
-  sendMessageForRun,
   setupLangGraphV3Agent,
   waitForArtifact,
   waitForRunStatus,
@@ -83,7 +84,9 @@ test('reads one delegated chat across replicas, approval, AG-UI cutover and roll
   try {
     // Persist a conversation through the actual old UI before enabling the standard reader.
     await page.goto(previousUrl)
-    const historicalRun = await sendMessageForRun(page, conversationId, oldQuestion)
+    const historicalRun = await waitForV3Start(page, conversationId, () =>
+      sendMessage(page, oldQuestion),
+    )
     await waitForRunStatus(request, conversationId, historicalRun, 'completed')
     await expect(page.getByText(readyAnswer, { exact: true }).first()).toBeVisible()
     const [original] = (await savedMessages(request, conversationId)).filter(
@@ -354,11 +357,33 @@ test('preserves a paused goal, pending steer and queued input through an in-flig
     expect(paused.goal.status).toBe('paused')
     await page.goto(previousUrl)
     await expect(page.locator('#conversation-goal')).toContainText(goalTitle)
-    const runId = await sendMessageForRun(page, conversationId, 'E2E_VISUAL_SLOW_STREAM')
+    const runId = await waitForV3Start(page, conversationId, () =>
+      sendMessage(page, 'E2E_VISUAL_SLOW_STREAM'),
+    )
     await expect(page.getByText(/E2E visual stream fixture/).first()).toBeVisible()
     const queueText = `대기 입력 ${randomUUID()}`
-    const queued = await sendForStrategy(page, queueText, 'enqueue')
-    expect(queued.runId).toBeNull()
+    // This action occurs on the v3 build while the enclosing gate has AG-UI enabled.
+    const [queuedResponse] = await Promise.all([
+      page.waitForResponse((res) => {
+        if (
+          parseConversationRunStartUrl(res.url(), API_BASE) !== conversationId ||
+          commandMethod(res.request()) !== 'run.start'
+        )
+          return false
+        const params = z
+          .object({ params: z.object({ multitask_strategy: z.string(), input: z.unknown() }) })
+          .safeParse(res.request().postDataJSON())
+        return (
+          params.success &&
+          params.data.params.multitask_strategy === 'enqueue' &&
+          inputHasExactHuman(params.data.params.input, queueText)
+        )
+      }),
+      sendMessage(page, queueText),
+    ])
+    const { result: queued } = z
+      .object({ result: z.object({ input_id: z.string(), run_id: z.null().nullish() }) })
+      .parse(await apiJson(queuedResponse, 'v3 queued input'))
     const runUrl = `${base}/runs/${runId}/steers`
     const steerText = `작업 중 보충 ${randomUUID()}`
     await page.locator('textarea[data-moldy-composer-input="true"]').last().fill(steerText)
@@ -384,7 +409,7 @@ test('preserves a paused goal, pending steer and queued input through an in-flig
       client_request_id: steer.client_request_id,
     })
     expect(rolled.queued_input_id).not.toBeNull()
-    expect(rolled.queued_input_id).not.toBe(queued.inputId)
+    expect(rolled.queued_input_id).not.toBe(queued.input_id)
     const visibleReceipt = page
       .locator('[data-moldy-run-steer-status="queued"]')
       .filter({ hasText: steerText })
@@ -396,7 +421,7 @@ test('preserves a paused goal, pending steer and queued input through an in-flig
     const currentGoal = goalSchema.parse(await apiGetJson(request, `${base}/goal`))
     expect(currentGoal.goal).toEqual(paused.goal)
     const queue = await queueState(request, conversationId)
-    for (const inputId of [queued.inputId, rolled.queued_input_id]) {
+    for (const inputId of [queued.input_id, rolled.queued_input_id]) {
       expect(queue.items.filter((item) => item.id === inputId)).toHaveLength(1)
     }
     const observed = databaseState(conversationId)
@@ -414,7 +439,7 @@ test('preserves a paused goal, pending steer and queued input through an in-flig
         goalRevision: paused.goal.revision,
         steerId: steer.id,
         movedInputId: rolled.queued_input_id,
-        nextInputId: queued.inputId,
+        nextInputId: queued.input_id,
         physicalRuns: observed.runs,
       }),
     })
