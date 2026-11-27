@@ -8,6 +8,7 @@ from typing import Final
 # Every integration module added by B11/B12 and parent Task 10 (prepared leases), relative to
 # backend/. The ordinary registry contract compares this tuple with the files on disk.
 COMPANY_ADMINISTRATION_MODULES: Final[tuple[str, ...]] = (
+    "tests/integration/test_child_task_concurrency.py",
     "tests/authz/test_company_administration_migration_integration.py",
     "tests/integration/test_research_search_postgres.py",
     "tests/authz/test_b04_write_serialization_integration.py",
