@@ -13,10 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.approvals import recording, service
 from app.authz.org_context import OrgContext
+from app.dependencies import CurrentUser
 from app.models.approval_request import ApprovalRequest
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.notification import Notification
+from app.models.organization import OrganizationMember, TenantMember
+from app.models.user import User
 from tests.authz.g03_support import (
     approval_payload,
     commands_url,
@@ -25,6 +28,9 @@ from tests.authz.g03_support import (
     seed_conversation,
     seed_interrupted,
 )
+from tests.authz.queue_resource_fixture import queue_resource_sql
+from tests.authz.test_private_queue_worker_read_order import private_selects
+from tests.authz.unit_scope_fixture import ensure_unit_scope
 
 SECRET = "sk-live-approval-secret-123"
 ASK = {
@@ -40,6 +46,9 @@ def _payload(**args: Any) -> dict[str, Any]:
 
 
 async def _interrupted_run(db: AsyncSession, conversation: Conversation) -> ConversationRun:
+    await ensure_unit_scope(
+        db, CurrentUser(id=conversation.user_id, email="owner@example.test", name="Owner")
+    )
     run_id = await seed_interrupted(db, conversation, approval_payload())
     run = await db.get(ConversationRun, run_id)
     assert run is not None
@@ -271,6 +280,44 @@ async def test_recorder_requires_its_checkpoint_and_keeps_parallel_approval_requ
         (run.id, "intr-1"),
         (run.id, "other"),
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revocation", ["organization", "company", "account"])
+async def test_recorder_skips_an_owner_who_lost_membership_before_the_hook(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch, revocation: str
+) -> None:
+    from unittest.mock import AsyncMock
+
+    conversation = await seed_conversation(db)
+    run = await _interrupted_run(db, conversation)
+    context = OrgContext(
+        user_id=run.user_id, org_id=conversation.org_id, tenant_id=conversation.tenant_id
+    )
+    if revocation == "account":
+        owner = await db.get(User, context.user_id)
+        assert owner is not None
+        owner.is_active = False
+    elif revocation == "company":
+        company_member = await db.get(TenantMember, (context.tenant_id, context.user_id))
+        assert company_member is not None
+        await db.delete(company_member)
+    else:
+        org_member = await db.get(OrganizationMember, (context.org_id, context.user_id))
+        assert org_member is not None
+        await db.delete(org_member)
+    await db.commit()
+    checkpoint = AsyncMock(return_value=[service.PendingInterrupt("intr-1", _payload())])
+    monkeypatch.setattr(recording, "checkpoint_interrupts", checkpoint)
+    with queue_resource_sql(db) as statements:
+        assert await recording.record_interrupted_run(run.id, context) == []
+    assert private_selects(statements) == []
+    checkpoint.assert_not_awaited()
+    assert await db.scalar(select(ApprovalRequest.id)) is None
+    assert (
+        await db.scalar(select(Notification.id).where(Notification.kind == "approval.requested"))
+        is None
+    )
 
 
 @pytest.mark.asyncio

@@ -7,8 +7,10 @@ from app.models.organization import Organization, OrganizationMember, Tenant
 from app.models.user import User
 
 
-async def lock_active_notice_recipient(db: AsyncSession, ctx: OrgContext) -> bool:
-    """A busy revocation retries on the next sweep. Bell reads do not take these locks."""
+async def lock_active_notice_recipient(
+    db: AsyncSession, ctx: OrgContext, *, nowait: bool = True
+) -> bool:
+    """Scheduled deliveries retry a busy recipient; a one-shot worker can wait for the outcome."""
     membership = await db.scalar(
         active_memberships(ctx.user_id)
         .join(User, User.id == OrganizationMember.user_id)
@@ -19,6 +21,6 @@ async def lock_active_notice_recipient(db: AsyncSession, ctx: OrgContext) -> boo
             Tenant.id == ctx.tenant_id,
             Tenant.status == "active",
         )
-        .with_for_update(read=True, nowait=True)
+        .with_for_update(read=True, nowait=nowait)
     )
     return membership is not None
