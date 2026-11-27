@@ -48453,6 +48453,11 @@
           "title": "Default Member Role",
           "type": "string"
         },
+        "goal_sandbox_enabled": {
+          "default": false,
+          "title": "Goal Sandbox Enabled",
+          "type": "boolean"
+        },
         "registration_policy": {
           "anyOf": [
             {
@@ -48501,6 +48506,17 @@
             }
           ],
           "title": "Default Member Role"
+        },
+        "goal_sandbox_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Goal Sandbox Enabled"
         },
         "registration_policy": {
           "anyOf": [
