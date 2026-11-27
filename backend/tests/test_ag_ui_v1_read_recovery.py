@@ -143,7 +143,7 @@ async def test_completed_chat_prefix_and_every_subframe_resume_exactly_once(
     assert await db.scalar(select(func.count()).select_from(ConversationRunInput)) == 0
 
 
-@pytest.mark.parametrize("invalidate", ["branch", "storage-gap", "unknown"])
+@pytest.mark.parametrize("invalidate", ["branch", "storage-gap", "replaced", "unknown"])
 async def test_invalid_cursor_requires_snapshot_without_silently_skipping_or_reexecuting(
     raw_client: AsyncClient, db: AsyncSession, invalidate: str
 ) -> None:
@@ -165,6 +165,18 @@ async def test_invalid_cursor_requires_snapshot_without_silently_skipping_or_ree
                 MessageEventChunk.seq_start == 1,
             )
         )
+        await db.commit()
+    elif invalidate == "replaced":
+        chunk = await db.scalar(
+            select(MessageEventChunk).where(
+                MessageEventChunk.assistant_msg_id == str(chat.run_id),
+                MessageEventChunk.seq_start == 1,
+            )
+        )
+        assert chunk
+        source = dict(chunk.events[0])
+        source["data"] = {"id": "reply-1", "type": "ai", "content": "changed"}
+        chunk.events = [source]
         await db.commit()
     else:
         cursor = "cursor-from-another-format"

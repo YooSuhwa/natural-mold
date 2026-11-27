@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import orjson
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.ag_ui_v1 import AG_UI_PROJECTION_VERSION, ChildVisibility
+from app.agent_runtime.ag_ui_v1_issuance import ToolContinuation
 from app.authz.org_context import OrgContext
 from app.error_codes import resume_not_found
 from app.exceptions import ConflictError
@@ -19,6 +20,8 @@ from app.services.ag_ui_attachment_access import readable_artifact_versions
 from app.services.ag_ui_commands import load_public_run_id, load_run_binding
 from app.services.ag_ui_read_access import load_child_visibility, require_read_run
 from app.services.ag_ui_read_cursor import CursorScope
+from app.services.ag_ui_spawn_parent import spawned_parent_public_id
+from app.services.ag_ui_tool_continuations import read_tool_continuations
 
 
 def snapshot_required() -> ConflictError:
@@ -39,6 +42,7 @@ class ReadTarget:
     visibility: ChildVisibility
     artifacts: frozenset[tuple[str, str]]
     delegated: bool = False
+    tool_continuations: tuple[ToolContinuation, ...] = ()
 
 
 def cursor_scope_for(
@@ -49,6 +53,8 @@ def cursor_scope_for(
     start_checkpoint: str | None,
     visibility: ChildVisibility,
     artifacts: frozenset[tuple[str, str]],
+    parent_id: str | None,
+    tool_continuations: tuple[ToolContinuation, ...],
 ) -> CursorScope:
     branch = orjson.dumps([start_checkpoint, conversation.active_branch_checkpoint_id])
     access = orjson.dumps(
@@ -58,6 +64,8 @@ def cursor_scope_for(
             sorted(visibility.namespaces),
             sorted(visibility.bindings),
             sorted(artifacts),
+            parent_id,
+            [asdict(call) for call in sorted(tool_continuations, key=lambda item: item.public_id)],
         ]
     )
     return CursorScope(
@@ -78,7 +86,6 @@ async def resolve_read_target(
         physical_id = binding.run_id
         version = binding.projection_version
         checkpoint_id = binding.checkpoint_id
-        parent_id = binding.parent_public_run_id
     else:
         # Only historical runs without a protocol receipt may use their physical UUID.
         try:
@@ -90,11 +97,13 @@ async def resolve_read_target(
         canonical = await load_public_run_id(db, context, conversation.id, physical_id)
         if canonical is not None and canonical != public_id:
             raise resume_not_found()
-        version, checkpoint_id, parent_id = AG_UI_PROJECTION_VERSION, None, None
+        version, checkpoint_id = AG_UI_PROJECTION_VERSION, None
 
     if version != AG_UI_PROJECTION_VERSION:
         raise snapshot_required()
     run = None
+    parent_id = None
+    tool_continuations: tuple[ToolContinuation, ...] = ()
     visibility = ChildVisibility(
         allow_legacy_details=False, tool_call_ids=frozenset(), namespaces=frozenset()
     )
@@ -111,10 +120,18 @@ async def resolve_read_target(
             checkpoint = run.metadata_json.get("checkpoint_id")
             if isinstance(checkpoint, str):
                 checkpoint_id = checkpoint
-        # Approval continuations are separate user commands; their physical
-        # predecessor does not denote an agent-spawned run on the public wire.
+        if conversation.source == INDEPENDENT_JOB_SOURCE and run.source == "start":
+            parent_id = await spawned_parent_public_id(db, conversation, context, run)
+            if parent_id is None:
+                # The spawn proof may have observed a grant withdrawal after our
+                # first run check. Recheck before disclosing even the child alone.
+                await require_read_run(
+                    db, conversation=conversation, context=context, run_id=run.id
+                )
         if run.source == "resume":
-            parent_id = None
+            tool_continuations = await read_tool_continuations(
+                db, conversation=conversation, context=context, run=run, checkpoint_id=checkpoint_id
+            )
     return ReadTarget(
         public_id=public_id,
         run=run,
@@ -125,9 +142,18 @@ async def resolve_read_target(
         version=version,
         parent_public_id=parent_id,
         scope=cursor_scope_for(
-            conversation, public_id, physical_id, version, checkpoint_id, visibility, artifacts
+            conversation,
+            public_id,
+            physical_id,
+            version,
+            checkpoint_id,
+            visibility,
+            artifacts,
+            parent_id,
+            tool_continuations,
         ),
         artifacts=artifacts,
         delegated=conversation.source == INDEPENDENT_JOB_SOURCE,
         visibility=visibility,
+        tool_continuations=tool_continuations,
     )
