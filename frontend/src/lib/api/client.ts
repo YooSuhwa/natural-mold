@@ -149,7 +149,8 @@ async function withAuthRetry(path: string, send: () => Promise<Response>): Promi
   return response
 }
 
-export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+/** Return the authenticated response as a stream. The caller owns its body. */
+export async function apiFetchResponse(path: string, options?: RequestInit): Promise<Response> {
   const method = (options?.method ?? 'GET').toUpperCase()
   // Computed once: a 401 → refresh → retry stays on the issuing org generation.
   const signal = withOrgScopeSignal(path, options?.signal)
@@ -162,7 +163,11 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
       signal,
     })
 
-  const response = await withAuthRetry(path, send)
+  return withAuthRetry(path, send)
+}
+
+export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await apiFetchResponse(path, options)
   if (!response.ok) await throwApiError(response, 'UNKNOWN_ERROR')
   if (response.status === 204) return undefined as T
   // A body-less 202 (e.g. an access request on a hidden resource, plan 8.4) has no JSON.
@@ -174,19 +179,7 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
 }
 
 export async function apiFetchText(path: string, options?: RequestInit): Promise<string> {
-  const method = (options?.method ?? 'GET').toUpperCase()
-  // Computed once: a 401 → refresh → retry stays on the issuing org generation.
-  const signal = withOrgScopeSignal(path, options?.signal)
-  const send = (): Promise<Response> =>
-    fetch(`${API_BASE}${path}`, {
-      ...options,
-      method,
-      credentials: 'include',
-      headers: buildHeaders(method, path, options?.headers),
-      signal,
-    })
-
-  const response = await withAuthRetry(path, send)
+  const response = await apiFetchResponse(path, options)
   if (!response.ok) await throwApiError(response, 'UNKNOWN_ERROR')
   return response.text()
 }
