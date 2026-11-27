@@ -222,8 +222,15 @@ test.describe('Chat generative UI (ui_data demo)', () => {
       await expect(table).toHaveCount(1, { timeout: 60_000 })
       await expect(page.getByText(FINAL_TEXT)).toHaveCount(1, { timeout: 30_000 })
 
-      // Turn 2 → chart.
-      await sendMessage(page, 'E2E_UI_DATA_CHART 두 번째 턴')
+      // The last text can render before the browser finishes draining the run.
+      // Submit the next turn with the normal Send button once it returns.
+      const second = 'E2E_UI_DATA_CHART 두 번째 턴'
+      const form = page.locator('form[data-moldy-thread-composer]:visible')
+      await form.locator('textarea[data-moldy-composer-input="true"]').fill(second)
+      await form.locator('button[type="submit"]').click()
+      await expect(
+        page.locator('[data-moldy-message-role="user"]').getByText(second, { exact: true }),
+      ).toHaveCount(1)
       await expect(chart).toHaveCount(1, { timeout: 60_000 })
 
       // Both render exactly once, in SEPARATE turns. The pre-fix bug collapsed
