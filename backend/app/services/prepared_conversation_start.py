@@ -44,6 +44,7 @@ from app.agent_runtime.prepared_run_dispatch import PreparedRunHandle, handle_fo
 from app.agent_runtime.prepared_run_input_policy import (
     PreparedRunUnsupportedError,
     is_legacy_fallback,
+    unsupported,
 )
 from app.agent_runtime.prepared_run_registry import get_prepared_run_registry
 from app.agent_runtime.prepared_run_transaction import (
@@ -224,6 +225,10 @@ async def _start_prepared(
 
         if not await automatic_run_can_start(db, run, conversation.context):
             raise PreparedRunTransactionError(RUN_NOT_MATERIALIZABLE)
+        if runner.resume and inputs.cfg.output_schema is not None:
+            # A resumed workflow step needs its root response_format to settle the step.
+            # The prepared compiler currently supports response formats for children only.
+            raise unsupported("workflow_resume_schema")
         prepared = await resolver(db, run)
         locked.append(run)
         return prepared
