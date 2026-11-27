@@ -47,17 +47,19 @@ export function AgUiRuntimeSection(props: AgUiRuntimeSectionProps) {
   const { conversationId, agentId, serverMessages, threadProps } = props
   const t = useTranslations('chat.page')
   const { agent, session } = useChatSession(props)
+  const readSnapshot = useCallback(
+    (signal?: AbortSignal) => agent.readSnapshot({ signal }),
+    [agent],
+  )
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot)
   const adapters = useMemo(
     () => ({
       history: session.history,
       attachments: props.attachmentAdapter && agUiAttachmentAdapter(props.attachmentAdapter),
-      feedback:
-        props.feedbackAdapter &&
-        agUiFeedbackAdapter(props.feedbackAdapter, () => agent.readSnapshot()),
+      feedback: props.feedbackAdapter && agUiFeedbackAdapter(props.feedbackAdapter, readSnapshot),
       dictation: props.dictationAdapter,
     }),
-    [session, agent, props.attachmentAdapter, props.feedbackAdapter, props.dictationAdapter],
+    [session, readSnapshot, props.attachmentAdapter, props.feedbackAdapter, props.dictationAdapter],
   )
   const runtime = useAgUiRuntime({
     agent,
@@ -133,7 +135,11 @@ export function AgUiRuntimeSection(props: AgUiRuntimeSectionProps) {
           <>
             {threadProps.threadHeader}
             {!threadProps.readOnlyConversation && (
-              <AgUiChildPendingForms conversationId={conversationId} snapshot={state} />
+              <AgUiChildPendingForms
+                conversationId={conversationId}
+                snapshot={state}
+                readSnapshot={readSnapshot}
+              />
             )}
           </>
         ),
