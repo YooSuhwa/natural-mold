@@ -1,6 +1,8 @@
+import { act } from '@testing-library/react'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch } from '@/lib/api/client'
-import { render, screen, userEvent } from '../../../../tests/test-utils'
+import { createTestQueryClient, render, screen, userEvent } from '../../../../tests/test-utils'
 import { CompactionSummary } from '../compaction-summary'
 
 vi.mock('@/lib/api/client', async (importOriginal) => ({
@@ -73,6 +75,61 @@ describe('CompactionSummary', () => {
     expect(second.pathname).toBe(endpoint)
     expect(second.searchParams.get('offset')).toBe('10')
     expect(second.searchParams.get('expected_sha256')).toBe(digest)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('원문을 연 뒤 체크포인트가 바뀌면 다시 열기 전까지 새 원문을 요청하지 않는다', async () => {
+    fetchMock.mockResolvedValueOnce(evidencePage('이전 분기의 발췌문'))
+    const user = userEvent.setup()
+    const { rerender } = render(<CompactionSummary evidence={evidence} />)
+    await user.click(screen.getByRole('button', { name: '요약 전 대화 보기' }))
+    expect(await screen.findByText('이전 분기의 발췌문')).toBeVisible()
+
+    rerender(<CompactionSummary evidence={{ ...evidence, checkpointId: 'next-checkpoint' }} />)
+
+    expect(screen.queryByText('이전 분기의 발췌문')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '요약 전 대화 보기' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('이전 분기의 늦은 응답을 무시하고 다시 열면 선택한 분기의 원문만 보여 준다', async () => {
+    const prior = Promise.withResolvers<ReturnType<typeof evidencePage>>()
+    const nextCheckpoint = 'next-checkpoint'
+    fetchMock
+      .mockReturnValueOnce(prior.promise)
+      .mockResolvedValueOnce({ ...evidencePage('선택한 분기의 원문'), checkpoint_id: nextCheckpoint })
+    const client = createTestQueryClient()
+    const summary = (checkpointId: string) => (
+      <QueryClientProvider client={client}>
+        <CompactionSummary evidence={{ ...evidence, checkpointId }} />
+      </QueryClientProvider>
+    )
+    const user = userEvent.setup()
+    const { rerender } = render(summary(evidence.checkpointId))
+    await user.click(screen.getByRole('button', { name: '요약 전 대화 보기' }))
+    expect(requestAt(0).pathname).toBe(endpoint)
+    const priorSignal = fetchMock.mock.calls[0]?.[1]?.signal
+
+    rerender(summary(nextCheckpoint))
+    expect(priorSignal?.aborted).toBe(true)
+    await act(async () => {
+      prior.resolve(evidencePage('이전 분기의 늦은 원문'))
+      await prior.promise
+    })
+    expect(screen.queryByText('이전 분기의 늦은 원문')).not.toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const reopen = screen.getByRole('button', { name: '요약 전 대화 보기' })
+    expect(reopen).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(reopen)
+    expect(await screen.findByText('선택한 분기의 원문')).toBeVisible()
+    expect(screen.queryByText('이전 분기의 늦은 원문')).not.toBeInTheDocument()
+    expect(requestAt(1).pathname).toBe(
+      `/api/conversations/${evidence.conversationId}/history-evidence/${nextCheckpoint}`,
+    )
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
