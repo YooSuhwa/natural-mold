@@ -11,7 +11,7 @@ from app.authz.grants import GrantRequest, GrantService, GrantTarget
 from app.authz.org_context import OrgContext
 from app.authz.resource_lifecycle import LifecycleChange
 from app.exceptions import AppError
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER, AGENT_RUNTIME_PROFILE_STANDARD
 from app.models.user import User
 from app.services import user_service
 from app.services.user_service import delete_user
@@ -44,13 +44,17 @@ async def _share_to_other(db: AsyncSession) -> UUID:
     return tool.id
 
 
-async def test_owned_resources_refuse_deletion_with_the_list_archived_included(
-    db: AsyncSession,
+@pytest.mark.parametrize(
+    ("profile", "archived"),
+    [(AGENT_RUNTIME_PROFILE_STANDARD, True), (AGENT_RUNTIME_PROFILE_SKILL_BUILDER, False)],
+)
+async def test_account_deletion_counts_every_restricting_agent_owner(
+    db: AsyncSession, profile: str, archived: bool
 ) -> None:
     agent = await add_agent(db, owner=OTHER_USER_ID)
-    row = await db.get(Agent, agent.id)
-    assert row is not None
-    row.archived_at = datetime.now(UTC).replace(tzinfo=None)  # m83 RESTRICT still applies
+    agent.runtime_profile = profile
+    if archived:
+        agent.archived_at = datetime.now(UTC).replace(tzinfo=None)
     await db.commit()
     tool_id = await _share_to_other(db)
     with patch(CHECKPOINT, AsyncMock()), pytest.raises(AppError) as captured:

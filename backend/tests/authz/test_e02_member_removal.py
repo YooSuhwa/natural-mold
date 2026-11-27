@@ -7,7 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER, Agent
 from app.models.agent_api import AgentApiKey, AgentDeployment
 from app.models.agent_trigger import AgentTrigger
 from app.models.audit_event import AuditEvent
@@ -96,6 +96,31 @@ async def test_owned_resources_block_removal_and_are_listed(
         assert error["code"] == "resource_transfer_required"
         assert error["details"] == {"resources": {"tool": [str(tool.id)]}}
     assert await _member_status() == "active"
+
+
+async def test_member_can_leave_with_a_private_skill_builder(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    private = await add_agent(db, owner=OTHER_USER_ID)
+    private.runtime_profile = AGENT_RUNTIME_PROFILE_SKILL_BUILDER
+    await db.commit()
+    visible = await add_agent(db, owner=OTHER_USER_ID)
+
+    preview = await client.get(f"{MEMBERS}/{OTHER_USER_ID}/exit-preview")
+    assert preview.status_code == 200, preview.text
+    assert [resource["resource_id"] for resource in preview.json()["owned"]] == [str(visible.id)]
+    blocked = await delete(client)
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["error"]["details"] == {"resources": {"agent": [str(visible.id)]}}
+
+    response = await remove(
+        client, {"reason": "left", "resolutions": [_transfer("agent", visible.id)]}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["transferred"] == [str(visible.id)]
+    assert await _member_status() == "removed"
+    await db.refresh(private)
+    assert private.user_id == OTHER_USER_ID
 
 
 async def test_removal_transfers_stops_entry_points_and_revokes_grants(
