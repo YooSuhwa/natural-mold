@@ -7,6 +7,7 @@ from app.authz.agent_execution_scope import (
     assert_agent_tree_executable,
     load_agent_tree_for_history,
 )
+from app.authz.conversation_run_scope import owned_run_predicate
 from app.authz.conversation_scope import can_read_conversation_run_id
 from app.authz.credential_binding_scope import my_bindings
 from app.authz.org_context import OrgContext
@@ -38,10 +39,13 @@ async def readable_widget_bindings(
             Conversation.id == conversation.id,
             ConversationRun.id == run.id,
             private_scope_predicate(Conversation, context),
-            ConversationRun.user_id == context.user_id,
             or_(
                 private_scope_predicate(ConversationRun, context),
-                ConversationRun.org_id.is_(None) & ConversationRun.tenant_id.is_(None),
+                and_(
+                    owned_run_predicate(context),
+                    ConversationRun.org_id.is_(None),
+                    ConversationRun.tenant_id.is_(None),
+                ),
             ),
             binding.conversation_id == Conversation.id,
             binding.user_id == context.user_id,

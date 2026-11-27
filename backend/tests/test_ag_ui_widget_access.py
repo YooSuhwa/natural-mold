@@ -27,6 +27,7 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.organization import Organization, OrganizationMember
 from app.models.resource_credential_binding import ResourceCredentialBinding
+from app.models.user import User
 from app.services import ag_ui_widget_access
 from app.services.ag_ui_widget_access import readable_widget_bindings
 
@@ -149,6 +150,26 @@ async def test_replay_scopes_a_minted_widget_to_its_run_and_current_organization
         pytest.fail("A run without widgets must not require any remote authorization")
 
     monkeypatch.setattr("app.authz.runtime.runtime_authz", forbid_remote_check)
+    assert not await widget.read(db)
+
+
+async def test_legacy_widget_run_inherits_conversation_scope_only_for_its_owner(
+    db: AsyncSession, widget: Widget, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget.run.org_id = widget.run.tenant_id = None
+    await db.commit()
+    assert await widget.read(db) == {(widget.original.tool_call_id, str(widget.minted))}
+
+    other = User(email="other-widget-owner@example.test", name="Other widget owner")
+    db.add(other)
+    await db.flush()
+    widget.run.user_id = other.id
+    await db.commit()
+
+    def unexpected_lookup(*args: object, **kwargs: object) -> None:
+        pytest.fail("Foreign run metadata must not reach widget authorization")
+
+    monkeypatch.setattr(ag_ui_widget_access, "authorize_binding", unexpected_lookup)
     assert not await widget.read(db)
 
 
