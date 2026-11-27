@@ -83,9 +83,9 @@ function RunningThread() {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root>
-        <ThreadPrimitive.Messages
-          components={{ AssistantMessage: StreamingMessageLoadingIndicator }}
-        />
+        <ThreadPrimitive.Messages>
+          {({ message }) => message.role === 'assistant' && <StreamingMessageLoadingIndicator />}
+        </ThreadPrimitive.Messages>
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   )
