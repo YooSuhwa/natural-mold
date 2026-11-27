@@ -178,6 +178,8 @@ export function observeCompletedAgUiResponseReads(options: {
         )
           return invalidate()
         completedKind = event.outcome.type === 'cancelled' ? 'cancelled-eof' : 'eof'
+        // Fix the receipt ordering at terminal delivery. Only a subsequent clean read can attest to EOF.
+        if (completedKind === 'cancelled-eof') report('cancelled-terminal', ids)
       }
     }
 
