@@ -13,7 +13,7 @@ from app.authz.error_codes import authorization_error
 from app.authz.org_administrators import active_administrators
 from app.authz.org_control import OrgControlContext
 from app.authz.tenant_org_write_locks import lock_member_rows
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_api import AgentApiKey, AgentDeployment
 from app.models.agent_trigger import AgentTrigger
 from app.models.credential import Credential
@@ -35,13 +35,17 @@ ExitSettlement = Callable[[], Awaitable[None]]  # E-02 writes between the member
 
 
 def owner_queries(
-    user_id: UUID, *, include_archived: bool = True
+    user_id: UUID, *, org_exit: bool = False
 ) -> tuple[tuple[str, Select[tuple[UUID]]], ...]:
-    """Restricted owner FKs by resource type. An organization exit leaves archived agents
-    (trash, 10.7 "보관") with their owner; account erasure counts them (m83 RESTRICT)."""
+    """Account erasure counts every restricted owner FK. During organization exit,
+    archived agents and private runtime agents stay with the account."""
     agents = select(Agent.id).where(Agent.user_id == user_id)
+    if org_exit:
+        agents = agents.where(
+            Agent.archived_at.is_(None), Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD
+        )
     return (
-        ("agent", agents if include_archived else agents.where(Agent.archived_at.is_(None))),
+        ("agent", agents),
         ("skill", select(Skill.id).where(Skill.user_id == user_id)),
         ("mcp_server", select(McpServer.id).where(McpServer.user_id == user_id)),
         ("tool", select(Tool.id).where(Tool.user_id == user_id)),
@@ -58,7 +62,7 @@ async def require_no_owned_resources(
 ) -> None:
     """409 ``resource_transfer_required`` listing the org resources the member still owns."""
     remaining: dict[str, list[str]] = {}
-    for kind, query in owner_queries(user_id, include_archived=False):
+    for kind, query in owner_queries(user_id, org_exit=True):
         if await db.scalar(query.limit(1)) is None:
             continue
         # m81's physical scope exists before B-06 promotes the corresponding ORM mappings.
