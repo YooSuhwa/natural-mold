@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { useMemo } from 'react'
 import { resolveDataUI } from '@/lib/chat/data-ui-registry'
 import { TodosBody } from './deepagents-todos'
+import { AgUiApprovalBadge } from './tool-ui/approval-card'
 import type { AgUiSubagentSnapshot } from '@/lib/ag-ui/chat-history-children'
 
 export function isAgUiSubagentSnapshot(
@@ -56,7 +57,10 @@ export function AgUiSubagentDetails({ child }: { readonly child: AgUiSubagentSna
       ))}
       {child.tools.map((tool) => (
         <div key={tool.id} className="space-y-1">
-          <span className="font-mono moldy-ui-micro text-muted-foreground">{tool.name}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono moldy-ui-micro text-muted-foreground">{tool.name}</span>
+            {tool.approvalDecision && <AgUiApprovalBadge decision={tool.approvalDecision} />}
+          </div>
           {tool.result && <p className="whitespace-pre-wrap break-words text-xs">{tool.result}</p>}
         </div>
       ))}

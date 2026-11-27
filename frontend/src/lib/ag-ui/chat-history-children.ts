@@ -12,6 +12,9 @@ import type { SubagentDiscoverySnapshot } from '@langchain/react'
 import { resolveDataUI } from '@/lib/chat/data-ui-registry'
 import { isBoundAgUiDataCard, matchesAgUiDataCardCall } from './activity-card-owner'
 import type { DeepAgentTodo } from '@/lib/chat/langgraph-runtime/deepagents-state'
+import type { AgUiApprovalDecision } from './chat-history-types'
+
+type Decision = AgUiApprovalDecision['decision']
 
 export interface AgUiHistoryChild {
   readonly subagentRunId: string
@@ -47,6 +50,7 @@ export interface AgUiSubagentSnapshot extends SubagentDiscoverySnapshot {
   readonly tools: readonly {
     readonly id: string
     readonly name: string
+    readonly approvalDecision?: Decision
     readonly result?: string
   }[]
 }
@@ -54,6 +58,7 @@ export interface AgUiSubagentSnapshot extends SubagentDiscoverySnapshot {
 interface ChildRecord {
   readonly subagentRunId: string
   readonly message: Message
+  readonly approvals?: ReadonlyMap<string, Decision>
 }
 
 // The official run aggregator limits nested subagents to sixteen levels.
@@ -134,6 +139,29 @@ function directChildCalls(message: ThreadAssistantMessage) {
     message.content.filter((part) => part.type === 'tool-call'),
     (call) => call.toolCallId,
   )
+}
+
+function childToolDecisions(
+  child: ThreadAssistantMessage,
+  calls: ReadonlyMap<string, readonly ToolCallMessagePart[]>,
+) {
+  const receipts: unknown = child.metadata.custom.moldyChildApprovalDecisions
+  const decisions = new Map<string, Decision | null>()
+  if (!Array.isArray(receipts)) return decisions
+  for (const row of receipts as unknown[]) {
+    if (
+      !isRecord(row) ||
+      row.subagentRunId !== child.id ||
+      typeof row.toolCallId !== 'string' ||
+      typeof row.messageId !== 'string' ||
+      (row.decision !== 'approve' && row.decision !== 'edit' && row.decision !== 'reject')
+    )
+      continue
+    const owners = calls.get(row.toolCallId)
+    if (owners?.length !== 1 || owners[0].parentId !== row.messageId) continue
+    decisions.set(row.toolCallId, decisions.has(row.toolCallId) ? null : row.decision)
+  }
+  return decisions
 }
 
 function publicDataCard(
@@ -222,21 +250,30 @@ export function nestAgUiHistoryChildren(
       )
       if (matches.length !== 1) continue
       const { part, message: parent } = matches[0]
-      const wire = (byRun.get(child.subagentRunId) ?? [])
-        .map((record) => record.message)
-        .filter(
-          (message) =>
-            (message.role === 'assistant' ||
-              message.role === 'tool' ||
-              (message.role === 'activity' && message.activityType === 'moldy.ui_data')) &&
-            (!message.subagentRunId || message.subagentRunId === child.subagentRunId),
-        )
+      const records = (byRun.get(child.subagentRunId) ?? []).filter(
+        ({ message }) =>
+          (message.role === 'assistant' ||
+            message.role === 'tool' ||
+            (message.role === 'activity' && message.activityType === 'moldy.ui_data')) &&
+          (!message.subagentRunId || message.subagentRunId === child.subagentRunId),
+      )
+      const wire = records.map(({ message }) => message)
       // The SDK coalesces repeated tool IDs in one wire record. Check issuance
       // before conversion so a malformed duplicate cannot authorize a card.
       const sourceCalls = groupByKey(
         wire.flatMap((message) => (message.role === 'assistant' ? (message.toolCalls ?? []) : [])),
         (call) => call.id,
       )
+      const approvalDecisions = records.flatMap(({ message, approvals }) => {
+        if (message.role !== 'assistant' || !approvals) return []
+        return (message.toolCalls ?? []).flatMap(({ id: toolCallId }) => {
+          const decision = approvals.get(toolCallId)
+          if (!decision || sourceCalls.get(toolCallId)?.length !== 1) return []
+          return [
+            { subagentRunId: child.subagentRunId, messageId: message.id, toolCallId, decision },
+          ]
+        })
+      })
       const verified = wire.filter((message) => {
         if (message.role !== 'activity' || !isBoundAgUiDataCard(message.content)) return true
         const publicId = message.content.public_tool_call_id
@@ -269,6 +306,7 @@ export function nestAgUiHistoryChildren(
           ),
           metadata: {
             custom: {
+              ...(approvalDecisions.length && { moldyChildApprovalDecisions: approvalDecisions }),
               agui: {
                 name: child.name,
                 ...(child.description !== undefined && { description: child.description }),
@@ -334,17 +372,19 @@ export function indexAgUiSubagents(
           const data = publicDataCard(entry, calls)
           return data ? [{ id: child.id + ':' + i, type: data.type, props: data.props }] : []
         })
-        const tools = child.content.flatMap((entry) =>
-          entry.type === 'tool-call'
-            ? [
-                {
-                  id: entry.toolCallId,
-                  name: entry.toolName,
-                  ...(typeof entry.result === 'string' && { result: entry.result }),
-                },
-              ]
-            : [],
-        )
+        const decisions = childToolDecisions(child, calls)
+        const tools = child.content.flatMap((entry) => {
+          if (entry.type !== 'tool-call') return []
+          const approvalDecision = decisions.get(entry.toolCallId)
+          return [
+            {
+              id: entry.toolCallId,
+              name: entry.toolName,
+              ...(approvalDecision && { approvalDecision }),
+              ...(typeof entry.result === 'string' && { result: entry.result }),
+            },
+          ]
+        })
         candidates.push({
           id: part.toolCallId,
           subagentRunId: child.id,
