@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
 from functools import partial
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -38,6 +39,7 @@ from app.services.conversation_goal_service import apply_goal_action, block_goal
 from app.services.conversation_run_state import transition_run
 from app.services.independent_jobs import accept_independent_job
 from tests.authz.i06_rls_lab import RlsLab, async_url, rls_lab
+from tests.integration.notification_process import kill_after_notice_flush, notification_poller
 from tests.integration.test_independent_chat_job_idempotency import _accepted_parent
 
 pytestmark = pytest.mark.integration
@@ -416,6 +418,42 @@ async def _wait_for_blocker(db: AsyncSession, *, blocker: int, waiter: int) -> N
             {"blocker": blocker, "waiter": waiter},
         ):
             await asyncio.sleep(0.01)
+
+
+async def test_committed_goal_transition_survives_notification_process_death(
+    sessions: Sessions,
+    lab: RlsLab,
+    blocked_goal: tuple[OrgContext, ChatNotificationOutbox],
+    tmp_path: Path,
+) -> None:
+    ctx, outbox_row = blocked_goal
+    await kill_after_notice_flush(lab, outbox_row.id, tmp_path)
+    async with tenant_session(ctx, maker=sessions) as after_crash:
+        state = await after_crash.get(ConversationGoal, outbox_row.goal_id)
+        pending = await after_crash.get(ChatNotificationOutbox, outbox_row.id)
+        assert state is not None and state.status == "blocked"
+        assert pending is not None and (pending.status, pending.attempt_count) == ("pending", 0)
+    async with notification_poller(lab, tmp_path) as replacement:
+        assert await asyncio.wait_for(replacement.wait(), timeout=45) == 0
+    assert not (tmp_path / "unexpected-notification-network").exists()
+    async with tenant_session(ctx, maker=sessions) as reader:
+        [notice] = (
+            await reader.scalars(
+                select(Notification).where(Notification.target_id == outbox_row.id)
+            )
+        ).all()
+        receipt = await reader.get(ChatNotificationOutbox, outbox_row.id)
+        assert receipt is not None and (
+            receipt.status,
+            receipt.notification_id,
+            receipt.attempt_count,
+        ) == (
+            "delivered",
+            notice.id,
+            1,
+        )
+        destination = await open_chat_notification(reader, ctx, notice.id)
+        assert (destination.goal_id, destination.run_id) == (outbox_row.goal_id, outbox_row.run_id)
 
 
 async def test_goal_edit_already_holds_lock_before_notice_delivery(
