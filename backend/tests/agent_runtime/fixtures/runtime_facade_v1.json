@@ -574,10 +574,46 @@
           "name": "runtime_policy"
         },
         {
+          "annotation": "ChatSteerStore | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "steer_store"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "goal_context"
+        },
+        {
+          "annotation": "bool",
+          "default": "value:bool",
+          "kind": "keyword_only",
+          "name": "goal_followup"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "archive_owner_user_id"
+        },
+        {
+          "annotation": "str | None",
+          "default": "none",
+          "kind": "keyword_only",
+          "name": "resolved_model_credential_id"
+        },
+        {
           "annotation": "str",
           "default": "value:str",
           "kind": "keyword_only",
           "name": "run_path"
+        },
+        {
+          "annotation": "bool",
+          "default": "value:bool",
+          "kind": "keyword_only",
+          "name": "independent_job"
         },
         {
           "annotation": "str | None",

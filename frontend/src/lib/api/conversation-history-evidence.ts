@@ -1,5 +1,8 @@
 import { apiFetch } from '@/lib/api/client'
-import { loadServerCheckpointContext } from '@/lib/chat/langgraph-runtime/thread-state-checkpoints'
+import {
+  checkpointContextFromThreadState,
+  loadServerThreadState,
+} from '@/lib/chat/langgraph-runtime/thread-state-checkpoints'
 
 export type CompactionEvidenceTarget = {
   readonly conversationId: string
@@ -29,21 +32,29 @@ interface HistoryEvidence {
   readonly next_offset: number | null
 }
 
+export async function resolveCompactionCheckpoint(
+  target: CompactionEvidenceTarget,
+  signal: AbortSignal,
+): Promise<string> {
+  if (target.checkpointId) return target.checkpointId
+  if (!target.messageId) throw new Error('history_evidence_unavailable')
+
+  const state = await loadServerThreadState(target.conversationId, { readOnly: true, signal })
+  signal.throwIfAborted()
+  const checkpointId = checkpointContextFromThreadState(state).checkpointByMessageId.get(
+    target.messageId,
+  )
+  if (!checkpointId) throw new Error('history_evidence_unavailable')
+  return checkpointId
+}
+
 export async function readCompactionEvidence(
   target: CompactionEvidenceTarget,
   cursor: EvidenceCursor,
   signal: AbortSignal,
 ): Promise<HistoryEvidence> {
-  const checkpointId =
-    cursor.checkpointId ??
-    target.checkpointId ??
-    (target.messageId
-      ? (await loadServerCheckpointContext(target.conversationId)).checkpointByMessageId.get(
-          target.messageId,
-        )
-      : undefined)
+  const checkpointId = cursor.checkpointId ?? (await resolveCompactionCheckpoint(target, signal))
   signal.throwIfAborted()
-  if (!checkpointId) throw new Error('history_evidence_unavailable')
 
   const base = `/api/conversations/${encodeURIComponent(target.conversationId)}/history-evidence`
   const params = new URLSearchParams({ offset: String(cursor.offset), limit: '10' })

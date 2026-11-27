@@ -16,10 +16,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.approvals import service
+from app.authz.conversation_run_scope import owned_run_predicate
 from app.authz.notifications import Target, notify
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
@@ -160,7 +161,12 @@ async def record_interrupted_run(
             await db.execute(
                 select(ConversationRun, Conversation.source)
                 .join(Conversation, Conversation.id == ConversationRun.conversation_id)
-                .where(ConversationRun.id == run_id, ConversationRun.status == "interrupted")
+                .where(
+                    ConversationRun.id == run_id,
+                    ConversationRun.status == "interrupted",
+                    private_scope_predicate(Conversation, context),
+                    owned_run_predicate(context),
+                )
             )
         ).one_or_none()
         if record is None:
@@ -168,8 +174,38 @@ async def record_interrupted_run(
         run, conversation_source = record
         if conversation_source == INDEPENDENT_JOB_SOURCE:
             return await _record_independent_run(db, run, context, secret_values)
+        # Admission locks the conversation before creating any new run. A resume can
+        # already exist while its parent remains "interrupted" in permanent history.
+        # Read the checkpoint only while this run still owns the conversation's turn.
+        held = await db.scalar(
+            select(Conversation.id)
+            .where(
+                Conversation.id == run.conversation_id,
+                private_scope_predicate(Conversation, context),
+            )
+            .with_for_update()
+        )
+        if held is None:
+            return []
+        successor = await db.scalar(
+            select(ConversationRun.id)
+            .where(
+                ConversationRun.conversation_id == held,
+                owned_run_predicate(context),
+                ConversationRun.id != run.id,
+                or_(
+                    ConversationRun.parent_run_id == run.id,
+                    ConversationRun.created_at >= run.created_at,
+                ),
+            )
+            .limit(1)
+        )
+        if successor is not None:
+            return []
         interrupts = await checkpoint_interrupts(run.conversation_id)
-        if not interrupts:
+        if not interrupts or (
+            run.interrupt_id and all(i.interrupt_id != run.interrupt_id for i in interrupts)
+        ):
             return []
         name = ""
         if run.agent_id is not None:

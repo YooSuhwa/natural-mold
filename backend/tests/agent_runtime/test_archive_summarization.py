@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import itertools
+from contextlib import nullcontext
+from contextvars import copy_context
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 from uuid import uuid4
 
 import pytest
@@ -11,11 +13,18 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
-from app.agent_runtime import history_archive, runtime_component_builder
-from app.agent_runtime.archive_summarization import ArchiveSummarizationMiddleware
+from app.agent_runtime import checkpointer, history_archive, runtime_component_builder
+from app.agent_runtime.archive_summarization import (
+    ArchiveSummarizationMiddleware,
+    chat_archive_build,
+    chat_archive_writes_for,
+)
 from app.agent_runtime.offload_storage import OffloadIdentity, ScopedOffloadBackend
 from app.agent_runtime.runtime_agent_builder import build_agent
+from app.agent_runtime.runtime_config import RuntimeComponents
 from app.agent_runtime.runtime_policy import resolve_runtime_policy
+from app.config import settings
+from tests.test_executor import _cfg
 
 
 class _Model(GenericFakeChatModel):
@@ -44,15 +53,19 @@ def _agent(
         if stored
         else None
     )
-    return build_agent(
-        model,
-        [],
-        "정확하게 답하세요.",
-        backend=backend,
-        checkpointer=saver,
-        runtime_policy=policy,
-        archive_chat_history=archive,
-    )
+    with (
+        chat_archive_build(backend, writes_enabled=archive)
+        if archive is not None
+        else nullcontext()
+    ):
+        return build_agent(
+            model,
+            [],
+            "정확하게 답하세요.",
+            backend=backend,
+            checkpointer=saver,
+            runtime_policy=policy,
+        )
 
 
 def _input(turn: int) -> dict[str, list[HumanMessage]]:
@@ -160,3 +173,61 @@ def test_archiving_only_replaces_trusted_root_slot(
             assert all(
                 not isinstance(m, ArchiveSummarizationMiddleware) for m in child["middleware"]
             )
+
+
+@pytest.mark.parametrize(
+    ("enabled", "owner", "path", "trigger", "expected"),
+    [
+        (True, "owner", "chat", False, True),
+        (False, "owner", "chat", False, False),
+        (True, None, "chat", False, None),
+        (True, "owner", "api", False, None),
+        (True, "owner", "chat", True, None),
+    ],
+)
+async def test_archive_selection_preserves_the_patched_builder_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    enabled: bool,
+    owner: str | None,
+    path: str,
+    trigger: bool,
+    expected: bool | None,
+) -> None:
+    backend = ScopedOffloadBackend(tmp_path, OffloadIdentity("owner", "conv", "run"), uuid4())
+    child = backend.for_actor(uuid4())
+    components = RuntimeComponents(
+        model_candidates=[],
+        model=MagicMock(),
+        tools=[],
+        middleware=[],
+        system_prompt="test",
+        skills_sources=None,
+        backend=backend,
+        memory_sources=None,
+        permissions=[],
+        interrupt_on=None,
+    )
+    monkeypatch.setattr(settings, "chat_archive_writes_enabled", enabled)
+    monkeypatch.setattr(checkpointer, "get_checkpointer", MagicMock())
+    monkeypatch.setattr(
+        runtime_component_builder, "_prepare_runtime_components", AsyncMock(return_value=components)
+    )
+
+    def compile_agent(*args: object, **kwargs: object) -> object:
+        assert kwargs["backend"] is backend
+        assert chat_archive_writes_for(backend) is expected
+        assert chat_archive_writes_for(child) is None
+        return copy_context()
+
+    compiler = create_autospec(build_agent, side_effect=compile_agent)
+    monkeypatch.setattr(runtime_component_builder, "build_agent", compiler)
+    inherited, _, _ = await runtime_component_builder._prepare_agent(
+        _cfg(run_path=path, archive_owner_user_id=owner),
+        messages_history=[],
+        is_trigger_mode=trigger,
+        run_id=str(uuid4()),
+    )
+    compiler.assert_called_once()
+    assert chat_archive_writes_for(backend) is None
+    assert inherited.run(chat_archive_writes_for, backend) is None

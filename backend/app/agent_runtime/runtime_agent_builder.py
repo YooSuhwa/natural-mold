@@ -17,6 +17,7 @@ from langchain_core.tools import BaseTool
 from app.agent_runtime.archive_summarization import (
     ArchiveSummarizationMiddleware,
     LegacyArchiveSummarizationMiddleware,
+    chat_archive_writes_for,
 )
 from app.agent_runtime.deep_agent_factory import (
     DeepAgentFactoryBindings as _DeepAgentFactoryBindings,
@@ -172,7 +173,6 @@ def _with_stored_policy_summarization(
     model: BaseChatModel,
     backend: Any,
     runtime_policy: ResolvedRuntimePolicy,
-    archive_chat_history: bool | None = None,
 ) -> list[Any]:
     """Replace any caller summarizer with the snapshotted stored policy."""
 
@@ -182,9 +182,7 @@ def _with_stored_policy_summarization(
     ]
     return [
         *retained,
-        create_stored_summarization_middleware(
-            runtime_policy, model, backend, archive_chat_history=archive_chat_history
-        ),
+        create_stored_summarization_middleware(runtime_policy, model, backend),
     ]
 
 
@@ -197,7 +195,6 @@ def _with_stored_parent_policy(
     todo_enabled: bool,
     model: BaseChatModel,
     runtime_policy: ResolvedRuntimePolicy,
-    archive_chat_history: bool | None = None,
 ) -> list[Any]:
     """Build the top-level stored-policy compatibility stack."""
 
@@ -213,7 +210,6 @@ def _with_stored_parent_policy(
         model=model,
         backend=backend,
         runtime_policy=runtime_policy,
-        archive_chat_history=archive_chat_history,
     )
 
 
@@ -238,9 +234,9 @@ def build_agent(
     unattended: UnattendedMode | None = None,
     response_format: Any | None = None,
     tool_approval: Any | None = None,
-    archive_chat_history: bool | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
+    archive_chat_history = chat_archive_writes_for(backend)
     effective_permissions = permissions
     effective_tools = tools
     bindings = _DeepAgentFactoryBindings(
@@ -264,7 +260,6 @@ def build_agent(
                 todo_enabled=todo_enabled,
                 model=model,
                 runtime_policy=runtime_policy,
-                archive_chat_history=archive_chat_history,
             ),
             normalize_subagents=partial(
                 runtime_attr("_normalize_stored_policy_subagents"),

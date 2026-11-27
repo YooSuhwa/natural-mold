@@ -114,6 +114,18 @@ documents:
   - path: backend/app/seed/system_skill_packages/xlsx-spreadsheet/SKILL.md
     lifecycle: reference/spec
     status: reference
+  - path: backend/evals/chat_archive/REPORT.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: backend/evals/continuous_work/REPORT.md
+    lifecycle: generated-evidence
+    status: generated
+  - path: backend/evals/memory_recall/INDEPENDENT_PROTOCOL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: backend/evals/memory_recall/INDEPENDENT_REPORT.md
+    lifecycle: generated-evidence
+    status: generated
   - path: backend/evals/memory_recall/PREREGISTRATION.md
     lifecycle: reference/spec
     status: reference
@@ -129,6 +141,9 @@ documents:
   - path: backend/evals/workflow_edit/REPORT.md
     lifecycle: generated-evidence
     status: generated
+  - path: backend/tests/fixtures/deep-research-0.1.0/SKILL.md
+    lifecycle: reference/spec
+    status: reference
   - path: docs/ARCHITECTURE.md
     lifecycle: canonical-current
     status: current
