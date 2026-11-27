@@ -45193,6 +45193,27 @@
           "title": "Other Vectors",
           "type": "integer"
         },
+        "quality_floor": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Quality Floor"
+        },
+        "recall_mode": {
+          "default": "off",
+          "enum": [
+            "off",
+            "shadow",
+            "serve"
+          ],
+          "title": "Recall Mode",
+          "type": "string"
+        },
         "total": {
           "title": "Total",
           "type": "integer"
@@ -45231,6 +45252,22 @@
             }
           ],
           "title": "Model Id"
+        },
+        "recall_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "off",
+                "shadow",
+                "serve"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recall Mode"
         }
       },
       "required": [

@@ -443,12 +443,14 @@ export interface MemoryVectorModel {
   source: 'platform' | 'company'
 }
 
+export type MemoryVectorRecallMode = 'off' | 'shadow' | 'serve'
+
 export interface MemoryVectorStatus {
   /** `null` = vectors are off (keyword recall only). */
   model: MemoryVectorModel | null
   /** Registered embedding models the company may choose. */
   candidates: MemoryVectorModel[]
-  /** Memories recall may embed. */
+  /** Company-wide inventory, including records whose organization restricts embedding. */
   total: number
   /** Of those, how many have a vector of the chosen model. */
   embedded: number
@@ -457,16 +459,21 @@ export interface MemoryVectorStatus {
   /** Latest re-embedding job: queued, running, succeeded, failed or canceled. */
   job_state: string | null
   job_progress: number | null
-  /** False: no measured cosine floor for the chosen model, so recall stays keyword-only. */
+  /** True when the selected model passed its quality evaluation. */
   floor_measured: boolean
+  quality_floor: number | null
+  /** Effective recall policy for the active organization and selected company model. */
+  recall_mode: MemoryVectorRecallMode
   /** Whether this person can change it (a company admin, or a personal tenant's owner). */
   can_manage: boolean
 }
 
 export interface MemoryVectorUpdate {
   model_id: string | null
-  /** The number of memories the screen said would be embedded again (0 to turn off). */
+  /** Displayed company-wide candidate count (0 when changing only the mode or turning off). */
   confirm_count: number
   /** Turning off: also remove the stored vectors. */
   drop_vectors?: boolean
+  /** Change the policy on the current model without scheduling another embedding job. */
+  recall_mode?: MemoryVectorRecallMode
 }

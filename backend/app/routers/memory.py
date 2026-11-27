@@ -754,6 +754,8 @@ def _vector_out(result: memory_vectors.VectorStatus, *, can_manage: bool) -> Mem
         job_state=result.job_state,
         job_progress=result.job_progress,
         floor_measured=result.floor_measured,
+        recall_mode=result.recall_mode,
+        quality_floor=result.quality_floor,
         can_manage=can_manage,
     )
 
@@ -766,7 +768,7 @@ async def get_memory_vector(
     context: OrgContext = Depends(get_org_context),
 ) -> MemoryVectorStatusOut:
     admin = await load_tenant_admin_context(db, user, TenantAdminTarget(context.tenant_id))
-    result = await memory_vectors.status(db, admin.tenant)
+    result = await memory_vectors.status(db, admin.tenant, org_id=context.org_id)
     return _vector_out(result, can_manage="can_manage_tenant" in admin.permissions)
 
 
@@ -789,6 +791,7 @@ async def put_memory_vector(
         model_id=payload.model_id,
         confirm_count=payload.confirm_count,
         drop_vectors=payload.drop_vectors,
+        recall_mode=payload.recall_mode,
     )
     return _vector_out(result, can_manage=True)
 

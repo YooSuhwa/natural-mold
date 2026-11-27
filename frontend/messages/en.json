@@ -6392,22 +6392,35 @@
         "agent_label": "Agent"
       },
       "vector": {
-        "title": "Memory search vector model",
-        "description": "The embedding model used alongside keywords to find memories. It is set for the whole company; when off, memories are found by keywords only.",
+        "title": "Memory search",
+        "description": "The company shares one embedding model. Each organization can turn on comparison or hybrid search independently.",
         "loading": "Loading vector settings...",
         "loadFailed": "Could not load the vector settings.",
-        "onBadge": "On",
-        "offBadge": "Off",
-        "select": "Vector model",
+        "onBadge": "Embedding on",
+        "offBadge": "Embedding off",
+        "select": "Company embedding model",
         "off": "Off",
         "option": "{name} ({dimensions} dims)",
         "currentOff": "Off. Memories are found by keywords only.",
-        "current": "Current embedding: {name} ({dimensions} dims) — {embedded}/{total} done",
-        "jobQueued": "Waiting to embed again. Until it finishes, memories are found by keywords only.",
-        "jobRunning": "Embedding again, {progress}%. Until it finishes, memories are found by keywords only.",
-        "floorUnmeasured": "Threshold not measured: memories are found by keywords only until it is evaluated.",
-        "otherVectorsReplacing": "{count} vectors of the previous model remain. They are removed when embedding finishes.",
-        "otherVectorsKept": "{count} stored vectors remain. Turning the same model back on will not embed again.",
+        "current": "{name} ({dimensions} dims) · {embedded} of {total} company memories have a vector from this model.",
+        "jobQueued": "Re-embedding is queued.",
+        "jobRunning": "Re-embedding is {progress}% complete.",
+        "floorUnmeasured": "Comparison and hybrid search become available when this model passes its quality evaluation.",
+        "qualityFloor": "The minimum cosine similarity from this model’s evaluation is {floor}.",
+        "recallLabel": "Memory search mode for the current organization",
+        "recallModes": {
+          "off": "Keyword search",
+          "shadow": "Compare only",
+          "serve": "Hybrid search"
+        },
+        "recallHelp": {
+          "off": "Replies use memories found by keyword search.",
+          "shadow": "Compare keyword and hybrid search results. Replies use only the memories found by keyword search.",
+          "serve": "Replies use memories found by combining keyword and semantic search."
+        },
+        "recallSaved": "Memory search mode updated for the current organization.",
+        "otherVectorsReplacing": "{count} vectors from previous models remain.",
+        "otherVectorsKept": "{count} stored vectors remain. Turning the same model back on can reuse them.",
         "noModels": "No embedding model is registered, so this cannot be turned on.",
         "registerHint": "Register an embedding model on the models page.",
         "readOnly": "Only a company admin can change this.",
@@ -6417,16 +6430,16 @@
         "chooseDialog": {
           "title": "Switch to {name}?",
           "model": "{name} · {dimensions} dims",
-          "body": "{count} memories will be embedded again. Until it finishes, memories are found by keywords only. Switch?",
+          "body": "The company has {count} candidate memories for re-embedding. Only memories their organization allows this model to process will be embedded. Changing the model resets every organization to keyword search.",
           "recounted": "The number of memories changed meanwhile. Please confirm the new count.",
           "confirm": "Switch"
         },
         "offDialog": {
           "title": "Turn off vector search?",
-          "description": "When off, memories are found by keywords only.",
+          "description": "Turning off the company embedding model resets every organization to keyword search.",
           "drop": "Also delete stored vectors",
-          "keepHelp": "Kept vectors mean turning the same model back on will not embed again.",
-          "dropHelp": "All stored vectors are deleted. Turning it back on embeds from scratch.",
+          "keepHelp": "Turning the same model back on can reuse stored vectors.",
+          "dropHelp": "This deletes all stored vectors for the company. Turning embedding back on builds new vectors.",
           "confirm": "Turn off"
         }
       },

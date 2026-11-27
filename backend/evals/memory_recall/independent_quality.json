@@ -1,0 +1,989 @@
+{
+  "schema": "moldy.memory-recall.quality.v1",
+  "corpus_sha256": "9eb543ed3fff0302cfabb55a7ea127534cc34eca663c5fdd06319f38b578898a",
+  "candidate": null,
+  "keyword_floor": 0.3,
+  "analyzer": "suffix",
+  "modes": {
+    "keyword": {
+      "categories": {
+        "same_word": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 1.0,
+          "ci95": [
+            0.8668077490609516,
+            1.0
+          ]
+        },
+        "particle": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.4,
+          "ci95": [
+            0.2340330237774797,
+            0.59260542641033
+          ]
+        },
+        "paraphrase": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.1331922509390484
+          ]
+        },
+        "time": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.6,
+          "ci95": [
+            0.40739457358967,
+            0.7659669762225203
+          ]
+        },
+        "multi_turn": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.48,
+          "ci95": [
+            0.28,
+            0.68
+          ]
+        },
+        "unrelated": {
+          "metric": "irrelevant_rejection",
+          "n": 25,
+          "value": 0.96,
+          "ci95": [
+            0.8045593626380627,
+            0.9929037664980127
+          ]
+        }
+      },
+      "mean_prompt_tokens": {
+        "n": 150,
+        "value": 79.90666666666667,
+        "ci95": [
+          63.830333333333336,
+          95.7675
+        ]
+      },
+      "p95_elapsed_ms": {
+        "n": 150,
+        "value": 4.728958010673523,
+        "ci95": [
+          4.359541926532984,
+          5.48270798753947
+        ]
+      }
+    }
+  },
+  "mean_added_prompt_tokens_vs_keyword": null,
+  "gate": {
+    "passed": false,
+    "reason": "candidate_not_evaluated"
+  },
+  "per_question": {
+    "keyword": {
+      "hk-exhibits-q01": {
+        "inserted": [
+          "hk-exhibits-m01"
+        ],
+        "tokens": 156,
+        "ms": 6.23137503862381
+      },
+      "hk-exhibits-q02": {
+        "inserted": [
+          "hk-exhibits-m02"
+        ],
+        "tokens": 161,
+        "ms": 3.996709012426436
+      },
+      "hk-exhibits-q03": {
+        "inserted": [
+          "hk-exhibits-m03"
+        ],
+        "tokens": 161,
+        "ms": 3.086874959990382
+      },
+      "hk-exhibits-q04": {
+        "inserted": [
+          "hk-exhibits-m04"
+        ],
+        "tokens": 167,
+        "ms": 3.1224170234054327
+      },
+      "hk-exhibits-q05": {
+        "inserted": [
+          "hk-exhibits-m05"
+        ],
+        "tokens": 161,
+        "ms": 2.744833007454872
+      },
+      "hk-exhibits-q06": {
+        "inserted": [
+          "hk-exhibits-m06"
+        ],
+        "tokens": 154,
+        "ms": 3.4015830606222153
+      },
+      "hk-exhibits-q07": {
+        "inserted": [
+          "hk-exhibits-m07"
+        ],
+        "tokens": 154,
+        "ms": 3.5569589817896485
+      },
+      "hk-exhibits-q08": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.9206250328570604
+      },
+      "hk-exhibits-q09": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.7127919495105743
+      },
+      "hk-exhibits-q10": {
+        "inserted": [
+          "hk-exhibits-m10"
+        ],
+        "tokens": 150,
+        "ms": 4.728958010673523
+      },
+      "hk-exhibits-q11": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.0160420574247837
+      },
+      "hk-exhibits-q12": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.568082978948951
+      },
+      "hk-exhibits-q13": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.1828749924898148
+      },
+      "hk-exhibits-q14": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.4899160964414477
+      },
+      "hk-exhibits-q15": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.172292072325945
+      },
+      "hk-exhibits-q16": {
+        "inserted": [
+          "hk-exhibits-m18",
+          "hk-exhibits-m17",
+          "hk-exhibits-m16"
+        ],
+        "tokens": 310,
+        "ms": 2.9277909779921174
+      },
+      "hk-exhibits-q17": {
+        "inserted": [
+          "hk-exhibits-m18",
+          "hk-exhibits-m17",
+          "hk-exhibits-m16"
+        ],
+        "tokens": 310,
+        "ms": 2.831666963174939
+      },
+      "hk-exhibits-q18": {
+        "inserted": [
+          "hk-exhibits-m18",
+          "hk-exhibits-m17",
+          "hk-exhibits-m16"
+        ],
+        "tokens": 310,
+        "ms": 3.589040949009359
+      },
+      "hk-exhibits-q19": {
+        "inserted": [
+          "hk-exhibits-m20",
+          "hk-exhibits-m19"
+        ],
+        "tokens": 243,
+        "ms": 5.432625068351626
+      },
+      "hk-exhibits-q20": {
+        "inserted": [
+          "hk-exhibits-m20",
+          "hk-exhibits-m19"
+        ],
+        "tokens": 243,
+        "ms": 3.6417089868336916
+      },
+      "hk-exhibits-q21": {
+        "inserted": [
+          "hk-exhibits-m21"
+        ],
+        "tokens": 161,
+        "ms": 3.3225000370293856
+      },
+      "hk-exhibits-q22": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.632333060726523
+      },
+      "hk-exhibits-q23": {
+        "inserted": [
+          "hk-exhibits-m23"
+        ],
+        "tokens": 166,
+        "ms": 3.5624169977381825
+      },
+      "hk-exhibits-q24": {
+        "inserted": [
+          "hk-exhibits-m24"
+        ],
+        "tokens": 159,
+        "ms": 3.9597919676452875
+      },
+      "hk-exhibits-q25": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.95604204479605
+      },
+      "hk-exhibits-q26": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.4159169299528003
+      },
+      "hk-exhibits-q27": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.4520839797332883
+      },
+      "hk-exhibits-q28": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.492625033482909
+      },
+      "hk-exhibits-q29": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.526875050738454
+      },
+      "hk-exhibits-q30": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.0107920756563544
+      },
+      "hk-radio-q01": {
+        "inserted": [
+          "hk-radio-m01"
+        ],
+        "tokens": 157,
+        "ms": 3.3818749943748116
+      },
+      "hk-radio-q02": {
+        "inserted": [
+          "hk-radio-m02"
+        ],
+        "tokens": 173,
+        "ms": 3.591708024032414
+      },
+      "hk-radio-q03": {
+        "inserted": [
+          "hk-radio-m03"
+        ],
+        "tokens": 169,
+        "ms": 3.313041990622878
+      },
+      "hk-radio-q04": {
+        "inserted": [
+          "hk-radio-m04"
+        ],
+        "tokens": 171,
+        "ms": 3.7475829012691975
+      },
+      "hk-radio-q05": {
+        "inserted": [
+          "hk-radio-m05"
+        ],
+        "tokens": 168,
+        "ms": 3.1135419849306345
+      },
+      "hk-radio-q06": {
+        "inserted": [
+          "hk-radio-m06"
+        ],
+        "tokens": 157,
+        "ms": 3.2643339363858104
+      },
+      "hk-radio-q07": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.80829197820276
+      },
+      "hk-radio-q08": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.574999933131039
+      },
+      "hk-radio-q09": {
+        "inserted": [
+          "hk-radio-m09"
+        ],
+        "tokens": 170,
+        "ms": 3.5053329775109887
+      },
+      "hk-radio-q10": {
+        "inserted": [
+          "hk-radio-m10"
+        ],
+        "tokens": 169,
+        "ms": 6.418582983314991
+      },
+      "hk-radio-q11": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.591708024032414
+      },
+      "hk-radio-q12": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.7954159304499626
+      },
+      "hk-radio-q13": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.9086669459939
+      },
+      "hk-radio-q14": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.5317090805619955
+      },
+      "hk-radio-q15": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.190916031599045
+      },
+      "hk-radio-q16": {
+        "inserted": [
+          "hk-radio-m17",
+          "hk-radio-m16",
+          "hk-radio-m18"
+        ],
+        "tokens": 325,
+        "ms": 4.496000008657575
+      },
+      "hk-radio-q17": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.231541020795703
+      },
+      "hk-radio-q18": {
+        "inserted": [
+          "hk-radio-m17",
+          "hk-radio-m16",
+          "hk-radio-m18"
+        ],
+        "tokens": 325,
+        "ms": 3.9993339451029897
+      },
+      "hk-radio-q19": {
+        "inserted": [
+          "hk-radio-m19"
+        ],
+        "tokens": 180,
+        "ms": 2.4870840134099126
+      },
+      "hk-radio-q20": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.359541926532984
+      },
+      "hk-radio-q21": {
+        "inserted": [
+          "hk-radio-m21"
+        ],
+        "tokens": 170,
+        "ms": 2.9666670598089695
+      },
+      "hk-radio-q22": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.082167007960379
+      },
+      "hk-radio-q23": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.674499923363328
+      },
+      "hk-radio-q24": {
+        "inserted": [
+          "hk-radio-m25"
+        ],
+        "tokens": 169,
+        "ms": 3.944500000216067
+      },
+      "hk-radio-q25": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.13633300922811
+      },
+      "hk-radio-q26": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.163540968671441
+      },
+      "hk-radio-q27": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.948375000618398
+      },
+      "hk-radio-q28": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 5.487125017680228
+      },
+      "hk-radio-q29": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.701999947428703
+      },
+      "hk-radio-q30": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.3619580790400505
+      },
+      "hk-theater-q01": {
+        "inserted": [
+          "hk-theater-m01"
+        ],
+        "tokens": 164,
+        "ms": 2.91779194958508
+      },
+      "hk-theater-q02": {
+        "inserted": [
+          "hk-theater-m02"
+        ],
+        "tokens": 171,
+        "ms": 2.4412079947069287
+      },
+      "hk-theater-q03": {
+        "inserted": [
+          "hk-theater-m03"
+        ],
+        "tokens": 159,
+        "ms": 2.7293750317767262
+      },
+      "hk-theater-q04": {
+        "inserted": [
+          "hk-theater-m04"
+        ],
+        "tokens": 165,
+        "ms": 2.470292034558952
+      },
+      "hk-theater-q05": {
+        "inserted": [
+          "hk-theater-m05"
+        ],
+        "tokens": 167,
+        "ms": 2.6399169582873583
+      },
+      "hk-theater-q06": {
+        "inserted": [
+          "hk-theater-m06"
+        ],
+        "tokens": 163,
+        "ms": 3.6729580024257302
+      },
+      "hk-theater-q07": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.6090840585529804
+      },
+      "hk-theater-q08": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.21662491094321
+      },
+      "hk-theater-q09": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.223417046479881
+      },
+      "hk-theater-q10": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.462040982209146
+      },
+      "hk-theater-q11": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.029958043247461
+      },
+      "hk-theater-q12": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.4355000350624323
+      },
+      "hk-theater-q13": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.497958019375801
+      },
+      "hk-theater-q14": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.3866669507697225
+      },
+      "hk-theater-q15": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.330083050765097
+      },
+      "hk-theater-q16": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.6078750854358077
+      },
+      "hk-theater-q17": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.082041977904737
+      },
+      "hk-theater-q18": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.62870907317847
+      },
+      "hk-theater-q19": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.231000038795173
+      },
+      "hk-theater-q20": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.269999939016998
+      },
+      "hk-theater-q21": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.398875007405877
+      },
+      "hk-theater-q22": {
+        "inserted": [
+          "hk-theater-m08",
+          "hk-theater-m22"
+        ],
+        "tokens": 221,
+        "ms": 3.736416925676167
+      },
+      "hk-theater-q23": {
+        "inserted": [
+          "hk-theater-m23",
+          "hk-theater-m13"
+        ],
+        "tokens": 235,
+        "ms": 2.865375019609928
+      },
+      "hk-theater-q24": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.2097500041127205
+      },
+      "hk-theater-q25": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.55987502168864
+      },
+      "hk-theater-q26": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.5704579893499613
+      },
+      "hk-theater-q27": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.7462919242680073
+      },
+      "hk-theater-q28": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.6670419611036777
+      },
+      "hk-theater-q29": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.8412921130657196
+      },
+      "hk-theater-q30": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.7884169248864055
+      },
+      "hk-weaving-q01": {
+        "inserted": [
+          "hk-weaving-m01"
+        ],
+        "tokens": 168,
+        "ms": 4.0582920191809535
+      },
+      "hk-weaving-q02": {
+        "inserted": [
+          "hk-weaving-m02"
+        ],
+        "tokens": 159,
+        "ms": 3.5748330410569906
+      },
+      "hk-weaving-q03": {
+        "inserted": [
+          "hk-weaving-m03"
+        ],
+        "tokens": 167,
+        "ms": 3.2826249953359365
+      },
+      "hk-weaving-q04": {
+        "inserted": [
+          "hk-weaving-m04"
+        ],
+        "tokens": 162,
+        "ms": 3.654583008028567
+      },
+      "hk-weaving-q05": {
+        "inserted": [
+          "hk-weaving-m05"
+        ],
+        "tokens": 171,
+        "ms": 3.3271670108661056
+      },
+      "hk-weaving-q06": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.2694590045139194
+      },
+      "hk-weaving-q07": {
+        "inserted": [
+          "hk-weaving-m07"
+        ],
+        "tokens": 170,
+        "ms": 3.4141249489039183
+      },
+      "hk-weaving-q08": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.9419169295579195
+      },
+      "hk-weaving-q09": {
+        "inserted": [
+          "hk-weaving-m09"
+        ],
+        "tokens": 158,
+        "ms": 2.794833038933575
+      },
+      "hk-weaving-q10": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.1153750605881214
+      },
+      "hk-weaving-q11": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.493833006359637
+      },
+      "hk-weaving-q12": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.1934590078890324
+      },
+      "hk-weaving-q13": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.538500051945448
+      },
+      "hk-weaving-q14": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.7293330058455467
+      },
+      "hk-weaving-q15": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.6673330469056964
+      },
+      "hk-weaving-q16": {
+        "inserted": [
+          "hk-weaving-m16",
+          "hk-weaving-m17"
+        ],
+        "tokens": 259,
+        "ms": 2.9399580089375377
+      },
+      "hk-weaving-q17": {
+        "inserted": [
+          "hk-weaving-m16",
+          "hk-weaving-m17"
+        ],
+        "tokens": 259,
+        "ms": 2.7391250478103757
+      },
+      "hk-weaving-q18": {
+        "inserted": [
+          "hk-weaving-m18",
+          "hk-weaving-m19"
+        ],
+        "tokens": 247,
+        "ms": 2.6791670825332403
+      },
+      "hk-weaving-q19": {
+        "inserted": [
+          "hk-weaving-m18",
+          "hk-weaving-m19"
+        ],
+        "tokens": 247,
+        "ms": 2.782542025670409
+      },
+      "hk-weaving-q20": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.591666067019105
+      },
+      "hk-weaving-q21": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.3162080217152834
+      },
+      "hk-weaving-q22": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.5109999114647508
+      },
+      "hk-weaving-q23": {
+        "inserted": [
+          "hk-weaving-m23"
+        ],
+        "tokens": 179,
+        "ms": 2.597249927930534
+      },
+      "hk-weaving-q24": {
+        "inserted": [
+          "hk-weaving-m24"
+        ],
+        "tokens": 182,
+        "ms": 2.7757909847423434
+      },
+      "hk-weaving-q25": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.257540985941887
+      },
+      "hk-weaving-q26": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.77858302090317
+      },
+      "hk-weaving-q27": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.88041599560529
+      },
+      "hk-weaving-q28": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.115291940048337
+      },
+      "hk-weaving-q29": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.637249999679625
+      },
+      "hk-weaving-q30": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.7032080106437206
+      },
+      "hk-bikes-q01": {
+        "inserted": [
+          "hk-bikes-m01"
+        ],
+        "tokens": 168,
+        "ms": 3.537542070262134
+      },
+      "hk-bikes-q02": {
+        "inserted": [
+          "hk-bikes-m02"
+        ],
+        "tokens": 161,
+        "ms": 3.860166994854808
+      },
+      "hk-bikes-q03": {
+        "inserted": [
+          "hk-bikes-m03"
+        ],
+        "tokens": 165,
+        "ms": 3.1067499658092856
+      },
+      "hk-bikes-q04": {
+        "inserted": [
+          "hk-bikes-m04"
+        ],
+        "tokens": 159,
+        "ms": 2.7299579232931137
+      },
+      "hk-bikes-q05": {
+        "inserted": [
+          "hk-bikes-m05"
+        ],
+        "tokens": 165,
+        "ms": 3.564000013284385
+      },
+      "hk-bikes-q06": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.338666913099587
+      },
+      "hk-bikes-q07": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.7647499702870846
+      },
+      "hk-bikes-q08": {
+        "inserted": [
+          "hk-bikes-m08"
+        ],
+        "tokens": 168,
+        "ms": 3.28512501437217
+      },
+      "hk-bikes-q09": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.785666030831635
+      },
+      "hk-bikes-q10": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.8261249428614974
+      },
+      "hk-bikes-q11": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.0210840050131083
+      },
+      "hk-bikes-q12": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.1709580216556787
+      },
+      "hk-bikes-q13": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.463208045810461
+      },
+      "hk-bikes-q14": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.5782909942790866
+      },
+      "hk-bikes-q15": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.176417085342109
+      },
+      "hk-bikes-q16": {
+        "inserted": [
+          "hk-bikes-m18",
+          "hk-bikes-m16"
+        ],
+        "tokens": 226,
+        "ms": 3.1837919959798455
+      },
+      "hk-bikes-q17": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.0194999892264605
+      },
+      "hk-bikes-q18": {
+        "inserted": [
+          "hk-bikes-m18",
+          "hk-bikes-m16"
+        ],
+        "tokens": 226,
+        "ms": 2.6944999117404222
+      },
+      "hk-bikes-q19": {
+        "inserted": [
+          "hk-bikes-m19"
+        ],
+        "tokens": 172,
+        "ms": 5.48270798753947
+      },
+      "hk-bikes-q20": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.9775409968569875
+      },
+      "hk-bikes-q21": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.8248340133577585
+      },
+      "hk-bikes-q22": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.0917500844225287
+      },
+      "hk-bikes-q23": {
+        "inserted": [
+          "hk-bikes-m24"
+        ],
+        "tokens": 174,
+        "ms": 3.5852500004693866
+      },
+      "hk-bikes-q24": {
+        "inserted": [
+          "hk-bikes-m25"
+        ],
+        "tokens": 168,
+        "ms": 3.372875042259693
+      },
+      "hk-bikes-q25": {
+        "inserted": [
+          "hk-bikes-m26"
+        ],
+        "tokens": 166,
+        "ms": 3.456291975453496
+      },
+      "hk-bikes-q26": {
+        "inserted": [
+          "hk-bikes-m18",
+          "hk-bikes-m16"
+        ],
+        "tokens": 226,
+        "ms": 4.407583037391305
+      },
+      "hk-bikes-q27": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.249415942467749
+      },
+      "hk-bikes-q28": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.120583016425371
+      },
+      "hk-bikes-q29": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.2521249959245324
+      },
+      "hk-bikes-q30": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.811333048157394
+      }
+    }
+  }
+}

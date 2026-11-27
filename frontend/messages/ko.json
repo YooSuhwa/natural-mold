@@ -6392,22 +6392,35 @@
         "agent_label": "에이전트"
       },
       "vector": {
-        "title": "기억 검색 벡터 모델",
-        "description": "기억을 찾을 때 키워드와 함께 쓸 임베딩 모델입니다. 회사 단위로 정하며, 끄면 키워드로만 찾습니다.",
+        "title": "기억 검색",
+        "description": "임베딩 모델은 회사 전체가 공유합니다. 비교와 혼합 검색은 조직마다 따로 켤 수 있습니다.",
         "loading": "벡터 설정을 불러오는 중...",
         "loadFailed": "벡터 설정을 불러오지 못했습니다.",
-        "onBadge": "켜짐",
-        "offBadge": "꺼짐",
-        "select": "벡터 모델",
+        "onBadge": "임베딩 켜짐",
+        "offBadge": "임베딩 꺼짐",
+        "select": "회사 임베딩 모델",
         "off": "끔",
         "option": "{name} ({dimensions}차원)",
         "currentOff": "꺼져 있습니다. 기억은 키워드로만 찾습니다.",
-        "current": "현재 임베딩: {name} ({dimensions}차원) — {embedded}/{total}개 완료",
-        "jobQueued": "다시 임베딩을 기다리는 중입니다. 끝날 때까지 키워드로만 찾습니다.",
-        "jobRunning": "다시 임베딩 중 {progress}%. 끝날 때까지 키워드로만 찾습니다.",
-        "floorUnmeasured": "기준 미측정: 평가 전까지 키워드로만 찾습니다.",
-        "otherVectorsReplacing": "이전 모델의 벡터 {count}개가 남아 있습니다. 다시 임베딩이 끝나면 지웁니다.",
-        "otherVectorsKept": "저장된 벡터 {count}개가 남아 있습니다. 같은 모델로 다시 켜면 다시 임베딩하지 않습니다.",
+        "current": "{name} ({dimensions}차원) · 회사 기억 {total}개 중 {embedded}개에 이 모델의 벡터가 있습니다.",
+        "jobQueued": "다시 임베딩할 차례를 기다리고 있습니다.",
+        "jobRunning": "다시 임베딩 중 {progress}%.",
+        "floorUnmeasured": "선택한 모델이 품질 평가를 통과하면 비교와 혼합 검색을 사용할 수 있습니다.",
+        "qualityFloor": "이 모델의 평가에서 정한 최소 코사인 유사도는 {floor}입니다.",
+        "recallLabel": "현재 조직의 기억 검색 방식",
+        "recallModes": {
+          "off": "키워드 검색",
+          "shadow": "비교만 하기",
+          "serve": "혼합 검색"
+        },
+        "recallHelp": {
+          "off": "키워드로 찾은 기억을 답변에 사용합니다.",
+          "shadow": "키워드 검색과 혼합 검색 결과를 비교합니다. 답변에는 키워드로 찾은 기억만 사용합니다.",
+          "serve": "키워드와 의미를 함께 검색해 찾은 기억을 답변에 사용합니다."
+        },
+        "recallSaved": "현재 조직의 기억 검색 방식을 바꿨습니다.",
+        "otherVectorsReplacing": "이전 모델의 벡터 {count}개가 남아 있습니다.",
+        "otherVectorsKept": "저장된 벡터 {count}개가 남아 있습니다. 같은 모델을 다시 켜면 재사용할 수 있습니다.",
         "noModels": "등록된 임베딩 모델이 없어 켤 수 없습니다.",
         "registerHint": "모델 페이지에서 임베딩 모델을 등록하세요.",
         "readOnly": "회사 관리자만 바꿀 수 있습니다.",
@@ -6417,16 +6430,16 @@
         "chooseDialog": {
           "title": "{name}(으)로 바꿀까요?",
           "model": "{name} · {dimensions}차원",
-          "body": "기억 {count}개를 다시 임베딩합니다. 끝날 때까지 키워드로만 찾습니다. 바꿀까요?",
+          "body": "회사 전체의 재임베딩 후보는 기억 {count}개입니다. 각 조직에서 이 모델로 처리할 수 있는 기억만 임베딩합니다. 모델을 바꾸면 모든 조직의 검색 방식이 키워드 검색으로 돌아갑니다.",
           "recounted": "그사이 기억 수가 바뀌었습니다. 새 개수로 다시 확인해 주세요.",
           "confirm": "바꾸기"
         },
         "offDialog": {
           "title": "벡터 검색을 끌까요?",
-          "description": "끄면 기억을 키워드로만 찾습니다.",
+          "description": "회사 임베딩 모델을 끄면 모든 조직의 검색 방식이 키워드 검색으로 돌아갑니다.",
           "drop": "저장된 벡터도 지우기",
-          "keepHelp": "남겨 두면 같은 모델로 다시 켤 때 다시 임베딩하지 않습니다.",
-          "dropHelp": "저장된 벡터를 모두 지웁니다. 다시 켜면 처음부터 임베딩합니다.",
+          "keepHelp": "같은 모델을 다시 켜면 저장된 벡터를 재사용할 수 있습니다.",
+          "dropHelp": "회사에 저장된 벡터를 모두 지웁니다. 다시 켜면 벡터를 새로 만듭니다.",
           "confirm": "끄기"
         }
       },

@@ -268,6 +268,8 @@ class Settings(AuthzSettings):
     # recall database time limit. The vector width is the embedding model's (``models``).
     memory_embedding_timeout_seconds: float = 1.0
     memory_recall_statement_timeout_ms: int = 300
+    # Operator-reviewed reports, one <tenant UUID>/<model UUID>.json per candidate.
+    memory_recall_quality_dir: Path | None = None
 
     # Shared MCP runtime (mcp-runtime/, plan §7.3): its base URL inside the network and the
     # secret it shares with the backend for run tokens (never JWT_SECRET). Empty URL: off.
