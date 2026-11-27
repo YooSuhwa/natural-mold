@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { CDPSession, Page } from '@playwright/test'
 
 const answer = 'E2E slow stream completed after detached navigation.'
@@ -10,6 +11,19 @@ const prefixes = [
   answer,
 ]
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i
+
+function recordPublicRun(timing: Timing, route: Route, value: unknown) {
+  if (typeof value !== 'string' || !value.length || value.length > 1024) return
+  // AG-UI public IDs are opaque and may contain arbitrary text. Preserve
+  // equality between the header and RUN_STARTED without storing that text.
+  const id = uuid.test(value)
+    ? value.toLowerCase()
+    : 'sha256:' + createHash('sha256').update(value).digest('hex')
+  if (route.publicRunId !== null && route.publicRunId !== id) timing.parserIssues++
+  route.publicRunId ??= id
+  timing.publicRunId ??= id
+  if (!timing.runIds.includes(id)) timing.runIds.push(id)
+}
 
 type Kind = 'standard-command' | 'standard-attach' | 'v3-command' | 'v3-attach'
 type Stamp = number | null
@@ -101,11 +115,7 @@ function captureFrame(timing: Timing, route: Route) {
         route.frameCount++
         if (route.frameCount === 1 && timing.firstFrameAtMs === null) timing.firstFrameAtMs = at
         timing.lastFrameAtMs = at
-        const runId = event.type === 'RUN_STARTED' ? event.runId : undefined
-        if (typeof runId === 'string' && uuid.test(runId)) {
-          timing.publicRunId ??= runId
-          if (!timing.runIds.includes(runId)) timing.runIds.push(runId)
-        }
+        if (event.type === 'RUN_STARTED') recordPublicRun(timing, route, event.runId)
         const delta = part(event)
         if (!delta) continue
         const next = answer.startsWith(prefix + delta) ? prefix + delta : delta
@@ -205,21 +215,17 @@ export async function installStreamPerfTiming(
     route.headersAtMs = event.timestamp * 1000 + offset
     for (const [key, value] of Object.entries(event.response.headers)) {
       const keyLower = key.toLowerCase()
+      if (keyLower === 'x-run-id') recordPublicRun(timing, route, value)
       if (
-        typeof value !== 'string' ||
-        !uuid.test(value) ||
-        (keyLower !== 'x-run-id' && keyLower !== 'x-moldy-run-id')
-      )
-        continue
-      if (keyLower === 'x-moldy-run-id' || route.kind.startsWith('v3-')) {
+        (keyLower === 'x-moldy-run-id' ||
+          (keyLower === 'x-run-id' && route.kind.startsWith('v3-'))) &&
+        typeof value === 'string' &&
+        uuid.test(value)
+      ) {
         route.physicalRunId = value
         timing.physicalRunId ??= value
+        if (!timing.runIds.includes(value)) timing.runIds.push(value)
       }
-      if (keyLower === 'x-run-id') {
-        route.publicRunId = value
-        timing.publicRunId ??= value
-      }
-      if (!timing.runIds.includes(value)) timing.runIds.push(value)
     }
     if (event.response.mimeType.toLowerCase() !== 'text/event-stream') {
       streams.delete(event.requestId)
