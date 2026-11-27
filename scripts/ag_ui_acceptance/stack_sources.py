@@ -15,6 +15,13 @@ from pathlib import Path
 import tomllib
 import yaml
 
+_SDK_HELPER = "frontend/e2e/helpers/ag-ui-sdk-verification.ts"
+_BROWSER_FILES = (
+    "frontend/e2e/manual/chat-ag-ui-cutover.spec.ts",
+    "frontend/e2e/helpers/ag-ui-cutover.ts",
+    _SDK_HELPER,
+)
+
 
 def revision(source: Path, ref: str) -> str:
     return subprocess.check_output(
@@ -25,6 +32,39 @@ def revision(source: Path, ref: str) -> str:
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def stage_probe_files(here: Path, run_root: Path) -> Path:
+    """Freeze local acceptance sources before any child processes are launched."""
+    here = here.resolve(strict=True)
+    run_root = run_root.resolve(strict=True)
+    harness = run_root / "acceptance-harness"
+    harness.mkdir(mode=0o700)
+    probes = harness / "scripts/ag_ui_acceptance"
+    files = {
+        source.relative_to(here).as_posix(): (source, probes / source.relative_to(here))
+        for source in here.rglob("*")
+        if source.suffix in {".py", ".cjs", ".mjs"} and source.is_file()
+    }
+    for rel in _BROWSER_FILES:
+        source = here.parents[1] / rel
+        if source.is_file():
+            files[rel] = (source, harness / rel)
+    checksums = {}
+    for name, (source, target) in sorted(files.items()):
+        if source.is_symlink():
+            raise ValueError(f"Acceptance probe must be a regular source file: {name}")
+        # Hash precisely the bytes we write, even if a checkout changes during staging.
+        payload = source.read_bytes()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        target.chmod(0o400)
+        checksums[name] = hashlib.sha256(payload).hexdigest()
+    receipt = run_root / "probe-files.json"
+    with receipt.open("x") as output:
+        output.write(json.dumps(checksums, indent=2, sort_keys=True) + "\n")
+    receipt.chmod(0o400)
+    return probes
 
 
 def _python_versions(repo: Path, require_protocol: bool) -> dict[str, str]:
@@ -184,18 +224,9 @@ def stage(
         raise RuntimeError("Cannot stage product revision")
     python = _python_versions(repo, require_protocol)
     modules = _node_modules(repo, deps, skill_deps or deps, require_protocol)
-    sdk_helper = "frontend/e2e/helpers/ag-ui-sdk-verification.ts"
     sdk_verifier = "scripts/ag_ui_acceptance/verify_transcripts.mjs"
-    browser_files = (
-        (
-            "frontend/e2e/manual/chat-ag-ui-cutover.spec.ts",
-            "frontend/e2e/helpers/ag-ui-cutover.ts",
-            sdk_helper,
-        )
-        if browser
-        else ()
-    )
-    sdk_files = (sdk_helper, sdk_verifier) if require_protocol else ()
+    browser_files = _BROWSER_FILES if browser else ()
+    sdk_files = (_SDK_HELPER, sdk_verifier) if require_protocol else ()
     probes = {rel: digest(harness / rel) for rel in (*browser_files, *sdk_files)}
     for rel, checksum in probes.items():
         target = repo / rel
