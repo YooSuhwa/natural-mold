@@ -123,8 +123,11 @@ class RunProbe:
             self.tool_calls += 1
             self.tool_started.set()
             await asyncio.wait_for(self.release_tool.wait(), 20)
-            self.clock_result = await clock()
-            return self.clock_result
+            result = await clock()
+            if not isinstance(result, str):
+                raise TypeError("Expected a serialized clock result")
+            self.clock_result = result
+            return result
 
         tool.coroutine = wait_and_read
         return tool
