@@ -258,3 +258,147 @@ describe('restoring public subagent history', () => {
     expect(indexAgUiSubagents(messages).get('worker')?.outcome).toBe(outcome)
   })
 })
+
+describe('public tool ownership for child data cards', () => {
+  const issuer = `message-${'a'.repeat(64)}`
+  const otherIssuer = `message-${'b'.repeat(64)}`
+  const leftCall = `tool-${'1'.repeat(64)}`
+  const rightCall = `tool-${'2'.repeat(64)}`
+  const grandchildCall = `tool-${'3'.repeat(64)}`
+  const duplicateCall = `tool-${'4'.repeat(64)}`
+  const rootCall = `tool-${'5'.repeat(64)}`
+  const repeatedInOneMessage = `tool-${'6'.repeat(64)}`
+  const raw = 'provider-call-19'
+  const brief = 'Review the same report'
+  const claim = (publicId: string, messageId = issuer) => ({
+    tool_call_id: raw,
+    public_tool_call_id: publicId,
+    public_message_id: messageId,
+  })
+  const cases: readonly [string, Record<string, string>][] = [
+    ['verified', claim(leftCall)],
+    ['plain message', { public_message_id: issuer }],
+    ['raw only', { tool_call_id: leftCall, public_message_id: issuer }],
+    ['raw claimed as public', claim(raw)],
+    ['unissued', claim(`tool-${'0'.repeat(64)}`)],
+    ['wrong issuing message', claim(leftCall, otherIssuer)],
+    ['different child', claim(rightCall)],
+    ['nested child', claim(grandchildCall)],
+    ['root tool', claim(rootCall)],
+    ['duplicate in same child', claim(duplicateCall)],
+    ['duplicate in same message', claim(repeatedInOneMessage)],
+  ]
+  const payload = (text: string, binding: Record<string, string>) => ({
+    type: 'demo_note',
+    props: { text },
+    ...binding,
+  })
+
+  function restored() {
+    const ownCalls = (id: string, messageId: string, calls: string[]) =>
+      record(id, {
+        role: 'assistant',
+        id: messageId,
+        subagentRunId: id,
+        content: brief,
+        toolCalls: calls.map((callId) => tool(callId, 'lookup')),
+      })
+    const records = [
+      ownCalls('left', otherIssuer, [duplicateCall]),
+      ownCalls('left', issuer, [
+        leftCall,
+        'spawn-grandchild',
+        duplicateCall,
+        repeatedInOneMessage,
+        repeatedInOneMessage,
+      ]),
+      ...cases.map(([text, binding]) =>
+        record('left', {
+          role: 'activity',
+          id: text,
+          activityType: 'moldy.ui_data',
+          subagentRunId: 'left',
+          content: payload(text, binding),
+        }),
+      ),
+      ownCalls('right', issuer, [rightCall]),
+      ownCalls('grandchild', issuer, [grandchildCall]),
+    ]
+    return nestAgUiHistoryChildren(
+      [parent('root', 'spawn-left', 'spawn-right', rootCall)],
+      records,
+      [
+        child('left', 'spawn-left', { description: brief }),
+        child('right', 'spawn-right', { description: brief }),
+        child('grandchild', 'spawn-grandchild', {
+          parentSubagentRunId: 'left',
+          parentMessageId: issuer,
+          description: brief,
+        }),
+      ],
+    )
+  }
+
+  function liveWrapper() {
+    const call = (id: string, parentId: string, nested?: ThreadMessage) => ({
+      type: 'tool-call' as const,
+      toolCallId: id,
+      toolName: 'lookup',
+      args: {},
+      parentId,
+      ...(nested && { messages: [nested] }),
+    })
+    type Content = Parameters<typeof fromThreadMessageLike>[0]['content']
+    function message(id: string, content: Content) {
+      return fromThreadMessageLike(
+        {
+          id,
+          role: 'assistant',
+          content,
+          metadata: { custom: { agui: { name: 'researcher', description: brief } } },
+        },
+        id,
+        { type: 'complete', reason: 'stop' },
+      )
+    }
+    const grandchild = message('grandchild', [call(grandchildCall, issuer)])
+    const left = message('left', [
+      call(duplicateCall, otherIssuer),
+      call(leftCall, issuer),
+      call(duplicateCall, issuer),
+      call('spawn-grandchild', issuer, grandchild),
+      call(repeatedInOneMessage, issuer),
+      call(repeatedInOneMessage, issuer),
+      ...cases.map(([text, binding]) => ({
+        type: 'data' as const,
+        name: 'agui-activity/moldy.ui_data',
+        data: payload(text, binding),
+      })),
+    ])
+    const right = message('right', [call(rightCall, issuer)])
+    return [
+      message('root', [
+        call(rootCall, issuer),
+        call('spawn-left', 'root', left),
+        call('spawn-right', 'root', right),
+      ]),
+    ]
+  }
+
+  it.each([
+    ['live SDK child', liveWrapper],
+    ['restored child', restored],
+  ] as const)(
+    '%s admits only the verified direct public call and plain message cards',
+    (_path, build) => {
+      const index = indexAgUiSubagents(build())
+      expect([...index.keys()].sort()).toEqual(['grandchild', 'left', 'right'])
+      expect(index.get('right')?.dataCards ?? []).toEqual([])
+      expect(index.get('grandchild')?.dataCards ?? []).toEqual([])
+      expect(index.get('left')?.dataCards?.map((card) => card.props.text)).toEqual([
+        'verified',
+        'plain message',
+      ])
+    },
+  )
+})

@@ -10,6 +10,7 @@ import {
 import { fromAgUiMessages } from '@assistant-ui/react-ag-ui'
 import type { SubagentDiscoverySnapshot } from '@langchain/react'
 import { resolveDataUI } from '@/lib/chat/data-ui-registry'
+import { isBoundAgUiDataCard, matchesAgUiDataCardCall } from './activity-card-owner'
 import type { DeepAgentTodo } from '@/lib/chat/langgraph-runtime/deepagents-state'
 
 export interface AgUiHistoryChild {
@@ -128,20 +129,48 @@ export function readAgUiChildTodos(value: unknown): readonly DeepAgentTodo[] | u
   return todos
 }
 
-function publicDataCard(part: ThreadAssistantMessagePart) {
+function directChildCalls(message: ThreadAssistantMessage) {
+  return groupByKey(
+    message.content.filter((part) => part.type === 'tool-call'),
+    (call) => call.toolCallId,
+  )
+}
+
+function publicDataCard(
+  part: ThreadAssistantMessagePart,
+  calls: ReadonlyMap<string, readonly ToolCallMessagePart[]>,
+  restoredIssuerId?: string,
+) {
   if (part.type !== 'data' || part.name !== 'agui-activity/moldy.ui_data') return undefined
   const data: unknown = part.data
   if (!isRecord(data) || typeof data.type !== 'string') return undefined
-  const card = resolveDataUI(data.type, data.props)
-  return card ? { type: data.type, props: card.props } : undefined
+  const resolved = resolveDataUI(data.type, data.props)
+  if (!resolved) return undefined
+  const card = { type: data.type, props: resolved.props }
+  if (!isBoundAgUiDataCard(data)) return card
+  const publicId = data.public_tool_call_id
+  if (typeof publicId !== 'string') return undefined
+  const issuers = calls.get(publicId)
+  if (issuers?.length !== 1) return undefined
+  // A live child wrapper is named for its run. Only its direct tool part
+  // identifies the issuing message. A restored part is checked before folding.
+  const issuerId = issuers[0].parentId ?? restoredIssuerId
+  const owners = new Set(issuerId ? [issuerId] : [])
+  if (!matchesAgUiDataCardCall(data, publicId, owners)) return undefined
+  return {
+    ...card,
+    public_tool_call_id: publicId,
+    ...(issuerId && { public_message_id: issuerId }),
+  }
 }
 
 function publicChildParts(message: ThreadAssistantMessage): ThreadAssistantMessagePart[] {
   const parts: ThreadAssistantMessagePart[] = []
+  const calls = directChildCalls(message)
   for (const part of message.content) {
     if (part.type === 'text') parts.push({ type: 'text', text: part.text })
     if (part.type === 'data') {
-      const data = publicDataCard(part)
+      const data = publicDataCard(part, calls, message.id)
       if (data) parts.push({ type: 'data', name: part.name, data })
     }
     if (part.type !== 'tool-call') continue
@@ -150,6 +179,7 @@ function publicChildParts(message: ThreadAssistantMessage): ThreadAssistantMessa
       type: 'tool-call',
       toolCallId: part.toolCallId,
       toolName: part.toolName,
+      parentId: part.parentId ?? message.id,
       args: {},
       argsText: '{}',
       ...(typeof part.result === 'string' && { result: part.result }),
@@ -201,7 +231,18 @@ export function nestAgUiHistoryChildren(
               (message.role === 'activity' && message.activityType === 'moldy.ui_data')) &&
             (!message.subagentRunId || message.subagentRunId === child.subagentRunId),
         )
-      const converted = fromAgUiMessages(wire, {
+      // The SDK coalesces repeated tool IDs in one wire record. Check issuance
+      // before conversion so a malformed duplicate cannot authorize a card.
+      const sourceCalls = groupByKey(
+        wire.flatMap((message) => (message.role === 'assistant' ? (message.toolCalls ?? []) : [])),
+        (call) => call.id,
+      )
+      const verified = wire.filter((message) => {
+        if (message.role !== 'activity' || !isBoundAgUiDataCard(message.content)) return true
+        const publicId = message.content.public_tool_call_id
+        return typeof publicId === 'string' && sourceCalls.get(publicId)?.length === 1
+      })
+      const converted = fromAgUiMessages(verified, {
         showThinking: false,
         joinAdjacentAssistantMessages: false,
       }).flatMap((like) => {
@@ -288,9 +329,10 @@ export function indexAgUiSubagents(
         const transcript = child.content.flatMap((entry, i) =>
           entry.type === 'text' ? [{ id: child.id + ':' + i, text: entry.text }] : [],
         )
+        const calls = directChildCalls(child)
         const dataCards = child.content.flatMap((entry, i) => {
-          const data = publicDataCard(entry)
-          return data ? [{ id: child.id + ':' + i, ...data }] : []
+          const data = publicDataCard(entry, calls)
+          return data ? [{ id: child.id + ':' + i, type: data.type, props: data.props }] : []
         })
         const tools = child.content.flatMap((entry) =>
           entry.type === 'tool-call'
