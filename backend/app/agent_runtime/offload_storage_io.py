@@ -10,8 +10,8 @@ from contextlib import suppress
 from errno import ELOOP, ENOTDIR
 from pathlib import Path
 
-from app.agent_runtime.offload_storage_backends import _open_scoped_directory
 from app.agent_runtime.offload_storage_fd import nofollow_flags
+from app.agent_runtime.offload_storage_fd import open_scoped_directory as _open_scoped_directory
 from app.agent_runtime.offload_storage_types import OffloadSecurityError
 
 

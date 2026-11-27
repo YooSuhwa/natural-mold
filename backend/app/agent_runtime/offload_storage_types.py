@@ -14,6 +14,7 @@ GENERAL_PURPOSE_ACTOR: Final = "general-purpose"
 VIRTUAL_ROOT: Final = "/.moldy-offload"
 PHYSICAL_ROOT: Final = ".moldy-internal"
 SESSION_FILE: Final = re.compile(r"session_[0-9a-f]{32}\.md\Z")
+ARCHIVE_FILE: Final = re.compile(r"archive_[0-9a-f]{32}\.md\Z")
 MEDIA_FILE: Final = re.compile(r"[0-9a-f]{16}\.[a-z0-9]{1,10}\Z")
 SAFE_LEGACY_NAME: Final = re.compile(r"[A-Za-z0-9_-]+\Z")
 
