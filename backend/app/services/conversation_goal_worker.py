@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.agent_runtime.runtime.goal_run import goal_setup_allowed
 from app.agent_runtime.runtime_config import AgentConfig
@@ -17,7 +18,10 @@ from app.authz.conversation_agent_checks import queue_dispatch_denial
 from app.authz.conversation_input_scope import owned_input_predicate
 from app.authz.conversation_scope import resolve_conversation_actor
 from app.authz.dispatch_block import TRANSIENT, block_reason
+from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_gateway import lock_many
+from app.authz.organization_execution_proof import live_proof
 from app.authz.scoping import private_scope_predicate, same_private_scope
 from app.authz.worker_conversation_scope import goal_reservation_owner_predicate
 from app.config import settings
@@ -340,48 +344,107 @@ async def automatic_run_can_start(
     return False
 
 
+async def _lock_denied_conversation(
+    db: AsyncSession, conversation_id: UUID, scope: SessionTenant | OrgContext
+) -> UUID | None:
+    """Reuse a live conversation proof, or lock only the denied job's exact identity."""
+    proof = live_proof(db)
+    if proof is not None:
+        if (
+            proof.covers_conversation(conversation_id)
+            and proof.scope.tenant_id == scope.tenant_id
+            and proof.scope.user_id == scope.user_id
+            and (not isinstance(scope, OrgContext) or proof.scope.org_id == scope.org_id)
+        ):
+            return proof.scope.org_id
+        return None
+    query = select(Conversation.org_id).where(
+        Conversation.id == conversation_id,
+        goal_reservation_owner_predicate(scope),
+    )
+    if isinstance(scope, OrgContext):
+        query = query.where(Conversation.org_id == scope.org_id)
+    return await db.scalar(query.with_for_update(of=Conversation))
+
+
 async def stop_reservations_on_denial(
     db: AsyncSession, conversation_id: UUID, scope: SessionTenant | OrgContext, error: Exception
-) -> None:
-    """A worker may record an execution stop even when its owner lost membership."""
+) -> bool:
+    """Stop this owner's reservations in the caller's transaction, even after revocation."""
     status = error.status if isinstance(error, AppError) else getattr(error, "status_code", None)
-    if status not in {403, 404, 409} or block_reason(error) in TRANSIENT:
-        return
-    conversation = await db.scalar(
-        select(Conversation)
+    if scope.user_id is None or status not in {403, 404, 409} or block_reason(error) in TRANSIENT:
+        return False
+    org_id = await _lock_denied_conversation(db, conversation_id, scope)
+    if org_id is None:
+        return False
+    owner = OrgContext(org_id=org_id, tenant_id=scope.tenant_id, user_id=scope.user_id)
+    # Every goal writer takes the conversation lock first. The denial path needs
+    # only lifecycle and ownership columns, including for the resulting notice.
+    rows = await db.execute(
+        select(ConversationGoal, GoalAttempt)
+        .join(GoalAttempt, GoalAttempt.goal_id == ConversationGoal.id)
         .where(
-            Conversation.id == conversation_id,
-            goal_reservation_owner_predicate(scope),
+            ConversationGoal.conversation_id == conversation_id,
+            private_scope_predicate(ConversationGoal, owner),
+            ConversationGoal.status == "active",
+            GoalAttempt.status == "followup_reserved",
+            GoalAttempt.goal_version == ConversationGoal.version,
+            GoalAttempt.followup_input_id.is_not(None),
         )
-        .with_for_update()
+        .options(
+            load_only(
+                ConversationGoal.id,
+                ConversationGoal.conversation_id,
+                ConversationGoal.user_id,
+                ConversationGoal.org_id,
+                ConversationGoal.tenant_id,
+                ConversationGoal.version,
+                ConversationGoal.revision,
+                ConversationGoal.status,
+                ConversationGoal.blocked_reason,
+                raiseload=True,
+            ),
+            load_only(
+                GoalAttempt.id,
+                GoalAttempt.run_id,
+                GoalAttempt.status,
+                GoalAttempt.followup_input_id,
+                raiseload=True,
+            ),
+        )
+        .with_for_update(of=(ConversationGoal, GoalAttempt))
+        .execution_options(populate_existing=True)
     )
-    if conversation is None or (
-        isinstance(scope, OrgContext) and scope.org_id != conversation.org_id
-    ):
-        return
-    rows = (
-        await db.execute(
-            select(ConversationGoal, GoalAttempt, ConversationRunInput)
-            .join(GoalAttempt, GoalAttempt.goal_id == ConversationGoal.id)
-            .join(ConversationRunInput, ConversationRunInput.id == GoalAttempt.followup_input_id)
-            .where(
-                ConversationGoal.conversation_id == conversation.id,
-                same_private_scope(ConversationGoal, conversation),
-                ConversationGoal.status == "active",
-                GoalAttempt.status == "followup_reserved",
-                GoalAttempt.goal_version == ConversationGoal.version,
-                ConversationRunInput.conversation_id == conversation.id,
-                owned_input_predicate(conversation),
-                ConversationRunInput.source == GOAL_INPUT_SOURCE,
-                ConversationRunInput.status.in_(("pending", "claimed")),
-            )
-            .with_for_update()
+    reservations = {attempt.followup_input_id: (goal, attempt) for goal, attempt in rows}
+    if not reservations:
+        return False
+    inputs = await lock_many(
+        db,
+        LockClass.INPUT,
+        select(ConversationRunInput)
+        .where(
+            ConversationRunInput.id.in_(reservations),
+            ConversationRunInput.conversation_id == conversation_id,
+            owned_input_predicate(owner),
+            ConversationRunInput.source == GOAL_INPUT_SOURCE,
+            ConversationRunInput.status.in_(("pending", "claimed")),
         )
-    ).all()
-    for goal, attempt, item in rows:
+        .options(
+            load_only(
+                ConversationRunInput.id,
+                ConversationRunInput.status,
+                ConversationRunInput.revision,
+                raiseload=True,
+            )
+        )
+        .order_by(ConversationRunInput.id)
+        .with_for_update(of=ConversationRunInput)
+        .execution_options(populate_existing=True),
+    )
+    for item in inputs:
+        goal, attempt = reservations[item.id]
         await block_goal(db, goal, "permission_revoked", attempt=attempt)
         if item.status == "pending":
             item.status = "canceled"
             item.revision += 1
-    if rows:
-        await db.commit()
+    return bool(inputs)

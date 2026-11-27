@@ -46,12 +46,15 @@ async def claim_next_input(
     try:
         agent_id = await require_queue_executable(db, conversation_id, context)
     except (HTTPException, AppError) as exc:
-        await stop_reservations_on_denial(db, conversation_id, context, exc)
+        if await stop_reservations_on_denial(db, conversation_id, context, exc):
+            await db.commit()
         raise
     denial = await queue_dispatch_denial(context, agent_id)
     if denial is not None:  # the input stays pending; a definite denial pauses (F-08)
-        await stop_reservations_on_denial(db, conversation_id, context, denial)
-        await pause_blocked_queue(db, conversation_id, agent_id, context, denial)
+        stopped = await stop_reservations_on_denial(db, conversation_id, context, denial)
+        paused = await pause_blocked_queue(db, conversation_id, agent_id, context, denial)
+        if stopped or paused:
+            await db.commit()
         return None
     conversation = await lock_owned_conversation(
         db,

@@ -72,6 +72,8 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
             error_code = (
                 "queue_user_unavailable" if is_active is not True else "queue_rehydrate_failed"
             )
+            # Terminal cleanup opens its own session and locks this conversation again.
+            await db.commit()
             await _fail_claimed_input(input_id, error_code=error_code)
             return run
         local_task = registry.get(target.run.id)

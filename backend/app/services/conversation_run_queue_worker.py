@@ -87,7 +87,8 @@ async def dispatch_next_for_conversation(
         except AppError as exc:
             from app.services.conversation_goal_worker import stop_reservations_on_denial
 
-            await stop_reservations_on_denial(db, conversation_id, scope, exc)
+            if await stop_reservations_on_denial(db, conversation_id, scope, exc):
+                await db.commit()
             return None
         try:
             with fresh_run_decision_scope():

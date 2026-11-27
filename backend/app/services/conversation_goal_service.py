@@ -460,7 +460,11 @@ def add_goal_transition(
             "run_id": str(run_id),
             "blocked_reason": goal.blocked_reason,
             "interrupt_id": interrupt_id,
-            "evidence": goal.last_evidence,
+            "evidence": (
+                None
+                if kind == "blocked" and goal.blocked_reason == "permission_revoked"
+                else goal.last_evidence
+            ),
         },
     )
     db.add(intent)
