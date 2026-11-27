@@ -26,6 +26,7 @@ import {
 import {
   MessageEditComposerInput,
   MessageEditComposerRoot,
+  useBranchActionReady,
   useMessageBranchAction,
   useMessageEditComposerControls,
 } from '@/components/chat/message-edit-composer'
@@ -109,8 +110,10 @@ export function CopyButton() {
 
 export function EditButton() {
   const t = useTranslations('chat.message')
+  const ready = useBranchActionReady()
   return (
     <ActionBarPrimitive.Edit
+      disabled={!ready}
       className={MESSAGE_ACTION_CLASS}
       aria-label={t('edit')}
       title={t('edit')}
@@ -124,16 +127,11 @@ export function EditButton() {
 function MessageReloadButton(props: ComponentProps<typeof ActionBarPrimitive.Reload>) {
   const aui = useAui()
   const runBranchAction = useMessageBranchAction()
-  const parentCheckpointId = useAuiState((s) => s.message.metadata.custom?.parentCheckpointId)
-  // Terminal history replaces the SDK's temporary reply with its checkpoint-backed row.
-  // Only that row can keep ownership of a click while the current branch is verified.
-  const waitingForCheckpoint =
-    runBranchAction !== null &&
-    (typeof parentCheckpointId !== 'string' || !parentCheckpointId.trim())
+  const ready = useBranchActionReady()
   return (
     <ActionBarPrimitive.Reload
       {...props}
-      disabled={props.disabled || waitingForCheckpoint}
+      disabled={props.disabled || !ready}
       onClick={(event) => {
         props.onClick?.(event)
         if (event.defaultPrevented || !runBranchAction) return

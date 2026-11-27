@@ -19,6 +19,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { AgUiChatActionContext } from '@/lib/ag-ui/chat-action-context'
+import { canBranchFromChatMessage } from '@/lib/ag-ui/chat-message-identity'
 import { reportClientError } from '@/lib/logging/client-logger'
 import { cn } from '@/lib/utils'
 import { pendingEditBranchPickerSuppressionAtom } from '@/lib/stores/chat-store'
@@ -47,6 +48,15 @@ function assignRef<T>(ref: ForwardedRef<T>, value: T | null): void {
   }
 }
 
+export function useBranchActionReady() {
+  const actions = useContext(AgUiChatActionContext)
+  return useAuiState(
+    (s) =>
+      !actions ||
+      (!s.thread.isRunning && canBranchFromChatMessage(s.message, s.thread.messages.at(-1))),
+  )
+}
+
 // Resolving a saved checkpoint can outlive the selected message or its conversation.
 export function useMessageBranchAction() {
   const actions = useContext(AgUiChatActionContext)
@@ -72,7 +82,8 @@ export function useMessageBranchAction() {
     const thread = aui.thread.getState()
     if (thread.isDisabled || thread.isRunning) return
     const message = aui.message.getState()
-    const head = thread.messages.at(-1)?.id
+    const head = thread.messages.at(-1)
+    if (!canBranchFromChatMessage(message, head)) return
     const request = Symbol()
     pending.current = request
     try {
@@ -82,7 +93,9 @@ export function useMessageBranchAction() {
       if (
         current.isDisabled ||
         current.isRunning ||
-        current.messages.at(-1)?.id !== head ||
+        current.messages.at(-1)?.id !== head?.id ||
+        current.messages.at(-1)?.metadata.custom.moldySelectedCheckpointId !==
+          head?.metadata.custom.moldySelectedCheckpointId ||
         aui.message.getState().id !== message.id
       )
         return
@@ -159,7 +172,7 @@ export function MessageEditComposerRoot({
 
 export function useMessageEditComposerControls() {
   const aui = useAui()
-  const agUiActions = useContext(AgUiChatActionContext)
+  const ready = useBranchActionReady()
   const setPendingBranchPickerSuppression = useSetAtom(pendingEditBranchPickerSuppressionAtom)
   const canCancel = useAuiState((state) => state.message.composer.canCancel)
   const canSend = useAuiState(
@@ -167,7 +180,7 @@ export function useMessageEditComposerControls() {
       state.message.composer.isEditing &&
       !state.message.composer.isEmpty &&
       !state.thread.isDisabled &&
-      (!agUiActions || !state.thread.isRunning),
+      ready,
   )
 
   const cancel = useCallback(() => {

@@ -117,7 +117,16 @@ describe('AG-UI chat actions', () => {
         ],
         checkpointId: 'current-leaf',
       })
-      const selected = { id: 'local-id', metadata: { custom: { agui: { messageId: 'wire' } } } }
+      const selected = {
+        id: 'local-id',
+        metadata: {
+          custom: {
+            agui: { messageId: 'wire' },
+            moldySelectedCheckpointId: 'current-leaf',
+            parentCheckpointId: 'parent-checkpoint',
+          },
+        },
+      }
       const config = await result.current.actions.getBranchRunConfig(operation, selected, {
         custom: { resource_context: [resource] },
       })
@@ -125,6 +134,20 @@ describe('AG-UI chat actions', () => {
         resource_context: [resource],
         moldy: { operation, checkpointId: 'parent-checkpoint', expectedHead: 'current-leaf' },
       })
+      await expect(
+        result.current.actions.getBranchRunConfig(operation, {
+          ...selected,
+          metadata: {
+            custom: { ...selected.metadata.custom, moldySelectedCheckpointId: 'old-leaf' },
+          },
+        }),
+      ).rejects.toThrow()
+      await expect(
+        result.current.actions.getBranchRunConfig(operation, {
+          ...selected,
+          metadata: { custom: { ...selected.metadata.custom, parentCheckpointId: 'other-parent' } },
+        }),
+      ).rejects.toThrow()
       await expect(
         result.current.actions.getBranchRunConfig(operation, {
           id: file,
