@@ -38,7 +38,7 @@ def _validate_private_regular_file(descriptor: int, parent: int, name: str, reas
         raise OffloadSecurityError(reason=reason)
 
 
-def _read_private_file(parent: int, name: str) -> bytes | None:
+def _read_private_file(parent: int, name: str, expected_length: int) -> bytes | None:
     try:
         descriptor = os.open(name, nofollow_flags(os.O_RDONLY), dir_fd=parent)
     except FileNotFoundError:
@@ -56,7 +56,7 @@ def _read_private_file(parent: int, name: str) -> bytes | None:
             name,
             "offload destination must be a private regular file",
         )
-        return stream.read()
+        return stream.read(expected_length + 1)
 
 
 def atomic_write_new_or_equal(path: Path, content: bytes) -> None:
@@ -69,7 +69,7 @@ def atomic_write_new_or_equal(path: Path, content: bytes) -> None:
     try:
         fcntl.flock(parent, fcntl.LOCK_EX)
         try:
-            existing = _read_private_file(parent, path.name)
+            existing = _read_private_file(parent, path.name, len(content))
             if existing is not None:
                 if existing != content:
                     raise OffloadSecurityError(reason="offload destination conflicts")
@@ -79,7 +79,7 @@ def atomic_write_new_or_equal(path: Path, content: bytes) -> None:
                 stream.write(content)
                 stream.flush()
                 os.fsync(stream.fileno())
-            raced = _read_private_file(parent, path.name)
+            raced = _read_private_file(parent, path.name, len(content))
             if raced is not None:
                 if raced != content:
                     raise OffloadSecurityError(reason="offload destination conflicts")
@@ -93,7 +93,7 @@ def atomic_write_new_or_equal(path: Path, content: bytes) -> None:
                     follow_symlinks=False,
                 )
             except FileExistsError:
-                raced = _read_private_file(parent, path.name)
+                raced = _read_private_file(parent, path.name, len(content))
                 if raced != content:
                     raise OffloadSecurityError(reason="offload destination conflicts") from None
                 return
@@ -107,7 +107,9 @@ def atomic_write_new_or_equal(path: Path, content: bytes) -> None:
         os.close(parent)
 
 
-def read_scoped_regular_file(anchor: Path, relative: tuple[str, ...]) -> bytes:
+def read_scoped_regular_file(
+    anchor: Path, relative: tuple[str, ...], *, max_bytes: int | None = None
+) -> bytes:
     """Read a trusted relative file while pinning every directory component."""
     if not relative:
         raise OffloadSecurityError(reason="scoped file reference cannot be empty")
@@ -128,7 +130,12 @@ def read_scoped_regular_file(anchor: Path, relative: tuple[str, ...]) -> bytes:
             _validate_private_regular_file(
                 stream.fileno(), parent, relative[-1], "scoped file must be a private regular file"
             )
-            return stream.read()
+            if max_bytes is None:
+                return stream.read()
+            data = stream.read(max_bytes + 1)
+            if len(data) > max_bytes:
+                raise OffloadSecurityError(reason="scoped file exceeds its recorded size")
+            return data
     finally:
         os.close(parent)
 

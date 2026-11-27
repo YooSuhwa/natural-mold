@@ -129,7 +129,7 @@ class HistoryArchive:
             digest = hashlib.sha256(data).hexdigest()
             atomic_write_new_or_equal(blobs / digest, data)
             # A fresh manifest can only reference bytes verified on this storage.
-            saved = read_scoped_regular_file(blobs, (digest,))
+            saved = read_scoped_regular_file(blobs, (digest,), max_bytes=len(data))
             if len(saved) != len(data) or hashlib.sha256(saved).hexdigest() != digest:
                 raise OffloadSecurityError(reason="archive chunk verification failed")
             parts.append(_Chunk(sha256=digest, length=len(data)))
@@ -194,7 +194,9 @@ class HistoryArchive:
     def _bytes(self, manifest: _Manifest) -> Iterator[bytes]:
         combined = hashlib.sha256()
         for chunk in manifest.chunks:
-            data = read_scoped_regular_file(self.directory, ("chunks", chunk.sha256))
+            data = read_scoped_regular_file(
+                self.directory, ("chunks", chunk.sha256), max_bytes=chunk.length
+            )
             if len(data) != chunk.length or hashlib.sha256(data).hexdigest() != chunk.sha256:
                 raise OffloadSecurityError(reason="archive chunk digest mismatch")
             combined.update(data)
