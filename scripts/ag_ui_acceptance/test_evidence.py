@@ -134,6 +134,51 @@ def test_usage_failure_preserves_scoped_network_categories_only(
     assert "network" not in playwright_report(report, tmp_path, **args)["cases"][0]["attempts"][0]
 
 
+@pytest.mark.parametrize(
+    "title",
+    [
+        "renders a demo_note data part in the bubble and keeps it after reload",
+        "renders a chart data part as an SVG bar chart (Phase 2)",
+    ],
+)
+def test_reloaded_data_card_keeps_navigation_provenance(
+    report: dict, tmp_path: Path, title: str
+) -> None:
+    spec = report["suites"][0]["specs"][0]
+    spec.update(file="chat-generative-ui.spec.ts", title=title)
+    test = spec["tests"][0]
+    attempt = test["results"][0]
+    test["status"], attempt["status"], attempt["errors"] = "unexpected", "failed", [{}]
+    attempt["annotations"] = [
+        {
+            "type": "moldy.api-request-failure.v1",
+            "description": json.dumps(
+                {
+                    "method": "POST",
+                    "pathname": "/api/conversations/private/ag-ui/runs",
+                    "isMainFrame": True,
+                    "startedBeforeCurrentMainFrameNavigation": True,
+                    "errorText": "net::ERR_ABORTED",
+                }
+            ),
+        }
+    ]
+    summary = playwright_report(
+        report, tmp_path, group="ordinary-regressions-ag_ui", specs=[spec["file"]]
+    )
+    assert not summary["passed"]
+    assert summary["cases"][0]["attempts"][0]["network"]["failures"] == [
+        {
+            "method": "POST",
+            "route": "ag_ui.runs",
+            "transport": "aborted",
+            "isMainFrame": True,
+            "startedBeforeCurrentMainFrameNavigation": True,
+        }
+    ]
+    assert "private" not in json.dumps(summary)
+
+
 def test_attachment_has_typed_fields_and_requires_owned_files(tmp_path: Path) -> None:
     marker = "private-assertion-text"
     payload = {

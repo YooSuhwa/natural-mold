@@ -254,7 +254,7 @@ def _assertion_shape(error: dict) -> dict:
 
 
 # Route labels are fixed literals. Playwright annotations can contain IDs and private URLs.
-_USAGE_ROUTES = {
+_RELOAD_ROUTES = {
     r"/api/conversations/[^/?#]+/ag-ui/(snapshot|stream|runs|events)": "ag_ui",
     (
         r"/api/conversations/[^/?#]+/(messages|run-inputs|run-message-links|runs|files|"
@@ -264,7 +264,7 @@ _USAGE_ROUTES = {
     r"/api/conversations/[^/?#]+/langgraph/threads/[^/?#]+/(commands|state|history)": "langgraph",
     r"/api/(agents/summary|auth/me|conversations/page|artifacts)": "api",
 }
-_USAGE_NETWORK_CODES = {
+_RELOAD_NETWORK_CODES = {
     "api_request_abort",
     "api_request_failure",
     "api_response_failure",
@@ -277,14 +277,14 @@ _USAGE_NETWORK_CODES = {
 }
 
 
-def _usage_network_annotations(annotations: list[dict]) -> dict:
+def _reload_network_annotations(annotations: list[dict]) -> dict:
     codes: set[str] = set()
     failures = []
     for item in annotations:
         kind, value = item.get("type"), item.get("description")
         if not isinstance(value, str):
             continue
-        if kind == "moldy.network-failure.v1" and value in _USAGE_NETWORK_CODES:
+        if kind == "moldy.network-failure.v1" and value in _RELOAD_NETWORK_CODES:
             codes.add(value)
         if kind not in {"moldy.api-request-failure.v1", "moldy.response-failure.v1"}:
             continue
@@ -295,7 +295,7 @@ def _usage_network_annotations(annotations: list[dict]) -> dict:
         if not isinstance(data, dict) or not isinstance(path := data.get("pathname"), str):
             continue
         route = "other"
-        for pattern, prefix in _USAGE_ROUTES.items():
+        for pattern, prefix in _RELOAD_ROUTES.items():
             if match := re.fullmatch(pattern, path):
                 route = prefix + "." + match[1]
                 break
@@ -315,6 +315,9 @@ def _usage_network_annotations(annotations: list[dict]) -> dict:
             failure["transport"] = (
                 "aborted" if data.get("errorText") == "net::ERR_ABORTED" else "failed"
             )
+            for key in ("isMainFrame", "startedBeforeCurrentMainFrameNavigation"):
+                if type(data.get(key)) is bool:
+                    failure[key] = data[key]
         if failure not in failures:
             failures.append(failure)
     return {"codes": sorted(codes), "failures": failures}
@@ -542,15 +545,24 @@ def _case(spec: dict, test: dict, owned_root: Path, group: str, performance_timi
         if attempt["error_count"]:
             attempt["error_source"] = _error_source(result, filename)
             attempt["assertion"] = _assertion_shape(result.get("error") or {})
-            if (
-                filename == "chat-langgraph-v3-regressions.spec.ts"
-                and title == "resets token usage state when switching between conversations"
-                and group in {"ordinary-regressions-ag_ui", "ordinary-regressions-langgraph_v3"}
-            ):
+            if (filename, title) in {
+                (
+                    "chat-langgraph-v3-regressions.spec.ts",
+                    "resets token usage state when switching between conversations",
+                ),
+                (
+                    "chat-generative-ui.spec.ts",
+                    "renders a demo_note data part in the bubble and keeps it after reload",
+                ),
+                (
+                    "chat-generative-ui.spec.ts",
+                    "renders a chart data part as an SVG bar chart (Phase 2)",
+                ),
+            } and group in {"ordinary-regressions-ag_ui", "ordinary-regressions-langgraph_v3"}:
                 annotations = result.get("annotations", [])
                 if len(results) == 1:
                     annotations = [*annotations, *test.get("annotations", [])]
-                attempt["network"] = _usage_network_annotations(annotations)
+                attempt["network"] = _reload_network_annotations(annotations)
         observed.update(
             approval_card_observations(filename, title, group, result, owned_root, _attachment_body)
         )
