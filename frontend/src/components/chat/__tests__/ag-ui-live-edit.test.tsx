@@ -8,6 +8,7 @@ import {
   threadId,
 } from '../../../../tests/ag-ui/ordinary-chat-api'
 import { csrfStore } from '@/lib/auth/csrf'
+import { dispatchMoldyBranchSwitched } from '@/lib/chat/langgraph-runtime/branch-switch-events'
 import { AgUiRuntimeSection } from '../ag-ui-runtime-section'
 
 afterEach(() => {
@@ -42,17 +43,19 @@ function editButton(text: string) {
   return within(row).getByRole('button', { name: '편집' })
 }
 
-it.each(['new', 'older'] as const)(
-  'waits for the displayed head before editing the %s user message',
+it.each(['new', 'older', 'older after switching branches'] as const)(
+  'checks the selected branch while editing a user message (%s)',
   async (target) => {
     csrfStore.set('synthetic-csrf')
     const api = installChatApi({ textOnly: true })
     const serve = globalThis.fetch
     const history = Promise.withResolvers<void>()
     const historyStarted = vi.fn()
-    const text = target === 'older' ? oldQuestion : question
-    const targetId = target === 'older' ? 'older' : 'canonical-input'
+    const hasPrefix = target !== 'new'
+    const text = hasPrefix ? oldQuestion : question
+    const targetId = hasPrefix ? 'older' : 'canonical-input'
     const older = savedTurn('older', oldQuestion, '첫 응답', null)
+    let switched = false
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
       const response = await serve(input, init)
       const path = new URL(input instanceof Request ? input.url : String(input), 'http://localhost')
@@ -61,7 +64,7 @@ it.each(['new', 'older'] as const)(
       const base: Record<string, unknown> = await response.json()
       const count = api.commands.length
       if (!count) {
-        return target === 'older'
+        return hasPrefix
           ? Response.json({
               ...base,
               ...older,
@@ -71,16 +74,19 @@ it.each(['new', 'older'] as const)(
           : Response.json(base)
       }
       const edited = count === 2
-      const id = edited ? 'edited-input' : 'canonical-input'
+      const id = edited ? 'edited-input' : switched ? 'alternate-input' : 'canonical-input'
       const current = savedTurn(
         id,
         edited ? revised : question,
         answer,
-        target === 'older' && !edited ? 'older-answer' : null,
+        hasPrefix && !edited ? 'older-answer' : null,
       )
       if (edited)
-        current.messageLinks[0].siblingCheckpointIds = ['canonical-input-head', 'edited-input-head']
-      const prefix = target === 'older' && !edited ? older : { messages: [], messageLinks: [] }
+        current.messageLinks[0].siblingCheckpointIds = [
+          switched ? 'alternate-input-head' : 'canonical-input-head',
+          'edited-input-head',
+        ]
+      const prefix = hasPrefix && !edited ? older : { messages: [], messageLinks: [] }
       if (count === 1 && !historyStarted.mock.calls.length) {
         historyStarted()
         await history.promise
@@ -105,7 +111,7 @@ it.each(['new', 'older'] as const)(
       />,
     )
     try {
-      if (target === 'older') {
+      if (hasPrefix) {
         expect(await screen.findByText(oldQuestion)).toBeVisible()
         expect(editButton(oldQuestion)).toBeEnabled()
       }
@@ -131,6 +137,33 @@ it.each(['new', 'older'] as const)(
       const editor = screen.getByDisplayValue(text)
       await user.clear(editor)
       await user.type(editor, revised)
+      if (target === 'older after switching branches') {
+        switched = true
+        act(() =>
+          dispatchMoldyBranchSwitched({
+            conversationId: threadId,
+            checkpointId: 'alternate-input-head',
+          }),
+        )
+        await waitFor(() =>
+          expect(screen.getByText(answer).closest('[data-moldy-message-id]')).toHaveAttribute(
+            'data-moldy-message-id',
+            'alternate-input-answer-stored',
+          ),
+        )
+        expect(screen.getByDisplayValue(revised)).toBeVisible()
+        const save = screen.getByRole('button', { name: '저장' })
+        expect(save).toBeDisabled()
+        const form = save.closest('form')
+        if (!form) throw new Error('Missing edit form')
+        await act(async () => form.requestSubmit())
+        expect(api.commands).toHaveLength(1)
+        await user.click(screen.getByRole('button', { name: '취소' }))
+        await user.click(editButton(text))
+        const nextEditor = screen.getByDisplayValue(text)
+        await user.clear(nextEditor)
+        await user.type(nextEditor, revised)
+      }
       await user.click(screen.getByRole('button', { name: '저장' }))
       await waitFor(() => expect(api.commands).toHaveLength(2))
       expect(api.commands[1]).toMatchObject({
@@ -139,7 +172,7 @@ it.each(['new', 'older'] as const)(
           moldy: {
             operation: 'edit',
             checkpointId: targetId + '-parent',
-            expectedHead: 'canonical-input-head',
+            expectedHead: switched ? 'alternate-input-head' : 'canonical-input-head',
           },
         },
       })
