@@ -12,6 +12,7 @@ from uuid import UUID
 from ag_ui.core import Interrupt, RunErrorEvent
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.ag_ui_v1_issuance import ToolContinuation
 from app.agent_runtime.ag_ui_v1_outcomes import PendingInterrupts, run_terminal_event
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.agent_runtime.message_utils import parse_msg_id
@@ -26,6 +27,7 @@ from app.schemas.ag_ui_snapshot import AgUiSnapshot, AgUiSnapshotMessageLink, Sn
 from app.services.ag_ui_read_cursor import CursorScope
 from app.services.ag_ui_read_pending import CurrentReadInterrupts, read_proven_interrupts
 from app.services.ag_ui_read_target import resolve_read_target, snapshot_required
+from app.services.ag_ui_snapshot_approval_decisions import snapshot_approval_decisions
 from app.services.ag_ui_snapshot_assembly import AssembledSnapshot, SnapshotAssembly
 from app.services.ag_ui_snapshot_history import (
     SnapshotHistory,
@@ -58,6 +60,8 @@ class _RunEvidence:
     pending_namespaces: dict[str, tuple[str, ...]]
     unresolved_pending_namespaces: dict[str, tuple[str, ...] | None]
     has_root_todos: bool
+    tool_continuations: tuple[ToolContinuation, ...]
+    approval_interrupt_owners: dict[str, str | None]
 
     @classmethod
     def from_replay(cls, replay: SnapshotRunReplay) -> _RunEvidence:
@@ -70,6 +74,8 @@ class _RunEvidence:
             replay.pending_namespaces,
             replay.unresolved_pending_namespaces,
             None in replay.todos_by_owner,
+            replay.tool_continuations,
+            replay.approval_interrupt_owners,
         )
 
 
@@ -376,6 +382,20 @@ async def load_ag_ui_snapshot(
                         for item in slots
                     )
             children.append(row)
+        decisions = await snapshot_approval_decisions(
+            db,
+            conversation=conversation,
+            context=context,
+            history=history,
+            merged=merged,
+            runs=full_runs,
+            public_run_ids=runs.public_ids,
+            visibility={ident: evidence[ident].visibility for ident in full_runs},
+            continuations={ident: evidence[ident].tool_continuations for ident in full_runs},
+            interrupt_owners={
+                ident: evidence[ident].approval_interrupt_owners for ident in full_runs
+            },
+        )
         current = await require_private_conversation(db, conversation.id, context)
         if current.active_branch_checkpoint_id != selection:
             raise snapshot_required()
@@ -449,6 +469,7 @@ async def load_ag_ui_snapshot(
                 "messages": merged.messages,
                 "messageLinks": merged.message_links,
                 "interrupts": pending,
+                "approvalDecisions": decisions,
                 "subagents": children,
                 "todos": _todos(root_todos),
                 "cursor": watermark,
