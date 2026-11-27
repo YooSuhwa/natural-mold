@@ -33,6 +33,7 @@ interface CredentialBindingDialogProps {
   readonly onOpenChange: (open: boolean) => void
   readonly target: CredentialBindingTarget
   readonly agentName?: string | null
+  readonly canContinue?: () => boolean
   readonly onConnected?: () => void
 }
 
@@ -54,6 +55,7 @@ export function CredentialBindingDialog({
   onOpenChange,
   target,
   agentName,
+  canContinue,
   onConnected,
 }: CredentialBindingDialogProps) {
   const t = useTranslations('readiness.binding')
@@ -80,6 +82,7 @@ export function CredentialBindingDialog({
 
   const finish = () => {
     flowRef.current = null
+    if (canContinue?.() === false) return
     setAwaitingOAuthId(null)
     toast.success(t('connected'))
     onOpenChange(false)
@@ -109,14 +112,20 @@ export function CredentialBindingDialog({
     credentialId: string,
     oauth?: { popup: Window | null; started: boolean },
   ) => {
+    if (canContinue?.() === false) return
     const flow = { bound: false, authorized: !oauth }
     flowRef.current = flow
+    const currentFlow = () => flowRef.current === flow && canContinue?.() !== false
     if (oauth) setAwaitingOAuthId(credentialId)
-    if (oauth && !oauth.started && (await authorize(credentialId, oauth.popup)) !== 'started') {
-      flowRef.current = null
-      setAwaitingOAuthId(null)
-      toast.error(t('failed'))
-      return
+    if (oauth && !oauth.started) {
+      const result = await authorize(credentialId, oauth.popup, currentFlow)
+      if (!currentFlow()) return
+      if (result !== 'started') {
+        flowRef.current = null
+        setAwaitingOAuthId(null)
+        toast.error(t('failed'))
+        return
+      }
     }
     bind.mutate(
       { resourceType: target.resourceType, resourceId: target.resourceId, credentialId },
@@ -126,11 +135,10 @@ export function CredentialBindingDialog({
           if (flow.authorized && flowRef.current === flow) finish()
         },
         onError: (error) => {
+          if (!currentFlow()) return
           oauth?.popup?.close()
-          if (flowRef.current === flow) {
-            flowRef.current = null
-            setAwaitingOAuthId(null)
-          }
+          flowRef.current = null
+          setAwaitingOAuthId(null)
           toast.error(t(errorKey(error)))
         },
       },
@@ -171,14 +179,15 @@ export function CredentialBindingDialog({
                     <Button
                       size="sm"
                       disabled={bind.isPending}
-                      onClick={() =>
+                      onClick={() => {
+                        if (canContinue?.() === false) return
                         void connect(
                           credential.id,
                           needsAuthorization(credential)
                             ? { popup: openOAuthPopup(), started: false }
                             : undefined,
                         )
-                      }
+                      }}
                       aria-label={t('useNamed', { name: credential.name })}
                     >
                       {t('use')}
@@ -194,7 +203,9 @@ export function CredentialBindingDialog({
               size="sm"
               variant="outline"
               disabled={bind.isPending}
-              onClick={() => setCreating(true)}
+              onClick={() => {
+                if (canContinue?.() !== false) setCreating(true)
+              }}
             >
               <PlusIcon className="size-3.5" />
               {t('create')}
@@ -214,6 +225,7 @@ export function CredentialBindingDialog({
           presetDefinitionKey={definitionKey ?? undefined}
           initialName={target.resourceName}
           authorizeOAuth
+          canContinue={canContinue}
           onCreated={(credentialId, options) => {
             setCreating(false)
             void connect(

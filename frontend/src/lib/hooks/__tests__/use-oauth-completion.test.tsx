@@ -142,4 +142,35 @@ describe('useOAuthAuthorize', () => {
     expect(popup.close).toHaveBeenCalled()
     open.mockRestore()
   })
+
+  it('preserves a reused popup if a superseded authorization fails later', async () => {
+    const popup = { location: { href: 'about:blank' }, close: vi.fn(), focus: vi.fn() }
+    const open = vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof credentialsApi.startOAuth2>>>()
+    vi.mocked(credentialsApi.startOAuth2)
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce({ authorization_url: 'https://auth.example/newer', state: 'newer' })
+    const { result } = renderHook(() => useOAuthAuthorize(), {
+      wrapper: wrapper(new QueryClient()),
+    })
+    const canContinue = vi.fn().mockReturnValue(true)
+    try {
+      let first!: Promise<string>
+      await act(async () => {
+        first = result.current.authorize('first', undefined, canContinue)
+      })
+      canContinue.mockReturnValue(false)
+      await act(async () => {
+        expect(await result.current.authorize('second')).toBe('started')
+      })
+      await act(async () => {
+        pending.reject(new Error('old request failed'))
+        expect(await first).toBe('failed')
+      })
+      expect(popup.location.href).toBe('https://auth.example/newer')
+      expect(popup.close).not.toHaveBeenCalled()
+    } finally {
+      open.mockRestore()
+    }
+  })
 })

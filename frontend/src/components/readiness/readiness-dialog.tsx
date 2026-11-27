@@ -15,6 +15,7 @@ interface ReadinessDialogProps {
   readonly onOpenChange: (open: boolean) => void
   readonly agentId: string
   readonly agentName?: string | null
+  readonly canContinue?: () => boolean
   readonly onConnected?: () => void
 }
 
@@ -24,6 +25,7 @@ export function ReadinessDialog({
   onOpenChange,
   agentId,
   agentName,
+  canContinue,
   onConnected,
 }: ReadinessDialogProps) {
   const t = useTranslations('readiness.panel')
@@ -42,6 +44,7 @@ export function ReadinessDialog({
             agentId={agentId}
             agentName={agentName}
             readiness={data}
+            canContinue={canContinue}
             onConnected={onConnected}
           />
         ) : readiness.isError ? (
