@@ -114,6 +114,18 @@ async def _response(
             "FROM conversation_runs WHERE conversation_id=%s ORDER BY created_at, id",
             (request["threadId"],),
         )
+        receipt["root_checkpoints"] = await gate.sql(
+            """SELECT cp.checkpoint_id, cp.metadata->>'moldy_run_id' AS producer,
+                      cp.checkpoint_id=c.active_branch_checkpoint_id AS pinned,
+                      (SELECT count(*) FROM checkpoint_writes w
+                       WHERE w.thread_id=cp.thread_id AND w.checkpoint_ns=cp.checkpoint_ns
+                         AND w.checkpoint_id=cp.checkpoint_id AND w.channel='__interrupt__')
+                         AS pending_interrupt_writes
+               FROM conversations c JOIN checkpoints cp ON cp.thread_id=c.id::text
+               WHERE c.id=%s AND cp.checkpoint_ns=''
+               ORDER BY cp.checkpoint_id DESC LIMIT 8""",
+            (request["threadId"],),
+        )
         receipt["journal"] = await gate.sql(
             """SELECT c.message_event_id::text AS journal, c.seq_start + n - 1 AS ordinal,
                       coalesce(ev->>'method', ev#>>'{data,method}', ev->>'event') AS method,
