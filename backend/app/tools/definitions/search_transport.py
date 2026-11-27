@@ -57,13 +57,25 @@ def _require_success(response: httpx.Response) -> None:
 
 async def provider_post(client: httpx.AsyncClient, url: str, **kwargs: Any) -> dict[str, Any]:
     body = bytearray()
+    headers = {"Accept-Encoding": "identity", **kwargs.pop("headers", {})}
     try:
         # A 307/308 must never forward a query or key to another destination.
         async with (
             asyncio.timeout(12),
-            client.stream("POST", url, follow_redirects=False, **kwargs) as response,
+            client.stream(
+                "POST",
+                url,
+                follow_redirects=False,
+                headers=headers,
+                extensions={"moldy_omit_cookies": True},
+                **kwargs,
+            ) as response,
         ):
             _require_success(response)
+            if response.headers.get("content-encoding", "identity").lower() != "identity":
+                # Reject unsolicited compression before HTTPX can inflate a
+                # single small wire chunk beyond the application size limit.
+                raise ResearchSearchError("Search provider returned an unsupported encoding.")
             async for chunk in response.aiter_bytes(chunk_size=65536):
                 if len(body) + len(chunk) > _MAX_RESPONSE_BYTES:
                     raise ResearchSearchError("Search provider response exceeds the maximum size.")

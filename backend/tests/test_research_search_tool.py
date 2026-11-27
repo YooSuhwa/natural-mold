@@ -347,3 +347,50 @@ async def test_oversize_response_does_not_buffer_entire_body_or_retry(
         with pytest.raises(ResearchSearchError, match="maximum size"):
             await search_transport.provider_post(client, ENDPOINT)
     assert chunks == [0, 1]
+
+
+async def test_shared_transport_never_sends_or_accepts_provider_cookies_across_orgs(
+    db: AsyncSession,
+    actor: policy.ResearchSearchActor,
+    org_fixture: OrgFixture,
+) -> None:
+    from app.outbound.client import outbound_http_client
+
+    second_org = await db.get(Organization, org_fixture.second)
+    assert second_org is not None
+    other = policy.ResearchSearchActor(second_org.tenant_id, second_org.id, actor.user_id)
+    for current in (actor, other):
+        await permit(db, current, ["searxng"])
+
+    cookies = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        cookies.append(req.headers.get("cookie"))
+        assert req.headers.get("accept-encoding") == "identity"
+        return httpx.Response(
+            200, headers={"Set-Cookie": "provider_session=private; Path=/"}, json={"results": []}
+        )
+
+    definition = registry.require("research_search")
+    assert definition.runner
+    async with outbound_http_client(
+        transport=httpx.MockTransport(handler), ssrf_guard=True
+    ) as client:
+        client.cookies.set("unrelated", "sensitive", domain="internal-search.example", path="/")
+        for current in (actor, other):
+            await definition.runner(ToolRunContext({"query": "safe"}, None, client, current))
+        assert cookies == [None, None]
+        assert client.cookies.get("provider_session") is None
+        assert client.cookies.get("unrelated") == "sensitive"
+
+
+async def test_malformed_legacy_row_is_a_public_terminal_error(
+    actor: policy.ResearchSearchActor,
+) -> None:
+    definition = registry.require("tavily_search")
+    assert definition.runner
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={"results": [None]}))
+    ) as client:
+        with pytest.raises(ResearchSearchError, match="invalid result"):
+            await definition.runner(ToolRunContext({"query": "safe"}, None, client, actor))

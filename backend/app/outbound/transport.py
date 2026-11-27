@@ -162,7 +162,16 @@ class GuardTransport(httpx.AsyncBaseTransport):
             raise OutboundBlockedError(f"scheme '{url.scheme}' is not allowed")
         if self._literal_check and is_ip_literal(host) and not private_allowed(host):
             _public(host, [host])
-        return await self._inner.handle_async_request(request)
+        # The shared HTTPX client adds cookies before transport dispatch and
+        # persists response cookies afterwards. Keep stateless requests out of
+        # its jar without mutating the jar used by other concurrent requests.
+        omit_cookies = request.extensions.get("moldy_omit_cookies") is True
+        if omit_cookies:
+            request.headers.pop("Cookie", None)
+        response = await self._inner.handle_async_request(request)
+        if omit_cookies:
+            response.headers.pop("Set-Cookie", None)
+        return response
 
     async def aclose(self) -> None:
         await self._inner.aclose()

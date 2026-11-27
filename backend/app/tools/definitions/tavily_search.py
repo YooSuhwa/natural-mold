@@ -91,6 +91,8 @@ async def _run_tavily_search(ctx: ToolRunContext) -> dict[str, Any]:
 
     results = []
     for item in data.get("results") or []:
+        if not isinstance(item, dict):
+            raise ResearchSearchError("Search provider returned an invalid result.")
         raw_content = item.get("raw_content")
         if isinstance(raw_content, str) and len(raw_content) > 6000:
             raw_content = raw_content[:6000] + "\n...[truncated]"
