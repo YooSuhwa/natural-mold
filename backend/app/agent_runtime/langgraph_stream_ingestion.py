@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping
+from contextlib import AbstractAsyncContextManager, AsyncExitStack
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -75,51 +76,50 @@ async def iter_ingested_protocol_events(
     *,
     run_id: str,
     thread_id: str,
-) -> AsyncIterator[IngestedProtocolEvent]:
+) -> AsyncGenerator[IngestedProtocolEvent, None]:
     """Normalize v3 or fallback chunks without exposing opaque upstream values."""
 
-    try:
-        stream = await open_v3_stream(agent, input_, config)
-    except (AttributeError, NotImplementedError):
-        stream = await open_stream_mode_fallback(agent, input_, config)
-        seq = 0
-        async for raw_chunk in stream:
-            seq += 1
-            chunk = raw_chunk if isinstance(raw_chunk, tuple | list) else ("custom", raw_chunk)
-            event = adapt_stream_mode_chunk(
-                chunk,
-                run_id=run_id,
-                thread_id=thread_id,
-                seq=seq,
-            )
+    async with AsyncExitStack() as stack:
+        try:
+            stream = await open_v3_stream(agent, input_, config)
+            source = "v3"
+        except (AttributeError, NotImplementedError):
+            stream = await open_stream_mode_fallback(agent, input_, config)
+            source = "stream-mode"
+        # v3's context manager aborts in-flight graph work on early exit. The
+        # fallback is an async generator whose aclose() carries cancellation.
+        if isinstance(stream, AbstractAsyncContextManager):
+            await stack.enter_async_context(stream)
+        elif isinstance(stream, AsyncGenerator):
+            stack.push_async_callback(stream.aclose)
+
+        fallback_seq = 0
+        malformed_seq = 0
+        async for raw in stream:
+            if source == "stream-mode":
+                fallback_seq += 1
+                chunk = raw if isinstance(raw, tuple | list) else ("custom", raw)
+                event = adapt_stream_mode_chunk(
+                    chunk, run_id=run_id, thread_id=thread_id, seq=fallback_seq
+                )
+            elif isinstance(raw, Mapping):
+                event = adapt_v3_protocol_event(raw, run_id=run_id, thread_id=thread_id)
+            else:
+                malformed_seq += 1
+                yield IngestedProtocolEvent(
+                    event=stored_custom_protocol_event(
+                        run_id=run_id,
+                        thread_id=thread_id,
+                        seq=malformed_seq,
+                        name="malformed",
+                        payload=None,
+                    ),
+                    source="v3",
+                )
+                continue
             yield IngestedProtocolEvent(
                 event=await attach_verified_mcp_apps(
-                    event,
-                    raw_chunk,
-                    expected_conversation_id=thread_id,
-                    expected_run_id=run_id,
+                    event, raw, expected_conversation_id=thread_id, expected_run_id=run_id
                 ),
-                source="stream-mode",
+                source=source,
             )
-        return
-
-    malformed_seq = 0
-    async for raw_event in stream:
-        if isinstance(raw_event, Mapping):
-            event = adapt_v3_protocol_event(raw_event, run_id=run_id, thread_id=thread_id)
-            event = await attach_verified_mcp_apps(
-                event,
-                raw_event,
-                expected_conversation_id=thread_id,
-                expected_run_id=run_id,
-            )
-        else:
-            malformed_seq += 1
-            event = stored_custom_protocol_event(
-                run_id=run_id,
-                thread_id=thread_id,
-                seq=malformed_seq,
-                name="malformed",
-                payload=None,
-            )
-        yield IngestedProtocolEvent(event=event, source="v3")

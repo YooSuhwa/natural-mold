@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import AsyncGenerator
+from functools import partial
 from typing import Any
 
 from langgraph.types import Command
@@ -10,6 +11,7 @@ from langgraph.types import Command
 from app.agent_runtime import langgraph_event_projection as projection
 from app.agent_runtime import langgraph_stream_ingestion
 from app.agent_runtime.event_broker import EventBroker
+from app.agent_runtime.langgraph_compaction_start import SummaryStart, with_compaction_starts
 from app.agent_runtime.langgraph_event_delivery import ProtocolEventDelivery
 from app.agent_runtime.langgraph_lifecycle_events import (
     error_protocol_event,
@@ -79,8 +81,9 @@ async def stream_agent_response_langgraph(
     deferred_empty_input_requested: StoredProtocolEvent | None = None
     seen_usage_keys: set[tuple[str | None, int, int, int, int, float | None]] = set()
     seen_synthesized_tool_call_ids: set[str] = set()
-    compaction_running_emitted = False
+    compaction_namespace: tuple[str, ...] | None = None
     compaction_done_emitted = False
+    previous_cutoffs: dict[tuple[str, ...], tuple[int, str | None] | None] = {}
     stream_started_at = time.monotonic()
     first_token_at: float | None = None
     artifact_recorder = await prepare_artifact_recorder(artifact_recorder, run_id=msg_id)
@@ -104,6 +107,17 @@ async def stream_agent_response_langgraph(
             )
         )
 
+    events = with_compaction_starts(
+        partial(
+            langgraph_stream_ingestion.iter_ingested_protocol_events,
+            agent,
+            langgraph_stream_ingestion.actual_input(input_),
+            run_id=msg_id,
+            thread_id=thread_id,
+        ),
+        config,
+        enabled=settings.compaction_marker_enabled,
+    )
     try:
         yield await emit(
             lifecycle_protocol_event(
@@ -121,13 +135,24 @@ async def stream_agent_response_langgraph(
         ):
             yield await emit_head_event(name, payload, suffix)
 
-        async for ingested in langgraph_stream_ingestion.iter_ingested_protocol_events(
-            agent,
-            langgraph_stream_ingestion.actual_input(input_),
-            config,
-            run_id=msg_id,
-            thread_id=thread_id,
-        ):
+        async for ingested in events:
+            if isinstance(ingested, SummaryStart) or projection.is_summary_token_event(
+                ingested.event
+            ):
+                if settings.compaction_marker_enabled and compaction_namespace is None:
+                    compaction_namespace = (
+                        ingested.namespace
+                        if isinstance(ingested, SummaryStart)
+                        else tuple(ingested.event["namespace"])
+                    )
+                    side_effect_seq += 1
+                    yield await emit(
+                        projection.compaction_event(
+                            run_id=msg_id, thread_id=thread_id, seq=side_effect_seq, state="running"
+                        )
+                    )
+                continue
+
             event = ingested.event
             is_empty_v3_interrupt = (
                 ingested.source == "v3" and projection.is_empty_input_requested_event(event)
@@ -136,22 +161,21 @@ async def stream_agent_response_langgraph(
                 deferred_empty_input_requested = event
                 continue
 
-            if settings.compaction_marker_enabled:
-                signal = projection.compaction_signal(event)
-                if signal == "summary_token":
-                    if not compaction_running_emitted:
-                        compaction_running_emitted = True
-                        side_effect_seq += 1
-                        yield await emit(
-                            projection.compaction_event(
-                                run_id=msg_id,
-                                thread_id=thread_id,
-                                seq=side_effect_seq,
-                                state="running",
-                            )
-                        )
-                    continue
-                if signal == "committed" and not compaction_done_emitted:
+            if settings.compaction_marker_enabled and event["method"] == "values":
+                # The first values frame is the restored checkpoint. Only a later
+                # change to this graph's cutoff can commit the current summary.
+                namespace = tuple(event["namespace"])
+                cutoff = projection.compaction_cutoff(event)
+                fresh_commit = (
+                    namespace in previous_cutoffs and previous_cutoffs[namespace] != cutoff
+                )
+                previous_cutoffs[namespace] = cutoff
+                if (
+                    cutoff is not None
+                    and fresh_commit
+                    and namespace == compaction_namespace
+                    and not compaction_done_emitted
+                ):
                     compaction_done_emitted = True
                     side_effect_seq += 1
                     yield await emit(
@@ -161,7 +185,7 @@ async def stream_agent_response_langgraph(
                             seq=side_effect_seq,
                             state="done",
                             history_id=_compaction_history_id(event),
-                            cutoff_index=projection.compaction_cutoff_index(event),
+                            cutoff_index=cutoff[0],
                         )
                     )
 
@@ -255,4 +279,5 @@ async def stream_agent_response_langgraph(
             )
         )
     finally:
+        await events.aclose()
         await delivery.close()
