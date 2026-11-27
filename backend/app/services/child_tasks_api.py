@@ -84,16 +84,18 @@ async def _in_conversation(
     return stmt
 
 
-async def _allow_legacy_details(
-    db: AsyncSession, conversation_id: UUID, context: OrgContext
+async def allow_legacy_child_details(
+    db: AsyncSession, conversation: Conversation, context: OrgContext
 ) -> bool:
+    if settings.child_tasks_enabled or conversation.source == INDEPENDENT_JOB_SOURCE:
+        return False
     # The immutable root pin also covers runs that never launched a child. Filtering
     # on child rows here would expose the existence of a currently inaccessible task.
     accepted_root = (
         select(ConversationRunAgent.id)
         .join(ConversationRun, ConversationRun.id == ConversationRunAgent.run_id)
         .where(
-            ConversationRun.conversation_id == conversation_id,
+            ConversationRun.conversation_id == conversation.id,
             ConversationRun.run_source == "CHAT",
             private_run_predicate(context),
             ConversationRunAgent.role == "root",
@@ -133,11 +135,7 @@ async def list_child_tasks(
 ) -> ChildTaskPage:
     conversation = await require_private_conversation(db, conversation_id, context)
     enabled = settings.child_tasks_enabled
-    allow_legacy = (
-        not enabled
-        and conversation.source != INDEPENDENT_JOB_SOURCE
-        and await _allow_legacy_details(db, conversation_id, context)
-    )
+    allow_legacy = await allow_legacy_child_details(db, conversation, context)
     scoped = await _in_conversation(db, conversation, context)
     result: list[ChildTaskResponse] = []
     visible_count = 0
