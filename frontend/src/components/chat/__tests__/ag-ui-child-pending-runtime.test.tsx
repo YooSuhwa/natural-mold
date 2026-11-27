@@ -31,6 +31,7 @@ const childTask = {
   result: null,
   instructions: [],
 }
+const publicCallId = 'tool-63d99cc5-0fb4-41c6-a17a-602dfe0e1015'
 const currentSlot = 'child-current-approval'
 
 function pausedHistory() {
@@ -49,7 +50,7 @@ function pausedHistory() {
         content: 'Delegating review.',
         toolCalls: [
           {
-            id: childTask.tool_call_id,
+            id: publicCallId,
             type: 'function',
             function: { name: 'task', arguments: '{}' },
           },
@@ -71,7 +72,7 @@ function pausedHistory() {
         subagentRunId: 'review-run',
         runId: 'paused-run',
         physicalRunId: physicalRun,
-        parentToolCallId: childTask.tool_call_id,
+        parentToolCallId: publicCallId,
         parentMessageId: 'parent',
         name: 'reviewer',
         status: 'interrupted',
@@ -110,7 +111,11 @@ function RestoredChildForm() {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <HiTLContext.Provider value={actions}>
-        <AgUiChildPendingForms conversationId={threadId} snapshot={state} />
+        <AgUiChildPendingForms
+          conversationId={threadId}
+          snapshot={state}
+          readSnapshot={(signal) => agent.readSnapshot({ signal })}
+        />
       </HiTLContext.Provider>
     </AssistantRuntimeProvider>
   )
@@ -187,4 +192,79 @@ it('restores a delegated approval through the official runtime and posts one nat
   expect(commands[0].runId).not.toBe('paused-run')
   await waitFor(() => expect(screen.queryByRole('button', { name: 'approve' })).toBeNull())
   expect(commands).toHaveLength(1)
+})
+
+it('reauthorizes a legacy child through one snapshot GET before submitting its native approval', async () => {
+  const saved = pausedHistory()
+  const legacy = {
+    ...saved,
+    checkpointId: 'current-checkpoint',
+    subagents: saved.subagents.map((child) => ({
+      ...child,
+      childTaskId: undefined,
+      legacyInterruptAccess: true,
+    })),
+    interrupts: saved.interrupts.map((slot) => ({
+      ...slot,
+      metadata: { moldy: { ...slot.metadata.moldy, legacyInterruptAccess: true } },
+    })),
+  }
+  const requests: string[] = []
+  const commands: RunAgentInput[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (input, init = {}) => {
+      const path = new URL(input instanceof Request ? input.url : String(input), 'http://localhost')
+        .pathname
+      const method = init.method ?? 'GET'
+      requests.push(method + ' ' + path)
+      if (method === 'GET' && path.endsWith('/ag-ui/snapshot')) return Response.json(legacy)
+      if (method === 'POST' && path.endsWith('/ag-ui/runs')) {
+        const body = RunAgentInputSchema.parse(JSON.parse(String(init.body)))
+        commands.push(body)
+        const frames = [
+          { type: 'RUN_STARTED', threadId, runId: body.runId, protocolVersion: '1.0' },
+          { type: 'RUN_FINISHED', threadId, runId: body.runId, outcome: { type: 'success' } },
+        ]
+        return new Response(
+          frames.map((event) => 'data: ' + JSON.stringify(event) + '\n\n').join(''),
+          {
+            headers: {
+              'content-type': 'text/event-stream',
+              'X-Run-Id': body.runId,
+              'X-Moldy-Run-Id': 'e4d9a7b3-82d2-41ca-9a5a-87bcc5a06783',
+            },
+          },
+        )
+      }
+      throw new Error('Unexpected request ' + method + ' ' + path)
+    }),
+  )
+  render(
+    <QueryClientProvider client={createTestQueryClient()}>
+      <RestoredChildForm />
+    </QueryClientProvider>,
+  )
+  const base = '/api/conversations/' + threadId + '/ag-ui'
+  const approve = await screen.findByRole('button', { name: 'approve' })
+  expect(requests).toEqual(['GET ' + base + '/snapshot'])
+  fireEvent.click(approve)
+  await waitFor(() => expect(commands).toHaveLength(1))
+  expect(commands[0]).toMatchObject({
+    threadId,
+    messages: [],
+    resume: [
+      {
+        interruptId: currentSlot,
+        status: 'resolved',
+        payload: { decisions: [{ type: 'approve' }] },
+      },
+    ],
+  })
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'approve' })).toBeNull())
+  expect(requests).toEqual([
+    'GET ' + base + '/snapshot',
+    'GET ' + base + '/snapshot',
+    'POST ' + base + '/runs',
+  ])
 })

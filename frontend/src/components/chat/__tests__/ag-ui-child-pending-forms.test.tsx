@@ -3,13 +3,15 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChildTask } from '@/lib/api/child-tasks'
 import { createAgUiChatSession, type AgUiChatSessionState } from '@/lib/ag-ui/chat-history'
-import { parseWireChatSnapshot } from '@/lib/ag-ui/chat-history-types'
+import { parseWireChatSnapshot, type WireChatSnapshot } from '@/lib/ag-ui/chat-history-types'
+import { beginOrgSwitch, finishOrgSwitch } from '@/lib/org-scope/org-scope-signal'
 import { HiTLContext } from '@/lib/chat/hitl-context'
 import { AgUiChildPendingForms } from '../ag-ui-child-pending-forms'
 import { ChatWorkCommandConversationContext } from '../conversation-context'
 
 const wire = vi.hoisted(() => ({
   interrupts: vi.fn(),
+  params: vi.fn(),
   list: vi.fn(),
   detail: vi.fn(),
 }))
@@ -22,13 +24,14 @@ vi.mock('@/lib/hooks/use-child-tasks', async (load) => ({
   useChildTasks: wire.list,
   useChildTask: wire.detail,
 }))
-vi.mock('next/navigation', () => ({ useParams: () => ({}) }))
+vi.mock('next/navigation', () => ({ useParams: wire.params }))
 vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key }))
 
 const conversationId = '40c19c43-7f41-4261-a45f-f37f38f82884'
 const publicRun = 'public-paused'
 const physicalRun = 'ef7258d7-e4de-40ed-a3a9-8de35bc373ca'
 const childRun = 'child-run'
+const publicParentCall = 'tool-757c38eb-b07a-4ee2-90c7-0db5dd3258f3'
 const task: ChildTask = {
   id: '1504027e-51a1-4203-ad5e-f990e7aedc22',
   tool_call_id: 'delegate',
@@ -111,7 +114,7 @@ function session(
           role: 'assistant',
           toolCalls: [
             {
-              id: task.tool_call_id,
+              id: publicParentCall,
               type: 'function',
               function: { name: 'task', arguments: '{}' },
             },
@@ -131,7 +134,7 @@ function session(
           subagentRunId: childRun,
           runId: publicRun,
           physicalRunId: physicalRun,
-          parentToolCallId: task.tool_call_id,
+          parentToolCallId: publicParentCall,
           parentMessageId: 'assistant',
           name: task.role,
           status: 'interrupted',
@@ -179,11 +182,18 @@ const list = {
 }
 const detail = { data: task, error: null, isError: false, isPending: false, refetch: refetchDetail }
 
-function forms(state: AgUiChatSessionState) {
+function forms(
+  state: AgUiChatSessionState,
+  readSnapshot?: (signal?: AbortSignal) => Promise<WireChatSnapshot>,
+) {
   return (
     <ChatWorkCommandConversationContext.Provider value={conversationId}>
       <HiTLContext.Provider value={{ registerDecision, onResumeDecisions }}>
-        <AgUiChildPendingForms conversationId={conversationId} snapshot={state} />
+        <AgUiChildPendingForms
+          conversationId={conversationId}
+          snapshot={state}
+          readSnapshot={readSnapshot}
+        />
       </HiTLContext.Provider>
     </ChatWorkCommandConversationContext.Provider>
   )
@@ -191,6 +201,7 @@ function forms(state: AgUiChatSessionState) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  wire.params.mockReturnValue({})
   wire.list.mockReturnValue(list)
   wire.detail.mockReturnValue(detail)
   refetchList.mockResolvedValue({ data: { pages: [page] }, isSuccess: true, error: null })
@@ -426,4 +437,238 @@ describe('managed child interrupt forms', () => {
     view.rerender(forms(state))
     expect(screen.queryByText('Which format?')).toBeNull()
   })
+})
+
+function markLegacySlot(slot: Interrupt, fields: Record<string, unknown> = {}): Interrupt {
+  const payload = slot.metadata?.moldy
+  return {
+    ...slot,
+    metadata: {
+      moldy: {
+        ...(typeof payload === 'object' && payload !== null ? payload : {}),
+        legacyInterruptAccess: true,
+        ...fields,
+      },
+    },
+  }
+}
+
+function legacySession(
+  slots = [markLegacySlot(approval())],
+  childOverrides: Record<string, unknown> = {},
+): AgUiChatSessionState & { snapshot: WireChatSnapshot } {
+  const state = session(slots, {
+    childTaskId: undefined,
+    legacyInterruptAccess: true,
+    ...childOverrides,
+  })
+  if (!state.snapshot) throw new Error('Expected a saved child interrupt')
+  return { ...state, snapshot: { ...state.snapshot, checkpointId: 'paused-checkpoint' } }
+}
+
+describe('legacy child interrupt access', () => {
+  it('asks the server again before submitting the exact current child decision', async () => {
+    const state = legacySession()
+    const readSnapshot = vi.fn(async () => state.snapshot)
+    wire.interrupts.mockReturnValue(state.interrupts)
+    render(forms(state, readSnapshot))
+    expect(readSnapshot).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'approve' }))
+    await waitFor(() =>
+      expect(registerDecision).toHaveBeenCalledWith(0, { type: 'approve' }, 'approved', 'approval'),
+    )
+    expect(readSnapshot).toHaveBeenCalledTimes(1)
+    expect(wire.list).not.toHaveBeenCalled()
+    expect(wire.detail).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['child marker absent', true, false],
+    ['slot marker absent', false, true],
+    ['both markers absent', false, false],
+  ] as const)('withholds the form for %s', (_case, slotMarker, childMarker) => {
+    const slot = slotMarker ? markLegacySlot(approval()) : approval()
+    const state = legacySession([slot], { legacyInterruptAccess: childMarker || undefined })
+    const readSnapshot = vi.fn(async () => state.snapshot)
+    wire.interrupts.mockReturnValue(state.interrupts)
+    render(forms(state, readSnapshot))
+    expect(screen.queryByRole('button', { name: 'approve' })).toBeNull()
+    expect(readSnapshot).not.toHaveBeenCalled()
+    expect(wire.list).not.toHaveBeenCalled()
+    expect(wire.detail).not.toHaveBeenCalled()
+  })
+
+  it('hides the entire batch when a sibling is marked read-only', () => {
+    const sibling = markLegacySlot(
+      { ...ask('sibling'), subagentRunId: 'other-child' },
+      { actionable: false },
+    )
+    const state = legacySession([markLegacySlot(approval()), sibling], {
+      interruptIds: ['approval'],
+    })
+    wire.interrupts.mockReturnValue(state.interrupts)
+    render(
+      forms(
+        state,
+        vi.fn(async () => state.snapshot),
+      ),
+    )
+    expect(screen.queryByRole('button', { name: 'approve' })).toBeNull()
+    expect(screen.queryByText('Which format?')).toBeNull()
+    expect(wire.list).not.toHaveBeenCalled()
+    expect(wire.detail).not.toHaveBeenCalled()
+  })
+
+  it('withholds sibling controls while a passive workflow slot has no user action', () => {
+    const passive: Interrupt = {
+      id: 'workflow-checkpoint',
+      reason: 'moldy.workflow_wait',
+      message: 'Waiting for a separate review.',
+    }
+    const state = legacySession([markLegacySlot(approval()), passive], {
+      interruptIds: ['approval'],
+    })
+    wire.interrupts.mockReturnValue(state.interrupts)
+    render(
+      forms(
+        state,
+        vi.fn(async () => state.snapshot),
+      ),
+    )
+    expect(screen.queryByRole('button', { name: 'approve' })).toBeNull()
+    expect(wire.list).not.toHaveBeenCalled()
+    expect(wire.detail).not.toHaveBeenCalled()
+  })
+
+  it.each(['checkpointId', 'activeTipMessageId'] as const)(
+    'withholds the legacy form when the snapshot omits its %s',
+    (key) => {
+      const state = legacySession()
+      wire.interrupts.mockReturnValue(state.interrupts)
+      const incomplete = { ...state.snapshot, [key]: null }
+      const readSnapshot = vi.fn(async () => incomplete)
+      render(forms({ ...state, snapshot: incomplete }, readSnapshot))
+      expect(screen.queryByRole('button', { name: 'approve' })).toBeNull()
+      expect(readSnapshot).not.toHaveBeenCalled()
+      expect(wire.list).not.toHaveBeenCalled()
+      expect(wire.detail).not.toHaveBeenCalled()
+    },
+  )
+
+  const changed = {
+    'read permission revoked': () => Promise.reject(new Error('access revoked')),
+    'child authorization revoked': () =>
+      Promise.resolve(legacySession(undefined, { legacyInterruptAccess: undefined }).snapshot),
+    'slot authorization revoked': () => Promise.resolve(legacySession([approval()]).snapshot),
+    'checkpoint replaced': (snapshot: WireChatSnapshot) =>
+      Promise.resolve({
+        ...snapshot,
+        checkpointId: 'sibling-checkpoint',
+      }),
+    'branch tip replaced': (snapshot: WireChatSnapshot) =>
+      Promise.resolve({
+        ...snapshot,
+        activeTipMessageId: 'different-tip',
+      }),
+    'child run replaced': (snapshot: WireChatSnapshot) =>
+      Promise.resolve({
+        ...snapshot,
+        physicalInterruptRunId: task.run_id,
+      }),
+    'another slot marked read-only': () =>
+      Promise.resolve(
+        legacySession(
+          [
+            markLegacySlot(approval()),
+            markLegacySlot(
+              { ...ask('other'), subagentRunId: 'other-child' },
+              { actionable: false },
+            ),
+          ],
+          { interruptIds: ['approval'] },
+        ).snapshot,
+      ),
+  } satisfies Record<string, (snapshot: WireChatSnapshot) => Promise<WireChatSnapshot>>
+
+  it.each(Object.entries(changed))(
+    'discards a click when reauthorization reports %s',
+    async (_reason, change) => {
+      const state = legacySession()
+      wire.interrupts.mockReturnValue(state.interrupts)
+      const readSnapshot = vi.fn(() => change(state.snapshot))
+      render(forms(state, readSnapshot))
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'approve' }))
+      })
+      expect(readSnapshot).toHaveBeenCalledTimes(1)
+      expect(registerDecision).not.toHaveBeenCalled()
+      expect(wire.list).not.toHaveBeenCalled()
+      expect(wire.detail).not.toHaveBeenCalled()
+    },
+  )
+
+  it('discards the approval if the active organization changes during the protected read', async () => {
+    const state = legacySession()
+    wire.interrupts.mockReturnValue(state.interrupts)
+    const readSnapshot = vi.fn(async () => {
+      beginOrgSwitch()
+      finishOrgSwitch()
+      return state.snapshot
+    })
+    render(forms(state, readSnapshot))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'approve' }))
+    })
+    expect(readSnapshot).toHaveBeenCalledTimes(1)
+    expect(registerDecision).not.toHaveBeenCalled()
+  })
+
+  it.each(['retry', 'skip', 'cancel'])(
+    'allows the auth response %s without exposing credential controls',
+    async (response) => {
+      wire.params.mockReturnValue({ agentId: 'visible-parent-agent' })
+      const state = legacySession([
+        markLegacySlot(auth('rotated-auth', 2), {
+          items: [
+            {
+              resource_name: 'OAuth connection',
+              tool_names: ['read_document'],
+              fixable_by: 'me',
+              credential_id: 'demo-oauth',
+              connect: { kind: 'oauth' },
+            },
+            { resource_name: 'Agent binding', fixable_by: 'me', connect: { kind: 'binding' } },
+            { resource_name: 'Owner connector', fixable_by: 'owner' },
+          ],
+        }),
+      ])
+      const readSnapshot = vi.fn(async () => state.snapshot)
+      wire.interrupts.mockReturnValue(state.interrupts)
+      render(forms(state, readSnapshot))
+      expect(
+        screen
+          .getAllByRole('button')
+          .map((button) => button.textContent)
+          .sort(),
+      ).toEqual(['cancel', 'retry', 'skip'])
+      expect(screen.getByText('OAuth connection')).toBeVisible()
+      expect(screen.getByText(/read_document/)).toBeVisible()
+      expect(screen.getByText('Owner connector')).toBeVisible()
+      expect(screen.getByText('ownerNotified')).toBeVisible()
+      expect(screen.queryByText('demo-oauth')).toBeNull()
+      expect(screen.queryByRole('link')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: response }))
+      await waitFor(() =>
+        expect(registerDecision).toHaveBeenCalledWith(
+          0,
+          { type: 'respond', message: response, attempt: 2 },
+          response,
+          'rotated-auth',
+        ),
+      )
+      expect(readSnapshot).toHaveBeenCalledTimes(1)
+      expect(wire.list).not.toHaveBeenCalled()
+      expect(wire.detail).not.toHaveBeenCalled()
+    },
+  )
 })

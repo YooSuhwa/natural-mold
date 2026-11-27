@@ -45,19 +45,24 @@ export function AuthRequiredCard(props: ToolCallMessagePartProps<AuthRequiredArg
 
 export function AuthRequiredForm({
   args,
-}: Pick<ToolCallMessagePartProps<AuthRequiredArgs, unknown>, 'args'>) {
+  allowConnections = true,
+}: Pick<ToolCallMessagePartProps<AuthRequiredArgs, unknown>, 'args'> & {
+  allowConnections?: boolean
+}) {
   const t = useTranslations('chat.authRequired')
   const hitl = useHiTL()
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [failed, setFailed] = useState(false)
   const routeAgentId = useParams<{ agentId?: string }>()?.agentId
   // The thread's own agent (side chat may sit on another agent's route), else the route's.
-  const agentId = hitl?.agentId || routeAgentId
+  const agentId = allowConnections ? hitl?.agentId || routeAgentId : undefined
   const askedAttempt = typeof args?.attempt === 'number' ? args.attempt : 1
   const items = authRequiredItems(args)
-  const oauthItems = items.filter(
-    (item) => item.fixableBy === 'me' && item.connectKind === 'oauth' && item.credentialId,
-  )
+  const oauthItems = allowConnections
+    ? items.filter(
+        (item) => item.fixableBy === 'me' && item.connectKind === 'oauth' && item.credentialId,
+      )
+    : []
   const mine = items
     .filter((item) => item.fixableBy === 'me' && !oauthItems.includes(item))
     .map((item) => item.resourceName)
