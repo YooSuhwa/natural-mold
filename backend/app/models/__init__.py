@@ -86,6 +86,7 @@ from app.models.organization import (
 from app.models.organization_group import Group, GroupMember, OrgCapabilityGrant, OrgInvitation
 from app.models.organization_identity import SsoConnection, TenantDomain, UserIdentity
 from app.models.refresh_token import RefreshToken
+from app.models.research_search_usage import ResearchSearchUsage
 from app.models.resource_credential_binding import ResourceCredentialBinding
 from app.models.resource_policy import ResourcePolicy
 from app.models.share_link import ShareLink
@@ -198,6 +199,7 @@ __all__ = [
     "RefreshToken",
     "ResourceCredentialBinding",
     "ResourceGrant",
+    "ResearchSearchUsage",
     "ResourcePolicy",
     "ShareLink",
     "Skill",
