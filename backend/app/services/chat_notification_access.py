@@ -12,6 +12,7 @@ from app.authz import denials
 from app.authz.notifications import RETENTION, now
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
+from app.authz.scoping import private_scope_predicate
 from app.exceptions import AppError
 from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation import Conversation
@@ -172,6 +173,31 @@ async def resolve_work_destination(
     db: AsyncSession, ref: ChatNotificationOutbox
 ) -> ChatNotificationDestination | None:
     ctx = OrgContext(org_id=ref.org_id, tenant_id=ref.tenant_id, user_id=ref.user_id)
+    if ref.goal_id is not None:
+        # The decision and bell commit together. An edit uses conversation -> goal;
+        # if it is already writing, the outbox retries after its transaction finishes.
+        conversation = await db.scalar(
+            select(Conversation.id)
+            .where(
+                Conversation.id == ref.conversation_id, private_scope_predicate(Conversation, ctx)
+            )
+            .with_for_update(read=True, nowait=True)
+        )
+        if conversation is None:
+            return None
+        goal = await db.scalar(
+            select(ConversationGoal.id)
+            .where(
+                ConversationGoal.id == ref.goal_id,
+                ConversationGoal.conversation_id == ref.conversation_id,
+                ConversationGoal.version == ref.goal_version,
+                ConversationGoal.revision == ref.goal_revision,
+                private_scope_predicate(ConversationGoal, ctx),
+            )
+            .with_for_update(read=True, nowait=True)
+        )
+        if goal is None:
+            return None
     destinations = await _authorized_destinations(db, ctx, [ref.id], published=False)
     return destinations.get(ref.id)
 
