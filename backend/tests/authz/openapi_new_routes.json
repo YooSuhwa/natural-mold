@@ -1882,7 +1882,7 @@
     },
     "/api/agents/{agent_id}/assistant/message": {
       "post": {
-        "description": "Assistant\uc5d0\uac8c \uba54\uc2dc\uc9c0\ub97c \ubcf4\ub0b4\uace0 SSE \uc2a4\ud2b8\ub9ac\ubc0d\uc73c\ub85c \uc751\ub2f5\ubc1b\ub294\ub2e4.",
+        "description": "Assistant에게 메시지를 보내고 SSE 스트리밍으로 응답받는다.",
         "operationId": "send_assistant_message_api_agents__agent_id__assistant_message_post",
         "parameters": [
           {
@@ -3070,7 +3070,7 @@
     },
     "/api/agents/{agent_id}/tool-approval": {
       "get": {
-        "description": "The settings, the company cap and every tool \u00d7 path as a run decides it.",
+        "description": "The settings, the company cap and every tool × path as a run decides it.",
         "operationId": "get_tool_approval_api_agents__agent_id__tool_approval_get",
         "parameters": [
           {
@@ -4561,7 +4561,7 @@
     },
     "/api/auth/refresh": {
       "post": {
-        "description": "Rotate the refresh cookie. No CSRF \u2014 cookie alone authorizes.",
+        "description": "Rotate the refresh cookie. No CSRF — cookie alone authorizes.",
         "operationId": "refresh_endpoint_api_auth_refresh_post",
         "responses": {
           "200": {
@@ -4583,7 +4583,7 @@
     },
     "/api/auth/register": {
       "post": {
-        "description": "Create an account + auto-login (cookies + body CSRF).\n\nFirst user signed up becomes ``is_super_user=true`` when\n``allow_first_user_as_admin`` is enabled. See ADR-016 \u00a78.4 for\noperational guidance on disabling this in production.",
+        "description": "Create an account + auto-login (cookies + body CSRF).\n\nFirst user signed up becomes ``is_super_user=true`` when\n``allow_first_user_as_admin`` is enabled. See ADR-016 §8.4 for\noperational guidance on disabling this in production.",
         "operationId": "register_endpoint_api_auth_register_post",
         "requestBody": {
           "content": {
@@ -4707,7 +4707,7 @@
     },
     "/api/builder": {
       "post": {
-        "description": "\ube4c\ub4dc \uc138\uc158\uc744 \uc2dc\uc791\ud55c\ub2e4.",
+        "description": "빌드 세션을 시작한다.",
         "operationId": "start_build_api_builder_post",
         "requestBody": {
           "content": {
@@ -4749,7 +4749,7 @@
     },
     "/api/builder/{session_id}": {
       "get": {
-        "description": "\ube4c\ub4dc \uc138\uc158 \uc0c1\ud0dc\ub97c \uc870\ud68c\ud55c\ub2e4.",
+        "description": "빌드 세션 상태를 조회한다.",
         "operationId": "get_build_session_api_builder__session_id__get",
         "parameters": [
           {
@@ -4793,7 +4793,7 @@
     },
     "/api/builder/{session_id}/confirm": {
       "post": {
-        "description": "\ube4c\ub4dc\ub97c \ud655\uc778\ud558\uace0 \uc2e4\uc81c \uc5d0\uc774\uc804\ud2b8\ub97c \uc0dd\uc131\ud55c\ub2e4.\n\n\uba71\ub4f1\uc131 \ubcf4\uc7a5:\n- COMPLETED + agent_id \uc788\uc74c \u2192 \uae30\uc874 Agent \ubc18\ud658 (\uc911\ubcf5 \uc0dd\uc131 \ubc29\uc9c0)\n- CONFIRMING \u2192 409 (\ub2e4\ub978 \uc694\uccad\uc774 \ucc98\ub9ac \uc911)\n- PREVIEW \u2192 CONFIRMING \uc6d0\uc790\uc801 \uc804\ud658 \ud6c4 Agent \uc0dd\uc131",
+        "description": "빌드를 확인하고 실제 에이전트를 생성한다.\n\n멱등성 보장:\n- COMPLETED + agent_id 있음 → 기존 Agent 반환 (중복 생성 방지)\n- CONFIRMING → 409 (다른 요청이 처리 중)\n- PREVIEW → CONFIRMING 원자적 전환 후 Agent 생성",
         "operationId": "confirm_build_api_builder__session_id__confirm_post",
         "parameters": [
           {
@@ -4837,7 +4837,7 @@
     },
     "/api/builder/{session_id}/image/{filename}": {
       "get": {
-        "description": "Phase 6\uc5d0\uc11c \uc0dd\uc131\ud55c \uc784\uc2dc \uc774\ubbf8\uc9c0 \ubbf8\ub9ac\ubcf4\uae30\ub97c \uc11c\ube59\ud55c\ub2e4.\n\n\uc138\uc158 \uc18c\uc720\uc790\ub9cc \uc811\uadfc \uac00\ub2a5 (\ub2e4\ub978 \uc0ac\uc6a9\uc790\uc758 builder \uc774\ubbf8\uc9c0 \uc811\uadfc \ucc28\ub2e8).",
+        "description": "Phase 6에서 생성한 임시 이미지 미리보기를 서빙한다.\n\n세션 소유자만 접근 가능 (다른 사용자의 builder 이미지 접근 차단).",
         "operationId": "serve_builder_image_api_builder__session_id__image__filename__get",
         "parameters": [
           {
@@ -4888,7 +4888,7 @@
     },
     "/api/builder/{session_id}/messages": {
       "post": {
-        "description": "Builder v3 \u2014 \uc0ac\uc6a9\uc790 \uba54\uc2dc\uc9c0\ub97c \uc804\uc1a1\ud558\uace0 SSE \uc2a4\ud2b8\ub9bc\uc744 \ubc1b\ub294\ub2e4.\n\n\uccab \uba54\uc2dc\uc9c0: \uadf8\ub798\ud504\ub97c \ucc98\uc74c\ubd80\ud130 \uc2e4\ud589 (Phase 1\ubd80\ud130).\n\ud6c4\uc18d \uba54\uc2dc\uc9c0: \uadf8\ub798\ud504\uac00 \uc9c4\ud589 \uc911\uc774\uba74 messages\ub9cc \ucd94\uac00.",
+        "description": "Builder v3 — 사용자 메시지를 전송하고 SSE 스트림을 받는다.\n\n첫 메시지: 그래프를 처음부터 실행 (Phase 1부터).\n후속 메시지: 그래프가 진행 중이면 messages만 추가.",
         "operationId": "post_message_api_builder__session_id__messages_post",
         "parameters": [
           {
@@ -4940,7 +4940,7 @@
     },
     "/api/builder/{session_id}/messages/resume": {
       "post": {
-        "description": "Builder v3 \u2014 interrupt \uc751\ub2f5\uc744 \uc804\ub2ec\ud558\uace0 \uadf8\ub798\ud504\ub97c \uc7ac\uac1c\ud55c\ub2e4.",
+        "description": "Builder v3 — interrupt 응답을 전달하고 그래프를 재개한다.",
         "operationId": "resume_message_api_builder__session_id__messages_resume_post",
         "parameters": [
           {
@@ -5224,6 +5224,92 @@
         ]
       }
     },
+    "/api/conversations/{conversation_id}/ag-ui/events": {
+      "get": {
+        "operationId": "read_events_by_query_api_conversations__conversation_id__ag_ui_events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Runid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 64,
+              "maximum": 256,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Events By Query Api Conversations  Conversation Id  Ag Ui Events Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Events By Query",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
     "/api/conversations/{conversation_id}/ag-ui/runs": {
       "post": {
         "operationId": "post_ag_ui_run_api_conversations__conversation_id__ag_ui_runs_post",
@@ -5272,6 +5358,320 @@
           }
         },
         "summary": "Post Ag Ui Run",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/runs/{public_run_id}/events": {
+      "get": {
+        "operationId": "read_events_by_path_api_conversations__conversation_id__ag_ui_runs__public_run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "public_run_id",
+            "required": true,
+            "schema": {
+              "title": "Public Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 64,
+              "maximum": 256,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Events By Path Api Conversations  Conversation Id  Ag Ui Runs  Public Run Id  Events Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Events By Path",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/runs/{public_run_id}/stream": {
+      "get": {
+        "operationId": "attach_by_path_api_conversations__conversation_id__ag_ui_runs__public_run_id__stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "public_run_id",
+            "required": true,
+            "schema": {
+              "title": "Public Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Committed AG-UI lifecycle"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach By Path",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/snapshot": {
+      "get": {
+        "operationId": "read_snapshot_api_conversations__conversation_id__ag_ui_snapshot_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgUiSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Snapshot",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/stream": {
+      "get": {
+        "operationId": "attach_by_query_api_conversations__conversation_id__ag_ui_stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Runid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Committed AG-UI lifecycle"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach By Query",
         "tags": [
           "conversations",
           "conversations"
@@ -5923,7 +6323,7 @@
     },
     "/api/conversations/{conversation_id}/files": {
       "get": {
-        "description": "Unified conversation file list (D12): generated artifacts + sent\nattachments, normalized and created_at-sorted (newest first).\n\nDistinct path from ``/files/{file_path:path}`` below (which serves one\ngenerated file by path) \u2014 FastAPI never conflates ``/files`` with\n``/files/<segment>``. Ownership-guarded like every conversation read.",
+        "description": "Unified conversation file list (D12): generated artifacts + sent\nattachments, normalized and created_at-sorted (newest first).\n\nDistinct path from ``/files/{file_path:path}`` below (which serves one\ngenerated file by path) — FastAPI never conflates ``/files`` with\n``/files/<segment>``. Ownership-guarded like every conversation read.",
         "operationId": "list_conversation_files_api_conversations__conversation_id__files_get",
         "parameters": [
           {
@@ -9757,7 +10157,7 @@
     },
     "/api/credentials/{credential_id}/discover-models": {
       "post": {
-        "description": "List models reachable through this Credential.\n\nPer-provider dispatch lives in ``app.services.model_discovery``. Failures\nbubble up as a 502 with the provider message \u2014 credential ``test`` is the\ncanonical 'is this key valid' surface, not this endpoint.",
+        "description": "List models reachable through this Credential.\n\nPer-provider dispatch lives in ``app.services.model_discovery``. Failures\nbubble up as a 502 with the provider message — credential ``test`` is the\ncanonical 'is this key valid' surface, not this endpoint.",
         "operationId": "discover_models_api_credentials__credential_id__discover_models_post",
         "parameters": [
           {
@@ -10167,7 +10567,7 @@
     },
     "/api/health/check": {
       "post": {
-        "description": "Run a probe immediately and return the resulting history row.\n\nFor model targets, ``credential_id`` is optional \u2014 when omitted, the\nmodel's ``default_credential_id`` is used. This keeps the row [Check]\nbutton on the models page calling the credential the user picked at\nAdd-model time, instead of a provider-matched fallback.",
+        "description": "Run a probe immediately and return the resulting history row.\n\nFor model targets, ``credential_id`` is optional — when omitted, the\nmodel's ``default_credential_id`` is used. This keeps the row [Check]\nbutton on the models page calling the credential the user picked at\nAdd-model time, instead of a provider-matched fallback.",
         "operationId": "check_now_api_health_check_post",
         "parameters": [
           {
@@ -10550,7 +10950,7 @@
     },
     "/api/marketplace/admin/items/{item_id}/listed": {
       "post": {
-        "description": "Spec \u00a710.5 \u2014 super_user\uac00 public item\uc758 ``is_listed``\ub97c \ud1a0\uae00\ud55c\ub2e4.\n\n\uce74\ud0c8\ub85c\uadf8 default filter\ub294 ``is_listed=True``\uc778 public \ud56d\ubaa9\ub9cc \uac80\uc0c9\n\uacb0\uacfc\uc5d0 \ub178\ucd9c\ud55c\ub2e4 (PRD \u00a711.7). \ubd80\uc801\uc808\ud55c public \ud56d\ubaa9\uc744 unlist\ud558\uac70\ub098\npending moderation\uc5d0\uc11c approve\ud560 \ub54c \uc0ac\uc6a9\ud55c\ub2e4. CSRF \uac80\uc99d \ud544\uc218.",
+        "description": "Spec §10.5 — super_user가 public item의 ``is_listed``를 토글한다.\n\n카탈로그 default filter는 ``is_listed=True``인 public 항목만 검색\n결과에 노출한다 (PRD §11.7). 부적절한 public 항목을 unlist하거나\npending moderation에서 approve할 때 사용한다. CSRF 검증 필수.",
         "operationId": "admin_set_item_listed_api_marketplace_admin_items__item_id__listed_post",
         "parameters": [
           {
@@ -10604,7 +11004,7 @@
     },
     "/api/marketplace/admin/k-skill/sync": {
       "post": {
-        "description": "Spec \u00a710.4 \u2014 operator inspection endpoint.\n\n**Does not execute** the sync \u2014 that's an out-of-band CLI run\n(``uv run python -m app.scripts.sync_k_skill``). This endpoint just\nsurfaces the current population: how many k-skill items exist,\ntheir statuses, and the most recent ``updated_at`` so the dashboard\ncan tell whether a fresh CLI run is overdue.",
+        "description": "Spec §10.4 — operator inspection endpoint.\n\n**Does not execute** the sync — that's an out-of-band CLI run\n(``uv run python -m app.scripts.sync_k_skill``). This endpoint just\nsurfaces the current population: how many k-skill items exist,\ntheir statuses, and the most recent ``updated_at`` so the dashboard\ncan tell whether a fresh CLI run is overdue.",
         "operationId": "admin_k_skill_sync_status_api_marketplace_admin_k_skill_sync_post",
         "responses": {
           "200": {
@@ -11048,7 +11448,7 @@
     },
     "/api/marketplace/items/from-skill/{skill_id}": {
       "post": {
-        "description": "First publish \u2014 creates a new marketplace item.\n\nUse ``POST /items/{id}/versions/from-skill/{skill_id}`` to add a\nfollow-up version on an existing item; this endpoint always creates\na fresh item (``body.item_id`` is ignored on this route).",
+        "description": "First publish — creates a new marketplace item.\n\nUse ``POST /items/{id}/versions/from-skill/{skill_id}`` to add a\nfollow-up version on an existing item; this endpoint always creates\na fresh item (``body.item_id`` is ignored on this route).",
         "operationId": "publish_item_from_skill_api_marketplace_items_from_skill__skill_id__post",
         "parameters": [
           {
@@ -11590,7 +11990,7 @@
     },
     "/api/marketplace/items/{item_id}/enable": {
       "post": {
-        "description": "Disable \uc758 inverse \u2014 ``status: disabled \u2192 published`` \ub85c \ubcf5\uc6d0. ACL\n/ visibility / is_listed \ub294 \uadf8\ub300\ub85c \uc720\uc9c0\ub41c\ub2e4 \u2014 owner \uac00 \ub2e4\uc2dc \ub178\ucd9c\ud558\ub824\uba74\n\ubcc4\ub3c4 \ud750\ub984(visibility \ubcc0\uacbd + super_user listing approve) \uc744 \uac70\uce5c\ub2e4.",
+        "description": "Disable 의 inverse — ``status: disabled → published`` 로 복원. ACL\n/ visibility / is_listed 는 그대로 유지된다 — owner 가 다시 노출하려면\n별도 흐름(visibility 변경 + super_user listing approve) 을 거친다.",
         "operationId": "enable_item_api_marketplace_items__item_id__enable_post",
         "parameters": [
           {
@@ -11634,7 +12034,7 @@
     },
     "/api/marketplace/items/{item_id}/install": {
       "post": {
-        "description": "Install a marketplace item into the user's account.\n\nReturns ``201`` for a fresh install AND for a ``reuse_or_update``\nthat reused an existing installation \u2014 the client uses the\n``installation_id`` regardless of whether it was just created.",
+        "description": "Install a marketplace item into the user's account.\n\nReturns ``201`` for a fresh install AND for a ``reuse_or_update``\nthat reused an existing installation — the client uses the\n``installation_id`` regardless of whether it was just created.",
         "operationId": "install_item_api_marketplace_items__item_id__install_post",
         "parameters": [
           {
@@ -11945,7 +12345,7 @@
     },
     "/api/marketplace/items/{item_id}/versions/from-skill/{skill_id}": {
       "post": {
-        "description": "Add a new version to an existing item.\n\nThe publish service requires the full ``PublishSkillIn`` shape so we\nsynthesize one from the existing item's current metadata + the\ncaller's ``release_notes``. Visibility / ACL stay at the item's\ncurrent settings \u2014 use ``PATCH`` for metadata edits.",
+        "description": "Add a new version to an existing item.\n\nThe publish service requires the full ``PublishSkillIn`` shape so we\nsynthesize one from the existing item's current metadata + the\ncaller's ``release_notes``. Visibility / ACL stay at the item's\ncurrent settings — use ``PATCH`` for metadata edits.",
         "operationId": "publish_new_version_api_marketplace_items__item_id__versions_from_skill__skill_id__post",
         "parameters": [
           {
@@ -12184,7 +12584,7 @@
     },
     "/api/mcp-servers/all-tools": {
       "get": {
-        "description": "All MCP tools across the user's servers \u2014 powers the unified Tools\npicker (Tools tab \u2192 MCP source) so the user can bind individual tools\nto an agent without first navigating to each server detail page.",
+        "description": "All MCP tools across the user's servers — powers the unified Tools\npicker (Tools tab → MCP source) so the user can bind individual tools\nto an agent without first navigating to each server detail page.",
         "operationId": "list_all_user_mcp_tools_api_mcp_servers_all_tools_get",
         "responses": {
           "200": {
@@ -12210,7 +12610,7 @@
     },
     "/api/mcp-servers/export": {
       "get": {
-        "description": "Dump every server owned by the caller in import-compatible shape.\n\nSecrets are never inlined \u2014 ``env`` / ``headers`` keep their pre-resolution\ntemplate strings, and ``credential_id`` is exported as a bare reference.",
+        "description": "Dump every server owned by the caller in import-compatible shape.\n\nSecrets are never inlined — ``env`` / ``headers`` keep their pre-resolution\ntemplate strings, and ``credential_id`` is exported as a bare reference.",
         "operationId": "export_servers_api_mcp_servers_export_get",
         "responses": {
           "200": {
@@ -12232,7 +12632,7 @@
     },
     "/api/mcp-servers/from-registry": {
       "post": {
-        "description": "Create a server from a curated catalog entry.\n\nPre-fills transport / URL / stdio command / env_var template from the\nregistry, then sticks the user-supplied name and (optional)\n``credential_id`` on top. Unknown ``registry_key`` is a 400 \u2014 the\ncatalog is the source of truth.",
+        "description": "Create a server from a curated catalog entry.\n\nPre-fills transport / URL / stdio command / env_var template from the\nregistry, then sticks the user-supplied name and (optional)\n``credential_id`` on top. Unknown ``registry_key`` is a 400 — the\ncatalog is the source of truth.",
         "operationId": "create_server_from_registry_api_mcp_servers_from_registry_post",
         "requestBody": {
           "content": {
@@ -12316,7 +12716,7 @@
     },
     "/api/mcp-servers/probe": {
       "post": {
-        "description": "Connect to an MCP server without persisting it.\n\nPowers the wizard's \"preview before commit\" flow \u2014 returns the same\ntool descriptors the regular discover path would import, so the UI can\nrender results identically. No DB writes happen here, so a user who\nabandons the wizard leaves no orphan rows.",
+        "description": "Connect to an MCP server without persisting it.\n\nPowers the wizard's \"preview before commit\" flow — returns the same\ntool descriptors the regular discover path would import, so the UI can\nrender results identically. No DB writes happen here, so a user who\nabandons the wizard leaves no orphan rows.",
         "operationId": "probe_mcp_server_api_mcp_servers_probe_post",
         "requestBody": {
           "content": {
@@ -14612,7 +15012,7 @@
     },
     "/api/middlewares": {
       "get": {
-        "description": "Return the available middleware catalog.\n\ndeepagents\uac00 \uc790\ub3d9 \ucd94\uac00\ud558\ub294 \ube4c\ud2b8\uc778 \ubbf8\ub4e4\uc6e8\uc5b4\ub294 \uc81c\uc678\ud55c\ub2e4.",
+        "description": "Return the available middleware catalog.\n\ndeepagents가 자동 추가하는 빌트인 미들웨어는 제외한다.",
         "operationId": "list_middlewares_api_middlewares_get",
         "responses": {
           "200": {
@@ -14642,13 +15042,13 @@
         "operationId": "list_models_api_models_get",
         "parameters": [
           {
-            "description": "Super-user only \u2014 include rows where ``is_visible=False``. Drives the operator-facing ``/models`` admin page.",
+            "description": "Super-user only — include rows where ``is_visible=False``. Drives the operator-facing ``/models`` admin page.",
             "in": "query",
             "name": "include_hidden",
             "required": false,
             "schema": {
               "default": false,
-              "description": "Super-user only \u2014 include rows where ``is_visible=False``. Drives the operator-facing ``/models`` admin page.",
+              "description": "Super-user only — include rows where ``is_visible=False``. Drives the operator-facing ``/models`` admin page.",
               "title": "Include Hidden",
               "type": "boolean"
             }
@@ -14697,7 +15097,7 @@
         ]
       },
       "post": {
-        "description": "Register a new model row.\n\nCatalog mutations are operator-only \u2014 the model table is a global\nresource and end users should not be able to inject pricing or rebind\nproviders. 409 on duplicate ``(provider, model_name)`` so the frontend\ncan collapse \"already registered\" into a friendly toast.",
+        "description": "Register a new model row.\n\nCatalog mutations are operator-only — the model table is a global\nresource and end users should not be able to inject pricing or rebind\nproviders. 409 on duplicate ``(provider, model_name)`` so the frontend\ncan collapse \"already registered\" into a friendly toast.",
         "operationId": "create_model_api_models_post",
         "requestBody": {
           "content": {
@@ -14737,7 +15137,7 @@
     },
     "/api/models/test-preview": {
       "post": {
-        "description": "Probe an unregistered ``provider:model_name`` combo (Custom ID flow).\n\nSame semantics as ``test_registered_model`` minus the catalog lookup \u2014 the\nrequest body carries the model identity inline so the user can validate a\npasted-in ID before committing it to the table.",
+        "description": "Probe an unregistered ``provider:model_name`` combo (Custom ID flow).\n\nSame semantics as ``test_registered_model`` minus the catalog lookup — the\nrequest body carries the model identity inline so the user can validate a\npasted-in ID before committing it to the table.",
         "operationId": "test_preview_model_api_models_test_preview_post",
         "requestBody": {
           "content": {
@@ -19816,7 +20216,7 @@
     },
     "/api/shares/{share_token}/messages": {
       "get": {
-        "description": "Public messages endpoint \u2014 useful when the consumer wants the same\nbranch metadata shape as the authenticated ``/api/conversations/.../messages``\nendpoint without owning the conversation.",
+        "description": "Public messages endpoint — useful when the consumer wants the same\nbranch metadata shape as the authenticated ``/api/conversations/.../messages``\nendpoint without owning the conversation.",
         "operationId": "get_public_share_messages_api_shares__share_token__messages_get",
         "parameters": [
           {
@@ -19859,7 +20259,7 @@
     },
     "/api/skill-builder": {
       "get": {
-        "description": "\uc0ac\uc6a9\uc790\uc758 \ube4c\ub354 \uc138\uc158 \ubaa9\ub85d (\uc2a4\ud29c\ub514\uc624 \ube4c\ub354 \ud0ed/\uc778\ub371\uc2a4, Phase 2).\n\n``skill_id``\ub294 improve \uc6d0\ubcf8\uacfc create \uc0b0\ucd9c\ubb3c(finalized) \uc591\ucabd\uc5d0 \ub9e4\uce6d \u2014\n\"\uc774 \uc2a4\ud0ac\uc758 \ube4c\ub354 \uc774\ub825\"\uc744 \ud55c \ubc88\uc5d0 \uc870\ud68c\ud55c\ub2e4. updated_at \ub0b4\ub9bc\ucc28\uc21c.",
+        "description": "사용자의 빌더 세션 목록 (스튜디오 빌더 탭/인덱스, Phase 2).\n\n``skill_id``는 improve 원본과 create 산출물(finalized) 양쪽에 매칭 —\n\"이 스킬의 빌더 이력\"을 한 번에 조회한다. updated_at 내림차순.",
         "operationId": "list_skill_builder_sessions_api_skill_builder_get",
         "parameters": [
           {
@@ -19940,7 +20340,7 @@
         ]
       },
       "post": {
-        "description": "\ube4c\ub354 \ucc57 \uc138\uc158 \uc2dc\uc791 (v2, \uc2a4\ud399 AD-6).\n\n\ud788\ub4e0 \ube4c\ub354 \uc5d0\uc774\uc804\ud2b8 lazy-seed \u2192 \uc138\uc158 row \u2192 \ub4dc\ub798\ud504\ud2b8 \uc6cc\ud06c\uc2a4\ud398\uc774\uc2a4 \u2192\ndraft conversation\uc744 \ub9cc\ub4e4\uace0 ``{session, agent_id, conversation_id}``\ub97c\n\ubc18\ud658\ud55c\ub2e4. \ud504\ub860\ud2b8\ub294 \uc774 \uac12\uc73c\ub85c ``/skills/builder/[sessionId]``\uc5d0 \uc9c4\uc785\ud55c\ub2e4.",
+        "description": "빌더 챗 세션 시작 (v2, 스펙 AD-6).\n\n히든 빌더 에이전트 lazy-seed → 세션 row → 드래프트 워크스페이스 →\ndraft conversation을 만들고 ``{session, agent_id, conversation_id}``를\n반환한다. 프론트는 이 값으로 ``/skills/builder/[sessionId]``에 진입한다.",
         "operationId": "start_skill_builder_api_skill_builder_post",
         "requestBody": {
           "content": {
@@ -20068,7 +20468,7 @@
     },
     "/api/skill-builder/{session_id}/files": {
       "get": {
-        "description": "\ub4dc\ub798\ud504\ud2b8 \uc6cc\ud06c\uc2a4\ud398\uc774\uc2a4 \ud30c\uc77c \ubaa9\ub85d (\ub808\uc77c \uc18c\uc2a4 \ubdf0, M7).\n\n\uc5b4\ub311\ud130\uc640 \ub3d9\uc77c \ud544\ud130(``inputs/`` \uc81c\uc678\u00b7\ubc14\uc774\ub108\ub9ac skip)\uc758 stat \uae30\ubc18 \uc5f4\uac70\ub77c\n\uc6cc\ud06c\uc2a4\ud398\uc774\uc2a4 \uc804\uccb4 \ubc14\uc774\ud2b8\ub97c \uc77d\uc9c0 \uc54a\uace0(R2 perf), \ub514\uc2a4\ud06c \uacbd\ub85c\ub97c \uc9c1\uc811\n\ub2e4\ub8e8\uc9c0 \uc54a\uc544 traversal \ud45c\uba74\uc774 \uc5c6\ub2e4.",
+        "description": "드래프트 워크스페이스 파일 목록 (레일 소스 뷰, M7).\n\n어댑터와 동일 필터(``inputs/`` 제외·바이너리 skip)의 stat 기반 열거라\n워크스페이스 전체 바이트를 읽지 않고(R2 perf), 디스크 경로를 직접\n다루지 않아 traversal 표면이 없다.",
         "operationId": "list_skill_builder_files_api_skill_builder__session_id__files_get",
         "parameters": [
           {
@@ -20112,7 +20512,7 @@
     },
     "/api/skill-builder/{session_id}/files/content": {
       "get": {
-        "description": "\ub4dc\ub798\ud504\ud2b8 \ud30c\uc77c \ub0b4\uc6a9 \uc870\ud68c (\uc18c\uc720\uc790 \uc804\uc6a9, \ub808\uc77c \uc18c\uc2a4 \ubdf0\uc5b4).\n\n\uc694\uccad path\ub294 \uc5b4\ub311\ud130\uac00 \uc5f4\uac70\ud55c \uc815\uaddc\ud654 \uacbd\ub85c\uc640 **\uc815\ud655 \uc77c\uce58**\ud574\uc57c \ud55c\ub2e4 \u2014\n\ub514\uc2a4\ud06c resolve\uac00 \uc5c6\uc73c\ubbc0\ub85c ``../`` \ub958 traversal\uc740 \ub9e4\uce6d \uc2e4\ud328(404)\ub85c \ub05d\ub09c\ub2e4.",
+        "description": "드래프트 파일 내용 조회 (소유자 전용, 레일 소스 뷰어).\n\n요청 path는 어댑터가 열거한 정규화 경로와 **정확 일치**해야 한다 —\n디스크 resolve가 없으므로 ``../`` 류 traversal은 매칭 실패(404)로 끝난다.",
         "operationId": "get_skill_builder_file_content_api_skill_builder__session_id__files_content_get",
         "parameters": [
           {
@@ -22160,7 +22560,7 @@
     },
     "/api/skills/{skill_id}/revisions/{revision_id}/files": {
       "get": {
-        "description": "\ub9ac\ube44\uc804 \uc2a4\ub0c5\uc0f7 zip\uc758 \ud30c\uc77c \ubaa9\ub85d (\ubc84\uc804 diff/\uc18c\uc2a4 \ubcf4\uae30, Phase 2).\n\n\ub514\uc2a4\ud06c \ucd94\ucd9c \uc5c6\uc774 zip \uba54\ud0c0\ub370\uc774\ud130 + head sniff\ub9cc \uc77d\ub294\ub2e4. pruned \uc2a4\ub0c5\uc0f7\uc740\n\ud30c\uc77c\uc744 \uc81c\uacf5\ud560 \uc218 \uc5c6\uc74c\uc744 \uba85\uc2dc \ud50c\ub798\uadf8\ub85c \ubc18\ud658\ud55c\ub2e4.",
+        "description": "리비전 스냅샷 zip의 파일 목록 (버전 diff/소스 보기, Phase 2).\n\n디스크 추출 없이 zip 메타데이터 + head sniff만 읽는다. pruned 스냅샷은\n파일을 제공할 수 없음을 명시 플래그로 반환한다.",
         "operationId": "list_skill_revision_files_api_skills__skill_id__revisions__revision_id__files_get",
         "parameters": [
           {
@@ -22214,7 +22614,7 @@
     },
     "/api/skills/{skill_id}/revisions/{revision_id}/files/content": {
       "get": {
-        "description": "\ub9ac\ube44\uc804 \uc2a4\ub0c5\uc0f7\uc758 \ub2e8\uc77c \ud30c\uc77c \ud14d\uc2a4\ud2b8 (\uc18c\uc720\uc790 \uc804\uc6a9).\n\n\uc694\uccad path\ub294 zip \uc5f4\uac70 \uacbd\ub85c\uc640 **\uc815\ud655 \uc77c\uce58**\ud574\uc57c \ud55c\ub2e4 \u2014 traversal\uc740 \ub9e4\uce6d\n\uc2e4\ud328(404)\ub85c \ub05d\ub09c\ub2e4. \ubc14\uc774\ub108\ub9ac\u00b72MB \ucd08\uacfc\u00b7pruned\ub3c4 404(fail-closed).",
+        "description": "리비전 스냅샷의 단일 파일 텍스트 (소유자 전용).\n\n요청 path는 zip 열거 경로와 **정확 일치**해야 한다 — traversal은 매칭\n실패(404)로 끝난다. 바이너리·2MB 초과·pruned도 404(fail-closed).",
         "operationId": "get_skill_revision_file_content_api_skills__skill_id__revisions__revision_id__files_content_get",
         "parameters": [
           {
@@ -27656,7 +28056,7 @@
     },
     "/api/uploads/{upload_id}": {
       "get": {
-        "description": "Serve the stored file inline \u2014 used by the frontend preview cards.\n\nAuth + ownership guarded (Phase 0): only the uploader may fetch. The\nbrowser sends the session cookie on same-origin ``<img src>`` / ``<a href>``\nrequests, so previews keep working. A missing row and a row owned by\nsomeone else collapse to the **same 404** so the endpoint can't be used to\nprobe which upload ids exist (enumeration-oracle uniformity \u2014 see\nproject conventions on 404/403 parity).",
+        "description": "Serve the stored file inline — used by the frontend preview cards.\n\nAuth + ownership guarded (Phase 0): only the uploader may fetch. The\nbrowser sends the session cookie on same-origin ``<img src>`` / ``<a href>``\nrequests, so previews keep working. A missing row and a row owned by\nsomeone else collapse to the **same 404** so the endpoint can't be used to\nprobe which upload ids exist (enumeration-oracle uniformity — see\nproject conventions on 404/403 parity).",
         "operationId": "get_upload_api_uploads__upload_id__get",
         "parameters": [
           {
@@ -27698,7 +28098,7 @@
     },
     "/api/uploads/{upload_id}/content": {
       "get": {
-        "description": "Text body of a text-ish upload, for in-place previews.\n\nThe artifact preview registry's text providers (markdown/json/csv/code/text)\nfetch body text by id from the artifact content endpoint \u2014 which 404s for an\nupload id. This is the upload-scoped equivalent so attachment previews aren't\nempty. Non-text uploads (images/pdf preview from the URL directly) 404 here.",
+        "description": "Text body of a text-ish upload, for in-place previews.\n\nThe artifact preview registry's text providers (markdown/json/csv/code/text)\nfetch body text by id from the artifact content endpoint — which 404s for an\nupload id. This is the upload-scoped equivalent so attachment previews aren't\nempty. Non-text uploads (images/pdf preview from the URL directly) 404 here.",
         "operationId": "get_upload_content_api_uploads__upload_id__content_get",
         "parameters": [
           {
@@ -27916,7 +28316,7 @@
     },
     "/api/usage/daily": {
       "get": {
-        "description": "Daily spend aggregates for the current user.\n\nTenancy is enforced inside :func:`usage_aggregate.get_daily_spend` \u2014 the\n``user`` axis filters on ``DailySpendUser.user_id`` directly while\n``agent`` / ``model`` join through ``Agent.user_id`` so a user only ever\nsees rows they contributed to.",
+        "description": "Daily spend aggregates for the current user.\n\nTenancy is enforced inside :func:`usage_aggregate.get_daily_spend` — the\n``user`` axis filters on ``DailySpendUser.user_id`` directly while\n``agent`` / ``model`` join through ``Agent.user_id`` so a user only ever\nsees rows they contributed to.",
         "operationId": "get_daily_spend_api_usage_daily_get",
         "parameters": [
           {
@@ -30676,6 +31076,385 @@
       "title": "AdminTenantDetail",
       "type": "object"
     },
+    "AgUiSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "activeRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activerunid"
+        },
+        "activeTipMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activetipmessageid"
+        },
+        "checkpointId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Checkpointid"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cursor"
+        },
+        "errorCode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Errorcode"
+        },
+        "failedPhysicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Failedphysicalrunid"
+        },
+        "inputId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Inputid"
+        },
+        "inputRevision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Inputrevision"
+        },
+        "inputStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Inputstatus"
+        },
+        "interruptRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Interruptrunid"
+        },
+        "interrupts": {
+          "items": {
+            "$ref": "#/components/schemas/Interrupt"
+          },
+          "title": "Interrupts",
+          "type": "array"
+        },
+        "latestPhysicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latestphysicalrunid"
+        },
+        "messageLinks": {
+          "items": {
+            "$ref": "#/components/schemas/AgUiSnapshotMessageLink"
+          },
+          "title": "Messagelinks",
+          "type": "array"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/components/schemas/PublicMessage"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "partialOutput": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/PartialOutput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "physicalInterruptRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalinterruptrunid"
+        },
+        "physicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalrunid"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Position"
+        },
+        "projectionVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Projectionversion",
+          "type": "string"
+        },
+        "protocolVersion": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Protocolversion",
+          "type": "string"
+        },
+        "queueStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Queuestatus"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runid"
+        },
+        "runStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runstatus"
+        },
+        "subagents": {
+          "items": {
+            "$ref": "#/components/schemas/SnapshotSubagent"
+          },
+          "title": "Subagents",
+          "type": "array"
+        },
+        "threadId": {
+          "title": "Threadid",
+          "type": "string"
+        },
+        "todos": {
+          "items": {
+            "$ref": "#/components/schemas/SnapshotTodo"
+          },
+          "title": "Todos",
+          "type": "array"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "AgUiSnapshot",
+      "type": "object"
+    },
+    "AgUiSnapshotMessageLink": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpointId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Checkpointid"
+        },
+        "createdAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Createdat"
+        },
+        "messageId": {
+          "title": "Messageid",
+          "type": "string"
+        },
+        "parentCheckpointId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentcheckpointid"
+        },
+        "parentMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentmessageid"
+        },
+        "parentToolCallId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parenttoolcallid"
+        },
+        "physicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalrunid"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runid"
+        },
+        "siblingCheckpointIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Siblingcheckpointids",
+          "type": "array"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "uiMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Uimessageid"
+        }
+      },
+      "required": [
+        "messageId"
+      ],
+      "title": "AgUiSnapshotMessageLink",
+      "type": "object"
+    },
     "AgentAccessResponse": {
       "properties": {
         "created_at": {
@@ -31350,7 +32129,7 @@
       "type": "object"
     },
     "AgentBrief": {
-      "description": "\uac00\ubcbc\uc6b4 \uc5d0\uc774\uc804\ud2b8 \uce74\ub4dc\uc6a9 \ud45c\ud604 (\uc11c\ube0c\uc5d0\uc774\uc804\ud2b8 \ubaa9\ub85d \ub4f1).",
+      "description": "가벼운 에이전트 카드용 표현 (서브에이전트 목록 등).",
       "properties": {
         "description": {
           "anyOf": [
@@ -31703,25 +32482,25 @@
       "type": "object"
     },
     "AgentCreationIntent": {
-      "description": "\uc758\ub3c4 \ubd84\uc11d \uc11c\ube0c\uc5d0\uc774\uc804\ud2b8\uc758 \uad6c\uc870\ud654\ub41c \ucd9c\ub825.",
+      "description": "의도 분석 서브에이전트의 구조화된 출력.",
       "properties": {
         "agent_description": {
-          "description": "\uc5d0\uc774\uc804\ud2b8\uc758 \uc5ed\ud560\uacfc \uae30\ub2a5\uc5d0 \ub300\ud55c \uc0c1\uc138 \uc124\uba85 (3~5\ubb38\uc7a5)",
+          "description": "에이전트의 역할과 기능에 대한 상세 설명 (3~5문장)",
           "title": "Agent Description",
           "type": "string"
         },
         "agent_name": {
-          "description": "\uc601\ubb38 \uc5d0\uc774\uc804\ud2b8 \uc774\ub984",
+          "description": "영문 에이전트 이름",
           "title": "Agent Name",
           "type": "string"
         },
         "agent_name_ko": {
-          "description": "\ud55c\uae00 \uc5d0\uc774\uc804\ud2b8 \uc774\ub984",
+          "description": "한글 에이전트 이름",
           "title": "Agent Name Ko",
           "type": "string"
         },
         "constraints": {
-          "description": "\uc81c\uc57d \uc870\uac74",
+          "description": "제약 조건",
           "items": {
             "type": "string"
           },
@@ -31730,23 +32509,23 @@
         },
         "identity_mode": {
           "default": "per_user",
-          "description": "credential \uc0ac\uc6a9 \uc8fc\uccb4: per_user \ub610\ub294 fixed",
+          "description": "credential 사용 주체: per_user 또는 fixed",
           "title": "Identity Mode",
           "type": "string"
         },
         "output_style": {
-          "default": "\uac04\ub2e8\ud55c \uc694\uc57d\uacfc \uc8fc\uc694 \ud3ec\uc778\ud2b8",
-          "description": "\uacb0\uacfc\ubb3c \ud615\ud0dc",
+          "default": "간단한 요약과 주요 포인트",
+          "description": "결과물 형태",
           "title": "Output Style",
           "type": "string"
         },
         "primary_task_type": {
-          "description": "\uc5d0\uc774\uc804\ud2b8\uc758 \ud575\uc2ec \uc791\uc5c5 \ud55c \ubb38\uc7a5",
+          "description": "에이전트의 핵심 작업 한 문장",
           "title": "Primary Task Type",
           "type": "string"
         },
         "required_capabilities": {
-          "description": "\ud544\uc218 \uae30\ub2a5",
+          "description": "필수 기능",
           "items": {
             "type": "string"
           },
@@ -31754,19 +32533,19 @@
           "type": "array"
         },
         "response_tone": {
-          "default": "\uce5c\uadfc\ud558\uace0 \uce90\uc8fc\uc5bc\ud55c \uc5b4\uc870",
-          "description": "\uc751\ub2f5 \ud1a4",
+          "default": "친근하고 캐주얼한 어조",
+          "description": "응답 톤",
           "title": "Response Tone",
           "type": "string"
         },
         "tool_preferences": {
           "default": "",
-          "description": "\uc120\ud638\ud558\ub294 \ub3c4\uad6c \uc720\ud615",
+          "description": "선호하는 도구 유형",
           "title": "Tool Preferences",
           "type": "string"
         },
         "use_cases": {
-          "description": "\uc0ac\uc6a9 \uc0ac\ub840 (\ucd5c\uc18c 1\uac1c)",
+          "description": "사용 사례 (최소 1개)",
           "items": {
             "type": "string"
           },
@@ -34766,7 +35545,7 @@
       "type": "object"
     },
     "AssistantMessageRequest": {
-      "description": "POST /api/agents/{agent_id}/assistant/message \u2014 \uba54\uc2dc\uc9c0 \uc694\uccad.",
+      "description": "POST /api/agents/{agent_id}/assistant/message — 메시지 요청.",
       "properties": {
         "content": {
           "maxLength": 4000,
@@ -34783,7 +35562,7 @@
               "type": "null"
             }
           ],
-          "description": "\ud074\ub77c\uc774\uc5b8\ud2b8\uac00 \uc0dd\uc131\ud55c \uc138\uc158 ID (crypto.randomUUID). \uac19\uc740 session_id\ub294 \uac19\uc740 \ub300\ud654\ub97c \uc720\uc9c0, \uc5c6\uc73c\uba74 agent_id \uae30\ubc18 \uae30\ubcf8\uac12 \uc0ac\uc6a9.",
+          "description": "클라이언트가 생성한 세션 ID (crypto.randomUUID). 같은 session_id는 같은 대화를 유지, 없으면 agent_id 기반 기본값 사용.",
           "title": "Session Id"
         }
       },
@@ -35300,7 +36079,7 @@
       "type": "object"
     },
     "BuilderMessageRequest": {
-      "description": "Builder v3 \u2014 \uba54\uc2dc\uc9c0 \uc804\uc1a1 \uc694\uccad.",
+      "description": "Builder v3 — 메시지 전송 요청.",
       "properties": {
         "content": {
           "maxLength": 4000,
@@ -35317,10 +36096,10 @@
     },
     "BuilderResumeRequest": {
       "additionalProperties": false,
-      "description": "Builder v3 \u2014 interrupt \uc751\ub2f5 \uc694\uccad. \ud45c\uc900 HiTL wire (ADR-012).\n\n\ud45c\uc900 ``decisions: list[Decision]`` \ub9cc \uc218\uc6a9\ud55c\ub2e4 (clean break \u2014 extra\nfield \ub294 422). router \uac00 ``decisions_to_builder_response`` \uc5b4\ub311\ud130\ub85c\nbuilder graph \uac00 \uae30\ub300\ud558\ub294 native shape (dict | str) \ub85c \ubcc0\ud658\ud55c\ub2e4.\n\nDecision \u2192 builder native \ubcc0\ud658:\n- ``approve``                   \u2192 ``{\"approved\": True}``      (approval phase)\n- ``reject(message)``           \u2192 ``{\"approved\": False, \"revision_message\": ...}``\n- ``respond(message)``          \u2192 ``\"...\"``                    (ask_user / image_*)\n- ``edit(edited_action)``       \u2192 ``{\"approved\": True}``       (builder \ub294 edit \ubbf8\uc0ac\uc6a9)",
+      "description": "Builder v3 — interrupt 응답 요청. 표준 HiTL wire (ADR-012).\n\n표준 ``decisions: list[Decision]`` 만 수용한다 (clean break — extra\nfield 는 422). router 가 ``decisions_to_builder_response`` 어댑터로\nbuilder graph 가 기대하는 native shape (dict | str) 로 변환한다.\n\nDecision → builder native 변환:\n- ``approve``                   → ``{\"approved\": True}``      (approval phase)\n- ``reject(message)``           → ``{\"approved\": False, \"revision_message\": ...}``\n- ``respond(message)``          → ``\"...\"``                    (ask_user / image_*)\n- ``edit(edited_action)``       → ``{\"approved\": True}``       (builder 는 edit 미사용)",
       "properties": {
         "decisions": {
-          "description": "\ud45c\uc900 HiTL decisions",
+          "description": "표준 HiTL decisions",
           "items": {
             "$ref": "#/components/schemas/Decision"
           },
@@ -35360,7 +36139,7 @@
       "type": "object"
     },
     "BuilderSessionResponse": {
-      "description": "\ube4c\ub4dc \uc138\uc158 \uc0c1\ud0dc \uc751\ub2f5.",
+      "description": "빌드 세션 상태 응답.",
       "properties": {
         "agent_id": {
           "anyOf": [
@@ -35483,7 +36262,7 @@
       "type": "object"
     },
     "BuilderStartRequest": {
-      "description": "POST /api/builder/start \u2014 \ube4c\ub4dc \uc138\uc158 \uc2dc\uc791 \uc694\uccad.",
+      "description": "POST /api/builder/start — 빌드 세션 시작 요청.",
       "properties": {
         "user_request": {
           "maxLength": 2000,
@@ -35499,7 +36278,7 @@
       "type": "object"
     },
     "BuilderStatus": {
-      "description": "\ube4c\ub4dc \uc138\uc158 \uc0c1\ud0dc.",
+      "description": "빌드 세션 상태.",
       "enum": [
         "building",
         "streaming",
@@ -39416,7 +40195,7 @@
       "type": "object"
     },
     "Decision": {
-      "description": "\ub2e8\uc77c tool_call\uc5d0 \ub300\ud55c \uc778\uac04 \uacb0\uc815.\n\nLangChain ``HumanInTheLoopMiddleware``\uc758 ``HITLResponse.decisions[i]``\uc640\n\ub3d9\uc77c shape (1:1 \ub9e4\uce6d). router\uc5d0\uc11c \uac80\uc99d\ud55c \ub4a4 ``model_dump(exclude_none=True)``\n\ub85c dict \uc9c1\ub82c\ud654\ud558\uc5ec ``Command(resume={\"decisions\": [dict, ...]})``\ub85c \uc1a1\uc2e0\ud55c\ub2e4\n(LangChain \ubbf8\ub4e4\uc6e8\uc5b4\ub294 ``NotRequired`` TypedDict\ub97c \ubc1b\uc74c).\n\n- ``approve``: \ucd94\uac00 \ud544\ub4dc \uc5c6\uc74c.\n- ``edit``: ``edited_action={\"name\": str, \"args\": dict}`` \ud544\uc218.\n- ``reject``: ``message`` \uc120\ud0dd (\uc5c6\uc73c\uba74 \ubbf8\ub4e4\uc6e8\uc5b4\uac00 \uae30\ubcf8 \uba54\uc2dc\uc9c0 \uc0dd\uc131).\n- ``respond``: ``message`` \ud544\uc218 (synthetic ToolMessage content).",
+      "description": "단일 tool_call에 대한 인간 결정.\n\nLangChain ``HumanInTheLoopMiddleware``의 ``HITLResponse.decisions[i]``와\n동일 shape (1:1 매칭). router에서 검증한 뒤 ``model_dump(exclude_none=True)``\n로 dict 직렬화하여 ``Command(resume={\"decisions\": [dict, ...]})``로 송신한다\n(LangChain 미들웨어는 ``NotRequired`` TypedDict를 받음).\n\n- ``approve``: 추가 필드 없음.\n- ``edit``: ``edited_action={\"name\": str, \"args\": dict}`` 필수.\n- ``reject``: ``message`` 선택 (없으면 미들웨어가 기본 메시지 생성).\n- ``respond``: ``message`` 필수 (synthetic ToolMessage content).",
       "properties": {
         "attempt": {
           "anyOf": [
@@ -40045,7 +40824,7 @@
       "type": "object"
     },
     "DraftAgentConfig": {
-      "description": "\ube4c\ub4dc \ud30c\uc774\ud504\ub77c\uc778 \ucd5c\uc885 \uc0b0\ucd9c\ubb3c \u2014 \uc0ac\uc6a9\uc790 \ud655\uc778\uc6a9 \uc5d0\uc774\uc804\ud2b8 \uc124\uc815 \ud504\ub9ac\ubdf0.",
+      "description": "빌드 파이프라인 최종 산출물 — 사용자 확인용 에이전트 설정 프리뷰.",
       "properties": {
         "description": {
           "title": "Description",
@@ -40057,7 +40836,7 @@
           "type": "string"
         },
         "middlewares": {
-          "description": "\ubbf8\ub4e4\uc6e8\uc5b4 \uc774\ub984 \ubaa9\ub85d",
+          "description": "미들웨어 이름 목록",
           "items": {
             "type": "string"
           },
@@ -40087,7 +40866,7 @@
           "type": "string"
         },
         "tools": {
-          "description": "\ub3c4\uad6c \uc774\ub984 \ubaa9\ub85d",
+          "description": "도구 이름 목록",
           "items": {
             "type": "string"
           },
@@ -40488,7 +41267,7 @@
       "type": "object"
     },
     "FileItem": {
-      "description": "Unified conversation file-list entry (D12): generated artifact OR sent\nattachment, normalized to one shape.\n\n``GET /api/conversations/{id}/files`` merges generated artifacts and sent\nattachments into a single created_at-sorted stream. ``source`` tags the\norigin and ``editable`` is false for attachments (read-only, D5). Both\nsurfaces dispatch through the same frontend preview registry via\n``mime_type`` / ``extension`` / ``preview_url`` (unsupported \u2192 download\nfallback).",
+      "description": "Unified conversation file-list entry (D12): generated artifact OR sent\nattachment, normalized to one shape.\n\n``GET /api/conversations/{id}/files`` merges generated artifacts and sent\nattachments into a single created_at-sorted stream. ``source`` tags the\norigin and ``editable`` is false for attachments (read-only, D5). Both\nsurfaces dispatch through the same frontend preview registry via\n``mime_type`` / ``extension`` / ``preview_url`` (unsupported → download\nfallback).",
       "properties": {
         "created_at": {
           "title": "Created At",
@@ -42965,6 +43744,94 @@
       "title": "InstallationResponse",
       "type": "object"
     },
+    "Interrupt": {
+      "additionalProperties": true,
+      "description": "Something a run needs from outside before it can continue, such as an\napproval or a missing value.",
+      "properties": {
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expiresat"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "responseSchema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Responseschema"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCallId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Toolcallid"
+        }
+      },
+      "required": [
+        "id",
+        "reason"
+      ],
+      "title": "Interrupt",
+      "type": "object"
+    },
     "InvitationAccept": {
       "additionalProperties": false,
       "properties": {
@@ -43630,7 +44497,7 @@
       "type": "object"
     },
     "MarketplaceInstallationOut": {
-      "description": "Full installation row response (Spec \u00a710.3).",
+      "description": "Full installation row response (Spec §10.3).",
       "properties": {
         "id": {
           "format": "uuid",
@@ -43846,7 +44713,7 @@
       "type": "object"
     },
     "MarketplaceItemOut": {
-      "description": "Catalog row + detail response (Spec \u00a710.8).\n\nRead-only side. Service layer constructs this via ``derive_*`` helpers\nso the ORM/Pydantic mapping never leaks privileged columns\n(moderation_status, ACL membership).",
+      "description": "Catalog row + detail response (Spec §10.8).\n\nRead-only side. Service layer constructs this via ``derive_*`` helpers\nso the ORM/Pydantic mapping never leaks privileged columns\n(moderation_status, ACL membership).",
       "properties": {
         "acl_user_ids": {
           "anyOf": [
@@ -44069,7 +44936,7 @@
       "type": "object"
     },
     "MarketplaceItemPatchIn": {
-      "description": "Metadata-only PATCH (no version mutation).\n\n``visibility`` \ub294 \uc0c8 version \uc744 \ub9cc\ub4e4\uc9c0 \uc54a\ub294 \uacbd\ub7c9 \uc804\ud658 \u2014 public \u2194 private\n\u2194 unlisted \ud1a0\uae00 (\uc608: \uc0ac\uc6a9\uc790\uac00 \uc798\ubabb public \uc73c\ub85c publish \ud55c \uac83\uc744 private\n\uc73c\ub85c \ub418\ub3cc\ub9ac\ub294 \uacbd\ub85c). ``restricted`` \ub85c \ubc14\uafb8\ub824\uba74 ACL endpoint \ub3c4 \ud568\uaed8\n\ud638\ucd9c\ud574\uc57c \ud55c\ub2e4 (ACL \ube44\uc5b4 \uc788\uc73c\uba74 ``marketplace_acl_required``).",
+      "description": "Metadata-only PATCH (no version mutation).\n\n``visibility`` 는 새 version 을 만들지 않는 경량 전환 — public ↔ private\n↔ unlisted 토글 (예: 사용자가 잘못 public 으로 publish 한 것을 private\n으로 되돌리는 경로). ``restricted`` 로 바꾸려면 ACL endpoint 도 함께\n호출해야 한다 (ACL 비어 있으면 ``marketplace_acl_required``).",
       "properties": {
         "categories": {
           "anyOf": [
@@ -44230,7 +45097,7 @@
       "type": "object"
     },
     "MarketplaceVersionDetail": {
-      "description": "Full version payload (Spec \u00a710.2). For ``GET /versions/{id}``.",
+      "description": "Full version payload (Spec §10.2). For ``GET /versions/{id}``.",
       "properties": {
         "content_hash": {
           "title": "Content Hash",
@@ -44738,7 +45605,7 @@
       "type": "object"
     },
     "McpExportEntry": {
-      "description": "A single entry in the export payload \u2014 credentials are referenced\nby id only (the secret payload itself is never exported).",
+      "description": "A single entry in the export payload — credentials are referenced\nby id only (the secret payload itself is never exported).",
       "properties": {
         "args": {
           "items": {},
@@ -44825,7 +45692,7 @@
       "type": "object"
     },
     "McpImportEntry": {
-      "description": "One entry inside ``mcpServers`` map.\n\nMatches Claude Desktop's ``claude_desktop_config.json`` shape \u2014 when\n``transport`` is omitted, ``stdio`` is inferred from ``command`` /\n``args``. ``url`` + ``transport`` (``sse`` / ``streamable_http``) is the\nMoldy extension for network-bound servers; ``credential_id`` lets the\ncaller bind a previously stored credential by id.",
+      "description": "One entry inside ``mcpServers`` map.\n\nMatches Claude Desktop's ``claude_desktop_config.json`` shape — when\n``transport`` is omitted, ``stdio`` is inferred from ``command`` /\n``args``. ``url`` + ``transport`` (``sse`` / ``streamable_http``) is the\nMoldy extension for network-bound servers; ``credential_id`` lets the\ncaller bind a previously stored credential by id.",
       "properties": {
         "args": {
           "items": {},
@@ -45310,7 +46177,7 @@
       "type": "object"
     },
     "McpServerCreateFromRegistry": {
-      "description": "Body for ``POST /api/mcp-servers/from-registry``.\n\nHydrates a :class:`McpServer` row from a registry entry. ``name`` lets\nthe user override the display name (defaults to the registry's\n``display_name`` when omitted on the client side); ``credential_id`` is\noptional \u2014 users can register the server first and bind a credential\nlater via PATCH.",
+      "description": "Body for ``POST /api/mcp-servers/from-registry``.\n\nHydrates a :class:`McpServer` row from a registry entry. ``name`` lets\nthe user override the display name (defaults to the registry's\n``display_name`` when omitted on the client side); ``credential_id`` is\noptional — users can register the server first and bind a credential\nlater via PATCH.",
       "properties": {
         "credential_id": {
           "anyOf": [
@@ -46285,7 +47152,7 @@
       "type": "object"
     },
     "McpToolWithServerResponse": {
-      "description": "Flat row used by the unified agent Tools picker \u2014 embeds the parent\nserver's id/name so the UI can group / label without an extra fetch.",
+      "description": "Flat row used by the unified agent Tools picker — embeds the parent\nserver's id/name so the UI can group / label without an extra fetch.",
       "properties": {
         "description": {
           "anyOf": [
@@ -46581,7 +47448,7 @@
       "type": "object"
     },
     "MemoryActivityOut": {
-      "description": "One of the person's own memory audit events (plan 15, 5.9 \ud65c\ub3d9 tab); no text.",
+      "description": "One of the person's own memory audit events (plan 15, 5.9 활동 tab); no text.",
       "properties": {
         "action": {
           "title": "Action",
@@ -46729,7 +47596,7 @@
       "type": "object"
     },
     "MemoryDeletionReceipt": {
-      "description": "What a delete erased and what it cannot reach (plan 15, 5.7 \uc0ad\uc81c \uc601\uc218\uc99d).",
+      "description": "What a delete erased and what it cannot reach (plan 15, 5.7 삭제 영수증).",
       "properties": {
         "deleted": {
           "title": "Deleted",
@@ -48477,7 +49344,7 @@
       "type": "object"
     },
     "MessageAttachmentBrief": {
-      "description": "Inline attachment metadata exposed alongside ``MessageResponse``.\n\nThe frontend renders thumbnails / download cards from this. Only the\nfields needed for preview are surfaced \u2014 full row goes through\n``/api/uploads/{id}``.",
+      "description": "Inline attachment metadata exposed alongside ``MessageResponse``.\n\nThe frontend renders thumbnails / download cards from this. Only the\nfields needed for preview are surfaced — full row goes through\n``/api/uploads/{id}``.",
       "properties": {
         "filename": {
           "title": "Filename",
@@ -48512,7 +49379,7 @@
       "type": "object"
     },
     "MessageAttachmentRef": {
-      "description": "Frontend \u2192 backend reference: link an existing upload row to a message.\n\nOnly the upload id is needed; the row already carries the URL/mime/size\nand is reused when echoed back via ``MessageResponse.attachments``.",
+      "description": "Frontend → backend reference: link an existing upload row to a message.\n\nOnly the upload id is needed; the row already carries the URL/mime/size\nand is reused when echoed back via ``MessageResponse.attachments``.",
       "properties": {
         "id": {
           "format": "uuid",
@@ -48931,7 +49798,7 @@
       "type": "object"
     },
     "MiddlewareRecommendation": {
-      "description": "\ubbf8\ub4e4\uc6e8\uc5b4 \ucd94\ucc9c \uc11c\ube0c\uc5d0\uc774\uc804\ud2b8\uc758 \uac1c\ubcc4 \ucd94\ucc9c \ud56d\ubaa9.",
+      "description": "미들웨어 추천 서브에이전트의 개별 추천 항목.",
       "properties": {
         "description": {
           "title": "Description",
@@ -48985,7 +49852,7 @@
       "type": "object"
     },
     "ModelCreate": {
-      "description": "Payload for ``POST /api/models`` \u2014 register a discovered or custom model.\n\nPricing fields are optional because catalog-less custom IDs are valid\n(``source='manual'``); the user can fill them in via PATCH later.",
+      "description": "Payload for ``POST /api/models`` — register a discovered or custom model.\n\nPricing fields are optional because catalog-less custom IDs are valid\n(``source='manual'``); the user can fill them in via PATCH later.",
       "properties": {
         "base_url": {
           "anyOf": [
@@ -49411,7 +50278,7 @@
       "type": "object"
     },
     "ModelUpdate": {
-      "description": "Patch a model \u2014 every field is optional. Pricing/meta override-friendly.",
+      "description": "Patch a model — every field is optional. Pricing/meta override-friendly.",
       "properties": {
         "base_url": {
           "anyOf": [
@@ -51032,6 +51899,55 @@
       "title": "OwnershipTransferResult",
       "type": "object"
     },
+    "PartialOutput": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "maxLength": 16384,
+          "title": "Text",
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/components/schemas/PartialTool"
+          },
+          "maxItems": 32,
+          "title": "Tools",
+          "type": "array"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "tools",
+        "truncated"
+      ],
+      "title": "PartialOutput",
+      "type": "object"
+    },
+    "PartialTool": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/components/schemas/ToolState"
+        }
+      },
+      "required": [
+        "name",
+        "state"
+      ],
+      "title": "PartialTool",
+      "type": "object"
+    },
     "PendingCount": {
       "properties": {
         "count": {
@@ -51610,6 +52526,31 @@
       ],
       "title": "PublicChatResourceReference",
       "type": "object"
+    },
+    "PublicMessage": {
+      "discriminator": {
+        "mapping": {
+          "activity": "#/components/schemas/ActivityMessage",
+          "assistant": "#/components/schemas/AssistantMessage",
+          "tool": "#/components/schemas/ToolMessage",
+          "user": "#/components/schemas/UserMessage"
+        },
+        "propertyName": "role"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/components/schemas/UserMessage"
+        },
+        {
+          "$ref": "#/components/schemas/AssistantMessage"
+        },
+        {
+          "$ref": "#/components/schemas/ToolMessage"
+        },
+        {
+          "$ref": "#/components/schemas/ActivityMessage"
+        }
+      ]
     },
     "PublicationRejection": {
       "additionalProperties": false,
@@ -52611,7 +53552,7 @@
       "type": "object"
     },
     "RefreshResponse": {
-      "description": "Body for /api/auth/refresh \u2014 minimal since cookies do the heavy lifting.",
+      "description": "Body for /api/auth/refresh — minimal since cookies do the heavy lifting.",
       "properties": {
         "csrf_token": {
           "title": "Csrf Token",
@@ -53284,7 +54225,7 @@
       "type": "object"
     },
     "ResumeRequest": {
-      "description": "HiTL resume \uc694\uccad. LangChain ``HITLResponse`` \ud638\ud658 \ud45c\uc900 wire.",
+      "description": "HiTL resume 요청. LangChain ``HITLResponse`` 호환 표준 wire.",
       "properties": {
         "decisions": {
           "items": {
@@ -54027,7 +54968,7 @@
       "type": "object"
     },
     "SharedConversationView": {
-      "description": "Public read-only conversation snapshot returned by ``/api/shares/{token}``.\n\n``traces`` (W6): turn\ubcc4 SSE event \uc2dc\ud000\uc2a4. \uacf5\uac1c \ud398\uc774\uc9c0\uc5d0\uc11c \ub3c4\uad6c/Skill \uce69\n\ub80c\ub354\uc5d0 \uc0ac\uc6a9\ub41c\ub2e4. \ube48 \ubc30\uc5f4\uc774\uba74 trace\uac00 \uc5c6\ub294 (W5 \uba38\uc9c0 \uc774\uc804\uc5d0 \ub9cc\ub4e4\uc5b4\uc9c4) \ub300\ud654.",
+      "description": "Public read-only conversation snapshot returned by ``/api/shares/{token}``.\n\n``traces`` (W6): turn별 SSE event 시퀀스. 공개 페이지에서 도구/Skill 칩\n렌더에 사용된다. 빈 배열이면 trace가 없는 (W5 머지 이전에 만들어진) 대화.",
       "properties": {
         "agent": {
           "$ref": "#/components/schemas/SharedAgentBrief"
@@ -54159,7 +55100,7 @@
       "type": "object"
     },
     "SkillBuilderFileContentResponse": {
-      "description": "\ub4dc\ub798\ud504\ud2b8 \ud30c\uc77c \ub0b4\uc6a9 (\uc18c\uc720\uc790 \uc804\uc6a9 \uc870\ud68c \u2014 \ub808\uc77c \uc18c\uc2a4 \ubdf0\uc5b4).",
+      "description": "드래프트 파일 내용 (소유자 전용 조회 — 레일 소스 뷰어).",
       "properties": {
         "content": {
           "title": "Content",
@@ -54183,7 +55124,7 @@
       "type": "object"
     },
     "SkillBuilderFileEntry": {
-      "description": "\ub4dc\ub798\ud504\ud2b8 \uc6cc\ud06c\uc2a4\ud398\uc774\uc2a4 \ud30c\uc77c \uc694\uc57d (\ub808\uc77c \uc18c\uc2a4 \ubdf0, M7) \u2014 \ub0b4\uc6a9 \uc5c6\uc74c.",
+      "description": "드래프트 워크스페이스 파일 요약 (레일 소스 뷰, M7) — 내용 없음.",
       "properties": {
         "path": {
           "title": "Path",
@@ -54231,7 +55172,7 @@
       "type": "string"
     },
     "SkillBuilderSessionBrief": {
-      "description": "\uc138\uc158 \ubaa9\ub85d\uc6a9 \uacbd\ub7c9 \uc751\ub2f5 \u2014 draft/snapshot \ub4f1 \ubb34\uac70\uc6b4 JSON \uceec\ub7fc \uc81c\uc678.",
+      "description": "세션 목록용 경량 응답 — draft/snapshot 등 무거운 JSON 컬럼 제외.",
       "properties": {
         "conversation_id": {
           "anyOf": [
@@ -55880,7 +56821,7 @@
       "type": "object"
     },
     "SkillMetadataUpdate": {
-      "description": "Patch metadata fields only \u2014 content edits use a separate endpoint.",
+      "description": "Patch metadata fields only — content edits use a separate endpoint.",
       "properties": {
         "description": {
           "anyOf": [
@@ -56585,6 +57526,190 @@
         "daily"
       ],
       "title": "SkillUsageSummaryResponse",
+      "type": "object"
+    },
+    "SnapshotSubagent": {
+      "additionalProperties": false,
+      "properties": {
+        "childTaskId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Childtaskid"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error"
+        },
+        "interruptIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Interruptids",
+          "type": "array"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parentMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentmessageid"
+        },
+        "parentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentrunid"
+        },
+        "parentSubagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentsubagentrunid"
+        },
+        "parentToolCallId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parenttoolcallid"
+        },
+        "physicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalrunid"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runid"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "completed",
+            "failed",
+            "interrupted",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "title": "Subagentrunid",
+          "type": "string"
+        },
+        "todos": {
+          "items": {
+            "$ref": "#/components/schemas/SnapshotTodo"
+          },
+          "title": "Todos",
+          "type": "array"
+        }
+      },
+      "required": [
+        "subagentRunId",
+        "name",
+        "status"
+      ],
+      "title": "SnapshotSubagent",
+      "type": "object"
+    },
+    "SnapshotTodo": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "completed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "status"
+      ],
+      "title": "SnapshotTodo",
       "type": "object"
     },
     "SsoConnectionList": {
@@ -57563,7 +58688,7 @@
       "type": "object"
     },
     "SystemLlmSettingUpdate": {
-      "description": "PUT body \u2014 selects (or clears) the credential/model for a role.",
+      "description": "PUT body — selects (or clears) the credential/model for a role.",
       "properties": {
         "credential_id": {
           "anyOf": [
@@ -60671,7 +61796,7 @@
       "type": "object"
     },
     "TokenUsageBreakdown": {
-      "description": "W7 \u2014 \uba54\uc2dc\uc9c0\ubcc4 4\uc885 \ud1a0\ud070 \ubd84\ud574 (LangChain ``usage_metadata`` \ud3c9\ud0c4\ud654).\n\nLangChain\uc740 ``input_token_details``\ub85c cache_creation/cache_read\ub97c \ubd84\ub9ac\ud574\n\uc804\ub2ec\ud55c\ub2e4. \ud074\ub77c\uc774\uc5b8\ud2b8 hover \ud31d\uc624\ubc84\uac00 \uc9c1\uc811 \ucc38\uc870\ud558\ubbc0\ub85c \ud3c9\ud0c4\ud55c 4 \ud544\ub4dc + \ube44\uc6a9\n\ud615\ud0dc\ub85c \uc9c1\ub82c\ud654. \ubaa8\ub4e0 \ud544\ub4dc 0\uc774\uba74 \uc751\ub2f5\uc5d0\uc11c ``null`` \uc790\ub9ac\ub97c \ubc18\ud658\ud558\uace0 \ud074\ub77c\uc774\uc5b8\ud2b8\ub294\n\ub80c\ub354 \uc790\uccb4\ub97c \uac74\ub108\ub6f4\ub2e4.",
+      "description": "W7 — 메시지별 4종 토큰 분해 (LangChain ``usage_metadata`` 평탄화).\n\nLangChain은 ``input_token_details``로 cache_creation/cache_read를 분리해\n전달한다. 클라이언트 hover 팝오버가 직접 참조하므로 평탄한 4 필드 + 비용\n형태로 직렬화. 모든 필드 0이면 응답에서 ``null`` 자리를 반환하고 클라이언트는\n렌더 자체를 건너뛴다.",
       "properties": {
         "cache_creation_tokens": {
           "title": "Cache Creation Tokens",
@@ -61112,7 +62237,7 @@
       "type": "object"
     },
     "ToolApprovalView": {
-      "description": "The agent's settings, the company cap and the effective table (\"\uc2e4\uc81c \uc801\uc6a9\").",
+      "description": "The agent's settings, the company cap and the effective table (\"실제 적용\").",
       "properties": {
         "company_actions": {
           "additionalProperties": {
@@ -62157,7 +63282,7 @@
       "type": "object"
     },
     "ToolRecommendation": {
-      "description": "\ub3c4\uad6c \ucd94\ucc9c \uc11c\ube0c\uc5d0\uc774\uc804\ud2b8\uc758 \uac1c\ubcc4 \ucd94\ucc9c \ud56d\ubaa9.\n\n``kind`` \ub294 \ub9e4\uce6d \ub300\uc0c1 \uce74\ud14c\uace0\ub9ac\ub97c \uba85\uc2dc\ud55c\ub2e4 \u2014 phase8 confirm \ub2e8\uacc4\uac00 \uc885\ub958\ubcc4\n\ub85c \ub2e4\ub978 \ud14c\uc774\ube14/\ub9c1\ud06c\ub97c \uc0ac\uc6a9\ud558\ubbc0\ub85c (Tool / McpTool / Skill). \uae30\ubcf8\uac12\uc740\n``\"tool\"`` \ub85c backward compat \ubcf4\uc7a5 \u2014 \uae30\uc874 LLM \uc751\ub2f5\uc774 kind \ub97c \ub204\ub77d\ud574\ub3c4\nTool \ub9e4\uce6d \uacbd\ub85c\ub85c \ud758\ub7ec\uac04\ub2e4.",
+      "description": "도구 추천 서브에이전트의 개별 추천 항목.\n\n``kind`` 는 매칭 대상 카테고리를 명시한다 — phase8 confirm 단계가 종류별\n로 다른 테이블/링크를 사용하므로 (Tool / McpTool / Skill). 기본값은\n``\"tool\"`` 로 backward compat 보장 — 기존 LLM 응답이 kind 를 누락해도\nTool 매칭 경로로 흘러간다.",
       "properties": {
         "description": {
           "title": "Description",
@@ -62243,6 +63368,14 @@
       ],
       "title": "ToolRunResponse",
       "type": "object"
+    },
+    "ToolState": {
+      "enum": [
+        "unknown",
+        "started",
+        "completed"
+      ],
+      "type": "string"
     },
     "TraceEvent": {
       "additionalProperties": true,
@@ -63142,7 +64275,7 @@
       "type": "object"
     },
     "TurnTraceResponse": {
-      "description": "One assistant turn's trace \u2014 events array + bookkeeping.\n\nUsed by W6 (shared page chip rendering) and the future W3-out resume\nendpoint to read the full event sequence.\n\n``linked_message_ids``: \uc774 turn\uc5d0 \ub178\ucd9c\ub41c assistant \uba54\uc2dc\uc9c0\uc758 parsed UUID\n(``MessageResponse.id``\uc640 \ub3d9\uc77c \ud615\uc2dd). \ube48 \ubc30\uc5f4/None\uc774\uba74 frontend\ub294\nchronological turn \uc21c\uc11c\ub85c \ud3f4\ubc31.",
+      "description": "One assistant turn's trace — events array + bookkeeping.\n\nUsed by W6 (shared page chip rendering) and the future W3-out resume\nendpoint to read the full event sequence.\n\n``linked_message_ids``: 이 turn에 노출된 assistant 메시지의 parsed UUID\n(``MessageResponse.id``와 동일 형식). 빈 배열/None이면 frontend는\nchronological turn 순서로 폴백.",
       "properties": {
         "assistant_msg_id": {
           "title": "Assistant Msg Id",
@@ -63965,7 +65098,7 @@
       "type": "object"
     },
     "UserResponse": {
-      "description": "User projection returned by auth endpoints + /me.\n\nMirrors ``CurrentUser`` plus a few read-only audit fields. Excludes\n``hashed_password`` and any reset/verify tokens \u2014 those never cross\nthe API boundary.",
+      "description": "User projection returned by auth endpoints + /me.\n\nMirrors ``CurrentUser`` plus a few read-only audit fields. Excludes\n``hashed_password`` and any reset/verify tokens — those never cross\nthe API boundary.",
       "properties": {
         "avatar_color": {
           "default": "mint",

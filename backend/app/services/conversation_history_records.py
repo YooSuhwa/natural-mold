@@ -12,7 +12,7 @@ from app.models.message_event import MessageEvent, MessageEventChunk
 from app.schemas.conversation_history import JsonValue
 from app.services import trace_storage
 from app.services.conversation_history_projection import (
-    canonical_payload_sha256,
+    retained_event_sha256,
     sanitize_event_payloads,
 )
 from app.services.conversation_history_types import EventProjection
@@ -56,7 +56,7 @@ async def build_event_projections(
             retained = events[offset : offset + length]
             rows.append(
                 EventProjection(
-                    record.assistant_msg_id, retained, canonical_payload_sha256(retained), start
+                    record.assistant_msg_id, retained, retained_event_sha256(retained, start), start
                 )
             )
             offset += length

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from starlette.types import Message, Receive, Scope, Send
 
 from app.agent_runtime.event_broker import registry
+from app.agent_runtime.langgraph_lifecycle_events import lifecycle_protocol_event
 from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
     stored_protocol_event,
@@ -32,7 +33,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
 async def _append(
-    db: AsyncSession, chat: ActiveChat, seq: int, content: str
+    db: AsyncSession, chat: ActiveChat, seq: int, content: str, *, complete: bool = False
 ) -> StoredProtocolEvent:
     event = stored_protocol_event(
         run_id=str(chat.run_id),
@@ -41,14 +42,24 @@ async def _append(
         method="messages",
         data={"type": "ai", "id": f"answer-{seq}", "content": content},
     )
+    events = [event]
+    if complete:
+        events.append(
+            lifecycle_protocol_event(
+                run_id=str(chat.run_id),
+                thread_id=str(chat.conversation_id),
+                seq=seq + 1,
+                event="completed",
+            )
+        )
     await trace_storage.append_events(
         db,
         conversation_id=chat.conversation_id,
         assistant_msg_id=str(chat.run_id),
-        events_chunk=[dict(event)],
+        events_chunk=[dict(item) for item in events],
     )
     await db.flush()
-    return event
+    return events[-1]
 
 
 @asynccontextmanager
@@ -204,7 +215,7 @@ async def test_two_sse_readers_recover_commits_across_writer_termination(
             async with writer_engine.connect() as conn, AsyncSession(conn) as db:
                 pid = await db.scalar(text("SELECT pg_backend_pid()"))
                 assert isinstance(pid, int)
-                final = await _append(db, chat, 2, "committed finish")
+                final = await _append(db, chat, 2, "committed finish", complete=True)
                 end_id = final["id"]
                 await trace_storage.finalize_turn(db, assistant_msg_id=str(chat.run_id))
                 run = await db.scalar(

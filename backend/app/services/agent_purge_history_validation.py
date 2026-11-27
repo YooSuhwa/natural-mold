@@ -13,7 +13,10 @@ from app.models.conversation_history import (
     ConversationHistoryManifest,
 )
 from app.schemas.conversation_history import JsonValue
-from app.services.conversation_history_projection import canonical_payload_sha256
+from app.services.conversation_history_projection import (
+    canonical_payload_sha256,
+    retained_event_sha256,
+)
 
 
 def _checkpoint_payload(row: ConversationHistoryCheckpoint) -> dict[str, JsonValue]:
@@ -70,7 +73,7 @@ async def verify_history_manifest(
     if any(
         row.sequence_start < 0
         or row.sequence_end != row.sequence_start + max(0, len(row.events) - 1)
-        or canonical_payload_sha256(_event_payload(row)) != row.payload_sha256
+        or retained_event_sha256(_event_payload(row), row.sequence_start) != row.payload_sha256
         for row in events
     ):
         return False
