@@ -4,7 +4,10 @@ import {
   type ThreadAssistantMessage,
   type ThreadMessage,
 } from '@assistant-ui/react'
+import { useAgUiRuntime } from '@assistant-ui/react-ag-ui'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import { createFixtureAgent } from '../../../../tests/ag-ui/chat-ui-fixtures'
 import {
   indexAgUiSubagents,
   nestAgUiHistoryChildren,
@@ -462,6 +465,106 @@ describe('public task descriptions for legacy child runs', () => {
       taskInput: brief,
       outcome: 'running',
     })
+  })
+
+  it('preserves the second tool-only issuer’s brief through the official SDK runtime', async () => {
+    const { agent, fetch, session } = createFixtureAgent(() => [
+      {
+        type: 'TOOL_CALL_START',
+        toolCallId: 'todos',
+        toolCallName: 'write_todos',
+        parentMessageId: 'first',
+      },
+      { type: 'TOOL_CALL_ARGS', toolCallId: 'todos', delta: '{}' },
+      { type: 'TOOL_CALL_END', toolCallId: 'todos' },
+      {
+        type: 'TOOL_CALL_RESULT',
+        toolCallId: 'todos',
+        messageId: 'todos-result',
+        role: 'tool',
+        content: 'ok',
+      },
+      {
+        type: 'TOOL_CALL_START',
+        toolCallId: callId,
+        toolCallName: 'task',
+        parentMessageId: wireId,
+      },
+      { type: 'TOOL_CALL_ARGS', toolCallId: callId, delta: JSON.stringify({ description: brief }) },
+      { type: 'TOOL_CALL_END', toolCallId: callId },
+      {
+        type: 'SUBAGENT_STARTED',
+        subagentRunId: 'worker',
+        parentToolCallId: callId,
+        parentMessageId: wireId,
+        name: 'Researcher',
+      },
+      { type: 'SUBAGENT_FINISHED', subagentRunId: 'worker', result: 'Done' },
+      {
+        type: 'TOOL_CALL_RESULT',
+        toolCallId: callId,
+        messageId: 'task-result',
+        role: 'tool',
+        content: 'Done',
+      },
+    ])
+    const view = renderHook(() => useAgUiRuntime({ agent }))
+    try {
+      await act(async () => {
+        await view.result.current.thread.append({
+          role: 'user',
+          content: [{ type: 'text', text: 'Delegate.' }],
+        })
+      })
+      await waitFor(() => {
+        const messages = view.result.current.thread.getState().messages
+        const children = session.getSnapshot().subagents
+        expect(children).toEqual([
+          expect.objectContaining({
+            subagentRunId: 'worker',
+            parentMessageId: wireId,
+            parentToolCallId: callId,
+          }),
+        ])
+        const root = messages.find((message) => message.role === 'assistant')
+        expect(root?.metadata.custom.agui).toMatchObject({ messageId: 'first' })
+        expect(indexAgUiSubagents(messages).get('worker')?.taskInput).toBeUndefined()
+        expect(indexAgUiSubagents(messages, children).get('worker')?.taskInput).toBe(brief)
+      })
+    } finally {
+      view.unmount()
+      session.dispose()
+      fetch.mockRestore()
+    }
+  })
+
+  it('rejects conflicting public child records even if the displayed message matches the issuer', () => {
+    const worker = child('worker', callId, { parentMessageId: wireId })
+    const cases = [
+      [worker, worker],
+      [worker, { ...worker, parentMessageId: 'another-turn' }],
+      [worker, { ...worker, subagentRunId: 'other-child' }],
+      [{ ...worker, parentToolCallId: 'another-task' }],
+      [{ ...worker, parentMessageId: 'another-turn' }],
+      [{ ...worker, parentSubagentRunId: 'another-child' }],
+    ]
+    for (const records of cases) {
+      const root = rootCall({ nested: [sdkChild('worker')] })
+      expect(indexAgUiSubagents([root], records).get('worker')?.taskInput).toBeUndefined()
+    }
+  })
+
+  it('cannot authorize an adjacent issuer with another child, task or message', () => {
+    const root = rootCall({ issuer: 'adjacent-issuer', nested: [sdkChild('worker')] })
+    const worker = child('worker', callId, { parentMessageId: 'adjacent-issuer' })
+    for (const records of [
+      [],
+      [{ ...worker, subagentRunId: 'other-child' }],
+      [{ ...worker, parentToolCallId: 'another-task' }],
+      [{ ...worker, parentMessageId: wireId }],
+    ]) {
+      expect(indexAgUiSubagents([root], records).get('worker')?.taskInput).toBeUndefined()
+    }
   })
 
   it('uses the verified parent recorded by history even when the root part lacks a parentId', () => {

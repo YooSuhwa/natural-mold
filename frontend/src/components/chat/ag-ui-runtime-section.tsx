@@ -173,6 +173,7 @@ export function AgUiRuntimeSection(props: AgUiRuntimeSectionProps) {
       wrapThread={(children) => (
         <AgUiSubagentRuntimeProvider
           conversationId={conversationId}
+          publicChildren={state.subagents}
           activities={state.activities}
           links={state.messageLinks}
         >

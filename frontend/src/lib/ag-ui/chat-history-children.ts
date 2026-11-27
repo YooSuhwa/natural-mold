@@ -305,6 +305,7 @@ export function nestAgUiHistoryChildren(
 /** Read only the official nested assistant messages with a declared child name and a unique run identity. */
 export function indexAgUiSubagents(
   messages: readonly ThreadMessage[],
+  publicChildren: readonly AgUiHistoryChild[] = [],
 ): ReadonlyMap<string, AgUiSubagentSnapshot> {
   // Only public root task arguments may supply a missing child brief. The SDK
   // nests the run under its issuing call, but unrelated turns can reuse a call ID.
@@ -316,19 +317,32 @@ export function indexAgUiSubagents(
     ),
     (call) => call.toolCallId,
   )
+  const childRuns = groupByKey(publicChildren, (child) => child.subagentRunId)
+  const childCalls = groupByKey(publicChildren, (child) => child.parentToolCallId)
   function publicRootBrief(
     message: ThreadAssistantMessage,
     part: ToolCallMessagePart,
+    childId: string,
     meta: Record<string, unknown>,
   ): string | undefined {
     const issuer = part.parentId ?? meta.parentMessageId
+    const byRun = childRuns.get(childId)
+    const byCall = childCalls.get(part.toolCallId)
+    // Consecutive tool-only turns can share one SDK wrapper. The public
+    // child-start event retains the issuing message even in that case.
+    const observed =
+      byRun?.length === 1 && byCall?.length === 1 && byRun[0] === byCall[0] ? byRun[0] : undefined
+    const provenIssuer =
+      observed && !observed.parentSubagentRunId && observed.parentMessageId === issuer
+
     if (
       part.toolName !== 'task' ||
       typeof issuer !== 'string' ||
       !issuer ||
       rootCalls.get(part.toolCallId)?.length !== 1 ||
       part.messages?.length !== 1 ||
-      (issuer !== message.id && issuer !== agUiMetadata(message).messageId) ||
+      ((byRun || byCall) && !provenIssuer) ||
+      (!provenIssuer && issuer !== message.id && issuer !== agUiMetadata(message).messageId) ||
       (meta.parentMessageId !== undefined && meta.parentMessageId !== issuer)
     )
       return undefined
@@ -396,7 +410,7 @@ export function indexAgUiSubagents(
             typeof meta.description === 'string'
               ? meta.description
               : ancestors.length === 0
-                ? publicRootBrief(message, part, meta)
+                ? publicRootBrief(message, part, child.id, meta)
                 : undefined,
           output: typeof meta.result === 'string' ? meta.result : undefined,
           error:

@@ -340,6 +340,12 @@ export function createAgUiChatSession({
       return
     const parentMessageId =
       id(event.parentMessageId) ?? toolOwnersByLane.get(parentSubagentRunId)?.get(parentToolCallId)
+    if (
+      previous?.parentMessageId &&
+      parentMessageId &&
+      previous.parentMessageId !== parentMessageId
+    )
+      return
     const child: AgUiHistoryChild = {
       ...previous,
       subagentRunId: childId,

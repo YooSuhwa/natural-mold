@@ -11,7 +11,11 @@ import {
 import type { AnyStream, SubagentDiscoverySnapshot } from '@langchain/react'
 import { atom, useAtomValue, useSetAtom } from 'jotai'
 import { useAuiState } from '@assistant-ui/react'
-import { indexAgUiSubagents, type AgUiSubagentSnapshot } from '@/lib/ag-ui/chat-history-children'
+import {
+  indexAgUiSubagents,
+  type AgUiHistoryChild,
+  type AgUiSubagentSnapshot,
+} from '@/lib/ag-ui/chat-history-children'
 import { selectAgUiChildTodos } from '@/lib/ag-ui/chat-child-todos'
 import type { AgUiActivitySnapshot, AgUiMessageLink } from '@/lib/ag-ui/chat-history-types'
 import { useChildTasks } from '@/lib/hooks/use-child-tasks'
@@ -71,6 +75,7 @@ interface AgUiProviderProps {
   readonly conversationId: string
   readonly children: ReactNode
   readonly allowLegacyDetails?: boolean
+  readonly publicChildren?: readonly AgUiHistoryChild[]
   readonly activities?: readonly AgUiActivitySnapshot[]
   readonly links?: readonly AgUiMessageLink[]
 }
@@ -91,6 +96,7 @@ function AgUiChildPresentation({
   children,
   conversationId,
   allowLegacyDetails,
+  publicChildren,
   activities = EMPTY_ACTIVITIES,
   links,
 }: AgUiProviderProps & { readonly allowLegacyDetails: boolean }) {
@@ -99,8 +105,9 @@ function AgUiChildPresentation({
   // Managed children are read separately by durable task ID after a fresh
   // authorization check. A public SDK transcript cannot grant that access.
   const projected = useMemo(
-    () => (allowLegacyDetails ? indexAgUiSubagents(messages) : EMPTY_AG_UI_SUBAGENTS),
-    [allowLegacyDetails, messages],
+    () =>
+      allowLegacyDetails ? indexAgUiSubagents(messages, publicChildren) : EMPTY_AG_UI_SUBAGENTS,
+    [allowLegacyDetails, messages, publicChildren],
   )
   const value = useMemo<SharedSubagentRuntime>(() => {
     const subagentsByRunId = new Map<string, AgUiSubagentSnapshot>()

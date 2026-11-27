@@ -55,6 +55,28 @@ function load(fields: Record<string, unknown>, serverMessages: Message[] = []) {
 }
 
 describe('AG-UI chat history', () => {
+  it('keeps the first proved message issuer when a child start repeats', () => {
+    const session = createAgUiChatSession({
+      conversationId: threadId,
+      readSnapshot: async () => parseWireChatSnapshot(envelope({}), threadId),
+      getServerMessages: () => [],
+    })
+    const reader = { source: 'attach', runId: physical } as const
+    session.onPublicEvent({ type: 'RUN_STARTED', runId: physical, threadId }, reader)
+    const start = {
+      type: 'SUBAGENT_STARTED',
+      subagentRunId: 'child',
+      parentToolCallId: 'public-call',
+      name: 'reader',
+    }
+    session.onPublicEvent({ ...start, parentMessageId: 'first-issuer' }, reader)
+    session.onPublicEvent({ ...start, parentMessageId: 'another-issuer' }, reader)
+    expect(session.getSnapshot().subagents.map((child) => child.parentMessageId)).toEqual([
+      'first-issuer',
+    ])
+    session.dispose()
+  })
+
   it('requires the requested conversation and supported protocol before importing history', () => {
     expect(() =>
       parseWireChatSnapshot(envelope({ threadId: 'another-thread' }), threadId),
