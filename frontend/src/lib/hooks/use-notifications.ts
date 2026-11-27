@@ -75,6 +75,10 @@ export function useOpenWorkNotification() {
           )
         }
         if (!isOrgScopeCurrent(scope)) return null
+        if (!destination.agent_id) {
+          if (destination.version_id) return null
+          throw new Error('Conversation no longer has an agent')
+        }
         const path = `/agents/${encodeURIComponent(destination.agent_id)}/conversations/${encodeURIComponent(destination.conversation_id)}`
         return kind === 'chat_task.completed' ? path : `${path}#conversation-goal`
       } catch (error) {

@@ -197,6 +197,15 @@ describe('NotificationsBell', () => {
     expect(router.push).not.toHaveBeenCalled()
   })
 
+  it('downloads an authorized historical file after the agent is purged', async () => {
+    api.destination.mockResolvedValue({ ...completed, agent_id: null })
+    download.mockResolvedValue(undefined)
+    await openWorkNotice('chat_goal.completed')
+    await waitFor(() => expect(download).toHaveBeenCalled())
+    expect(router.push).not.toHaveBeenCalled()
+    expect(errorToast).not.toHaveBeenCalled()
+  })
+
   it('drops a destination response from the previous organization', async () => {
     api.destination.mockImplementation(async () => {
       beginOrgSwitch()

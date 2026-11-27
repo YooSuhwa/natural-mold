@@ -33,7 +33,7 @@ export type WorkNotificationKind =
 /** Resolved on click against the recipient's current organization and file permissions. */
 export interface WorkNotificationDestination {
   conversation_id: string
-  agent_id: string
+  agent_id: string | null
   run_id: string
   goal_id: string | null
   job_id: string | null

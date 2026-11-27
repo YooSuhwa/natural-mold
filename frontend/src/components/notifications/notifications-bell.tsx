@@ -111,6 +111,7 @@ export function NotificationsBell() {
               key={item.id}
               onClick={() => select(item)}
               className="flex flex-col items-start gap-0.5"
+              data-notification-id={item.id}
               data-unread={item.read_at ? undefined : 'true'}
             >
               <span className={cn('text-sm', !item.read_at && 'font-semibold')}>
