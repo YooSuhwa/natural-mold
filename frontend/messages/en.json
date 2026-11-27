@@ -420,8 +420,8 @@
         "done": "Organization restored."
       },
       "policy": {
-        "title": "Join and sharing policy",
-        "description": "Set the default role for new members, how people join, and whether public links are allowed.",
+        "title": "Membership, sharing, and execution policies",
+        "description": "Manage how members join, their default role, public conversation links, and workspace reuse.",
         "defaultRole": "Default role for new members",
         "defaultRoleHint": "You can change it when inviting.",
         "role": {
@@ -438,6 +438,8 @@
         },
         "publicLinks": "Allow public conversation links",
         "publicLinksHint": "Turning this off also stops existing public links immediately.",
+        "goalSandbox": "Allow goal workspace reuse",
+        "goalSandboxHint": "Steps within a goal can reuse intermediate files from earlier steps. This applies to skills an operator has approved after comparing execution time and cost.",
         "submit": "Save policy",
         "saved": "Policy saved.",
         "readOnly": "Only organization admins can change this."

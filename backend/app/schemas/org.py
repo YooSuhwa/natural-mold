@@ -19,6 +19,7 @@ class OrganizationSettings(BaseModel):
     model_config = ConfigDict(frozen=True)
     default_member_role: DefaultMemberRole = "member"
     allow_public_share_links: bool = True
+    goal_sandbox_enabled: bool = False
     registration_policy: RegistrationPolicy | None = None
 
 
@@ -26,6 +27,7 @@ class OrganizationSettingsPatch(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     default_member_role: DefaultMemberRole | None = None
     allow_public_share_links: bool | None = None
+    goal_sandbox_enabled: bool | None = None
     registration_policy: RegistrationPolicy | None = None
 
     def update_values(self) -> dict[str, JsonValue]:
@@ -36,6 +38,8 @@ class OrganizationSettingsPatch(BaseModel):
             values["allow_public_share_links"] = (
                 self.allow_public_share_links if self.allow_public_share_links is not None else True
             )
+        if "goal_sandbox_enabled" in self.model_fields_set:
+            values["goal_sandbox_enabled"] = self.goal_sandbox_enabled is True
         if "registration_policy" in self.model_fields_set:
             values["registration_policy"] = self.registration_policy
         return values

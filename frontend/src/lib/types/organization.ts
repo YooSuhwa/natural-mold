@@ -153,6 +153,7 @@ export type RegistrationPolicy = 'default_org' | 'invite_only' | 'closed'
 export interface OrganizationSettings {
   default_member_role: DefaultMemberRole
   allow_public_share_links: boolean
+  goal_sandbox_enabled?: boolean
   registration_policy: RegistrationPolicy | null
 }
 
