@@ -94,4 +94,5 @@ async def test_current_batch_authority_expiry_and_checkpoint_identity(
         await ag_ui_read_pending.constrain_legacy_child_visibility(db, chat, ctx, run, legacy)
         == hidden
     )
-    assert read.await_args.kwargs["parent_run"].id == run.id
+    observed = read.await_args
+    assert observed is not None and observed.kwargs["parent_run"].id == run.id

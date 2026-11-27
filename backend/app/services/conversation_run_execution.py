@@ -12,6 +12,7 @@ from functools import partial
 from typing import Any
 
 from app.agent_runtime.goal_sandbox_scope import goal_sandbox_scope
+from app.agent_runtime.journal_continuity import ag_ui_journal_scope
 from app.agent_runtime.openai_prompt_cache import conversation_prompt_cache
 from app.agent_runtime.run_error_codes import run_error_code
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
@@ -160,6 +161,11 @@ async def _run_conversation(
                     worker_instance_id=registry.worker_instance_id,
                     attachment_ids=attachment_ids,
                 )
+        owner_context.enter_context(
+            ag_ui_journal_scope(
+                str(run.id), version=(run.metadata_json or {}).get("ag_ui_projection_version")
+            )
+        )
         await run_audit(action="conversation.run_start", run=run, status="running")
         heartbeat_task = asyncio.create_task(
             worker_attr("_heartbeat_until_terminal")(run_id, registry, cfg.org_context),
