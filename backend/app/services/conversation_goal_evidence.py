@@ -119,6 +119,14 @@ async def read_goal_evidence_version(
     return version, await _verified_content(artifact, version)
 
 
+def _matches_filter(cell: str, expected: str) -> bool:
+    # A source URL identifies a particular document. Paths, queries and
+    # fragments can distinguish resources by case or by Unicode spelling.
+    if expected.lower().startswith(("https://", "http://")):
+        return cell.strip() == expected
+    return normalized_cell(cell) == normalized_cell(expected)
+
+
 def _check_table(criterion: CsvTableCriterion, data: bytes) -> str:
     delimiter = "\t" if criterion.logical_path.lower().endswith(".tsv") else ","
     try:
@@ -134,10 +142,7 @@ def _check_table(criterion: CsvTableCriterion, data: bytes) -> str:
             return "missing_columns"
         indices = [columns[name] for name in required]
         key = columns[normalized_cell(criterion.unique_by)]
-        filters = {
-            columns[normalized_cell(k)]: normalized_cell(v)
-            for k, v in criterion.column_equals.items()
-        }
+        filters = {columns[normalized_cell(k)]: v for k, v in criterion.column_equals.items()}
         references = {}
         for reference in criterion.reference_rows:
             expected = {columns[normalized_cell(k)]: value for k, value in reference.items()}
@@ -151,7 +156,7 @@ def _check_table(criterion: CsvTableCriterion, data: bytes) -> str:
             row = [normalized_cell(cell) for cell in cells]
             if any(row[index] in _NO_VALUE for index in indices):
                 return "empty_cell"
-            if any(row[index] != value for index, value in filters.items()):
+            if any(not _matches_filter(cells[index], value) for index, value in filters.items()):
                 return "column_mismatch"
             if row[key] in seen:
                 return "duplicate_key"

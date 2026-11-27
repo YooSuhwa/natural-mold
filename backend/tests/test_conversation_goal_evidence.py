@@ -83,6 +83,25 @@ def test_table_checks_empty_missing_malformed_and_minimum_rows() -> None:
 
 
 @pytest.mark.parametrize(
+    "source",
+    [
+        "https://catalog.example.test/products/a?edition=KR",
+        "https://catalog.example.test/products/A?edition=kr",
+        "https://catalog.example.test/products/Ａ?edition=KR",
+    ],
+)
+def test_source_filter_preserves_the_exact_resource_without_reference_rows(source: str) -> None:
+    expected = "https://catalog.example.test/products/A?edition=KR"
+    criterion = CsvTableCriterion.model_validate(
+        {**_GOAL_TABLE, "column_equals": {"국가": "대한민국", "출처": expected}}
+    )
+    rows = [{**row, "출처": expected} for row in _REFERENCE]
+    assert _check_table(criterion, _csv(rows)) == "verified"
+    rows[1]["출처"] = source
+    assert _check_table(criterion, _csv(rows)) == "column_mismatch"
+
+
+@pytest.mark.parametrize(
     "change",
     [
         {"logical_path": "../foreign.csv"},
