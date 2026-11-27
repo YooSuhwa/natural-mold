@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import time
+from argparse import Namespace
 from collections.abc import AsyncIterator, Iterator
-from contextlib import asynccontextmanager, nullcontext
+from contextlib import asynccontextmanager
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -19,18 +20,24 @@ from langchain_core.language_models import BaseChatModel
 from app.agent_runtime import lease_owned_model_client, model_provider_builders
 from app.agent_runtime.lease_model_factory import LeaseModelSpec, create_lease_chat_model
 from app.agent_runtime.model_factory import clear_model_cache, create_chat_model
-from app.agent_runtime.openai_prompt_cache import conversation_prompt_cache
+from app.agent_runtime.openai_prompt_cache import (
+    ConversationCacheChatOpenAI,
+    conversation_prompt_cache,
+)
 from app.authz.org_context import OrgContext
 from app.config import settings
-from scripts.compare_prompt_cache import Arm, Observation, compare
+from scripts import collect_prompt_cache
+from scripts.collect_prompt_cache import collect
+from scripts.compare_prompt_cache import compare
 from tests.authz.lease_provider_wire import Wire, guard_for
 
 type Requests = list[tuple[httpx.URL, dict[str, Any]]]
 
 
 @pytest.fixture
-def requests(monkeypatch: pytest.MonkeyPatch) -> Iterator[Requests]:
+def requests(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> Iterator[Requests]:
     captured: Requests = []
+    omit = getattr(request, "param", None)
 
     def respond(req: httpx.Request) -> httpx.Response:
         body = json.loads(req.content)
@@ -41,7 +48,7 @@ def requests(monkeypatch: pytest.MonkeyPatch) -> Iterator[Requests]:
                 "id": response_id,
                 "object": "chat.completion.chunk",
                 "created": 1,
-                "model": body["model"],
+                "model": "unexpected-snapshot" if omit == "wrong_model" else body["model"],
             }
             # These are synthetic counts, including automatic hits in the omitted arm.
             returned_usage = {
@@ -56,11 +63,17 @@ def requests(monkeypatch: pytest.MonkeyPatch) -> Iterator[Requests]:
                 {**chunk, "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}}]},
                 {**chunk, "choices": [{"index": 0, "delta": {"content": "ok"}}]},
                 {**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
-                {**chunk, "choices": [], "usage": returned_usage},
             ]
+            if omit != "usage":
+                frames.append({**chunk, "choices": [], "usage": returned_usage})
+            headers = {"content-type": "text/event-stream"}
+            if omit != "request_id":
+                headers["x-request-id"] = (
+                    f"req-fixture-{1 if omit == 'duplicate_id' else len(captured)}"
+                )
             return httpx.Response(
                 200,
-                headers={"content-type": "text/event-stream"},
+                headers=headers,
                 text="".join(f"data: {json.dumps(frame)}\n\n" for frame in frames)
                 + "data: [DONE]\n\n",
             )
@@ -112,6 +125,10 @@ def requests(monkeypatch: pytest.MonkeyPatch) -> Iterator[Requests]:
             },
         )
 
+    async def isolated_async_send(_transport: Any, req: httpx.Request) -> httpx.Response:
+        return respond(req)
+
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", isolated_async_send)
     wire = httpx.MockTransport(respond)
     clear_model_cache()
     monkeypatch.setattr(
@@ -277,50 +294,97 @@ async def test_paired_sdk_streams_feed_cost_comparison_without_claiming_provider
     requests: Requests, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     org = OrgContext(uuid4(), uuid4(), uuid4())
-    chat = uuid4()
     monkeypatch.setattr(settings, "openai_prompt_cache_org_ids", frozenset({org.org_id}))
-    observations = []
     async with model_for(False) as model:
-        for sequence in range(1, 31):
-            arms: tuple[Arm, Arm] = ("key_omitted", "key_supplied")
-            for arm in arms if sequence % 2 else reversed(arms):
-                scope = (
-                    conversation_prompt_cache(org, chat, run_path="chat")
-                    if arm == "key_supplied"
-                    else nullcontext()
-                )
-                first_token = None
-                usage = None
-                start = time.monotonic_ns()
-                with scope:
-                    async for delta in model.astream("fixed model input " * 1024):
-                        if delta.text and first_token is None:
-                            first_token = time.monotonic_ns()
-                        if delta.usage_metadata:
-                            usage = delta.usage_metadata
-                assert usage is not None and first_token is not None
-                body = requests[-1][1].copy()
-                routed = body.pop("prompt_cache_key", None)
-                assert bool(routed) == (arm == "key_supplied")
-                comparable = json.dumps(body, sort_keys=True).encode()
-                observations.append(
-                    Observation(
-                        arm=arm,
-                        sequence=sequence,
-                        scope="fixture-scope",
-                        model=body["model"],
-                        request_sha256=hashlib.sha256(comparable).hexdigest(),
-                        request_id=f"chatcmpl-fixture-{len(requests)}",
-                        source="fixture",
-                        input_tokens=usage["input_tokens"],
-                        cached_input_tokens=usage.get("input_token_details", {}).get(
-                            "cache_read", 0
-                        ),
-                        ttft_ms=Decimal(first_token - start) / 1_000_000,
-                    )
-                )
+        assert isinstance(model, ConversationCacheChatOpenAI)
+        observations = [row async for row in collect(model, org, source="fixture")]
+
+    assert len(requests) == len(observations) == 60
+    assert len({row.scope for row in observations}) == 1
+    for index, (row, (_, wire_body)) in enumerate(
+        zip(observations, requests, strict=True), start=1
+    ):
+        body = wire_body.copy()
+        key = body.pop("prompt_cache_key", None)
+        assert bool(key) == (row.arm == "key_supplied")
+        comparable = json.dumps(
+            body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode()
+        assert row.request_sha256 == hashlib.sha256(comparable).hexdigest()
+        assert row.request_id == f"req-fixture-{index}"
+        assert row.model == body["model"]
+        assert row.sequence == (index + 1) // 2
+        assert row.source == "fixture"
+        assert row.ttft_ms > 0
+        assert row.input_tokens == 2048
+        assert row.cached_input_tokens == (1536 if key else 1024)
+        saved = row.model_dump_json()
+        for identifier in (org.tenant_id, org.org_id, org.user_id):
+            assert str(identifier) not in saved and identifier.hex not in saved
+        assert body["messages"][0]["content"] not in saved
+        if key:
+            assert key not in saved
+
     report = compare(observations, Decimal("1"), Decimal("0.5"))
     assert report["pairs"] == 30
     assert report["verdict"] == "fixture_only"
     assert report["reconciled_mean_input_cost_change_pct"] is None
     assert report["estimated_mean_input_cost_change_pct"] == Decimal(-100) / 6
+
+
+@pytest.mark.parametrize(
+    ("requests", "evidence", "sent"),
+    [
+        ("request_id", "request", 1),
+        ("usage", "usage", 1),
+        ("wrong_model", "model snapshot", 1),
+        ("duplicate_id", "duplicate|request ID", 2),
+    ],
+    indirect=["requests"],
+)
+async def test_collector_rejects_incomplete_stream_evidence(
+    requests: Requests, evidence: str, sent: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    org = OrgContext(uuid4(), uuid4(), uuid4())
+    monkeypatch.setattr(settings, "openai_prompt_cache_org_ids", frozenset({org.org_id}))
+    async with model_for(False) as model:
+        assert isinstance(model, ConversationCacheChatOpenAI)
+        with pytest.raises(ValueError, match=evidence):
+            _ = [row async for row in collect(model, org, source="fixture")]
+    assert len(requests) == sent
+
+
+async def test_paid_trial_entry_point_writes_only_observations_in_isolated_transport(
+    requests: Requests,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    org_id = uuid4()
+    monkeypatch.setattr(settings, "openai_prompt_cache_org_ids", frozenset({org_id}))
+    output = tmp_path / "fixture.jsonl"
+    args = Namespace(
+        org_id=org_id,
+        model_snapshot="gpt-4o-mini-2024-07-18",
+        output=output,
+        input_usd_per_million=Decimal("1"),
+        cached_input_usd_per_million=Decimal("0.5"),
+    )
+
+    # The CLI collects provider evidence when sending live. These combined
+    # tests use local HTTP transport, so label every stored observation as a fixture.
+    def fixture_only(model: ConversationCacheChatOpenAI, org: OrgContext, *, source: str):
+        assert source == "provider_usage"
+        return collect(model, org, source="fixture")
+
+    monkeypatch.setattr(collect_prompt_cache, "collect", fixture_only)
+    await collect_prompt_cache._run(args, "dedicated-fixture")
+    lines = output.read_text().splitlines()
+    assert len(lines) == len(requests) == 60
+    assert {json.loads(line)["source"] for line in lines} == {"fixture"}
+    assert json.loads(capsys.readouterr().out)["verdict"] == "fixture_only"
+    assert all(body["max_completion_tokens"] == 32 for _, body in requests)
+    with pytest.raises(FileExistsError):
+        await collect_prompt_cache._run(args, "dedicated-fixture")
+    assert len(requests) == 60
+    assert output.read_text().splitlines() == lines
