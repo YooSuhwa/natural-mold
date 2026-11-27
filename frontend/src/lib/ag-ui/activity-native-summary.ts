@@ -62,6 +62,85 @@ function terminalId(runId: string): string {
   return key(runId, 'done', 'terminal')
 }
 
+const nativeKinds = new Set<RunActivityKind>([
+  'responding',
+  'thinking',
+  'tool',
+  'subagent',
+  'interrupt',
+])
+
+function physicalKey(activity: RunActivity, provisional: string, physical: string) {
+  if (activity.runId !== provisional) return
+  if (activity.id === terminalId(provisional)) return terminalId(physical)
+  if (!nativeKinds.has(activity.kind)) return
+  // Only this reducer's canonical UI tuple may be rewritten. Treat its lane and
+  // entity as opaque values, even if either contains the provisional run ID.
+  let tuple: unknown
+  try {
+    tuple = JSON.parse(activity.id)
+  } catch {
+    return
+  }
+  if (!Array.isArray(tuple) || tuple.length !== 4) return
+  const [run, kind, lane, entity] = tuple as unknown[]
+  if (run !== provisional || kind !== activity.kind || typeof entity !== 'string') return
+  if (lane !== null && typeof lane !== 'string') return
+  if (activity.id !== key(provisional, activity.kind, entity, lane ?? undefined)) return
+  return key(physical, activity.kind, entity, lane ?? undefined)
+}
+
+/** A verified receipt binds a locally observed submission to its physical run.
+ * This rekeys presentation rows only; it cannot produce a run or a credential. */
+export function rebindAgUiNativeActivities(
+  current: Entries,
+  provisional: string,
+  physical: string,
+): Entries {
+  if (!provisional || !physical || provisional === physical) return current
+  const ids = new Map<string, string>()
+  for (const item of current) {
+    const target = physicalKey(item, provisional, physical)
+    if (target) ids.set(item.id, target)
+  }
+  if (!ids.size) return current
+  const retained = new Map(
+    current.filter((item) => item.runId === physical).map((item) => [item.id, item]),
+  )
+  const supplemented = new Map<string, RunActivity>()
+  const result: RunActivity[] = []
+  for (const item of current) {
+    const id = item.runId === provisional ? ids.get(item.id) : undefined
+    if (!id) {
+      result.push(item)
+      continue
+    }
+    const existing = retained.get(id)
+    if (existing) {
+      // A snapshot may already contain the start, while the stream observed its end.
+      // A terminal physical row always wins over an older open observation.
+      if (open(existing) && !open(item)) {
+        supplemented.set(id, {
+          ...existing,
+          status: item.status,
+          endedAt: item.endedAt,
+          startedAt: existing.startedAt ?? item.startedAt,
+        })
+      }
+      continue
+    }
+    result.push({
+      ...item,
+      id,
+      runId: physical,
+      ...(item.parentId && { parentId: ids.get(item.parentId) ?? item.parentId }),
+    })
+  }
+  return supplemented.size
+    ? result.map((item) => (item.runId === physical ? (supplemented.get(item.id) ?? item) : item))
+    : result
+}
+
 function finishRun(current: Entries, event: Record<string, unknown>, runId: string): Entries {
   const id = terminalId(runId)
   if (current.some((item) => item.id === id)) return current

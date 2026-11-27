@@ -22,6 +22,9 @@ function createChatConnection(initial: ChatSessionOptions) {
       session.onRunAccepted({ runId: publicRunId, physicalRunId })
       current.onNewMessageAccepted?.()
     },
+    onRunClaimed: ({ publicRunId, physicalRunId }) => {
+      session.onRunClaimed({ runId: publicRunId, physicalRunId })
+    },
     onPublicEvent: (event, source) => session.onPublicEvent(event, source),
   })
   const session = createAgUiChatSession({

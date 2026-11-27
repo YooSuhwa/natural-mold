@@ -13,7 +13,7 @@ import { recoveryErrorCode, type RecoveryErrorCode } from '@/lib/chat-runs/recov
 import type { Message as MoldyMessage } from '@/lib/types'
 import { anySignal } from '@/lib/org-scope/org-scope-signal'
 import { restoreAgUiNativeActivities } from './activity-native-restore'
-import { reduceAgUiNativeActivities } from './activity-native-summary'
+import { rebindAgUiNativeActivities, reduceAgUiNativeActivities } from './activity-native-summary'
 import type { AgUiHistoryChild } from './chat-history-children'
 import {
   parsePublicActivities,
@@ -105,6 +105,7 @@ export function createAgUiChatSession({
   let locallyAcceptedId: string | null = null
   let reader: AbortController | undefined
   const listeners = new Set<() => void>()
+  const unclaimedActivities = new Set<AgUiActivitySnapshot>()
   const assistantByLane = new Map<string | undefined, string>()
   const toolOwnersByLane = new Map<string | undefined, Map<string, string>>()
 
@@ -115,6 +116,7 @@ export function createAgUiChatSession({
   }
 
   function resetEventOwners() {
+    unclaimedActivities.clear()
     assistantByLane.clear()
     toolOwnersByLane.clear()
   }
@@ -223,13 +225,18 @@ export function createAgUiChatSession({
   }) {
     if (disposed || state.readDenied) return
     reader?.abort()
-    if (!physicalRunId) return
     locallyAcceptedId = runId
+    if (!physicalRunId) return
     if (state.activeRunId === runId && state.physicalRunId === physicalRunId) return
+    selectRun(runId, physicalRunId)
+  }
+
+  function selectRun(runId: string, physicalRunId: string | null) {
     resetEventOwners()
     publish({
       activeRunId: runId,
       physicalRunId,
+      lastTerminalPhysicalRunId: null,
       attachBlockedRunId: null,
       nativeActivities: [],
       followupRunId: null,
@@ -238,6 +245,27 @@ export function createAgUiChatSession({
       failedPhysicalRunId: null,
       partialOutput: undefined,
       recoveryError: undefined,
+    })
+  }
+
+  /** A queued acceptance may acquire its physical execution only after its stream opens. */
+  function onRunClaimed({ runId, physicalRunId }: { runId: string; physicalRunId: string }) {
+    if (
+      disposed ||
+      state.readDenied ||
+      state.activeRunId !== runId ||
+      state.physicalRunId ||
+      !physicalRunId
+    )
+      return
+    const activities = state.activities.map((entry) =>
+      unclaimedActivities.has(entry) ? { ...entry, physicalRunId } : entry,
+    )
+    unclaimedActivities.clear()
+    publish({
+      physicalRunId,
+      activities,
+      nativeActivities: rebindAgUiNativeActivities(state.nativeActivities, runId, physicalRunId),
     })
   }
 
@@ -275,7 +303,11 @@ export function createAgUiChatSession({
     )
     const activities = [...state.activities]
     if (index < 0) activities.push(scoped)
-    else activities[index] = scoped
+    else {
+      unclaimedActivities.delete(activities[index])
+      activities[index] = scoped
+    }
+    if (!state.physicalRunId) unclaimedActivities.add(scoped)
     const liveActivityIds =
       source === 'run'
         ? new Set([...state.liveActivityIds, scoped.messageId])
@@ -341,9 +373,27 @@ export function createAgUiChatSession({
     publish({ subagents })
   }
 
-  function onPublicEvent(event: unknown, { source }: { source: 'run' | 'attach' }) {
+  function onPublicEvent(
+    event: unknown,
+    { source, runId: readerRunId }: { source: 'run' | 'attach'; runId?: string },
+  ) {
     if (disposed || state.readDenied || !record(event)) return
     if (event.threadId !== undefined && event.threadId !== conversationId) return
+    // Content, activities and RUN_ERROR do not have a runId of their own.
+    // Ignore buffered events from a reader displaced by another command/branch.
+    if (readerRunId && event.runId && event.runId !== readerRunId) return
+    if (readerRunId && !state.activeRunId && state.terminalRunId === readerRunId) return
+    if (event.type === 'RUN_STARTED') {
+      const runId = id(event.runId)
+      if (!runId) return
+      const localStart = source === 'run' && runId === locallyAcceptedId
+      if (state.activeRunId && runId !== state.activeRunId && !localStart) return
+      reader?.abort()
+      if (state.activeRunId !== runId) selectRun(runId, null)
+      else resetEventOwners()
+      return
+    }
+    if (readerRunId && state.activeRunId && state.activeRunId !== readerRunId) return
     const lane = id(event.subagentRunId)
     // The command POST streams from the same authorized reader as a later GET.
     if (event.type === 'RUN_ERROR') {
@@ -363,25 +413,18 @@ export function createAgUiChatSession({
         return
       }
     }
-    if (state.physicalRunId && (!event.runId || state.activeRunId === event.runId)) {
+    // Keep early tool and child progress while a locally accepted queue entry
+    // is being bound to its physical run by an authorized snapshot GET.
+    const summaryRunId = state.physicalRunId ?? state.activeRunId
+    if (summaryRunId && (!event.runId || state.activeRunId === event.runId)) {
       const nativeActivities = reduceAgUiNativeActivities(
         state.nativeActivities,
         event,
-        state.physicalRunId,
+        summaryRunId,
       )
       if (nativeActivities !== state.nativeActivities) publish({ nativeActivities })
     }
     switch (event.type) {
-      case 'RUN_STARTED': {
-        const runId = id(event.runId)
-        if (!runId || (state.activeRunId && state.activeRunId !== runId)) return
-        reader?.abort()
-        resetEventOwners()
-        if (state.activeRunId !== runId || state.followupRunId) {
-          publish({ activeRunId: runId, interrupts: [], followupRunId: null })
-        }
-        return
-      }
       case 'RUN_FINISHED':
       case 'RUN_ERROR': {
         const runId = id(event.runId) ?? state.activeRunId
@@ -458,6 +501,7 @@ export function createAgUiChatSession({
       }
     },
     onRunAccepted,
+    onRunClaimed,
     onPublicEvent,
     refreshRepository,
     dispose() {

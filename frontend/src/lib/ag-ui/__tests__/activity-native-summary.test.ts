@@ -7,7 +7,11 @@ import {
   parallelEvents,
   physicalRunId,
 } from '../../../../tests/ag-ui/chat-ui-fixtures'
-import { mergeAgUiRunActivities, reduceAgUiNativeActivities } from '../activity-native-summary'
+import {
+  mergeAgUiRunActivities,
+  rebindAgUiNativeActivities,
+  reduceAgUiNativeActivities,
+} from '../activity-native-summary'
 
 const run = 'physical-run'
 const threadId = 'thread'
@@ -48,6 +52,41 @@ const child = (id: string, parent?: string) => ({
 })
 
 describe('public AG-UI run summary', () => {
+  it('rebinds only locally generated rows and parent keys after a queued run is claimed', () => {
+    const provisional = 'queue-"id"'
+    const parent = 'child/' + provisional
+    const nested = 'inner/' + provisional
+    const call = 'tool/' + provisional
+    const frames = [child(parent), child(nested, parent), tool('read', call, nested)]
+    const early = frames.reduce<readonly RunActivity[]>(
+      (rows, frame) => reduceAgUiNativeActivities(rows, frame, provisional),
+      [],
+    )
+    const unrelated = { ...early[0], runId: 'another-run' }
+    const opaque = { ...early[0], id: provisional, parentId: parent }
+    const bound = rebindAgUiNativeActivities([...early, unrelated, opaque], provisional, run)
+    const expected = frames.reduce<readonly RunActivity[]>(
+      (rows, frame) => reduceAgUiNativeActivities(rows, frame, run),
+      [],
+    )
+    expect(bound.slice(0, 3)).toEqual(expected)
+    expect(bound[1].parentId).toBe(bound[0].id)
+    expect(bound[2]).toMatchObject({
+      toolCallId: call,
+      namespace: [parent, nested],
+      startedAt: early[2].startedAt,
+    })
+    expect(bound[3]).toBe(unrelated)
+    expect(bound[4]).toBe(opaque)
+    expect(rebindAgUiNativeActivities(bound, provisional, run)).toBe(bound)
+    const finished = reduceAgUiNativeActivities(bound, result(call, nested), run)
+    expect(finished[2].status).toBe('complete')
+    const endedEarly = reduceAgUiNativeActivities(early, result(call, nested), provisional)
+    const joined = rebindAgUiNativeActivities([...expected, ...endedEarly], provisional, run)
+    expect(joined).toHaveLength(3)
+    expect(joined[2].status).toBe('complete')
+  })
+
   it('uses the physical receipt of the verified HTTP stream for the live session and terminal summary', async () => {
     const { agent, fetch, session } = createFixtureAgent(parallelEvents)
     try {

@@ -56,16 +56,32 @@ function activity(messageId: string) {
 }
 
 describe('AG-UI history session', () => {
-  it('binds queued activities to the first matching claim without reopening a finished run', () => {
-    const session = sessionFor(async () => snapshot())
+  it('binds queued activities to the first matching claim without reopening a finished run', async () => {
+    // The previous worker may still be visible when the server enqueues a new input.
+    const session = sessionFor(async () =>
+      snapshot({ activeRunId: 'previous-run', physicalRunId: physical }),
+    )
+    await session.history.load()
     const runId = 'queued-run'
     const context = { source: 'run' as const, runId }
     session.onRunAccepted({ runId, physicalRunId: null })
     session.onPublicEvent({ type: EventType.RUN_STARTED, threadId, runId }, context)
     session.onPublicEvent(activity('queued-activity'), context)
+    session.onPublicEvent(
+      {
+        type: EventType.TOOL_CALL_START,
+        toolCallId: 'opaque-queued-tool',
+        toolCallName: 'inspect',
+        parentMessageId: 'queued-answer',
+      },
+      context,
+    )
     const provisional = session.getSnapshot()
     expect(provisional.activeRunId).toBe(runId)
     expect(provisional.physicalRunId).toBeNull()
+    expect(provisional.nativeActivities).toMatchObject([
+      { runId, kind: 'tool', toolCallId: 'opaque-queued-tool' },
+    ])
     expect(provisional.activities[0]?.physicalRunId).toBeUndefined()
     expect([...provisional.liveActivityIds]).toEqual(['queued-activity'])
 
@@ -78,6 +94,7 @@ describe('AG-UI history session', () => {
       physicalRunId: physical,
       terminalSequence: 0,
       activities: [{ messageId: 'queued-activity', physicalRunId: physical }],
+      nativeActivities: [{ runId: physical, kind: 'tool', toolCallId: 'opaque-queued-tool' }],
     })
     expect([...claimed.liveActivityIds]).toEqual(['queued-activity'])
     session.onRunClaimed({ runId, physicalRunId: physical })
