@@ -65,7 +65,7 @@ function intercept(reply: (call: RequestLog) => Response | Promise<Response>) {
   return requests
 }
 
-function mountChat() {
+function mountChat(readOnly = false) {
   const agent: MoldyAgUiAgent = new MoldyAgUiAgent({
     conversationId,
     onAccepted: ({ publicRunId, physicalRunId }) =>
@@ -81,7 +81,14 @@ function mountChat() {
   const view = renderHook(
     () => {
       const runtime = useAgUiRuntime({ agent, adapters: { history: session.history } })
-      const busy = useDurableAgUiHistory({ runtime, session, agent, conversationId, onSettled })
+      const busy = useDurableAgUiHistory({
+        runtime,
+        session,
+        agent,
+        conversationId,
+        readOnly,
+        onSettled,
+      })
       return { runtime, busy }
     },
     { wrapper: StrictMode },
@@ -165,7 +172,58 @@ function openSubmission(call: RequestLog) {
   }
 }
 
+function childApprovalSnapshot(eligible: boolean) {
+  const head = 'saved-parent-answer'
+  const child = {
+    name: 'Worker',
+    subagentRunId: 'legacy-child',
+    parentToolCallId: 'child-task-call',
+    parentMessageId: head,
+    runId: publicRunId,
+    physicalRunId,
+    status: 'interrupted',
+    interruptIds: ['child-slot'],
+    legacyInterruptAccess: true,
+  }
+  const slot = {
+    id: 'child-slot',
+    reason: 'moldy.ask_user',
+    subagentRunId: eligible ? child.subagentRunId : 'different-child',
+    message: '승인 질문',
+    metadata: { moldy: { type: 'ask_user', question: '승인 질문', legacyInterruptAccess: true } },
+  }
+  return savedChat(head, {
+    interruptRunId: publicRunId,
+    physicalInterruptRunId: physicalRunId,
+    subagents: [child],
+    interrupts: [slot],
+    messages: [
+      { id: 'question', role: 'user', content: '질문' },
+      {
+        id: head,
+        role: 'assistant',
+        content: '저장된 부모 답변',
+        toolCalls: [
+          {
+            id: child.parentToolCallId,
+            type: 'function',
+            function: { name: 'task', arguments: '{}' },
+          },
+        ],
+      },
+    ],
+  })
+}
+
+const advance = async (ms: number) => {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms)
+  })
+}
+
 afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
@@ -474,6 +532,88 @@ describe('durable official chat history', () => {
       })
       expect(streams()).toBe(expectedStreams)
       expect(calls.every(({ method }) => method === 'GET')).toBe(true)
+    },
+  )
+
+  it('rechecks a visible paused child grant every 15 seconds and drops revoked approval evidence', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+    })
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    let authorized = true
+    const current = childApprovalSnapshot(true)
+    const revoked = {
+      ...current,
+      interruptRunId: null,
+      physicalInterruptRunId: null,
+      subagents: [],
+      interrupts: [],
+    }
+    const calls = intercept(() => Response.json(authorized ? current : revoked))
+    const view = mountChat()
+    await advance(0)
+    const { runtime } = view.result.current
+    const parentAnswer = () => runtime.thread.getState().messages.at(-1)
+    expect(parentAnswer()?.content).toContainEqual(
+      expect.objectContaining({ type: 'text', text: '저장된 부모 답변' }),
+    )
+    expect(runtime.unstable_getPendingInterrupts().map(({ id }) => id)).toEqual(['child-slot'])
+    expect(view.session.getSnapshot().subagents[0]?.legacyInterruptAccess).toBe(true)
+    const reads = calls.length
+    const imported = vi.spyOn(runtime.thread, 'import')
+    await advance(14_999)
+    expect(calls).toHaveLength(reads)
+    await advance(1)
+    expect(calls).toHaveLength(reads + 1)
+    expect(imported).not.toHaveBeenCalled()
+    expect(parentAnswer()?.content).toContainEqual(
+      expect.objectContaining({ type: 'text', text: '저장된 부모 답변' }),
+    )
+    authorized = false
+    await advance(15_000)
+    expect(calls).toHaveLength(reads + 2)
+    expect(view.session.getSnapshot().subagents).toEqual([])
+    expect(view.session.getSnapshot().interrupts).toEqual([])
+    expect(runtime.unstable_getPendingInterrupts()).toEqual([])
+    expect(JSON.stringify(runtime.thread.getState().messages)).not.toContain('승인 질문')
+    expect(parentAnswer()?.content).toContainEqual(
+      expect.objectContaining({ type: 'text', text: '저장된 부모 답변' }),
+    )
+    await advance(45_000)
+    expect(calls).toHaveLength(reads + 2)
+    expect(
+      calls.every(({ method, url }) => method === 'GET' && url.pathname.endsWith('/snapshot')),
+    ).toBe(true)
+    expect(view.onSettled).not.toHaveBeenCalled()
+    view.unmount()
+  })
+
+  it.each(['hidden', 'no-grant', 'unmatched-slot', 'read-only'])(
+    'skips periodic reads for %s views',
+    async (mode) => {
+      vi.useFakeTimers({
+        toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+      })
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(
+        mode === 'hidden' ? 'hidden' : 'visible',
+      )
+      const snapshot =
+        mode === 'no-grant'
+          ? savedChat('finished')
+          : childApprovalSnapshot(mode !== 'unmatched-slot')
+      const calls = intercept(() => Response.json(snapshot))
+      const view = mountChat(mode === 'read-only')
+      await advance(0)
+      expect(view.result.current.runtime.thread.getState().messages.at(-1)?.id).toBe(
+        snapshot.activeTipMessageId,
+      )
+      const reads = calls.length
+      await advance(45_000)
+      expect(calls).toHaveLength(reads)
+      expect(
+        calls.every(({ method, url }) => method === 'GET' && url.pathname.endsWith('/snapshot')),
+      ).toBe(true)
+      view.unmount()
     },
   )
 
