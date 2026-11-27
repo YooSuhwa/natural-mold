@@ -134,6 +134,8 @@ def test_swapping_two_historical_issuers_invalidates_the_reader_cursor() -> None
     )
     original = cursor_scope_for(room, "public", run, "1", None, prior, frozenset(), None, ())
     replacement = cursor_scope_for(room, "public", run, "1", None, changed, frozenset(), None, ())
-    cursor = cursors.frame_cursor(original, ordinal=3, frame=0, source_id="digest", generation="row")
+    cursor = cursors.frame_cursor(
+        original, ordinal=3, frame=0, source_id="digest", generation="row"
+    )
     with pytest.raises(cursors.InvalidReadCursor):
         cursors.parse_cursor(cursor, replacement)
