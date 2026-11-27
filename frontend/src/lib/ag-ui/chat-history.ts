@@ -49,7 +49,10 @@ export interface AgUiChatSessionState {
 
 interface SessionOptions {
   readonly conversationId: string
-  readonly readSnapshot: (signal?: AbortSignal) => Promise<WireChatSnapshot>
+  readonly readSnapshot: (
+    signal: AbortSignal,
+    isCurrent: () => boolean,
+  ) => Promise<WireChatSnapshot>
   readonly getServerMessages: () => readonly MoldyMessage[]
 }
 
@@ -89,8 +92,10 @@ function publicTodos(value: unknown): DeepAgentsStateSnapshot {
   })
 }
 
-function abortRead() {
-  return new DOMException('The chat history read was superseded.', 'AbortError')
+export class SupersededHistoryRead extends DOMException {
+  constructor() {
+    super('The chat history read was superseded.', 'AbortError')
+  }
 }
 
 /** The wire adapter is read-only. Only the run API can persist or advance a conversation. */
@@ -103,7 +108,8 @@ export function createAgUiChatSession({
   let disposed = false
   let lastResetRunId: string | null = null
   let locallyAcceptedId: string | null = null
-  let reader: AbortController | undefined
+  let readGeneration = 0
+  let readAccess = new AbortController()
   const listeners = new Set<() => void>()
   const unclaimedActivities = new Set<AgUiActivitySnapshot>()
   const assistantByLane = new Map<string | undefined, string>()
@@ -126,9 +132,20 @@ export function createAgUiChatSession({
       publish({ interrupts: [], reconcileSequence: state.reconcileSequence + 1 })
   }
 
+  function invalidateHistoryRead() {
+    // A new command or branch makes an older response ineligible to update the visible thread.
+    readGeneration++
+  }
+
+  function cancelHistoryReads() {
+    invalidateHistoryRead()
+    readAccess.abort()
+    readAccess = new AbortController()
+  }
+
   function revokeRead() {
     locallyAcceptedId = null
-    reader?.abort()
+    cancelHistoryReads()
     resetEventOwners()
     publish({
       ...initialState(),
@@ -141,16 +158,15 @@ export function createAgUiChatSession({
   async function refreshRepository({
     signal,
   }: { signal?: AbortSignal } = {}): Promise<ExportedMessageRepository> {
-    if (disposed) throw abortRead()
-    reader?.abort()
-    const currentRead = new AbortController()
-    reader = currentRead
-    const readSignal = signal ? anySignal([signal, currentRead.signal]) : currentRead.signal
+    if (disposed) throw new SupersededHistoryRead()
+    const generation = ++readGeneration
+    const readSignal = signal ? anySignal([signal, readAccess.signal]) : readAccess.signal
+    const isCurrent = () => generation === readGeneration && !readSignal.aborted && !disposed
     try {
       readSignal.throwIfAborted()
-      const snapshot = await readSnapshot(readSignal)
+      const snapshot = await readSnapshot(readSignal, isCurrent)
       readSignal.throwIfAborted()
-      if (disposed || reader !== currentRead) throw abortRead()
+      if (!isCurrent()) throw new SupersededHistoryRead()
       if (snapshot.threadId !== conversationId) throw new Error('Chat history thread mismatch.')
       const repository = buildAgUiChatRepository(snapshot, getServerMessages())
       const activities = snapshot.activities
@@ -194,17 +210,15 @@ export function createAgUiChatSession({
       })
       return repository
     } catch (error) {
+      readSignal.throwIfAborted()
+      if (!isCurrent()) throw new SupersededHistoryRead()
       if (
-        !readSignal.aborted &&
-        reader === currentRead &&
         error instanceof ApiError &&
         (error.status === 401 || error.status === 403 || error.status === 404)
       ) {
         revokeRead()
       }
       throw error
-    } finally {
-      if (reader === currentRead) reader = undefined
     }
   }
 
@@ -213,7 +227,15 @@ export function createAgUiChatSession({
     async load() {
       // The lifecycle attaches through GET explicitly. Enabling implicit resume
       // here would race it and can make an SDK without connect start a new run.
-      return { ...(await refreshRepository()), unstable_resume: false }
+      for (;;) {
+        try {
+          return { ...(await refreshRepository()), unstable_resume: false }
+        } catch (error) {
+          // The SDK will import this result and reports every rejection as a load failure.
+          // If the branch changed during its first GET, finish loading the current branch.
+          if (!(error instanceof SupersededHistoryRead) || disposed || state.readDenied) throw error
+        }
+      }
     },
     async append() {
       // assistant-ui also notifies history about transient UI messages. The
@@ -229,7 +251,7 @@ export function createAgUiChatSession({
     physicalRunId: string | null
   }) {
     if (disposed || state.readDenied) return
-    reader?.abort()
+    invalidateHistoryRead()
     locallyAcceptedId = runId
     if (!physicalRunId) return
     if (state.activeRunId === runId && state.physicalRunId === physicalRunId) return
@@ -393,7 +415,7 @@ export function createAgUiChatSession({
       if (!runId) return
       const localStart = source === 'run' && runId === locallyAcceptedId
       if (state.activeRunId && runId !== state.activeRunId && !localStart) return
-      reader?.abort()
+      invalidateHistoryRead()
       if (state.activeRunId !== runId) selectRun(runId, null)
       else resetEventOwners()
       return
@@ -409,7 +431,7 @@ export function createAgUiChatSession({
       if (event.code === 'AG_UI_SNAPSHOT_REQUIRED') {
         const runId = state.activeRunId
         if (!runId) return
-        reader?.abort()
+        invalidateHistoryRead()
         if (lastResetRunId === runId) publish({ attachBlockedRunId: runId })
         else {
           lastResetRunId = runId
@@ -434,7 +456,7 @@ export function createAgUiChatSession({
       case 'RUN_ERROR': {
         const runId = id(event.runId) ?? state.activeRunId
         if (!runId || lane || runId !== state.activeRunId) return
-        reader?.abort()
+        invalidateHistoryRead()
         const failed = event.type === 'RUN_ERROR'
         const meta =
           record(event.metadata) && record(event.metadata.moldy) ? event.metadata.moldy : {}
@@ -510,9 +532,11 @@ export function createAgUiChatSession({
     onPublicEvent,
     refreshRepository,
     invalidateApproval,
+    invalidateHistoryRead,
+    cancelHistoryReads,
     dispose() {
       disposed = true
-      reader?.abort()
+      readAccess.abort()
       resetEventOwners()
       listeners.clear()
       state = initialState()
