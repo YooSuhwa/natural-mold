@@ -14,7 +14,7 @@ const start = { type: 'RUN_STARTED', protocolVersion: '1.0', threadId, runId }
 const finish = { type: 'RUN_FINISHED', threadId, runId, outcome: { type: 'success' } }
 
 function frame(event: unknown) {
-  return 'data: ' + JSON.stringify(event) + '\r\n\r\n'
+  return 'id: resume-cursor\r\ndata: ' + JSON.stringify(event) + '\r\n\r\n'
 }
 
 function harness(requestUrl = url, receipt: Record<string, string> = {}) {
@@ -116,6 +116,9 @@ describe('native application reads of AG-UI command responses', () => {
     ['different initial thread', [{ ...start, threadId: 'other' }, finish]],
     ['different terminal run', [start, { ...finish, runId: 'other' }]],
     ['missing outcome', [start, { ...finish, outcome: undefined }]],
+    ['invalid usage', [start, { ...finish, usage: [{ inputTokens: '12' }] }]],
+    ['null rawEvent', [start, { ...finish, rawEvent: null }]],
+    ['null result', [start, { ...finish, result: null }]],
     [
       'empty interrupt ID',
       [
