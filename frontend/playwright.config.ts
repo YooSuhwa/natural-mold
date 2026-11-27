@@ -23,6 +23,7 @@ import {
 import {
   INDEPENDENT_JOB_SPEC,
   independentJobBackendEnvironment,
+  resolveE2EChatRuntime,
 } from './scripts/e2e-lane-runtime.mjs'
 
 const selectionOnly = process.env.E2E_SELECTION_ONLY === '1'
@@ -64,7 +65,7 @@ const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${frontendPort}`
 const apiBaseURL = process.env.E2E_API_BASE_URL ?? `http://localhost:${backendPort}`
 const corsOrigins = `http://localhost:${frontendPort},http://127.0.0.1:${frontendPort}`
 const testTimeout = Number(process.env.E2E_TEST_TIMEOUT_MS ?? '60000')
-const chatRuntime = process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy' ? 'legacy' : 'langgraph_v3'
+const chatRuntime = resolveE2EChatRuntime(process.env.NEXT_PUBLIC_CHAT_RUNTIME)
 process.env.NEXT_PUBLIC_CHAT_RUNTIME = chatRuntime
 
 if (!selectionOnly && !skipBackend) assertIsolatedDatabaseEnvironment(e2eLane, process.env)

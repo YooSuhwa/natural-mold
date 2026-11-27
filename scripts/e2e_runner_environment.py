@@ -42,7 +42,7 @@ def _optional_frontend_controls(project: Project) -> dict[str, str]:
     runtime = os.environ.get("NEXT_PUBLIC_CHAT_RUNTIME")
     if runtime is not None:
         match runtime:
-            case "legacy" | "langgraph_v3":
+            case "legacy" | "langgraph_v3" | "ag_ui":
                 controls["NEXT_PUBLIC_CHAT_RUNTIME"] = runtime
             case _:
                 raise E2eContractError("invalid_chat_runtime")
