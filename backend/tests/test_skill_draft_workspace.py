@@ -321,3 +321,17 @@ async def test_gc_abandon_days_zero_disables_idle_rule(
 
     await db.refresh(idle)
     assert idle.status == "active"
+
+
+async def test_ag_ui_attachment_copy_is_stable_across_retries(tmp_path: Path) -> None:
+    path = workspace.create_workspace(uuid.uuid4())
+    attachments = [
+        _attachment(tmp_path, filename="../example.txt", body=b"first"),
+        _attachment(tmp_path, filename="example.txt", body=b"second"),
+    ]
+    initial = workspace.copy_attachments_to_inputs(path, attachments, stable_names=True)  # type: ignore[arg-type]
+    replay = workspace.copy_attachments_to_inputs(path, attachments, stable_names=True)  # type: ignore[arg-type]
+    assert initial == replay and len(set(initial)) == 2
+    root = workspace.resolve_workspace_dir(path)
+    assert [(root / name).read_bytes() for name in replay] == [b"first", b"second"]
+    assert sorted((root / "inputs").iterdir()) == sorted(root / name for name in initial)

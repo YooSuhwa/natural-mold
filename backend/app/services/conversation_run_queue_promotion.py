@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,8 +11,11 @@ from app.authz.conversation_input_scope import owned_input_predicate
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import lock_query
+from app.dependencies import CurrentUser
+from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_service
+from app.services.conversation_audit_service import record_conversation_run_audit
 from app.services.conversation_run_queue_mutations import (
     lock_owned_conversation,
     queue_input_not_found,
@@ -30,6 +33,36 @@ class PromotedConversationInput:
 
 def _conflict(message: str) -> HTTPException:
     return HTTPException(status_code=409, detail=message)
+
+
+async def interrupt_active_for_input(
+    db: AsyncSession,
+    *,
+    conversation_id: uuid.UUID,
+    context: OrgContext,
+    user: CurrentUser,
+    request: Request,
+) -> ConversationRun | None:
+    """Request cancellation of the predecessor within the new input's transaction."""
+    active = await conversation_run_service.get_active_run(
+        db, conversation_id=conversation_id, context=context
+    )
+    if active is None:
+        return None
+    active = await conversation_run_service.get_run_for_user(
+        db, conversation_id=conversation_id, run_id=active.id, context=context, for_update=True
+    )
+    if active is not None:
+        await conversation_run_service.request_cancel_run(db, active, reason="steer")
+        await record_conversation_run_audit(
+            db,
+            action="conversation.run_steer_request",
+            run=active,
+            user=user,
+            request=request,
+            status="canceling",
+        )
+    return active
 
 
 async def promote_pending_input(
