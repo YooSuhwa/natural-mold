@@ -77,8 +77,7 @@ async def _response(
             ),
             (
                 all(
-                    e.get("runId") == request["runId"]
-                    and e.get("threadId") == request["threadId"]
+                    e.get("runId") == request["runId"] and e.get("threadId") == request["threadId"]
                     for e in (start, end)
                 ),
                 "run_identity",
@@ -204,9 +203,7 @@ async def _file(gate: Gate, thread_id: str, name: str) -> dict[str, str]:
     path = f"{artifacts_path}/{item['id']}/download"
     data = await gate.owner_b.send("GET", path)
     expect_status(data, 200)
-    require(
-        hashlib.sha256(data.content).hexdigest() == item["sha256"], "file/hash mismatch"
-    )
+    require(hashlib.sha256(data.content).hexdigest() == item["sha256"], "file/hash mismatch")
     with ZipFile(io.BytesIO(data.content)) as archive:
         doc = ElementTree.fromstring(archive.read("word/document.xml"))
         require(
@@ -301,9 +298,7 @@ async def _expire_pending(gate: Gate, thread_id: str, interrupt_id: str) -> None
     # Gate.dsn is the explicitly verified local throwaway DB and its unprivileged RLS role.
     # Change only the clock on the fresh approval whose public interrupt we just validated.
     async with await psycopg.AsyncConnection.connect(gate.dsn) as conn:
-        await conn.execute(
-            "SELECT set_config('app.tenant_id', %s, true)", (gate.tenant_id,)
-        )
+        await conn.execute("SELECT set_config('app.tenant_id', %s, true)", (gate.tenant_id,))
         cursor = await conn.execute(
             """UPDATE approval_requests AS a SET expires_at = clock_timestamp() - interval '1 second'
                FROM conversation_runs AS r WHERE a.conversation_id=%s AND a.interrupt_id=%s
@@ -355,9 +350,7 @@ async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, ob
         "expired": approvals,
     }[kind]
 
-    def continuation(
-        answers: list[dict[str, str]], interrupt_id: str = real_id
-    ) -> dict[str, Any]:
+    def continuation(answers: list[dict[str, str]], interrupt_id: str = real_id) -> dict[str, Any]:
         return _request(
             thread_id,
             resume=[
@@ -448,16 +441,13 @@ async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, ob
     )
     winner = statuses.index(200)
     accepted = gate.check_sse(results[winner])
-    await _response(
-        gate, f"{kind}-continuation", contenders[winner], accepted, "success"
-    )
+    await _response(gate, f"{kind}-continuation", contenders[winner], accepted, "success")
 
     # Reusing the same accepted request is a read of the original run. A new request aimed at
     # the consumed slot must be rejected. Neither may create another script execution.
     replay = gate.check_sse(await gate.owner_b.send("POST", route, contenders[winner]))
     require(
-        replay[-1]["runId"] == accepted[-1]["runId"]
-        and replay[-1]["type"] == "RUN_FINISHED",
+        replay[-1]["runId"] == accepted[-1]["runId"] and replay[-1]["type"] == "RUN_FINISHED",
         "repeat submit did not attach to accepted run",
     )
     expect_status(await gate.owner_a.send("POST", route, continuation(decisions)), 409)
@@ -486,9 +476,7 @@ async def _effects(
     }
     counts = await _counts(gate, thread_id, skill_id)
     attempts = docx_attempts(thread_id)
-    require(
-        counts == expected_after, f"wrong protected effects or resume lineage: {counts}"
-    )
+    require(counts == expected_after, f"wrong protected effects or resume lineage: {counts}")
     require(
         attempts == expected_files,
         f"expected {expected_files} DOCX process starts, got {attempts}",
@@ -499,9 +487,7 @@ async def _effects(
     if expected_files:
         artifact = await _file(gate, thread_id, name)
     else:
-        artifacts = await gate.owner_b.json(
-            "GET", f"/api/conversations/{thread_id}/artifacts"
-        )
+        artifacts = await gate.owner_b.json("GET", f"/api/conversations/{thread_id}/artifacts")
         require(artifacts == [], "declined action exposed a generated file")
     return {
         "thread_id": thread_id,

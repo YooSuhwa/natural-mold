@@ -30,6 +30,16 @@ class AgUiSnapshotMessageLink(_SnapshotModel):
     created_at: datetime | None = None
 
 
+class AgUiApprovalDecision(_SnapshotModel):
+    message_id: str
+    tool_call_id: str
+    physical_run_id: str
+    interrupt_id: str
+    action_index: int = Field(ge=0)
+    decision: Literal["approve", "edit", "reject"]
+    subagent_run_id: str | None = None
+
+
 class SnapshotTodo(_SnapshotModel):
     id: str
     content: str
@@ -85,6 +95,7 @@ class AgUiSnapshot(_SnapshotModel):
     messages: list[PublicMessage] = Field(default_factory=list)
     message_links: list[AgUiSnapshotMessageLink] = Field(default_factory=list)
     interrupts: list[Interrupt] = Field(default_factory=list)
+    approval_decisions: list[AgUiApprovalDecision] = Field(default_factory=list)
     subagents: list[SnapshotSubagent] = Field(default_factory=list)
     todos: list[SnapshotTodo] = Field(default_factory=list)
     cursor: str | None = None

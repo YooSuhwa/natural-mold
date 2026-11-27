@@ -5,7 +5,7 @@ import {
   type ThreadMessage,
 } from '@assistant-ui/react'
 import { Provider as JotaiProvider, useAtomValue } from 'jotai'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import messagesKo from '../../../../../messages/ko.json'
 import { render, screen, userEvent, within } from '../../../../../tests/test-utils'
 import { ChatConversationContext } from '@/components/chat/conversation-context'
@@ -32,13 +32,20 @@ const conversationId = 'chat-one'
 const sameCallId = 'tool-id-reused-by-the-model'
 const complete = { type: 'complete', reason: 'stop' } as const
 
-function parentMessage(label: string): ThreadMessage {
+function parentMessage(label: string, decision?: 'approve' | 'edit' | 'reject'): ThreadMessage {
+  const messageId = `issuer-${label}`
+  const subagentRunId = `child-${label}`
   const subagent = fromThreadMessageLike(
     {
       role: 'assistant',
       metadata: {
         custom: {
           agui: { name: 'Researcher', description: `Brief ${label}`, result: `Done ${label}` },
+          ...(decision && {
+            moldyChildApprovalDecisions: [
+              { subagentRunId, messageId, toolCallId: 'inner-call', decision },
+            ],
+          }),
         },
       },
       content: [
@@ -57,12 +64,13 @@ function parentMessage(label: string): ThreadMessage {
           type: 'tool-call',
           toolName: 'search',
           toolCallId: 'inner-call',
+          parentId: messageId,
           args: {},
           result: `Source ${label}`,
         },
       ],
     },
-    `child-${label}`,
+    subagentRunId,
     complete,
   )
   return fromThreadMessageLike(
@@ -188,6 +196,36 @@ describe('AG-UI subagent presentation', () => {
     ]) {
       expect(screen.queryAllByText(value)).toHaveLength(0)
     }
+  })
+
+  it('shows a read-only decision only on its authorized child and removes it on revocation', async () => {
+    const requests = vi.spyOn(globalThis, 'fetch')
+    onTestFinished(() => requests.mockRestore())
+    const rejected = messagesKo.chat.approval.rejected
+    const messages = [parentMessage('first', 'reject'), second]
+    const view = render(<Harness messages={messages} />)
+
+    expect(await card(first.id).findByText(rejected)).toBeVisible()
+    expect(card(second.id).queryByText(rejected)).not.toBeInTheDocument()
+    await openPanelFor(second.id)
+    expect(await panel().findByText('Source second')).toBeVisible()
+    expect(panel().queryByText(rejected)).not.toBeInTheDocument()
+    await openPanelFor(first.id)
+    expect(await panel().findByText(rejected)).toBeVisible()
+    expect(
+      panel().queryByRole('button', { name: messagesKo.chat.approval.reject }),
+    ).not.toBeInTheDocument()
+
+    view.rerender(<Harness messages={messages} allow={false} />)
+    expect(screen.queryAllByText(rejected)).toHaveLength(0)
+    expect(probes.onNew).not.toHaveBeenCalled()
+    expect(
+      requests.mock.calls.every(
+        ([input, init]) =>
+          (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase() ===
+          'GET',
+      ),
+    ).toBe(true)
   })
 
   it('renders an allowlisted activity inside its authorized child and removes it on revocation', async () => {

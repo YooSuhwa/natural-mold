@@ -7,7 +7,13 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from ag_ui.core import BaseEvent, SubagentErrorEvent, SubagentFinishedEvent, SubagentStartedEvent
+from ag_ui.core import (
+    BaseEvent,
+    SubagentErrorEvent,
+    SubagentFinishedEvent,
+    SubagentStartedEvent,
+    ToolCallResultEvent,
+)
 from ag_ui.core.events import SubagentFinishedSuspendedOutcome
 
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
@@ -15,6 +21,10 @@ from app.agent_runtime.protocol_events import StoredProtocolEvent
 from app.tools.keys import DELEGATION_TOOL
 
 Namespace = tuple[str, ...]
+
+
+class ProjectionChildStateUnknown(ValueError):
+    """An announced child has no confirmed outcome for this physical run."""
 
 
 def public_subagent_id(thread_id: str, namespace: Namespace) -> str:
@@ -71,6 +81,9 @@ class PublicChildren:
         self.active: dict[Namespace, str] = {}
         self.finished: set[Namespace] = set()
         self._task_handles: dict[str, str] = {}
+        self._dispatch_children: dict[str, set[Namespace]] = {}
+        self._returned: dict[Namespace, str] = {}
+        self._paused: set[Namespace] = set()
 
     @property
     def task_handles(self) -> dict[str, str]:
@@ -93,9 +106,17 @@ class PublicChildren:
             for call_id, ns, _ in self.visibility.bindings
             if call_id == tool_id and ns in self.visibility.namespaces and ns
         ]
-        if len(matches) != 1:
+        historical = {
+            ns
+            for call_id, ns in self.visibility.historical_bindings
+            if call_id == tool_id and ns in self.visibility.namespaces and ns
+        }
+        # Keep duplicate durable rows ambiguous. An independently proven
+        # historical relation permits replay only for this same call and scope.
+        scopes = set(matches) | historical
+        if len(matches) > 1 or len(scopes) != 1:
             return False
-        child = matches[0]
+        child = next(iter(scopes))
         # LangGraph may insert structural graph segments between two actual
         # subagents. Only an independently authorized child row denotes an issuer.
         parent = next(
@@ -107,6 +128,13 @@ class PublicChildren:
             (),
         )
         return self.owner(parent) == owner
+
+    def historical_only(self, namespace: Namespace) -> bool:
+        if self.visibility.allow_legacy_details or not namespace:
+            return False
+        return any(ns == namespace for _, ns in self.visibility.historical_bindings) and not any(
+            ns == namespace for _, ns, _ in self.visibility.bindings
+        )
 
     def visible(self, namespace: Namespace) -> bool:
         if not namespace or self.visibility.allow_legacy_details:
@@ -143,12 +171,21 @@ class PublicChildren:
             }
             if len(matches) == 1:
                 self._task_handles[owner] = matches.pop()
-            elif not self.visibility.allow_legacy_details:
+            elif not (
+                self.visibility.allow_legacy_details
+                or (not matches and (cause, namespace) in self.visibility.historical_bindings)
+            ):
                 # Independent grants for this call and this namespace do not
                 # establish that the former actually spawned the latter.
                 public_call = None
         name = data.get("graph_name") or data.get("agent_name") or data.get("name")
         self.active[namespace] = owner
+        if public_call:
+            scopes = self._dispatch_children.setdefault(public_call, set())
+            scopes.add(namespace)
+            if len(scopes) > 1:
+                for scope in scopes:
+                    self._returned.pop(scope, None)
         return [
             SubagentStartedEvent(
                 subagent_run_id=owner,
@@ -158,6 +195,53 @@ class PublicChildren:
                 parent_message_id=tool_message(parent, cause) if public_call else None,
             )
         ]
+
+    def record_returns(self, frames: Sequence[BaseEvent]) -> None:
+        for frame in frames:
+            if not isinstance(frame, ToolCallResultEvent):
+                continue
+            scopes = self._dispatch_children.get(frame.tool_call_id)
+            if not scopes or len(scopes) != 1:
+                continue
+            metadata = (frame.metadata or {}).get("moldy")
+            failed = isinstance(metadata, Mapping) and metadata.get("isError") is True
+            self._returned[next(iter(scopes))] = "failed" if failed else "completed"
+
+    def record_pause(self, namespace: Namespace) -> None:
+        self._paused.add(namespace)
+
+    def interrupt_statuses(
+        self,
+        scopes: set[Namespace],
+        awaiting: set[Namespace],
+        managed: Mapping[Namespace, str],
+    ) -> dict[Namespace, str]:
+        """Reconcile graph-wide interruption with the fate of each actual dispatch."""
+        resolved: dict[Namespace, str] = {}
+        for ns in scopes:
+            # Terminal status from the same physical run can identify an exact
+            # persisted task even if this journal is missing its original caller.
+            # This does not grant a child task handle.
+            bindings = {
+                (call, task_id)
+                for call, scope, task_id in self.visibility.bindings
+                if scope == ns and call in self.visibility.tool_call_ids
+            }
+            durable = (
+                managed.get(ns) if len(bindings) == 1 and ns in self.visibility.namespaces else None
+            )
+            if durable not in ("completed", "failed", "cancelled", "canceled"):
+                durable = None
+            if any(child[: len(ns)] == ns for child in awaiting):
+                # Only the invocation that raised a current slot owns that ID.
+                resolved[ns] = "interrupted"
+            elif status := durable or self._returned.get(ns):
+                resolved[ns] = status
+            elif ns in self._paused:
+                # LangGraph may pause the whole graph. Without a separately
+                # confirmed return this scope is suspended, with no approval of its own.
+                resolved[ns] = "interrupted"
+        return resolved
 
     def parent(self, namespace: Namespace) -> str | None:
         for n in range(len(namespace) - 1, 0, -1):
@@ -172,6 +256,7 @@ class PublicChildren:
         *,
         close_entities: Callable[[str | None], list[BaseEvent]],
         interrupt_ids: Callable[[str], Sequence[str]],
+        statuses: Mapping[Namespace, str] | None = None,
     ) -> list[BaseEvent]:
         events: list[BaseEvent] = []
         # A parent can close while the graph still has children (notably on
@@ -182,22 +267,26 @@ class PublicChildren:
             reverse=True,
         )
         for ns in subtree:
+            if statuses is not None and ns not in statuses:
+                # RUN_ERROR abandons any remaining unconfirmed invocations.
+                continue
+            child_status = statuses[ns] if statuses is not None else status
             owner = self.active.pop(ns)
             self.finished.add(ns)
             events.extend(close_entities(owner))
-            if status in {"failed", "stale"}:
+            if child_status in {"failed", "stale"}:
                 events.append(SubagentErrorEvent(subagent_run_id=owner, message="Subagent failed."))
                 continue
-            if status in {"canceled", "cancelled"}:
+            if child_status in {"canceled", "cancelled"}:
                 events.append(
                     SubagentErrorEvent(
                         subagent_run_id=owner, message="Subagent cancelled.", code="CANCELLED"
                     )
                 )
                 continue
-            ids = list(interrupt_ids(owner))
             outcome = None
-            if status == "interrupted":
+            if child_status == "interrupted":
+                ids = None if self.historical_only(ns) else list(interrupt_ids(owner))
                 outcome = SubagentFinishedSuspendedOutcome(type="suspended", interrupt_ids=ids)
             events.append(SubagentFinishedEvent(subagent_run_id=owner, outcome=outcome))
         return events

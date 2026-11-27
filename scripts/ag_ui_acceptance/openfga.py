@@ -94,16 +94,12 @@ def acceptance_openfga(backend_root: Path) -> Iterator[dict[str, str]]:
                 Request(url + path, data=body, headers=headers), timeout=10
             ) as response:
                 identifier = json.load(response)[id_field]
-            if not isinstance(identifier, str) or not re.fullmatch(
-                r"[0-9A-Z]{26}", identifier
-            ):
+            if not isinstance(identifier, str) or not re.fullmatch(r"[0-9A-Z]{26}", identifier):
                 raise RuntimeError(f"OpenFGA returned an invalid {id_field}")
             return identifier
 
         store = create("/stores", json.dumps({"name": name}).encode(), "id")
-        model_id = create(
-            f"/stores/{store}/authorization-models", model, "authorization_model_id"
-        )
+        model_id = create(f"/stores/{store}/authorization-models", model, "authorization_model_id")
         yield {
             "OPENFGA_API_URL": url,
             "OPENFGA_API_TOKEN": key,

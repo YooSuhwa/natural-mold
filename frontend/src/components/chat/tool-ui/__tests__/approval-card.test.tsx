@@ -1,12 +1,13 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { HiTLContext } from '@/lib/chat/hitl-context'
+import { HiTLContext, type HiTLContextValue } from '@/lib/chat/hitl-context'
 import { createHiTLDecisionCoordinator } from '@/lib/chat/standard-interrupt'
 import type { Decision } from '@/lib/types'
 import { ApprovalCard } from '../approval-card'
 import { GroupedApprovalCard } from '../grouped-approval-card'
+import { useApprovalForm } from '../use-approval-form'
 
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
@@ -24,6 +25,8 @@ type ToolUiRender = {
       hitl_total_actions?: number
       hitl_interrupt_id?: string | null
       allowed_decisions?: string[]
+      session_consent_eligible?: boolean
+      timeout_seconds?: number
     }
     result?: unknown
     status: { type: string }
@@ -33,7 +36,253 @@ type ToolUiRender = {
 
 const renderApproval = ApprovalCard as unknown as ToolUiRender['render']
 
+function PendingApproval({ index = 0, count = 1 }: { index?: number; count?: number }) {
+  return renderApproval({
+    args: {
+      approval_id: `interrupt:${index}`,
+      tool_name: 'write_file',
+      tool_args: { path: `report-${index}.md` },
+      hitl_interrupt_id: 'interrupt',
+      hitl_action_index: index,
+      hitl_total_actions: count,
+      allowed_decisions: ['approve', 'edit', 'reject'],
+      session_consent_eligible: true,
+    },
+    status: { type: 'requires-action' },
+  })
+}
+
 describe('ApprovalCard', () => {
+  it.each(['signed', 'signed group', 'legacy'] as const)(
+    'handles an elapsed approval deadline in a %s chat',
+    async (mode) => {
+      const onResumeDecisions = vi
+        .fn<HiTLContextValue['onResumeDecisions']>()
+        .mockResolvedValue(undefined)
+      const registerDecision = vi
+        .fn<NonNullable<HiTLContextValue['registerDecision']>>()
+        .mockResolvedValue(undefined)
+      const addResult = vi.fn()
+      function TimedApproval({ index = 0 }: { index?: number }) {
+        return renderApproval({
+          args: {
+            approval_id: `timed:${index}`,
+            hitl_interrupt_id: 'timed',
+            hitl_action_index: index,
+            hitl_total_actions: mode === 'signed group' ? 2 : 1,
+            timeout_seconds: 1,
+            allowed_decisions: ['approve', 'reject'],
+          },
+          status: { type: 'requires-action' },
+          addResult,
+        })
+      }
+      const context: HiTLContextValue =
+        mode !== 'legacy'
+          ? {
+              canRespond: true,
+              approvalGeneration: 'timed-checkpoint',
+              canRespondTo: (id, index) =>
+                id === 'timed' && (index === 0 || (mode === 'signed group' && index === 1)),
+              registerDecision,
+              onResumeDecisions,
+            }
+          : { onResumeDecisions }
+      vi.useFakeTimers()
+      try {
+        render(
+          <HiTLContext.Provider value={context}>
+            {mode === 'signed group' ? (
+              <GroupedApprovalCard count={2}>
+                <TimedApproval index={0} />
+                <TimedApproval index={1} />
+              </GroupedApprovalCard>
+            ) : (
+              <TimedApproval />
+            )}
+          </HiTLContext.Provider>,
+        )
+        if (mode === 'signed group') {
+          expect(screen.queryByText('0:01')).toBeNull()
+          expect(screen.getByRole('button', { name: 'approveAll' })).toBeEnabled()
+        } else {
+          expect(screen.getByText('0:01')).toBeVisible()
+        }
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(3000)
+        })
+        if (mode !== 'legacy') {
+          if (mode === 'signed group') {
+            expect(screen.queryByText('expired')).toBeNull()
+            expect(screen.getByTestId('approval-group')).toHaveAttribute(
+              'data-hitl-pending-actions',
+              '2',
+            )
+          } else {
+            expect(screen.getByText('expired')).toBeVisible()
+          }
+          expect(onResumeDecisions).not.toHaveBeenCalled()
+          expect(registerDecision).not.toHaveBeenCalled()
+          expect(addResult).not.toHaveBeenCalled()
+        } else {
+          expect(screen.getByText('rejected')).toBeVisible()
+          expect(onResumeDecisions).toHaveBeenCalledExactlyOnceWith(
+            [{ type: 'reject', message: 'autoRejected' }],
+            'rejected',
+          )
+          expect(addResult).toHaveBeenCalledExactlyOnceWith({
+            decision: 'rejected',
+            reason: 'autoRejected',
+          })
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
+
+  it('requires a bound action for direct approval-form callbacks in a signed chat', async () => {
+    const onResumeDecisions = vi
+      .fn<HiTLContextValue['onResumeDecisions']>()
+      .mockResolvedValue(undefined)
+    const registerDecision = vi.fn<NonNullable<HiTLContextValue['registerDecision']>>()
+    function mountForm(value: HiTLContextValue) {
+      return renderHook(() => useApprovalForm({ isComplete: false }), {
+        wrapper: ({ children }) => (
+          <HiTLContext.Provider value={value}>{children}</HiTLContext.Provider>
+        ),
+      })
+    }
+    const signed = mountForm({
+      approvalGeneration: 'checkpoint',
+      canRespond: true,
+      canRespondTo: (id, index) => id === 'interrupt' && index === 0,
+      registerDecision,
+      onResumeDecisions,
+    })
+    expect(signed.result.current.isLocked).toBe(true)
+    await act(async () => {
+      await signed.result.current.handleApprove()
+      await signed.result.current.handleRevision()
+    })
+    expect(signed.result.current.submitted).toBeNull()
+    expect(registerDecision).not.toHaveBeenCalled()
+    expect(onResumeDecisions).not.toHaveBeenCalled()
+    signed.unmount()
+
+    const builder = mountForm({ onResumeDecisions })
+    expect(builder.result.current.isLocked).toBe(false)
+    await act(async () => builder.result.current.handleApprove())
+    expect(builder.result.current.submitted).toBe('approved')
+    expect(onResumeDecisions).toHaveBeenCalledExactlyOnceWith([{ type: 'approve' }], 'approve')
+  })
+
+  it('only enables a signed action and its session grant after its own slot is confirmed', async () => {
+    const registerDecision = vi
+      .fn<NonNullable<HiTLContextValue['registerDecision']>>()
+      .mockResolvedValue(undefined)
+    const onResumeDecisions = vi.fn<HiTLContextValue['onResumeDecisions']>()
+    const view = (canRespond: boolean, expectedId: string, expectedIndex: number) => (
+      <HiTLContext.Provider
+        value={{
+          canRespond,
+          approvalGeneration: canRespond ? 'checkpoint' : null,
+          canRespondTo: (id, index) => id === expectedId && index === expectedIndex,
+          registerDecision,
+          onResumeDecisions,
+        }}
+      >
+        <PendingApproval />
+      </HiTLContext.Provider>
+    )
+    const { rerender } = render(view(false, 'interrupt', 0))
+    function expectLocked() {
+      for (const name of ['approve', 'edit', 'reject']) {
+        const action = screen.getByRole('button', { name })
+        expect(action).toBeDisabled()
+        action.click()
+      }
+      const consent = screen.getByRole('checkbox', { name: 'allowForSession' })
+      expect(consent).toBeDisabled()
+      consent.click()
+      expect(consent).not.toBeChecked()
+      expect(registerDecision).not.toHaveBeenCalled()
+      expect(onResumeDecisions).not.toHaveBeenCalled()
+    }
+    expectLocked()
+    rerender(view(true, 'different-interrupt', 0))
+    expectLocked()
+    rerender(view(true, 'interrupt', 1))
+    expectLocked()
+    rerender(view(true, 'interrupt', 0))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'allowForSession' }))
+    fireEvent.click(screen.getByRole('button', { name: 'approve' }))
+    expect(await screen.findByText('approved')).toBeVisible()
+    expect(registerDecision).toHaveBeenCalledExactlyOnceWith(
+      0,
+      { type: 'approve', scope: 'session' },
+      'approved',
+      'interrupt',
+    )
+    rerender(view(false, 'interrupt', 0))
+    expect(screen.getByText('approved')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'approve' })).toBeNull()
+    expect(onResumeDecisions).not.toHaveBeenCalled()
+  })
+
+  it.each(['direct', 'recheck'])('resets staged group votes on %s rollover', async (mode) => {
+    const registerDecision = vi
+      .fn<NonNullable<HiTLContextValue['registerDecision']>>()
+      .mockResolvedValue(undefined)
+    const onResumeDecisions = vi.fn<HiTLContextValue['onResumeDecisions']>()
+    const view = (approvalGeneration: string | null, interruptId = 'interrupt') => (
+      <HiTLContext.Provider
+        value={{
+          canRespond: approvalGeneration !== null,
+          approvalGeneration,
+          canRespondTo: (id, index) => id === interruptId && (index === 0 || index === 1),
+          registerDecision,
+          onResumeDecisions,
+        }}
+      >
+        <GroupedApprovalCard count={2}>
+          <PendingApproval index={0} count={2} />
+          <PendingApproval index={1} count={2} />
+        </GroupedApprovalCard>
+      </HiTLContext.Provider>
+    )
+    const { rerender } = render(view('checkpoint-a', 'historical-interrupt'))
+    expect(screen.getByRole('button', { name: 'approveAll' })).toBeDisabled()
+    rerender(view('checkpoint-a'))
+    fireEvent.click(screen.getByRole('button', { name: 'approve' }))
+    await waitFor(() => expect(screen.getByTestId('approval-action-1')).toBeVisible())
+    expect(registerDecision).not.toHaveBeenCalled()
+
+    if (mode === 'recheck') {
+      rerender(view(null))
+      expect(screen.getByRole('button', { name: 'approveAll' })).toBeDisabled()
+    }
+    rerender(view('checkpoint-b'))
+    expect(screen.getByTestId('approval-group')).toHaveAttribute('data-hitl-pending-actions', '2')
+    expect(screen.getByTestId('approval-action-0')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'reject' }))
+    fireEvent.click(screen.getByRole('button', { name: 'rejectConfirm' }))
+    await waitFor(() => expect(screen.getByTestId('approval-action-1')).toBeVisible())
+    expect(registerDecision).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'approve' }))
+    expect(await screen.findByText('allActionsCompleted')).toBeVisible()
+    expect(registerDecision.mock.calls).toEqual([
+      [0, { type: 'reject' }, 'rejected', 'interrupt'],
+      [1, { type: 'approve' }, 'approved', 'interrupt'],
+    ])
+    rerender(view(null))
+    expect(screen.getByText('allActionsCompleted')).toBeVisible()
+    rerender(view('checkpoint-c', 'another-interrupt'))
+    expect(screen.getByText('allActionsCompleted')).toBeVisible()
+    expect(registerDecision).toHaveBeenCalledTimes(2)
+    expect(onResumeDecisions).not.toHaveBeenCalled()
+  })
+
   it('uses neutral card surfaces for single and grouped pending approvals', () => {
     function ApprovalUnderTest() {
       return renderApproval({

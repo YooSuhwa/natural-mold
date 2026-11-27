@@ -87,11 +87,15 @@ export function useOAuthAuthorize() {
   const authorize = useCallback(
     async (
       credentialId: string,
-      popup: Window | null = openOAuthPopup(),
+      openedPopup?: Window | null,
+      canContinue?: () => boolean,
     ): Promise<OAuthAuthorizeResult> => {
+      if (canContinue?.() === false) return 'failed'
+      const popup = openedPopup === undefined ? openOAuthPopup() : openedPopup
       if (!popup) return 'blocked'
       try {
         const { authorization_url: url } = await mutateAsync(credentialId)
+        if (canContinue?.() === false) return 'failed'
         if (!navigateOpenedWindow(popup, url)) {
           popup.close()
           return 'failed'
@@ -99,7 +103,7 @@ export function useOAuthAuthorize() {
         popup.focus()
         return 'started'
       } catch {
-        popup.close()
+        if (canContinue?.() !== false) popup.close()
         return 'failed'
       }
     },

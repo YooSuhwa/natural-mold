@@ -35,6 +35,8 @@ interface CredentialCreateModalProps {
   ) => void
   /** Start the OAuth authorization of a new OAuth-type credential right away (G-05). */
   authorizeOAuth?: boolean
+  /** Recheck a chat approval before continuing an already-started creation flow. */
+  canContinue?: () => boolean
   /**
    * ``'system'`` posts to ``/api/system-credentials`` so the resulting row
    * is operator-managed (Fix Agent / builder). Defaults to ``'user'``.
@@ -50,6 +52,7 @@ export function CredentialCreateModal({
   initialData,
   onCreated,
   authorizeOAuth = false,
+  canContinue,
   mode = 'user',
 }: CredentialCreateModalProps) {
   const t = useTranslations('credentials.create')
@@ -104,7 +107,7 @@ export function CredentialCreateModal({
     definition !== null && name.trim().length > 0 && Object.keys(errors).length === 0
 
   async function handleSubmit() {
-    if (!definition || !canSubmit) return
+    if (!definition || !canSubmit || canContinue?.() === false) return
     // The popup opens inside the click, before any await (popup blockers).
     const popup = authorizeOAuth && definition.has_oauth ? openOAuthPopup() : null
     try {
@@ -114,10 +117,12 @@ export function CredentialCreateModal({
         data,
         is_shared: false,
       })
+      if (canContinue?.() === false) return
       toast.success(t('toast.saved'))
       let oauthStarted = false
       if (authorizeOAuth && definition.has_oauth) {
-        const result = await authorize(cred.id, popup)
+        const result = await authorize(cred.id, popup, canContinue)
+        if (canContinue?.() === false) return
         oauthStarted = result === 'started'
         if (!oauthStarted) {
           toast.error(
@@ -128,6 +133,7 @@ export function CredentialCreateModal({
       onCreated?.(cred.id, { oauthStarted, popup: oauthStarted ? popup : null })
       handleClose(false)
     } catch (e) {
+      if (canContinue?.() === false) return
       popup?.close()
       const msg = e instanceof Error ? e.message : t('toast.saveFailed')
       toast.error(msg)

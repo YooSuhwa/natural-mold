@@ -1,20 +1,5 @@
-"""Captured private target and parsed command payload for session consent."""
+"""Compatibility imports for the legacy session-consent command payload."""
 
-from dataclasses import dataclass
-from uuid import UUID
+from app.services.conversation_session_consent import SessionConsentPayload, SessionConsentTarget
 
-from app.authz.org_context import OrgContext
-from app.routers.conversation_agent_protocol_interrupts import ThreadInterrupt
-from app.routers.conversation_agent_protocol_resume import ResumePayload
-
-
-@dataclass(frozen=True, slots=True)
-class SessionConsentTarget:
-    conversation_id: UUID
-    context: OrgContext
-
-
-@dataclass(frozen=True, slots=True)
-class SessionConsentPayload:
-    resume: ResumePayload
-    pending_interrupts: list[ThreadInterrupt]
+__all__ = ["SessionConsentPayload", "SessionConsentTarget"]

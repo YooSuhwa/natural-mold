@@ -9,7 +9,7 @@ from fastmcp import FastMCP
 APP_URI = "ui://weather/dashboard"
 APP_HTML = """<!doctype html><html><body>
 <main id="weather-app">
-<p>Weather: 23 C</p>
+<p id="weather"></p>
 <button id="refresh" type="button">Refresh weather</button>
 <output id="result"></output>
 </main>
@@ -18,7 +18,15 @@ let requestId = 0;
 const pending = new Map();
 addEventListener('message', (event) => {
   const message = event.data;
-  if (!message || message.jsonrpc !== '2.0' || message.method || !pending.has(message.id)) return;
+  if (!message || message.jsonrpc !== '2.0') return;
+  if (message.method === 'ui/notifications/tool-result') {
+    const weather = message.params?.structuredContent;
+    if (typeof weather?.temperature === 'number') {
+      document.querySelector('#weather').textContent = 'Weather: ' + weather.temperature + ' C';
+    }
+    return;
+  }
+  if (message.method || !pending.has(message.id)) return;
   pending.get(message.id)(message);
   pending.delete(message.id);
 });
@@ -28,7 +36,7 @@ const rpc = (method, params) => new Promise((resolve) => {
   parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
 });
 rpc('ui/initialize', { protocolVersion: '2025-06-18' }).then(() => {
-  parent.postMessage({ jsonrpc: '2.0', method: 'notifications/initialized' }, '*');
+  parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized' }, '*');
 });
 document.querySelector('#refresh').addEventListener('click', async () => {
   const response = await rpc('tools/call', {

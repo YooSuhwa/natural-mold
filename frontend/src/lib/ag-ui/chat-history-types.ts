@@ -66,6 +66,17 @@ const child = z.object({
   todos: state.shape.todos.optional(),
 })
 
+const approvalDecision = z.object({
+  messageId: id,
+  toolCallId: id,
+  physicalRunId: id,
+  interruptId: id,
+  actionIndex: z.number().int().nonnegative(),
+  decision: z.enum(['approve', 'edit', 'reject']),
+  subagentRunId: optionalId,
+})
+export type AgUiApprovalDecision = z.output<typeof approvalDecision>
+
 const envelope = z.object({
   threadId: id,
   protocolVersion: z.literal('1.0'),
@@ -78,6 +89,7 @@ const envelope = z.object({
   physicalInterruptRunId: nullableId,
   failedPhysicalRunId: nullableId,
   latestPhysicalRunId: nullableId,
+  selectedPhysicalRunId: nullableId.optional(),
   errorCode: nullableId,
   runId: nullableId,
   runStatus: nullableId,
@@ -89,6 +101,7 @@ const envelope = z.object({
   cursor: nullableId,
   todos: state.shape.todos.default([]),
   partialOutput: z.unknown().optional(),
+  approvalDecisions: z.array(approvalDecision).catch([]).optional(),
   messages: z.array(z.unknown()),
   messageLinks: z.array(messageLink),
   subagents: z.array(z.unknown()),

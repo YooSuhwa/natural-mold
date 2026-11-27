@@ -13,6 +13,16 @@ from types import TracebackType
 from typing import Annotated, Literal
 from uuid import UUID
 
+from approval_card_evidence import approval_card_observations
+from approval_readiness_evidence import (
+    READINESS_FILE,
+    READINESS_GROUP,
+    READINESS_REASONS,
+    verify_readiness_receipt,
+)
+from branch_evidence import branch_observation
+from goal_case_evidence import GOAL_CASE_FILE, GOAL_CASE_TITLE, goal_case_observations
+from multi_turn_evidence import multi_turn_observations
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictInt
 from pydantic.alias_generators import to_camel
 
@@ -249,6 +259,76 @@ def _assertion_shape(error: dict) -> dict:
     return diagnostic
 
 
+# Route labels are fixed literals. Playwright annotations can contain IDs and private URLs.
+_RELOAD_ROUTES = {
+    r"/api/conversations/[^/?#]+/ag-ui/(snapshot|stream|runs|events)": "ag_ui",
+    (
+        r"/api/conversations/[^/?#]+/(messages|run-inputs|run-message-links|runs|files|"
+        r"artifacts|pinned-summary|followup-suggestion)"
+    ): "conversation",
+    r"/api/conversations/[^/?#]+/runs/[^/?#]+/(stream|events)": "run",
+    r"/api/conversations/[^/?#]+/langgraph/threads/[^/?#]+/(commands|state|history)": "langgraph",
+    r"/api/(agents/summary|auth/me|conversations/page|artifacts)": "api",
+}
+_RELOAD_NETWORK_CODES = {
+    "api_request_abort",
+    "api_request_failure",
+    "api_response_failure",
+    "next_chunk_abort_current_document",
+    "next_chunk_abort_prior_document",
+    "next_chunk_abort_unobserved",
+    "other_request_abort",
+    "other_request_failure",
+    "other_response_failure",
+}
+
+
+def _reload_network_annotations(annotations: list[dict]) -> dict:
+    codes: set[str] = set()
+    failures = []
+    for item in annotations:
+        kind, value = item.get("type"), item.get("description")
+        if not isinstance(value, str):
+            continue
+        if kind == "moldy.network-failure.v1" and value in _RELOAD_NETWORK_CODES:
+            codes.add(value)
+        if kind not in {"moldy.api-request-failure.v1", "moldy.response-failure.v1"}:
+            continue
+        try:
+            data = json.loads(value)
+        except ValueError:
+            continue
+        if not isinstance(data, dict) or not isinstance(path := data.get("pathname"), str):
+            continue
+        route = "other"
+        for pattern, prefix in _RELOAD_ROUTES.items():
+            if match := re.fullmatch(pattern, path):
+                route = prefix + "." + match[1]
+                break
+        method = data.get("method")
+        failure = {
+            "route": route,
+            "method": method
+            if method in ("GET", "HEAD", "POST", "PATCH", "DELETE", "PUT")
+            else "other",
+        }
+        if kind == "moldy.response-failure.v1":
+            status = data.get("status")
+            if type(status) is not int or not 400 <= status <= 599:
+                continue
+            failure["status"] = status
+        else:
+            failure["transport"] = (
+                "aborted" if data.get("errorText") == "net::ERR_ABORTED" else "failed"
+            )
+            for key in ("isMainFrame", "startedBeforeCurrentMainFrameNavigation"):
+                if type(data.get(key)) is bool:
+                    failure[key] = data[key]
+        if failure not in failures:
+            failures.append(failure)
+    return {"codes": sorted(codes), "failures": failures}
+
+
 def _perf_metrics(result: dict) -> dict | None:
     annotations = [
         a.get("description") for a in result.get("annotations", []) if a.get("type") == "perf"
@@ -471,6 +551,33 @@ def _case(spec: dict, test: dict, owned_root: Path, group: str, performance_timi
         if attempt["error_count"]:
             attempt["error_source"] = _error_source(result, filename)
             attempt["assertion"] = _assertion_shape(result.get("error") or {})
+            if (filename, title) in {
+                (
+                    "chat-langgraph-v3-regressions.spec.ts",
+                    "resets token usage state when switching between conversations",
+                ),
+                (
+                    "chat-generative-ui.spec.ts",
+                    "renders a demo_note data part in the bubble and keeps it after reload",
+                ),
+                (
+                    "chat-generative-ui.spec.ts",
+                    "renders a chart data part as an SVG bar chart (Phase 2)",
+                ),
+            } and group in {"ordinary-regressions-ag_ui", "ordinary-regressions-langgraph_v3"}:
+                annotations = result.get("annotations", [])
+                if len(results) == 1:
+                    annotations = [*annotations, *test.get("annotations", [])]
+                attempt["network"] = _reload_network_annotations(annotations)
+        observed.update(
+            approval_card_observations(filename, title, group, result, owned_root, _attachment_body)
+        )
+        if group == READINESS_GROUP and filename == READINESS_FILE and title in READINESS_REASONS:
+            receipt, issues = verify_readiness_receipt(
+                result, READINESS_REASONS[title], owned_root, _attachment_body
+            )
+            observed.update(receipt)
+            errors.extend(issues)
         if status == "skipped":
             types = {
                 a.get("type")
@@ -490,6 +597,12 @@ def _case(spec: dict, test: dict, owned_root: Path, group: str, performance_timi
                 attempt["waterfall"] = waterfall
                 if not waterfall["complete"]:
                     errors.append("incomplete_performance_waterfall")
+        observed.update(
+            branch_observation(filename, title, group, result, owned_root, _attachment_body)
+        )
+        observed.update(
+            multi_turn_observations(filename, title, group, result, owned_root, _attachment_body)
+        )
         if group == "cutover" and title in CUTOVER_CASES:
             try:
                 observed = cutover_attachments([result], owned_root)
@@ -497,6 +610,12 @@ def _case(spec: dict, test: dict, owned_root: Path, group: str, performance_timi
                 errors.append("invalid_cutover_attachment")
             if set(observed) != {CUTOVER_CASES[title]}:
                 errors.append("missing_or_misplaced_cutover_attachment")
+        if (
+            filename == GOAL_CASE_FILE
+            and title == GOAL_CASE_TITLE
+            and group in {"ordinary-regressions-ag_ui", "ordinary-regressions-langgraph_v3"}
+        ):
+            observed = goal_case_observations(result, owned_root, _attachment_body)
         if (
             attempt["retry"] != position
             or type(attempt["duration_ms"]) is not int
@@ -558,6 +677,10 @@ def playwright_report(
         errors.append("report_totals_mismatch")
     if group == "cutover" and {c["title"] for c in cases} != set(CUTOVER_CASES):
         errors.append("missing_or_unexpected_cutover_case")
+    if group == READINESS_GROUP and (READINESS_FILE, None) in requested:
+        tested = {case["title"] for case in cases if case["file"] == READINESS_FILE}
+        if not READINESS_REASONS.keys() <= tested:
+            errors.append("missing_approval_readiness_case")
     if group.startswith("performance-") and [c["title"] for c in cases] != [PERF_TITLE]:
         errors.append("missing_or_unexpected_performance_case")
     if len({(case["file"], case["title"]) for case in cases}) != len(cases):

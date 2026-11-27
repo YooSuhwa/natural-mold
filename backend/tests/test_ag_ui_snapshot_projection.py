@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.ag_ui_snapshot_projection import AgUiRunSnapshot
 
 
@@ -402,3 +404,37 @@ def test_canonical_cancel_and_owned_interrupts_are_distinct() -> None:
     cancelled, waiting = fold.subagents()
     assert cancelled["status"] == "cancelled"
     assert waiting["interruptIds"] == ["nested"]
+
+
+@pytest.mark.parametrize("beta_completed", [False, True])
+def test_targeted_interrupt_only_suspends_its_own_subtree_lineage(beta_completed: bool) -> None:
+    fold = AgUiRunSnapshot()
+    for owner, parent in (("parent", None), ("alpha", "parent"), ("beta", "parent"), ("old", None)):
+        frame = {"type": "SUBAGENT_STARTED", "subagentRunId": owner, "name": "researcher"}
+        if parent:
+            frame["parentSubagentRunId"] = parent
+        fold.apply(frame)
+    if beta_completed:
+        fold.apply({"type": "SUBAGENT_FINISHED", "subagentRunId": "beta", "result": "beta result"})
+    fold.apply({"type": "SUBAGENT_FINISHED", "subagentRunId": "old", "result": "complete"})
+    fold.apply(
+        {
+            "type": "RUN_FINISHED",
+            "outcome": {
+                "type": "interrupt",
+                "interrupts": [
+                    {"id": "root-approval"},
+                    {"id": "approval", "subagentRunId": "alpha"},
+                ],
+            },
+        }
+    )
+    by_owner = {child["subagentRunId"]: child for child in fold.subagents()}
+    assert {key: child["status"] for key, child in by_owner.items()} == {
+        "parent": "interrupted",
+        "alpha": "interrupted",
+        "beta": "completed" if beta_completed else "running",
+        "old": "completed",
+    }
+    assert by_owner["alpha"]["interruptIds"] == ["approval"]
+    assert all("interruptIds" not in by_owner[key] for key in ("parent", "beta", "old"))

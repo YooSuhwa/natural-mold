@@ -9,7 +9,7 @@ import {
   MOLDY_BRANCH_SWITCHED_EVENT,
 } from '@/lib/chat/langgraph-runtime/branch-switch-events'
 import { reportClientWarning } from '@/lib/logging/client-logger'
-import type { createAgUiChatSession } from './chat-history'
+import { SupersededHistoryRead, type createAgUiChatSession } from './chat-history'
 import type { MoldyAgUiAgent } from './moldy-agent'
 
 interface HistoryOptions {
@@ -62,7 +62,8 @@ export function useDurableAgUiHistory({
     let lastReset = session.getSnapshot().reconcileSequence
     let lastTerminal = session.getSnapshot().terminalSequence
     let notifiedTerminal = lastTerminal
-    let read: AbortController | null = null
+    let read: symbol | null = null
+    let readScope = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     let retryDelay = 200
     let accessTimer: ReturnType<typeof setTimeout> | undefined
@@ -90,20 +91,29 @@ export function useDurableAgUiHistory({
       clearTimeout(timer)
       timer = undefined
       retryDelay = 200
-      read?.abort()
-      read = null
       needsRead = true
       schedule()
     }
 
+    function refreshIfIdle() {
+      if (!read) requestFreshHistory()
+    }
+
     async function importCurrentBranch(recheckAccess = false) {
       const previous = recheckAccess ? session.getSnapshot().snapshot : null
-      const request = new AbortController()
+      const request = Symbol()
+      const signal = readScope.signal
       read = request
       needsRead = false
       try {
-        const repo = await session.refreshRepository({ signal: request.signal })
-        if (!mounted || request.signal.aborted || thread.getState().isRunning || agent.isRunning)
+        const repo = await session.refreshRepository({ signal })
+        if (
+          read !== request ||
+          signal.aborted ||
+          !mounted ||
+          thread.getState().isRunning ||
+          agent.isRunning
+        )
           return
         const state = session.getSnapshot()
         // The terminal frame can be delivered while the read model still shows that run as active.
@@ -126,7 +136,13 @@ export function useDurableAgUiHistory({
           settled.current?.()
         }
       } catch (error) {
-        if (request.signal.aborted || !mounted) return
+        if (
+          read !== request ||
+          signal.aborted ||
+          !mounted ||
+          error instanceof SupersededHistoryRead
+        )
+          return
         if (
           error instanceof ApiError &&
           error.status >= 400 &&
@@ -205,6 +221,7 @@ export function useDurableAgUiHistory({
     }
 
     function reconcile() {
+      if (agent.documentDetached) return
       watchLegacyApproval()
       const state = session.getSnapshot()
       const native = thread.getState()
@@ -259,7 +276,10 @@ export function useDurableAgUiHistory({
       if (thread.getState().isRunning) {
         wasRunning = true
         // A new local submission supersedes reads even when its stream finishes between React renders.
-        read?.abort()
+        if (read) {
+          session.invalidateHistoryRead()
+          read = null
+        }
       }
       schedule()
     }
@@ -267,14 +287,38 @@ export function useDurableAgUiHistory({
       if (!isMoldyBranchSwitchedEvent(event) || event.detail.conversationId !== conversationId)
         return
       session.invalidateApproval()
+      session.invalidateHistoryRead()
+      read = null
       if (agent.isRunning) agent.abortRun()
-      requestFreshHistory()
+      if (!thread.getState().isLoading) requestFreshHistory()
     }
     function visible() {
-      if (document.visibilityState === 'visible') requestFreshHistory()
+      if (document.visibilityState === 'visible') refreshIfIdle()
       else schedule()
     }
-    refresh.current = requestFreshHistory
+    function pageHidden() {
+      // Browser navigation does not unmount React before it discards active response readers.
+      agent.detachDocument()
+      session.cancelHistoryReads()
+      readScope.abort()
+      read = null
+      clearTimeout(timer)
+      clearTimeout(accessTimer)
+      timer = undefined
+      accessTimer = undefined
+    }
+    function pageShown(event: PageTransitionEvent) {
+      if (!event.persisted) return
+      agent.restoreDocument()
+      if (readScope.signal.aborted) readScope = new AbortController()
+      requestFreshHistory()
+    }
+    refresh.current = () => {
+      // A changed server run can predate the response of a GET already in flight.
+      // Discard that response and coalesce server transitions into one trailing read.
+      session.invalidateHistoryRead()
+      if (!thread.getState().isLoading) requestFreshHistory()
+    }
     if (readOnly && agent.isRunning) {
       agent.abortRun()
       needsRead = true
@@ -284,21 +328,25 @@ export function useDurableAgUiHistory({
     // A lost response can finalize HttpAgent after the last observable assistant-ui state update.
     const agentEvents = agent.subscribe({ onRunFinalized: schedule })
     window.addEventListener(MOLDY_BRANCH_SWITCHED_EVENT, branchChanged)
-    window.addEventListener('online', requestFreshHistory)
+    window.addEventListener('pagehide', pageHidden)
+    window.addEventListener('pageshow', pageShown)
+    window.addEventListener('online', refreshIfIdle)
     window.addEventListener('focus', visible)
     document.addEventListener('visibilitychange', visible)
     schedule()
     return () => {
       mounted = false
       refresh.current = null
-      read?.abort()
+      readScope.abort()
       clearTimeout(timer)
       clearTimeout(accessTimer)
       offSession()
       offThread()
       agentEvents.unsubscribe()
       window.removeEventListener(MOLDY_BRANCH_SWITCHED_EVENT, branchChanged)
-      window.removeEventListener('online', requestFreshHistory)
+      window.removeEventListener('pagehide', pageHidden)
+      window.removeEventListener('pageshow', pageShown)
+      window.removeEventListener('online', refreshIfIdle)
       window.removeEventListener('focus', visible)
       document.removeEventListener('visibilitychange', visible)
     }

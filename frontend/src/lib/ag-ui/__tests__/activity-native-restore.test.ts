@@ -56,6 +56,24 @@ function child(id: string, status: string, parent?: string) {
 }
 
 describe('persisted AG-UI activity summary', () => {
+  it('restores a workerless cancellation only for the branch-selected physical run', () => {
+    const fields = {
+      activeRunId: null,
+      physicalRunId: null,
+      latestPhysicalRunId: physical,
+      runStatus: 'canceled',
+    }
+    const restored = restoreAgUiNativeActivities(
+      snapshot({ ...fields, selectedPhysicalRunId: physical }),
+    )
+    expect(restored).toMatchObject([{ runId: physical, terminalRunStatus: 'canceled' }])
+    for (const selectedPhysicalRunId of ['other-run', null]) {
+      expect(restoreAgUiNativeActivities(snapshot({ ...fields, selectedPhysicalRunId }))).toEqual(
+        [],
+      )
+    }
+  })
+
   it('keeps the same SDK nesting bound for either snapshot order', () => {
     const chain = Array.from({ length: 20 }, (_, i) =>
       child('child-' + i, 'running', i ? 'child-' + (i - 1) : undefined),

@@ -10,7 +10,12 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer, load_only
 
+from app.authz.agent_execution_scope import (
+    assert_agent_tree_executable,
+    load_agent_tree_for_history,
+)
 from app.authz.mcp_app_scope import (
     McpAppBindingTarget,
     McpAppRunTarget,
@@ -190,12 +195,18 @@ async def authorize_binding(
     tool_call_id: str,
     context: OrgContext,
     binding_id: uuid.UUID | None = None,
+    for_replay: bool = False,
 ) -> AuthorizedBinding:
-    binding = await db.scalar(
-        private_mcp_app_binding_query(
-            McpAppBindingTarget(conversation_id, run_id, tool_call_id), context
-        ).execution_options(autoflush=False, populate_existing=True)
+    query = private_mcp_app_binding_query(
+        McpAppBindingTarget(conversation_id, run_id, tool_call_id), context
     )
+    if for_replay:
+        query = query.options(
+            defer(McpAppInvocationBinding.tool_meta),
+            defer(McpAppInvocationBinding.result_meta),
+            defer(McpAppInvocationBinding.structured_content),
+        )
+    binding = await db.scalar(query)
     run = await load_private_mcp_app_run(db, McpAppRunTarget(conversation_id, run_id), context)
     if (
         binding is None
@@ -206,7 +217,8 @@ async def authorize_binding(
         or (binding.credential_subject_user_id != context.user_id)
     ):
         raise McpAppsError("mcp_app_not_found", "MCP App context was not found", 404)
-    await require_live_agent_tree(db, run.agent_id, context)
+    if not for_replay:
+        await require_live_agent_tree(db, run.agent_id, context)
     tool = await linked_tool(
         db,
         agent_id=run.agent_id,
@@ -214,14 +226,28 @@ async def authorize_binding(
         tool_id=binding.mcp_tool_id,
         tool_name=binding.remote_tool_name,
         context=context,
+        for_replay=for_replay,
     )
-    server = await db.scalar(
-        resource_candidates(
-            select(McpServer).where(McpServer.id == binding.mcp_server_id),
-            McpServer,
-            context,
-        ).execution_options(autoflush=False, populate_existing=True)
-    )
+    if for_replay:
+        tree = await load_agent_tree_for_history(db, run.agent_id)
+        assert_agent_tree_executable(tree, context)
+    server_query = resource_candidates(
+        select(McpServer).where(McpServer.id == binding.mcp_server_id), McpServer, context
+    ).execution_options(autoflush=False, populate_existing=True)
+    if for_replay:
+        server_query = server_query.options(
+            load_only(
+                McpServer.id,
+                McpServer.status,
+                McpServer.user_id,
+                McpServer.org_id,
+                McpServer.tenant_id,
+                McpServer.credential_mode,
+                McpServer.credential_id,
+                McpServer.credential_definition_key,
+            )
+        )
+    server = await db.scalar(server_query)
     current_meta = normalize_tool_ui_meta(tool.metadata_json) if tool is not None else None
     if tool is None or server is None or server.status == "disabled":
         raise McpAppsError("mcp_app_binding_revoked", "MCP App binding is no longer active", 403)

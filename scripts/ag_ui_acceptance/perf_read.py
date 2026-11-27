@@ -15,9 +15,7 @@ from typing import Any
 from unittest.mock import patch
 
 _MARKER = re.compile(r"\bE2E_AGUI_PERF_([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})\b")
-_COSTS: ContextVar[dict[str, int] | None] = ContextVar(
-    "ag_ui_test_read_costs", default=None
-)
+_COSTS: ContextVar[dict[str, int] | None] = ContextVar("ag_ui_test_read_costs", default=None)
 _SERVICES = (
     "require_read_conversation",
     "resolve_read_target",
@@ -46,8 +44,43 @@ def _measure_service(fn: AsyncOperation, name: str) -> AsyncOperation:
     return measure
 
 
+def _sample_id(reader: Any, run: Any) -> str | None:
+    preview = vars(run).get("input_preview")
+    if not isinstance(preview, str) or "E2E_SLOW_STREAM" not in preview:
+        # Native queue claims intentionally have no preview. FastAPI already parsed
+        # the authorized POST; do not read a body from the socket or look up a row.
+        request = reader.source.request
+        payload = vars(request).get("_json")
+        if (
+            request.method != "POST"
+            or not isinstance(payload, dict)
+            or payload.get("runId") != reader.target.public_id
+            or payload.get("threadId") != str(reader.source.conversation_id)
+        ):
+            return None
+        messages = payload.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return None
+        last = messages[-1]
+        if not isinstance(last, dict) or last.get("role") != "user":
+            return None
+        preview = last.get("content")
+        if isinstance(preview, list):
+            preview = " ".join(
+                item["text"]
+                for item in preview
+                if isinstance(item, dict)
+                and item.get("type") == "text"
+                and isinstance(item.get("text"), str)
+            )
+    if not isinstance(preview, str) or "E2E_SLOW_STREAM" not in preview:
+        return None
+    match = _MARKER.search(preview)
+    return match[1] if match else None
+
+
 def _measure_reader(
-    fn: AsyncOperation, name: str, fd: int, parts: Mapping[str, int]
+    fn: AsyncOperation, name: str, fd: int, parts: Mapping[str, tuple[int, ...]]
 ) -> AsyncOperation:
     @wraps(fn)
     async def measure(reader: Any, *args: Any, **kwargs: Any) -> Any:
@@ -64,14 +97,11 @@ def _measure_reader(
         target = reader.target
         # Access only already-loaded scalar values; the observer never performs a query.
         run = target.run if target is not None else None
-        preview = vars(run).get("input_preview") if run is not None else None
-        if not isinstance(preview, str) or "E2E_SLOW_STREAM" not in preview:
-            return value
-        sample = _MARKER.search(preview)
-        if not sample:
+        sample = _sample_id(reader, run) if run is not None else None
+        if sample is None:
             return value
         row = {
-            "sample_id": sample[1],
+            "sample_id": sample,
             "run_id": str(vars(run).get("id")),
             "operation": name,
             "start_epoch_ms": epoch_start / 1_000_000,
@@ -88,10 +118,11 @@ def _measure_reader(
         row["frame_count"] = len(frames)
         # Keep ordinals of the fixed test-model strings only. Never log content or event data.
         row["text_ordinals"] = [
-            parts[frame.event["delta"]]
+            ordinal
             for frame in frames
             if frame.event.get("type") == "TEXT_MESSAGE_CONTENT"
-            and frame.event.get("delta") in parts
+            and not frame.event.get("subagentRunId")
+            for ordinal in parts.get(frame.event["delta"], ())
         ]
         os.write(fd, (json.dumps(row, separators=(",", ":")) + "\n").encode("ascii"))
         return value
@@ -112,26 +143,25 @@ def observe_read_durations(ledger: Path) -> Iterator[None]:
     from app.agent_runtime.e2e_scripted_model import SLOW_STREAM_PARTS
     from app.services import ag_ui_read
 
-    parts = {text: i for i, text in enumerate(SLOW_STREAM_PARTS, 1)}
+    # Several committed provider tokens may be projected in a single text frame.
+    parts = {
+        "".join(SLOW_STREAM_PARTS[start:stop]): tuple(range(start + 1, stop + 1))
+        for start in range(len(SLOW_STREAM_PARTS))
+        for stop in range(start + 1, len(SLOW_STREAM_PARTS) + 1)
+    }
     with ExitStack() as stack:
-        fd = os.open(
-            ledger, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600
-        )
+        fd = os.open(ledger, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
         stack.callback(os.close, fd)
         for name in _SERVICES:
             fn = getattr(ag_ui_read, name, None)
             if fn is None:
                 continue
-            stack.enter_context(
-                patch.object(ag_ui_read, name, _measure_service(fn, name))
-            )
+            stack.enter_context(patch.object(ag_ui_read, name, _measure_service(fn, name)))
         for name in ("poll", "check_delivery", "wait_for_change"):
             fn = getattr(ag_ui_read._Reader, name, None)
             if fn is None:
                 continue
             stack.enter_context(
-                patch.object(
-                    ag_ui_read._Reader, name, _measure_reader(fn, name, fd, parts)
-                )
+                patch.object(ag_ui_read._Reader, name, _measure_reader(fn, name, fd, parts))
             )
         yield

@@ -4,7 +4,10 @@ import {
   type ThreadAssistantMessage,
   type ThreadMessage,
 } from '@assistant-ui/react'
+import { useAgUiRuntime } from '@assistant-ui/react-ag-ui'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import { createFixtureAgent } from '../../../../tests/ag-ui/chat-ui-fixtures'
 import {
   indexAgUiSubagents,
   nestAgUiHistoryChildren,
@@ -133,6 +136,68 @@ describe('restoring public subagent history', () => {
     })
     expect(JSON.stringify(index.get('left'))).not.toContain('Inner result')
     expect(JSON.stringify(index.get('right'))).not.toContain('Inner result')
+  })
+
+  it('restores a verified decision only on its direct issuing child call', () => {
+    const records = [
+      {
+        ...record('left', {
+          id: 'issuer',
+          role: 'assistant',
+          subagentRunId: 'left',
+          toolCalls: [
+            tool('shared', 'lookup'),
+            tool('repeated', 'lookup'),
+            tool('repeated', 'lookup'),
+          ],
+        }),
+        approvals: new Map([
+          ['shared', 'reject'],
+          ['repeated', 'approve'],
+        ] as const),
+      },
+      {
+        ...record('left', {
+          id: 'another-issuer',
+          role: 'assistant',
+          subagentRunId: 'left',
+          toolCalls: [tool('own', 'lookup')],
+        }),
+        approvals: new Map([['other', 'edit']] as const),
+      },
+      record('right', {
+        id: 'issuer',
+        role: 'assistant',
+        subagentRunId: 'right',
+        toolCalls: [tool('shared', 'lookup')],
+      }),
+      record('right', {
+        id: 'output',
+        role: 'tool',
+        toolCallId: 'shared',
+        content: 'User rejected',
+      }),
+      {
+        ...record('left', {
+          id: 'foreign',
+          role: 'assistant',
+          subagentRunId: 'right',
+          toolCalls: [tool('crossed', 'lookup')],
+        }),
+        approvals: new Map([['crossed', 'edit']] as const),
+      },
+    ]
+    const messages = nestAgUiHistoryChildren([parent('root', 'l', 'r')], records, [
+      child('left', 'l'),
+      child('right', 'r'),
+    ])
+    const index = indexAgUiSubagents(messages)
+    const left = index.get('left')?.tools ?? []
+    expect(left.filter((call) => call.approvalDecision)).toEqual([
+      { id: 'shared', name: 'lookup', approvalDecision: 'reject' },
+    ])
+    expect(left.some((call) => call.id === 'crossed')).toBe(false)
+    expect(index.get('right')?.tools.map((call) => call.approvalDecision)).toEqual([undefined])
   })
 
   it('uses a verified wire alias to select the parent while indexing its visible runtime ID', () => {
@@ -401,4 +466,222 @@ describe('public tool ownership for child data cards', () => {
       ])
     },
   )
+})
+
+describe('public task descriptions for legacy child runs', () => {
+  const callId = `tool-${'1'.repeat(64)}`
+  const wireId = `message-${'2'.repeat(64)}`
+  const brief = 'Summarize the public report.'
+
+  function sdkChild(id: string, meta: { parentMessageId?: string; description?: string } = {}) {
+    return fromThreadMessageLike(
+      {
+        id,
+        role: 'assistant',
+        content: [],
+        metadata: { custom: { agui: { name: 'Researcher', ...meta } } },
+      },
+      id,
+      { type: 'running' },
+    )
+  }
+
+  function rootCall({
+    name = 'task',
+    description = brief,
+    issuer = wireId,
+    nested = [],
+  }: {
+    name?: string
+    description?: string | { privateValue: string }
+    issuer?: string | null
+    nested?: ThreadMessage[]
+  } = {}): ThreadAssistantMessage {
+    const result = fromThreadMessageLike(
+      {
+        id: 'database-parent',
+        role: 'assistant',
+        metadata: { custom: { agui: { messageId: wireId } } },
+        content: [
+          {
+            type: 'tool-call',
+            toolCallId: callId,
+            toolName: name,
+            args: { description },
+            ...(issuer !== null && { parentId: issuer }),
+            messages: nested,
+          },
+        ],
+      },
+      'database-parent',
+      { type: 'running' },
+    )
+    if (result.role !== 'assistant') throw new Error('Expected parent fixture')
+    return result
+  }
+
+  it('recovers a live brief from the unique root task using its wire issuer alias', () => {
+    const root = rootCall({ nested: [sdkChild('worker')] })
+    expect(indexAgUiSubagents([root]).get('worker')).toMatchObject({
+      parentMessageId: 'database-parent',
+      taskInput: brief,
+      outcome: 'running',
+    })
+  })
+
+  it('preserves the second tool-only issuer’s brief through the official SDK runtime', async () => {
+    const { agent, fetch, session } = createFixtureAgent(() => [
+      {
+        type: 'TOOL_CALL_START',
+        toolCallId: 'todos',
+        toolCallName: 'write_todos',
+        parentMessageId: 'first',
+      },
+      { type: 'TOOL_CALL_ARGS', toolCallId: 'todos', delta: '{}' },
+      { type: 'TOOL_CALL_END', toolCallId: 'todos' },
+      {
+        type: 'TOOL_CALL_RESULT',
+        toolCallId: 'todos',
+        messageId: 'todos-result',
+        role: 'tool',
+        content: 'ok',
+      },
+      {
+        type: 'TOOL_CALL_START',
+        toolCallId: callId,
+        toolCallName: 'task',
+        parentMessageId: wireId,
+      },
+      { type: 'TOOL_CALL_ARGS', toolCallId: callId, delta: JSON.stringify({ description: brief }) },
+      { type: 'TOOL_CALL_END', toolCallId: callId },
+      {
+        type: 'SUBAGENT_STARTED',
+        subagentRunId: 'worker',
+        parentToolCallId: callId,
+        parentMessageId: wireId,
+        name: 'Researcher',
+      },
+      { type: 'SUBAGENT_FINISHED', subagentRunId: 'worker', result: 'Done' },
+      {
+        type: 'TOOL_CALL_RESULT',
+        toolCallId: callId,
+        messageId: 'task-result',
+        role: 'tool',
+        content: 'Done',
+      },
+    ])
+    const view = renderHook(() => useAgUiRuntime({ agent }))
+    try {
+      await act(async () => {
+        await view.result.current.thread.append({
+          role: 'user',
+          content: [{ type: 'text', text: 'Delegate.' }],
+        })
+      })
+      await waitFor(() => {
+        const messages = view.result.current.thread.getState().messages
+        const children = session.getSnapshot().subagents
+        expect(children).toEqual([
+          expect.objectContaining({
+            subagentRunId: 'worker',
+            parentMessageId: wireId,
+            parentToolCallId: callId,
+          }),
+        ])
+        const root = messages.find((message) => message.role === 'assistant')
+        expect(root?.metadata.custom.agui).toMatchObject({ messageId: 'first' })
+        expect(indexAgUiSubagents(messages).get('worker')?.taskInput).toBeUndefined()
+        expect(indexAgUiSubagents(messages, children).get('worker')?.taskInput).toBe(brief)
+      })
+    } finally {
+      view.unmount()
+      session.dispose()
+      fetch.mockRestore()
+    }
+  })
+
+  it('rejects conflicting public child records even if the displayed message matches the issuer', () => {
+    const worker = child('worker', callId, { parentMessageId: wireId })
+    const cases = [
+      [worker, worker],
+      [worker, { ...worker, parentMessageId: 'another-turn' }],
+      [worker, { ...worker, subagentRunId: 'other-child' }],
+      [{ ...worker, parentToolCallId: 'another-task' }],
+      [{ ...worker, parentMessageId: 'another-turn' }],
+      [{ ...worker, parentSubagentRunId: 'another-child' }],
+    ]
+    for (const records of cases) {
+      const root = rootCall({ nested: [sdkChild('worker')] })
+      expect(indexAgUiSubagents([root], records).get('worker')?.taskInput).toBeUndefined()
+    }
+  })
+
+  it('cannot authorize an adjacent issuer with another child, task or message', () => {
+    const root = rootCall({ issuer: 'adjacent-issuer', nested: [sdkChild('worker')] })
+    const worker = child('worker', callId, { parentMessageId: 'adjacent-issuer' })
+    for (const records of [
+      [],
+      [{ ...worker, subagentRunId: 'other-child' }],
+      [{ ...worker, parentToolCallId: 'another-task' }],
+      [{ ...worker, parentMessageId: wireId }],
+    ]) {
+      expect(indexAgUiSubagents([root], records).get('worker')?.taskInput).toBeUndefined()
+    }
+  })
+
+  it('uses the verified parent recorded by history even when the root part lacks a parentId', () => {
+    const roots = nestAgUiHistoryChildren(
+      [rootCall({ issuer: null })],
+      [],
+      [child('worker', callId, { parentMessageId: wireId })],
+    )
+    expect(indexAgUiSubagents(roots).get('worker')?.taskInput).toBe(brief)
+  })
+
+  it('prefers the explicit public description from the child event', () => {
+    const nested = sdkChild('worker', { description: 'Brief sent by the child event' })
+    expect(indexAgUiSubagents([rootCall({ nested: [nested] })]).get('worker')?.taskInput).toBe(
+      'Brief sent by the child event',
+    )
+  })
+
+  it('withholds the brief for duplicate root calls, multiple children, or a conflicting issuer', () => {
+    const worker = sdkChild('worker')
+    const duplicate = { ...rootCall({ description: 'Other turn' }), id: 'other-turn' }
+    const cases = [
+      [rootCall({ nested: [worker] }), duplicate],
+      [rootCall({ nested: [worker, sdkChild('sibling')] })],
+      [rootCall({ issuer: 'wrong-issuer', nested: [worker] })],
+      [rootCall({ nested: [sdkChild('worker', { parentMessageId: 'wrong-issuer' })] })],
+      [rootCall({ issuer: null, nested: [worker] })],
+    ]
+    for (const roots of cases) {
+      const index = indexAgUiSubagents(roots)
+      expect(index.get('worker')?.taskInput).toBeUndefined()
+      expect(index.get('sibling')?.taskInput).toBeUndefined()
+    }
+  })
+
+  it('ignores unrelated tool descriptions and structured values', () => {
+    for (const args of [{ name: 'lookup' }, { description: { privateValue: 'hidden' } }]) {
+      const root = rootCall({ ...args, nested: [sdkChild('worker')] })
+      expect(indexAgUiSubagents([root]).get('worker')?.taskInput).toBeUndefined()
+    }
+  })
+
+  it('does not borrow a brief from a child-owned task', () => {
+    const inner = rootCall({
+      description: 'Nested private input',
+      nested: [sdkChild('grandchild')],
+    })
+    const nested = {
+      ...inner,
+      id: 'child',
+      metadata: { ...inner.metadata, custom: { agui: { name: 'Child', messageId: wireId } } },
+    }
+    const index = indexAgUiSubagents([rootCall({ nested: [nested] })])
+    expect(index.get('child')?.taskInput).toBe(brief)
+    expect(index.get('grandchild')?.depth).toBe(2)
+    expect(index.get('grandchild')?.taskInput).toBeUndefined()
+  })
 })

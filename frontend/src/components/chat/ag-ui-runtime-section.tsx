@@ -16,6 +16,7 @@ import { agUiAttachmentAdapter, agUiFeedbackAdapter } from '@/lib/ag-ui/chat-ada
 import { useAgUiChatActions } from '@/lib/ag-ui/chat-actions'
 import { useAgUiHitlActions } from '@/lib/ag-ui/chat-actions-interrupts'
 import { useChatSession } from '@/lib/ag-ui/use-chat-session'
+import { useCanceledRunSummary } from '@/lib/ag-ui/use-canceled-run-summary'
 import { useDurableAgUiHistory } from '@/lib/ag-ui/use-durable-ag-ui-history'
 import { ALL_DATA_UI } from '@/lib/chat/data-ui'
 import { blocksInputRetry } from '@/lib/chat-runs/recovery-error'
@@ -25,6 +26,7 @@ import type { ConversationRuntimeStatus } from '@/lib/stores/chat-navigator-stor
 import type { ConversationRun, Message } from '@/lib/types'
 import { AgUiChildPendingForms } from './ag-ui-child-pending-forms'
 import { RuntimeFrame, type ThreadRenderProps } from './chat-runtime-frame'
+import { CanceledRunSummaryContext } from './run-summary'
 
 const DATA_UI = [...ALL_DATA_UI, ...MOLDY_AG_UI_DATA_UI] as const
 
@@ -123,6 +125,7 @@ export function AgUiRuntimeSection(props: AgUiRuntimeSectionProps) {
     serverMessages: state.snapshot && !state.readDenied ? serverMessages : undefined,
   })
 
+  const canceledSummary = useCanceledRunSummary(conversationId, state, props.serverLatestRun)
   if (state.readDenied) {
     return (
       <p role="alert" className="p-4 text-sm text-muted-foreground">
@@ -170,6 +173,7 @@ export function AgUiRuntimeSection(props: AgUiRuntimeSectionProps) {
       wrapThread={(children) => (
         <AgUiSubagentRuntimeProvider
           conversationId={conversationId}
+          publicChildren={state.subagents}
           activities={state.activities}
           links={state.messageLinks}
         >
@@ -181,7 +185,9 @@ export function AgUiRuntimeSection(props: AgUiRuntimeSectionProps) {
           >
             <AgUiFollowupCompletionContext.Provider value={state.followupRunId}>
               <AgUiChatActionContext.Provider value={actions}>
-                {children}
+                <CanceledRunSummaryContext.Provider value={canceledSummary}>
+                  {children}
+                </CanceledRunSummaryContext.Provider>
               </AgUiChatActionContext.Provider>
             </AgUiFollowupCompletionContext.Provider>
           </AgUiActivityProvider>

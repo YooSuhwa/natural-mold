@@ -206,6 +206,7 @@ function AuthRequiredAttempt({
                   credentialId={item.credentialId ?? ''}
                   resourceName={item.resourceName}
                   disabled={state === 'sending'}
+                    canContinue={mayAct}
                   onConnected={() => void answer('retry')}
                 />
               ) : (
@@ -222,6 +223,7 @@ function AuthRequiredAttempt({
                   agentId={agentId}
                   resourceNames={mine}
                   disabled={state === 'sending'}
+                  canContinue={mayAct}
                   onConnected={() => void answer('retry')}
                 />
               ) : (

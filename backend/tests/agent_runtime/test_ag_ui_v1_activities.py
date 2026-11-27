@@ -196,7 +196,7 @@ def test_file_card_requires_current_exact_grant_and_hides_all_journal_metadata()
 
 
 def test_mcp_widgets_export_only_stable_binding_reference_across_journal_variants() -> None:
-    activities = PublicActivities()
+    activities = PublicActivities(readable_widget_bindings=frozenset({("call/1:widget", BINDING)}))
     app = {
         "version": 1,
         "binding_id": BINDING,
@@ -210,6 +210,13 @@ def test_mcp_widgets_export_only_stable_binding_reference_across_journal_variant
         "content": SECRET,
     }
     result = _event("messages", {**data, "type": "tool"})
+    for unauthorized in (
+        PublicActivities(),
+        PublicActivities(readable_widget_bindings=None),
+        PublicActivities(readable_widget_bindings=frozenset({("child-tool-1", BINDING)})),
+        PublicActivities(readable_widget_bindings=frozenset({("call/1:widget", VERSION)})),
+    ):
+        assert _frames(unauthorized, result, parent="owner", tool="child-tool-1") == []
     assert _frames(activities, result, parent="owner") == []
     [card] = _frames(activities, result, parent="owner", tool="child-tool-1")
     assert card["activityType"] == "moldy.mcp_app" and card["content"] == {

@@ -7,6 +7,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   type ClipboardEvent,
   type ForwardedRef,
   type KeyboardEvent,
@@ -19,6 +20,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { AgUiChatActionContext } from '@/lib/ag-ui/chat-action-context'
+import { canBranchFromChatMessage } from '@/lib/ag-ui/chat-message-identity'
 import { reportClientError } from '@/lib/logging/client-logger'
 import { cn } from '@/lib/utils'
 import { pendingEditBranchPickerSuppressionAtom } from '@/lib/stores/chat-store'
@@ -26,7 +28,9 @@ import { requestThreadComposerFocus } from './composer-focus'
 import { useChatConversationId } from './conversation-context'
 
 type SubmitMode = 'enter' | 'ctrlEnter' | 'none'
-type MessageEditComposerRootProps = FormHTMLAttributes<HTMLFormElement>
+type MessageEditComposerRootProps = FormHTMLAttributes<HTMLFormElement> & {
+  canSubmit?: boolean
+}
 type MessageEditComposerSubmitEvent = Parameters<
   NonNullable<MessageEditComposerRootProps['onSubmit']>
 >[0]
@@ -45,6 +49,15 @@ function assignRef<T>(ref: ForwardedRef<T>, value: T | null): void {
   if (ref) {
     ref.current = value
   }
+}
+
+export function useBranchActionReady() {
+  const actions = useContext(AgUiChatActionContext)
+  return useAuiState(
+    (s) =>
+      !actions ||
+      (!s.thread.isRunning && canBranchFromChatMessage(s.message, s.thread.messages.at(-1))),
+  )
 }
 
 // Resolving a saved checkpoint can outlive the selected message or its conversation.
@@ -72,7 +85,8 @@ export function useMessageBranchAction() {
     const thread = aui.thread.getState()
     if (thread.isDisabled || thread.isRunning) return
     const message = aui.message.getState()
-    const head = thread.messages.at(-1)?.id
+    const head = thread.messages.at(-1)
+    if (!canBranchFromChatMessage(message, head)) return
     const request = Symbol()
     pending.current = request
     try {
@@ -82,7 +96,9 @@ export function useMessageBranchAction() {
       if (
         current.isDisabled ||
         current.isRunning ||
-        current.messages.at(-1)?.id !== head ||
+        current.messages.at(-1)?.id !== head?.id ||
+        current.messages.at(-1)?.metadata.custom.moldySelectedCheckpointId !==
+          head?.metadata.custom.moldySelectedCheckpointId ||
         aui.message.getState().id !== message.id
       )
         return
@@ -101,6 +117,7 @@ export function useMessageBranchAction() {
 export function MessageEditComposerRoot({
   children,
   onSubmit,
+  canSubmit = true,
   ...props
 }: MessageEditComposerRootProps) {
   const aui = useAui()
@@ -113,6 +130,7 @@ export function MessageEditComposerRoot({
     if (event.defaultPrevented) return
 
     event.preventDefault()
+    if (!canSubmit) return
     const composer = aui.message.composer()
     const state = composer.getState()
     if (!state.isEditing || state.isEmpty) return
@@ -159,7 +177,13 @@ export function MessageEditComposerRoot({
 
 export function useMessageEditComposerControls() {
   const aui = useAui()
-  const agUiActions = useContext(AgUiChatActionContext)
+  const actions = useContext(AgUiChatActionContext)
+  const ready = useBranchActionReady()
+  const selectedLeaf = useAuiState((s) =>
+    actions ? s.message.metadata.custom.moldySelectedCheckpointId : undefined,
+  )
+  // Switching branches can retain the same user row and its still-open SDK edit composer.
+  const [openedLeaf] = useState(() => selectedLeaf)
   const setPendingBranchPickerSuppression = useSetAtom(pendingEditBranchPickerSuppressionAtom)
   const canCancel = useAuiState((state) => state.message.composer.canCancel)
   const canSend = useAuiState(
@@ -167,7 +191,8 @@ export function useMessageEditComposerControls() {
       state.message.composer.isEditing &&
       !state.message.composer.isEmpty &&
       !state.thread.isDisabled &&
-      (!agUiActions || !state.thread.isRunning),
+      ready &&
+      selectedLeaf === openedLeaf,
   )
 
   const cancel = useCallback(() => {

@@ -1,4 +1,4 @@
-"""Authenticated actors, server responses and read-only database observations for the cutover gate."""
+"""Authenticated HTTP clients and read-only database checks for the cutover gate."""
 
 from __future__ import annotations
 
@@ -9,14 +9,14 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, LiteralString
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 import httpx
 import psycopg
 from psycopg.conninfo import conninfo_to_dict
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 
 
 class GateFailure(AssertionError):
@@ -64,9 +64,7 @@ class Participant:
         timeout: float = 90.0,
         headers: dict[str, str] | None = None,
     ) -> httpx.Response:
-        require(
-            path.startswith("/") and not path.startswith("//"), "expected an API path"
-        )
+        require(path.startswith("/") and not path.startswith("//"), "expected an API path")
         # Idle timeouts reset on every SSE heartbeat. A synthetic turn must also finish
         # inside the requested wall-clock budget.
         async with asyncio.timeout(timeout):
@@ -78,9 +76,7 @@ class Participant:
                 headers={**(self.csrf if csrf else {}), **(headers or {})},
             )
 
-    async def json(
-        self, method: str, path: str, body: Any = None, *, expected: int = 200
-    ) -> Any:
+    async def json(self, method: str, path: str, body: Any = None, *, expected: int = 200) -> Any:
         response = await self.send(method, path, body)
         expect_status(response, expected)
         return response.json()
@@ -179,12 +175,12 @@ class Gate:
 
     async def sql(
         self,
-        statement: str,
+        statement: LiteralString,
         params: Sequence[Any] = (),
         *,
         tenant_id: str | None = None,
-    ) -> list[dict[str, Any]]:
-        async with await psycopg.AsyncConnection.connect(
+    ) -> list[DictRow]:
+        async with await psycopg.AsyncConnection[DictRow].connect(
             self.dsn, row_factory=dict_row
         ) as conn:
             await conn.execute("SET TRANSACTION READ ONLY")
@@ -203,9 +199,11 @@ async def open_gate() -> AsyncIterator[Gate]:
     require(a != b, "independent worker endpoints required")
     dsn = os.environ["DATABASE_URL_SYNC"]
     parsed = conninfo_to_dict(dsn)
+    database = parsed.get("dbname")
     require(
         parsed.get("host") in {"localhost", "127.0.0.1", "::1"}
-        and parsed.get("dbname", "").startswith("moldy_e2e_scripted"),
+        and isinstance(database, str)
+        and (database == "moldy_e2e_scripted" or database.startswith("moldy_e2e_scripted_")),
         "expected the dedicated loopback scripted PostgreSQL database",
     )
     evidence = Path(os.environ["MOLDY_AGUI_EVIDENCE_DIR"])
@@ -228,35 +226,24 @@ async def open_gate() -> AsyncIterator[Gate]:
                 "moldy_at" in client.cookies and "moldy_csrf" in client.cookies,
                 "signed session cookies missing",
             )
-            return Participant(
-                client, {"X-CSRF-Token": body["csrf_token"]}, body["user"]["id"]
-            )
+            return Participant(client, {"X-CSRF-Token": body["csrf_token"]}, body["user"]["id"])
 
-        owner_a = await login(
-            a, os.environ["E2E_USER_EMAIL"], os.environ["E2E_USER_PASSWORD"]
-        )
-        owner_b = await login(
-            b, os.environ["E2E_USER_EMAIL"], os.environ["E2E_USER_PASSWORD"]
-        )
+        owner_a = await login(a, os.environ["E2E_USER_EMAIL"], os.environ["E2E_USER_PASSWORD"])
+        owner_b = await login(b, os.environ["E2E_USER_EMAIL"], os.environ["E2E_USER_PASSWORD"])
         other_b = await login(
             b,
             os.environ["MOLDY_AGUI_OTHER_EMAIL"],
             os.environ["MOLDY_AGUI_OTHER_PASSWORD"],
         )
-        require(
-            owner_a.user_id == owner_b.user_id != other_b.user_id, "wrong actor pairing"
-        )
+        require(owner_a.user_id == owner_b.user_id != other_b.user_id, "wrong actor pairing")
         primary_tenant = str(UUID(os.environ["MOLDY_AGUI_PRIMARY_TENANT_ID"]))
         other_tenant = str(UUID(os.environ["MOLDY_AGUI_OTHER_TENANT_ID"]))
-        require(
-            primary_tenant != other_tenant, "expected actors from distinct companies"
-        )
+        require(primary_tenant != other_tenant, "expected actors from distinct companies")
         models = await owner_a.json("GET", "/api/models")
         seeded = [
             m["id"]
             for m in models
-            if m["provider"] == "e2e_scripted"
-            and m["model_name"] == "document-artifact-scripted"
+            if m["provider"] == "e2e_scripted" and m["model_name"] == "document-artifact-scripted"
         ]
         require(len(seeded) == 1, "expected one seeded scripted document model")
         yield Gate(

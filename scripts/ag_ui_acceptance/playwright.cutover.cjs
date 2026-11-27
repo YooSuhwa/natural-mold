@@ -25,6 +25,11 @@ module.exports = defineConfig({
   timeout: 180000,
   expect: { timeout: 15000 },
   // Playwright clears its artifact directory before global setup validates the run paths.
-  outputDir: path.join(frontend, 'playwright-artifacts', process.env.E2E_PROJECT),
+  outputDir: path.join(
+    frontend,
+    'playwright-artifacts',
+    process.env.E2E_PROJECT,
+    process.env.MOLDY_AGUI_PLAYWRIGHT_GROUP || 'catalog',
+  ),
   reporter: [['json', { outputFile: process.env.MOLDY_AGUI_PLAYWRIGHT_JSON }]],
 })

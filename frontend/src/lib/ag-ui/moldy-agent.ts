@@ -6,7 +6,7 @@ import {
   type AgentSubscriber,
 } from '@ag-ui/client'
 import type { BaseEvent, RunAgentInput } from '@ag-ui/core'
-import { defer, EMPTY, switchMap, tap } from 'rxjs'
+import { catchError, defer, EMPTY, switchMap, tap } from 'rxjs'
 import { apiFetchResponse } from '@/lib/api/client'
 import { throwApiError } from '@/lib/api/errors'
 import { announceIfAgentNotReady } from '@/lib/chat/agent-not-ready-signal'
@@ -41,6 +41,7 @@ interface ConversationSession {
   path: string
   scope: OrgScopeToken
   lifetime: AbortController
+  document: AbortController
   selection: string | null | undefined
   generation: number
   pendingPrimary?: Reader
@@ -76,6 +77,7 @@ export class MoldyAgUiAgent extends HttpAgent {
       path,
       scope: currentOrgScope(),
       lifetime: new AbortController(),
+      document: new AbortController(),
       selection: undefined,
       generation: 0,
     }
@@ -94,12 +96,17 @@ export class MoldyAgUiAgent extends HttpAgent {
     return copy
   }
 
+  private scopeSignal(input?: AbortSignal | null) {
+    const { document, lifetime, scope, path } = this.session
+    const signals = [document.signal, lifetime.signal]
+    if (input) signals.push(input)
+    const local = anySignal(signals)
+    return signalForOrgScope(scope, path, local) ?? local
+  }
+
   private async request(path: string, init: RequestInit): Promise<Response> {
-    const session = this.session
-    const local = init.signal
-      ? anySignal([session.lifetime.signal, init.signal])
-      : session.lifetime.signal
-    const signal = signalForOrgScope(session.scope, path, local) ?? local
+    const { options } = this.session
+    const signal = this.scopeSignal(init.signal)
     signal.throwIfAborted()
     const send = () => apiFetchResponse(path, { ...init, signal, cache: 'no-store' })
     let response: Response
@@ -117,16 +124,33 @@ export class MoldyAgUiAgent extends HttpAgent {
       signal.throwIfAborted()
     }
     if (!response.ok) {
-      await announceIfAgentNotReady(response, { conversationId: session.options.conversationId })
+      await announceIfAgentNotReady(response, { conversationId: options.conversationId })
       await throwApiError(response, 'UNKNOWN_ERROR')
     }
     return response
   }
 
+  get documentDetached() {
+    return this.session.document.signal.aborted
+  }
+
+  detachDocument() {
+    this.session.document.abort()
+  }
+
+  restoreDocument() {
+    if (this.documentDetached) this.session.document = new AbortController()
+  }
+
   async readSnapshot({
     runId,
     signal,
-  }: { runId?: string; signal?: AbortSignal } = {}): Promise<WireChatSnapshot> {
+    isCurrent,
+  }: {
+    runId?: string
+    signal?: AbortSignal
+    isCurrent?: () => boolean
+  } = {}): Promise<WireChatSnapshot> {
     const session = this.session
     const version = runId === undefined ? ++session.generation : session.generation
     const query = runId === undefined ? '' : '?' + new URLSearchParams({ runId })
@@ -139,7 +163,7 @@ export class MoldyAgUiAgent extends HttpAgent {
     if (!isOrgScopeCurrent(session.scope))
       throw new DOMException('Organization changed', 'AbortError')
     signal?.throwIfAborted()
-    if (runId === undefined && version === session.generation) {
+    if (runId === undefined && version === session.generation && (isCurrent?.() ?? true)) {
       session.selection = snapshot.activeRunId
       this.pendingInterrupts = [...snapshot.interrupts]
     }
@@ -186,6 +210,12 @@ export class MoldyAgUiAgent extends HttpAgent {
     const conversationId = this.session.options.conversationId
     this.reader = reader
     return transformHttpEventStream(runHttpRequest(response), this.debugLogger).pipe(
+      catchError((error: unknown) => {
+        // A discarded document can reject body reads with a TypeError instead of AbortError.
+        // Preserve live network/protocol failures and recognize only our own cancelled reader.
+        if (error instanceof TypeError) reader.signal.throwIfAborted()
+        throw error
+      }),
       tap((event) => {
         if (event.type === 'RUN_STARTED' || event.type === 'RUN_FINISHED') {
           if (
@@ -209,7 +239,7 @@ export class MoldyAgUiAgent extends HttpAgent {
     const reader: Reader = {
       runId: input.runId,
       source: 'run',
-      signal: this.abortController.signal,
+      signal: this.scopeSignal(this.abortController.signal),
     }
     return this.decode(reader, async () => {
       return (await this.submit(input, reader.signal, true)).response
@@ -218,7 +248,7 @@ export class MoldyAgUiAgent extends HttpAgent {
 
   protected override connect(input: RunAgentInput) {
     const session = this.session
-    const signal = this.abortController.signal
+    const signal = this.scopeSignal(this.abortController.signal)
     return defer(async () =>
       session.selection === undefined
         ? (await this.readSnapshot({ signal })).activeRunId

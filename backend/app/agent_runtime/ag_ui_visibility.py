@@ -10,3 +10,6 @@ class ChildVisibility:
     namespaces: frozenset[tuple[str, ...]]
     # A stable call, exact checkpoint namespace and durable task ID proved together.
     bindings: frozenset[tuple[str, tuple[str, ...], str]] = frozenset()
+    # Historical native delegations may prove the issuer and namespace without
+    # a durable task ID. They authorize reading only.
+    historical_bindings: frozenset[tuple[str, tuple[str, ...]]] = frozenset()

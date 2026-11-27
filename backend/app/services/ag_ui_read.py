@@ -67,7 +67,9 @@ class _Reader:
             or not before.tool_call_ids <= after.tool_call_ids
             or not before.namespaces <= after.namespaces
             or not before.bindings <= after.bindings
+            or not before.historical_bindings <= after.historical_bindings
             or not previous.artifacts <= target.artifacts
+            or not previous.widget_bindings <= target.widget_bindings
         ):
             return False
         if previous.scope.branch_key == target.scope.branch_key:

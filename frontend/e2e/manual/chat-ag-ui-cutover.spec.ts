@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { APIRequestContext, Page } from '@playwright/test'
 import { z } from 'zod'
 
-import { API_BASE, apiDeleteOk, apiGetJson, apiJson, expect, test } from '../fixtures'
+import { API_BASE, apiDeleteOk, apiGetJson, apiJson, apiPostJson, expect, test } from '../fixtures'
 import { inputHasExactHuman, queueState } from '../chat-message-queue-actions'
 import { parseConversationRunStartUrl } from '../../scripts/e2e-run-start-response'
 import { commandMethod, waitForAcceptedRunStart as waitForV3Start } from '../helpers/run-start'
@@ -265,9 +265,32 @@ test('reads one delegated chat across replicas, approval, AG-UI cutover and roll
     const finals = messages.filter((m) => m.role === 'assistant' && m.content === finalAnswer)
     expect(finals).toHaveLength(1)
     expect(finals[0].feedback).toMatchObject({ rating: 'up' })
-    expect(messages.find((m) => m.id === original.id)?.branch_checkpoint_id).toBe(
-      original.branch_checkpoint_id,
+    expect(messages.find((m) => m.id === original.id)).toMatchObject({
+      role: 'user',
+      content: oldQuestion,
+      runtime_message_id: original.runtime_message_id,
+    })
+    // The branch picker's leaf advances as turns are appended. Look up the actual bookmarked
+    // checkpoint to verify that its original messages remain readable across the cutover.
+    const history = z
+      .array(
+        z.object({
+          checkpoint: z.object({ checkpoint_id: z.string() }),
+          values: z.unknown(),
+        }),
+      )
+      .parse(
+        await apiPostJson(
+          request,
+          `${base}/langgraph/threads/${conversationId}/history`,
+          setup.csrfHeaders,
+          { limit: 100 },
+        ),
+      )
+    const originalCheckpoint = history.find(
+      (entry) => entry.checkpoint.checkpoint_id === original.branch_checkpoint_id,
     )
+    expect(inputHasExactHuman(originalCheckpoint?.values, oldQuestion)).toBe(true)
 
     await page.reload()
     await expectFinalTextVisible(page)

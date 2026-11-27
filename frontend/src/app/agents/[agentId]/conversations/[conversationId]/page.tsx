@@ -232,8 +232,9 @@ export default function ChatPage({
     setLatestTurnUsage,
     setSessionTokenUsage,
   ])
+  // A newly created draft has no runs. Existing conversations get their run scope from history.
   const independentJobs = useIndependentChatJobs(
-    activeConversationId,
+    isDraftConversation || envelope ? activeConversationId : null,
     envelope?.active_run?.id ?? envelope?.latest_run?.id ?? null,
   )
   const jobList =

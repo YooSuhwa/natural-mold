@@ -46,6 +46,21 @@ function completeOAuth(credentialId: string) {
   })
 }
 
+function renderGuardedBinding() {
+  const canContinue = vi.fn(() => true)
+  const onConnected = vi.fn()
+  render(
+    <CredentialBindingDialog
+      open
+      onOpenChange={vi.fn()}
+      target={target}
+      onConnected={onConnected}
+      canContinue={canContinue}
+    />,
+  )
+  return { canContinue, onConnected }
+}
+
 describe('CredentialBindingDialog OAuth (G-05)', () => {
   let open: ReturnType<typeof vi.spyOn>
   let popup: { location: { href: string }; close: ReturnType<typeof vi.fn>; focus: () => void }
@@ -104,6 +119,65 @@ describe('CredentialBindingDialog OAuth (G-05)', () => {
 
     await waitFor(() => expect(onConnected).toHaveBeenCalledTimes(1))
     expect(credentials.startOAuth2).not.toHaveBeenCalled()
+  })
+
+  it('does not navigate or bind after the approval expires during OAuth start', async () => {
+    const authorization = Promise.withResolvers<{ authorization_url: string; state: string }>()
+    credentials.list.mockResolvedValue([credential('c-expired', 'expired')])
+    credentials.startOAuth2.mockReturnValueOnce(authorization.promise)
+    const { canContinue, onConnected } = renderGuardedBinding()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Slack c-expired 연결' }))
+    await waitFor(() => expect(credentials.startOAuth2).toHaveBeenCalledWith('c-expired'))
+    canContinue.mockReturnValue(false)
+    await act(async () => {
+      authorization.resolve({ authorization_url: 'https://auth.example/authorize', state: 's' })
+    })
+
+    expect(popup.location.href).toBe('about:blank')
+    expect(bindings.bind).not.toHaveBeenCalled()
+    completeOAuth('c-expired')
+    expect(onConnected).not.toHaveBeenCalled()
+  })
+
+  it('does not authorize or bind a newly saved credential after its approval is replaced', async () => {
+    const creation = Promise.withResolvers<ReturnType<typeof credential>>()
+    credentials.list.mockResolvedValue([])
+    credentials.create.mockReturnValueOnce(creation.promise)
+    const { canContinue, onConnected } = renderGuardedBinding()
+
+    await userEvent.click(await screen.findByRole('button', { name: /새로 연결/ }))
+    await userEvent.click(await screen.findByRole('button', { name: '자격증명 저장' }))
+    await waitFor(() => expect(credentials.create).toHaveBeenCalledTimes(1))
+    canContinue.mockReturnValue(false)
+    await act(async () => {
+      creation.resolve(credential('c-new', 'auth_needed'))
+    })
+
+    expect(credentials.create).toHaveBeenCalledTimes(1)
+    expect(credentials.startOAuth2).not.toHaveBeenCalled()
+    expect(bindings.bind).not.toHaveBeenCalled()
+    completeOAuth('c-new')
+    expect(onConnected).not.toHaveBeenCalled()
+  })
+
+  it('does not resume a replaced approval when an accepted binding finishes', async () => {
+    const binding = Promise.withResolvers<{ id: string }>()
+    credentials.list.mockResolvedValue([credential('c-active', 'active')])
+    bindings.bind.mockReturnValueOnce(binding.promise)
+    const { canContinue, onConnected } = renderGuardedBinding()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Slack c-active 연결' }))
+    await waitFor(() =>
+      expect(bindings.bind).toHaveBeenCalledWith('mcp_server', 'srv-1', 'c-active'),
+    )
+    canContinue.mockReturnValue(false)
+    await act(async () => {
+      binding.resolve({ id: 'b-1' })
+    })
+
+    expect(bindings.bind).toHaveBeenCalledTimes(1)
+    expect(onConnected).not.toHaveBeenCalled()
   })
 
   it('creates a new OAuth credential, authorizes it and connects once the popup completes', async () => {

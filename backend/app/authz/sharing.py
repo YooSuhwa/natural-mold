@@ -51,6 +51,7 @@ from app.authz.share_targets import (
     is_owner,
     load_target,
     recheck_owner,
+    require_target_permission,
     share_object,
 )
 from app.models.authz import ResourceGrant
@@ -188,10 +189,11 @@ async def revoke_share(
     ):
         raise denials.not_found()
     own = (grant.principal_type, grant.principal_id) == ("user", ctx.user_id)
-    row = await load_target(db, ctx, kind, grant.resource_id)
-    if not own:  # a grantee may always give up their own grant (10.2)
-        row = await authorize_target(
-            db, authz, ctx, kind, grant.resource_id, "can_revoke", min_visible="can_revoke"
+    # Legacy grants on hidden runtimes can be withdrawn by their ID.
+    row = await load_target(db, ctx, kind, grant.resource_id, revoking_grant=True)
+    if not own:
+        row = await require_target_permission(
+            authz, ctx, kind, grant.resource_id, row, "can_revoke", min_visible="can_revoke"
         )
     if row is None:
         raise denials.not_found()

@@ -22,9 +22,7 @@ def worker_pair(
 ) -> Iterator[None]:
     """Serve a and b under the app DB role; unwind every owned group on phase exit."""
     if set(ports_by_label) != {"a", "b"} or len(set(ports_by_label.values())) != 2:
-        raise ValueError(
-            "The two acceptance replicas require distinct ports for a and b"
-        )
+        raise ValueError("The two acceptance replicas require distinct ports for a and b")
     tag = f"{prefix.rstrip('-')}-" if prefix else ""
     runtime_env = {
         key: value
@@ -46,9 +44,7 @@ def worker_pair(
             api_name = f"{tag}api-{label}"
             job_name = f"{tag}jobs-{label}"
             if api_name in process_ids or job_name in process_ids:
-                raise ValueError(
-                    f"Acceptance worker names already recorded for {api_name}"
-                )
+                raise ValueError(f"Acceptance worker names already recorded for {api_name}")
             api, api_log = processes.enter_context(
                 managed(
                     api_name,

@@ -35,6 +35,7 @@ from tests.authz.test_child_task_read_bindings import bound as bound
 pytestmark = pytest.mark.asyncio
 
 NATIVE = tuple(NAMESPACE.split("|"))
+SIBLING_NS = (*NATIVE[:-1], "task:parallel")
 ISSUER = "root-assistant"
 PUBLIC = "run-public"
 CHECKPOINT = "root-pending"
@@ -251,19 +252,19 @@ async def test_resumed_approval_belongs_to_current_run_and_the_original_parent_c
     assert (child["runId"], child["physicalRunId"]) == ("resumed-public", str(resumed.id))
 
 
-async def test_parallel_child_approvals_follow_each_issuance_regardless_of_slot_order(
+@pytest.fixture
+async def parallel_child(
     db: AsyncSession,
     pending_child: ChildSnapshot,
-) -> None:
+) -> ConversationChildTask:
     case = pending_child
-    sibling_ns = (*NATIVE[:-1], "task:parallel")
     sibling = ConversationChildTask(
         run_id=case.run.id,
         current_run_id=case.run.id,
         child_agent_id=case.task.child_agent_id,
         tool_call_id="call-second",
         role=case.task.role,
-        checkpoint_ns="|".join(sibling_ns),
+        checkpoint_ns="|".join(SIBLING_NS),
         checkpoint_id="parallel-checkpoint",
         status="awaiting_approval",
     )
@@ -279,34 +280,73 @@ async def test_parallel_child_approvals_follow_each_issuance_regardless_of_slot_
             "args": {"subagent_type": sibling.role},
         }
     )
-    second_issuer = public_tool_call_id(PUBLIC, None, ISSUER, sibling.tool_call_id)
     case.merged.messages[0]["toolCalls"].append(
         {
-            "id": second_issuer,
+            "id": public_tool_call_id(PUBLIC, None, ISSUER, sibling.tool_call_id),
             "type": "function",
             "function": {"name": DELEGATION_TOOL, "arguments": "{}"},
         }
     )
+    case.visibility = await load_child_visibility(db, case.conversation, case.context, case.run.id)
+    assert len(case.visibility.bindings) == 2
+    return sibling
+
+
+async def test_parallel_child_approvals_follow_each_issuance_regardless_of_slot_order(
+    db: AsyncSession,
+    pending_child: ChildSnapshot,
+    parallel_child: ConversationChildTask,
+) -> None:
+    case = pending_child
     case.pending = replace(
         case.pending,
         interrupts=(
-            _interrupt(sibling_ns, slot="parallel-approval"),
+            _interrupt(SIBLING_NS, slot="parallel-approval"),
             _interrupt(NATIVE),
         ),
     )
-    case.visibility = await load_child_visibility(db, case.conversation, case.context, case.run.id)
-    assert len(case.visibility.bindings) == 2
     first_id = public_subagent_id(str(case.conversation.id), NATIVE)
-    second_id = public_subagent_id(str(case.conversation.id), sibling_ns)
-    assert await case.restore(db) == {NATIVE: first_id, sibling_ns: second_id}
+    second_id = public_subagent_id(str(case.conversation.id), SIBLING_NS)
+    assert await case.restore(db) == {NATIVE: first_id, SIBLING_NS: second_id}
     controls = {
         row["subagentRunId"]: (row["childTaskId"], row["parentToolCallId"])
         for row in case.merged.subagents
     }
     assert controls == {
         first_id: (str(case.task.id), public_tool_call_id(PUBLIC, None, ISSUER, CALL)),
-        second_id: (str(sibling.id), second_issuer),
+        second_id: (
+            str(parallel_child.id),
+            public_tool_call_id(PUBLIC, None, ISSUER, parallel_child.tool_call_id),
+        ),
     }
+
+
+@pytest.mark.parametrize("visible", ["both", "waiting-only", "completed-only"])
+async def test_same_role_completed_sibling_cannot_acquire_the_current_approval(
+    db: AsyncSession,
+    pending_child: ChildSnapshot,
+    parallel_child: ConversationChildTask,
+    visible: str,
+) -> None:
+    case = pending_child
+    parallel_child.status = "completed"
+    await db.commit()
+    if visible != "both":
+        allowed = case.task.id if visible == "waiting-only" else parallel_child.id
+        case.visibility = replace(
+            case.visibility,
+            bindings=frozenset(row for row in case.visibility.bindings if row[2] == str(allowed)),
+        )
+    restored = await case.restore(db)
+    if visible == "completed-only":
+        assert restored == {}
+        assert case.merged.subagents == []
+        return
+    waiting_id = public_subagent_id(str(case.conversation.id), NATIVE)
+    assert restored == {NATIVE: waiting_id}
+    [child] = case.merged.subagents
+    assert child["childTaskId"] == str(case.task.id)
+    assert child["parentToolCallId"] == public_tool_call_id(PUBLIC, None, ISSUER, CALL)
 
 
 async def test_disappearing_nested_task_cannot_transfer_its_approval_to_its_parent(

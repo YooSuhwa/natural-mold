@@ -88,6 +88,14 @@ function setup(initial: readonly AgUiInterrupt[], readyKey: string | null = 'ini
 }
 
 describe('Moldy choices on the native AG-UI pending interrupts', () => {
+  it('checks current proof again when a credential action opens between React updates', () => {
+    const view = setup([auth('connect', 1)])
+    const eligible = view.result.current.canRespondTo
+    expect(eligible('connect', 0)).toBe(true)
+    view.setDurableKey(null, false)
+    expect(eligible('connect', 0)).toBe(false)
+    expect(view.submit).not.toHaveBeenCalled()
+  })
   it('projects identical rich question arguments from a live slot and an explicitly granted historical slot', () => {
     const args = {
       mode: 'option_list',

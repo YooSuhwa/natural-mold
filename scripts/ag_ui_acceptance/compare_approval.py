@@ -11,6 +11,7 @@ import argparse
 import asyncio
 import json
 from dataclasses import asdict, dataclass
+from importlib import import_module
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,6 @@ from ag_ui.core import (
     RunFinishedInterruptOutcome,
     RunStartedEvent,
 )
-from ag_ui_langgraph import LangGraphAgent, add_langgraph_fastapi_endpoint
 from fastapi import FastAPI
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import START, MessagesState, StateGraph
@@ -62,9 +62,7 @@ class Capture:
             raise ValueError("expected a non-empty approval stream")
         events = TypeAdapter(list[Event]).validate_python(frames)
         first, last = events[0], events[-1]
-        if not isinstance(first, RunStartedEvent) or not isinstance(
-            last, RunFinishedEvent
-        ):
+        if not isinstance(first, RunStartedEvent) or not isinstance(last, RunFinishedEvent):
             raise TypeError("approval capture must start and finish the submitted run")
         for event in (first, last):
             if (event.thread_id, event.run_id) != (command.thread_id, command.run_id):
@@ -89,9 +87,7 @@ class Signature:
     def of(cls, original: Capture, continuation: Capture) -> Signature:
         asked = original.finish.outcome
         if not isinstance(asked, RunFinishedInterruptOutcome):
-            raise TypeError(
-                "the interrupted run finished without the standard interrupt outcome"
-            )
+            raise TypeError("the interrupted run finished without the standard interrupt outcome")
         ids = [entry.id for entry in asked.interrupts]
         answers = continuation.request.resume or []
         result = continuation.finish.outcome
@@ -115,13 +111,15 @@ class Signature:
 
 
 async def reference_signature() -> Signature:
+    # The separate reference environment provides this adapter at the version checked by compare().
+    adapter = import_module("ag_ui_langgraph")
     builder = StateGraph(ApprovalState).add_node("approval", ask_for_approval)
     builder.add_edge(START, "approval")
     graph = builder.compile(checkpointer=InMemorySaver())
     app = FastAPI()
-    add_langgraph_fastapi_endpoint(
+    adapter.add_langgraph_fastapi_endpoint(
         app,
-        LangGraphAgent(
+        adapter.LangGraphAgent(
             name="reference",
             graph=graph,
             emit_raw_events=False,
@@ -158,13 +156,8 @@ async def reference_signature() -> Signature:
 
         first = await submit(request)
         outcome = first.finish.outcome
-        if (
-            not isinstance(outcome, RunFinishedInterruptOutcome)
-            or len(outcome.interrupts) != 1
-        ):
-            raise ValueError(
-                "official adapter failed to produce the reference interrupt"
-            )
+        if not isinstance(outcome, RunFinishedInterruptOutcome) or len(outcome.interrupts) != 1:
+            raise ValueError("official adapter failed to produce the reference interrupt")
         second = await submit(
             {
                 **request,
@@ -182,10 +175,7 @@ async def reference_signature() -> Signature:
 
 
 async def compare(first: Path, second: Path) -> None:
-    versions = {
-        name: version(name)
-        for name in ("ag-ui-protocol", "ag-ui-langgraph", "langgraph")
-    }
+    versions = {name: version(name) for name in ("ag-ui-protocol", "ag-ui-langgraph", "langgraph")}
     if versions != {
         "ag-ui-protocol": "1.0.0",
         "ag-ui-langgraph": "0.0.48",
@@ -198,9 +188,7 @@ async def compare(first: Path, second: Path) -> None:
         raise ValueError(f"reference approval failed its own contract: {reference}")
     product = Signature.of(Capture.load(first), Capture.load(second))
     if product != reference:
-        raise ValueError(
-            f"Moldy approval and official adapter differ: {product} != {reference}"
-        )
+        raise ValueError(f"Moldy approval and official adapter differ: {product} != {reference}")
     print(
         json.dumps(
             {

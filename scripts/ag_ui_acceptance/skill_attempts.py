@@ -6,9 +6,7 @@ from pathlib import Path
 from uuid import UUID
 
 
-def docx_attempt_environment(
-    directory: Path, node_binary: str | Path
-) -> dict[str, str]:
+def docx_attempt_environment(directory: Path, node_binary: str | Path) -> dict[str, str]:
     """Install a pass-through Node entry point shared by both throwaway workers."""
     node = Path(node_binary).resolve(strict=True)
     ledger = (directory / "docx-attempts.txt").resolve()

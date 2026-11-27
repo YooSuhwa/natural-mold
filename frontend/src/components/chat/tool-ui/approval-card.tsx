@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { toApprove, toEdit, toReject } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
+import { canRespondToAction, useApprovalGeneration } from '@/lib/chat/hitl-readiness'
 import { useMultiApproval } from './multi-approval-context'
 import {
   isSensitiveDisplayKey,
@@ -145,6 +146,11 @@ function useDecisionStyles() {
       label: t('rejected'),
     },
   } as const
+}
+
+export function AgUiApprovalBadge({ decision }: { decision: 'approve' | 'edit' | 'reject' }) {
+  const outcome = { approve: 'approved', edit: 'modified', reject: 'rejected' } as const
+  return <ApprovalBadge result={{ decision: outcome[decision] }} />
 }
 
 function ApprovalBadge({ result }: { result: unknown }) {
@@ -386,13 +392,21 @@ type ApprovalFormProps = Pick<
   showConversationGrant?: boolean
 }
 
-export function ApprovalForm({
+export function ApprovalForm(props: ApprovalFormProps) {
+  const hitl = useHiTL()
+  const canRespond = canRespondToAction(hitl, props.args)
+  const generation = useApprovalGeneration(canRespond ? hitl : null)
+  return <ApprovalFields key={generation} {...props} canRespond={canRespond} />
+}
+
+function ApprovalFields({
   args,
   result,
   status,
   addResult,
   showConversationGrant = true,
-}: ApprovalFormProps) {
+  canRespond,
+}: ApprovalFormProps & { canRespond: boolean }) {
   const t = useTranslations('chat.approval')
   const styles = useDecisionStyles()
   const hitl = useHiTL()
@@ -415,7 +429,7 @@ export function ApprovalForm({
   const approvalId = args?.approval_id ?? `approval-${fallbackId}`
 
   // requires-action 상태일 때만 timer 활성
-  const isPending = status.type !== 'complete' && status.type !== 'running' && result === undefined
+  const isPending = status.type !== 'complete' && status.type !== 'running' && result == null
   // 그룹(멀티액션) 안에서 렌더될 때는 compact 모드 — 자체 헤더/카운트다운을 숨기고
   // (그룹 컨테이너가 대신 보여준다) "모두 승인"을 위해 승인 콜백을 등록한다.
   const grouped = Boolean(multi) && typeof args?.hitl_action_index === 'number'
@@ -452,6 +466,7 @@ export function ApprovalForm({
 
   const handleDecision = useCallback(
     async (d: Decision, opts?: { reasonOverride?: string }) => {
+      if (!canRespond || !isPending || submitting || localResult !== null) return false
       setDecision(d)
       setSubmitting(true)
 
@@ -488,7 +503,20 @@ export function ApprovalForm({
       setSubmitting(false)
       return true
     },
-    [addResult, rejectReason, draft, t, styles, args, resumeDecision, consentSession],
+    [
+      addResult,
+      canRespond,
+      isPending,
+      submitting,
+      localResult,
+      rejectReason,
+      draft,
+      t,
+      styles,
+      args,
+      resumeDecision,
+      consentSession,
+    ],
   )
 
   const visibleResult = result ?? localResult
@@ -510,18 +538,20 @@ export function ApprovalForm({
   // 만료 시 자동 reject — handleDecision 변동에 영향받지 않도록 ref로 보관
   const expireMessage = t('autoRejected')
   const handleExpire = useCallback(() => {
+    // Viewing a restored AG-UI approval must never resume its run when a local timer expires.
+    if (hitl?.canRespond !== undefined || hitl?.canRespondTo !== undefined) return
     if (submitting || decision !== null) return
     void handleDecision('rejected', { reasonOverride: expireMessage })
-  }, [handleDecision, submitting, decision, expireMessage])
+  }, [hitl, handleDecision, submitting, decision, expireMessage])
 
   const { remaining, isUrgent, formatted, extend } = useApprovalDeadline({
-    approvalId,
+    approvalId: canRespond ? approvalId : '',
     initialTimeoutSeconds: args?.timeout_seconds,
     onExpire: handleExpire,
     // In a group the countdown badge isn't rendered, so keeping the timer would
     // silently auto-reject a card mid-decision. Disable per-card auto-expire in
     // compact mode (the group has no visible deadline).
-    active: isPending && !grouped,
+    active: canRespond && isPending && !grouped && localResult === null,
   })
 
   const onInteract = useMemo(() => extend, [extend])
@@ -551,6 +581,7 @@ export function ApprovalForm({
       !grouped ||
       !multi ||
       typeof idx !== 'number' ||
+      !canRespond ||
       !canApprove ||
       localResult !== null ||
       decision !== null ||
@@ -563,6 +594,7 @@ export function ApprovalForm({
   }, [
     grouped,
     multi,
+    canRespond,
     canApprove,
     localResult,
     decision,
@@ -573,6 +605,9 @@ export function ApprovalForm({
 
   // ── 완료 상태 ──
   if (status.type === 'complete' || visibleResult !== null) {
+    // The native SDK closes the pending part before a committed decision is
+    // read back. Completion alone does not say what the reviewer selected.
+    if (hitl?.canRespond !== undefined && !parseApprovalResult(visibleResult)) return null
     const badge = <ApprovalBadge result={visibleResult} />
     if (!grouped) return badge
     return (
@@ -624,6 +659,7 @@ export function ApprovalForm({
         <textarea
           aria-label={t('rejectReasonLabel')}
           value={rejectReason}
+          disabled={!canRespond}
           onChange={(e) => {
             setRejectReason(e.target.value)
             onInteract()
@@ -638,7 +674,9 @@ export function ApprovalForm({
       {/* 수정 인자 입력 (수정 선택 시) — 칸별 field editor. 시크릿 키는
               read-only 잠금, 비-scalar는 칸별 JSON. raw JSON textarea 아님. */}
       {showEdit && !submitting && (
-        <ArgsEditor value={draft} onChange={setDraft} onInteract={onInteract} />
+        <fieldset disabled={!canRespond}>
+          <ArgsEditor value={draft} onChange={setDraft} onInteract={onInteract} />
+        </fieldset>
       )}
 
       {resumeError && <p className="mt-1 text-xs text-destructive">{resumeError}</p>}
@@ -653,6 +691,7 @@ export function ApprovalForm({
             type="checkbox"
             aria-label={t('allowForSession')}
             checked={consentSession}
+            disabled={!canRespond}
             onChange={(e) => {
               setConsentSession(e.target.checked)
               onInteract()
@@ -666,7 +705,7 @@ export function ApprovalForm({
         </div>
       )}
 
-      {showConversationGrant && canApprove && !submitting ? (
+      {showConversationGrant && canRespond && canApprove && !submitting ? (
         <ConversationGrantButton tool={args?.tool_name} />
       ) : null}
 
@@ -684,6 +723,7 @@ export function ApprovalForm({
             <button
               type="button"
               onClick={() => handleDecision('approved')}
+              disabled={!canRespond}
               data-testid="approval-approve-button"
               data-variant="solid"
               className="moldy-action-pill moldy-status-success order-last"
@@ -702,6 +742,7 @@ export function ApprovalForm({
                   setShowEdit(true)
                   setDraft({ ...(toolArgs ?? {}) })
                 }}
+                disabled={!canRespond}
                 data-variant="outline"
                 className="moldy-action-pill moldy-status-info"
               >
@@ -712,6 +753,7 @@ export function ApprovalForm({
               <button
                 type="button"
                 onClick={() => handleDecision('modified')}
+                disabled={!canRespond}
                 data-variant="solid"
                 className="moldy-action-pill moldy-status-info"
               >
@@ -726,6 +768,7 @@ export function ApprovalForm({
               <button
                 type="button"
                 onClick={() => setDecision('rejected')}
+                disabled={!canRespond}
                 data-variant="outline"
                 className="moldy-action-pill moldy-status-danger"
               >
@@ -736,6 +779,7 @@ export function ApprovalForm({
               <button
                 type="button"
                 onClick={() => handleDecision('rejected')}
+                disabled={!canRespond}
                 data-variant="solid"
                 className="moldy-action-pill moldy-status-danger"
               >
@@ -779,14 +823,16 @@ export function ApprovalForm({
       <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
         <ShieldCheckIcon className="moldy-status-icon size-4" />
         <span className="text-sm font-medium">{t('approvalRequired')}</span>
-        <CountdownBadge
-          formatted={formatted}
-          isUrgent={isUrgent}
-          expired={remaining <= 0}
-          label={t('expiresIn')}
-          expiredLabel={t('expired')}
-          className="ml-auto"
-        />
+        {canRespond && (
+          <CountdownBadge
+            formatted={formatted}
+            isUrgent={isUrgent}
+            expired={remaining <= 0}
+            label={t('expiresIn')}
+            expiredLabel={t('expired')}
+            className="ml-auto"
+          />
+        )}
       </div>
       {body}
     </div>

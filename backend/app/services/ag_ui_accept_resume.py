@@ -11,12 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
-from app.routers.conversation_agent_protocol_consent import apply_session_consent_decisions
-from app.routers.conversation_agent_protocol_resume import (
-    resume_decision_metadata,
-    resume_run_interrupt_id,
-)
-from app.routers.session_consent_scope import SessionConsentPayload, SessionConsentTarget
 from app.services import chat_service
 from app.services.ag_ui_commands import (
     PROJECTION_VERSION,
@@ -28,6 +22,15 @@ from app.services.ag_ui_deferred_delivery import seal_ag_ui_delivery
 from app.services.ag_ui_resume import claim_verified_resume, verify_ag_ui_resume
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
 from app.services.conversation_audit_service import record_conversation_audit
+from app.services.conversation_resume_types import (
+    resume_decision_metadata,
+    resume_run_interrupt_id,
+)
+from app.services.conversation_session_consent import (
+    SessionConsentPayload,
+    SessionConsentTarget,
+    apply_session_consent_decisions,
+)
 
 
 async def accept_resume(

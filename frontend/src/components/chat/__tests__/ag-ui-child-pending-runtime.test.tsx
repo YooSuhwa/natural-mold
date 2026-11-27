@@ -4,7 +4,7 @@ import type { RunAgentInput } from '@ag-ui/core'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { useAgUiRuntime } from '@assistant-ui/react-ag-ui'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { currentAgUiApprovalKey } from '@/lib/ag-ui/approval-admission'
 import { useAgUiHitlActions } from '@/lib/ag-ui/chat-actions-interrupts'
@@ -131,6 +131,20 @@ function RestoredChildForm() {
   )
 }
 
+function successfulRun(command: RunAgentInput, physical: string) {
+  const frames = [
+    { type: 'RUN_STARTED', runId: command.runId, threadId, protocolVersion: '1.0' },
+    { type: 'RUN_FINISHED', runId: command.runId, threadId, outcome: { type: 'success' } },
+  ]
+  return new Response(frames.map((frame) => 'data: ' + JSON.stringify(frame) + '\n\n').join(''), {
+    headers: {
+      'content-type': 'text/event-stream',
+      'X-Run-Id': command.runId,
+      'X-Moldy-Run-Id': physical,
+    },
+  })
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -159,20 +173,7 @@ it('restores a delegated approval through the official runtime and posts one nat
       if (init.method === 'POST' && path.endsWith('/ag-ui/runs')) {
         const command = RunAgentInputSchema.parse(JSON.parse(String(init.body)))
         commands.push(command)
-        const frames = [
-          { type: 'RUN_STARTED', runId: command.runId, threadId, protocolVersion: '1.0' },
-          { type: 'RUN_FINISHED', runId: command.runId, threadId, outcome: { type: 'success' } },
-        ]
-        return new Response(
-          frames.map((frame) => 'data: ' + JSON.stringify(frame) + '\n\n').join(''),
-          {
-            headers: {
-              'content-type': 'text/event-stream',
-              'X-Run-Id': command.runId,
-              'X-Moldy-Run-Id': 'a0155e90-0761-42d6-8487-8a2554643614',
-            },
-          },
-        )
+        return successfulRun(command, 'a0155e90-0761-42d6-8487-8a2554643614')
       }
       throw new Error('Unexpected request ' + init.method + ' ' + path)
     }),
@@ -232,20 +233,7 @@ it('reauthorizes a legacy child through one snapshot GET before submitting its n
       if (method === 'POST' && path.endsWith('/ag-ui/runs')) {
         const body = RunAgentInputSchema.parse(JSON.parse(String(init.body)))
         commands.push(body)
-        const frames = [
-          { type: 'RUN_STARTED', threadId, runId: body.runId, protocolVersion: '1.0' },
-          { type: 'RUN_FINISHED', threadId, runId: body.runId, outcome: { type: 'success' } },
-        ]
-        return new Response(
-          frames.map((event) => 'data: ' + JSON.stringify(event) + '\n\n').join(''),
-          {
-            headers: {
-              'content-type': 'text/event-stream',
-              'X-Run-Id': body.runId,
-              'X-Moldy-Run-Id': 'e4d9a7b3-82d2-41ca-9a5a-87bcc5a06783',
-            },
-          },
-        )
+        return successfulRun(body, 'e4d9a7b3-82d2-41ca-9a5a-87bcc5a06783')
       }
       throw new Error('Unexpected request ' + method + ' ' + path)
     }),
@@ -277,4 +265,137 @@ it('reauthorizes a legacy child through one snapshot GET before submitting its n
     'GET ' + base + '/snapshot',
     'POST ' + base + '/runs',
   ])
+})
+
+it('reopens a credential checkpoint with an active binding and past OAuth popup using only reads', async () => {
+  const oauthCredential = 'mock-oauth'
+  const binding = { resource_name: 'Notes', fixable_by: 'me', tool_names: ['read_notes'] }
+  const oauth = {
+    resource_name: 'Mail',
+    fixable_by: 'me',
+    credential_id: oauthCredential,
+    connect: { kind: 'oauth' },
+  }
+  const snapshot = {
+    ...pausedHistory(),
+    interrupts: [
+      {
+        id: currentSlot,
+        subagentRunId: 'review-run',
+        reason: 'moldy.auth_required',
+        metadata: {
+          moldy: {
+            type: 'auth_required',
+            auth_request_id: 'connect-mail',
+            reason: 'expired',
+            attempt: 2,
+            items: [binding, oauth],
+          },
+        },
+      },
+    ],
+  }
+  const reads: string[] = []
+  const writes: string[] = []
+  const commands: RunAgentInput[] = []
+  const oauthPath = '/api/oauth2-credential/auth/' + oauthCredential
+  const snapshotPath = '/api/conversations/' + threadId + '/ag-ui/snapshot'
+  const readinessPath = '/api/agents/' + childTask.child_agent_id + '/readiness'
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (input, init = {}) => {
+      const path = new URL(input instanceof Request ? input.url : String(input), 'http://localhost')
+        .pathname
+      const method = init.method ?? 'GET'
+      if (method === 'GET') {
+        reads.push(path)
+        if (path === snapshotPath) return Response.json(snapshot)
+        if (path.endsWith('/child-tasks'))
+          return Response.json({
+            items: [childTask],
+            enabled: true,
+            allow_legacy_details: false,
+            next_offset: null,
+          })
+        if (path.endsWith('/child-tasks/' + childTask.id + '/wait')) return Response.json(childTask)
+        if (path === readinessPath)
+          return Response.json({
+            overall: 'ready',
+            items: [
+              {
+                kind: 'tool',
+                id: 'notes',
+                name: 'Notes',
+                required: true,
+                result: 'ready',
+                credential: {
+                  mode: 'per_user',
+                  status: 'active',
+                  credential_id: 'existing-binding',
+                },
+              },
+            ],
+          })
+      } else {
+        writes.push(method + ' ' + path)
+        if (method === 'POST' && path === oauthPath)
+          return Response.json({
+            state: 'prior-session',
+            authorization_url: 'https://oauth.example/authorize',
+          })
+        if (method === 'POST' && path.endsWith('/ag-ui/runs')) {
+          const command = RunAgentInputSchema.parse(JSON.parse(String(init.body)))
+          commands.push(command)
+          return successfulRun(command, physicalRun)
+        }
+      }
+      throw new Error('Unexpected request ' + method + ' ' + path)
+    }),
+  )
+  const popup = { location: { href: 'about:blank' }, focus: vi.fn(), close: vi.fn() }
+  const open = vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
+  const restore = () =>
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <RestoredChildForm />
+      </QueryClientProvider>,
+    )
+  try {
+    const previous = restore()
+    await screen.findByRole('link', { name: 'openCredentials' })
+    expect(writes).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: 'connectOAuth' }))
+    await screen.findByText('oauthWaiting')
+    expect(writes).toEqual(['POST ' + oauthPath])
+    previous.unmount()
+
+    reads.length = 0
+    writes.length = 0
+    restore()
+    await screen.findByRole('link', { name: 'openCredentials' })
+    expect(screen.getByRole('button', { name: 'connectOAuth' })).toBeEnabled()
+    expect(reads).toEqual(expect.arrayContaining([snapshotPath, readinessPath]))
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'moldy.oauth.completed', credentialId: oauthCredential },
+          origin: window.location.origin,
+        }),
+      )
+    })
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(writes).toEqual([])
+
+    fireEvent.click(screen.getByRole('button', { name: 'retry' }))
+    await waitFor(() => expect(commands).toHaveLength(1))
+    expect(commands[0]?.resume).toMatchObject([
+      {
+        interruptId: currentSlot,
+        payload: { decisions: [{ type: 'respond', message: 'retry', attempt: 2 }] },
+      },
+    ])
+    expect(writes).toEqual(['POST /api/conversations/' + threadId + '/ag-ui/runs'])
+  } finally {
+    open.mockRestore()
+  }
 })

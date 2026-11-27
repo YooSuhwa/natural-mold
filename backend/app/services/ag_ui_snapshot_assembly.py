@@ -12,6 +12,7 @@ from uuid import UUID
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.schemas.ag_ui_snapshot import AgUiSnapshotMessageLink
 from app.services.ag_ui_snapshot_call_visibility import (
+    ChildControlOrigin,
     filter_checkpoint_calls,
     visible_child_controls,
 )
@@ -131,6 +132,7 @@ class SnapshotAssembly:
         self._runs: set[str] = set()
         self._unreliable: set[UUID] = set()
         self._children: dict[str, Row] = {}
+        self._child_origins: dict[str, ChildControlOrigin] = {}
         self._todos: dict[str | None, list[Row]] = {}
         turn = 0
         for index, entry in enumerate(self._checkpoint):
@@ -431,9 +433,15 @@ class SnapshotAssembly:
             prev = self._children.get(cid)
             if prev and any(
                 prev.get(key) and item.get(key) and prev[key] != item[key]
-                for key in ("parentSubagentRunId", "parentToolCallId")
+                for key in (
+                    "parentSubagentRunId",
+                    "parentToolCallId",
+                    "parentMessageId",
+                    "childTaskId",
+                )
             ):
                 prev.pop("childTaskId", None)
+                self._child_origins.pop(cid, None)
                 self._unreliable.add(physical)
                 continue
             child = {**item, "runId": public_id, "physicalRunId": str(physical)}
@@ -441,6 +449,21 @@ class SnapshotAssembly:
                 for key in ("parentSubagentRunId", "parentToolCallId", "parentMessageId"):
                     if key in prev and key not in child:
                         child[key] = prev[key]
+            visibility = self._visibility[str(physical)]
+            if prev:
+                # The runtime can complete the same task in its resume run. Its
+                # issuer lives in the predecessor; its current grant must still
+                # attest that *same* durable call/namespace/task in this run.
+                origin = self._child_origins.get(cid)
+                if origin and origin.binding in visibility.bindings:
+                    child["childTaskId"] = origin.binding[2]
+                else:
+                    child.pop("childTaskId", None)
+                    self._child_origins.pop(cid, None)
+            elif origin := ChildControlOrigin.from_issuer(
+                child, self._thread_id, str(physical), public_id, visibility
+            ):
+                self._child_origins[cid] = origin
             self._children[cid] = child
             accepted.add(cid)
         return accepted
@@ -549,7 +572,7 @@ class SnapshotAssembly:
         return AssembledSnapshot(
             messages,
             links,
-            visible_child_controls(children, messages, links),
+            visible_child_controls(children, messages, links, self._child_origins),
             self._todos,
             tip,
             self._unreliable,

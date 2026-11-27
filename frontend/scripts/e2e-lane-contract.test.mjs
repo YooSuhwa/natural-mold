@@ -57,6 +57,41 @@ import { collectJsonNodes, parseArguments, runIsolatedLane } from './run-e2e-lan
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('E2E lane contract', () => {
+  it.each(['ag_ui', 'langgraph_v3', 'legacy'])(
+    'collects the native approval readiness case only for AG-UI (%s)',
+    (runtime) => {
+      const approval = 'ag-ui-approval-readiness.spec.ts'
+      const shared = 'chat-side-chat.spec.ts'
+      const list = spawnSync(
+        process.execPath,
+        [
+          'node_modules/@playwright/test/cli.js',
+          'test',
+          '--list',
+          '--reporter=json',
+          '--project=scripted-full',
+          `e2e/${approval}`,
+          `e2e/${shared}`,
+        ],
+        {
+          cwd: frontendRoot,
+          env: {
+            PATH: process.env.PATH,
+            HOME: process.env.HOME,
+            E2E_SELECTION_ONLY: '1',
+            NEXT_PUBLIC_CHAT_RUNTIME: runtime,
+          },
+          encoding: 'utf8',
+          timeout: 20_000,
+        },
+      )
+      expect(list.status, list.stderr).toBe(0)
+      const files = JSON.parse(list.stdout).suites.map((suite) => path.basename(suite.file))
+      expect(files.sort()).toEqual(runtime === 'ag_ui' ? [approval, shared] : [shared])
+    },
+    25_000,
+  )
+
   it('grants loopback to the independent model fixture only in its dedicated scripted selection', () => {
     const spec = INDEPENDENT_JOB_SPEC
     expect(independentJobBackendEnvironment('scripted-full', [spec])).toEqual({

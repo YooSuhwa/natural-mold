@@ -47,6 +47,7 @@ import type { ChatCommandActions } from '@/lib/chat/commands/chat-command-types'
 import type { SkillBrief } from '@/lib/types'
 import 'katex/dist/katex.min.css'
 import { useSideChat } from '@/components/chat/side-chat/side-chat-context'
+import { CanceledRunSummary } from '@/components/chat/run-summary'
 import './markdown-styles.css'
 
 export { GenericToolFallback } from '@/components/chat/tool-ui/generic-tool-ui'
@@ -228,6 +229,7 @@ export function AssistantThread({
                   return <Component />
                 }}
               </ThreadPrimitive.Messages>
+              <CanceledRunSummary />
             </div>
             <ThreadPrimitive.ViewportFooter className="pointer-events-none sticky bottom-0 z-10 flex justify-center pb-2">
               <ScrollToBottomButton isAtBottom={isViewportAtBottom} />

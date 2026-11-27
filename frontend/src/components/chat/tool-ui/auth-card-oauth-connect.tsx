@@ -11,6 +11,7 @@ interface AuthCardOAuthConnectProps {
   readonly credentialId: string
   readonly resourceName: string
   readonly disabled: boolean
+  readonly canContinue?: () => boolean
   readonly onConnected: () => void
 }
 
@@ -23,6 +24,7 @@ export function AuthCardOAuthConnect({
   credentialId,
   resourceName,
   disabled,
+  canContinue,
   onConnected,
 }: AuthCardOAuthConnectProps) {
   const t = useTranslations('chat.authRequired')
@@ -34,12 +36,14 @@ export function AuthCardOAuthConnect({
     enabled: waiting,
     onCompleted: () => {
       setWaiting(false)
-      onConnected()
+      if (canContinue?.() !== false) onConnected()
     },
   })
 
   async function start() {
-    const result = await authorize(credentialId)
+    if (disabled || starting || canContinue?.() === false) return
+    const result = await authorize(credentialId, undefined, canContinue)
+    if (canContinue?.() === false) return
     if (result === 'started') {
       setWaiting(true)
       return

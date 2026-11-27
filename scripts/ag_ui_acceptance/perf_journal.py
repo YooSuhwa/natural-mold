@@ -31,27 +31,21 @@ class JournalToken(TypedDict):
 def journal_timing(conversation_id: UUID, sync_dsn: str) -> list[JournalToken]:
     """Read the insert transaction time of each fixture token's append-only chunk."""
     info = conninfo_to_dict(sync_dsn)
-    if not str(info.get("host", "")).startswith("/") or not str(
-        info.get("dbname", "")
-    ).startswith("moldy_e2e_scripted_agui_"):
+    if not str(info.get("host", "")).startswith("/") or not str(info.get("dbname", "")).startswith(
+        "moldy_e2e_scripted_agui_"
+    ):
         raise ValueError("Journal timing requires the disposable PG16 observer socket")
 
-    with psycopg.connect(
-        sync_dsn, connect_timeout=5, options="-c statement_timeout=5000"
-    ) as conn:
+    with psycopg.connect(sync_dsn, connect_timeout=5, options="-c statement_timeout=5000") as conn:
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         if conn.execute("SHOW track_commit_timestamp").fetchone() != ("on",):
-            raise ValueError(
-                "Journal timing requires track_commit_timestamp=on from PG startup"
-            )
+            raise ValueError("Journal timing requires track_commit_timestamp=on from PG startup")
         journals = conn.execute(
             "SELECT id FROM message_events WHERE conversation_id = %s LIMIT 2",
             (conversation_id,),
         ).fetchall()
         if len(journals) != 1:
-            raise ValueError(
-                "Journal timing requires one fixture turn per conversation"
-            )
+            raise ValueError("Journal timing requires one fixture turn per conversation")
         # Select only fixture indexes and timing metadata, never any stored payload.
         # A single chunk can contain several tokens committed in the same transaction.
         rows = conn.execute(
@@ -78,9 +72,7 @@ def journal_timing(conversation_id: UUID, sync_dsn: str) -> list[JournalToken]:
         ).fetchall()
 
     if [row[0] for row in rows] != list(range(1, len(SLOW_STREAM_PARTS) + 1)):
-        raise ValueError(
-            "Stored root text deltas did not match all six ordered fixture tokens"
-        )
+        raise ValueError("Stored root text deltas did not match all six ordered fixture tokens")
     tokens: list[JournalToken] = []
     for token_index, ordinal, seq_start, seq_end, committed in rows:
         if committed is None or not seq_start <= ordinal <= seq_end:

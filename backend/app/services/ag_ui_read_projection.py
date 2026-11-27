@@ -12,7 +12,7 @@ from typing import Any
 import orjson
 from ag_ui.core import BaseEvent
 
-from app.agent_runtime.ag_ui_v1 import AgUiV1Projector
+from app.agent_runtime.ag_ui_v1 import AgUiV1Projector, ProjectionChildStateUnknown
 from app.models.conversation_run import RUN_TERMINAL_STATUSES
 from app.services.ag_ui_journal import JournalPage
 from app.services.ag_ui_read_cursor import CursorKind, CursorPosition, frame_cursor, matches_source
@@ -71,6 +71,7 @@ class CommittedProjection:
             child_visibility=target.visibility,
             tool_continuations=target.tool_continuations,
             readable_artifact_versions=target.artifacts,
+            readable_widget_bindings=target.widget_bindings,
             defer_terminal=True,
         )
         self.prefix_digest = hashlib.sha256()
@@ -195,20 +196,18 @@ class CommittedProjection:
                 # proof that the reader received the final authoritative output.
                 raise snapshot_required()
         if terminal:
-            frames.extend(
-                self._frames(
-                    self._projector.finish(
-                        target.run.status,
-                        interrupts=pending.interrupts,
-                        error_code=target.run.error_code,
-                        passive=not pending.actionable,
-                        expires_at=pending.expires_at,
-                        legacy_child_ids=pending.legacy_child_ids,
-                    ),
-                    "terminal",
-                    self.source_ordinal + 1,
-                    "finish",
+            try:
+                final = self._projector.finish(
+                    target.run.status,
+                    interrupts=pending.interrupts,
+                    error_code=target.run.error_code,
+                    passive=not pending.actionable,
+                    expires_at=pending.expires_at,
+                    legacy_child_ids=pending.legacy_child_ids,
+                    child_terminal_statuses=pending.child_terminal_statuses,
                 )
-            )
+            except ProjectionChildStateUnknown:
+                raise snapshot_required() from None
+            frames.extend(self._frames(final, "terminal", self.source_ordinal + 1, "finish"))
             self._terminal = True
         return FrameBatch(frames, page.has_more, terminal)

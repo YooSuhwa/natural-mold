@@ -132,6 +132,7 @@ const runtimePolicyCaptureSpecGlobs = [
   '**/chat-recovery-discovery.spec.ts',
 ]
 const scriptedFullIgnore = [
+  ...(chatRuntime === 'ag_ui' ? [] : ['**/ag-ui-approval-readiness.spec.ts']),
   ...(independentJobEnv ? [] : [`**/${path.posix.basename(INDEPENDENT_JOB_SPEC)}`]),
   // Its runner provisions a historical skill catalog and local search providers.
   '**/deep-research-upgrade-fallback.spec.ts',

@@ -41,7 +41,7 @@ OUT="$PWD/output/e2e-captures/$(date +%Y%m%d-%H%M%S)-ag-ui"
 
 ### 호환성 회귀를 포함한 검수
 
-`--extra-spec` 한 개당 Playwright 선택자 하나를 전달한다. AG-UI 전용 검수에는 `--ag-ui-spec`을 사용한다. 실행기는 선택한 케이스를 **두 프런트엔드에서 각각** 실행한다. 아래 두 줄 번호는 문서 뷰어 4종과 대화 전환 시 사용량 초기화 테스트를 선택한다. 대상 커밋에서 줄이 바뀌면 두 테스트 선언 위치를 확인한다.
+`--extra-spec` 한 개당 Playwright 선택자 하나를 전달한다. 승인 화면에서 처음 보낸 답이 한 번만 처리되는지 보는 AG-UI 전용 검수에는 `--ag-ui-spec e2e/ag-ui-approval-readiness.spec.ts`를 사용한다. 실행기는 선택한 케이스를 **두 프런트엔드에서 각각** 실행한다. `--extra-case`는 대상 커밋의 Playwright 테스트 목록에서 정확한 제목을 찾아 선언 위치를 확인한다. 아래 예시는 문서 뷰어 4종과 대화 전환 시 사용량 초기화도 검수한다.
 
 ```bash
 specs=(
@@ -51,16 +51,19 @@ specs=(
   chat-side-chat.spec.ts skill-builder-chat.spec.ts
   chat-goal-steer-notice.spec.ts chat-message-queue.spec.ts
   chat-pinned-summary.spec.ts chat-run-summary.spec.ts
-  document-artifact-viewers.spec.ts:398 chat-langgraph-v3-regressions.spec.ts:505
 )
 extra=()
 for spec in "${specs[@]}"; do extra+=(--extra-spec "e2e/$spec"); done
+extra+=(--extra-case 'e2e/document-artifact-viewers.spec.ts::generates and previews DOCX, XLSX, PPTX, and HWPX artifacts')
+extra+=(--extra-case 'e2e/chat-langgraph-v3-regressions.spec.ts::resets token usage state when switching between conversations')
 "$PY" "$RUN" --revision "$SHA" --phase full --output "$OUT/parity" "${extra[@]}"
 ```
 
 목표 알림 spec은 `E2E_CHAT_GOAL_NOTIFICATIONS=1`, MCP Apps spec은 `E2E_TEST_HELPERS_ENABLED=true`가 필요하며 실행기가 이를 설정한다. 독립 작업의 중복 제출·재접속도 검수하려면 테스트용 모델 서버의 `127.0.0.1` 주소만 허용하는 환경에서 `--extra-spec e2e/independent-chat-jobs.spec.ts`를 추가한다. 선택한 케이스가 skip되거나 재시도되면 실패로 처리한다.
 
 동일 역할의 두 하위 작업 중 지정한 작업만 보충 지시를 받는지도 검사하려면 `--delegation-probe scripts/ag_ui_acceptance/delegation_parity.py`를 추가한다. 이 검사와 F05 브라우저 검수에는 일반 워커를 정리한 뒤 같은 포트에 새 워커를 띄운다. 로컬 모델 접속은 `127.0.0.1`로 제한하고 설치된 제품이나 다른 검수 스택의 설정을 바꾸지 않는다.
+
+기본 전송 방식을 변경한 커밋에서는 `--verify-default`를 추가해 재검증한다. 새 화면은 `NEXT_PUBLIC_CHAT_RUNTIME`을 생략한 상태로 빌드하고 기동한다. 롤백 화면은 `langgraph_v3`를 명시한다. 두 브라우저가 실제로 사용한 통신은 전환 테스트의 요청 기록으로 확인하며, `stack.json`의 `frontend_transport_environment`에 각 빌드에 전달한 환경값이 남는다.
 
 ### 공식 어댑터와 승인 응답 비교
 

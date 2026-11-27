@@ -1,4 +1,5 @@
 import type { ThreadMessage } from '@assistant-ui/react'
+import { z } from 'zod'
 import type { AgUiMessageLink } from './chat-history-types'
 
 export type ChatMessageIdentity = Pick<ThreadMessage, 'id' | 'metadata'>
@@ -22,6 +23,24 @@ export function storedChatMessageId(message: ChatMessageIdentity): string | unde
   return typeof publicId === 'string' && publicId.trim() ? publicId : undefined
 }
 
+/** A historical target is actionable after the selected branch, including its tip, is on screen. */
+export function canBranchFromChatMessage(
+  message: ChatMessageIdentity,
+  head: ThreadMessage | undefined,
+) {
+  const target = message.metadata?.custom
+  const parent = target?.parentCheckpointId
+  const selected = target?.moldySelectedCheckpointId
+  return (
+    typeof parent === 'string' &&
+    !!parent.trim() &&
+    typeof selected === 'string' &&
+    !!selected &&
+    selected === head?.metadata?.custom?.moldySelectedCheckpointId &&
+    !(head.role === 'assistant' && head.status.type === 'requires-action')
+  )
+}
+
 /** Only a unique root transcript row can be the target of a normal message action. */
 export function findChatMessageLink(
   message: ChatMessageIdentity,
@@ -36,4 +55,14 @@ export function findChatMessageLink(
       (!stored || link.uiMessageId === stored),
   )
   return candidates.length === 1 ? candidates[0] : undefined
+}
+
+const feedbackId = z.string().uuid()
+
+export function storedFeedbackTarget(
+  message: ChatMessageIdentity,
+  links: readonly AgUiMessageLink[],
+) {
+  const id = findChatMessageLink(message, links)?.uiMessageId
+  return id && feedbackId.safeParse(id).success ? id : undefined
 }

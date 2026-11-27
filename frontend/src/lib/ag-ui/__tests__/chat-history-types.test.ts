@@ -20,6 +20,21 @@ const envelope = {
 }
 
 describe('public chat snapshot decoding', () => {
+  it('retains the selected physical run when a cancelled run has no messages', () => {
+    const selected = {
+      runId: 'historical/public',
+      runStatus: 'cancelled',
+      selectedPhysicalRunId: 'historical-db',
+      latestPhysicalRunId: 'current-db',
+      activeRunId: 'current/public',
+      physicalRunId: 'current-db',
+    }
+    const snapshot = parseWireChatSnapshot({ ...envelope, ...selected }, threadId)
+    expect(snapshot).toMatchObject(selected)
+    expect(snapshot.messages).toEqual([])
+    expect(parseWireChatSnapshot(envelope, threadId).selectedPhysicalRunId).toBeNull()
+  })
+
   it('restores the selected queue receipt and drops private request fields', () => {
     const receipt = {
       runId,

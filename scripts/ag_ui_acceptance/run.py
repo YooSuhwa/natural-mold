@@ -1,4 +1,4 @@
-"""Run the ordinary-chat cutover gate against two actual workers in one disposable company-aware stack."""
+"""Verify ordinary-chat cutover on two workers in a disposable multi-tenant stack."""
 
 from __future__ import annotations
 
@@ -10,19 +10,20 @@ import shutil
 import signal
 import sys
 import time
+import traceback
 from collections.abc import Callable
 from contextlib import ExitStack
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
 
-HERE = Path(__file__).resolve().parent
-HARNESS = HERE.parents[1]
-sys.path.insert(0, str(HARNESS / "scripts"))
+# Direct CLI invocation puts this directory on sys.path. Add the shared E2E lane helpers.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from case_selection import resolve_case_specs
 from e2e_runner_contract import E2eDsns
 from e2e_runner_environment import assert_node22, build_lane_environment
 from evidence import collect_failure, playwright_report
@@ -32,6 +33,9 @@ from openfga import acceptance_openfga
 from processes import command, managed, ports, wait_ready
 from skill_attempts import docx_attempt_environment
 from stack_sources import digest, revision, stage, stage_probe_files
+
+HERE = Path(__file__).resolve().parent
+HARNESS = HERE.parents[1]
 
 
 def arguments() -> argparse.Namespace:
@@ -53,25 +57,24 @@ def arguments() -> argparse.Namespace:
         default=HARNESS,
         help="checkout with installed locked workspace packages",
     )
-    parser.add_argument(
-        "--skill-deps", type=Path, help="optional locked skill dependency checkout"
-    )
+    parser.add_argument("--skill-deps", type=Path, help="optional locked skill dependency checkout")
     parser.add_argument(
         "--reference-python",
         type=Path,
-        help="Python from the optional separate environment that contains the official LangGraph adapter",
+        help="Python from a separate environment with the official LangGraph adapter",
     )
     parser.add_argument(
         "--perf-timing",
         action="store_true",
-        help="measure actual scripted emission, PG commit, streaming receipt and DOM display per token",
+        help="measure model emission, PostgreSQL commit, client receipt and DOM display per token",
     )
     parser.add_argument(
-        "--phase", choices=("smoke", "api", "browser", "full"), default="full"
+        "--verify-default",
+        action="store_true",
+        help="verify that a frontend built and started with no transport override uses AG-UI",
     )
-    parser.add_argument(
-        "--output", type=Path, required=True, help="new local evidence directory"
-    )
+    parser.add_argument("--phase", choices=("smoke", "api", "browser", "full"), default="full")
+    parser.add_argument("--output", type=Path, required=True, help="new local evidence directory")
     parser.add_argument(
         "--extra-probe",
         type=Path,
@@ -96,9 +99,17 @@ def arguments() -> argparse.Namespace:
         default=[],
         help="additional e2e spec that is meaningful only on the standard client",
     )
+    parser.add_argument(
+        "--extra-case",
+        action="append",
+        default=[],
+        help="select a single normal case in both modes by e2e/file.spec.ts::exact test title",
+    )
     args = parser.parse_args()
     if args.perf_timing and args.phase not in {"browser", "full"}:
         parser.error("--perf-timing requires a browser or full gate")
+    if args.verify_default and args.phase not in {"browser", "full"}:
+        parser.error("--verify-default requires a browser or full gate")
     for spec in (*args.extra_spec, *args.ag_ui_spec):
         if not re.fullmatch(
             r"e2e/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+\.spec\.ts(?::[1-9][0-9]*)?", spec
@@ -117,13 +128,16 @@ def browser_gate(
     logs: Path,
     stack: ExitStack,
     extra_specs: list[str],
+    extra_cases: list[str],
     ag_ui_specs: list[str],
+    verify_default: bool,
     probes: Path,
     record: dict,
     start_delegation_pair: Callable[[], None],
 ) -> None:
     frontend = root / "frontend"
     frontend_envs: dict[str, dict[str, str]] = {}
+    record["frontend_transport_environment"] = {}
     command("assets", ["pnpm", "run", "prepare:assets"], frontend, env, logs)
     for mode, url in modes.items():
         port = str(httpx.URL(url).port)
@@ -137,6 +151,12 @@ def browser_gate(
             "E2E_BASE_URL": url,
             "E2E_FRONTEND_PORT": port,
             "NEXT_TELEMETRY_DISABLED": "1",
+        }
+        if verify_default and mode == "ag_ui":
+            del build_env["NEXT_PUBLIC_CHAT_RUNTIME"]
+        record["frontend_transport_environment"][mode] = {
+            "build_and_start_override": build_env.get("NEXT_PUBLIC_CHAT_RUNTIME"),
+            "expected_browser_transport": mode,
         }
         command(
             f"build-{mode}",
@@ -166,15 +186,17 @@ def browser_gate(
         )
         wait_ready(proc, log, build_env, url=f"{url}/login", timeout=90)
         cache = dist / "cache" / "webpack"
-        if (
-            cache.is_dir()
-            and not cache.is_symlink()
-            and cache.resolve().is_relative_to(root)
-        ):
+        if cache.is_dir() and not cache.is_symlink() and cache.resolve().is_relative_to(root):
             # Next only reads its webpack cache on a subsequent compilation.
             shutil.rmtree(cache)
-        frontend_envs[mode] = build_env
+        frontend_envs[mode] = {**build_env, "NEXT_PUBLIC_CHAT_RUNTIME": mode}
         record["processes"][f"next-{mode}"] = proc.pid
+    # Companion probes may now reuse the same authenticated, production-built frontends.
+    env["MOLDY_AGUI_BROWSER_READY"] = "1"
+    extra_specs = resolve_case_specs(
+        frontend, frontend_envs["ag_ui"], logs, probes, extra_cases, extra_specs
+    )
+    record["selected_browser_cases"] = {"case_titles": extra_cases, "resolved_specs": extra_specs}
     suites = [
         ("performance-langgraph_v3", "langgraph_v3", ["e2e/chat-stream-perf.spec.ts"]),
         ("performance-ag_ui", "ag_ui", ["e2e/chat-stream-perf.spec.ts"]),
@@ -183,17 +205,15 @@ def browser_gate(
     independent = "e2e/independent-chat-jobs.spec.ts"
     run_delegation = independent in extra_specs
     ordinary = [spec for spec in extra_specs if spec != independent]
-    if ordinary:
-        suites.extend(
-            (f"ordinary-regressions-{mode}", mode, ordinary)
-            for mode in ("langgraph_v3", "ag_ui")
-        )
     if ag_ui_specs:
         suites.append(("standard-client-regressions", "ag_ui", ag_ui_specs))
+    if ordinary:
+        suites.extend(
+            (f"ordinary-regressions-{mode}", mode, ordinary) for mode in ("langgraph_v3", "ag_ui")
+        )
     if run_delegation:
         suites.extend(
-            (f"independent-{mode}", mode, [independent])
-            for mode in ("langgraph_v3", "ag_ui")
+            (f"independent-{mode}", mode, [independent]) for mode in ("langgraph_v3", "ag_ui")
         )
     failed = []
     for name, mode, specs in suites:
@@ -203,6 +223,7 @@ def browser_gate(
         command_failed = False
         cfg = {
             **frontend_envs[mode],
+            "MOLDY_AGUI_PLAYWRIGHT_GROUP": name,
             "MOLDY_AGUI_PLAYWRIGHT_JSON": str(logs / f"pw-{name}.json"),
         }
         try:
@@ -235,9 +256,7 @@ def browser_gate(
                     performance_timing=env.get("E2E_AGUI_PERF_TIMING") == "1",
                 )
             record["browser"][name] = report
-            (output / f"{name}-results.json").write_text(
-                json.dumps(report, indent=2) + "\n"
-            )
+            (output / f"{name}-results.json").write_text(json.dumps(report, indent=2) + "\n")
         if command_failed or not report["passed"]:
             failed.append(name)
     if failed:
@@ -266,9 +285,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
             processes.append(name)
         record["cleaned"] = not remaining and not processes
         if remaining or processes:
-            raise RuntimeError(
-                f"Owned resources survived cleanup: {remaining}, {processes}"
-            )
+            raise RuntimeError(f"Owned resources survived cleanup: {remaining}, {processes}")
 
     with ExitStack() as stack:
         stack.callback(check_cleanup)
@@ -301,9 +318,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
             skill_deps=args.skill_deps.resolve() if args.skill_deps else None,
             require_protocol=args.phase != "smoke",
         )
-        record["dependencies"] = json.loads(
-            (root / "source-dependencies.json").read_text()
-        )
+        record["dependencies"] = json.loads((root / "source-dependencies.json").read_text())
         backend = repo / "backend"
         fga = stack.enter_context(acceptance_openfga(backend))
         pg = stack.enter_context(native_postgres())
@@ -319,9 +334,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
             "ag_ui": f"http://localhost:{web}",
             "langgraph_v3": f"http://localhost:{previous}",
         }
-        urls = {
-            label: f"http://localhost:{port}" for label, port in (("a", a), ("b", b))
-        }
+        urls = {label: f"http://localhost:{port}" for label, port in (("a", a), ("b", b))}
         scope = uuid5(NAMESPACE_URL, "moldy/e2e-organization")
         env.update(
             {
@@ -485,9 +498,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                 "file": "sdk-transcripts.json",
             }
             if sdk["status"] != "passed":
-                final_errors.append(
-                    "Incomplete or invalid public SDK request or event sequence"
-                )
+                final_errors.append("Incomplete or invalid public SDK request or event sequence")
             if args.reference_python:
                 try:
                     record["reference_comparison"] = {"status": "running"}
@@ -518,9 +529,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                         raise RuntimeError(
                             "Missing official structured approval comparison receipt"
                         )
-                    (output / f"{label}.json").write_text(
-                        json.dumps(reports[0], indent=2) + "\n"
-                    )
+                    (output / f"{label}.json").write_text(json.dumps(reports[0], indent=2) + "\n")
                     record["reference_comparison"] = {
                         "status": "passed",
                         "file": f"{label}.json",
@@ -549,7 +558,9 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                     logs,
                     stack,
                     args.extra_spec,
+                    args.extra_case,
                     args.ag_ui_spec,
+                    args.verify_default,
                     probes,
                     record,
                     start_delegation_pair,
@@ -585,20 +596,22 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, stop)
     started = time.monotonic()
-    record = {"started_at": datetime.now(timezone.utc).isoformat(), "passed": False}
+    record = {"started_at": datetime.now(UTC).isoformat(), "passed": False}
     try:
         execute(args, record)
         record["passed"] = True
     except (KeyboardInterrupt, Exception) as exc:  # noqa: BLE001 - always close owned resources and write the receipt
         record["failure"] = type(exc).__name__
+        record["failure_location"] = [
+            {"file": Path(frame.filename).name, "line": frame.lineno, "function": frame.name}
+            for frame in traceback.extract_tb(exc.__traceback__)[-8:]
+        ]
         # Probe and subprocess errors can contain untrusted output. Only sanitized library
         # exceptions from the process wrapper include log tails. Details stay local in stderr.
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
     finally:
         record["elapsed_seconds"] = round(time.monotonic() - started, 2)
-        (args.output / "stack.json").write_text(
-            json.dumps(record, indent=2, default=str) + "\n"
-        )
+        (args.output / "stack.json").write_text(json.dumps(record, indent=2, default=str) + "\n")
     return 0 if record["passed"] else 1
 
 

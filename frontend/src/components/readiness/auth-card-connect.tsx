@@ -14,6 +14,7 @@ interface AuthCardConnectProps {
   /** `fixable_by=me` connections the paused run asks for (card item names). */
   readonly resourceNames: readonly string[]
   readonly disabled: boolean
+  readonly canContinue?: () => boolean
   readonly onConnected: () => void
 }
 
@@ -26,6 +27,7 @@ export function AuthCardConnect({
   agentId,
   resourceNames,
   disabled,
+  canContinue,
   onConnected,
 }: AuthCardConnectProps) {
   const t = useTranslations('readiness.authCard')
@@ -52,7 +54,9 @@ export function AuthCardConnect({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          if (canContinue?.() !== false) setOpen(true)
+        }}
         className="rounded-full bg-muted px-4 py-2 text-xs font-medium text-foreground transition-[background-color,opacity] hover:bg-muted/80 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {t('connect')}
@@ -62,7 +66,9 @@ export function AuthCardConnect({
           open
           onOpenChange={setOpen}
           agentId={agentId}
+          canContinue={canContinue}
           onConnected={() => {
+            if (canContinue?.() === false) return
             setOpen(false)
             onConnected()
           }}

@@ -1,28 +1,22 @@
 import type { RunAgentInput } from '@ag-ui/core'
 import { expect, vi } from 'vitest'
+import { z } from 'zod'
+import docxApproval from './docx-approval.json'
 
 export const threadId = 'a904bd9b-33fa-4160-9caf-d34f9e52134c'
 const firstPhysicalRunId = 'd7205d63-102b-4127-bcaf-665934361a10'
+export const storedAnswerId = 'a308c6bd-d3ce-453b-914d-849ea287f196'
 const resumedPhysicalRunId = '8b35686a-4212-4ccd-85ae-e5712ee52e01'
 export const question = '합성 보고서 전송을 준비해줘'
 export const answer = '승인이 반영되었습니다.'
-const recipient = 'synthetic@example.invalid'
-const args = { to: recipient }
-
-function approval(id: string) {
-  return {
-    id,
-    reason: 'moldy.tool_approval',
-    message: '보고서를 보내도 될까요?',
-    responseSchema: { type: 'object' },
-    metadata: {
-      moldy: {
-        action_requests: [{ name: 'send_mail', args }],
-        review_configs: [{ action_name: 'send_mail', allowed_decisions: ['approve', 'reject'] }],
-      },
-    },
-  }
-}
+// Public, model-free execute_in_skill capture from the scripted API. Native middleware
+// supplies a tool-call ID on the stream and omits it from the interrupt.
+export const docxInterruptId = docxApproval.interrupt.id
+export const docxIssuerId = docxApproval.parentMessageId
+const storedIssuerId = '3795601e-a896-4fad-8f91-43bc064d67d7'
+const toolDecision = z.object({
+  decisions: z.tuple([z.object({ type: z.enum(['approve', 'edit', 'reject']) })]),
+})
 
 export const nativeQuestion = {
   question: '선택을 비워두면 기본 형식으로 진행합니다.',
@@ -61,15 +55,17 @@ const nativeResponseSchema = {
 export function installChatApi({
   activeRunId = null,
   delayNativeCheckpoint = false,
-}: { activeRunId?: string | null; delayNativeCheckpoint?: boolean } = {}) {
+  textOnly = false,
+}: { activeRunId?: string | null; delayNativeCheckpoint?: boolean; textOnly?: boolean } = {}) {
   let physicalRunId = firstPhysicalRunId
 
-  const toolCallId = delayNativeCheckpoint ? 'ask-call' : 'mail-call'
+  const toolCallId = delayNativeCheckpoint ? 'ask-call' : docxApproval.toolCallId
   let expired = false
+  let hasDecisionEvidence = true
 
   const selectedTool = delayNativeCheckpoint
     ? { name: 'ask_user', args: nativeQuestion }
-    : { name: 'send_mail', args }
+    : docxApproval.interrupt.metadata.moldy.action_requests[0]
   const slot = () =>
     delayNativeCheckpoint
       ? {
@@ -86,22 +82,23 @@ export function installChatApi({
             },
           },
         }
-      : approval(pendingId)
+      : { ...docxApproval.interrupt, id: pendingId }
   const observedRunningCheckpoint = vi.fn()
   const observedInterruption = vi.fn()
+  const observedCompletedSnapshot = vi.fn()
   const appliedResponses: NonNullable<RunAgentInput['resume']>[number]['payload'][] = []
 
   let phase: 'empty' | 'running' | 'interrupted' | 'completed' = activeRunId ? 'running' : 'empty'
   let selectedRunId = activeRunId
   const streamReads: string[] = []
-  let pendingId = delayNativeCheckpoint ? nativeId : 'original-approval'
+  let pendingId = delayNativeCheckpoint ? nativeId : docxInterruptId
   let userId = activeRunId ? 'previous-user-question' : ''
   const commands: RunAgentInput[] = []
   const writes: string[] = []
   const snapshotReads = vi.fn()
   const user = () => ({ id: userId, role: 'user', content: question })
   const requestingTool = {
-    id: 'assistant-calling',
+    id: delayNativeCheckpoint ? 'assistant-calling' : docxApproval.parentMessageId,
     role: 'assistant',
     content: '',
     toolCalls: [
@@ -117,14 +114,35 @@ export function installChatApi({
   function snapshot() {
     const pending = phase === 'interrupted'
     const active = phase === 'running'
-    const messages =
-      phase === 'empty' ? [] : active ? [user()] : [user(), pending ? requestingTool : doneMessage]
+    const resume = commands[1]?.resume?.[0]
+    const decision = toolDecision.safeParse(resume?.payload)
+    const completedTool =
+      phase === 'completed' &&
+      !delayNativeCheckpoint &&
+      resume?.interruptId === pendingId &&
+      decision.success
+    const toolResult = {
+      id: 'completed-tool-response',
+      role: 'tool',
+      toolCallId,
+      content:
+        decision.success && decision.data.decisions[0].type === 'reject'
+          ? 'User rejected the tool call for `execute_in_skill`. The tool was not executed.'
+          : 'A synthetic document was created.',
+    }
+    const messages = completedTool
+      ? [user(), requestingTool, toolResult, doneMessage]
+      : phase === 'empty'
+        ? []
+        : active
+          ? [user()]
+          : [user(), pending ? requestingTool : doneMessage]
     const acceptedId = selectedRunId
     return {
       threadId,
       protocolVersion: '1.0',
       projectionVersion: '1',
-      checkpointId: acceptedId ? 'checkpoint-A' : null,
+      checkpointId: completedTool ? 'checkpoint-B' : acceptedId ? 'checkpoint-A' : null,
       activeTipMessageId: messages.at(-1)?.id ?? null,
       runId: acceptedId,
       latestPhysicalRunId: acceptedId ? physicalRunId : null,
@@ -135,6 +153,19 @@ export function installChatApi({
       physicalInterruptRunId: pending ? physicalRunId : null,
       messages,
       interrupts: pending ? [slot()] : [],
+      approvalDecisions:
+        completedTool && hasDecisionEvidence
+          ? [
+              {
+                messageId: requestingTool.id,
+                toolCallId,
+                physicalRunId: firstPhysicalRunId,
+                interruptId: resume.interruptId,
+                actionIndex: 0,
+                decision: decision.data.decisions[0].type,
+              },
+            ]
+          : [],
       activities: [],
       subagents: [],
       cursor: null,
@@ -143,12 +174,16 @@ export function installChatApi({
         uiMessageId:
           index === 0
             ? '60735f5d-d6e9-4cca-b050-46e6d47be6ea'
-            : 'a308c6bd-d3ce-453b-914d-849ea287f196',
-        parentMessageId: index === 0 ? null : userId,
-        runId: acceptedId,
-        physicalRunId,
-        checkpointId: 'checkpoint-A',
-        parentCheckpointId: null,
+            : message.id === requestingTool.id
+              ? storedIssuerId
+              : message.id === toolResult.id
+                ? null
+                : storedAnswerId,
+        parentMessageId: messages[index - 1]?.id ?? null,
+        runId: completedTool && index < 2 ? commands[0].runId : acceptedId,
+        physicalRunId: completedTool && index < 2 ? firstPhysicalRunId : physicalRunId,
+        checkpointId: completedTool && index >= 2 ? 'checkpoint-B' : 'checkpoint-A',
+        parentCheckpointId: completedTool && index >= 2 ? 'checkpoint-A' : null,
       })),
     }
   }
@@ -163,7 +198,7 @@ export function installChatApi({
               type: 'TOOL_CALL_START',
               toolCallId,
               toolCallName: selectedTool.name,
-              parentMessageId: 'assistant-calling',
+              parentMessageId: requestingTool.id,
             },
             { type: 'TOOL_CALL_ARGS', toolCallId, delta: JSON.stringify(selectedTool.args) },
             { type: 'TOOL_CALL_END', toolCallId },
@@ -197,6 +232,7 @@ export function installChatApi({
       snapshotReads()
       if (delayNativeCheckpoint && phase === 'running') observedRunningCheckpoint()
       if (delayNativeCheckpoint && phase === 'interrupted') observedInterruption()
+      if (phase === 'completed') observedCompletedSnapshot()
       return Response.json(snapshot())
     }
     if (method === 'GET' && path.endsWith('/ag-ui/stream')) {
@@ -238,8 +274,9 @@ export function installChatApi({
     }
     selectedRunId = command.runId
     if (!isFirst) physicalRunId = resumedPhysicalRunId
-    phase = isFirst ? (delayNativeCheckpoint ? 'running' : 'interrupted') : 'completed'
-    return streamResponse(command.runId, isFirst)
+    const interrupted = isFirst && !textOnly
+    phase = interrupted ? (delayNativeCheckpoint ? 'running' : 'interrupted') : 'completed'
+    return streamResponse(command.runId, interrupted)
   }
   vi.stubGlobal('fetch', vi.fn(fetchFixture))
   return {
@@ -249,6 +286,10 @@ export function installChatApi({
     observedRunningCheckpoint,
     appliedResponses,
     observedInterruption,
+    observedCompletedSnapshot,
+    withholdDecisionEvidence() {
+      hasDecisionEvidence = false
+    },
     commitInterrupt: (expiredAtCommit = false) => {
       expired = expiredAtCommit
       phase = 'interrupted'

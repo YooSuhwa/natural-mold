@@ -10,6 +10,7 @@ from ag_ui.core import BaseEvent, RunErrorEvent, RunStartedEvent
 from app.agent_runtime.ag_ui_v1_activities import PublicActivities
 from app.agent_runtime.ag_ui_v1_children import (
     Namespace,
+    ProjectionChildStateUnknown,
     PublicChildren,
     public_journal_namespace,
     public_subagent_id,
@@ -31,6 +32,7 @@ __all__ = [
     "AG_UI_PROJECTION_VERSION",
     "AgUiV1Projector",
     "ChildVisibility",
+    "ProjectionChildStateUnknown",
     "ProjectionVisibilityChanged",
     "public_subagent_id",
 ]
@@ -52,6 +54,7 @@ class AgUiV1Projector:
         tool_continuations: Sequence[ToolContinuation] = (),
         child_visibility: ChildVisibility | None = None,
         readable_artifact_versions: frozenset[tuple[str, str]] = frozenset(),
+        readable_widget_bindings: frozenset[tuple[str, str]] | None = None,
         defer_terminal: bool = False,
     ) -> None:
         self.thread_id = thread_id
@@ -70,7 +73,10 @@ class AgUiV1Projector:
             tool_continuations=tool_continuations,
             allow_scoped_tool=self._children.allow_scoped_tool,
         )
-        self._activities = PublicActivities(readable_artifact_versions=readable_artifact_versions)
+        self._activities = PublicActivities(
+            readable_artifact_versions=readable_artifact_versions,
+            readable_widget_bindings=readable_widget_bindings,
+        )
         self._pending = PendingInterrupts()
         self._defer_terminal = defer_terminal
         self._hidden_interrupts: set[str] = set()
@@ -129,15 +135,24 @@ class AgUiV1Projector:
             opened.extend(self._early_calls.pop(namespace, []))
         return opened
 
-    def _close_children(self, namespace: Namespace, status: str) -> list[BaseEvent]:
+    def _close_children(
+        self,
+        namespace: Namespace,
+        status: str,
+        *,
+        statuses: Mapping[Namespace, str] | None = None,
+    ) -> list[BaseEvent]:
         return self._children.end(
             namespace,
             status,
             close_entities=self._entities.close,
             interrupt_ids=self._pending.for_owner,
+            statuses=statuses,
         )
 
-    def _lifecycle(self, namespace: Namespace, data: Mapping[str, Any]) -> list[BaseEvent]:
+    def _lifecycle(
+        self, namespace: Namespace, data: Mapping[str, Any], *, native: bool
+    ) -> list[BaseEvent]:
         status = data.get("event") or data.get("status") or data.get("state")
         if not isinstance(status, str):
             return []
@@ -151,6 +166,11 @@ class AgUiV1Projector:
             if status in {"running", "started"}:
                 frames = self._open_child(namespace, data)
                 return [*self.start(), *frames] if frames else []
+            if status == "interrupted" and native and not self._children.historical_only(namespace):
+                # 1.2.x sweeps still-open graph scopes on GraphInterrupt. The
+                # durable task receipt and pending slots arrive at the root boundary.
+                self._children.record_pause(namespace)
+                return []
             if status in {"completed", "failed", "interrupted", "canceled", "cancelled"}:
                 if namespace in self._early_calls or namespace in self._early_state:
                     return [
@@ -168,6 +188,11 @@ class AgUiV1Projector:
             return self.finish(status)
         return []
 
+    def _hide_interrupt(self, interrupt_id: str) -> None:
+        # A serializer may first repeat a child slot without its namespace.
+        self._hidden_interrupts.add(interrupt_id)
+        self._pending.discard(interrupt_id)
+
     def project(self, event: StoredProtocolEvent) -> list[BaseEvent]:
         if self.closed:
             return []
@@ -182,7 +207,8 @@ class AgUiV1Projector:
         lifecycle = method in {"lifecycle", "subagents", "subgraphs"}
         if not self._children.visible(namespace):
             self._hidden_child = True
-            self._hidden_interrupts.update(i["id"] for i in protocol_interrupts_from_event(event))
+            for item in protocol_interrupts_from_event(event):
+                self._hide_interrupt(item["id"])
             return []
         if method == "error":
             if namespace:
@@ -228,11 +254,13 @@ class AgUiV1Projector:
             "data": project_and_redact_protocol_data(method, data, secret_values=self._secrets),
         }
         if lifecycle and isinstance(safe_event["data"], Mapping):
-            return self._lifecycle(namespace, safe_event["data"])
+            return self._lifecycle(namespace, safe_event["data"], native=method == "lifecycle")
         for item in protocol_interrupts_from_event(safe_event):
             ns = tuple(item["ns"]) or namespace
-            if not self._children.visible(ns):
-                self._hidden_interrupts.add(item["id"])
+            if not self._children.visible(ns) or self._children.historical_only(ns):
+                # A read-only relation proves where old tool results belong,
+                # never that the former approval slot can still be answered.
+                self._hide_interrupt(item["id"])
             elif item["id"] not in self._hidden_interrupts:
                 owner = self._children.owner(ns)
                 if owner:
@@ -242,6 +270,7 @@ class AgUiV1Projector:
             return []
 
         frames = self._entities.project(safe_event, owner=owner)
+        self._children.record_returns(frames)
         self._activities.observe_visible_messages(frames)
         mid, call = self._activity_ids(safe_event, owner)
         frames.extend(
@@ -334,6 +363,7 @@ class AgUiV1Projector:
         expires_at: Mapping[str, str] | None = None,
         legacy_child_ids: Collection[str] = (),
         passive: bool = False,
+        child_terminal_statuses: Mapping[Namespace, str] | None = None,
     ) -> list[BaseEvent]:
         if self.closed or status in {"queued", "running", "canceling"}:
             return []
@@ -342,6 +372,7 @@ class AgUiV1Projector:
             for item in interrupts:
                 if (
                     not self._children.visible(tuple(item["ns"]))
+                    or self._children.historical_only(tuple(item["ns"]))
                     or item["id"] in self._hidden_interrupts
                 ):
                     # Resume must resolve ALL current slots. A partial set would
@@ -378,17 +409,27 @@ class AgUiV1Projector:
         if not self._started and isinstance(terminal, RunErrorEvent):
             self.closed = True
             return [terminal]
-        frames = self.start()
         unopened = set(self._early_calls) | set(self._early_state)
+        awaiting: set[Namespace] = set()
         if status == "interrupted":
-            unopened.update(
+            awaiting = {
                 self._slot_scopes[item.subagent_run_id]
                 for item in self._pending.public()
                 if item.subagent_run_id in self._slot_scopes
+            }
+            unopened.update(awaiting)
+        statuses = None
+        if status == "interrupted":
+            scopes = (set(self._children.active) | unopened) - self._children.finished
+            statuses = self._children.interrupt_statuses(
+                scopes, awaiting, child_terminal_statuses or {}
             )
+            if not isinstance(terminal, RunErrorEvent) and statuses.keys() != scopes:
+                raise ProjectionChildStateUnknown("The child outcome is missing from this run.")
+        frames = self.start()
         for ns in sorted(unopened, key=lambda scope: (len(scope), scope)):
             frames.extend(self._open_child(ns, {}))
-        frames.extend(self._close_children((), status))
+        frames.extend(self._close_children((), status, statuses=statuses))
         frames.extend(self._entities.close(None))
         self.closed = True
         return [*frames, terminal]

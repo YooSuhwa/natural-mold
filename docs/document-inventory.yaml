@@ -597,6 +597,9 @@ documents:
   - path: frontend/README.md
     lifecycle: canonical-current
     status: current
+  - path: scripts/ag_ui_acceptance/README.md
+    lifecycle: canonical-current
+    status: current
   - path: tasks/archive-multiuser-auth-2026-05/CHECKPOINT.md
     lifecycle: historical
     status: archived

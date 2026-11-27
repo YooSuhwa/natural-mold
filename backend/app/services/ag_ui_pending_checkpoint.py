@@ -20,6 +20,7 @@ from langgraph.types import _DEFAULT_INTERRUPT_ID, Interrupt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.ag_ui_v1_interrupt_payload import interrupt_fields
 from app.agent_runtime.conversation_checkpointer import conversation_checkpointer, deferred_saver
 from app.agent_runtime.protocol_events import ProtocolInterrupt as ThreadInterrupt
 from app.agent_runtime.streaming import _interrupt_to_standard_chunk
@@ -49,6 +50,9 @@ class PendingCheckpoint:
     approval_run_ids: dict[str, tuple[UUID, ...]] = field(default_factory=dict)
     root_task_ids: dict[str, str] = field(default_factory=dict)
     legacy_child_bindings: dict[str, LegacyChildBinding | None] = field(default_factory=dict)
+    # Resume uses the command envelope in interrupts. Readers also need the
+    # typed, public fields of questions and connection prompts issued by the graph.
+    native_prompt_values: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 class CheckpointUnavailable(RuntimeError):
@@ -120,6 +124,7 @@ def _unanswered(saved: CheckpointTuple) -> PendingCheckpoint | None:
     items: list[ThreadInterrupt] = []
     kinds: dict[str, str] = {}
     tasks: dict[str, str] = {}
+    prompts: dict[str, dict[str, Any]] = {}
     for task_id, task in read_task_statuses(saved.pending_writes or ()).items():
         for interrupt in task.pending_interrupts:
             if not isinstance(interrupt, Interrupt):
@@ -128,9 +133,16 @@ def _unanswered(saved: CheckpointTuple) -> PendingCheckpoint | None:
             if not isinstance(ident, str) or ident in ("", _DEFAULT_INTERRUPT_ID) or ident in kinds:
                 return None
             tasks[ident] = task_id
-            kinds[ident], value = _interrupt_value(ident, interrupt.value)
+            kind, value = _interrupt_value(ident, interrupt.value)
+            kinds[ident] = kind
+            if kind in ("ask_user", "auth_required"):
+                fields = interrupt_fields(interrupt.value)
+                if fields.get("reason") == f"moldy.{kind}":
+                    prompts[ident] = fields["metadata"]["moldy"]
             items.append({"id": ident, "value": value, "ns": []})
-    return PendingCheckpoint(saved.checkpoint["id"], items, {}, kinds, root_task_ids=tasks)
+    return PendingCheckpoint(
+        saved.checkpoint["id"], items, {}, kinds, root_task_ids=tasks, native_prompt_values=prompts
+    )
 
 
 async def _run_lineage(

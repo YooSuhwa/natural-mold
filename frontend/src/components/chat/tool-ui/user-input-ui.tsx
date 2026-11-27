@@ -353,12 +353,13 @@ function UserInputFormBody({
     await submitResponse(message, displayText)
   }, [answers, questions, submitResponse])
 
-  // 만료 시 빈 답변으로 자동 제출 — 에이전트 graph가 무한히 paused되지 않도록
   const expireMessage = t('autoSkipped')
   const handleExpire = useCallback(() => {
-    if (submitState !== 'idle') return
+    // An AG-UI viewer may have only reopened a conversation. The server owns
+    // expiration; a local countdown must never start a run on that user's behalf.
+    if (hitl?.canRespond !== undefined || hitl?.canRespondTo || submitState !== 'idle') return
     void submitResponse(expireMessage, expireMessage)
-  }, [submitResponse, submitState, expireMessage])
+  }, [hitl, submitResponse, submitState, expireMessage])
 
   const { remaining, isUrgent, formatted, extend } = useApprovalDeadline({
     approvalId: canRespond ? approvalId : '',

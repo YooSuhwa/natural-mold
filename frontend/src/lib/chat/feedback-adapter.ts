@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import type { FeedbackAdapter } from '@assistant-ui/react'
 import { feedbackApi } from '@/lib/api/feedback'
 import { sourceMessageIdFromThreadMessageId } from './langgraph-runtime/message-list'
 import { reportClientError } from '@/lib/logging/client-logger'
+import { currentOrgScope, isOrgScopeCurrent } from '@/lib/org-scope/org-scope-signal'
 import type { Message } from '@/lib/types'
 
 type Rating = 'up' | 'down'
@@ -32,16 +33,28 @@ export function useChatFeedbackAdapter(
   },
 ): FeedbackAdapter | undefined {
   const { onMutate, resolveMessageId, refreshMessageId } = options ?? {}
+  const conversationScope = useMemo(() => ({ conversationId }), [conversationId])
+  const current = useRef<typeof conversationScope | null>(null)
+  useLayoutEffect(() => {
+    current.current = conversationScope
+    return () => {
+      current.current = null
+    }
+  }, [conversationScope])
   return useMemo(() => {
-    if (!conversationId) return undefined
+    const targetConversationId = conversationScope.conversationId
+    if (!targetConversationId) return undefined
     return {
       submit: ({ message, type }) => {
+        if (current.current !== conversationScope) return
+        const scope = currentOrgScope()
         const next: Rating = type === 'positive' ? 'up' : 'down'
-        const persist = (messageId: string, current: Rating | undefined) => {
+        const persist = (messageId: string, currentRating: Rating | undefined) => {
+          if (current.current !== conversationScope || !isOrgScopeCurrent(scope)) return
           const promise =
-            current === next
+            currentRating === next
               ? feedbackApi.clear(messageId)
-              : feedbackApi.set(messageId, next, conversationId)
+              : feedbackApi.set(messageId, next, targetConversationId)
           // Fire-and-forget — assistant-ui already updates local UI
           // optimistically via metadata.submittedFeedback. We just persist.
           promise
@@ -68,7 +81,7 @@ export function useChatFeedbackAdapter(
           })
       },
     }
-  }, [conversationId, getActiveRating, onMutate, resolveMessageId, refreshMessageId])
+  }, [conversationScope, getActiveRating, onMutate, resolveMessageId, refreshMessageId])
 }
 
 /** Map every runtime and public message id to the public id feedback is stored under. */
