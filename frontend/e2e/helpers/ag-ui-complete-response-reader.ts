@@ -35,8 +35,10 @@ export function observeCompletedAgUiResponseReads(options: {
   function identifier(value: unknown): value is string {
     return typeof value === 'string' && value.length <= 512 && value.trim().length > 0
   }
-  function validOutcome(value: unknown) {
+  function validOutcome(value: unknown): value is { type: 'success' | 'interrupt' | 'cancelled' } {
     if (!record(value)) return false
+    // The server emits only the discriminator for cancellation. The host independently verifies the stop receipt.
+    if (value.type === 'cancelled') return Object.keys(value).length === 1
     if (value.type === 'success') {
       return (
         value.pendingToolCallIds === undefined ||
@@ -118,12 +120,12 @@ export function observeCompletedAgUiResponseReads(options: {
     const decoder = new TextDecoder('utf-8', { fatal: true })
     let pending = ''
     let started = false
-    let finished = false
+    let completedKind: 'eof' | 'cancelled-eof' | undefined
     let invalid = false
     let eof = false
     let acquired = false
     function invalidate() {
-      if (invalid) return
+      if (invalid || eof) return
       invalid = true
       pending = ''
       report('invalid', ids)
@@ -149,7 +151,7 @@ export function observeCompletedAgUiResponseReads(options: {
         (event.timestamp !== undefined && !Number.isSafeInteger(event.timestamp)) ||
         (event.metadata !== undefined && !record(event.metadata)) ||
         event.rawEvent === null ||
-        finished ||
+        completedKind !== undefined ||
         event.type === 'RUN_ERROR'
       )
         return invalidate()
@@ -175,7 +177,7 @@ export function observeCompletedAgUiResponseReads(options: {
           !validUsage(event.usage)
         )
           return invalidate()
-        finished = true
+        completedKind = event.outcome.type === 'cancelled' ? 'cancelled-eof' : 'eof'
       }
     }
 
@@ -201,9 +203,10 @@ export function observeCompletedAgUiResponseReads(options: {
         }
         if (pending.length > limit) return invalidate()
         if (result.done && !invalid) {
-          if (!started || !finished || pending !== '') return invalidate()
+          if (!started || !completedKind || pending !== '') return invalidate()
           eof = true
-          report('eof', ids)
+          signal.removeEventListener('abort', invalidate)
+          report(completedKind, ids)
         }
       } catch {
         invalidate()
