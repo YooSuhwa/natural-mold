@@ -10,10 +10,12 @@ from uuid import UUID
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.protocol_redaction import REDACTED_SENSITIVE_FIELD
 from app.approvals import service as approvals
 from app.approvals.recording import decision_types
 from app.authz.org_context import OrgContext
 from app.exceptions import ConflictError, ValidationError
+from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.approval_request import ApprovalRequest
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -37,6 +39,7 @@ class VerifiedResume:
     pending_interrupts: list[ThreadInterrupt]
     expired_abandonments: frozenset[str]
     approval_rows_by_run: dict[UUID, dict[str, UUID]]
+    reconstructed_legacy_rows: frozenset[UUID]
 
     @property
     def approval_request_ids(self) -> dict[str, UUID]:
@@ -60,6 +63,47 @@ def _stale() -> ConflictError:
     return ConflictError(STALE, "The conversation no longer waits for these interrupt decisions")
 
 
+async def _restorable_legacy_rows(
+    db: AsyncSession,
+    parent: ConversationRun,
+    created: list[ApprovalRequest],
+    checkpoint: PendingCheckpoint,
+    verified_legacy_ids: frozenset[str],
+) -> frozenset[UUID]:
+    # A historical native delegation may still be waiting after losing both its
+    # card and approval row. Keep replacement displays masked; only the original
+    # checkpoint's choice, confirmed against the fresh grant, can be recorded.
+    sources: dict[UUID, UUID] = {}
+    for row in created:
+        binding = checkpoint.legacy_child_bindings.get(row.interrupt_id)
+        if (
+            row.interrupt_id in verified_legacy_ids
+            and binding is not None
+            and row.actions
+            and all(
+                action.get("name") == action.get("args") == REDACTED_SENSITIVE_FIELD
+                for action in row.actions
+            )
+        ):
+            sources[row.id] = binding.producer_run_id or parent.id
+    if not sources:
+        return frozenset()
+    # Today's SDK builtin also has no child-task row. Only a pre-enrollment
+    # participant pin authorizes reconstructing a decision from the old transport.
+    original_runs = set(
+        await db.scalars(
+            select(ConversationRunAgent.run_id).where(
+                ConversationRunAgent.run_id.in_(set(sources.values())),
+                ConversationRunAgent.role == "root",
+                ConversationRunAgent.agent_id == parent.agent_id,
+                ConversationRunAgent.agent_id_snapshot == parent.agent_id,
+                ConversationRunAgent.identity_mode_at_accept.is_(None),
+            )
+        )
+    )
+    return frozenset(row_id for row_id, run_id in sources.items() if run_id in original_runs)
+
+
 async def _lock_approval_rows(
     db: AsyncSession,
     parent: ConversationRun,
@@ -67,23 +111,28 @@ async def _lock_approval_rows(
     slots: Mapping[str, ThreadInterrupt],
     context: OrgContext,
     checkpoint: PendingCheckpoint,
-) -> list[ApprovalRequest]:
+    verified_legacy_ids: frozenset[str],
+) -> tuple[list[ApprovalRequest], frozenset[UUID]]:
     """Serialize with the recorder that follows the run's committed interrupted transition."""
     tool_slots = [
         approvals.PendingInterrupt(ident, item["value"], tuple(item["ns"]))
         for ident, item in slots.items()
         if approvals.approval_actions(item["value"]) is not None
     ]
+    reconstructed: frozenset[UUID] = frozenset()
     if tool_slots:
         # The recorder and resume can race after an interrupt is published. Its native
         # uniqueness/parent lock binds any missing current approval to this same run.
         # None keeps raw credentials out of displays when no redacted event was retained.
-        await approvals.record_pending(
+        created = await approvals.record_pending(
             db,
             parent,
             tool_slots,
             origin=approvals.RunOrigin(agent_name=conversation.agent_name_snapshot),
             secret_values=None,
+        )
+        reconstructed = await _restorable_legacy_rows(
+            db, parent, created, checkpoint, verified_legacy_ids
         )
     keys = {(parent.id, ident) for ident in slots}
     keys.update(
@@ -120,7 +169,7 @@ async def _lock_approval_rows(
         for run_id in run_ids
     ):
         raise _stale()
-    return result
+    return result, reconstructed
 
 
 async def verify_ag_ui_resume(
@@ -148,7 +197,7 @@ async def verify_ag_ui_resume(
     if len(answers) != len(entries) or answers.keys() != slots.keys():
         raise _stale()
 
-    await require_pending_child_authority(
+    verified_legacy_ids = await require_pending_child_authority(
         db, conversation=conversation, context=context, parent_run=parent, pending=checkpoint
     )
 
@@ -165,7 +214,9 @@ async def verify_ag_ui_resume(
         for ident, slot in slots.items()
     )
     responses = {item.interrupt_id: item.response for item in submitted}
-    rows = await _lock_approval_rows(db, parent, conversation, slots, context, checkpoint)
+    rows, reconstructed = await _lock_approval_rows(
+        db, parent, conversation, slots, context, checkpoint, verified_legacy_ids
+    )
     bound: dict[UUID, dict[str, UUID]] = {}
     for row in rows:
         if row.run_id is None:
@@ -178,7 +229,7 @@ async def verify_ag_ui_resume(
             if (
                 not isinstance(action, Mapping)
                 or not isinstance(action.get("allowed_decisions"), list)
-                or choice not in action["allowed_decisions"]
+                or (choice not in action["allowed_decisions"] and row.id not in reconstructed)
             ):
                 raise ValidationError(
                     INVALID, "The recorded approval does not permit this decision"
@@ -202,6 +253,7 @@ async def verify_ag_ui_resume(
         checkpoint.interrupts,
         expired,
         bound,
+        reconstructed,
     )
 
 
@@ -261,6 +313,14 @@ async def claim_verified_resume(
             expected = {ident: bound[ident] for ident in responses if ident in bound}
             if {row.interrupt_id: row.id for row in claimed} != expected:
                 raise _stale()
+            for row in claimed:
+                if row.id in verified.reconstructed_legacy_rows:
+                    # Record exactly what the native checkpoint permitted and the
+                    # owner decided. The row has already been consumed by this child.
+                    row.actions = [
+                        {**action, "allowed_decisions": [choice]}
+                        for action, choice in zip(row.actions, types[row.interrupt_id], strict=True)
+                    ]
 
 
 __all__ = [
