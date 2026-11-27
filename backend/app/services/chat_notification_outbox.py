@@ -143,7 +143,7 @@ async def enqueue_goal_transition(
 
 
 async def drain_chat_notification_outbox(
-    db: AsyncSession, *, tenant_id: UUID, limit: int = 50
+    db: AsyncSession, *, tenant_id: UUID, limit: int = 50, outbox_id: UUID | None = None
 ) -> int:
     """Process a due batch in the caller's tenant transaction, including after switch-off."""
     from app.services.chat_notification_access import resolve_work_destination
@@ -151,15 +151,16 @@ async def drain_chat_notification_outbox(
     if limit < 1:
         return 0
     now = datetime.now(UTC)
+    query = select(ChatNotificationOutbox).where(
+        ChatNotificationOutbox.tenant_id == tenant_id,
+        ChatNotificationOutbox.status == "pending",
+        ChatNotificationOutbox.available_at <= now,
+    )
+    if outbox_id is not None:
+        query = query.where(ChatNotificationOutbox.id == outbox_id)
     rows = list(
         await db.scalars(
-            select(ChatNotificationOutbox)
-            .where(
-                ChatNotificationOutbox.tenant_id == tenant_id,
-                ChatNotificationOutbox.status == "pending",
-                ChatNotificationOutbox.available_at <= now,
-            )
-            .order_by(ChatNotificationOutbox.available_at, ChatNotificationOutbox.id)
+            query.order_by(ChatNotificationOutbox.available_at, ChatNotificationOutbox.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
             .execution_options(populate_existing=True)

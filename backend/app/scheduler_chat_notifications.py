@@ -1,4 +1,4 @@
-"""Schedule delivery of committed chat notifications, one tenant transaction at a time."""
+"""Schedule delivery of committed chat notifications, one intent per tenant-scoped transaction."""
 
 import logging
 from datetime import UTC, datetime
@@ -32,6 +32,24 @@ async def _due_tenant_ids(after: UUID | None) -> list[UUID]:
         return list(await db.scalars(query.order_by(Outbox.tenant_id).limit(_TENANTS_PER_TICK)))
 
 
+async def _due_notice_ids(tenant_id: UUID) -> list[UUID]:
+    from app.models.chat_notification_outbox import ChatNotificationOutbox as Outbox
+
+    async with tenant_session(SessionTenant(tenant_id), maker=async_session) as db:
+        return list(
+            await db.scalars(
+                select(Outbox.id)
+                .where(
+                    Outbox.tenant_id == tenant_id,
+                    Outbox.status == "pending",
+                    Outbox.available_at <= datetime.now(UTC),
+                )
+                .order_by(Outbox.available_at, Outbox.id)
+                .limit(_NOTICES_PER_TENANT)
+            )
+        )
+
+
 async def drain_due_chat_notifications() -> None:
     from app.services.chat_notification_outbox import drain_chat_notification_outbox
 
@@ -41,17 +59,32 @@ async def drain_due_chat_notifications() -> None:
             return
         _last_tenant = tenant_id
         try:
-            async with tenant_session(SessionTenant(tenant_id), maker=async_session) as db:
-                await drain_chat_notification_outbox(
-                    db, tenant_id=tenant_id, limit=_NOTICES_PER_TENANT
-                )
-                await db.commit()
+            # Read the IDs once: a busy row stays eligible for the next tick.
+            outbox_ids = await _due_notice_ids(tenant_id)
         except Exception as error:  # noqa: BLE001 - continue with the other companies
             logger.warning(
-                "chat notification delivery failed tenant=%s error_type=%s",
+                "chat notification lookup failed tenant=%s error_type=%s",
                 tenant_id,
                 type(error).__name__,
             )
+            continue
+        for outbox_id in outbox_ids:
+            if not await scheduler_leader_is_healthy():
+                return
+            try:
+                # Release this item's locks before the next item's authorization check.
+                async with tenant_session(SessionTenant(tenant_id), maker=async_session) as db:
+                    await drain_chat_notification_outbox(
+                        db, tenant_id=tenant_id, outbox_id=outbox_id
+                    )
+                    await db.commit()
+            except Exception as error:  # noqa: BLE001 - preserve the other independent deliveries
+                logger.warning(
+                    "chat notification delivery failed tenant=%s id=%s error_type=%s",
+                    tenant_id,
+                    outbox_id,
+                    type(error).__name__,
+                )
 
 
 def register_chat_notification_job() -> None:
