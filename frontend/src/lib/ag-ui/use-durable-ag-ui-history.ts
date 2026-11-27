@@ -266,6 +266,7 @@ export function useDurableAgUiHistory({
     function branchChanged(event: Event) {
       if (!isMoldyBranchSwitchedEvent(event) || event.detail.conversationId !== conversationId)
         return
+      session.invalidateApproval()
       if (agent.isRunning) agent.abortRun()
       requestFreshHistory()
     }

@@ -1,13 +1,6 @@
 'use client'
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useSyncExternalStore,
-} from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import type {
   AgUiAssistantRuntime,
   AgUiInterrupt,
@@ -131,11 +124,6 @@ export function useAgUiHitlActions({
     [runtime, conversationId, agentId, readyBatchKey],
   )
   const activeOwner = useRef<typeof owner | null>(null)
-  useLayoutEffect(() => {
-    return () => {
-      activeOwner.current = null
-    }
-  }, [owner])
   // The graph can replace a slot while a card is open or the user is still
   // reviewing another card. Do not enqueue even a partial vote for that batch.
   const currentBatch = useCallback(() => {
@@ -219,14 +207,24 @@ export function useAgUiHitlActions({
     refreshLifecycle: finish,
     updateResolvedInterrupts: ignoreResolved,
   })
-  // The coordinator resets pending votes in its effect. Activate callbacks for
-  // the new generation only after that reset has completed.
-  useEffect(() => {
+  // The coordinator resets before paint. The first click on a newly enabled
+  // button then observes its matching generation and cannot inherit prior votes.
+  useLayoutEffect(() => {
     activeOwner.current = owner
+    return () => {
+      activeOwner.current = null
+    }
   }, [owner])
   return {
     agentId,
     canRespond: readyBatchKey !== null,
+    approvalGeneration: readyBatchKey,
+    canRespondTo: (interruptId, actionIndex) =>
+      readyBatchKey !== null &&
+      !!interruptId &&
+      actionIndex !== undefined &&
+      Number.isInteger(actionIndex) &&
+      !!byId.get(interruptId)?.action_requests[actionIndex],
     registerDecision: async (index, decision, displayText, interruptId) => {
       currentBatch()
       const target =

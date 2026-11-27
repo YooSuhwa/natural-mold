@@ -97,19 +97,23 @@ function childAccess(child: AgUiHistoryChild, slot: AgUiInterrupt): ChildAccess 
     : null
 }
 
-export function verifiedChildInterrupts(
+function verifiedApprovalBatch(
   conversationId: string,
   wire: WireChatSnapshot,
   pending: readonly AgUiInterrupt[],
-): ChildInterruptForm[] {
+): { key: string; childForms: ChildInterruptForm[] } | null {
   if (
     wire.threadId !== conversationId ||
     wire.activeRunId ||
+    wire.runStatus !== 'interrupted' ||
+    !wire.checkpointId ||
+    wire.runId !== wire.interruptRunId ||
+    wire.latestPhysicalRunId !== wire.physicalInterruptRunId ||
     !wire.interruptRunId ||
     !wire.physicalInterruptRunId ||
     !wire.interrupts.length
   )
-    return []
+    return null
   const batch = interruptBatch(wire.interrupts)
   const live = interruptBatch(pending)
   if (
@@ -118,7 +122,7 @@ export function verifiedChildInterrupts(
     batch.length !== live.length ||
     batch.some(({ key }, index) => key !== live[index].key)
   )
-    return []
+    return null
 
   const byChild = byUniqueId(wire.subagents, (child) => child.subagentRunId)
   const byMessage = byUniqueId(wire.messages, (message) =>
@@ -145,17 +149,17 @@ export function verifiedChildInterrupts(
             sibling.interruptIds?.includes(slot.id)),
       )
     )
-      return []
+      return null
     const access = childAccess(child, slot)
     const path = issuerPath(child, byChild, byMessage)
-    if (!access || !path) return []
+    if (!access || !path) return null
     if (
       access.mode === 'legacy' &&
       (!wire.checkpointId ||
         !wire.activeTipMessageId ||
         !byMessage.get(messageKey(undefined, wire.activeTipMessageId)))
     )
-      return []
+      return null
     group.push([key, access.mode, child.childTaskId, path])
     forms.push({ ...access, payload, expiresAt: slot.expiresAt })
   }
@@ -167,7 +171,47 @@ export function verifiedChildInterrupts(
     wire.physicalInterruptRunId,
     group,
   ])
-  return forms.map((form) => ({ ...form, key: hashKey([generation, form.payload.interrupt_id]) }))
+  return {
+    key: generation,
+    childForms: forms.map((form) => ({
+      ...form,
+      key: hashKey([generation, form.payload.interrupt_id]),
+    })),
+  }
+}
+
+function currentApprovalBatch(
+  conversationId: string,
+  state: AgUiChatSessionState,
+  pending: readonly AgUiInterrupt[],
+) {
+  // A terminal event alone does not prove that the worker committed a pause.
+  // Only refreshRepository publishes the selected snapshot and its slot array together.
+  if (
+    state.readDenied ||
+    state.activeRunId ||
+    !state.snapshot ||
+    state.interrupts !== state.snapshot.interrupts
+  )
+    return null
+  return verifiedApprovalBatch(conversationId, state.snapshot, pending)
+}
+
+export function currentAgUiApprovalKey(
+  conversationId: string,
+  state: AgUiChatSessionState,
+  pending: readonly AgUiInterrupt[],
+): string | null {
+  const batch = currentApprovalBatch(conversationId, state, pending)
+  return batch ? hashKey([state.reconcileSequence, state.terminalSequence, batch.key]) : null
+}
+
+export function verifiedChildInterrupts(
+  conversationId: string,
+  wire: WireChatSnapshot,
+  pending: readonly AgUiInterrupt[],
+): ChildInterruptForm[] {
+  return verifiedApprovalBatch(conversationId, wire, pending)?.childForms ?? []
 }
 
 export function currentChildInterrupts(
@@ -175,14 +219,5 @@ export function currentChildInterrupts(
   state: AgUiChatSessionState,
   pending: readonly AgUiInterrupt[],
 ): ChildInterruptForm[] {
-  // Fresh history publishes the snapshot and its interrupt array together. An
-  // intervening RUN_STARTED/RUN_FINISHED replaces the live array before that GET.
-  if (
-    state.readDenied ||
-    state.activeRunId ||
-    !state.snapshot ||
-    state.interrupts !== state.snapshot.interrupts
-  )
-    return []
-  return verifiedChildInterrupts(conversationId, state.snapshot, pending)
+  return currentApprovalBatch(conversationId, state, pending)?.childForms ?? []
 }

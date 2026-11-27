@@ -17,6 +17,10 @@ export interface HiTLContextValue {
   ) => Promise<void>
   /** False while the server has not confirmed that the current approval batch may resume. */
   canRespond?: boolean
+  /** The checkpoint and action generation that supplied the visible decision fields. */
+  approvalGeneration?: string | null
+  /** Check the card identity before exposing a response for this action. */
+  canRespondTo?: (interruptId?: string | null, actionIndex?: number) => boolean
   /** The agent the thread runs (auth card connect, G-05); absent → the route's agent. */
   agentId?: string
 }
