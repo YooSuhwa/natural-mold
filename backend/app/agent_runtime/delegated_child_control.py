@@ -34,12 +34,12 @@ from app.agent_runtime.lease_dispatch_permit import DispatchDeniedError
 from app.agent_runtime.model_input_receipt import observe_message_delivery, text_digest
 from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.authz.org_context import OrgContext
+from app.child_tasks import persistence as store
+from app.child_tasks.errors import ChildTaskStopped
 from app.config import settings
 from app.database import tenant_session
 from app.exceptions import AppError
 from app.schemas.conversation_graph_input import CHILD_RECEIPTS_CHANNEL, STEER_INPUT_MARKER
-from app.services import child_tasks_runtime as store
-from app.services.child_task_errors import ChildTaskStopped
 
 type ToolResult = ToolMessage | Command[Any]
 type ToolHandler = Callable[[ToolCallRequest], Awaitable[ToolResult]]

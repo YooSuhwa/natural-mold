@@ -32,13 +32,13 @@ from app.agent_runtime.runtime_hydration_guard import post_marker_execution
 from app.authz.child_task_authorization import authorize_child_target
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_proof import live_proof
+from app.child_tasks.errors import ChildTaskStopped
 from app.config import settings
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation_run import ConversationRun
 from app.models.organization import Organization, OrganizationMember
 from app.services.agent_execution_acceptance import OwnedExecutionRequest, accept_owned_execution
-from app.services.child_task_errors import ChildTaskStopped
 from tests.authz import prepared_run_testkit as kit
 from tests.authz.execution_gateway_testkit import seed_graph
 from tests.conftest import TestSession

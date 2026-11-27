@@ -23,6 +23,7 @@ from app.authz.organization_execution_gateway import acquire_execution_proof, lo
 from app.authz.organization_execution_proof import execution_scope, live_proof
 from app.authz.principal import Principal
 from app.authz.scoping import private_scope_predicate
+from app.child_tasks.errors import ChildTaskStopped
 from app.exceptions import AppError
 from app.guardrails.policy import resolve_tool_risk
 from app.models.agent import Agent
@@ -31,7 +32,6 @@ from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.organization import Organization
-from app.services.child_task_errors import ChildTaskStopped
 from app.tools.keys import agent_ref
 
 

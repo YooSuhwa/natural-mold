@@ -15,6 +15,7 @@ from app.authz.client import Consistency
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.organization_execution_proof import live_proof
 from app.authz.principal import Principal
+from app.child_tasks.errors import ChildTaskStopped
 from app.config import settings
 from app.exceptions import AppError
 from app.models.agent import Agent
@@ -25,7 +26,6 @@ from app.models.organization import Organization, OrganizationMember, TenantMemb
 from app.models.resource_policy import ResourcePolicy
 from app.models.user import User
 from app.services.agent_execution_acceptance import OwnedExecutionRequest, accept_owned_execution
-from app.services.child_task_errors import ChildTaskStopped
 from tests.authz.authz_service_testkit import RecordingClient, service
 from tests.authz.execution_gateway_testkit import GatewayGraph, seed_graph
 

@@ -16,11 +16,11 @@ from app.authz.conversation_run_scope import owned_run_predicate, private_run_pr
 from app.authz.execution_transaction_tracker import claimed_locks
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
+from app.child_tasks.errors import ChildTaskStopped
 from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_child_task import ConversationChildInstruction, ConversationChildTask
 from app.models.conversation_run import ConversationRun, utc_now_naive
-from app.services.child_task_errors import ChildTaskStopped
 
 _TERMINAL = frozenset({"cancelled", "failed", "completed"})
 _OPEN = ("running", "awaiting_approval")

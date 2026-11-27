@@ -11,6 +11,8 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.child_tasks.errors import ChildTaskStopped
+from app.child_tasks.persistence import begin_child_task, next_child_instructions
 from app.config import settings
 from app.dependencies import get_org_context
 from app.models.agent import Agent
@@ -22,8 +24,6 @@ from app.models.conversation_run import ConversationRun
 from app.models.organization import Organization, OrganizationMember
 from app.services import agent_execution_owner
 from app.services.agent_execution_acceptance import OwnedExecutionRequest
-from app.services.child_task_errors import ChildTaskStopped
-from app.services.child_tasks_runtime import begin_child_task, next_child_instructions
 from tests.authz.unit_scope_fixture import unit_context
 from tests.test_agent_lifecycle_run_ownership import _seed_execution_tree
 

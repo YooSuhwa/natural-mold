@@ -8,9 +8,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.child_tasks.persistence import begin_child_task
 from app.models.conversation_child_task import ConversationChildInstruction, ConversationChildTask
 from app.models.conversation_run import ConversationRun
-from app.services.child_tasks_runtime import begin_child_task
 from app.services.conversation_run_creation import RunStatus
 from app.services.conversation_run_state import transition_run
 from tests.authz.test_child_task_authorization import ChildCase, child_case  # noqa: F401
@@ -82,8 +82,8 @@ async def test_late_worker_cannot_complete_or_record_checkpoint_after_child_canc
     db: AsyncSession,
     child_case: ChildCase,  # noqa: F811
 ) -> None:
-    from app.services.child_task_errors import ChildTaskStopped
-    from app.services.child_tasks_runtime import record_child_checkpoint, set_child_task_status
+    from app.child_tasks.errors import ChildTaskStopped
+    from app.child_tasks.persistence import record_child_checkpoint, set_child_task_status
 
     context = child_case.graph.context
     run_id = child_case.run_id

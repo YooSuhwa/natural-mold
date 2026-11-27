@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.child_tasks.persistence import begin_child_task, set_child_task_status
 from app.models.agent import Agent
 from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.conversation_child_task import ConversationChildTask
@@ -19,7 +20,6 @@ from app.models.memory import AgentMemorySettings
 from app.schemas.independent_chat_job import IndependentJobOut
 from app.services import chat_service
 from app.services.agent_execution_acceptance import OwnedExecutionRequest, accept_owned_execution
-from app.services.child_tasks_runtime import begin_child_task, set_child_task_status
 from app.services.conversation_run_state import transition_run
 from tests import test_conversation_child_tasks_router as child_routes
 from tests import test_independent_chat_jobs as independent_routes

@@ -51,6 +51,7 @@ from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tre
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_proof import live_proof
+from app.child_tasks.persistence import has_open_child_tasks
 from app.config import settings
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found
@@ -60,7 +61,6 @@ from app.guardrails.run import effective_rules, guardrail_versions
 from app.models.conversation_run import ConversationRun
 from app.services import chat_service
 from app.services.chat.attachment_inputs import conversation_has_attachments
-from app.services.child_tasks_runtime import has_open_child_tasks
 from app.services.conversation_agent_context import resolve_agent_context
 from app.services.prepared_run_children import resolve_prepared_children
 

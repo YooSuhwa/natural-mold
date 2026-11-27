@@ -29,13 +29,14 @@ from app.agent_runtime.identity import make_agent_runtime_name
 from app.agent_runtime.prepared_task_tool_handler import PreparedStateProjector
 from app.agent_runtime.runtime_agent_builder import build_agent
 from app.authz.org_context import OrgContext
+from app.child_tasks import persistence as child_tasks_runtime
+from app.child_tasks.errors import ChildTaskStopped
 from app.config import settings
 from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation_run import ConversationRun
 from app.schemas.conversation_child_task import ChildInstructionCreate, ChildTaskResponse
-from app.services import child_tasks_api, child_tasks_runtime
-from app.services.child_task_errors import ChildTaskStopped
+from app.services import child_tasks_api
 from app.services.conversation_run_state import transition_run
 from app.tenancy.checkpoint_audit import run_configurable
 from tests.authz.runtime_prototype import ScriptedModel

@@ -127,8 +127,8 @@ async def build_subagents_config(
     links = plan.sub_agent_links if plan is not None else parent_agent.sub_agent_links
     tracked_conversation = None
     if links and parent_cfg.run_path == "chat" and not is_trigger_mode:
+        from app.child_tasks.persistence import has_open_child_tasks
         from app.guardrails.events import parse_uuid
-        from app.services.child_tasks_runtime import has_open_child_tasks
 
         conversation_id = parse_uuid(parent_cfg.thread_id)
         if conversation_id and (

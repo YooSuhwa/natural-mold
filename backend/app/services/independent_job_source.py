@@ -9,11 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.child_task_authorization import verify_child_task_identity
 from app.authz.org_context import OrgContext
+from app.child_tasks.errors import ChildTaskStopped
 from app.error_codes import resume_not_found
 from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.conversation_child_task import ConversationChildTask
 from app.models.conversation_run import ConversationRun
-from app.services.child_task_errors import ChildTaskStopped
 
 
 async def require_source_task(

@@ -13,6 +13,8 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.authz.org_context import OrgContext
+from app.child_tasks import persistence as runtime
+from app.child_tasks.errors import ChildTaskStopped
 from app.config import settings
 from app.exceptions import ConflictError
 from app.models.agent import Agent
@@ -22,9 +24,7 @@ from app.models.conversation_child_task import ConversationChildInstruction
 from app.models.conversation_run import ConversationRun
 from app.schemas.conversation_child_task import ChildInstructionCreate
 from app.services import child_tasks_api as api
-from app.services import child_tasks_runtime as runtime
 from app.services.agent_execution_acceptance import OwnedExecutionRequest, accept_owned_execution
-from app.services.child_task_errors import ChildTaskStopped
 from app.services.conversation_run_state import transition_run
 from tests.authz.execution_gateway_testkit import seed_graph
 from tests.integration.test_conversation_queue_concurrency import _postgres_session_factory

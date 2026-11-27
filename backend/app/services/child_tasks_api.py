@@ -6,11 +6,14 @@ from uuid import UUID
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.child_task_authorization import authorize_child_target
 from app.authz.conversation_run_scope import private_run_predicate
 from app.authz.conversation_scope import require_private_conversation
 from app.authz.execution_transaction_tracker import claimed_locks
 from app.authz.org_context import OrgContext
 from app.authz.run_decisions import open_request_memo
+from app.child_tasks.errors import ChildTaskStopped
+from app.child_tasks.persistence import settle_child_status_locked
 from app.config import settings
 from app.exceptions import AppError, ConflictError, NotFoundError
 from app.models.agent_lifecycle import ConversationRunAgent
@@ -21,11 +24,6 @@ from app.schemas.conversation_child_task import (
     ChildInstructionCreate,
     ChildTaskPage,
     ChildTaskResponse,
-)
-from app.services.child_tasks_runtime import (
-    ChildTaskStopped,
-    authorize_child_target,
-    settle_child_status_locked,
 )
 
 _CONVERSATIONAL = {"running", "awaiting_approval"}
