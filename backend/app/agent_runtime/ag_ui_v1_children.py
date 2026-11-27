@@ -95,7 +95,18 @@ class PublicChildren:
         ]
         if len(matches) != 1:
             return False
-        return self.owner(matches[0][:-1]) == owner
+        child = matches[0]
+        # LangGraph may insert structural graph segments between two actual
+        # subagents. Only an independently authorized child row denotes an issuer.
+        parent = next(
+            (
+                child[:n]
+                for n in range(len(child) - 1, 0, -1)
+                if child[:n] in self.visibility.namespaces
+            ),
+            (),
+        )
+        return self.owner(parent) == owner
 
     def visible(self, namespace: Namespace) -> bool:
         if not namespace or self.visibility.allow_legacy_details:

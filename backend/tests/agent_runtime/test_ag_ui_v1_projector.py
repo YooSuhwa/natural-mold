@@ -218,3 +218,41 @@ def test_reused_parent_call_id_cannot_disclose_a_nested_unauthorized_delegation(
         )
         == []
     )
+
+
+def test_structural_graph_path_is_not_an_issuing_child() -> None:
+    ns = ("tools:parent", "task:research")
+    stream = projector(
+        policy=ChildVisibility(
+            False, frozenset({"c"}), frozenset({ns}), frozenset({("c", ns, "task-row")})
+        )
+    )
+    frames = wire(
+        stream.project(
+            event(
+                "messages",
+                {
+                    "id": "m",
+                    "type": "ai",
+                    "tool_calls": [
+                        {"id": "c", "name": "task", "args": {"subagent_type": "research"}}
+                    ],
+                },
+            )
+        )
+    )
+    call = next(f["toolCallId"] for f in frames if f["type"] == "TOOL_CALL_START")
+    [started] = wire(
+        stream.project(
+            event(
+                "lifecycle",
+                {
+                    "event": "started",
+                    "namespace": list(ns),
+                    "cause": {"type": "toolCall", "tool_call_id": "c"},
+                },
+            )
+        )
+    )
+    assert started["parentToolCallId"] == call
+    assert stream.child_task_handles == {started["subagentRunId"]: "task-row"}
