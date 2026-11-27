@@ -104,6 +104,20 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
         tasks = task_page["items"]
         by_call = {t["tool_call_id"]: t for t in tasks}
         alpha, beta = by_call["delegate-alpha"], by_call["delegate-beta"]
+        require(
+            model.key not in json.dumps(snapshot),
+            "fixture key leaked into standard snapshot",
+        )
+        (gate.evidence_dir / "targeted-sibling-pending-snapshot.json").write_text(
+            json.dumps(snapshot) + "\n"
+        )
+        require(
+            model.key not in json.dumps(task_page),
+            "fixture key leaked into child controls",
+        )
+        (gate.evidence_dir / "targeted-sibling-pending-tasks.json").write_text(
+            json.dumps(task_page) + "\n"
+        )
         children = {c["childTaskId"]: c for c in snapshot["subagents"] if c.get("childTaskId")}
         a, b = children[alpha["id"]], children[beta["id"]]
         record(
@@ -114,6 +128,16 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
             nativeInterruptIds=native_interrupts,
             standardInterrupts=[(i["id"], i.get("subagentRunId")) for i in snapshot["interrupts"]],
             childStates={"target": a["status"], "sibling": b["status"]},
+            managedTaskStates={"target": alpha["status"], "sibling": beta["status"]},
+            streamChildren=[
+                {
+                    "type": frame["type"],
+                    "subagentRunId": frame.get("subagentRunId"),
+                    "outcome": frame.get("outcome", {}).get("type"),
+                }
+                for frame in public
+                if frame["type"] in {"SUBAGENT_STARTED", "SUBAGENT_FINISHED"}
+            ],
             targetInterruptIds=a["interruptIds"],
             siblingInterruptIds=b["interruptIds"],
         )
@@ -130,20 +154,6 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
             and not b["interruptIds"]
             and b["status"] == "completed",
             "sibling assignment changed after reauthentication",
-        )
-        require(
-            model.key not in json.dumps(snapshot),
-            "fixture key leaked into standard snapshot",
-        )
-        (gate.evidence_dir / "targeted-sibling-pending-snapshot.json").write_text(
-            json.dumps(snapshot) + "\n"
-        )
-        require(
-            model.key not in json.dumps(task_page),
-            "fixture key leaked into child controls",
-        )
-        (gate.evidence_dir / "targeted-sibling-pending-tasks.json").write_text(
-            json.dumps(task_page) + "\n"
         )
         public_resume = str(uuid4())
         body = {
