@@ -9,7 +9,7 @@ from functools import partial
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.approvals import recording, service
@@ -554,19 +554,21 @@ async def test_access_removal_overlapping_delivery_retries_before_publishing(
                 receipt.finished_at,
             ) == ("pending", 1, None, None)
             assert await reader.scalar(notices) is None
-            assert receipt.available_at >= receipt.created_at + timedelta(seconds=4)
+            assert (
+                await reader.scalar(
+                    select(ChatNotificationOutbox.id).where(
+                        ChatNotificationOutbox.id == receipt.id,
+                        ChatNotificationOutbox.available_at <= func.clock_timestamp(),
+                    )
+                )
+                == receipt.id
+            )
         if commit_delete:
             await deleting.commit()
         else:
             await deleting.rollback()
 
-    # Make the scheduled retry due using the database clock.
     async with tenant_session(worker, maker=sessions) as retry:
-        await retry.execute(
-            update(ChatNotificationOutbox)
-            .where(ChatNotificationOutbox.source_id == job_id)
-            .values(available_at=func.clock_timestamp() - timedelta(seconds=1))
-        )
         assert await outbox.drain_chat_notification_outbox(retry, tenant_id=ctx.tenant_id) == 1
         await retry.commit()
     async with tenant_session(ctx, maker=sessions) as reader:
