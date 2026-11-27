@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import case, select
+from sqlalchemy import and_, case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, lazyload
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.agent_runtime.lease_dispatch_permit import DispatchDeniedError
 from app.agent_runtime.prepared_child_controls import lease_for_child_control
@@ -48,6 +49,21 @@ class _Target:
     epoch: int
 
 
+def admitted_root_accounts(
+    root_pin: type[ConversationRunAgent], context: OrgContext
+) -> ColumnElement[bool]:
+    """Match both recorded root identities to the live owner and credential account."""
+    account = case((Agent.identity_mode == "per_user", context.user_id), else_=Agent.user_id)
+    return and_(
+        ConversationRun.resource_owner_user_id == Agent.user_id,
+        ConversationRun.credential_subject_user_id == account,
+        ConversationRun.on_behalf_of_user_id == account,
+        root_pin.resource_owner_user_id == Agent.user_id,
+        root_pin.credential_subject_user_id == account,
+        root_pin.on_behalf_of_user_id == account,
+    )
+
+
 async def _target(
     db: AsyncSession,
     context: OrgContext,
@@ -60,7 +76,6 @@ async def _target(
     child = aliased(Agent)
     root_pin = aliased(ConversationRunAgent)
     child_pin = ConversationRunAgent
-    root_account = case((Agent.identity_mode == "per_user", context.user_id), else_=Agent.user_id)
     child_account = case((child.identity_mode == "per_user", context.user_id), else_=child.user_id)
     # Pre-F04 admissions persisted the actual accounts on every participant, but
     # lacked an identity-mode column. Only the legacy resume proof may use them.
@@ -112,16 +127,11 @@ async def _target(
                 child.archived_at.is_(None),
                 AgentSubAgentLink.link_status == "active",
                 ConversationRun.run_source == "CHAT",
-                ConversationRun.resource_owner_user_id == Agent.user_id,
-                ConversationRun.credential_subject_user_id == root_account,
-                ConversationRun.on_behalf_of_user_id == root_account,
+                admitted_root_accounts(root_pin, context),
                 root_pin.role == "root",
                 root_pin.agent_id == Agent.id,
                 root_pin.agent_id_snapshot == Agent.id,
                 root_mode,
-                root_pin.resource_owner_user_id == Agent.user_id,
-                root_pin.credential_subject_user_id == root_account,
-                root_pin.on_behalf_of_user_id == root_account,
                 child_pin.role == "subagent",
                 child_pin.agent_id == child_id,
                 child_pin.agent_id_snapshot == child_id,
