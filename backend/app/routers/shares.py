@@ -23,6 +23,7 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_scope import lock_private_conversation
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, SHARE_TOKEN, authz_policy
 from app.config import settings
@@ -35,7 +36,7 @@ from app.dependencies import (
     verify_csrf,
 )
 from app.error_codes import share_not_found
-from app.models.conversation import Conversation
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.rate_limit import limiter, share_key
 from app.schemas.artifact import ArtifactSummary
 from app.schemas.conversation import MessagesEnvelope
@@ -133,9 +134,9 @@ async def revoke_share(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
-    conv: Conversation = Depends(owned_conversation),
 ) -> None:
     """Revoke any active share link for the conversation. Idempotent."""
+    conv = await lock_private_conversation(db, conversation_id, context)
     revoked_tokens = await share_service.revoke_share(db, conversation_id, context)
     await audit_service.record_self_event(
         db,
@@ -143,7 +144,7 @@ async def revoke_share(
         action="conversation.share_revoke",
         target_type="conversation",
         target_id=conversation_id,
-        target_name=conv.title,
+        target_name=None if conv.source == INDEPENDENT_JOB_SOURCE else conv.title,
         request=request,
         metadata={"revoked_count": len(revoked_tokens)},
     )
@@ -179,14 +180,14 @@ async def get_public_share(
     round-trip (vs. fetching share + messages separately). For very long
     conversations a future revision may paginate.
     """
-    link, conversation, agent = await require_public_share(db, share_token)
+    share = await require_public_share(db, share_token)
 
-    checkpoint_id = conversation.active_branch_checkpoint_id
+    checkpoint_id = share.conversation.active_branch_checkpoint_id
     cached = share_cache.get_snapshot(share_token, checkpoint_id)
     if cached is not None:
         return cached
 
-    snapshot = await build_public_snapshot(db, link, conversation, agent)
+    snapshot = await build_public_snapshot(db, share)
     share_cache.put_snapshot(share_token, checkpoint_id, snapshot)
     return snapshot
 
@@ -203,16 +204,16 @@ async def get_public_share_messages(
     """Public messages endpoint — useful when the consumer wants the same
     branch metadata shape as the authenticated ``/api/conversations/.../messages``
     endpoint without owning the conversation."""
-    _, conversation, _ = await require_public_share(db, share_token)
+    share = await require_public_share(db, share_token)
 
-    checkpoint_id = conversation.active_branch_checkpoint_id
+    checkpoint_id = share.conversation.active_branch_checkpoint_id
     # ``SharedConversationView``와 같은 token이지만 envelope은 shape이 다르므로
     # share_cache가 별도 namespace key로 캡슐화한다.
     cached = share_cache.get_envelope(share_token, checkpoint_id)
     if cached is not None:
         return cached
 
-    envelope = await build_public_envelope(db, conversation)
+    envelope = await build_public_envelope(db, share)
     share_cache.put_envelope(share_token, checkpoint_id, envelope)
     return envelope
 
@@ -226,13 +227,8 @@ async def list_public_share_artifacts(
     db: AsyncSession = Depends(get_db),
     _rate: None = Depends(public_share_rate_scope),
 ) -> list[ArtifactSummary]:
-    _, conversation, agent = await require_public_share(db, share_token)
-    artifacts = await _list_public_share_visible_artifacts(
-        db,
-        share_token=share_token,
-        user_id=agent.user_id,
-        conversation=conversation,
-    )
+    share = await require_public_share(db, share_token)
+    artifacts = await _list_public_share_visible_artifacts(db, share)
     return [_public_artifact_summary(artifact, share_token) for artifact in artifacts]
 
 
@@ -246,15 +242,9 @@ async def get_public_share_artifact(
     db: AsyncSession = Depends(get_db),
     _rate: None = Depends(public_share_rate_scope),
 ) -> ArtifactSummary:
-    _, conversation, agent = await require_public_share(db, share_token)
+    share = await require_public_share(db, share_token)
     try:
-        summary = await _get_public_share_visible_artifact(
-            db,
-            share_token=share_token,
-            user_id=agent.user_id,
-            conversation=conversation,
-            artifact_id=artifact_id,
-        )
+        summary = await _get_public_share_visible_artifact(db, share, artifact_id)
         return _public_artifact_summary(summary, share_token)
     except ArtifactNotFoundError as exc:
         raise share_not_found() from exc
@@ -270,11 +260,9 @@ async def get_public_share_artifact_content(
     db: AsyncSession = Depends(get_db),
     _rate: None = Depends(public_share_rate_scope),
 ):
-    _, conversation, agent = await require_public_share(db, share_token)
+    share = await require_public_share(db, share_token)
     try:
-        return await public_artifact_file(
-            db, share_token, conversation, agent, artifact_id, download=False
-        )
+        return await public_artifact_file(db, share, artifact_id, download=False)
     except ArtifactNotFoundError as exc:
         raise share_not_found() from exc
 
@@ -289,10 +277,8 @@ async def download_public_share_artifact(
     db: AsyncSession = Depends(get_db),
     _rate: None = Depends(public_share_rate_scope),
 ):
-    _, conversation, agent = await require_public_share(db, share_token)
+    share = await require_public_share(db, share_token)
     try:
-        return await public_artifact_file(
-            db, share_token, conversation, agent, artifact_id, download=True
-        )
+        return await public_artifact_file(db, share, artifact_id, download=True)
     except ArtifactNotFoundError as exc:
         raise share_not_found() from exc

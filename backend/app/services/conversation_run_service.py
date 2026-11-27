@@ -16,6 +16,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
+from sqlalchemy.sql.selectable import Exists
 
 from app.agent_runtime import event_names
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
@@ -31,7 +32,7 @@ from app.authz.organization_execution_gateway import lock_query
 from app.authz.private_actor import require_private_actor
 from app.config import settings
 from app.exceptions import ConflictError
-from app.models.conversation import Conversation
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, RUN_TERMINAL_STATUSES, ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.schemas.conversation_scope import ConversationPolicyTarget
@@ -64,33 +65,34 @@ from app.services.conversation_runtime_policy import (
 logger = logging.getLogger(__name__)
 
 
+def _resume_exists(readable_run_ids: set[uuid.UUID] | None) -> Exists:
+    resume = aliased(ConversationRun)
+    successor = select(resume.id).where(resume_parent_predicate(resume), resume.source == "resume")
+    if readable_run_ids is not None:
+        successor = successor.where(resume.id.in_(readable_run_ids))
+    return successor.exists()
+
+
 async def _latest_interrupted_run(
     db: AsyncSession,
     *,
     conversation_id: uuid.UUID,
     context: OrgContext,
+    readable_run_ids: set[uuid.UUID] | None = None,
 ) -> ConversationRun | None:
-    resume_child = aliased(ConversationRun)
-    resume_child_exists = (
-        select(resume_child.id)
-        .where(
-            resume_parent_predicate(resume_child),
-            resume_child.source == "resume",
-        )
-        .exists()
+    query = select(ConversationRun).where(
+        ConversationRun.conversation_id == conversation_id,
+        private_run_predicate(context),
+        ConversationRun.status == "interrupted",
+        ~_resume_exists(readable_run_ids),
     )
-    result = await db.execute(
-        select(ConversationRun)
-        .where(
-            ConversationRun.conversation_id == conversation_id,
-            private_run_predicate(context),
-            ConversationRun.status == "interrupted",
-            ~resume_child_exists,
-        )
-        .order_by(ConversationRun.completed_at.desc(), ConversationRun.created_at.desc())
-        .limit(1)
+    if readable_run_ids is not None:
+        query = query.where(ConversationRun.id.in_(readable_run_ids))
+    return await db.scalar(
+        query.order_by(
+            ConversationRun.completed_at.desc(), ConversationRun.created_at.desc()
+        ).limit(1)
     )
-    return result.scalar_one_or_none()
 
 
 async def get_latest_interrupted_run(
@@ -98,12 +100,14 @@ async def get_latest_interrupted_run(
     *,
     conversation_id: uuid.UUID,
     context: OrgContext,
+    readable_run_ids: set[uuid.UUID] | None = None,
 ) -> ConversationRun | None:
     await require_private_actor(db, context)
     return await _latest_interrupted_run(
         db,
         conversation_id=conversation_id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
 
 
@@ -124,31 +128,37 @@ async def get_active_run(
     return result.scalar_one_or_none()
 
 
+async def readable_conversation_run_ids(
+    db: AsyncSession, conversation: Conversation, context: OrgContext
+) -> set[uuid.UUID] | None:
+    """Independent job reads are limited to their run lineage; ordinary chats use their scope."""
+    if conversation.source != INDEPENDENT_JOB_SOURCE:
+        return None
+    from app.services.independent_job_runs import readable_independent_child_run_ids
+
+    return await readable_independent_child_run_ids(
+        db, conversation_id=conversation.id, context=context
+    )
+
+
 async def active_runs_for_conversations(
     db: AsyncSession,
     conversation_ids: Sequence[uuid.UUID],
     context: OrgContext,
+    *,
+    readable_run_ids: set[uuid.UUID] | None = None,
 ) -> dict[uuid.UUID, ConversationRun]:
     await require_private_actor(db, context)
     if not conversation_ids:
         return {}
-    resume_child = aliased(ConversationRun)
-    resume_child_exists = (
-        select(resume_child.id)
-        .where(
-            resume_parent_predicate(resume_child),
-            resume_child.source == "resume",
-        )
-        .exists()
-    )
-    result = await db.execute(
+    query = (
         select(ConversationRun)
         .where(
             ConversationRun.conversation_id.in_(conversation_ids),
             private_run_predicate(context),
             or_(
                 ConversationRun.is_active.is_(True),
-                ((ConversationRun.status == "interrupted") & (~resume_child_exists)),
+                ((ConversationRun.status == "interrupted") & (~_resume_exists(readable_run_ids))),
             ),
         )
         .order_by(
@@ -157,6 +167,9 @@ async def active_runs_for_conversations(
             ConversationRun.created_at.desc(),
         )
     )
+    if readable_run_ids is not None:
+        query = query.where(ConversationRun.id.in_(readable_run_ids))
+    result = await db.execute(query)
     runs: dict[uuid.UUID, ConversationRun] = {}
     for run in result.scalars().all():
         runs.setdefault(run.conversation_id, run)
@@ -168,10 +181,12 @@ async def current_run_for_conversation(
     *,
     conversation_id: uuid.UUID,
     context: OrgContext,
+    readable_run_ids: set[uuid.UUID] | None = None,
 ) -> ConversationRun | None:
-    return (await active_runs_for_conversations(db, [conversation_id], context)).get(
-        conversation_id
+    rows = await active_runs_for_conversations(
+        db, [conversation_id], context, readable_run_ids=readable_run_ids
     )
+    return rows.get(conversation_id)
 
 
 async def latest_run_for_conversation(
@@ -179,6 +194,7 @@ async def latest_run_for_conversation(
     *,
     conversation_id: uuid.UUID,
     context: OrgContext,
+    readable_run_ids: set[uuid.UUID] | None = None,
 ) -> ConversationRun | None:
     """최신 run을 상태와 무관하게 1건 반환.
 
@@ -189,13 +205,12 @@ async def latest_run_for_conversation(
     전달할 수 있다 (``ix_conversation_runs_conversation_created`` 인덱스 사용).
     """
     await require_private_actor(db, context)
-    result = await db.execute(
-        select(ConversationRun)
-        .where(ConversationRun.conversation_id == conversation_id, private_run_predicate(context))
-        .order_by(ConversationRun.created_at.desc())
-        .limit(1)
+    query = select(ConversationRun).where(
+        ConversationRun.conversation_id == conversation_id, private_run_predicate(context)
     )
-    return result.scalars().first()
+    if readable_run_ids is not None:
+        query = query.where(ConversationRun.id.in_(readable_run_ids))
+    return await db.scalar(query.order_by(ConversationRun.created_at.desc()).limit(1))
 
 
 async def get_run_for_user(

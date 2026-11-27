@@ -9,6 +9,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import denials
+from app.authz.notification_delivery_scope import lock_active_notice_recipient
 from app.authz.notifications import RETENTION, now
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
@@ -146,7 +147,9 @@ async def _authorized_destinations(
     if job_refs:
         from app.services.independent_job_runs import notification_jobs_visible
 
-        visible_jobs = await notification_jobs_visible(db, job_refs, ctx)
+        visible_jobs = await notification_jobs_visible(
+            db, job_refs, ctx, propagate_outage=not published
+        )
 
     found = {}
     for row, agent, filename, digest, payload in rows:
@@ -174,6 +177,8 @@ async def resolve_work_destination(
 ) -> ChatNotificationDestination | None:
     ctx = OrgContext(org_id=ref.org_id, tenant_id=ref.tenant_id, user_id=ref.user_id)
     if ref.goal_id is not None:
+        if not await lock_active_notice_recipient(db, ctx):
+            return None
         # The decision and bell commit together. An edit uses conversation -> goal;
         # if it is already writing, the outbox retries after its transaction finishes.
         conversation = await db.scalar(
@@ -199,7 +204,15 @@ async def resolve_work_destination(
         if goal is None:
             return None
     destinations = await _authorized_destinations(db, ctx, [ref.id], published=False)
-    return destinations.get(ref.id)
+    destination = destinations.get(ref.id)
+    if destination is not None and ref.kind == "chat_task.completed":
+        from app.services.independent_notification_delivery import lock_job_delivery
+
+        if not await lock_job_delivery(
+            db, ctx, job_id=ref.source_id, conversation_id=ref.conversation_id, run_id=ref.run_id
+        ):
+            return None
+    return destination
 
 
 async def accessible_work_targets(

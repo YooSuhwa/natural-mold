@@ -157,12 +157,16 @@ async def get_thread_state(
         thread_id=thread_id,
         context=context,
     )
+    readable_run_ids = await conversation_run_service.readable_conversation_run_ids(
+        db, conversation, context
+    )
     if conversation.agent_lifecycle_state == "purged":
         snapshot = await load_thread_state_snapshot(conversation, context, db=db, secret_values=())
         latest_run = await conversation_run_service.latest_run_for_conversation(
             db,
             conversation_id=conversation.id,
             context=context,
+            readable_run_ids=readable_run_ids,
         )
         latest_metadata = _run_metadata(latest_run)
         values = dict(snapshot.values)
@@ -200,11 +204,13 @@ async def get_thread_state(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     latest_run = await conversation_run_service.latest_run_for_conversation(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     if not read_only and current_run is not None and current_run.is_active:
         stale = await maybe_mark_stale_active_run(
@@ -313,10 +319,14 @@ async def subscribe_thread_events(
             extra_headers=protocol_headers(mode="thread"),
         )
 
+    readable_run_ids = await conversation_run_service.readable_conversation_run_ids(
+        db, conversation, context
+    )
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     if current_run is not None and current_run.is_active:
         broker = live_broker_for_run(current_run)
@@ -402,15 +412,20 @@ async def get_compat_thread_state(
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id, context=context)
     secrets = await collect_state_secret_values(db, conversation, context)
     snapshot = await load_thread_state_snapshot(conversation, context, db=db, secret_values=secrets)
+    readable_run_ids = await conversation_run_service.readable_conversation_run_ids(
+        db, conversation, context
+    )
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     latest_run = await conversation_run_service.latest_run_for_conversation(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     if not read_only and current_run is not None and current_run.is_active:
         stale = await maybe_mark_stale_active_run(

@@ -45,7 +45,7 @@ async def test_only_completed_child_or_its_resume_enqueues_once(
             parent_run_id=child.id if source == "resume" else None,
             status="completed",
             is_active=False,
-            run_source="chat",
+            run_source="CHAT",
         )
         db.add(result)
         await db.flush()
@@ -199,7 +199,7 @@ async def test_recovery_discards_obsolete_approval_without_reading_the_checkpoin
                 source="resume",
                 status="running",
                 is_active=True,
-                run_source="chat",
+                run_source="CHAT",
             )
         )
     await db.commit()

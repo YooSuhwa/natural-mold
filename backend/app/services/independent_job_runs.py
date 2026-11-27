@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
-from sqlalchemy.sql.selectable import CTE
+from sqlalchemy.sql.selectable import CTE, Subquery
 
+from app.authz.independent_job_history import readable_job_conversations
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
@@ -24,6 +25,7 @@ def job_run_lineage(context: OrgContext, job_ids: Sequence[UUID] | None = None) 
         ConversationRun.tenant_id == context.tenant_id,
         ConversationRun.org_id == context.org_id,
         ConversationRun.user_id == context.user_id,
+        ConversationRun.run_source == "CHAT",
     )
     found = (
         select(
@@ -95,20 +97,16 @@ async def current_job_run(
     return await db.scalar(query.execution_options(populate_existing=True))
 
 
-async def describe_jobs(
-    db: AsyncSession,
-    jobs: Sequence[IndependentChatJob],
-    context: OrgContext,
-) -> list[IndependentJobOut]:
-    if not jobs:
-        return []
-    chain = job_run_lineage(context, [job.id for job in jobs])
+def _ranked_job_runs(context: OrgContext, job_ids: Sequence[UUID]) -> Subquery:
+    chain = job_run_lineage(context, job_ids)
     # Evaluate concurrent siblings in the same database snapshot. Only the
     # latest validated resume contributes its status and destination run ID.
-    ranked = (
+    return (
         select(
             chain.c.job_id,
             chain.c.run_id,
+            chain.c.conversation_id,
+            chain.c.status,
             func.row_number()
             .over(
                 partition_by=chain.c.job_id,
@@ -120,15 +118,34 @@ async def describe_jobs(
         .where(_is_latest_resume(chain))
         .subquery()
     )
+
+
+async def describe_jobs(
+    db: AsyncSession,
+    jobs: Sequence[IndependentChatJob],
+    context: OrgContext,
+) -> list[IndependentJobOut]:
+    if not jobs:
+        return []
+    ranked = _ranked_job_runs(context, [job.id for job in jobs])
     rows = await db.execute(
         select(ranked.c.job_id, ConversationRun, Conversation.agent_name_snapshot)
         .join(ConversationRun, ConversationRun.id == ranked.c.run_id)
         .join(Conversation, Conversation.id == ConversationRun.conversation_id)
         .where(ranked.c.rank == 1)
-        .execution_options(populate_existing=True)
+        .execution_options(populate_existing=True, autoflush=False)
     )
     by_job = {ident: (run, name) for ident, run, name in rows}
     return [_job_view(job, *by_job[job.id]) for job in jobs if job.id in by_job]
+
+
+async def describe_readable_jobs(
+    db: AsyncSession,
+    jobs: Sequence[IndependentChatJob],
+    context: OrgContext,
+) -> list[IndependentJobOut]:
+    visible = await readable_job_conversations(db, context, job_ids=[job.id for job in jobs])
+    return await describe_jobs(db, [job for job in jobs if job.id in visible], context)
 
 
 async def describe_job(
@@ -169,25 +186,90 @@ def _job_view(job: IndependentChatJob, run: ConversationRun, child_name: str) ->
     )
 
 
-async def notification_jobs_visible(
-    db: AsyncSession, refs: dict[UUID, tuple[UUID, UUID]], context: OrgContext
+async def readable_independent_child_run_ids(
+    db: AsyncSession,
+    *,
+    conversation_id: UUID,
+    run_ids: Collection[UUID] | None = None,
+    context: OrgContext,
 ) -> set[UUID]:
-    if not refs:
+    """Read only the original run and its resumes, optionally intersect a candidate page."""
+    if run_ids is not None and not run_ids:
         return set()
-    jobs = await db.scalars(
-        select(IndependentChatJob)
-        .join(Conversation, Conversation.id == IndependentChatJob.parent_conversation_id)
-        .where(
-            IndependentChatJob.id.in_(refs),
-            private_scope_predicate(Conversation, context),
-            private_scope_predicate(IndependentChatJob, context),
-        )
+    pairs = await readable_job_conversations(db, context, conversation_ids=[conversation_id])
+    if not pairs:
+        return set()
+    chain = job_run_lineage(context, list(pairs))
+    query = select(chain.c.run_id)
+    if run_ids is not None:
+        query = query.where(chain.c.run_id.in_(run_ids))
+    return set(await db.scalars(query.execution_options(autoflush=False)))
+
+
+async def can_read_independent_child_run(
+    db: AsyncSession,
+    *,
+    conversation_id: UUID,
+    run_id: UUID,
+    context: OrgContext,
+) -> bool:
+    return run_id in await readable_independent_child_run_ids(
+        db,
+        conversation_id=conversation_id,
+        run_ids=[run_id],
+        context=context,
+    )
+
+
+async def readable_independent_child_conversation_ids(
+    db: AsyncSession,
+    *,
+    conversation_ids: Collection[UUID],
+    context: OrgContext,
+) -> set[UUID]:
+    pairs = await readable_job_conversations(db, context, conversation_ids=conversation_ids)
+    if not pairs:
+        return set()
+    initial = job_run_lineage(context, list(pairs))
+    query = select(initial.c.conversation_id).where(initial.c.parent_run_id.is_(None))
+    return set(await db.scalars(query.execution_options(autoflush=False)))
+
+
+async def can_read_independent_child_conversation(
+    db: AsyncSession,
+    *,
+    conversation_id: UUID,
+    context: OrgContext,
+) -> bool:
+    return conversation_id in await readable_independent_child_conversation_ids(
+        db,
+        conversation_ids=[conversation_id],
+        context=context,
+    )
+
+
+async def notification_jobs_visible(
+    db: AsyncSession,
+    refs: dict[UUID, tuple[UUID, UUID]],
+    context: OrgContext,
+    *,
+    propagate_outage: bool = False,
+) -> set[UUID]:
+    visible = await readable_job_conversations(
+        db, context, job_ids=refs.keys(), propagate_outage=propagate_outage
+    )
+    if not visible:
+        return set()
+    ranked = _ranked_job_runs(context, list(visible))
+    rows = await db.execute(
+        select(ranked.c.job_id, ranked.c.conversation_id, ranked.c.run_id)
+        .where(ranked.c.rank == 1, ranked.c.status == "completed")
+        .execution_options(autoflush=False)
     )
     return {
-        job.id
-        for job in await describe_jobs(db, jobs.all(), context)
-        if job.status == "completed"
-        and refs[job.id] == (job.child_conversation_id, job.child_run_id)
+        job_id
+        for job_id, conversation_id, run_id in rows
+        if refs[job_id] == (conversation_id, run_id)
     }
 
 

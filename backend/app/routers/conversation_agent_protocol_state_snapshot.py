@@ -135,9 +135,9 @@ async def load_thread_state_snapshot(
             checkpointer, str(conversation.id), conversation, tree.active_checkpoint_id
         )
     except RuntimeError:
-        return await _legacy_thread_state_snapshot(conversation, db, secret_values=secrets)
+        return await _legacy_thread_state_snapshot(conversation, db, context, secret_values=secrets)
     if not tree.nodes:
-        return await _legacy_thread_state_snapshot(conversation, db, secret_values=secrets)
+        return await _legacy_thread_state_snapshot(conversation, db, context, secret_values=secrets)
 
     channel_values, checkpoint_run_id = await load_checkpoint_values_and_run(
         checkpointer, thread_id=str(conversation.id), checkpoint_id=tree.active_checkpoint_id
@@ -201,6 +201,7 @@ async def load_thread_state_snapshot(
 async def _legacy_thread_state_snapshot(
     conversation: Conversation,
     db: AsyncSession | None,
+    context: OrgContext,
     *,
     secret_values: Iterable[str] | None = None,
 ) -> ThreadStateSnapshot:
@@ -212,7 +213,7 @@ async def _legacy_thread_state_snapshot(
         )
     messages = project_and_redact_protocol_data(
         "messages",
-        await legacy_state_messages(db, conversation.id),
+        await legacy_state_messages(db, conversation, context),
         secret_values=secret_values,
     )
     return ThreadStateSnapshot(

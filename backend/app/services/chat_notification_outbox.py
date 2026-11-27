@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.notifications import Target, notify
@@ -142,7 +143,7 @@ async def enqueue_goal_transition(
 
 
 async def drain_chat_notification_outbox(
-    db: AsyncSession, *, tenant_id: UUID, limit: int = 50
+    db: AsyncSession, *, tenant_id: UUID, limit: int = 50, outbox_id: UUID | None = None
 ) -> int:
     """Process a due batch in the caller's tenant transaction, including after switch-off."""
     from app.services.chat_notification_access import resolve_work_destination
@@ -150,15 +151,16 @@ async def drain_chat_notification_outbox(
     if limit < 1:
         return 0
     now = datetime.now(UTC)
+    query = select(ChatNotificationOutbox).where(
+        ChatNotificationOutbox.tenant_id == tenant_id,
+        ChatNotificationOutbox.status == "pending",
+        ChatNotificationOutbox.available_at <= now,
+    )
+    if outbox_id is not None:
+        query = query.where(ChatNotificationOutbox.id == outbox_id)
     rows = list(
         await db.scalars(
-            select(ChatNotificationOutbox)
-            .where(
-                ChatNotificationOutbox.tenant_id == tenant_id,
-                ChatNotificationOutbox.status == "pending",
-                ChatNotificationOutbox.available_at <= now,
-            )
-            .order_by(ChatNotificationOutbox.available_at, ChatNotificationOutbox.id)
+            query.order_by(ChatNotificationOutbox.available_at, ChatNotificationOutbox.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
             .execution_options(populate_existing=True)
@@ -195,7 +197,9 @@ async def drain_chat_notification_outbox(
                     from app.services.chat_notification_approval import publish_goal_approval
 
                     notification = await publish_goal_approval(db, row)
-                elif destination := await resolve_work_destination(db, row):
+                if row.kind != "chat_goal.approval_requested" and (
+                    destination := await resolve_work_destination(db, row)
+                ):
                     link = None
                     if destination.agent_id:
                         link = f"/agents/{destination.agent_id}/conversations/{row.conversation_id}"
@@ -214,6 +218,17 @@ async def drain_chat_notification_outbox(
                 row.notification_id = notification.id if notification is not None else None
                 row.finished_at = now
         except Exception as error:
+            if isinstance(error, DBAPIError) and getattr(error.orig, "sqlstate", None) == "55P03":
+                # The concurrent editor owns the parent. A second outbox UPDATE in
+                # this transaction can trigger another FK check against that same
+                # row. Its attempt is already recorded; retry on the next sweep.
+                logger.info(
+                    "chat_notice_busy id=%s attempt=%d queue_age_seconds=%d",
+                    row_id,
+                    attempts,
+                    queue_age,
+                )
+                continue
             # The savepoint rolled back the bell write, including failures after
             # notify() flushed. A later attempt can safely create it once.
             retry_delay = min(5 * (2 ** min(attempts - 1, 6)), 300)

@@ -279,12 +279,12 @@ async def allow_automatic_start(
 ) -> bool:
     if not await verify_goal_followup(db, conversation=conversation, input_id=input_id):
         return False
-    from app.services.conversation_run_service import get_latest_interrupted_run
+    from app.services.conversation_goal_interrupts import waiting_goal_input_reason
 
-    if await get_latest_interrupted_run(db, conversation_id=conversation.id, context=context):
-        await block_goal_followup(
-            db, conversation=conversation, input_id=input_id, reason="approval_pending"
-        )
+    if reason := await waiting_goal_input_reason(
+        db, conversation_id=conversation.id, context=context
+    ):
+        await block_goal_followup(db, conversation=conversation, input_id=input_id, reason=reason)
         return False
     if conversation.queue_paused:
         await block_goal_followup(

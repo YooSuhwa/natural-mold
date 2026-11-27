@@ -28,10 +28,11 @@ type Delegation = tuple[OrgContext, ConversationRun, ConversationRun, Independen
 
 
 async def _approval(db: AsyncSession, run: ConversationRun, source: str) -> ApprovalRequest:
-    run.status, run.is_active, run.interrupt_id = "interrupted", False, "review-report"
+    interrupt_id = "review-report"
+    run.status, run.is_active, run.interrupt_id = "interrupted", False, interrupt_id
     await db.flush()
     interrupt = PendingInterrupt(
-        run.interrupt_id,
+        interrupt_id,
         {
             "action_requests": [{"name": "review_report", "args": {}}],
             "review_configs": [{"action_name": "review_report", "allowed_decisions": ["approve"]}],

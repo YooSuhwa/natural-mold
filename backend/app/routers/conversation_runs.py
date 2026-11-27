@@ -14,6 +14,7 @@ from app.agent_runtime.event_broker import EventBroker, broker_for_run_owner, sl
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.streaming import format_sse
+from app.authz.conversation_scope import can_read_conversation_run_id
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
 from app.config import settings
@@ -137,13 +138,16 @@ async def get_active_conversation_run(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    conversation: Conversation = Depends(owned_conversation),
 ):
     run = await conversation_run_service.get_active_run(
         db,
         conversation_id=conversation_id,
         context=context,
     )
-    return ConversationRunHistoryResponse.model_validate(run) if run is not None else None
+    if run is None or not await can_read_conversation_run_id(db, conversation, run.id, context):
+        return None
+    return ConversationRunHistoryResponse.model_validate(run)
 
 
 @router.get(
@@ -163,6 +167,8 @@ async def stream_conversation_run(
     conversation: Conversation = Depends(owned_conversation),
 ) -> StreamingResponse:
     after_id = last_event_id or last_event_id_header
+    if not await can_read_conversation_run_id(db, conversation, run_id, context):
+        raise resume_not_found()
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,
@@ -300,7 +306,10 @@ async def get_conversation_run(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    conversation: Conversation = Depends(owned_conversation),
 ):
+    if not await can_read_conversation_run_id(db, conversation, run_id, context):
+        raise resume_not_found()
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,

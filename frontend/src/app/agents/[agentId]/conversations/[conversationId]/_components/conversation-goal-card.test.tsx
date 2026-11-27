@@ -83,6 +83,17 @@ describe('ConversationGoalCard', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  it('shows how to continue when a question or account connection needs input', async () => {
+    getConversationGoal.mockResolvedValue({
+      enabled: true,
+      goal: { ...goal, status: 'blocked', blocked_reason: 'input_required' },
+    })
+    const user = userEvent.setup()
+    render(<ConversationGoalCard conversationId={conversationId} />)
+    await user.click(await screen.findByText(goal.title))
+    expect(screen.getByText('채팅에서 질문에 답하거나 요청된 계정을 연결하세요.')).toBeVisible()
+  })
+
   it('keeps historical evidence readable with the checked version when goals are disabled', async () => {
     getConversationGoal.mockResolvedValue({ enabled: false, goal })
     const user = userEvent.setup()
