@@ -21,7 +21,6 @@ from app.dependencies import (
     owned_conversation,
     verify_csrf,
 )
-from app.models.conversation import Conversation
 from app.services.ag_ui_start_input import start_message_id
 from app.services.ag_ui_submission import submit_ag_ui_run
 
@@ -49,10 +48,10 @@ async def post_ag_ui_run(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
-    conversation: Conversation = Depends(owned_conversation),
     _csrf: None = Depends(verify_csrf),
     _authz: AuthzService = Depends(bind_request_authz),
 ) -> StreamingResponse:
+    conversation = await owned_conversation(conversation_id, db, context)
     binding = await submit_ag_ui_run(
         db,
         request=request,

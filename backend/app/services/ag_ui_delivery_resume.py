@@ -17,12 +17,12 @@ from app.exceptions import ConflictError
 from app.models.approval_request import ApprovalRequest
 from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import ConversationRun
-from app.routers.conversation_agent_protocol_interrupts import ThreadInterrupt
-from app.routers.conversation_resume_decisions import decision_problem
 from app.services.ag_ui_pending_checkpoint import read_pending_checkpoint
 from app.services.ag_ui_pending_child_authority import require_pending_child_authority
 from app.services.ag_ui_resume import edited_actions_digest
 from app.services.conversation_goal_worker import INPUT_KEY
+from app.services.conversation_resume_decisions import decision_problem
+from app.services.conversation_resume_types import ThreadInterrupt
 from app.services.conversation_run_service import get_run_for_user
 from app.workflows.tool_waits import adapt_resume
 

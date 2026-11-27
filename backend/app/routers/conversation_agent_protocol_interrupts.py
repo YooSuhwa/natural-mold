@@ -14,12 +14,7 @@ from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_replay import load_protocol_events
 from app.routers.conversation_resume_decisions import STALE, decision_problem
 from app.services import conversation_run_service
-
-
-class ThreadInterrupt(TypedDict):
-    id: str
-    value: Any
-    ns: list[str]
+from app.services.conversation_resume_types import ThreadInterrupt as ThreadInterrupt
 
 
 class ThreadTask(TypedDict):
