@@ -21,13 +21,6 @@
     "message": "Anchors must have content and the content must be accessible by a screen reader."
   },
   {
-    "filePath": "src/components/chat/right-rail/chat-right-rail.tsx",
-    "line": 409,
-    "column": 13,
-    "ruleId": "jsx-a11y/anchor-has-content",
-    "message": "Anchors must have content and the content must be accessible by a screen reader."
-  },
-  {
     "filePath": "src/components/chat/trace-debugger-view.tsx",
     "line": 103,
     "column": 27,
@@ -129,13 +122,6 @@
     "filePath": "src/components/chat/artifacts/providers/pptx-preview.tsx",
     "line": 109,
     "column": 11,
-    "ruleId": "jsx-a11y/control-has-associated-label",
-    "message": "A control must be associated with a text label."
-  },
-  {
-    "filePath": "src/components/chat/right-rail/chat-right-rail.tsx",
-    "line": 409,
-    "column": 13,
     "ruleId": "jsx-a11y/control-has-associated-label",
     "message": "A control must be associated with a text label."
   },

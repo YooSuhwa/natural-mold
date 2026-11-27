@@ -406,9 +406,12 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
           variant="ghost"
           size="icon-sm"
           className="hidden xl:inline-flex"
-          aria-label={tArtifacts('download')}
           render={
-            <a href={resolveImageUrl(artifact.download_url) ?? artifact.download_url} download />
+            <a
+              aria-label={tArtifacts('download')}
+              href={resolveImageUrl(artifact.download_url) ?? artifact.download_url}
+              download
+            />
           }
         >
           <DownloadIcon className="size-4" />
