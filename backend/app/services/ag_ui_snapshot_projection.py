@@ -308,25 +308,44 @@ class AgUiRunSnapshot:
     def _finish_open_children(self, frame: Frame) -> None:
         outcome = frame.get("outcome")
         reason = _string(outcome.get("type")) if isinstance(outcome, dict) else None
-        status = {"cancelled": "cancelled", "interrupt": "interrupted"}.get(reason or "")
-        if frame["type"] == "RUN_ERROR":
-            status = "failed"
-        if status:
-            for child in self._children.values():
-                if child["status"] == "running":
-                    child["status"] = status
-        if status == "interrupted" and isinstance(outcome, dict):
+        if reason == "interrupt" and isinstance(outcome, dict):
+            # A terminal run frame can carry a root approval or only one child's
+            # approval. It does not end or suspend parallel siblings.
+            owners = [
+                cid for cid, child in self._children.items() if child["status"] == "interrupted"
+            ]
             interrupts = outcome.get("interrupts")
             if isinstance(interrupts, list):
                 for item in interrupts:
                     if not isinstance(item, dict):
                         continue
                     owner, iid = _string(item.get("subagentRunId")), _string(item.get("id"))
-                    child = self._children.get(owner) if owner else None
-                    if iid and child and child["status"] == status:
-                        ids = child.setdefault("interruptIds", [])
-                        if isinstance(ids, list) and iid not in ids:
-                            ids.append(iid)
+                    if not owner or not iid:
+                        continue
+                    child = self._children.get(owner)
+                    if child is None or child["status"] not in ("running", "interrupted"):
+                        continue
+                    ids = child.setdefault("interruptIds", [])
+                    if isinstance(ids, list) and iid not in ids:
+                        ids.append(iid)
+                    owners.append(owner)
+            seen: set[str] = set()
+            while owners:
+                owner = owners.pop()
+                if owner in seen:
+                    continue
+                seen.add(owner)
+                child = self._children.get(owner)
+                if child is None or child["status"] not in ("running", "interrupted"):
+                    continue
+                child["status"] = "interrupted"
+                if parent := _string(child.get("parentSubagentRunId")):
+                    owners.append(parent)
+        elif reason == "cancelled" or frame["type"] == "RUN_ERROR":
+            status = "failed" if frame["type"] == "RUN_ERROR" else "cancelled"
+            for child in self._children.values():
+                if child["status"] == "running":
+                    child["status"] = status
 
     def _state(self, frame: Frame, owner: str | None) -> None:
         state = frame.get("snapshot")
