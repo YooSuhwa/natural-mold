@@ -54,7 +54,9 @@ def report(tmp_path, monkeypatch):
 
 
 def accepted(report, digest="c" * 64):
-    settings.goal_sandbox_evidence_path.write_text(json.dumps(report))
+    path = settings.goal_sandbox_evidence_path
+    assert path is not None
+    path.write_text(json.dumps(report))
     return measured_skill_hashes(digest)
 
 
