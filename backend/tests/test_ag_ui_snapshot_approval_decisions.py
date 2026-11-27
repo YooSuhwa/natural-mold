@@ -285,3 +285,45 @@ def test_conflicting_history_or_multiple_claims_cannot_assign_two_decisions_to_o
         transcript.continuations[0], raw_id="conflicting-private-issuance"
     )
     assert transcript.decisions(original) == []
+
+
+def test_only_a_consistently_typed_observed_approval_can_supply_a_root_or_child_actor() -> None:
+    from app.agent_runtime.ag_ui_v1 import public_subagent_id
+
+    from app.agent_runtime.protocol_events import stored_protocol_event
+    from app.services.ag_ui_journal import JournalEntry, JournalPage
+    from app.services.ag_ui_snapshot_journal import SnapshotRunReplay, _ObservedOwners
+
+    namespace = ("tools:delegated",)
+    child = public_subagent_id("thread", namespace)
+    approval = {"action_requests": [{"name": "search", "args": {}}], "review_configs": []}
+    question = {"type": "ask_user", "question": "Which entry?"}
+    sources = [
+        ("root", (), approval),
+        ("child", namespace, approval),
+        ("child", (), approval),
+        ("question", (), question),
+        ("conflict", (), approval),
+        ("conflict", (), question),
+        ("revoked-child", ("tools:hidden",), approval),
+        ("revoked-child", (), approval),
+    ]
+    observed = _ObservedOwners()
+    for seq, (slot, ns, value) in enumerate(sources, start=1):
+        event = stored_protocol_event(
+            run_id="physical",
+            thread_id="thread",
+            seq=seq,
+            method="input.requested",
+            namespace=list(ns),
+            data={"interrupt_id": slot, "payload": value},
+        )
+        observed.observe(
+            JournalPage("g", (JournalEntry(seq, str(seq), (event,)),), False, False, "interrupted")
+        )
+    replay = SnapshotRunReplay(
+        visibility=ChildVisibility(False, frozenset(), frozenset({namespace})),
+        subagents=[{"subagentRunId": child}],
+    )
+    observed.bind(replay, "thread", {})
+    assert replay.approval_interrupt_owners == {"root": None, "child": child}
