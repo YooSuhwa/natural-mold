@@ -204,11 +204,11 @@ async def settle_terminal_steers(
 
 
 async def recover_terminal_steers(
-    platform_sessions: Callable[[], AsyncSession],
+    queue_scan_session: Callable[[], AsyncSession],
     company_session: Callable[[TenantScoped], AsyncSession],
 ) -> None:
     """After restart, recover even receipts admitted before the feature was disabled."""
-    async with platform_sessions() as db:
+    async with queue_scan_session() as db:
         candidates = (await db.execute(_pending_terminal_targets())).all()
     for run_id, conversation_id, user_id, org_id, tenant_id in candidates:
         await settle_terminal_steers(
