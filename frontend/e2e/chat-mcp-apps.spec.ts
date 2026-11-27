@@ -114,6 +114,56 @@ function isToolCallProxyResponse(response: Response, seeded: SeededMcpApp): bool
   return isRecord(body) && body.method === 'tools/call'
 }
 
+function expectRestoredWidget(snapshot: unknown, seeded: SeededMcpApp, bindingId: string) {
+  if (
+    !isRecord(snapshot) ||
+    !Array.isArray(snapshot.messages) ||
+    !Array.isArray(snapshot.messageLinks)
+  ) {
+    throw new Error('The chat snapshot is missing its public messages or links')
+  }
+  const messages = snapshot.messages.filter(isRecord)
+  const widgets = messages.filter(
+    (row) => row.role === 'activity' && row.activityType === 'moldy.mcp_app',
+  )
+  expect(widgets).toHaveLength(1)
+  const widget = widgets[0]
+  if (!widget || !isRecord(widget.content)) throw new Error('Expected a bound MCP App pointer')
+  const publicToolCallId = requiredString(widget.content, 'public_tool_call_id')
+  expect(publicToolCallId).not.toBe(seeded.toolCallId)
+  expect(widget.content).toMatchObject({
+    run_id: seeded.runId,
+    binding_id: bindingId,
+    tool_call_id: seeded.toolCallId,
+  })
+  for (const privateField of [
+    'mcp_app',
+    'structured_content',
+    'structuredContent',
+    'result_meta',
+  ]) {
+    expect(widget.content).not.toHaveProperty(privateField)
+  }
+  const issuer = messages.find(
+    (row) =>
+      row.role === 'assistant' &&
+      Array.isArray(row.toolCalls) &&
+      row.toolCalls.some((call: unknown) => isRecord(call) && call.id === publicToolCallId),
+  )
+  if (!issuer) throw new Error('The widget has no matching public tool issuance')
+  expect(messages).toContainEqual(
+    expect.objectContaining({ role: 'tool', toolCallId: publicToolCallId }),
+  )
+  expect(snapshot.messageLinks).toContainEqual(
+    expect.objectContaining({
+      messageId: widget.id,
+      physicalRunId: seeded.runId,
+      parentMessageId: issuer.id,
+      parentToolCallId: publicToolCallId,
+    }),
+  )
+}
+
 test.describe('Chat MCP Apps', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
   test.skip(
@@ -173,7 +223,36 @@ test.describe('Chat MCP Apps', () => {
       expect(JSON.stringify(appSeed.artifact)).not.toContain('Authorization')
       expect(JSON.stringify(appSeed.artifact)).not.toContain(fixture.url)
 
-      await page.goto(`/agents/${appSeed.agentId}/conversations/${appSeed.conversationId}`)
+      const agUi = process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui'
+      const conversationPath = `/api/conversations/${appSeed.conversationId}`
+      const widgetPath = `${conversationPath}/runs/${appSeed.runId}/mcp-apps/${encodeURIComponent(appSeed.toolCallId)}`
+      const bindingId = requiredString(mcpApp, 'binding_id')
+      const privateReads: string[] = []
+      if (agUi)
+        page.on('response', (response) => {
+          const url = new URL(response.url())
+          if (
+            response.ok() &&
+            response.request().method() === 'GET' &&
+            url.pathname === widgetPath
+          ) {
+            privateReads.push(url.searchParams.get('binding_id') ?? '')
+          }
+        })
+      const [snapshot] = await Promise.all([
+        agUi
+          ? page.waitForResponse(
+              (response) =>
+                response.request().method() === 'GET' &&
+                new URL(response.url()).pathname === `${conversationPath}/ag-ui/snapshot`,
+            )
+          : Promise.resolve(null),
+        page.goto(`/agents/${appSeed.agentId}/conversations/${appSeed.conversationId}`),
+      ])
+      if (snapshot) {
+        expect(snapshot.ok()).toBe(true)
+        expectRestoredWidget(await snapshot.json(), appSeed, bindingId)
+      }
       const app = page.locator(`[data-mcp-app-resource="${RESOURCE_URI}"]`)
       await expect(app).toBeVisible({ timeout: 20_000 })
 
@@ -181,6 +260,7 @@ test.describe('Chat MCP Apps', () => {
       await expect(appFrame).toHaveCount(1, { timeout: 20_000 })
       const frame = appFrame.contentFrame()
       await expect(frame.getByText('Weather: 23 C')).toBeVisible({ timeout: 20_000 })
+      if (agUi) expect(privateReads).toContain(bindingId)
       expect(shimRequests()).toBeGreaterThan(0)
       const [toolResponse] = await Promise.all([
         page.waitForResponse((response) => isToolCallProxyResponse(response, appSeed)),
