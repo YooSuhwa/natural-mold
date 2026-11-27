@@ -1,9 +1,10 @@
-import type { APIRequestContext, Route } from '@playwright/test'
+import type { APIRequestContext } from '@playwright/test'
 import { z } from 'zod'
 
 import { textContentFromMessageContent } from '../src/lib/chat/langgraph-runtime/stream-message-content'
 import { API_BASE, apiDeleteOk, apiGetJson, apiPostJson, expect, loginApi, test } from './fixtures'
 import { observeMutations, observeStandardStreams, standardCommand } from './helpers/ag-ui-cutover'
+import { observeSelectedApprovalReads } from './helpers/approval-readiness-fetch'
 import { SCRIPTED_MODEL, SCRIPTED_PROVIDER } from './langgraph-v3-helpers'
 
 const question = z.object({
@@ -202,7 +203,6 @@ for (const profile of ['native', 'middleware-backed'] as const) {
       const selectedUrl = new URL(snapshotUrl)
       const sameSnapshotEndpoint = (url: URL) =>
         url.origin === selectedUrl.origin && url.pathname === selectedUrl.pathname
-      const selectedRead = (url: URL) => sameSnapshotEndpoint(url) && !url.search
       let terminalQuestionMatches = false
       const writes = observeMutations(page, conversationId)
       const legacyMessageUrl = api + '/messages'
@@ -232,16 +232,14 @@ for (const profile of ['native', 'middleware-backed'] as const) {
         labels: ['🍎 사과'],
       })
 
-      const inFlight = new Set<Promise<void>>()
       let released = false
-      async function inspectSelection(route: Route) {
-        if (released || route.request().method() !== 'GET') return route.continue()
+      let stopWatching: (() => Promise<void>) | undefined
+      async function inspectSelection(httpStatus: number, body: unknown) {
+        if (released) return
         observations.interceptedReads++
-        const original = await route.fetch({ maxRedirects: 0 })
-        observations.lastHttpStatus = original.status()
-        if (original.ok()) {
+        observations.lastHttpStatus = httpStatus
+        if (httpStatus >= 200 && httpStatus < 300) {
           observations.successfulReads++
-          const body: unknown = await original.json().catch(() => undefined)
           const status = snapshotStatus.safeParse(body)
           if (!status.success) observations.malformedReads++
           if (status.success && status.data.runStatus === 'interrupted') {
@@ -273,25 +271,16 @@ for (const profile of ['native', 'middleware-backed'] as const) {
             }
           }
         }
-        await route.fulfill({ response: original })
-      }
-      function selectedHandler(route: Route) {
-        const read = inspectSelection(route)
-        inFlight.add(read)
-        return read.finally(() => inFlight.delete(read))
       }
       async function releaseSelectedReads() {
         if (released) return
         released = true
         release.resolve()
-        await page.unroute(selectedRead, selectedHandler)
-        // A selected-history GET may already be inside route.fetch. Let its genuine
-        // response finish before interacting again or disposing the current page.
-        await Promise.all(inFlight)
+        await stopWatching?.()
       }
       try {
         await observeStandardStreams(page, conversationId)
-        await page.route(selectedRead, selectedHandler)
+        stopWatching = await observeSelectedApprovalReads(page, snapshotUrl, inspectSelection)
         await page.goto(`/agents/${setup.agentId}/conversations/${conversationId}`)
         const form = page.locator('form[data-moldy-thread-composer]').last()
         const composer = form.locator('textarea[data-moldy-composer-input="true"]')
