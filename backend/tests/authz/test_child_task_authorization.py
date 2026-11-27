@@ -409,3 +409,33 @@ async def test_resume_checks_both_original_and_current_pins(
             current_run_id=resumed.run_id,
             child_agent_id=child_case.child_id,
         )
+
+        # A handoff owns the original parent run. It may compare the resumed
+        # identity without expanding the lock set or gaining dispatch authority.
+        await db.rollback()
+        await authorization.authorize_child_target(
+            db, graph.context, child_case.run_id, child_case.child_id, require_active=False
+        )
+        await authorization.verify_child_task_identity(
+            db,
+            context=graph.context,
+            original_run_id=child_case.run_id,
+            current_run_id=resumed.run_id,
+            child_agent_id=child_case.child_id,
+        )
+        with pytest.raises(ChildTaskStopped, match="revoked"):
+            await authorization.require_same_child_identity(
+                db,
+                previous_run_id=child_case.run_id,
+                current_run_id=resumed.run_id,
+                child_agent_id=child_case.child_id,
+            )
+        await db.rollback()
+        with pytest.raises(ChildTaskStopped, match="revoked"):
+            await authorization.verify_child_task_identity(
+                db,
+                context=graph.context,
+                original_run_id=child_case.run_id,
+                current_run_id=resumed.run_id,
+                child_agent_id=child_case.child_id,
+            )

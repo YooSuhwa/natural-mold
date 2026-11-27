@@ -20,7 +20,7 @@ from app.authz.denials import authz_unavailable
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import acquire_execution_proof, lock_row
-from app.authz.organization_execution_proof import live_proof
+from app.authz.organization_execution_proof import execution_scope, live_proof
 from app.authz.principal import Principal
 from app.authz.scoping import private_scope_predicate
 from app.exceptions import AppError
@@ -255,8 +255,45 @@ async def require_same_child_identity(
         raise ChildTaskStopped("revoked")
     scope = proof.scope
     context = OrgContext(scope.org_id, scope.tenant_id, scope.user_id)
-    original = await _target(db, context, previous_run_id, child_agent_id)
-    current = await _target(db, context, current_run_id, child_agent_id)
-    # Each snapshot was matched to the same locked Agent, link and current identity.
-    if original != current or not proof.covers_conversation(current.conversation_id):
+    await verify_child_task_identity(
+        db,
+        context=context,
+        original_run_id=previous_run_id,
+        current_run_id=current_run_id,
+        child_agent_id=child_agent_id,
+    )
+
+
+async def verify_child_task_identity(
+    db: AsyncSession,
+    *,
+    context: OrgContext,
+    original_run_id: UUID,
+    current_run_id: UUID,
+    child_agent_id: UUID,
+) -> None:
+    """Compare admitted participants under a caller's scoped, locked parent and agent tree.
+
+    This checks immutable identities only. Dispatch permission, resume lineage and the
+    child-task binding remain the caller's responsibility.
+    """
+    proof = live_proof(db)
+    if (
+        proof is None
+        or proof.scope != execution_scope(context)
+        or child_agent_id not in proof.agent_ids
+        or not (
+            proof.cursor.holds(LockClass.RUN, original_run_id)
+            or proof.cursor.holds(LockClass.RUN, current_run_id)
+        )
+    ):
         raise ChildTaskStopped("revoked")
+    original = await _target(db, context, original_run_id, child_agent_id)
+    if original.parent_id not in proof.agent_ids or not proof.covers_conversation(
+        original.conversation_id
+    ):
+        raise ChildTaskStopped("revoked")
+    if current_run_id != original_run_id:
+        current = await _target(db, context, current_run_id, child_agent_id)
+        if original != current:
+            raise ChildTaskStopped("revoked")
