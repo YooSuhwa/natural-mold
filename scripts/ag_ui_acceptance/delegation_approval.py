@@ -72,7 +72,7 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
     [waiting] = terminal["interrupts"]
     iid, sid = waiting["id"], waiting["subagentRunId"]
     [action] = waiting["metadata"]["moldy"]["action_requests"]
-    require(action["name"] == "glob", "approval does not name the protected child action")
+    require(action["name"] == "read_file", "approval does not name the protected child action")
     require(
         model.histories == {"alpha": [0, 1], "beta": [0, 0]},
         "wrong child saw the instruction before approval",

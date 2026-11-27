@@ -54,7 +54,9 @@ class ResearchModel:
     requests: int = 0
     guard_alpha: bool = False
     directory: str = ""
-    marker: str = field(default_factory=lambda: f"targeted-proof-{uuid4().hex[:12]}.txt")
+    marker: str = field(default_factory=lambda: f"targeted-content-{uuid4().hex}")
+    skill_slug: str = ""
+    skill_file: str = ""
     protected_results: list[bool] = field(default_factory=list)
 
     async def respond(self, req: web.Request) -> web.Response:
@@ -67,20 +69,8 @@ class ResearchModel:
         self.requests += 1
         message: dict[str, Any] = {"role": "assistant", "content": ""}
         if source is None:
-            answered = {m.get("tool_call_id") for m in tool_results}
-            if any(f"delegate-{source}" in answered for source in SOURCES):
+            if tool_results:
                 message["content"] = ROOT_REPLY
-            elif self.guard_alpha and "seed-proof" not in answered:
-                message["tool_calls"] = [
-                    call(
-                        "write_file",
-                        "seed-proof",
-                        {
-                            "file_path": f"{self.directory}/{self.marker}",
-                            "content": "Synthetic same-room approval fixture.\n",
-                        },
-                    )
-                ]
             else:
                 message["tool_calls"] = [
                     call(
@@ -100,13 +90,11 @@ class ResearchModel:
                 )
                 offered = {t["function"]["name"] for t in body["tools"]}
                 require(
-                    "glob" in offered,
+                    "read_file" in offered,
                     "the protected synthetic file lookup is unavailable",
                 )
                 message["tool_calls"] = [
-                    call(
-                        "glob", "protected-alpha", {"pattern": self.marker, "path": self.directory}
-                    )
+                    call("read_file", "protected-alpha", {"file_path": self.skill_file})
                 ]
             elif tool_results:
                 self.protected_results.extend(
@@ -182,6 +170,23 @@ async def begin_targeted_run(gate: Gate, model: ResearchModel, url: str) -> tupl
         },
         expected=201,
     )
+    skill_ids: list[str] = []
+    if model.guard_alpha:
+        model.skill_slug = f"sibling-proof-{uuid4().hex[:12]}"
+        skill = await http.json(
+            "POST",
+            "/api/skills",
+            {
+                "name": model.skill_slug,
+                "slug": model.skill_slug,
+                "content": (
+                    f"---\nname: {model.skill_slug}\ndescription: Verify this process.\n---\n"
+                    f"{model.marker}\n"
+                ),
+            },
+            expected=201,
+        )
+        skill_ids = [skill["id"]]
     child = await http.json(
         "POST",
         "/api/agents",
@@ -189,11 +194,12 @@ async def begin_targeted_run(gate: Gate, model: ResearchModel, url: str) -> tupl
             "name": name,
             "system_prompt": "Check the assigned source.",
             "model_id": definition["id"],
+            "skill_ids": skill_ids,
             "middleware_configs": [
                 {
                     "type": "human_in_the_loop",
                     "params": {
-                        "interrupt_on": {"glob": {"allowed_decisions": ["approve", "reject"]}}
+                        "interrupt_on": {"read_file": {"allowed_decisions": ["approve", "reject"]}}
                     },
                 }
             ]
@@ -217,6 +223,7 @@ async def begin_targeted_run(gate: Gate, model: ResearchModel, url: str) -> tupl
             {"memory_policy_override": "off"},
         )
     model.directory = f"/conversations/{thread}"
+    model.skill_file = f"/runtime/{thread}/agents/{model.role}/skills/{model.skill_slug}/SKILL.md"
     base = f"/api/conversations/{thread}"
     legacy = f"{base}/langgraph/threads/{thread}"
     request = str(uuid4())
