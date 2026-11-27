@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
@@ -43,7 +45,6 @@ from app.routers.conversation_agent_protocol_runtime import cfg_agent_uuid
 from app.routers.conversation_protocol_messages import (
     messages_from_protocol_input as _messages_from_protocol_input,
 )
-from app.routers.conversation_protocol_response import _wait_for_interrupted_parent_run
 from app.routers.conversation_protocol_start import RunStartEntry, RunStartValidated
 from app.routers.session_consent_scope import SessionConsentPayload, SessionConsentTarget
 from app.services import chat_service, conversation_run_service
@@ -112,6 +113,37 @@ async def _fork_overwrite_input(
         drop_trailing_assistant=drop_trailing_assistant,
         track_attachment_input=True,
     )
+
+
+# M8-2 — 인터럽트 SSE 이벤트는 스트림 도중 즉시 클라이언트에 flush되지만,
+# 부모 run의 "interrupted" 상태 커밋은 워커 finalize 단계다. 카드가 보이자마자
+# 승인하면 전이 전에 resume이 도착할 수 있어, 활성 run이 전이를 마칠 때까지
+# 짧게 기다린다 (활성 run이 아예 없으면 진짜 not-found — 즉시 포기).
+_RESUME_INTERRUPT_WAIT_TIMEOUT_S = 2.0
+_RESUME_INTERRUPT_WAIT_INTERVAL_S = 0.05
+
+
+async def _wait_for_interrupted_parent_run(
+    db: AsyncSession,
+    *,
+    conversation: Conversation,
+    context: OrgContext,
+) -> uuid.UUID | None:
+    """Pin an owned parent before execution locks can block its terminal trace insert."""
+    deadline = time.monotonic() + _RESUME_INTERRUPT_WAIT_TIMEOUT_S
+    candidate = await conversation_run_service.resume_candidate_status(db, conversation, context)
+    if candidate is None:
+        return None
+    run_id, status = candidate
+    while status in {"queued", "running"} and time.monotonic() < deadline:
+        await asyncio.sleep(_RESUME_INTERRUPT_WAIT_INTERVAL_S)
+        fresh = await conversation_run_service.resume_candidate_status(
+            db, conversation, context, run_id=run_id
+        )
+        if fresh is None:
+            break
+        _, status = fresh
+    return run_id
 
 
 async def _handle_input_respond_command(
