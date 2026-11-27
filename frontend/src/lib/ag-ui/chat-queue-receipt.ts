@@ -8,16 +8,13 @@ export function waitForChatQueueReceipt(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const check = () => {
-      const { lastOperation, items } = queue.getSnapshot()
+      const { lastOperation } = queue.getSnapshot()
       const ours = 'requestId' in lastOperation && lastOperation.requestId === requestId
       if (!signal.aborted && ours && lastOperation.kind === 'reconciling') return
       unsubscribe()
       signal.removeEventListener('abort', check)
       if (signal.aborted) reject(signal.reason)
-      else if (
-        (ours && (lastOperation.kind === 'queued' || lastOperation.kind === 'applied')) ||
-        items.some((item) => item.client_request_id === requestId)
-      )
+      else if (ours && (lastOperation.kind === 'queued' || lastOperation.kind === 'applied'))
         resolve()
       else reject(new Error('The chat input has not been confirmed.'))
     }

@@ -6,6 +6,7 @@ import {
   queuedInput,
   queueList,
 } from '@/lib/chat/message-queue/__tests__/server-message-queue-test-fixtures'
+import { ApiError } from '@/lib/api/errors'
 import { useAgUiChatActions } from '../chat-actions'
 
 const mocks = vi.hoisted(() => ({
@@ -65,6 +66,7 @@ describe('AG-UI chat actions', () => {
   })
 
   it('blocks another submission while its durable receipt is being reconciled', async () => {
+    agent.readSnapshot.mockRejectedValue(new Error('offline'))
     agent.submitQueuedInput.mockRejectedValue(new TypeError('receipt lost'))
     mocks.list.mockRejectedValue(new Error('read offline'))
     const { result } = renderHook(() => useAgUiChatActions(options))
@@ -76,7 +78,10 @@ describe('AG-UI chat actions', () => {
     expect(result.current.messageQueue.getSnapshot().rejectedSubmission?.message).toBe(draft)
     await expect(result.current.actions.queueDraft(draft, true)).rejects.toThrow()
     const requestId = agent.submitQueuedInput.mock.calls[0][2]
-    mocks.list.mockResolvedValue(queueList([queuedInput({ client_request_id: requestId })]))
+    agent.readSnapshot.mockResolvedValue({ runId: requestId, inputId: 'stored-input' })
+    mocks.list.mockResolvedValue(
+      queueList([queuedInput({ id: 'stored-input', client_request_id: 'internal-db-key' })]),
+    )
     await act(() => result.current.messageQueue.refresh())
     await accepted
     expect(agent.submitQueuedInput).toHaveBeenCalledTimes(1)
@@ -87,6 +92,7 @@ describe('AG-UI chat actions', () => {
   it('preserves the same command ID on an explicit retry of an unchanged rejected draft', async () => {
     const { result } = renderHook(() => useAgUiChatActions(options))
     const draft = message('keep my draft')
+    agent.readSnapshot.mockRejectedValueOnce(new ApiError(404, 'NOT_FOUND', 'not found'))
     agent.submitQueuedInput.mockRejectedValueOnce(new TypeError('receipt lost'))
     await act(async () => {
       await expect(result.current.actions.queueDraft(draft, false)).rejects.toThrow()
@@ -175,7 +181,7 @@ describe('AG-UI chat actions', () => {
     const input = queuedInput({ status: 'failed', run_id: 'failed-run' })
     const { result } = renderHook(() => useAgUiChatActions(options))
     agent.retryFailedInput.mockRejectedValueOnce(new TypeError('response lost'))
-    mocks.list.mockRejectedValueOnce(new Error('reconciliation offline'))
+    agent.readSnapshot.mockRejectedValueOnce(new Error('reconciliation offline'))
     await act(async () => {
       await expect(result.current.retryFailedInput(input)).rejects.toThrow()
     })

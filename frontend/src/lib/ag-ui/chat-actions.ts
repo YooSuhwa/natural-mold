@@ -3,6 +3,7 @@
 import type { AppendMessage, AttachmentAdapter } from '@assistant-ui/react'
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 
+import { ApiError } from '@/lib/api/errors'
 import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
 import { withResourceContextRunInput } from '@/lib/chat/context/resource-context-payload'
 import { shouldRouteComposerToServerQueue } from '@/lib/chat/message-queue/server-message-queue'
@@ -84,10 +85,25 @@ export function useAgUiChatActions({
       agent.submitQueuedInput(queuedDraft(message, requestId), strategy, requestId),
     [agent],
   )
+  const resolveRequestInputId = useCallback(
+    async (runId: string) => {
+      try {
+        const receipt = await agent.readSnapshot({ runId })
+        if (receipt.runId !== runId || !receipt.inputId)
+          throw new Error('Missing chat input receipt.')
+        return receipt.inputId
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null
+        throw error
+      }
+    },
+    [agent],
+  )
   const { controller: messageQueue, snapshot } = useServerMessageQueue({
     conversationId,
     submit,
     onClaimedRun: followClaim,
+    resolveRequestInputId,
   })
   const queueDraft = useCallback<AgUiChatActions['queueDraft']>(
     async (message, steer) => {

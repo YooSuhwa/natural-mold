@@ -1,9 +1,6 @@
 import type { ExternalThreadQueueAdapter } from '@assistant-ui/react'
 
-import type {
-  ConversationRunInput,
-  ConversationRunInputList,
-} from '@/lib/api/conversation-run-inputs'
+import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
 import type { QueueOperationState } from './server-message-queue-contract'
 
 export class QueueStateError extends Error {
@@ -19,9 +16,8 @@ export function errorMessage(error: unknown): string {
 
 export function reconciledQueueOperation(
   operation: Extract<QueueOperationState, { kind: 'reconciling' }>,
-  list: ConversationRunInputList,
+  accepted: ConversationRunInput | undefined,
 ): { readonly operation: QueueOperationState; readonly accepted: boolean } {
-  const accepted = list.items.find((input) => input.client_request_id === operation.requestId)
   if (!accepted) {
     return {
       operation: {
