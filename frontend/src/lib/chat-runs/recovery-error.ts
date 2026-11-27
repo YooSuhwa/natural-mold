@@ -1,5 +1,6 @@
 const recoveryErrorCodes = [
   'recovery_effect_unconfirmed',
+  'recovery_steer_unconfirmed',
   'recovery_checkpoint_unavailable',
   'recovery_policy_changed',
   'recovery_limit_reached',

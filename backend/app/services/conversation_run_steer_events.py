@@ -75,7 +75,7 @@ class RunSteerReceiptFeed:
     ) -> RunSteerReceiptFeed | None:
         if not settings.chat_steer_enabled or not run_id or profile != "standard":
             return None
-        if source not in {"chat", "start", "resume", "edit", "regenerate"}:
+        if source not in {"chat", "start", "resume", "edit", "regenerate", "recovery"}:
             return None
         try:
             return cls(context, UUID(thread_id), UUID(run_id))

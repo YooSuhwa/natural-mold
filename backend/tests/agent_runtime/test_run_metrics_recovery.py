@@ -49,7 +49,9 @@ def test_recovery_restores_only_current_measured_turn_and_deduplicates_continuat
             HumanMessage(id="verified-user-turn", content="new request"),
             before_crash,
             ToolMessage(id="result", content="done", tool_call_id="lookup"),
+            HumanMessage(id="verified-steer", content="include sources"),
         ],
+        turn_start_index=1,
         events=[
             dict(usage("previous", 50, 20)),
             dict(usage("unattributed", 70, 35)),

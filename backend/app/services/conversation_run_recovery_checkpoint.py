@@ -27,7 +27,9 @@ from app.agent_runtime.runtime_config import AgentConfig
 from app.chat_recovery.receipts import blocking_receipt_code
 from app.database import tenant_session
 from app.models.conversation_run import ConversationRun
+from app.schemas.conversation_graph_input import STEER_RECEIPTS_CHANNEL
 from app.services import thread_branch_service
+from app.services.conversation_recovery_steers import recovery_steers
 from app.services.conversation_recovery_stream import load_recovery_stream_cursor
 from app.services.conversation_run_fence import current_run_fence, lock_run_fence
 
@@ -80,11 +82,20 @@ async def _recovery_head_and_cursor(
     # Only committed tool results can prove a non-replayable effect. A pending
     # model write may explain an already visible tool request, but cannot prove
     # an external action. The compiled live state confirms the request again.
-    committed = turn_tools(messages, run.id)
+    try:
+        steers = await recovery_steers(
+            db, scope, run_id=run.id, conversation_id=run.conversation_id
+        )
+    except RecoveryOutputStarted as error:
+        raise RecoveryCheckpointBlocked("recovery_steer_unconfirmed") from error
+    ledger = values.get(STEER_RECEIPTS_CHANNEL)
+    committed = turn_tools(messages, run.id, steer_receipts=ledger, claimed_steers=steers.claimed)
     for _, channel, value in saved.pending_writes or ():
+        if channel == STEER_RECEIPTS_CHANNEL and value != ledger:
+            raise RecoveryCheckpointBlocked("recovery_steer_unconfirmed")
         if channel == "messages":
             messages.extend(flatten_base_messages(value, source="recovery pending writes"))
-    tools = turn_tools(messages, run.id)
+    tools = turn_tools(messages, run.id, steer_receipts=ledger, claimed_steers=steers.claimed)
     if code := await blocking_receipt_code(db, run.id, completed_call_ids=committed.completed):
         raise RecoveryCheckpointBlocked(code)
     prefix: list[dict[str, Any]] = []
@@ -93,6 +104,7 @@ async def _recovery_head_and_cursor(
             db,
             conversation_id=run.conversation_id,
             run_id=run.id,
+            steers=steers,
             observe_prefix=prefix.extend if metrics is not None else None,
         )
     except RecoveryOutputStarted as error:
@@ -101,7 +113,12 @@ async def _recovery_head_and_cursor(
         raise RecoveryCheckpointBlocked("recovery_output_started")
     if metrics is not None:
         restore_recovery_metrics(
-            metrics, run_id=str(run.id), thread_id=cfg.thread_id, messages=messages, events=prefix
+            metrics,
+            run_id=str(run.id),
+            thread_id=cfg.thread_id,
+            messages=messages,
+            events=prefix,
+            turn_start_index=committed.original_anchor_index,
         )
     return checkpoint_id, cursor
 

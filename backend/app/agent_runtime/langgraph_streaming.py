@@ -182,6 +182,8 @@ async def stream_agent_response_langgraph(
 
             event = ingested.event
             method, data = event["method"], event["data"]
+            if continuation is not None and continuation.already_published_steer_message(event):
+                continue
             if uses_steer_channel(event):
                 # Only committed server receipts may use this channel, including in fallback mode.
                 continue
@@ -195,7 +197,8 @@ async def stream_agent_response_langgraph(
                     for receipt in await steer_receipts.changed_events(
                         first_seq=delivery.max_emitted_seq + 1, force=terminal
                     ):
-                        yield await emit(receipt)
+                        if continuation is None or receipt["id"] not in continuation.event_ids:
+                            yield await emit(receipt)
                 if terminal:
                     steer_receipts = None
             if tool_phase_already_sent(event):
@@ -308,7 +311,8 @@ async def stream_agent_response_langgraph(
             for receipt in await steer_receipts.changed_events(
                 first_seq=delivery.max_emitted_seq + 1, force=True
             ):
-                yield await emit(receipt)
+                if continuation is None or receipt["id"] not in continuation.event_ids:
+                    yield await emit(receipt)
         pending_events = await pending_input_requested_events(
             agent,
             config,

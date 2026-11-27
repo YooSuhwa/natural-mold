@@ -22,15 +22,20 @@ def restore_recovery_metrics(
     thread_id: str,
     messages: Sequence[BaseMessage],
     events: Sequence[dict[str, Any]],
+    turn_start_index: int | None = None,
 ) -> None:
-    """The caller has verified the last human is this run's server-bound input.
+    """The checked anchor keeps supplemental instructions inside the original turn.
 
     Usage events may repeat a previous conversation turn from a values snapshot.
     Admit only assistant and tool identities linked to this checked turn. Include
     provider usage saved by the graph even if the worker died before publishing
     its derived usage event. The accumulator merges cumulative snapshots by ID.
     """
-    start = next(i for i in reversed(range(len(messages))) if isinstance(messages[i], HumanMessage))
+    start = turn_start_index
+    if start is None:
+        start = next(
+            i for i in reversed(range(len(messages))) if isinstance(messages[i], HumanMessage)
+        )
     history = messages[:start]
     metrics.exclude_recovered_history(
         baseline_message_identities(history),

@@ -6,10 +6,16 @@ import hashlib
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+from uuid import UUID
 
 import orjson
+
+from app.agent_runtime import event_names
+from app.agent_runtime.chat_steer_model_delivery import steer_message_id
+from app.agent_runtime.model_input_receipt import text_digest
+from app.schemas.conversation_graph_input import STEER_INPUT_MARKER
 
 
 class RecoveryOutputStarted(ValueError):
@@ -73,6 +79,11 @@ def current_turn_messages(messages: list[Any]) -> list[Any]:
             "human",
             "user",
         }:
+            # Count every tool or response since the original user turn. A steer can
+            # expand this scan, never erase evidence that a side effect already ran.
+            metadata = message.get("response_metadata")
+            if isinstance(metadata, Mapping) and metadata.get(STEER_INPUT_MARKER) is True:
+                continue
             return messages[index + 1 :]
     return messages
 
@@ -123,7 +134,9 @@ def state_output_proof(data: Mapping[str, Any], call_ids: set[str]) -> bool:
     )
 
 
-def recovery_output_started(event: Mapping[str, Any]) -> bool:
+def recovery_output_started(
+    event: Mapping[str, Any], *, verified_steer_events: frozenset[str] = frozenset()
+) -> bool:
     """Check *before* state compaction, or read the proof from the committed event."""
     if event.get("recovery_output_started") is True or event.get("namespace"):
         return True
@@ -140,6 +153,8 @@ def recovery_output_started(event: Mapping[str, Any]) -> bool:
     if method == "lifecycle":
         return data.get("event") not in {"running", "started"}
     if method == "custom":
+        if data.get("name") == event_names.RUN_STEER and event.get("id") in verified_steer_events:
+            return False
         return data.get("name") not in {
             "moldy.subagent_names",
             "moldy.memory_recalled",
@@ -172,6 +187,40 @@ def state_fingerprint(data: Any) -> bytes:
     return hashlib.sha256(orjson.dumps(data, option=orjson.OPT_SORT_KEYS)).digest()
 
 
+def _verified_steer_message(
+    event: Mapping[str, Any], expected: Mapping[str, str], *, run_id: str, thread_id: str
+) -> str | None:
+    """Recognize the root before-model HumanMessage already proved by SQL and checkpoint."""
+    if event.get("method") != "messages" or event.get("namespace") != []:
+        return None
+    data = event.get("data")
+    if not isinstance(data, Mapping) or data.keys() != {
+        "id",
+        "type",
+        "content",
+        "additional_kwargs",
+        "response_metadata",
+        "metadata",
+    }:
+        return None
+    message_id, content, metadata = data["id"], data["content"], data["metadata"]
+    if (
+        data["type"] != "human"
+        or not isinstance(message_id, str)
+        or message_id not in expected
+        or data["additional_kwargs"] != {}
+        or data["response_metadata"] != {STEER_INPUT_MARKER: True}
+        or not isinstance(content, str)
+        or text_digest(content) != expected[message_id]
+        or not isinstance(metadata, Mapping)
+        or metadata.get("langgraph_node") != "RunSteerMiddleware.before_model"
+        or metadata.get("thread_id") != thread_id
+        or metadata.get("moldy_run_id", run_id) != run_id
+    ):
+        return None
+    return message_id
+
+
 @dataclass(frozen=True, slots=True)
 class RecoveryStreamCursor:
     run_id: str
@@ -182,10 +231,35 @@ class RecoveryStreamCursor:
     visible_tool_call_ids: frozenset[str]
     last_values: bytes | None
     usage_keys: frozenset[UsageKey]
+    claimed_steers: Mapping[str, str] = field(default_factory=dict)
+
+    published_steer_messages: Mapping[str, str] = field(default_factory=dict)
+
+    def already_published_steer_message(self, event: Mapping[str, Any]) -> bool:
+        data = event.get("data")
+        if event.get("method") != "messages" or not isinstance(data, Mapping):
+            return False
+        message_id = data.get("id")
+        if not isinstance(message_id, str) or message_id not in self.published_steer_messages:
+            return False
+        if (
+            _verified_steer_message(
+                event, self.published_steer_messages, run_id=self.run_id, thread_id=self.thread_id
+            )
+            is None
+        ):
+            raise RecoveryOutputStarted("Changed steer message in recovered stream")
+        return True
 
     @classmethod
     def from_events(
-        cls, run_id: str, thread_id: str, events: Iterable[Mapping[str, Any]]
+        cls,
+        run_id: str,
+        thread_id: str,
+        events: Iterable[Mapping[str, Any]],
+        *,
+        verified_steer_events: frozenset[str] = frozenset(),
+        claimed_steers: Mapping[str, str] | None = None,
     ) -> RecoveryStreamCursor:
         seq = -1
         seen: set[str] = set()
@@ -193,7 +267,12 @@ class RecoveryStreamCursor:
         calls: set[str] = set()
         values = None
         usage: set[UsageKey] = set()
+        expected = {
+            steer_message_id(UUID(raw)): digest for raw, digest in (claimed_steers or {}).items()
+        }
+        published_messages: dict[str, str] = {}
         for event in events:
+            steer_id = _verified_steer_message(event, expected, run_id=run_id, thread_id=thread_id)
             cursor = event.get("upstream_event_id") or event.get("id")
             event_seq = event.get("seq")
             if (
@@ -204,9 +283,16 @@ class RecoveryStreamCursor:
                 or not isinstance(cursor, str)
                 or not cursor
                 or cursor in seen
-                or recovery_output_started(event)
+                or event.get("recovery_output_started") is True
+                or (
+                    steer_id is None
+                    and recovery_output_started(event, verified_steer_events=verified_steer_events)
+                )
+                or steer_id in published_messages
             ):
                 raise RecoveryOutputStarted("Unusable chat stream prefix")
+            if steer_id is not None:
+                published_messages[steer_id] = expected[steer_id]
             seen.add(cursor)
             seq = event_seq
             committed_ids = event.get("recovery_tool_call_ids", [])
@@ -233,6 +319,8 @@ class RecoveryStreamCursor:
             frozenset(calls),
             values,
             frozenset(usage),
+            dict(claimed_steers or {}),
+            published_messages,
         )
 
 

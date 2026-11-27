@@ -292,3 +292,41 @@ async def test_recovered_values_deliver_unpublished_tool_result_once() -> None:
         ]
     tool_events = [event["params"]["data"] for event in out if event["method"] == "tools"]
     assert [(d["event"], d["tool_call_id"]) for d in tool_events] == [("tool-finished", "read")]
+
+
+def test_only_verified_supplemental_human_replays_can_be_suppressed() -> None:
+    from app.agent_runtime.chat_steer_model_delivery import steer_message_id
+    from app.agent_runtime.model_input_receipt import text_digest
+    from app.schemas.conversation_graph_input import STEER_INPUT_MARKER
+
+    key = uuid4()
+    accepted = {str(key): text_digest("domestic")}
+    message = {
+        "id": steer_message_id(key),
+        "type": "human",
+        "content": "domestic",
+        "additional_kwargs": {},
+        "response_metadata": {STEER_INPUT_MARKER: True},
+        "metadata": {"langgraph_node": "RunSteerMiddleware.before_model", "thread_id": "t"},
+    }
+    frame = stored(1, "messages", message)
+    prior = RecoveryStreamCursor.from_events("r", "t", [frame], claimed_steers=accepted)
+    assert prior.already_published_steer_message(frame)
+    for changed in (
+        {"content": "unaccepted"},
+        {"type": "ai"},
+        {"tool_calls": [{"id": "tool"}]},
+        {"metadata": {"langgraph_node": "other", "thread_id": "t"}},
+        {"response_metadata": {"extra": True, STEER_INPUT_MARKER: True}},
+    ):
+        alternate = {**frame, "data": {**message, **changed}}
+        with pytest.raises(RecoveryOutputStarted):
+            RecoveryStreamCursor.from_events("r", "t", [alternate], claimed_steers=accepted)
+        with pytest.raises(RecoveryOutputStarted):
+            prior.already_published_steer_message(alternate)
+    with pytest.raises(RecoveryOutputStarted):
+        RecoveryStreamCursor.from_events("r", "t", [frame])
+    with pytest.raises(RecoveryOutputStarted):
+        RecoveryStreamCursor.from_events(
+            "r", "t", [frame, {**frame, "id": "other", "seq": 2}], claimed_steers=accepted
+        )

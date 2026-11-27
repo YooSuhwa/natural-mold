@@ -300,3 +300,83 @@ async def test_receipt_committed_after_upstream_root_terminal_stays_outside_clos
     assert seen == [str(steer_id) for steer_id in ids]
     late_row = await db.get(ConversationRunSteer, late_id)
     assert late_row is not None and late_row.status == "pending"
+
+
+async def test_recovery_checks_owned_rows_and_suppresses_only_committed_receipts(
+    db: AsyncSession, receipts: tuple[UUID, UUID, list[UUID]]
+) -> None:
+    from app.agent_runtime.recovery_stream import (
+        RecoveryOutputStarted,
+        RecoveryStreamCursor,
+        continue_protocol_delivery,
+    )
+    from app.services.conversation_recovery_steers import recovery_steers
+
+    conversation_id, run_id, ids = receipts
+    context = unit_context(TEST_USER_ID)
+    first = RunSteerReceiptFeed(context, conversation_id, run_id)
+    pending = [dict(item) for item in await first.changed_events(first_seq=1, force=True)]
+    scoped = await recovery_steers(db, context, run_id=run_id, conversation_id=conversation_id)
+    foreign = await recovery_steers(
+        db, replace(context, user_id=uuid4()), run_id=run_id, conversation_id=conversation_id
+    )
+    for invalid_context, thread, run in (
+        (foreign, conversation_id, run_id),
+        (scoped, uuid4(), run_id),
+        (scoped, conversation_id, uuid4()),
+    ):
+        with pytest.raises(RecoveryOutputStarted):
+            invalid_context.public_ids(pending, thread, run)
+    await conversation_run_steers.claim_steers_for_model(
+        db, conversation_id=conversation_id, run_id=run_id
+    )
+    await conversation_run_steers.confirm_applied_steers(
+        db, conversation_id=conversation_id, run_id=run_id, steer_ids=ids
+    )
+    await db.commit()
+    applied = [dict(item) for item in await first.changed_events(first_seq=3, force=True)]
+    with pytest.raises(RecoveryOutputStarted):
+        scoped.public_ids(pending + applied, conversation_id, run_id)
+    proof = await recovery_steers(db, context, run_id=run_id, conversation_id=conversation_id)
+    with pytest.raises(RecoveryOutputStarted):
+        proof.public_ids(applied, conversation_id, run_id)
+    cursor = RecoveryStreamCursor.from_events(
+        str(run_id),
+        str(conversation_id),
+        pending,
+        verified_steer_events=proof.public_ids(pending, conversation_id, run_id),
+        claimed_steers=proof.claimed,
+    )
+    feed = RunSteerReceiptFeed.for_chat(
+        context, str(conversation_id), str(run_id), source="recovery", profile="standard"
+    )
+    assert feed is not None
+    with continue_protocol_delivery(cursor):
+        chunks = [
+            sse_payload(chunk)
+            async for chunk in stream_agent_response_langgraph(
+                ProtocolAgent([]),
+                None,
+                {"configurable": {"thread_id": str(conversation_id)}},
+                run_id=str(run_id),
+                steer_receipts=feed,
+            )
+        ]
+    actual = [chunk["event_id"] for chunk in chunks if chunk["method"] == "custom"]
+    assert actual == [f"{key}:steer:applied" for key in ids]
+
+
+def test_steer_in_values_does_not_hide_a_prior_response_or_tool_call() -> None:
+    from app.agent_runtime.recovery_stream import state_output_proof
+    from app.schemas.conversation_graph_input import STEER_INPUT_MARKER
+
+    human = {"type": "human", "id": "original", "content": "research"}
+    steer = {"type": "human", "content": "revise", "response_metadata": {STEER_INPUT_MARKER: True}}
+    assert state_output_proof(
+        {"messages": [human, {"type": "ai", "content": "visible"}, steer]}, set()
+    )
+    calls: set[str] = set()
+    assert not state_output_proof(
+        {"messages": [human, {"type": "ai", "tool_calls": [{"id": "read"}]}, steer]}, calls
+    )
+    assert calls == {"read"}

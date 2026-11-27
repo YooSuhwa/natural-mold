@@ -376,7 +376,8 @@ function LangGraphRuntimeSection({
         partialOutput={threadRunNotice?.partialOutput}
         failedRunId={
           threadRunNotice?.status === 'failed' &&
-          threadRunNotice.recoveryError !== 'recovery_effect_unconfirmed'
+          threadRunNotice.recoveryError !== 'recovery_effect_unconfirmed' &&
+          threadRunNotice.recoveryError !== 'recovery_steer_unconfirmed'
             ? threadRunNotice.id
             : undefined
         }

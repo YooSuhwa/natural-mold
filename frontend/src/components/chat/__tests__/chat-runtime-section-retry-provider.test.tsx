@@ -252,19 +252,22 @@ describe('ChatRuntimeSection failed-message recovery provider', () => {
     expect(mocks.retryFailedInput).toHaveBeenCalledExactlyOnceWith(FAILED_INPUT)
   })
 
-  it('requires the user to check an unconfirmed external action before sending another request', () => {
-    render(
-      <RetryProviderHarness
-        terminalNotice={{
-          id: FAILED_RUN.id,
-          status: 'failed',
-          recoveryError: 'recovery_effect_unconfirmed',
-        }}
-      />,
-    )
-    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
-    expect(mocks.retryFailedInput).not.toHaveBeenCalled()
-  })
+  it.each(['recovery_effect_unconfirmed', 'recovery_steer_unconfirmed'] as const)(
+    'requires the user to check %s before sending another request',
+    (recoveryError) => {
+      render(
+        <RetryProviderHarness
+          terminalNotice={{
+            id: FAILED_RUN.id,
+            status: 'failed',
+            recoveryError,
+          }}
+        />,
+      )
+      expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
+      expect(mocks.retryFailedInput).not.toHaveBeenCalled()
+    },
+  )
 
   it.each([
     {

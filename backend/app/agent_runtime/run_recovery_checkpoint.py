@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,9 +16,12 @@ from langchain_core.messages import (
 )
 from langgraph.checkpoint.base import CheckpointTuple
 
+from app.agent_runtime.chat_steer_model_delivery import run_receipt, steer_message_id
+from app.agent_runtime.model_input_receipt import text_digest
 from app.agent_runtime.recovery_stream import recovery_stream_cursor
 from app.agent_runtime.runtime_config import AgentConfig
 from app.chat_recovery.fence import current_run_fence
+from app.schemas.conversation_graph_input import STEER_INPUT_MARKER, STEER_RECEIPTS_CHANNEL
 from app.tenancy.checkpoint_audit import CHECKPOINT_TENANT_KEY
 
 RECOVER_GRAPH_HEAD = object()
@@ -84,22 +87,70 @@ async def bind_recoverable_state_input(
 class TurnTools:
     requested: frozenset[str]
     completed: frozenset[str]
+    original_anchor_index: int
 
 
-def turn_tools(messages: Iterable[BaseMessage], run_id: uuid.UUID) -> TurnTools:
-    """Only tool pairs in this server-marked user turn count as completed."""
+def _confirmed_inputs(
+    run_id: uuid.UUID, value: object, claimed: Mapping[str, str]
+) -> list[tuple[str, str]]:
+    """Match the current root model's committed receipt IDs against owner-scoped SQL rows."""
+    if (
+        isinstance(value, dict)
+        and value.get("run_id") == str(run_id)
+        and value.keys() - {"run_id", "staged", "ids"}
+    ):
+        raise RecoveryCheckpointBlocked("recovery_steer_unconfirmed")
+    receipt = run_receipt(value, run_id)
+    if receipt is None or receipt["staged"]:
+        raise RecoveryCheckpointBlocked("recovery_steer_unconfirmed")
+    ids = receipt["ids"]
+    # SQL orders these rows by their admission sequence. Match that order to
+    # the graph receipt and then the actual model-facing message history.
+    if ids != list(claimed):
+        raise RecoveryCheckpointBlocked("recovery_steer_unconfirmed")
+    return [(steer_message_id(uuid.UUID(raw)), claimed[raw]) for raw in ids]
+
+
+def turn_tools(
+    messages: Iterable[BaseMessage],
+    run_id: uuid.UUID,
+    *,
+    steer_receipts: object = None,
+    claimed_steers: Mapping[str, str] | None = None,
+) -> TurnTools:
+    """Only the original input and its verified supplemental messages form this turn."""
     anchor = _input_id(run_id)
-    in_turn = False
+    anchor_index = None
+    expected = iter(_confirmed_inputs(run_id, steer_receipts, claimed_steers or {}))
     names: dict[str, str] = {}
     completed: set[str] = set()
-    for message in messages:
+    for index, message in enumerate(messages):
         if isinstance(message, HumanMessage):
-            if in_turn:
-                raise RecoveryCheckpointBlocked()
             marker = message.response_metadata.get(_INPUT_RUN_KEY)
-            in_turn = marker == str(run_id) or (marker is None and message.id == anchor)
+            if anchor_index is None:
+                if marker == str(run_id) or (marker is None and message.id == anchor):
+                    if STEER_INPUT_MARKER in message.response_metadata:
+                        raise RecoveryCheckpointBlocked("recovery_steer_unconfirmed")
+                    anchor_index = index
+                continue
+            supplement = next(expected, None)
+            if supplement is None:
+                if STEER_INPUT_MARKER in message.response_metadata:
+                    raise RecoveryCheckpointBlocked("recovery_steer_unconfirmed")
+                raise RecoveryCheckpointBlocked()
+            if (
+                names.keys() != completed
+                or message.response_metadata.keys() != {STEER_INPUT_MARKER}
+                or message.response_metadata.get(STEER_INPUT_MARKER) is not True
+                or message.additional_kwargs
+                or message.name is not None
+                or message.id != supplement[0]
+                or not isinstance(message.content, str)
+                or text_digest(message.content) != supplement[1]
+            ):
+                raise RecoveryCheckpointBlocked("recovery_steer_unconfirmed")
             continue
-        if not in_turn:
+        if anchor_index is None:
             continue
         if isinstance(message, AIMessage):
             if message.invalid_tool_calls:
@@ -114,9 +165,11 @@ def turn_tools(messages: Iterable[BaseMessage], run_id: uuid.UUID) -> TurnTools:
                 raise RecoveryCheckpointBlocked()
             if message.name == names[message.tool_call_id]:
                 completed.add(message.tool_call_id)
-    if not in_turn:
+    if anchor_index is None:
         raise RecoveryCheckpointBlocked()
-    return TurnTools(frozenset(names), frozenset(completed))
+    if next(expected, None) is not None:
+        raise RecoveryCheckpointBlocked("recovery_steer_unconfirmed")
+    return TurnTools(frozenset(names), frozenset(completed), anchor_index)
 
 
 def checked_head(saved: CheckpointTuple | None, cfg: AgentConfig, run_id: uuid.UUID) -> str:
@@ -176,8 +229,15 @@ async def verified_resume_config(
     messages = state.values.get("messages") if isinstance(state.values, dict) else None
     if not isinstance(messages, Sequence) or not all(isinstance(m, BaseMessage) for m in messages):
         raise RecoveryCheckpointBlocked()
-    tools = turn_tools(messages, fence.run_id)
     cursor = recovery_stream_cursor(str(fence.run_id), cfg.thread_id)
-    if cursor is None or not cursor.visible_tool_call_ids.issubset(tools.requested):
+    if cursor is None:
+        raise RecoveryCheckpointBlocked("recovery_output_started")
+    tools = turn_tools(
+        messages,
+        fence.run_id,
+        steer_receipts=state.values.get(STEER_RECEIPTS_CHANNEL),
+        claimed_steers=cursor.claimed_steers,
+    )
+    if not cursor.visible_tool_call_ids.issubset(tools.requested):
         raise RecoveryCheckpointBlocked("recovery_output_started")
     return current

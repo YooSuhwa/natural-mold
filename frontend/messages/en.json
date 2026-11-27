@@ -2792,6 +2792,7 @@
         "tool_result_unavailable": "The run stopped because its saved tool result is unavailable.",
         "tool_receipt_conflict": "The run stopped because the tool request differs from the saved record.",
         "tool_call_in_progress": "The run stopped because a tool call is already in progress.",
+        "recovery_steer_unconfirmed": "We paused because delivery of an instruction could not be confirmed. Check its status before continuing.",
         "recovery_effect_unconfirmed": "We could not confirm whether the external action completed. Check the result in the external service before sending the same request again.",
         "recovery_checkpoint_unavailable": "We could not verify the saved checkpoint for this run, so it could not resume.",
         "recovery_policy_changed": "The execution settings changed, so the previous run could not resume.",
