@@ -165,6 +165,7 @@ async def resolve_agent_context(
         checkpoint_id=checkpoint_id,
         agent_owner_user_id=str(agent.user_id),
         caller_user_id=str(user.id),
+        archive_owner_user_id=str(conv.user_id),
         credential_subject_user_id=str(identity.credential_subject_user_id),
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,

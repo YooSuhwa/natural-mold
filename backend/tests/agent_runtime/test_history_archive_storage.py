@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Barrier
@@ -225,3 +226,95 @@ def test_shared_agent_writes_follow_the_conversation_owners_deletion_fence(tmp_p
     with pytest.raises(OffloadSecurityError):
         own.archive_compaction("after-delete", [message])
     assert b"".join(sibling.iter_archive_bytes(other)) == _encoded([message])
+
+
+def test_rollback_reuses_verifiable_prefix_and_later_legacy_turns_follow_deletion(
+    tmp_path: Path,
+) -> None:
+    from deepagents.middleware.summarization import create_summarization_middleware
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from app.agent_runtime.offload_storage_io import read_rollback_history
+    from app.agent_runtime.offload_storage_types import rollback_session_id, token
+
+    owner, agent_owner = "member", "agent-author"
+    backend = _backend(tmp_path, agent_owner=agent_owner, conversation_owner=owner)
+    prior = backend.archive_compaction("a", [HumanMessage(content="첫 번째 근거", id="first")])
+    restored = AIMessage(content="두 번째 근거", id="latest")
+    session = rollback_session_id(prior, "branch-b")
+    legacy = backend.archive_checkpoint_to_legacy(prior, session, [restored])
+    leaf = legacy.rsplit("/", 1)[1]
+    assert leaf == f"{session}.md"
+    resumed = _backend(tmp_path, agent_owner=agent_owner, conversation_owner=owner, run="later-run")
+
+    native = create_summarization_middleware(FakeListChatModel(responses=["요약"]), resumed)
+    appended = HumanMessage(content="세 번째 근거", id="new")
+    payload = native._aoffload_to_backend(resumed, [appended], session)  # noqa: SLF001
+    assert asyncio.run(payload) == legacy
+    assert resumed.archive_checkpoint_to_legacy(prior, session, [restored]) == legacy
+
+    content = read_rollback_history(
+        tmp_path, owner_id=owner, conversation_id="thread", actor_id=_ROOT_ACTOR, leaf=leaf
+    )
+    assert resumed.download_files([legacy])[0].content == content
+    for snippet in ("첫 번째 근거", "두 번째 근거", "세 번째 근거"):
+        assert content.decode().count(snippet) == 1
+    with pytest.raises(OffloadSecurityError):
+        read_rollback_history(
+            tmp_path,
+            owner_id=agent_owner,
+            conversation_id="thread",
+            actor_id=_ROOT_ACTOR,
+            leaf=leaf,
+        )
+    physical = list(tmp_path.rglob(token("history-path", leaf)))
+    assert len(physical) == 1 and physical[0].stat().st_nlink == 1
+
+    other_session = rollback_session_id(prior, "branch-c")
+    branch = resumed.archive_checkpoint_to_legacy(
+        prior, other_session, [AIMessage(content="다른 가지")]
+    )
+    assert branch != legacy
+    other = resumed.download_files([branch])[0]
+    assert other.content is not None and "다른 가지" in other.content.decode()
+    assert "세 번째 근거" not in other.content.decode()
+    with pytest.raises(OffloadSecurityError):
+        resumed.archive_checkpoint_to_legacy(prior, session, [AIMessage(content="충돌하는 재시도")])
+    assert resumed.download_files([legacy])[0].content == content
+
+    delete_conversation_offloads(tmp_path, owner_id=owner, conversation_id="thread")
+    assert not physical[0].exists()
+    assert resumed.download_files([legacy])[0].error
+    with pytest.raises(OffloadSecurityError, match="deleted"):
+        resumed.archive_checkpoint_to_legacy(prior, session, [restored])
+    with pytest.raises(OffloadSecurityError, match="deleted"):
+        resumed.write(legacy, "재시작된 워커")
+
+
+def test_interrupted_rollback_is_invisible_and_recoverable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.agent_runtime.offload_storage_backends import HistoryBackend
+    from app.agent_runtime.offload_storage_types import rollback_session_id
+
+    backend = _backend(tmp_path)
+    prior = backend.archive_compaction("a", [HumanMessage(content="원문", id="m")])
+    session = rollback_session_id(prior, "after-switch")
+    legacy = f"{backend.artifacts_root}/conversation_history/{session}.md"
+    expected = AIMessage(content="그 이후")
+
+    def fail_mid_render(self: HistoryBackend, leaf: str) -> Iterator[bytes]:
+        yield b"incomplete prefix"
+        raise OSError("interrupted rollback")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(HistoryBackend, "archive_markdown", fail_mid_render)
+        with pytest.raises(OSError, match="interrupted rollback"):
+            backend.archive_checkpoint_to_legacy(prior, session, [expected])
+
+    assert backend.read(legacy).error
+    assert not list(tmp_path.rglob(".rollback.*.tmp"))
+    assert backend.archive_checkpoint_to_legacy(prior, session, [expected]) == legacy
+    restored = backend.download_files([legacy])[0]
+    assert restored.content and "원문" in restored.content.decode()
+    assert b"incomplete prefix" not in restored.content

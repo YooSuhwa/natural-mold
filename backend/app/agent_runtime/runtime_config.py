@@ -89,6 +89,8 @@ class AgentConfig:
     llm_credential_id: str | None = None
     agent_owner_user_id: str | None = None
     caller_user_id: str | None = None
+    # Private conversation row owner verified during interactive chat hydration.
+    archive_owner_user_id: str | None = field(default=None, kw_only=True)
     credential_subject_user_id: str | None = None
     identity_mode: str | None = None
     agent_runtime_name: str | None = None

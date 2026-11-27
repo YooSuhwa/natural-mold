@@ -305,6 +305,15 @@ async def _prepare_agent(
         guard=guard,
         tool_risk=cfg.tool_risk,
         unattended=components.unattended,
+        **(
+            {"archive_chat_history": settings.chat_archive_writes_enabled}
+            if isinstance(components.backend, ScopedOffloadBackend)
+            and cfg.archive_owner_user_id is not None
+            and cfg.run_path == "chat"
+            and cfg.runtime_profile == "standard"
+            and not is_trigger_mode
+            else {}
+        ),
         **_structured_output_kwargs(cfg),
         **_tool_approval_kwargs(cfg),
     )

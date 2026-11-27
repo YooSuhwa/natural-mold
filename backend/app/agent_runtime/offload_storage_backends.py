@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Final
 
@@ -18,6 +18,7 @@ from app.agent_runtime.offload_storage_fd import raise_directory_error as _raise
 from app.agent_runtime.offload_storage_fd import (
     safe_dir,  # noqa: F401 -- compatibility export for the scoped storage facade
 )
+from app.agent_runtime.offload_storage_io import rollback_history_path, seed_rollback_history_locked
 from app.agent_runtime.offload_storage_secure_backend import SecureHashedFilesystemBackend
 from app.agent_runtime.offload_storage_types import (
     ARCHIVE_FILE,
@@ -125,6 +126,12 @@ class HistoryBackend(HashedFilesystemBackend):
             return b"".join(view)
         return super()._read_bytes(key, root=root)
 
+    def archive_markdown(self, leaf: str) -> Iterator[bytes]:
+        view = self._archive_view(leaf)
+        if view is None:
+            raise OffloadSecurityError(reason="archive history route is unavailable")
+        return view
+
     def read_legacy(self, name: str) -> bytes:
         if not SESSION_FILE.fullmatch(name):
             raise OffloadSecurityError(reason="invalid legacy history session")
@@ -141,6 +148,29 @@ class HistoryBackend(HashedFilesystemBackend):
         if not (valid_session or valid_media):
             raise OffloadSecurityError(reason="invalid durable history reference")
         return key_parts
+
+
+class RollbackHistoryBackend(SecureHashedFilesystemBackend):
+    """Subsequent single-file updates keep the original conversation's deletion fence."""
+
+    def __init__(self, scope: OffloadMutationScope, actor_token: str) -> None:
+        super().__init__(scope.internal_root, mutation_scope=scope, virtual_mode=True)
+        self._actor_token = actor_token
+
+    def _location(self, key: str) -> Path:
+        return rollback_history_path(self._mutation_scope, self._actor_token, key.removeprefix("/"))
+
+    def _mapped_parts(self, key: str) -> tuple[str, ...]:
+        return self._location(key).relative_to(self.cwd).parts
+
+    def seed(self, leaf: str, pieces: Iterable[bytes]) -> None:
+        with conversation_mutation_lock(self._mutation_scope):
+            path = self._location(leaf)
+            safe_dir(path.parent, ())
+            seed_rollback_history_locked(path, pieces)
+
+    def read_legacy(self, leaf: str) -> bytes:
+        return self._read_bytes(leaf)
 
 
 class SpillBackend(HashedFilesystemBackend):

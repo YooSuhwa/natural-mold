@@ -227,6 +227,7 @@ def scoped_runtime_backend_impl(
         actor_id = db_free_actor_id
     storage = ScopedOffloadStorage(
         data_dir=data_dir,
+        archive_owner_id=cfg.archive_owner_user_id,
         identity=OffloadIdentity(
             owner_id=owner_id,
             conversation_id=cfg.thread_id,

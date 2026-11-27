@@ -14,6 +14,9 @@ GENERAL_PURPOSE_ACTOR: Final = "general-purpose"
 VIRTUAL_ROOT: Final = "/.moldy-offload"
 PHYSICAL_ROOT: Final = ".moldy-internal"
 SESSION_FILE: Final = re.compile(r"session_[0-9a-f]{32}\.md\Z")
+# Deep Agents creates UUID4 history filenames. The reserved UUID version field
+# identifies archive rollbacks, including after later turns resume ordinary writes.
+ROLLBACK_SESSION_FILE: Final = re.compile(r"session_[0-9a-f]{12}f13cf13c[0-9a-f]{12}\.md\Z")
 ARCHIVE_FILE: Final = re.compile(r"archive_[0-9a-f]{32}\.md\Z")
 MEDIA_FILE: Final = re.compile(r"[0-9a-f]{16}\.[a-z0-9]{1,10}\Z")
 SAFE_LEGACY_NAME: Final = re.compile(r"[A-Za-z0-9_-]+\Z")
@@ -111,6 +114,14 @@ def logical_offload_id(kind: OffloadKind, scoped_reference: str) -> str:
 def token(domain: str, raw: str, *, length: int = 32) -> str:
     digest = hashlib.sha256(f"moldy-offload:{domain}\0{raw}".encode()).hexdigest()
     return digest[:length]
+
+
+def rollback_session_id(archive_file_path: str, checkpoint_id: str) -> str:
+    """Select a stable legacy session for this branch and archive predecessor."""
+    if not checkpoint_id or not ARCHIVE_FILE.fullmatch(archive_file_path.rsplit("/", 1)[-1]):
+        raise OffloadSecurityError(reason="invalid archive rollback reference")
+    digest = token("archive-to-markdown", f"{archive_file_path}:{checkpoint_id}")
+    return f"session_{digest[:12]}f13cf13c{digest[20:]}"
 
 
 def parse_actor(actor_id: UUID | str) -> str:

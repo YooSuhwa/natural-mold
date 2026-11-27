@@ -409,6 +409,9 @@ class Settings(AuthzSettings):
     # a transient "압축 중…" indicator + a permanent "이전 대화를 요약했어요" marker.
     # Off = legacy behavior (summarization tokens flow through, no marker).
     compaction_marker_enabled: bool = True
+    # Write immutable original-message archives on standard chat roots. Prepared leases
+    # only authorize run-local storage. Existing archive reads survive disabling writes.
+    chat_archive_writes_enabled: bool = False
     # Parent Task 10 — opt-in gate for executing runs through a prepared lease
     # (materialize under the canonical locks, then dispatch the frozen graph).
     # Off = every entry keeps the legacy ``_prepare_agent`` path.

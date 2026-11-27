@@ -11,13 +11,14 @@ from typing import assert_never
 from uuid import UUID
 
 from deepagents.backends import CompositeBackend
-from deepagents.backends.protocol import GlobResult, GrepResult, LsResult
-from langchain_core.messages import BaseMessage
+from deepagents.backends.protocol import BackendProtocol, GlobResult, GrepResult, LsResult
+from langchain_core.messages import BaseMessage, get_buffer_string
 
 from app.agent_runtime.history_archive import HistoryArchive
 from app.agent_runtime.offload_storage_backends import (
     HiddenFilesystemBackend,
     HistoryBackend,
+    RollbackHistoryBackend,
     SpillBackend,
     parts,
     safe_dir,
@@ -35,6 +36,7 @@ from app.agent_runtime.offload_storage_types import (
     ARCHIVE_FILE,
     GENERAL_PURPOSE_ACTOR,  # noqa: F401 -- compatibility export
     PHYSICAL_ROOT,
+    ROLLBACK_SESSION_FILE,
     SAFE_LEGACY_NAME,
     SESSION_FILE,
     VIRTUAL_ROOT,
@@ -99,6 +101,7 @@ class ScopedOffloadBackend(CompositeBackend):
             internal, token("owner", archive_owner_id or identity.owner_id), self._conversation
         )
         self._archive = HistoryArchive(archive_scope, self._actor)
+        self._rollback_history = RollbackHistoryBackend(archive_scope, self._actor)
         routes = {
             f"{artifacts_root}/conversation_history/": HistoryBackend(
                 history_root,
@@ -133,6 +136,38 @@ class ScopedOffloadBackend(CompositeBackend):
             raise OffloadSecurityError(reason="history reference is outside this actor")
         return leaf
 
+    def _get_backend_and_key(self, key: str) -> tuple[BackendProtocol, str]:
+        backend, stripped = super()._get_backend_and_key(key)
+        if isinstance(backend, HistoryBackend) and ROLLBACK_SESSION_FILE.fullmatch(
+            stripped.removeprefix("/")
+        ):
+            return self._rollback_history, stripped
+        return backend, stripped
+
+    def archive_checkpoint_to_legacy(
+        self, archive_file_path: str, session_id: str, evicted: Sequence[BaseMessage]
+    ) -> str:
+        """Resume a chunked checkpoint in an immutable-at-creation Markdown snapshot."""
+        leaf = self._history_leaf(archive_file_path)
+        filename = f"{session_id}.md"
+        if not ARCHIVE_FILE.fullmatch(leaf) or not ROLLBACK_SESSION_FILE.fullmatch(filename):
+            raise OffloadSecurityError(reason="invalid archive rollback reference")
+        prefix = f"{self.artifacts_root}/conversation_history/"
+        history = self.routes[prefix]
+        if not isinstance(history, HistoryBackend):
+            raise OffloadSecurityError(reason="durable history route is unavailable")
+
+        def markdown() -> Iterator[bytes]:
+            yield from history.archive_markdown(leaf)
+            yield b"\n## Summarized\n\n"
+            for message in evicted:
+                yield get_buffer_string([message], format="xml").encode("utf-8")
+                yield b"\n"
+            yield b"\n"
+
+        self._rollback_history.seed(filename, markdown())
+        return f"{prefix}{filename}"
+
     def archive_compaction(
         self,
         checkpoint_id: str,
@@ -144,11 +179,17 @@ class ScopedOffloadBackend(CompositeBackend):
         history = self.routes[f"{self.artifacts_root}/conversation_history/"]
         if not isinstance(history, HistoryBackend):
             raise OffloadSecurityError(reason="durable history route is unavailable")
+
+        def read_legacy(name: str) -> bytes:
+            if ROLLBACK_SESSION_FILE.fullmatch(name):
+                return self._rollback_history.read_legacy(name)
+            return history.read_legacy(name)
+
         leaf = self._archive.save(
             checkpoint_id,
             messages,
             previous=self._history_leaf(previous_file_path) if previous_file_path else None,
-            read_legacy=history.read_legacy,
+            read_legacy=read_legacy,
         )
         return f"{self.artifacts_root}/conversation_history/{leaf}"
 
