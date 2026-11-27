@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from typing import Literal, TypedDict
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
@@ -18,8 +19,16 @@ from tests.conftest import TEST_USER_ID
 from tests.integration._seed import seed_conversation_with_agent
 
 
+class NoticeSource(TypedDict):
+    user_id: UUID
+    org_id: UUID
+    tenant_id: UUID
+    conversation_id: UUID
+    run_id: UUID
+
+
 @pytest.fixture
-async def source(db: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> dict[str, UUID]:
+async def source(db: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> NoticeSource:
     monkeypatch.setattr(settings, "chat_work_notifications_enabled", True)
     conversation_id = await seed_conversation_with_agent()
     run = ConversationRun(
@@ -55,7 +64,7 @@ async def source(db: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> dict[str,
 
 
 async def test_retry_after_bell_deletion_never_reopens_or_recreates(
-    source: dict[str, UUID],
+    source: NoticeSource,
     db: AsyncSession,
 ) -> None:
     job_id = uuid4()
@@ -80,7 +89,7 @@ async def test_retry_after_bell_deletion_never_reopens_or_recreates(
 
 
 async def test_new_goal_block_transition_has_its_own_notice_in_same_hour(
-    source: dict[str, UUID],
+    source: NoticeSource,
     db: AsyncSession,
 ) -> None:
     goal_id = uuid4()
@@ -105,7 +114,7 @@ async def test_new_goal_block_transition_has_its_own_notice_in_same_hour(
 
 
 async def test_switch_off_stops_producers_but_drains_already_committed_intents(
-    source: dict[str, UUID],
+    source: NoticeSource,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -119,7 +128,7 @@ async def test_switch_off_stops_producers_but_drains_already_committed_intents(
 
 
 async def test_withdrawn_access_suppresses_without_writing_a_bell(
-    source: dict[str, UUID],
+    source: NoticeSource,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -137,19 +146,19 @@ async def test_withdrawn_access_suppresses_without_writing_a_bell(
 
 @pytest.mark.parametrize("key", ["tenant_id", "org_id", "user_id", "run_id", "conversation_id"])
 async def test_foreign_source_or_owner_never_enqueues(
-    source: dict[str, UUID],
+    source: NoticeSource,
     db: AsyncSession,
-    key: str,
+    key: Literal["tenant_id", "org_id", "user_id", "run_id", "conversation_id"],
 ) -> None:
+    mismatched = source.copy()
+    mismatched[key] = uuid4()
     with pytest.raises(ValueError, match="does not match"):
-        await delivery.enqueue_independent_completion(
-            db, **(source | {key: uuid4()}), job_id=uuid4()
-        )
+        await delivery.enqueue_independent_completion(db, **mismatched, job_id=uuid4())
     assert await db.scalar(select(func.count()).select_from(ChatNotificationOutbox)) == 0
 
 
 async def test_retry_after_notice_flush_rolls_back_notice_and_preserves_other_rows(
-    source: dict[str, UUID],
+    source: NoticeSource,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
