@@ -41,12 +41,7 @@ export function shouldRouteComposerToServerQueue(
 export function createServerMessageQueue(
   options: ServerMessageQueueOptions,
 ): ServerMessageQueueController {
-  let callbacks = {
-    submit: options.submit,
-    createRequestId: options.createRequestId,
-    onClaimedRun: options.onClaimedRun,
-    resolveRequestInputId: options.resolveRequestInputId,
-  }
+  let callbacks: Parameters<ServerMessageQueueController['updateCallbacks']>[0] = options
   let serverInputs: readonly ConversationRunInput[] = []
   let latestListRequest = 0
   let queuePaused = false
