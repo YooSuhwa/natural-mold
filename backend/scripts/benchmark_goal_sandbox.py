@@ -8,7 +8,11 @@ The optional --skill-dir package must be reviewed for external transfer. Its ent
 receives ("edit" or "verify", output_directory). Edit reads source.txt and writes
 reviewed.txt with |draft| replaced by |final|. Verify reads the restored reviewed.txt
 and writes its lowercase hexadecimal SHA-256 digest to reviewed.sha256 with no newline.
-Every stage transfers the exact same skill package. Only new user outputs are collected.
+For a pair of packages, supply --second-skill-dir and --second-entrypoint. Each stage
+uses its own immutable package. In retained mode, the source and reviewed.txt belong
+in MOLDY_GOAL_WORK_DIR, and only reviewed.sha256 is exported. Per-call mode reloads
+the intermediate using the ordinary output directory. Packages should use the output
+directory as the fallback when MOLDY_GOAL_WORK_DIR is unset.
 
 An operator can reconcile an invoice or an allocated infrastructure cost record later.
 Run the "assess" subcommand with the measurement and a JSON billing record containing
@@ -32,7 +36,6 @@ import tempfile
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -42,13 +45,15 @@ if TYPE_CHECKING:
 
 
 SCRIPT = b"""import hashlib
+import os
 import sys
 from pathlib import Path
 
 outputs = Path(sys.argv[2])
-document = outputs / "reviewed.txt"
+work = Path(os.environ.get("MOLDY_GOAL_WORK_DIR", outputs))
+document = work / "reviewed.txt"
 if sys.argv[1] == "edit":
-    source = (outputs / "source.txt").read_bytes()
+    source = (work / "source.txt").read_bytes()
     document.write_bytes(source.replace(b"|draft|", b"|final|"))
 else:
     digest = hashlib.sha256(document.read_bytes()).hexdigest()
@@ -58,10 +63,28 @@ STAGES = (("edit", "reviewed.txt"), ("verify", "reviewed.sha256"))
 Provider = Literal["filesystem", "opensandbox"]
 
 
+@dataclass(frozen=True)
+class Package:
+    files: dict[str, bytes]
+    digest: str
+    entrypoint: str
+
+
+@dataclass
+class Stage:
+    label: str
+    skill_tree_sha256: str
+    sandbox_id: str
+    uploaded_bytes: int
+    downloaded_bytes: int
+    total_seconds: float
+
+
 @dataclass
 class Arm:
     mode: str
     sandbox_ids: list[str] = field(default_factory=list)
+    stages: list[Stage] = field(default_factory=list)
     uploaded_bytes: int = 0
     downloaded_bytes: int = 0
     preparation_seconds: float = 0
@@ -82,32 +105,47 @@ def document(size: int) -> bytes:
 class FilesystemWorkspace:
     """Use an actual disposable directory to exercise identical transfers without a server."""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, private: bool):
+        self.private = private
         self.root = root
         self.skill = root / "skill"
         self.outputs = root / "outputs"
+        self.work = root / "intermediate" if private else self.outputs
 
     async def open(self) -> str:
         self.skill.mkdir(parents=True)
         self.outputs.mkdir()
+        self.work.mkdir(exist_ok=True)
         return self.root.name
 
-    async def transfer(self, skill: dict[str, bytes], previous: dict[str, bytes]) -> None:
-        for path, files in [(self.skill, skill), (self.outputs, previous)]:
+    async def transfer(self, package: Package, previous: dict[str, bytes]) -> int:
+        if self.private:
+            self.skill = self.root / "packages" / package.digest
+            for file in self.outputs.iterdir():
+                file.unlink()
+        files_to_upload = {} if self.private and self.skill.exists() else package.files
+        for path, files in [(self.skill, files_to_upload), (self.work, previous)]:
             for name, content in files.items():
                 target = path / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
+        return sum(map(len, files_to_upload.values())) + sum(map(len, previous.values()))
 
     async def execute(
         self, entrypoint: str, label: str, expected_file: str, destination: Path
-    ) -> None:
+    ) -> str | None:
+        env = {"MOLDY_GOAL_WORK_DIR": str(self.work)} if self.private else {}
         process = await asyncio.create_subprocess_exec(
-            sys.executable, entrypoint, label, str(self.outputs), cwd=self.skill, env={}
+            sys.executable, entrypoint, label, str(self.outputs), cwd=self.skill, env=env
         )
         if await process.wait():
             raise RuntimeError("The filesystem benchmark command failed.")
+        if self.private and label == "edit":
+            if any(self.outputs.iterdir()):
+                raise RuntimeError("The edit stage exposed a private intermediate.")
+            return hashlib.sha256((self.work / "reviewed.txt").read_bytes()).hexdigest()
         (destination / expected_file).write_bytes((self.outputs / expected_file).read_bytes())
+        return None
 
     async def idle(self, seconds: float) -> tuple[float, float]:
         await asyncio.sleep(seconds)
@@ -122,7 +160,9 @@ class FilesystemWorkspace:
 class OpenSandboxWorkspace:
     """Use Moldy's production SDK operations with denied egress and empty credentials."""
 
-    def __init__(self, idle_seconds: float):
+    def __init__(self, idle_seconds: float, private: bool):
+        self.private = private
+        self.installed: set[str] = set()
         self.timeout = max(60.0, idle_seconds + 60.0)
         self.sandbox: Sandbox | None = None
 
@@ -137,30 +177,66 @@ class OpenSandboxWorkspace:
         self.sandbox = await skill_sandbox._create(self.timeout, ())
         return self.sandbox.id
 
-    async def transfer(self, skill: dict[str, bytes], previous: dict[str, bytes]) -> None:
+    async def transfer(self, package: Package, previous: dict[str, bytes]) -> int:
+        from opensandbox.models.filesystem import WriteEntry
+
+        from app.agent_runtime import goal_sandbox_provider as goal
         from app.agent_runtime import skill_sandbox
 
-        await skill_sandbox._upload(self.handle(), list(skill.items()), list(previous.items()))
+        files = list(package.files.items())
+        uploaded = sum(map(len, previous.values()))
+        if self.private:
+            await goal.prepare_workspace(
+                self.handle(), files, new=not self.installed, skill_hash=package.digest
+            )
+            if previous:
+                await self.handle().files.write_files(
+                    [
+                        WriteEntry(path=f"{goal.WORK_DIR}/{name}", data=data)
+                        for name, data in previous.items()
+                    ]
+                )
+        else:
+            await skill_sandbox._upload(self.handle(), files, list(previous.items()))
+        if not self.private or package.digest not in self.installed:
+            uploaded += sum(map(len, package.files.values()))
+        self.installed.add(package.digest)
+        return uploaded
 
     async def execute(
         self, entrypoint: str, label: str, expected_file: str, destination: Path
-    ) -> None:
+    ) -> str | None:
+        from app.agent_runtime import goal_sandbox_provider as goal
         from app.agent_runtime import skill_sandbox
 
+        env = {"MOLDY_GOAL_WORK_DIR": goal.WORK_DIR} if self.private else {}
         run = await skill_sandbox.run_command(
-            self.handle(), [sys.executable, entrypoint, label, skill_sandbox.OUTPUT_DIR], {}, 60
+            self.handle(), [sys.executable, entrypoint, label, skill_sandbox.OUTPUT_DIR], env, 60
         )
         if run.returncode != 0 or run.timed_out:
             raise RuntimeError("The OpenSandbox benchmark command failed.")
-        await skill_sandbox._download(self.handle(), destination)
+        if self.private:
+            public = await goal.collect_outputs(self.handle())
+            if label == "edit":
+                if public:
+                    raise RuntimeError("The edit stage exposed a private intermediate.")
+                digest = await self.handle().commands.run(f"sha256sum {goal.WORK_DIR}/reviewed.txt")
+                if digest.exit_code != 0 or len(digest.logs.stdout) != 1:
+                    raise RuntimeError("The private document hash was unavailable.")
+                return digest.logs.stdout[0].text.split(" ", 1)[0]
+            if set(public) != {expected_file}:
+                raise RuntimeError("The verify stage did not publish only its digest receipt.")
+            (destination / expected_file).write_bytes(public[expected_file])
+        else:
+            await skill_sandbox._download(self.handle(), destination)
         if not (destination / expected_file).is_file():
             raise RuntimeError(f"OpenSandbox did not return the expected {expected_file}.")
+        return None
 
     async def idle(self, seconds: float) -> tuple[float, float]:
         from opensandbox import Sandbox
-        from opensandbox.config import ConnectionConfig
 
-        from app.config import settings
+        from app.agent_runtime.skill_sandbox import connection_config
 
         current = self.handle()
         started = time.perf_counter()
@@ -169,13 +245,9 @@ class OpenSandboxWorkspace:
         await asyncio.sleep(seconds)
         started = time.perf_counter()
         # The endpoint and the SDK-owned transport may change on resume.
-        connection = ConnectionConfig(
-            api_key=settings.skill_sandbox_api_key or None,
-            domain=settings.skill_sandbox_domain,
-            use_server_proxy=settings.skill_sandbox_use_server_proxy,
-            request_timeout=timedelta(seconds=self.timeout + 60),
+        self.sandbox = await Sandbox.resume(
+            current.id, connection_config=connection_config(self.timeout)
         )
-        self.sandbox = await Sandbox.resume(current.id, connection_config=connection)
         await current.close()
         return pause_seconds, time.perf_counter() - started
 
@@ -193,9 +265,9 @@ async def measure_arm(
     provider: Provider,
     root: Path,
     source: bytes,
-    skill_files: dict[str, bytes],
-    entrypoint: str,
+    packages: tuple[Package, Package],
     *,
+    private_intermediate: bool,
     retain: bool,
     idle_seconds: float,
 ) -> Arm:
@@ -207,28 +279,41 @@ async def measure_arm(
     try:
         for stage_no, (label, filename) in enumerate(STAGES):
             prep = time.perf_counter()
+            package = packages[stage_no]
+            private = retain and private_intermediate
             if active is None:
                 active = (
-                    FilesystemWorkspace(root / f"workspace-{stage_no}")
+                    FilesystemWorkspace(root / f"workspace-{stage_no}", private)
                     if provider == "filesystem"
-                    else OpenSandboxWorkspace(idle_seconds)
+                    else OpenSandboxWorkspace(idle_seconds, private)
                 )
                 result.sandbox_ids.append(await active.open())
             reload_files = previous if stage_no == 0 or not retain else {}
-            await active.transfer(skill_files, reload_files)
-            result.uploaded_bytes += sum(map(len, skill_files.values())) + sum(
-                map(len, reload_files.values())
-            )
+            uploaded_bytes = await active.transfer(package, reload_files)
+            result.uploaded_bytes += uploaded_bytes
             result.preparation_seconds += time.perf_counter() - prep
             downloaded = root / f"received-{stage_no}"
             downloaded.mkdir()
-            await active.execute(entrypoint, label, filename, downloaded)
+            private_digest = await active.execute(package.entrypoint, label, filename, downloaded)
+            if private_digest is not None:
+                result.intermediate_sha256 = private_digest
             receipts = {file.name: file.read_bytes() for file in downloaded.iterdir()}
-            result.downloaded_bytes += sum(map(len, receipts.values()))
+            downloaded_bytes = sum(map(len, receipts.values()))
+            result.downloaded_bytes += downloaded_bytes
             previous.update(receipts)
             if not retain:
                 await active.discard()
                 active = None
+            result.stages.append(
+                Stage(
+                    label,
+                    package.digest,
+                    result.sandbox_ids[-1],
+                    uploaded_bytes,
+                    downloaded_bytes,
+                    time.perf_counter() - prep,
+                )
+            )
             if stage_no == 0:
                 if active is None:
                     await asyncio.sleep(idle_seconds)
@@ -239,7 +324,8 @@ async def measure_arm(
         if active is not None:
             await asyncio.shield(active.discard())
     result.total_seconds = time.perf_counter() - started
-    result.intermediate_sha256 = hashlib.sha256(previous["reviewed.txt"]).hexdigest()
+    if not result.intermediate_sha256:
+        result.intermediate_sha256 = hashlib.sha256(previous["reviewed.txt"]).hexdigest()
     result.result_sha256 = previous["reviewed.sha256"].decode("ascii")
     expected = hashlib.sha256(source.replace(b"|draft|", b"|final|")).hexdigest()
     if result.intermediate_sha256 != expected or result.result_sha256 != expected:
@@ -304,10 +390,14 @@ async def measure(
     retained_first: bool = False,
     skill_dir: Path | None = None,
     entrypoint: str = "stage.py",
+    second_skill_dir: Path | None = None,
+    second_entrypoint: str | None = None,
 ) -> dict:
     if not math.isfinite(idle_seconds) or not 0 <= idle_seconds <= 3600:
         raise ValueError("Choose an idle interval from 0 to 3600 seconds.")
-    if skill_dir is not None and provider != "opensandbox":
+    if second_entrypoint is not None and second_skill_dir is None:
+        raise ValueError("Choose the second skill package for its entrypoint.")
+    if (skill_dir is not None or second_skill_dir is not None) and provider != "opensandbox":
         raise ValueError(
             "Operator-supplied skills require the network-denied OpenSandbox provider."
         )
@@ -326,7 +416,20 @@ async def measure(
     }
     with tempfile.TemporaryDirectory(prefix="moldy-goal-benchmark-") as temp:
         files, tree_hash = packaged_workload(Path(temp) / "package", skill_dir, entrypoint)
+        first = Package(files, tree_hash, entrypoint)
+        second = first
+        if second_skill_dir is not None:
+            second_path = second_entrypoint or entrypoint
+            second_files, second_hash = packaged_workload(
+                Path(temp) / "second", second_skill_dir, second_path
+            )
+            second = Package(second_files, second_hash, second_path)
+        packages = (first, second)
         report["workload"] = {
+            "skill_tree_sha256s": [p.digest for p in packages],
+            "script_sha256s": [hashlib.sha256(p.files[p.entrypoint]).hexdigest() for p in packages],
+            "entrypoints": [p.entrypoint for p in packages],
+            "private_intermediate": second_skill_dir is not None,
             "skill_tree_sha256": tree_hash,
             "script_sha256": hashlib.sha256(files[entrypoint]).hexdigest(),
             "entrypoint": entrypoint,
@@ -338,13 +441,54 @@ async def measure(
                 provider,
                 Path(temp) / str(retain),
                 source,
-                files,
-                entrypoint,
+                packages,
+                private_intermediate=second_skill_dir is not None,
                 retain=retain,
                 idle_seconds=idle_seconds,
             )
             report["arms"][arm.mode] = asdict(arm)
     return report
+
+
+def _verify_package_pair(report: dict) -> None:
+    workload = report.get("workload", {})
+    if "skill_tree_sha256s" not in workload:
+        return  # Existing single-package measurements precede per-stage records.
+    pair = workload["skill_tree_sha256s"]
+    if (
+        not isinstance(pair, list)
+        or len(pair) != 2
+        or any(
+            not isinstance(digest, str) or not re.fullmatch("[a-f0-9]{64}", digest)
+            for digest in pair
+        )
+        or workload.get("skill_tree_sha256") != pair[0]
+    ):
+        raise ValueError("Require the two ordered package digests for the measured workflow.")
+    if pair[0] != pair[1] and workload.get("private_intermediate") is not True:
+        raise ValueError("Different packages require private-intermediate measurements.")
+    for name, arm in report["arms"].items():
+        stages = arm.get("stages", [])
+        if [stage.get("skill_tree_sha256") for stage in stages] != pair:
+            raise ValueError(
+                "The two measured stages must use the same ordered packages in both arms."
+            )
+        if [stage.get("label") for stage in stages] != [label for label, _ in STAGES]:
+            raise ValueError("The measured stage names must match the paired workflow.")
+        ids = arm["sandbox_ids"] if name == "per_call" else arm["sandbox_ids"] * 2
+        if [stage.get("sandbox_id") for stage in stages] != ids:
+            raise ValueError("Each stage needs its corresponding measured resource ID.")
+        if any(
+            not math.isfinite(stage["total_seconds"]) or stage["total_seconds"] <= 0
+            for stage in stages
+        ):
+            raise ValueError("Each measured stage must have positive duration.")
+        if (
+            name == "retained"
+            and workload.get("private_intermediate")
+            and stages[0]["downloaded_bytes"] != 0
+        ):
+            raise ValueError("Private intermediate bytes appeared in the retained public outputs.")
 
 
 def assess(report: dict, invoice: dict) -> dict:
@@ -356,6 +500,7 @@ def assess(report: dict, invoice: dict) -> dict:
         r"(?:[^@]+@)?sha256:[a-f0-9]{64}", image
     ):
         raise ValueError("Billing requires a version 1 measurement and an immutable image digest.")
+    _verify_package_pair(report)
     currency = invoice["currency"]
     if not re.fullmatch("[A-Z]{3}", currency) or not invoice["evidence_ref"].strip():
         raise ValueError("Billing requires a currency and evidence reference.")
@@ -397,6 +542,11 @@ def assess(report: dict, invoice: dict) -> dict:
             "currency": currency,
             "evidence_ref": invoice["evidence_ref"],
             "totals": {name: str(total) for name, total in costs.items()},
+            # The provider bills the retained resource as one unit across both stages.
+            "stage_totals": {
+                "per_call": [str(parsed[rid]) for rid in arms["per_call"]["sandbox_ids"]],
+                "retained": None,
+            },
         },
         "passes_time_and_cost": allowed,
     }
@@ -418,6 +568,8 @@ def main() -> None:
         default="stage.py",
         help="Relative Python file taking edit|verify and an output directory.",
     )
+    run.add_argument("--second-skill-dir", type=Path, help="Reviewed package for the verify stage.")
+    run.add_argument("--second-entrypoint", help="Python entrypoint in the second package.")
     run.add_argument("--out", required=True, type=Path)
     bill = commands.add_parser("assess")
     bill.add_argument("--measurement", required=True, type=Path)
@@ -433,6 +585,8 @@ def main() -> None:
                 retained_first=args.retained_first,
                 skill_dir=args.skill_dir,
                 entrypoint=args.entrypoint,
+                second_skill_dir=args.second_skill_dir,
+                second_entrypoint=args.second_entrypoint,
             )
         )
     else:

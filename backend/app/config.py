@@ -168,6 +168,12 @@ class Settings(AuthzSettings):
     # Domains every ``requires_network`` skill may reach besides its own
     # ``execution_profile.network_domains`` (comma separated, ``*.`` wildcards).
     skill_sandbox_allowed_domains: str = ""
+    # Goal-scoped workspaces require organization consent and a measured,
+    # operator-provisioned comparison for this exact deployment and skill.
+    goal_sandbox_enabled: bool = False
+    goal_sandbox_evidence_path: Path | None = None
+    goal_sandbox_idle_seconds: int = Field(default=600, ge=15)
+    goal_sandbox_retention_seconds: int = Field(default=1_800, ge=60)
     # Guardrail Korean model pack (docker/pii-detector). An empty URL, or the
     # service failing, falls back to the Korean rules pack.
     guardrail_pii_model_url: str = ""

@@ -109,3 +109,73 @@ def test_measured_package_digest_is_the_published_tree_digest(tmp_path: Path) ->
     assert digest == compute_package_tree_hash(package)
     with pytest.raises(ValueError, match="entrypoint"):
         benchmark.packaged_workload(tmp_path / "another", package, "../script.py")
+
+
+async def test_two_immutable_skills_share_only_the_private_document(tmp_path: Path) -> None:
+    from app.skills.package_hash import digest_package_files
+
+    stages: list[benchmark.Package] = []
+    for role in ("edit", "verify"):
+        # Same path, different bytes. Either stage fails if it receives the other package.
+        script = f"import sys\nassert sys.argv[1] == {role!r}\n".encode() + benchmark.SCRIPT
+        files = {"step.py": script}
+        stages.append(
+            benchmark.Package(files, digest_package_files(sorted(files.items())), "step.py")
+        )
+    packages = (stages[0], stages[1])
+    source = benchmark.document(2048)
+    arms = {}
+    for retain in (True, False):
+        arm = await benchmark.measure_arm(
+            "filesystem",
+            tmp_path / str(retain),
+            source,
+            packages,
+            private_intermediate=True,
+            retain=retain,
+            idle_seconds=0,
+        )
+        arms[arm.mode] = arm
+        assert [step.skill_tree_sha256 for step in arm.stages] == [p.digest for p in packages]
+        assert all(0 < step.total_seconds <= arm.total_seconds for step in arm.stages)
+    assert packages[0].digest != packages[1].digest
+    assert arms["retained"].stages[0].downloaded_bytes == 0
+    assert arms["retained"].downloaded_bytes == 64
+    assert arms["per_call"].stages[0].downloaded_bytes == len(source)
+    assert arms["per_call"].result_sha256 == arms["retained"].result_sha256
+
+
+def test_assessment_rejects_a_stage_with_a_different_package_or_billed_resource(
+    billing_case: tuple[dict, dict],
+) -> None:
+    report, invoice = billing_case
+    pair = ["a" * 64, "b" * 64]
+    report["workload"] = {
+        "skill_tree_sha256": pair[0],
+        "skill_tree_sha256s": pair,
+        "private_intermediate": True,
+    }
+    for name, arm in report["arms"].items():
+        ids = arm["sandbox_ids"] if name == "per_call" else arm["sandbox_ids"] * 2
+        arm["stages"] = [
+            {
+                "label": label,
+                "skill_tree_sha256": digest,
+                "sandbox_id": rid,
+                "downloaded_bytes": 0,
+                "total_seconds": 1,
+            }
+            for (label, _), digest, rid in zip(benchmark.STAGES, pair, ids, strict=True)
+        ]
+    assayed = benchmark.assess(report, invoice)
+    assert assayed["passes_time_and_cost"]
+    assert assayed["cost"]["stage_totals"] == {"per_call": ["0.10", "0.20"], "retained": None}
+    for key, value, message in (
+        ("skill_tree_sha256", pair[1], "same ordered packages"),
+        ("sandbox_id", "another", "resource ID"),
+        ("downloaded_bytes", 2048, "Private intermediate"),
+    ):
+        changed = copy.deepcopy(report)
+        changed["arms"]["retained"]["stages"][0][key] = value
+        with pytest.raises(ValueError, match=message):
+            benchmark.assess(changed, invoice)
