@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import replace
+from typing import TypedDict
 
 import pytest
 from fastapi import HTTPException
@@ -17,7 +18,7 @@ from app.dependencies import CurrentUser
 from app.exceptions import AppError
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
-from app.models.conversation_run_input import ConversationRunInput
+from app.models.conversation_run_input import ConversationRunInput, JsonValue
 from app.models.conversation_run_steer import ConversationRunSteer
 from app.models.organization import Organization, OrganizationMember
 from app.schemas.conversation_run_steer import ConversationRunSteerCreate
@@ -35,6 +36,17 @@ from tests.conftest import TEST_USER_ID
 from tests.integration._seed import seed_conversation_with_agent
 
 OWNER = unit_context(TEST_USER_ID)
+
+
+class _RunTarget(TypedDict):
+    conversation_id: uuid.UUID
+    run_id: uuid.UUID
+
+
+def _assert_conflict(exc: HTTPException, code: str) -> None:
+    assert exc.status_code == 409
+    assert isinstance(exc.detail, dict)
+    assert exc.detail.get("code") == code
 
 
 async def _running(db: AsyncSession, conversation_id: uuid.UUID | None = None) -> ConversationRun:
@@ -75,7 +87,7 @@ async def _admit(
 
 async def test_same_request_survives_reconnect_and_terminal_retry(db: AsyncSession) -> None:
     run = await _running(db)
-    target = {"conversation_id": run.conversation_id, "run_id": run.id}
+    target: _RunTarget = {"conversation_id": run.conversation_id, "run_id": run.id}
     request_id = uuid.uuid4()
     first = await _admit(db, run, "한국 사례만", request_id=request_id)
     await db.commit()
@@ -100,18 +112,12 @@ async def test_same_request_survives_reconnect_and_terminal_retry(db: AsyncSessi
     assert terminal_retry.id == first.id
     with pytest.raises(HTTPException) as changed:
         await _admit(db, run, "같은 키, 다른 지시", request_id=request_id)
-    assert (changed.value.status_code, changed.value.detail["code"]) == (
-        409,
-        "STEER_IDEMPOTENCY_CONFLICT",
-    )
+    _assert_conflict(changed.value, "STEER_IDEMPOTENCY_CONFLICT")
 
     successor = await _running(db, run.conversation_id)
     with pytest.raises(HTTPException) as retargeted:
         await _admit(db, successor, "한국 사례만", request_id=request_id)
-    assert (retargeted.value.status_code, retargeted.value.detail["code"]) == (
-        409,
-        "STEER_IDEMPOTENCY_CONFLICT",
-    )
+    _assert_conflict(retargeted.value, "STEER_IDEMPOTENCY_CONFLICT")
     third = await _admit(db, successor, "세 번째 지시")
     assert third.sequence == 3
     history = await list_steers(db, conversation_id=run.conversation_id, context=OWNER)
@@ -140,7 +146,7 @@ async def test_receipt_history_pages_the_latest_window_in_sending_order(db: Asyn
 
 async def test_claim_and_acknowledge_track_durable_model_receipts(db: AsyncSession) -> None:
     run = await _running(db)
-    target = {"conversation_id": run.conversation_id, "run_id": run.id}
+    target: _RunTarget = {"conversation_id": run.conversation_id, "run_id": run.id}
     watermarks = await get_conversation_steer_watermarks(db, run.conversation_id)
     assert (watermarks.latest_received, watermarks.latest_applied, watermarks.has_unresolved) == (
         0,
@@ -238,7 +244,7 @@ async def test_late_new_input_keeps_approval_and_run_state(
     await db.commit()
     with pytest.raises(HTTPException) as exc:
         await _admit(db, run, "late")
-    assert (exc.value.status_code, exc.value.detail["code"]) == (409, code)
+    _assert_conflict(exc.value, code)
     assert run.status == status
     if status == "interrupted":
         assert run.interrupt_id == "A"
@@ -265,7 +271,7 @@ async def test_pending_tool_approval_blocks_receipt_and_delivery_before_run_ends
     assert len(pending) == 1 and run.status == "running"
     with pytest.raises(HTTPException) as exc:
         await _admit(db, run, "wait for the decision")
-    assert (exc.value.status_code, exc.value.detail["code"]) == (409, "STEER_APPROVAL_PENDING")
+    _assert_conflict(exc.value, "STEER_APPROVAL_PENDING")
     assert not await claim_steers_for_model(db, conversation_id=run.conversation_id, run_id=run.id)
     await db.refresh(steer)
     assert steer.delivery_started_at is None
@@ -304,7 +310,7 @@ async def test_non_chat_origin_cannot_receive_same_run_input(db: AsyncSession) -
     await db.commit()
     with pytest.raises(HTTPException) as exc:
         await _admit(db, run, "chat instruction")
-    assert (exc.value.status_code, exc.value.detail["code"]) == (409, "STEER_RUN_INACTIVE")
+    _assert_conflict(exc.value, "STEER_RUN_INACTIVE")
     assert not (await get_conversation_steer_watermarks(db, run.conversation_id)).has_unresolved
 
 
@@ -427,7 +433,7 @@ async def test_rollover_finishes_only_when_successor_or_its_resume_completes(
     ],
 )
 async def test_completed_but_edited_rollover_cannot_settle_original_directive(
-    db: AsyncSession, rolled_over_input: ConversationRunInput, edited_messages: list[dict[str, str]]
+    db: AsyncSession, rolled_over_input: ConversationRunInput, edited_messages: list[JsonValue]
 ) -> None:
     queued = rolled_over_input
     await conversation_run_queue_service.edit_pending_input(
