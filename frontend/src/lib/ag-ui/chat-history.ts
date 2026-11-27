@@ -121,6 +121,11 @@ export function createAgUiChatSession({
     toolOwnersByLane.clear()
   }
 
+  function invalidateApproval() {
+    if (state.interrupts.length)
+      publish({ interrupts: [], reconcileSequence: state.reconcileSequence + 1 })
+  }
+
   function revokeRead() {
     locallyAcceptedId = null
     reader?.abort()
@@ -504,6 +509,7 @@ export function createAgUiChatSession({
     onRunClaimed,
     onPublicEvent,
     refreshRepository,
+    invalidateApproval,
     dispose() {
       disposed = true
       reader?.abort()

@@ -6,6 +6,7 @@ import { useAgUiRuntime } from '@assistant-ui/react-ag-ui'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
+import { currentAgUiApprovalKey } from '@/lib/ag-ui/approval-admission'
 import { useAgUiHitlActions } from '@/lib/ag-ui/chat-actions-interrupts'
 import { useChatSession } from '@/lib/ag-ui/use-chat-session'
 import { HiTLContext } from '@/lib/chat/hitl-context'
@@ -39,6 +40,10 @@ function pausedHistory() {
     threadId,
     protocolVersion: '1.0',
     projectionVersion: '1',
+    checkpointId: 'paused-checkpoint',
+    runId: 'paused-run',
+    runStatus: 'interrupted',
+    latestPhysicalRunId: physicalRun,
     interruptRunId: 'paused-run',
     physicalInterruptRunId: physicalRun,
     activeTipMessageId: 'parent',
@@ -107,7 +112,12 @@ function RestoredChildForm() {
     adapters: { history: session.history },
     resumeTranscript: 'appended',
   })
-  const actions = useAgUiHitlActions({ runtime, conversationId: threadId, agentId: 'parent-agent' })
+  const actions = useAgUiHitlActions({
+    runtime,
+    conversationId: threadId,
+    agentId: 'parent-agent',
+    getReadyBatchKey: (pending) => currentAgUiApprovalKey(threadId, session.getSnapshot(), pending),
+  })
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <HiTLContext.Provider value={actions}>

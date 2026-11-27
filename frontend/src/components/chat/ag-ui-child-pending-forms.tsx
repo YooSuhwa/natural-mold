@@ -7,7 +7,7 @@ import {
   currentChildInterrupts,
   verifiedChildInterrupts,
   type ChildInterruptForm,
-} from '@/lib/ag-ui/child-interrupt-admission'
+} from '@/lib/ag-ui/approval-admission'
 import type { AgUiChatSessionState } from '@/lib/ag-ui/chat-history'
 import type { WireChatSnapshot } from '@/lib/ag-ui/chat-history-types'
 import { HiTLContext, useHiTL } from '@/lib/chat/hitl-context'
@@ -187,12 +187,18 @@ function AuthorizedForm({
     return () => controller.abort()
   }, [])
   const register = actions?.registerDecision
-  if (!register || deniedAt === wire) return null
+  const canRespondTo = actions?.canRespondTo
+  if (!register || actions?.canRespond === false || deniedAt === wire) return null
   const scope = currentOrgScope()
   return (
     <HiTLContext.Provider
       value={{
         agentId,
+        canRespond: actions?.canRespond,
+        approvalGeneration: actions?.approvalGeneration,
+        canRespondTo: canRespondTo
+          ? (id, index) => id === slot.payload.interrupt_id && canRespondTo(id, index)
+          : undefined,
         onResumeDecisions: async () => {
           throw new Error('Child responses require an interrupt ID')
         },

@@ -1,7 +1,7 @@
 import { HttpAgent } from '@ag-ui/client'
 import type { RunAgentInput } from '@ag-ui/core'
 import type { ThreadHistoryAdapter } from '@assistant-ui/react'
-import { useAgUiRuntime } from '@assistant-ui/react-ag-ui'
+import { useAgUiRuntime, type AgUiInterrupt } from '@assistant-ui/react-ag-ui'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useAgUiHitlActions } from '../chat-actions-interrupts'
@@ -104,22 +104,31 @@ function interceptRuns() {
   return posts
 }
 
-function openChat(interrupts?: HttpAgent['pendingInterrupts']) {
+function openChat(
+  interrupts?: HttpAgent['pendingInterrupts'],
+  getReadyBatchKey: (native: readonly AgUiInterrupt[]) => string | null = (native) =>
+    native.length ? 'confirmed-checkpoint' : null,
+) {
   const posts = interceptRuns()
   const agent = new HttpAgent({ threadId, url: 'http://localhost/runs' })
   const history = interrupts ? historyFor(agent, interrupts) : undefined
   const onError = vi.fn()
-  const { result } = renderHook(() => {
+  const { result, rerender } = renderHook(() => {
     const runtime = useAgUiRuntime({
       agent,
       adapters: { history },
       resumeTranscript: 'appended',
       onError,
     })
-    const actions = useAgUiHitlActions({ runtime, conversationId: threadId, agentId: 'agent-1' })
+    const actions = useAgUiHitlActions({
+      runtime,
+      conversationId: threadId,
+      agentId: 'agent-1',
+      getReadyBatchKey,
+    })
     return { runtime, actions }
   })
-  return { result, posts, onError }
+  return { result, rerender, posts, onError }
 }
 
 afterEach(() => {
@@ -206,4 +215,44 @@ it('keeps a restored mixed approval batch pending when one native interrupt is r
   expect(onError).not.toHaveBeenCalled()
   expect(pending()).toEqual([current, readOnly])
   expect(posts).toHaveLength(0)
+})
+
+it('waits for a rendered durable checkpoint before accepting a live SDK interrupt', async () => {
+  let checkpoint: string | null = null
+  const { result, rerender, posts, onError } = openChat(undefined, (native) =>
+    native.length === 1 && native[0].id === slot.id ? checkpoint : null,
+  )
+  const decisions = [{ type: 'approve' }, { type: 'approve' }] as const
+  await act(async () => {
+    await result.current.runtime.thread.append({
+      role: 'user',
+      content: [{ type: 'text', text: prompt }],
+    })
+  })
+  await waitFor(() =>
+    expect(result.current.runtime.unstable_getPendingInterrupts()).toEqual([slot]),
+  )
+  expect(result.current.actions.canRespond).toBe(false)
+  const earlyVote = result.current.actions.onResumeDecisions
+  await act(async () => {
+    await expect(earlyVote([...decisions])).rejects.toMatchObject({ name: 'InvalidStateError' })
+  })
+  expect(posts).toHaveLength(1)
+  expect(posts[0].resume).toBeUndefined()
+
+  checkpoint = 'checkpoint-after-stream'
+  rerender()
+  expect(result.current.actions.canRespond).toBe(true)
+  await expect(earlyVote([...decisions])).rejects.toMatchObject({ name: 'InvalidStateError' })
+  await act(async () => {
+    await result.current.actions.onResumeDecisions([...decisions])
+  })
+  expect(onError).not.toHaveBeenCalled()
+  expect(posts).toHaveLength(2)
+  expect(posts[1]).toMatchObject({
+    threadId,
+    messages: [],
+    resume: [{ interruptId: slot.id, status: 'resolved', payload: { decisions } }],
+  })
+  expect(result.current.runtime.unstable_getPendingInterrupts()).toEqual([])
 })

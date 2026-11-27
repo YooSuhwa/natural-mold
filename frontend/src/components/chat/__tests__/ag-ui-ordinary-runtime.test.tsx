@@ -1,188 +1,17 @@
 import { cleanup } from '@testing-library/react'
-import { type RunAgentInput } from '@ag-ui/core'
 import { afterEach, expect, it, vi } from 'vitest'
 import { render, screen, userEvent, waitFor } from '../../../../tests/test-utils'
+import {
+  installChatApi,
+  threadId,
+  question,
+  answer,
+  nativeId,
+  nativeQuestion,
+  confirmName,
+} from '../../../../tests/ag-ui/ordinary-chat-api'
 import { csrfStore } from '@/lib/auth/csrf'
 import { AgUiRuntimeSection } from '../ag-ui-runtime-section'
-
-const threadId = 'a904bd9b-33fa-4160-9caf-d34f9e52134c'
-const physicalRunId = 'd7205d63-102b-4127-bcaf-665934361a10'
-const question = '합성 보고서 전송을 준비해줘'
-const answer = '승인이 반영되었습니다.'
-const recipient = 'synthetic@example.invalid'
-const toolCallId = 'mail-call'
-const args = { to: recipient }
-
-function approval(id: string) {
-  return {
-    id,
-    reason: 'moldy.tool_approval',
-    message: '보고서를 보내도 될까요?',
-    responseSchema: { type: 'object' },
-    metadata: {
-      moldy: {
-        action_requests: [{ name: 'send_mail', args }],
-        review_configs: [{ action_name: 'send_mail', allowed_decisions: ['approve', 'reject'] }],
-      },
-    },
-  }
-}
-
-function installChatApi(activeRunId: string | null = null) {
-  let phase: 'empty' | 'running' | 'interrupted' | 'completed' = activeRunId ? 'running' : 'empty'
-  let selectedRunId = activeRunId
-  const streamReads: string[] = []
-  let pendingId = 'original-approval'
-  let userId = activeRunId ? 'previous-user-question' : ''
-  const commands: RunAgentInput[] = []
-  const writes: string[] = []
-  const snapshotReads = vi.fn()
-  const user = () => ({ id: userId, role: 'user', content: question })
-  const requestingTool = {
-    id: 'assistant-calling',
-    role: 'assistant',
-    content: '',
-    toolCalls: [
-      {
-        id: toolCallId,
-        type: 'function',
-        function: { name: 'send_mail', arguments: JSON.stringify(args) },
-      },
-    ],
-  }
-  const doneMessage = { id: 'assistant-done', role: 'assistant', content: answer }
-
-  function snapshot() {
-    const pending = phase === 'interrupted'
-    const active = phase === 'running'
-    const messages =
-      phase === 'empty' ? [] : active ? [user()] : [user(), pending ? requestingTool : doneMessage]
-    const acceptedId = selectedRunId
-    return {
-      threadId,
-      protocolVersion: '1.0',
-      projectionVersion: '1',
-      checkpointId: acceptedId ? 'checkpoint-A' : null,
-      activeTipMessageId: messages.at(-1)?.id ?? null,
-      runId: acceptedId,
-      latestPhysicalRunId: acceptedId ? physicalRunId : null,
-      runStatus: acceptedId ? phase : null,
-      activeRunId: active ? selectedRunId : null,
-      physicalRunId: active ? physicalRunId : null,
-      interruptRunId: pending ? acceptedId : null,
-      physicalInterruptRunId: pending ? physicalRunId : null,
-      messages,
-      interrupts: pending ? [approval(pendingId)] : [],
-      activities: [],
-      subagents: [],
-      cursor: null,
-      messageLinks: messages.map((message, index) => ({
-        messageId: message.id,
-        uiMessageId:
-          index === 0
-            ? '60735f5d-d6e9-4cca-b050-46e6d47be6ea'
-            : 'a308c6bd-d3ce-453b-914d-849ea287f196',
-        parentMessageId: index === 0 ? null : userId,
-        runId: acceptedId,
-        physicalRunId,
-        checkpointId: 'checkpoint-A',
-        parentCheckpointId: null,
-      })),
-    }
-  }
-
-  function streamResponse(runId: string, interrupt: boolean) {
-    const run = { threadId, runId: runId }
-    const events = [
-      { type: 'RUN_STARTED', ...run, protocolVersion: '1.0' },
-      ...(interrupt
-        ? [
-            {
-              type: 'TOOL_CALL_START',
-              toolCallId,
-              toolCallName: 'send_mail',
-              parentMessageId: 'assistant-calling',
-            },
-            { type: 'TOOL_CALL_ARGS', toolCallId, delta: JSON.stringify(args) },
-            { type: 'TOOL_CALL_END', toolCallId },
-          ]
-        : [
-            { type: 'TEXT_MESSAGE_START', messageId: doneMessage.id, role: 'assistant' },
-            { type: 'TEXT_MESSAGE_CONTENT', messageId: doneMessage.id, delta: answer },
-            { type: 'TEXT_MESSAGE_END', messageId: doneMessage.id },
-          ]),
-      {
-        type: 'RUN_FINISHED',
-        ...run,
-        outcome: interrupt
-          ? { type: 'interrupt', interrupts: [approval(pendingId)] }
-          : { type: 'success' },
-      },
-    ]
-    return new Response(events.map((event) => 'data: ' + JSON.stringify(event) + '\n\n').join(''), {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'X-Run-Id': runId,
-        'X-Moldy-Run-Id': physicalRunId,
-      },
-    })
-  }
-
-  async function fetchFixture(input: RequestInfo | URL, init?: RequestInit) {
-    const path = new URL(input instanceof Request ? input.url : String(input), 'http://localhost')
-      .pathname
-    const method = init?.method ?? 'GET'
-    if (method !== 'GET') writes.push(path)
-    if (method === 'GET' && path.endsWith('/ag-ui/snapshot')) {
-      snapshotReads()
-      return Response.json(snapshot())
-    }
-    if (method === 'GET' && path.endsWith('/ag-ui/stream')) {
-      const address = new URL(
-        input instanceof Request ? input.url : String(input),
-        'http://localhost',
-      )
-      const runId = address.searchParams.get('runId')
-      if (!runId || runId !== selectedRunId) return new Response(null, { status: 404 })
-      streamReads.push(runId)
-      phase = 'completed'
-      return streamResponse(runId, false)
-    }
-    if (method === 'GET' && path.endsWith('/run-inputs'))
-      return Response.json({ items: [], queue_paused: false })
-    if (method === 'GET' && path.endsWith('/child-tasks'))
-      return Response.json({
-        items: [],
-        next_offset: null,
-        enabled: true,
-        allow_legacy_details: false,
-      })
-    if (method === 'POST' && path.endsWith('/followup-suggestion'))
-      return Response.json({ suggestion: null })
-    if (method !== 'POST' || path !== '/api/conversations/' + threadId + '/ag-ui/runs') {
-      return Response.json({ detail: 'Unconfigured test endpoint' }, { status: 404 })
-    }
-    expect(init?.credentials).toBe('include')
-    expect(new Headers(init?.headers).get('X-CSRF-Token')).toBe('synthetic-csrf')
-    const command: RunAgentInput = JSON.parse(String(init?.body))
-    commands.push(command)
-    const isFirst = commands.length === 1
-    if (isFirst) userId = command.messages.at(-1)?.id ?? ''
-    selectedRunId = command.runId
-    phase = isFirst ? 'interrupted' : 'completed'
-    return streamResponse(command.runId, isFirst)
-  }
-  vi.stubGlobal('fetch', vi.fn(fetchFixture))
-  return {
-    commands,
-    streamReads,
-    writes,
-    snapshotReads,
-    rotateApproval: () => {
-      pendingId = 'current-approved-identity'
-    },
-  }
-}
 
 function openChat() {
   return render(
@@ -247,7 +76,7 @@ it('sends once, reopens the pending approval by GET, then resumes the current in
 })
 
 it('replays another tab’s running answer without submitting a run or generating a new suggestion', async () => {
-  const api = installChatApi('original-active-run')
+  const api = installChatApi({ activeRunId: 'original-active-run' })
   openChat()
   await waitFor(() => {
     expect(api.snapshotReads.mock.calls.length).toBeGreaterThan(1)
@@ -257,4 +86,69 @@ it('replays another tab’s running answer without submitting a run or generatin
   expect(api.streamReads).toEqual(['original-active-run'])
   expect(api.commands).toHaveLength(0)
   expect(api.writes).toEqual([])
+})
+
+it('offers a native answer only after its checkpoint commits and applies the first click once', async () => {
+  csrfStore.set('synthetic-csrf')
+  const api = installChatApi({ delayNativeCheckpoint: true })
+  const user = userEvent.setup()
+  openChat()
+  await waitFor(() => expect(api.snapshotReads).toHaveBeenCalled())
+  await user.type(await screen.findByRole('textbox'), question + '{Enter}')
+
+  // The stream has already published RUN_FINISHED.interrupt, but the selected
+  // database read still identifies the parent run as running with no pending slots.
+  await waitFor(() => expect(api.observedRunningCheckpoint).toHaveBeenCalled())
+  const premature = screen.queryByRole('button', { name: confirmName })
+  if (premature) expect(premature).toBeDisabled()
+  expect(api.writes).toEqual(['/api/conversations/' + threadId + '/ag-ui/runs'])
+  expect(api.appliedResponses).toEqual([])
+
+  api.commitInterrupt()
+  await waitFor(() => expect(screen.getByRole('button', { name: confirmName })).toBeEnabled())
+  await user.click(screen.getByRole('button', { name: confirmName }))
+
+  const expected = {
+    decisions: [
+      {
+        type: 'respond',
+        message: JSON.stringify({ mode: 'option_list', selection: [], labels: [] }),
+      },
+    ],
+  }
+  await waitFor(() => expect(screen.getByText(answer)).toBeVisible())
+  expect(api.commands).toHaveLength(2)
+  expect(api.commands[0].messages).toMatchObject([{ role: 'user', content: question }])
+  expect(api.commands[1]).toMatchObject({
+    threadId,
+    messages: [],
+    resume: [{ interruptId: nativeId, status: 'resolved', payload: expected }],
+  })
+  expect(api.appliedResponses).toEqual([expected])
+  const runPath = '/api/conversations/' + threadId + '/ag-ui/runs'
+  await waitFor(() =>
+    expect(api.writes).toEqual([
+      runPath,
+      runPath,
+      '/api/conversations/' + threadId + '/followup-suggestion',
+    ]),
+  )
+})
+
+it('keeps an expired native question read-only when reopening its committed checkpoint', async () => {
+  csrfStore.set('synthetic-csrf')
+  const api = installChatApi({ delayNativeCheckpoint: true })
+  const origin = openChat()
+  await waitFor(() => expect(api.snapshotReads).toHaveBeenCalled())
+  await userEvent.setup().type(await screen.findByRole('textbox'), question + '{Enter}')
+  await waitFor(() => expect(api.observedRunningCheckpoint).toHaveBeenCalled())
+  origin.unmount()
+  api.commitInterrupt(true)
+  openChat()
+  await waitFor(() => expect(api.observedInterruption).toHaveBeenCalled())
+  expect(await screen.findByText(nativeQuestion.question)).toBeVisible()
+  const expiredControl = screen.queryByRole('button', { name: confirmName })
+  if (expiredControl) expect(expiredControl).toBeDisabled()
+  expect(api.appliedResponses).toEqual([])
+  expect(api.writes).toEqual(['/api/conversations/' + threadId + '/ag-ui/runs'])
 })

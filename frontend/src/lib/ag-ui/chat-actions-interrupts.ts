@@ -79,6 +79,7 @@ interface Options {
   readonly runtime: Runtime
   readonly conversationId: string
   readonly agentId: string
+  readonly getReadyBatchKey: (native: readonly AgUiInterrupt[]) => string | null
 }
 
 function allowsDecision(
@@ -105,6 +106,7 @@ export function useAgUiHitlActions({
   runtime,
   conversationId,
   agentId,
+  getReadyBatchKey,
 }: Options): Required<HiTLContextValue> {
   const subscribe = useCallback((notify: () => void) => runtime.thread.subscribe(notify), [runtime])
   const getPending = useCallback(() => {
@@ -115,23 +117,21 @@ export function useAgUiHitlActions({
   const payloads = useMemo(() => moldyAgUiInterruptPayloads(pending), [pending])
   const byId = useMemo(() => new Map(payloads.map((p) => [p.interrupt_id, p])), [payloads])
 
+  const readyBatchKey =
+    pending.length && byId.size === pending.length ? getReadyBatchKey(pending) : null
   const owner = useMemo(
-    () => ({ runtime, conversationId, agentId }),
-    [runtime, conversationId, agentId],
+    () => ({ runtime, conversationId, agentId, readyBatchKey }),
+    [runtime, conversationId, agentId, readyBatchKey],
   )
   const activeOwner = useRef<typeof owner | null>(null)
-  useLayoutEffect(() => {
-    activeOwner.current = owner
-    return () => {
-      activeOwner.current = null
-    }
-  }, [owner])
   // The graph can replace a slot while a card is open or the user is still
   // reviewing another card. Do not enqueue even a partial vote for that batch.
   const currentBatch = useCallback(() => {
     const current = getPending()
     if (
       activeOwner.current !== owner ||
+      readyBatchKey === null ||
+      getReadyBatchKey(current) !== readyBatchKey ||
       !current.length ||
       byId.size !== current.length ||
       pending.length !== current.length
@@ -150,7 +150,7 @@ export function useAgUiHitlActions({
       }
     }
     return current
-  }, [byId, getPending, owner, pending])
+  }, [byId, getPending, getReadyBatchKey, owner, pending, readyBatchKey])
 
   const submissions = useRef(new Set<string>())
   const respond = useCallback(
@@ -197,7 +197,9 @@ export function useAgUiHitlActions({
     [respond],
   )
   const actions = useHitlDecisionController({
-    conversationId,
+    // A new verified checkpoint cancels votes buffered for the previous checkpoint,
+    // including when the reloaded tool IDs and all visible choices are identical.
+    conversationId: JSON.stringify([conversationId, agentId, readyBatchKey]),
     stream,
     interruptPayloads: payloads,
     interruptPayloadsById: byId,
@@ -205,8 +207,24 @@ export function useAgUiHitlActions({
     refreshLifecycle: finish,
     updateResolvedInterrupts: ignoreResolved,
   })
+  // The coordinator resets before paint. The first click on a newly enabled
+  // button then observes its matching generation and cannot inherit prior votes.
+  useLayoutEffect(() => {
+    activeOwner.current = owner
+    return () => {
+      activeOwner.current = null
+    }
+  }, [owner])
   return {
     agentId,
+    canRespond: readyBatchKey !== null,
+    approvalGeneration: readyBatchKey,
+    canRespondTo: (interruptId, actionIndex) =>
+      readyBatchKey !== null &&
+      !!interruptId &&
+      actionIndex !== undefined &&
+      Number.isInteger(actionIndex) &&
+      !!byId.get(interruptId)?.action_requests[actionIndex],
     registerDecision: async (index, decision, displayText, interruptId) => {
       currentBatch()
       const target =

@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useCallback, useId, useMemo } from 'react'
+import { useState, useCallback, useId, useLayoutEffect, useMemo, useRef } from 'react'
 import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { MessageSquareQuoteIcon, CheckCircle2Icon, SendIcon, Loader2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn, toggleSetItem } from '@/lib/utils'
 import { toRespond } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
+import { canRespondToAction, useApprovalGeneration } from '@/lib/chat/hitl-readiness'
 import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
 import type { UserInputOption, UserInputQuestion } from '@/lib/types'
 import { CountdownBadge } from './countdown-badge'
@@ -95,6 +96,7 @@ function MultiSelectInput({
             >
               <input
                 type="checkbox"
+                aria-label={opt.label}
                 checked={checked}
                 onChange={() => onToggle(opt.label)}
                 className="size-3.5 rounded border-border accent-primary"
@@ -126,6 +128,7 @@ function TextInput({
     <div className="space-y-2">
       <p className="text-sm font-medium">{question.question}</p>
       <textarea
+        aria-label={question.question || question.label || placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={onFocus}
@@ -225,13 +228,47 @@ export function UserInputUI(props: ToolCallMessagePartProps<AskUserArgs, unknown
   return <UserInputForm {...props} />
 }
 
-export function UserInputForm({
+type UserInputFormProps = Pick<
+  ToolCallMessagePartProps<AskUserArgs, unknown>,
+  'args' | 'status' | 'result'
+>
+
+export function UserInputForm(props: UserInputFormProps) {
+  const hitl = useHiTL()
+  const args = props.args
+  const generation = useApprovalGeneration(hitl)
+  // A replacement interrupt can be rendered in the same tool call. Its answer
+  // and local submission state belong to the newly confirmed action slot.
+  const action =
+    hitl?.canRespond !== undefined
+      ? JSON.stringify([
+          args?.hitl_interrupt_id,
+          args?.hitl_action_index,
+          args?.approval_id,
+          generation,
+        ])
+      : undefined
+  return <UserInputFormBody key={action} {...props} hitl={hitl} />
+}
+
+function UserInputFormBody({
   args,
   result,
   status,
-}: Pick<ToolCallMessagePartProps<AskUserArgs, unknown>, 'args' | 'status' | 'result'>) {
+  hitl,
+}: UserInputFormProps & { hitl: ReturnType<typeof useHiTL> }) {
   const t = useTranslations('chat.userInput')
-  const hitl = useHiTL()
+  const canRespond =
+    canRespondToAction(hitl, args) &&
+    (hitl?.canRespond === undefined || status.type === 'requires-action')
+  const ready = useRef(canRespond)
+  const sending = useRef(false)
+  useLayoutEffect(() => {
+    ready.current = canRespond
+    return () => {
+      ready.current = false
+    }
+  }, [canRespond])
   const [answers, setAnswers] = useState<Answers>({})
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted'>('idle')
   const [submittedDisplay, setSubmittedDisplay] = useState<string | null>(null)
@@ -258,6 +295,8 @@ export function UserInputForm({
 
   const submitResponse = useCallback(
     async (message: string, displayText: string) => {
+      if (!ready.current || sending.current) return
+      sending.current = true
       setSubmitState('submitting')
       setSubmittedDisplay(displayText)
       setSubmitError(false)
@@ -265,6 +304,7 @@ export function UserInputForm({
         await submitDecision(toRespond(message), displayText)
         setSubmitState('submitted')
       } catch {
+        sending.current = false
         setSubmittedDisplay(null)
         setSubmitState('idle')
         setSubmitError(true)
@@ -284,50 +324,34 @@ export function UserInputForm({
     status.type !== 'complete' &&
     status.type !== 'running'
 
-  const handleSubmit = useCallback(
-    async (opts?: { skipReason?: string }) => {
-      // 응답 직렬화
-      const response: Record<string, unknown> = {}
-      questions.forEach((q, i) => {
-        const key = q.question ?? q.label ?? q.id ?? `question_${i + 1}`
-        const val = answers[i]
-        if (val instanceof Set) {
-          response[key] = Array.from(val)
-        } else {
-          response[key] = val ?? ''
-        }
-      })
-
-      setSubmitState('submitting')
-      setSubmitError(false)
-
-      // 질문이 1개면 값만 전송, 복수면 객체 전송
-      const payload = questions.length === 1 ? Object.values(response)[0] : response
-
-      // 화면 표시용 텍스트
-      const displayText =
-        opts?.skipReason ??
-        questions
-          .map((_, i) => {
-            const val = answers[i]
-            if (val instanceof Set) return Array.from(val).join(', ')
-            return String(val ?? '')
-          })
-          .join(' | ')
-
-      const message = typeof payload === 'string' ? payload : JSON.stringify(payload)
-      setSubmittedDisplay(displayText)
-      try {
-        await submitDecision(toRespond(message), displayText)
-        setSubmitState('submitted')
-      } catch {
-        setSubmittedDisplay(null)
-        setSubmitState('idle')
-        setSubmitError(true)
+  const handleSubmit = useCallback(async () => {
+    // 응답 직렬화
+    const response: Record<string, unknown> = {}
+    questions.forEach((q, i) => {
+      const key = q.question ?? q.label ?? q.id ?? `question_${i + 1}`
+      const val = answers[i]
+      if (val instanceof Set) {
+        response[key] = Array.from(val)
+      } else {
+        response[key] = val ?? ''
       }
-    },
-    [answers, questions, submitDecision],
-  )
+    })
+
+    // 질문이 1개면 값만 전송, 복수면 객체 전송
+    const payload = questions.length === 1 ? Object.values(response)[0] : response
+
+    // 화면 표시용 텍스트
+    const displayText = questions
+      .map((_, i) => {
+        const val = answers[i]
+        if (val instanceof Set) return Array.from(val).join(', ')
+        return String(val ?? '')
+      })
+      .join(' | ')
+
+    const message = typeof payload === 'string' ? payload : JSON.stringify(payload)
+    await submitResponse(message, displayText)
+  }, [answers, questions, submitResponse])
 
   // 만료 시 빈 답변으로 자동 제출 — 에이전트 graph가 무한히 paused되지 않도록
   const expireMessage = t('autoSkipped')
@@ -337,10 +361,10 @@ export function UserInputForm({
   }, [submitResponse, submitState, expireMessage])
 
   const { remaining, isUrgent, formatted, extend } = useApprovalDeadline({
-    approvalId,
+    approvalId: canRespond ? approvalId : '',
     initialTimeoutSeconds: args?.timeout_seconds,
     onExpire: handleExpire,
-    active: isPending,
+    active: isPending && canRespond,
   })
 
   const updateAnswer = useCallback(
@@ -392,17 +416,23 @@ export function UserInputForm({
       <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
         <MessageSquareQuoteIcon className="moldy-status-icon size-4" />
         <span className="text-sm font-medium">{t('inputRequired')}</span>
-        <CountdownBadge
-          formatted={formatted}
-          isUrgent={isUrgent}
-          expired={remaining <= 0}
-          label={t('expiresIn')}
-          expiredLabel={t('expired')}
-          className="ml-auto"
-        />
+        {canRespond ? (
+          <CountdownBadge
+            formatted={formatted}
+            isUrgent={isUrgent}
+            expired={remaining <= 0}
+            label={t('expiresIn')}
+            expiredLabel={t('expired')}
+            className="ml-auto"
+          />
+        ) : (
+          <span role="status" className="ml-auto text-xs text-muted-foreground">
+            {t('preparing')}
+          </span>
+        )}
       </div>
 
-      <div className="p-4">
+      <fieldset disabled={!canRespond} className="min-w-0 p-4">
         {submitError && (
           <p role="alert" className="mb-3 text-xs text-destructive">
             {t('resumeFailed')}
@@ -500,7 +530,7 @@ export function UserInputForm({
             </div>
           </>
         )}
-      </div>
+      </fieldset>
     </div>
   )
 }

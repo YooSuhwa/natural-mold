@@ -103,6 +103,8 @@ function session(
       threadId: conversationId,
       protocolVersion: '1.0',
       projectionVersion: '1',
+      checkpointId: 'paused-checkpoint',
+      latestPhysicalRunId: physicalRun,
       interruptRunId: publicRun,
       physicalInterruptRunId: physicalRun,
       runId: publicRun,

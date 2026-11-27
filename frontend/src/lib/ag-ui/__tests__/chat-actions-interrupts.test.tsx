@@ -47,8 +47,10 @@ function approvals(id: string): AgUiInterrupt {
   }
 }
 
-function setup(initial: readonly AgUiInterrupt[]) {
+function setup(initial: readonly AgUiInterrupt[], readyKey: string | null = 'initial-checkpoint') {
   let slots = initial
+  let durableKey = readyKey
+  const getReadyBatchKey = () => durableKey
   const listeners = new Set<() => void>()
   const submit = vi.fn<(responses: readonly AgUiResumeEntry[]) => Promise<void>>(async () => {})
   const runtime = {
@@ -63,12 +65,18 @@ function setup(initial: readonly AgUiInterrupt[]) {
       },
     },
   }
+  const view = renderHook(
+    ({ conversationId }) =>
+      useAgUiHitlActions({ runtime, conversationId, agentId: 'agent', getReadyBatchKey }),
+    { initialProps: { conversationId: 'conversation' } },
+  )
   return {
-    ...renderHook(
-      ({ conversationId }) => useAgUiHitlActions({ runtime, conversationId, agentId: 'agent' }),
-      { initialProps: { conversationId: 'conversation' } },
-    ),
+    ...view,
     submit,
+    setDurableKey(next: string | null, rerender = true) {
+      durableKey = next
+      if (rerender) view.rerender({ conversationId: 'conversation' })
+    },
     replace(next: readonly AgUiInterrupt[], notify = true) {
       slots = next
       if (notify)
@@ -233,6 +241,35 @@ describe('Moldy choices on the native AG-UI pending interrupts', () => {
       expect(view.submit).not.toHaveBeenCalled()
     },
   )
+
+  it('invalidates buffered sibling votes even if a new verified checkpoint has identical choices', async () => {
+    const view = setup([ask('A'), ask('B')])
+    const answer = { type: 'respond', message: 'yes' } as const
+    const oldActions = view.result.current
+    const oldVote = oldActions.registerDecision(0, answer, undefined, 'A')
+    const cancelled = expect(oldVote).rejects.toMatchObject({ name: 'AbortError' })
+    view.setDurableKey('next-checkpoint')
+    await cancelled
+    await expect(oldActions.registerDecision(0, answer, undefined, 'B')).rejects.toMatchObject({
+      name: 'InvalidStateError',
+    })
+    const fresh = view.result.current
+    const next = fresh.registerDecision(0, answer, undefined, 'B')
+    await Promise.resolve()
+    expect(view.submit).not.toHaveBeenCalled()
+    await Promise.all([next, fresh.registerDecision(0, answer, undefined, 'A')])
+    expect(view.submit).toHaveBeenCalledTimes(1)
+  })
+
+  it('rechecks durable authority immediately before native dispatch', async () => {
+    const view = setup([ask('question')])
+    const action = view.result.current.onResumeDecisions([{ type: 'respond', message: 'yes' }])
+    view.setDurableKey(null, false)
+    await expect(action).rejects.toMatchObject({ name: 'InvalidStateError' })
+    expect(view.submit).not.toHaveBeenCalled()
+    view.setDurableKey(null)
+    expect(view.result.current.canRespond).toBe(false)
+  })
 
   it('declines changed choices before the pending subscription publishes them', async () => {
     const view = setup([ask('question')])
