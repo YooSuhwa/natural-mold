@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,7 @@ from app.exceptions import NotFoundError
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service
+from app.services.ag_ui_child_terminal_statuses import proven_child_terminal_statuses
 from app.services.ag_ui_historical_child_visibility import historical_child_visibility
 from app.services.ag_ui_pending_checkpoint import read_pending_checkpoint
 from app.services.ag_ui_pending_child_authority import read_pending_child_authority
@@ -34,6 +35,7 @@ class CurrentReadInterrupts:
     child_authority_denied: bool = False
     legacy_child_ids: frozenset[str] = frozenset()
     legacy_bindings: dict[str, LegacyChildBinding] = field(default_factory=dict)
+    child_terminal_statuses: dict[tuple[str, ...], str] = field(default_factory=dict)
 
     @property
     def legacy_namespaces(self) -> dict[str, tuple[str, ...]]:
@@ -170,4 +172,8 @@ async def current_read_interrupts(
 ) -> CurrentReadInterrupts:
     if target.run is None:
         return CurrentReadInterrupts()
-    return await read_proven_interrupts(db, conversation, context, target.run)
+    pending = await read_proven_interrupts(db, conversation, context, target.run)
+    statuses = await proven_child_terminal_statuses(
+        db, conversation=conversation, context=context, run=target.run, visibility=target.visibility
+    )
+    return replace(pending, child_terminal_statuses=statuses) if statuses else pending
