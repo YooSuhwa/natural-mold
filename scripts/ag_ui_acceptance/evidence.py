@@ -15,6 +15,7 @@ from uuid import UUID
 
 from approval_card_evidence import approval_card_observations
 from branch_evidence import branch_observation
+from goal_case_evidence import GOAL_CASE_FILE, GOAL_CASE_TITLE, goal_case_observations
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictInt
 from pydantic.alias_generators import to_camel
 
@@ -581,6 +582,12 @@ def _case(spec: dict, test: dict, owned_root: Path, group: str, performance_timi
                 errors.append("invalid_cutover_attachment")
             if set(observed) != {CUTOVER_CASES[title]}:
                 errors.append("missing_or_misplaced_cutover_attachment")
+        if (
+            filename == GOAL_CASE_FILE
+            and title == GOAL_CASE_TITLE
+            and group in {"ordinary-regressions-ag_ui", "ordinary-regressions-langgraph_v3"}
+        ):
+            observed = goal_case_observations(result, owned_root, _attachment_body)
         if (
             attempt["retry"] != position
             or type(attempt["duration_ms"]) is not int
