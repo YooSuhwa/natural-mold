@@ -228,9 +228,7 @@ test.describe('Auto-compaction marker', () => {
         timeout: 30_000,
       })
 
-      // A subsequent long turn must compact again. The permanently projected
-      // Korean marker is intentionally the only UI surface; upstream event data
-      // remains transport-only.
+      // A subsequent long turn must compact again and retain both Korean markers.
       const secondRunId = await sendMessageForRun(
         page,
         setup.conversationId,
@@ -273,6 +271,107 @@ test.describe('Auto-compaction marker', () => {
       await purgeAgentAndModel(request, setup.csrfHeaders, setup.agentId, setup.modelId)
     }
   }
+
+  test('compact history viewer opens verified earlier messages without starting a new run', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(210_000)
+    const setup = await setupCompactionAgent(request, { mode: 'auto' })
+    const approvedText = '기록 보관 검수용 문서의 제목은 겨울 정원입니다.'
+    try {
+      await page.goto(`/agents/${setup.agentId}/conversations/${setup.conversationId}`)
+      await sendAndAwaitReply(page, `${approvedText} ${CONTEXT_PADDING}`, 1)
+      await sendAndAwaitReply(page, `두 번째 질문 ${CONTEXT_PADDING}`, 2)
+      const runId = await sendMessageForRun(
+        page,
+        setup.conversationId,
+        `${SLOW_STREAM_MARKER} ${CONTEXT_PADDING}`,
+      )
+      await waitForRunStatus(request, setup.conversationId, runId, 'completed')
+
+      const marker = page.getByTestId('compaction-summary').last()
+      await expect(marker.getByRole('button', { name: '요약 전 대화 보기' })).toBeVisible()
+      const mutations: string[] = []
+      const apiPrefix = `/api/conversations/${setup.conversationId}/`
+      page.on('request', (entry) => {
+        const path = new URL(entry.url()).pathname
+        if (
+          path.startsWith(apiPrefix) &&
+          entry.method() !== 'GET' &&
+          entry.method() !== 'OPTIONS'
+        ) {
+          mutations.push(`${entry.method()} ${path}`)
+        }
+      })
+      const waitForEvidence = () =>
+        page.waitForResponse(
+          (res) =>
+            res.request().method() === 'GET' &&
+            new URL(res.url()).pathname.startsWith(`${apiPrefix}history-evidence/`),
+        )
+      const responsePromise = waitForEvidence()
+      await marker.getByRole('button', { name: '요약 전 대화 보기' }).click()
+      const response = await responsePromise
+      expect(response.status()).toBe(200)
+      expect(response.headers()['cache-control']).toContain('no-store')
+      const evidence: unknown = await response.json()
+      if (!isRecord(evidence)) throw new Error('Missing compaction evidence')
+      expect(evidence.checkpoint_id).toBe(new URL(response.url()).pathname.split('/').at(-1))
+      expect(evidence.history_id).toMatch(/^history_[a-f0-9]{24}$/)
+      expect(evidence.content_sha256).toMatch(/^[a-f0-9]{64}$/)
+      expect(evidence.cutoff_index).toBeGreaterThan(0)
+      expect(evidence.format).toBe(
+        process.env.CHAT_ARCHIVE_WRITES_ENABLED === 'true' ? 'jsonl' : 'legacy_markdown',
+      )
+      expect(JSON.stringify(evidence)).not.toMatch(
+        /offload_path|\/\.moldy-offload\/|\.moldy-internal/,
+      )
+      await expect(marker.locator('dd').filter({ hasText: approvedText })).toBeVisible()
+      const pinned = new URL(response.url())
+      pinned.searchParams.set(
+        'expected_sha256',
+        stringField(evidence, 'content_sha256', 'history evidence'),
+      )
+      const reread = await apiGetJson(request, pinned.toString())
+      expect(reread).toEqual(evidence)
+      await marker.getByRole('button', { name: '접기' }).click()
+      await expect(marker.locator('dd')).toHaveCount(0)
+      expect(mutations).toEqual([])
+
+      await page.reload()
+      const restored = page.getByTestId('compaction-summary').last()
+      const reloadResponse = waitForEvidence()
+      await restored.getByRole('button', { name: '요약 전 대화 보기' }).click()
+      expect(await (await reloadResponse).json()).toEqual(evidence)
+      await expect(restored.locator('dd').filter({ hasText: approvedText })).toBeVisible()
+      const ownerMessage = restored.locator('xpath=ancestor::*[@data-moldy-message-id][1]')
+      const messageId = await ownerMessage.getAttribute('data-moldy-message-id')
+      if (!messageId) throw new Error('Compaction marker missing its message anchor')
+      await restored.getByRole('button', { name: '접기' }).click()
+      const followUpRunId = await sendMessageForRun(
+        page,
+        setup.conversationId,
+        '짧은 후속 질문입니다.',
+      )
+      await waitForRunStatus(request, setup.conversationId, followUpRunId, 'completed')
+      const earlier = page
+        .locator(`[data-moldy-message-id=${JSON.stringify(messageId)}]`)
+        .getByTestId('compaction-summary')
+      const earlierResponse = waitForEvidence()
+      await earlier.getByRole('button', { name: '요약 전 대화 보기' }).click()
+      const earlierEvidence: unknown = await (await earlierResponse).json()
+      if (!isRecord(earlierEvidence)) throw new Error('Missing earlier compaction evidence')
+      expect(earlierEvidence.history_id).toBe(evidence.history_id)
+      expect(earlierEvidence.checkpoint_id).toBe(evidence.checkpoint_id)
+      expect(earlierEvidence.cutoff_index).toBe(evidence.cutoff_index)
+      if (evidence.format === 'jsonl')
+        expect(earlierEvidence.content_sha256).toBe(evidence.content_sha256)
+      await expect(earlier.locator('dd').filter({ hasText: approvedText })).toBeVisible()
+    } finally {
+      await purgeAgentAndModel(request, setup.csrfHeaders, setup.agentId, setup.modelId)
+    }
+  })
 
   test('stored auto policy shows bounded compaction projection for two compactions', async ({
     page,
