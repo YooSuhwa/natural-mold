@@ -26,6 +26,7 @@ from app.models.builder_session import BuilderSession
 from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
+from app.models.conversation_child_task import ConversationChildInstruction, ConversationChildTask
 from app.models.conversation_goal import ConversationGoal, GoalAttempt, GoalTransitionIntent
 from app.models.conversation_history import (
     ConversationHistoryCheckpoint,
@@ -157,6 +158,8 @@ __all__ = [
     "BuilderSession",
     "Conversation",
     "ConversationArtifact",
+    "ConversationChildInstruction",
+    "ConversationChildTask",
     "ConversationGoal",
     "ConversationHistoryCheckpoint",
     "ConversationHistoryEvent",
