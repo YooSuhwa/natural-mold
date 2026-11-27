@@ -1,4 +1,4 @@
-import type { APIRequestContext } from '@playwright/test'
+import type { APIRequestContext, Route } from '@playwright/test'
 import { z } from 'zod'
 
 import { textContentFromMessageContent } from '../src/lib/chat/langgraph-runtime/stream-message-content'
@@ -232,49 +232,66 @@ for (const profile of ['native', 'middleware-backed'] as const) {
         labels: ['🍎 사과'],
       })
 
-      try {
-        await observeStandardStreams(page, conversationId)
-        await page.route(selectedRead, async (route) => {
-          if (route.request().method() !== 'GET') return route.continue()
-          observations.interceptedReads++
-          const original = await route.fetch({ maxRedirects: 0 })
-          observations.lastHttpStatus = original.status()
-          if (original.ok()) {
-            observations.successfulReads++
-            const body: unknown = await original.json().catch(() => undefined)
-            const status = snapshotStatus.safeParse(body)
-            if (!status.success) observations.malformedReads++
-            if (status.success && status.data.runStatus === 'interrupted') {
-              observations.interruptedReads++
-              const declared = snapshotSlots.safeParse(body)
-              observations.lastSnapshotReason = reasonLabel(
-                declared.success ? declared.data.interrupts[0]?.reason : undefined,
-              )
-              const parsed = interruptedSnapshot.safeParse(body)
-              if (!parsed.success) observations.malformedReads++
-              else {
-                const saved = parsed.data
-                observations.sameThread = saved.threadId === conversationId
-                observations.hasCheckpoint = !!saved.checkpointId
-                observations.samePhysicalRun =
-                  saved.latestPhysicalRunId === saved.physicalInterruptRunId
-                observations.actionable = matchingQuestion(saved.interrupts[0], profile)
-                if (
-                  observations.sameThread &&
-                  observations.samePhysicalRun &&
-                  saved.runId === saved.interruptRunId &&
-                  observations.actionable
-                ) {
-                  held.push(saved)
-                  observations.heldReads++
-                  // Other selected reads of this checkpoint must wait for the same release.
-                  await release.promise
-                }
+      const inFlight = new Set<Promise<void>>()
+      let released = false
+      async function inspectSelection(route: Route) {
+        if (released || route.request().method() !== 'GET') return route.continue()
+        observations.interceptedReads++
+        const original = await route.fetch({ maxRedirects: 0 })
+        observations.lastHttpStatus = original.status()
+        if (original.ok()) {
+          observations.successfulReads++
+          const body: unknown = await original.json().catch(() => undefined)
+          const status = snapshotStatus.safeParse(body)
+          if (!status.success) observations.malformedReads++
+          if (status.success && status.data.runStatus === 'interrupted') {
+            observations.interruptedReads++
+            const declared = snapshotSlots.safeParse(body)
+            observations.lastSnapshotReason = reasonLabel(
+              declared.success ? declared.data.interrupts[0]?.reason : undefined,
+            )
+            const parsed = interruptedSnapshot.safeParse(body)
+            if (!parsed.success) observations.malformedReads++
+            else {
+              const saved = parsed.data
+              observations.sameThread = saved.threadId === conversationId
+              observations.hasCheckpoint = !!saved.checkpointId
+              observations.samePhysicalRun =
+                saved.latestPhysicalRunId === saved.physicalInterruptRunId
+              observations.actionable = matchingQuestion(saved.interrupts[0], profile)
+              if (
+                observations.sameThread &&
+                observations.samePhysicalRun &&
+                saved.runId === saved.interruptRunId &&
+                observations.actionable
+              ) {
+                held.push(saved)
+                observations.heldReads++
+                // Other selected reads of this checkpoint must wait for the same release.
+                await release.promise
               }
             }
           }
-          await route.fulfill({ response: original })
-        })
+        }
+        await route.fulfill({ response: original })
+      }
+      function selectedHandler(route: Route) {
+        const read = inspectSelection(route)
+        inFlight.add(read)
+        return read.finally(() => inFlight.delete(read))
+      }
+      async function releaseSelectedReads() {
+        if (released) return
+        released = true
+        release.resolve()
+        await page.unroute(selectedRead, selectedHandler)
+        // A selected-history GET may already be inside route.fetch. Let its genuine
+        // response finish before interacting again or disposing the current page.
+        await Promise.all(inFlight)
+      }
+      try {
+        await observeStandardStreams(page, conversationId)
+        await page.route(selectedRead, selectedHandler)
         await page.goto(`/agents/${setup.agentId}/conversations/${conversationId}`)
         const form = page.locator('form[data-moldy-thread-composer]').last()
         const composer = form.locator('textarea[data-moldy-composer-input="true"]')
@@ -335,7 +352,7 @@ for (const profile of ['native', 'middleware-backed'] as const) {
         observations.resumePostsBeforeRelease = observations.resumePosts
         observations.lockedBeforeRelease = true
         expect(observations.resumePostsBeforeRelease).toBe(0)
-        release.resolve()
+        await releaseSelectedReads()
         const apple = card.getByRole('option', { name: /사과/ })
         await expect(apple).toBeEnabled()
         await apple.press('Space')
@@ -400,8 +417,7 @@ for (const profile of ['native', 'middleware-backed'] as const) {
         expect(writes).toEqual(['ag-ui', 'ag-ui'])
         observations.effectVerified = true
       } finally {
-        release.resolve()
-        await page.unroute(selectedRead)
+        await releaseSelectedReads()
         await testInfo.attach('approval-readiness', {
           body: Buffer.from(
             JSON.stringify(observations, (_key, value: unknown) =>
