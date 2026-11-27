@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.agent_runtime.lease_checkpoint_namespace import NS_SEP
 from app.agent_runtime.protocol_events import ProtocolInterrupt
 from app.approvals import service as approvals
@@ -29,6 +30,7 @@ class CurrentReadInterrupts:
     interrupts: tuple[ProtocolInterrupt, ...] = ()
     expires_at: dict[str, str] = field(default_factory=dict)
     actionable: bool = False
+    child_authority_denied: bool = False
     legacy_child_ids: frozenset[str] = frozenset()
     legacy_bindings: dict[str, LegacyChildBinding] = field(default_factory=dict)
 
@@ -59,8 +61,37 @@ async def read_proven_interrupts(
     )
     if current is None or current.id != run.id:
         return CurrentReadInterrupts()
+    return await _read_run_proof(db, conversation, context, current, checkpoint_id=checkpoint_id)
+
+
+async def constrain_legacy_child_visibility(
+    db: AsyncSession,
+    conversation: Conversation,
+    context: OrgContext,
+    run: ConversationRun,
+    visibility: ChildVisibility,
+) -> ChildVisibility:
+    """Fence journal replay before its first child frame, also for superseded interrupts."""
+    if not visibility.allow_legacy_details or run.status != "interrupted":
+        return visibility
+    # The default legacy journal policy predates recipient-level grants. A
+    # superseding turn cannot authorize frames belonging to this old physical run.
+    proof = await _read_run_proof(db, conversation, context, run)
+    if not proof.interrupts or proof.child_authority_denied:
+        return ChildVisibility(False, frozenset(), frozenset())
+    return visibility
+
+
+async def _read_run_proof(
+    db: AsyncSession,
+    conversation: Conversation,
+    context: OrgContext,
+    run: ConversationRun,
+    *,
+    checkpoint_id: str | None = None,
+) -> CurrentReadInterrupts:
     checkpoint = await read_pending_checkpoint(
-        db, conversation=conversation, context=context, parent_run=current
+        db, conversation=conversation, context=context, parent_run=run
     )
     if checkpoint is None or (
         checkpoint_id is not None and checkpoint_id != checkpoint.checkpoint_id
@@ -71,14 +102,14 @@ async def read_proven_interrupts(
     actionable = bool(checkpoint.interrupts) and all(
         deadline > now for deadline in deadlines.values()
     )
-    authorized = True
+    denied = False
     try:
         legacy_ids = await read_pending_child_authority(
-            db, conversation=conversation, context=context, parent_run=current, pending=checkpoint
+            db, conversation=conversation, context=context, parent_run=run, pending=checkpoint
         )
     except NotFoundError:
         legacy_ids = frozenset()
-        authorized = False
+        denied = True
         actionable = False
 
     slots: list[ProtocolInterrupt] = []
@@ -86,15 +117,15 @@ async def read_proven_interrupts(
     for slot in checkpoint.interrupts:
         ident = slot["id"]
         ns = tuple(slot["ns"])
-        if not authorized and (ns or ident in checkpoint.legacy_child_bindings):
-            continue
         if ident in legacy_ids:
             binding = checkpoint.legacy_child_bindings.get(ident)
             if binding is None:
+                denied = True
                 actionable = False
                 continue
             native = tuple(binding.checkpoint_ns.split(NS_SEP))
             if not all(native) or (ns and ns[: len(native)] != native):
+                denied = True
                 actionable = False
                 continue
             ns = ns or native
@@ -102,11 +133,19 @@ async def read_proven_interrupts(
         elif ident in checkpoint.legacy_child_bindings and not ns:
             # An unanswered root Pregel task can represent an entire child graph.
             # Its interrupt never becomes a root card solely because the journal expired.
+            denied = True
             actionable = False
             continue
         if checkpoint.native_kinds.get(ident) not in {"approval", "ask_user", "auth_required"}:
             actionable = False
         slots.append(ProtocolInterrupt(id=ident, value=slot["value"], ns=list(ns)))
+    if denied:
+        # A batch denial is deliberately anonymous. Preserve genuine root
+        # declarations, and disclose no child's prompt, expiry, or grant marker.
+        slots = [
+            s for s in slots if not s["ns"] and s["id"] not in checkpoint.legacy_child_bindings
+        ]
+        bindings.clear()
     return CurrentReadInterrupts(
         checkpoint_id=checkpoint.checkpoint_id,
         interrupts=tuple(slots),
@@ -116,6 +155,7 @@ async def read_proven_interrupts(
             if slot["id"] in deadlines
         },
         actionable=actionable,
+        child_authority_denied=denied,
         legacy_child_ids=frozenset(bindings) if actionable else frozenset(),
         legacy_bindings=bindings,
     )

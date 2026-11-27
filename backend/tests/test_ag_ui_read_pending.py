@@ -8,6 +8,7 @@ from app.services.ag_ui_legacy_child_binding import LegacyChildBinding
 from app.services.ag_ui_pending_checkpoint import PendingCheckpoint
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.exceptions import NotFoundError
 from app.services import ag_ui_read_pending, conversation_run_service
 from tests.authz.unit_scope_fixture import unit_context
@@ -42,6 +43,12 @@ async def test_current_batch_authority_expiry_and_checkpoint_identity(
     proof = AsyncMock(return_value=frozenset({"child"}))
     monkeypatch.setattr(ag_ui_read_pending, "read_pending_checkpoint", read)
     monkeypatch.setattr(ag_ui_read_pending, "read_pending_child_authority", proof)
+    legacy = ChildVisibility(True, frozenset(), frozenset())
+    hidden = ChildVisibility(False, frozenset(), frozenset())
+    assert (
+        await ag_ui_read_pending.constrain_legacy_child_visibility(db, chat, ctx, run, legacy)
+        == legacy
+    )
 
     current = await ag_ui_read_pending.read_proven_interrupts(
         db, chat, ctx, run, checkpoint_id="head"
@@ -67,6 +74,11 @@ async def test_current_batch_authority_expiry_and_checkpoint_identity(
     assert not denied.actionable and [item["id"] for item in denied.interrupts] == ["root"]
     assert not denied.legacy_namespaces and not denied.expires_at
     assert "child prompt" not in repr(denied)
+    assert denied.child_authority_denied
+    assert (
+        await ag_ui_read_pending.constrain_legacy_child_visibility(db, chat, ctx, run, legacy)
+        == hidden
+    )
 
     newer = await _create_run(db, agent=agent, conversation=chat)
     await conversation_run_service.transition_run(db, newer, "running")
@@ -76,3 +88,10 @@ async def test_current_batch_authority_expiry_and_checkpoint_identity(
     stale = await ag_ui_read_pending.read_proven_interrupts(db, chat, ctx, run)
     assert stale.checkpoint_id is None and not stale.interrupts
     read.assert_not_called()
+    # A superseding approval cannot authorize child frames of the historical run.
+    read.return_value = None
+    assert (
+        await ag_ui_read_pending.constrain_legacy_child_visibility(db, chat, ctx, run, legacy)
+        == hidden
+    )
+    assert read.await_args.kwargs["parent_run"].id == run.id
