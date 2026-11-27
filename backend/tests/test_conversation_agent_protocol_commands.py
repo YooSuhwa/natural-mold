@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import stored_protocol_event
 from app.agent_runtime.runtime_policy import LEGACY_RUNTIME_POLICY
+from app.authz.org_context import OrgContext
+from app.authz.organization_execution_proof import live_proof
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -870,10 +872,12 @@ async def test_run_start_command_strips_trailing_assistant_for_regenerate(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["interrupted", "replaced", "revoked"])
 async def test_input_respond_waits_for_parent_run_interrupt_transition(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
 ) -> None:
     """M8-2 regression: 인터럽트 승인 카드는 스트림 도중 이미 렌더되지만 부모
     run의 "interrupted" 전이 커밋은 워커 finalize 단계라, 전이 전에 도착한
@@ -893,26 +897,46 @@ async def test_input_respond_waits_for_parent_run_interrupt_transition(
     await db.commit()
     run_id = parent_run.id
 
-    # 핸들러의 대기 루프 3번째 조회 직전에 워커 전이를 시뮬레이트 — 핸들러가
-    # 받은 세션(db_)으로 실제 행을 갱신해 이후 real 조회가 그 행을 찾게 한다.
-    real_latest = conversation_run_service.get_latest_interrupted_run
-    calls = {"n": 0}
+    original_status = conversation_run_service.resume_candidate_status
+    observations: list[uuid.UUID | None] = []
 
-    async def transition_before_third_lookup(db_: AsyncSession, **kwargs: object):
-        calls["n"] += 1
-        if calls["n"] == 3:
-            run = await db_.get(ConversationRun, run_id)
+    async def transition_before_third_lookup(
+        session: AsyncSession,
+        target: Conversation,
+        context: OrgContext,
+        *,
+        run_id: uuid.UUID | None = None,
+    ) -> tuple[uuid.UUID, str] | None:
+        assert live_proof(session) is None
+        observations.append(run_id)
+        if len(observations) == 3:
+            run = await session.get(ConversationRun, run_id)
             assert run is not None
-            run.status = "interrupted"
+            run.status = "completed" if outcome == "replaced" else "interrupted"
             run.is_active = False
             run.interrupt_id = "intr-wait"
-            await db_.commit()
-        return await real_latest(db_, **kwargs)  # type: ignore[arg-type]
+            if outcome == "replaced":
+                # A new parent can have the same tool/input ID. This click names the old one.
+                session.add(
+                    ConversationRun(
+                        conversation_id=target.id,
+                        agent_id=target.agent_id,
+                        user_id=context.user_id,
+                        source="chat",
+                        status="interrupted",
+                        is_active=False,
+                        interrupt_id="intr-wait",
+                    )
+                )
+            if outcome == "revoked":
+                actor = await session.get(User, context.user_id)
+                assert actor is not None
+                actor.is_active = False
+            await session.commit()
+        return await original_status(session, target, context, run_id=run_id)
 
     monkeypatch.setattr(
-        conversation_run_service,
-        "get_latest_interrupted_run",
-        transition_before_third_lookup,
+        conversation_run_service, "resume_candidate_status", transition_before_third_lookup
     )
 
     started = {}
@@ -938,11 +962,21 @@ async def test_input_respond_waits_for_parent_run_interrupt_transition(
         },
     )
 
+    assert observations == [None, run_id, run_id]
+    if outcome == "revoked":
+        assert response.status_code == 404
+        assert not started
+        return
     assert response.status_code == 200
+    if outcome == "replaced":
+        assert response.json()["error"]["code"] == "RESUME_NOT_FOUND"
+        assert not started
+        return
     payload = response.json()
     assert payload["type"] == "success", payload
     assert started["moldy_source"] == "resume"
-    assert calls["n"] >= 3
+    accepted = await db.get(ConversationRun, started["run_id"])
+    assert accepted is not None and accepted.parent_run_id == run_id
 
 
 @pytest.mark.asyncio
