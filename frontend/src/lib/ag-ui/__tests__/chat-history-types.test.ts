@@ -20,6 +20,35 @@ const envelope = {
 }
 
 describe('public chat snapshot decoding', () => {
+  it('restores the selected queue receipt and drops private request fields', () => {
+    const receipt = {
+      runId,
+      inputId: 'input',
+      inputStatus: 'pending',
+      inputRevision: 2,
+      queueStatus: 'pending',
+      position: 3,
+    }
+    const recovered = parseWireChatSnapshot(
+      {
+        ...envelope,
+        ...receipt,
+        client_request_id: 'private-request',
+      },
+      threadId,
+    )
+    expect(recovered).toMatchObject(receipt)
+    expect(recovered).not.toHaveProperty('client_request_id')
+    expect(recovered.activeRunId).toBeNull()
+    expect(parseWireChatSnapshot(envelope, threadId)).toMatchObject({
+      inputId: null,
+      inputStatus: null,
+      inputRevision: null,
+      queueStatus: null,
+      position: null,
+    })
+  })
+
   it('restores native activity messages through their own message links and strips protected file data', () => {
     const row = {
       role: 'activity',
@@ -125,6 +154,31 @@ describe('public chat snapshot decoding', () => {
     expect(current.map(({ id }) => id)).toEqual(['current', 'other'])
     expect(JSON.stringify(current)).not.toContain('private-credential')
     expect(() => parsePublicInterrupts([second, { ...other, id: second.id }])).toThrow()
+  })
+
+  it('retains read-only slots even when only the visible prompt survives', () => {
+    const entries = [
+      {
+        id: 'visible',
+        reason: 'moldy.ask_user',
+        message: 'Continue?',
+        metadata: { moldy: { type: 'ask_user', question: 'Continue?', actionable: false } },
+      },
+      {
+        id: 'limited',
+        reason: 'moldy.auth_required',
+        subagentRunId: 's1',
+        message: 'Waiting',
+        responseSchema: { type: 'object' },
+        metadata: { moldy: { actionable: false, internal: 'private' } },
+      },
+      { id: 'normal', reason: 'moldy.input_required', metadata: { moldy: { actionable: true } } },
+    ]
+    const [visible, limited, normal] = parsePublicInterrupts(entries)
+    expect(visible.metadata?.moldy).toMatchObject({ type: 'ask_user', actionable: false })
+    expect(limited.metadata?.moldy).toEqual({ actionable: false })
+    expect(limited.responseSchema).toBeUndefined()
+    expect(normal.metadata).toBeUndefined()
   })
 
   it('decodes only a partial response scoped to a confirmed failed run', () => {

@@ -77,6 +77,9 @@ const envelope = z.object({
   errorCode: nullableId,
   runId: nullableId,
   runStatus: nullableId,
+  inputId: nullableId,
+  inputStatus: nullableId,
+  inputRevision: z.number().int().positive().nullable().default(null),
   queueStatus: nullableId,
   position: z.number().int().nonnegative().nullable().default(null),
   cursor: nullableId,
@@ -285,7 +288,9 @@ export function parsePublicInterrupts(raw: unknown): Interrupt[] {
     if (!parsed.success || !parsed.data.id) throw new Error('Invalid AG-UI interrupt')
     const { id, reason, message, toolCallId, subagentRunId, expiresAt, responseSchema, metadata } =
       parsed.data
-    const details = interruptDetails.get(reason)?.safeParse(metadata?.moldy)
+    const moldy = object.safeParse(metadata?.moldy)
+    const readOnly = moldy.success && moldy.data.actionable === false
+    const details = interruptDetails.get(reason)?.safeParse(moldy.data)
     const owner = subagentRunId ?? ''
     if (owners.has(id) && owners.get(id) !== owner)
       throw new Error('Ambiguous AG-UI interrupt owner')
@@ -297,8 +302,10 @@ export function parsePublicInterrupts(raw: unknown): Interrupt[] {
       toolCallId,
       subagentRunId,
       expiresAt,
-      responseSchema,
-      ...(details?.success && { metadata: { moldy: details.data } }),
+      ...(!readOnly && responseSchema && { responseSchema }),
+      ...(readOnly || details?.success
+        ? { metadata: { moldy: { ...details?.data, ...(readOnly && { actionable: false }) } } }
+        : {}),
     }
     const native = details?.success ? details.data : null
     const requestId =
