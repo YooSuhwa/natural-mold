@@ -19,6 +19,7 @@ from app.routers import (
     conversation_runs,
     conversation_side_chats,
     conversation_traces,
+    independent_chat_jobs,
 )
 
 router = APIRouter(tags=["conversations"])
@@ -27,6 +28,7 @@ router.include_router(conversation_crud.router)
 router.include_router(conversation_goals.router)
 router.include_router(conversation_child_tasks.router)
 router.include_router(conversation_side_chats.router)
+router.include_router(independent_chat_jobs.router)
 router.include_router(conversation_traces.router)
 router.include_router(conversation_runs.router)
 router.include_router(conversation_run_inputs.router)

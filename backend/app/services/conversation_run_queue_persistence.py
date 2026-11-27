@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.models.conversation import INDEPENDENT_JOB_SOURCE
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.schemas.conversation_scope import ConversationPolicyTarget
@@ -81,6 +82,8 @@ async def enqueue_input_with_result(
         conversation_id=conversation_id,
         context=context,
     )
+    if conversation.source == INDEPENDENT_JOB_SOURCE:
+        raise _conflict("Independent job conversations accept only approval resumes")
     await ensure_conversation_runtime_policy(db, ConversationPolicyTarget(conversation.id, context))
     existing = await db.scalar(
         select(ConversationRunInput).where(

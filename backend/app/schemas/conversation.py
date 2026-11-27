@@ -221,6 +221,7 @@ class MessagesEnvelope(BaseModel):
     adapter expectations.
     """
 
+    conversation_source: str | None = None
     messages: list[MessageResponse]
     active_run: ConversationRunHistoryResponse | None = None
     # 최신 run (상태 무관). ``active_run`` 은 terminal run 을 보고하지 않아
