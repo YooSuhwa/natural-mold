@@ -290,13 +290,10 @@ async def check_start_and_recover(gate: Gate) -> dict[str, object]:
     }
     for label, events in (("start", transcripts[0]), ("recover", recovered)):
         out = gate.evidence_dir / f"http-{label}-transcript.json"
-        out.write_text(
-            json.dumps(
-                {"name": label, "events": events, "expect": expectation},
-                ensure_ascii=False,
-            )
-            + "\n"
-        )
+        capture = {"name": label, "events": events, "expect": expectation}
+        if label == "start":
+            capture["request"] = request
+        out.write_text(json.dumps(capture, ensure_ascii=False) + "\n")
     return {
         "public_run": rid,
         "physical_run": physical,
