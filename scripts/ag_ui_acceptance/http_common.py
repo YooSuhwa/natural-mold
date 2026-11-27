@@ -7,6 +7,7 @@ import os
 from collections.abc import AsyncIterator, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -91,12 +92,19 @@ class Frame:
     data: dict[str, Any]
 
 
+@cache
+def sdk_event_adapter() -> Any:
+    from ag_ui.core import Event
+    from pydantic import TypeAdapter
+
+    return TypeAdapter(Event)
+
+
 def sse_frames(response: httpx.Response) -> list[Frame]:
     """Validate each event with the installed AG-UI Python SDK, retaining its opaque SSE id."""
     import json
 
-    from ag_ui.core import Event, RunAgentInput
-    from pydantic import TypeAdapter
+    from ag_ui.core import RunAgentInput
 
     expect_status(response, 200)
     if response.request.method == "POST":
@@ -105,7 +113,7 @@ def sse_frames(response: httpx.Response) -> list[Frame]:
         response.headers.get("content-type", "").split(";")[0] == "text/event-stream",
         "expected text/event-stream",
     )
-    parser = TypeAdapter(Event)
+    parser = sdk_event_adapter()
     frames = []
     data = []
     event_id: str | None = None
