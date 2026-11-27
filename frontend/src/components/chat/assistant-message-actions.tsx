@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useState, type ReactNode } from 'react'
-import { ActionBarPrimitive, useAuiState } from '@assistant-ui/react'
+import { useCallback, useState, type ComponentProps, type ReactNode } from 'react'
+import { ActionBarPrimitive, useAui, useAuiState } from '@assistant-ui/react'
 import {
   CheckIcon,
   CopyIcon,
@@ -26,6 +26,7 @@ import {
 import {
   MessageEditComposerInput,
   MessageEditComposerRoot,
+  useMessageBranchAction,
   useMessageEditComposerControls,
 } from '@/components/chat/message-edit-composer'
 
@@ -120,17 +121,33 @@ export function EditButton() {
   )
 }
 
+function MessageReloadButton(props: ComponentProps<typeof ActionBarPrimitive.Reload>) {
+  const aui = useAui()
+  const runBranchAction = useMessageBranchAction()
+  return (
+    <ActionBarPrimitive.Reload
+      {...props}
+      onClick={(event) => {
+        props.onClick?.(event)
+        if (event.defaultPrevented || !runBranchAction) return
+        event.preventDefault()
+        void runBranchAction('regenerate', (runConfig) => aui.message.reload({ runConfig }))
+      }}
+    />
+  )
+}
+
 export function RegenerateButton() {
   const t = useTranslations('chat.message')
   return (
-    <ActionBarPrimitive.Reload
+    <MessageReloadButton
       className={MESSAGE_ACTION_CLASS}
       aria-label={t('regenerate')}
       title={t('regenerate')}
     >
       <RotateCcwIcon className="size-3" />
       <span className="sr-only">{t('regenerate')}</span>
-    </ActionBarPrimitive.Reload>
+    </MessageReloadButton>
   )
 }
 
@@ -172,13 +189,9 @@ export function RetryButton() {
     )
   }
   return (
-    <ActionBarPrimitive.Reload
-      className={RETRY_BUTTON_CLASS}
-      aria-label={t('retry')}
-      title={t('retry')}
-    >
+    <MessageReloadButton className={RETRY_BUTTON_CLASS} aria-label={t('retry')} title={t('retry')}>
       {content}
-    </ActionBarPrimitive.Reload>
+    </MessageReloadButton>
   )
 }
 
