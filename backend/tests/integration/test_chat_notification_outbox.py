@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.agent_runtime.protocol_events import stored_protocol_event
 from app.approvals import recording, service
 from app.authz.conversation_agent_checks import current_authz
 from app.authz.conversation_scope import lock_private_conversation
@@ -31,6 +32,7 @@ from app.models.organization import OrganizationMember
 from app.schemas.conversation_goal import GoalActionRequest
 from app.schemas.independent_chat_job import IndependentJobCreate
 from app.services import chat_notification_outbox as outbox
+from app.services import trace_storage
 from app.services.chat_notification_access import open_chat_notification
 from app.services.conversation_goal_service import apply_goal_action, block_goal
 from app.services.conversation_run_state import transition_run
@@ -599,3 +601,103 @@ async def test_access_removal_overlapping_delivery_retries_before_publishing(
                 run_id,
             )
         await deleting.rollback()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param(
+            {
+                "action_requests": [
+                    {"name": "ask_user", "args": {"question": "Which example should I include?"}}
+                ],
+                "review_configs": [{"action_name": "ask_user", "allowed_decisions": ["respond"]}],
+            },
+            id="question",
+        ),
+        pytest.param(
+            {"type": "auth_required", "reason": "expired", "attempt": 1, "items": []},
+            id="authorization",
+        ),
+    ],
+)
+async def test_persisted_chat_input_sends_one_goal_notice_and_no_approval(
+    sessions: Sessions,
+    completed_run: tuple[OrgContext, UUID, UUID],
+    payload: dict[str, object],
+) -> None:
+    ctx, conversation_id, run_id = completed_run
+    interrupt_id = "input-for-current-run"
+    async with tenant_session(ctx, maker=sessions) as db:
+        conversation = await db.get(Conversation, conversation_id)
+        run = await db.get(ConversationRun, run_id)
+        assert conversation is not None and run is not None
+        conversation.source = "ui"
+        run.status = "interrupted"
+        run.run_source = "CHAT"
+        run.interrupt_id = interrupt_id
+        goal = ConversationGoal(
+            user_id=ctx.user_id,
+            tenant_id=ctx.tenant_id,
+            org_id=ctx.org_id,
+            conversation_id=conversation_id,
+            title="Prepare an export",
+            criteria=[],
+        )
+        db.add(goal)
+        await db.flush()
+        attempt = GoalAttempt(
+            goal_id=goal.id, goal_version=goal.version, run_id=run_id, steer_seq=0
+        )
+        db.add(attempt)
+        event = stored_protocol_event(
+            run_id=str(run_id),
+            thread_id=str(conversation_id),
+            seq=1,
+            method="input.requested",
+            data={"interrupt_id": interrupt_id, "payload": payload},
+        )
+        await trace_storage.append_events(
+            db,
+            conversation_id=conversation_id,
+            assistant_msg_id=str(run_id),
+            events_chunk=[dict(event)],
+            status="completed",
+        )
+        await db.commit()
+        goal_id, attempt_id = goal.id, attempt.id
+        await block_goal(db, goal, "approval_pending", attempt=attempt, interrupt_id=interrupt_id)
+        await db.commit()
+
+    # A new worker may encounter the same committed terminal run again.
+    async with tenant_session(ctx, maker=sessions) as restarted:
+        restored_goal = await restarted.get(ConversationGoal, goal_id)
+        restored_attempt = await restarted.get(GoalAttempt, attempt_id)
+        assert restored_goal is not None and restored_attempt is not None
+        assert (restored_goal.status, restored_goal.blocked_reason) == ("blocked", "input_required")
+        await block_goal(
+            restarted,
+            restored_goal,
+            "approval_pending",
+            attempt=restored_attempt,
+            interrupt_id=interrupt_id,
+        )
+        await restarted.commit()
+
+    async with tenant_session(SessionTenant(ctx.tenant_id), maker=sessions) as worker:
+        assert await outbox.drain_chat_notification_outbox(worker, tenant_id=ctx.tenant_id) == 1
+        await worker.commit()
+        assert await outbox.drain_chat_notification_outbox(worker, tenant_id=ctx.tenant_id) == 0
+    async with tenant_session(ctx, maker=sessions) as reader:
+        approvals = select(ApprovalRequest.id).where(ApprovalRequest.run_id == run_id)
+        assert not await reader.scalar(approvals)
+        [notice] = (
+            await reader.scalars(select(Notification).where(Notification.user_id == ctx.user_id))
+        ).all()
+        assert notice.kind == "chat_goal.blocked"
+        destination = await open_chat_notification(reader, ctx, notice.id)
+        assert (destination.conversation_id, destination.run_id, destination.goal_id) == (
+            conversation_id,
+            run_id,
+            goal_id,
+        )

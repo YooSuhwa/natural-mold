@@ -2995,6 +2995,7 @@
       },
       "reasons": {
         "approval_pending": "Resolve the pending approval first.",
+        "input_required": "Answer the question or connect the requested account in chat.",
         "followup_limit": "The automatic follow-up limit has been reached.",
         "no_progress": "Several runs made no progress toward the conditions.",
         "manual_review": "Review the result and edit the condition so it can be verified automatically.",

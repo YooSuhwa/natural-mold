@@ -16,12 +16,13 @@ from app.config import settings
 from app.models.approval_request import ApprovalRequest
 from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation import Conversation
-from app.models.conversation_goal import ConversationGoal, GoalAttempt
+from app.models.conversation_goal import ConversationGoal, GoalAttempt, GoalTransitionIntent
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.notification import Notification
 from app.models.organization import OrganizationMember
 from app.services.chat_notification_outbox import drain_chat_notification_outbox
 from app.services.conversation_goal_service import block_goal
+from tests.authz.g03_support import auth_payload
 from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID, make_user
 from tests.integration._seed import seed_conversation_with_agent
@@ -198,25 +199,47 @@ async def test_ineligible_transition_never_notifies(
     assert (await db.scalars(select(ChatNotificationOutbox.status))).one() == "suppressed"
 
 
-async def test_ask_user_never_creates_an_approval(
+@pytest.mark.parametrize("question", ["ask_user", "auth_required"])
+async def test_late_confirmation_of_an_input_delivers_its_blocked_notice_after_switch_off(
     db: AsyncSession,
     waiting_goal: tuple[ConversationGoal, ConversationRun],
     monkeypatch: pytest.MonkeyPatch,
+    question: str,
 ) -> None:
     goal, run = waiting_goal
     await _wait_for_approval(db, goal, run)
+    original = (await db.scalars(select(GoalTransitionIntent))).one()
+    revision = goal.revision
+    assert original.kind == "approval_requested" and goal.blocked_reason == "approval_pending"
+    payload = _payload("ask_user") if question == "ask_user" else auth_payload()
+    monkeypatch.setattr(settings, "chat_work_notifications_enabled", False)
     monkeypatch.setattr(
         "app.services.chat_notification_approval.interrupt_payloads_from_checkpointer",
-        AsyncMock(
-            return_value=[
-                {"interrupt_id": INTERRUPT, "payload": _payload("ask_user"), "namespace": []}
-            ]
-        ),
+        AsyncMock(return_value=[{"interrupt_id": INTERRUPT, "payload": payload, "namespace": []}]),
     )
-    await _drain(db)
-    assert not await db.scalar(select(ApprovalRequest.id))
-    assert not await db.scalar(select(Notification.id))
-    assert (await db.scalars(select(ChatNotificationOutbox.status))).one() == "suppressed"
+    for _ in range(3):
+        await _drain(db)
+    await db.refresh(goal)
+    assert (goal.status, goal.blocked_reason, goal.revision) == (
+        "blocked",
+        "input_required",
+        revision + 1,
+    )
+    intents = (
+        await db.scalars(select(GoalTransitionIntent).order_by(GoalTransitionIntent.goal_revision))
+    ).all()
+    assert [(t.run_id, t.goal_revision, t.kind) for t in intents] == [
+        (run.id, revision, "approval_requested"),
+        (run.id, revision + 1, "blocked"),
+    ]
+    assert (
+        intents[0].id == original.id and intents[0].payload["blocked_reason"] == "approval_pending"
+    )
+    assert intents[1].payload["blocked_reason"] == "input_required"
+    [notice] = (await db.scalars(select(Notification))).all()
+    assert notice.kind == "chat_goal.blocked"
+    assert PRIVATE_DETAIL not in json.dumps(notice.payload)
+    assert await db.scalar(select(ApprovalRequest.id)) is None
 
 
 async def test_deferred_checkpoint_recovers_without_private_arguments(

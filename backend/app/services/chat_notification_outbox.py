@@ -197,7 +197,9 @@ async def drain_chat_notification_outbox(
                     from app.services.chat_notification_approval import publish_goal_approval
 
                     notification = await publish_goal_approval(db, row)
-                elif destination := await resolve_work_destination(db, row):
+                if row.kind != "chat_goal.approval_requested" and (
+                    destination := await resolve_work_destination(db, row)
+                ):
                     link = None
                     if destination.agent_id:
                         link = f"/agents/{destination.agent_id}/conversations/{row.conversation_id}"

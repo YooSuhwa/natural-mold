@@ -197,6 +197,8 @@ async def _target_predecessor(
 
 
 async def _check_admission(db: AsyncSession, conversation: Conversation) -> None:
+    from app.services.conversation_goal_interrupts import waiting_goal_input_reason
+
     agent_id = conversation.agent_id
     if agent_id is None:
         raise _conflict("goal_agent_unavailable")
@@ -206,10 +208,10 @@ async def _check_admission(db: AsyncSession, conversation: Conversation) -> None
     )
     if conversation.queue_paused:
         raise _conflict("queue_paused")
-    if await conversation_run_service.get_latest_interrupted_run(
+    if reason := await waiting_goal_input_reason(
         db, conversation_id=conversation.id, context=_context(conversation)
     ):
-        raise _conflict("approval_pending")
+        raise _conflict(reason)
 
 
 async def apply_goal_action(
@@ -384,7 +386,10 @@ async def capture_goal_attempt(
         )
         if parent is None:
             return None
-        if goal.status == "blocked" and goal.blocked_reason == "approval_pending":
+        if goal.status == "blocked" and goal.blocked_reason in {
+            "approval_pending",
+            "input_required",
+        }:
             goal.status = "active"
             goal.blocked_reason = None
             goal.revision += 1
@@ -424,6 +429,35 @@ async def capture_goal_attempt(
     return attempt
 
 
+def add_goal_transition(
+    db: AsyncSession,
+    goal: ConversationGoal,
+    run_id: UUID,
+    kind: Literal["completed", "blocked", "approval_requested"],
+    interrupt_id: str | None,
+) -> GoalTransitionIntent:
+    intent = GoalTransitionIntent(
+        id=uuid4(),
+        goal_id=goal.id,
+        goal_version=goal.version,
+        goal_revision=goal.revision,
+        run_id=run_id,
+        kind=kind,
+        payload={
+            "conversation_id": str(goal.conversation_id),
+            "goal_id": str(goal.id),
+            "goal_version": goal.version,
+            "goal_revision": goal.revision,
+            "run_id": str(run_id),
+            "blocked_reason": goal.blocked_reason,
+            "interrupt_id": interrupt_id,
+            "evidence": goal.last_evidence,
+        },
+    )
+    db.add(intent)
+    return intent
+
+
 async def _intent(
     db: AsyncSession,
     goal: ConversationGoal,
@@ -433,25 +467,7 @@ async def _intent(
 ) -> None:
     from app.services.chat_notification_outbox import enqueue_goal_transition
 
-    intent = GoalTransitionIntent(
-        id=uuid4(),
-        goal_id=goal.id,
-        goal_version=goal.version,
-        goal_revision=goal.revision,
-        run_id=attempt.run_id,
-        kind=kind,
-        payload={
-            "conversation_id": str(goal.conversation_id),
-            "goal_id": str(goal.id),
-            "goal_version": goal.version,
-            "goal_revision": goal.revision,
-            "run_id": str(attempt.run_id),
-            "blocked_reason": goal.blocked_reason,
-            "interrupt_id": interrupt_id,
-            "evidence": goal.last_evidence,
-        },
-    )
-    db.add(intent)
+    intent = add_goal_transition(db, goal, attempt.run_id, kind, interrupt_id)
     # The bell opens the first verified result. The goal card retains every criterion.
     artifact_id = version_id = None
     if kind == "completed" and goal.last_evidence:
@@ -488,6 +504,16 @@ async def block_goal(
 ) -> None:
     if goal.status != "active":
         return
+    if reason == "approval_pending" and attempt is not None and interrupt_id:
+        from app.services.conversation_goal_interrupts import goal_interrupt_reason
+
+        reason = await goal_interrupt_reason(
+            db,
+            conversation_id=goal.conversation_id,
+            run_id=attempt.run_id,
+            interrupt_id=interrupt_id,
+            context=OrgContext(goal.org_id, goal.tenant_id, goal.user_id),
+        )
     goal.status = "blocked"
     goal.blocked_reason = reason
     goal.revision += 1
@@ -621,7 +647,7 @@ async def evaluate_goal_attempt(
         except AppError as exc:
             reason = (
                 exc.code
-                if exc.code in {"approval_pending", "queue_paused"}
+                if exc.code in {"approval_pending", "input_required", "queue_paused"}
                 else "usage_limit"
                 if exc.status == 429
                 else "policy_blocked"
