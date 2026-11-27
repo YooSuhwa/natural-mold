@@ -18,9 +18,14 @@ from app.skills.package_hash import compute_package_tree_hash
 
 @pytest.fixture
 def report(tmp_path, monkeypatch):
+    data_root = tmp_path / "user-data"
+    data_root.mkdir()
+    operator = tmp_path / "operator"
+    operator.mkdir()
+    monkeypatch.setattr(settings, "data_root", str(data_root))
     image = "worker@sha256:" + "a" * 64
     monkeypatch.setattr(settings, "skill_sandbox_image", image)
-    monkeypatch.setattr(settings, "goal_sandbox_evidence_path", tmp_path / "assessed.json")
+    monkeypatch.setattr(settings, "goal_sandbox_evidence_path", operator / "assessed.json")
     data_hash = "b" * 64
     base = {
         "total_seconds": 10,
@@ -92,7 +97,7 @@ def test_unmeasured_or_failed_gate_cannot_enable_retention(report, path, value):
     assert not accepted(report)
 
 
-def test_refuse_mutable_images_and_files_under_data_root(report, monkeypatch, tmp_path):
+def test_refuse_mutable_images_and_files_under_data_root(report, monkeypatch):
     monkeypatch.setattr(settings, "skill_sandbox_image", "worker:latest")
     report["profile"]["image"] = "worker:latest"
     assert not accepted(report)
@@ -100,7 +105,9 @@ def test_refuse_mutable_images_and_files_under_data_root(report, monkeypatch, tm
     monkeypatch.setattr(settings, "skill_sandbox_image", image)
     report["profile"]["image"] = image
     assert accepted(report)
-    monkeypatch.setattr(settings, "data_root", str(tmp_path))
+    monkeypatch.setattr(
+        settings, "goal_sandbox_evidence_path", Path(settings.data_root) / "assessed.json"
+    )
     assert not accepted(report)
 
 
