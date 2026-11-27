@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useCallback, useMemo, useRef, useState } from 'react'
+import { use, useEffect, useLayoutEffect, useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
@@ -19,7 +19,7 @@ import {
 import { useConversationTitle } from '@/lib/hooks/use-conversation-title'
 import { useQueryClient } from '@tanstack/react-query'
 import { streamChat, streamStartConversation, type StreamChatOptions } from '@/lib/sse/stream-chat'
-import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
+import { latestTurnUsageAtom, sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { chatRightRailAtom, toggleArtifactListRailState } from '@/lib/stores/chat-right-rail'
 import {
   conversationRuntimeStatusAtom,
@@ -116,6 +116,7 @@ export default function ChatPage({
   const { mutate: markRead, isPending: isMarkingRead } = markConversationRead
   const t = useTranslations('chat.page')
   const setSessionTokenUsage = useSetAtom(sessionTokenUsageAtom)
+  const setLatestTurnUsage = useSetAtom(latestTurnUsageAtom)
   const setRightRail = useSetAtom(chatRightRailAtom)
   const setConversationRuntimeStatus = useSetAtom(conversationRuntimeStatusAtom)
 
@@ -149,10 +150,10 @@ export default function ChatPage({
   }, [agentId, routeKey])
 
   useEffect(() => {
-    setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
+    if (runtimeMode !== 'ag_ui') setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
     markedReadKeyRef.current = null
     startedConversationIdRef.current = null
-  }, [agentId, conversationId, setSessionTokenUsage])
+  }, [agentId, conversationId, runtimeMode, setSessionTokenUsage])
 
   // M4 — read 처리 effect.
   // ``currentConversation``은 (전체 목록 구독을 피하려고) 캐시에서 동기적으로
@@ -211,6 +212,19 @@ export default function ChatPage({
     ? langGraphDraftConversationId
     : routeConversationId
   const resolvedSideEffectConversationId = activeConversationId ?? routeConversationId
+  // Clear the previous chat before the AG-UI child restores its cached usage in a passive effect.
+  // The persisted draft keeps the same ID when its URL is promoted.
+  useLayoutEffect(() => {
+    if (runtimeMode !== 'ag_ui') return
+    setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
+    setLatestTurnUsage(null)
+  }, [
+    agentId,
+    resolvedSideEffectConversationId,
+    runtimeMode,
+    setLatestTurnUsage,
+    setSessionTokenUsage,
+  ])
   const envelopeRun = envelope?.active_run ?? envelope?.latest_run
   const independentJobs = useIndependentChatJobs(
     activeConversationId,
