@@ -8164,6 +8164,78 @@
       }
     },
     "/api/conversations/{conversation_id}/runs/{run_id}/mcp-apps/{tool_call_id}": {
+      "get": {
+        "operationId": "read_mcp_app_widget_result_api_conversations__conversation_id__runs__run_id__mcp_apps__tool_call_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_call_id",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Tool Call Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpAppWidgetResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Mcp App Widget Result",
+        "tags": [
+          "mcp-apps"
+        ]
+      },
       "post": {
         "operationId": "execute_mcp_apps_command_api_conversations__conversation_id__runs__run_id__mcp_apps__tool_call_id__post",
         "parameters": [
@@ -43856,6 +43928,81 @@
         "created_at"
       ],
       "title": "MarketplaceVersionSummary",
+      "type": "object"
+    },
+    "McpAppArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "format": "uuid",
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "resource_uri": {
+          "title": "Resource Uri",
+          "type": "string"
+        },
+        "result_meta": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result Meta"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "tool_meta": {
+          "additionalProperties": true,
+          "title": "Tool Meta",
+          "type": "object"
+        },
+        "version": {
+          "const": 1,
+          "default": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "binding_id",
+        "run_id",
+        "resource_uri",
+        "tool_meta"
+      ],
+      "title": "McpAppArtifact",
+      "type": "object"
+    },
+    "McpAppWidgetResult": {
+      "additionalProperties": false,
+      "properties": {
+        "mcp_app": {
+          "$ref": "#/components/schemas/McpAppArtifact"
+        },
+        "structured_content": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Structured Content"
+        }
+      },
+      "required": [
+        "mcp_app"
+      ],
+      "title": "McpAppWidgetResult",
       "type": "object"
     },
     "McpAppsCallParams": {

@@ -35,6 +35,31 @@ pytest_plugins = [
 ]
 
 
+async def test_restoring_widget_rechecks_the_callers_active_company(
+    db: AsyncSession, mcp_app_case: McpAppCase
+) -> None:
+    case = mcp_app_case
+    binding_id = await db.scalar(select(McpAppInvocationBinding.id))
+    assert binding_id is not None
+    url = f"/api/conversations/{case.conversation_id}/runs/{case.run_id}/mcp-apps/fixture-call"
+    params = {"binding_id": str(binding_id)}
+    own = await case.client.get(url, params=params)
+    assert own.status_code == 200
+    assert own.json()["mcp_app"]["binding_id"] == str(binding_id)
+    token = case.client.cookies.get("moldy_csrf")
+    assert token is not None
+    switched = await case.client.post(
+        "/api/me/active-org",
+        json={"org_id": str(case.foreign_org_id)},
+        headers={"X-CSRF-Token": token},
+    )
+    assert switched.status_code == 200
+    denied = await case.client.get(url, params=params)
+    assert denied.status_code == 404
+    assert "mcp_app" not in denied.json()
+    assert "ui://fixture/app" not in denied.text
+
+
 @pytest.mark.parametrize("method", ["resources/list", "resources/read", "tools/call"])
 async def test_foreign_company_app_command_denies_before_proxy(
     mcp_app_case: McpAppCase,
