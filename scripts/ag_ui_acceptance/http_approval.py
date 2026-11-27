@@ -6,11 +6,16 @@ import asyncio
 import hashlib
 import io
 import json
+import re
+import traceback
+from pathlib import Path
+from time import monotonic
 from typing import Any
 from uuid import UUID, uuid4
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
+import httpx
 import psycopg
 from http_common import Gate, expect_status, require
 from skill_attempts import docx_attempts
@@ -50,7 +55,7 @@ def _request(thread_id: str, **fields: Any) -> dict[str, Any]:
     }
 
 
-def _response(
+async def _response(
     gate: Gate,
     label: str,
     request: dict[str, Any],
@@ -58,23 +63,76 @@ def _response(
     outcome: str,
 ) -> dict[str, Any]:
     start, end = events[0], events[-1]
-    require(
-        start["type"] == "RUN_STARTED" and end["type"] == "RUN_FINISHED",
-        "bad run boundaries",
-    )
-    if request.get("resume"):
-        require(
-            start.get("parentRunId") is None,
-            "a top-level resume was reported as an agent-spawned child",
-        )
-    for event in (start, end):
-        require(
-            (event["threadId"], event["runId"])
-            == (request["threadId"], request["runId"]),
-            "approval response IDs differ from the submitted input",
-        )
     terminal = end.get("outcome") or {"type": "success"}
-    require(terminal["type"] == outcome, f"{label} expected a terminal {outcome}")
+    problems = [
+        reason
+        for good, reason in (
+            (
+                start["type"] == "RUN_STARTED" and end["type"] == "RUN_FINISHED",
+                "boundaries",
+            ),
+            (
+                not request.get("resume") or start.get("parentRunId") is None,
+                "unexpected_parent",
+            ),
+            (
+                all(
+                    e.get("runId") == request["runId"]
+                    and e.get("threadId") == request["threadId"]
+                    for e in (start, end)
+                ),
+                "run_identity",
+            ),
+            (terminal.get("type") == outcome, "outcome"),
+        )
+        if not good
+    ]
+    if problems:
+        # Save only protocol/SQL identifiers, labels and counters. Never retain args or errors.
+        allowed = re.compile(r"[A-Za-z0-9_.:-]{1,100}")
+        summary = []
+        for frame in events:
+            public = {
+                key: val
+                for key in ("type", "runId", "threadId", "code")
+                if isinstance(val := frame.get(key), str) and allowed.fullmatch(val)
+            }
+            if isinstance(frame.get("outcome"), dict):
+                public["outcome"] = frame["outcome"].get("type")
+            summary.append(public)
+        path = gate.evidence_dir / f"ag-ui-approval-{label}-failure.json"
+        receipt = {
+            "name": label,
+            "request_run_id": request["runId"],
+            "expected_outcome": outcome,
+            "failures": problems,
+            "events": summary,
+        }
+        path.write_text(json.dumps(receipt, indent=2) + "\n")
+        receipt["physical_runs"] = await gate.sql(
+            "SELECT id::text, parent_run_id::text, source, status, error_code, interrupt_id "
+            "FROM conversation_runs WHERE conversation_id=%s ORDER BY created_at, id",
+            (request["threadId"],),
+        )
+        receipt["journal"] = await gate.sql(
+            """SELECT c.message_event_id::text AS journal, c.seq_start + n - 1 AS ordinal,
+                      coalesce(ev->>'method', ev#>>'{data,method}', ev->>'event') AS method,
+                      coalesce(ev#>>'{data,type}', ev#>>'{data,data,type}') AS kind
+               FROM message_event_chunks c
+               CROSS JOIN LATERAL jsonb_array_elements(c.events::jsonb) WITH ORDINALITY AS e(ev,n)
+               WHERE c.conversation_id=%s ORDER BY c.message_event_id, ordinal""",
+            (request["threadId"],),
+        )
+        for entry in receipt["journal"]:
+            for key in ("method", "kind"):
+                value = entry[key]
+                if value is not None and not allowed.fullmatch(value):
+                    entry[key] = None
+        path.write_text(json.dumps(receipt, indent=2) + "\n")
+        require(
+            False,
+            f"{label}: {', '.join(problems)} ({start['type']} through {end['type']})",
+        )
     receipt = {
         "name": label,
         "request": request,
@@ -269,14 +327,16 @@ async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, ob
     command = _request(
         thread_id, messages=[{"id": str(uuid4()), "role": "user", "content": marker}]
     )
-    opened = gate.check_sse(await gate.owner_a.send("POST", route, command))
-    terminal = _response(gate, f"{kind}-interrupt", command, opened, "interrupt")
+    started = await gate.owner_a.send("POST", route, command)
+    received_at = monotonic()
+    opened = gate.check_sse(started)
+    terminal = await _response(gate, f"{kind}-interrupt", command, opened, "interrupt")
     (interruption,) = terminal["interrupts"]
     real_id = interruption["id"]
-    await _check_public_actions(gate, thread_id, interruption, 2 if mixed else 1)
     approvals = [{"type": "approve"}]
     reject = {"type": "reject", "message": "decline this document"}
     decisions = {
+        "immediate": approvals,
         "single": approvals,
         "mixed": [*approvals, reject],
         "rejected": [reject],
@@ -297,6 +357,30 @@ async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, ob
             ],
         )
 
+    if kind == "immediate":
+        # No SQL inspection, sleep, competing requests or retry between the two turns.
+        resumed = continuation(decisions)
+        elapsed_ms = (monotonic() - received_at) * 1000
+        reply = await gate.owner_b.send("POST", route, resumed)
+        receipt = {
+            "thread_id": thread_id,
+            "run_id": resumed["runId"],
+            "terminal_received_to_post_ms": round(elapsed_ms, 3),
+            "http_status": reply.status_code,
+        }
+        timing_path = gate.evidence_dir / "approval-immediate-submit.json"
+        timing_path.write_text(json.dumps(receipt, indent=2) + "\n")
+        accepted = gate.check_sse(reply)
+        receipt["terminal"] = accepted[-1]["type"]
+        receipt["outcome"] = (accepted[-1].get("outcome") or {}).get("type")
+        timing_path.write_text(json.dumps(receipt, indent=2) + "\n")
+        await _response(gate, "immediate-continuation", resumed, accepted, "success")
+        return {
+            **receipt,
+            **await _effects(gate, thread_id, skill_id, kind, real_id, decisions),
+        }
+
+    await _check_public_actions(gate, thread_id, interruption, 2 if mixed else 1)
     expected_before = {
         "runs": 1,
         "resumed": 0,
@@ -352,7 +436,9 @@ async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, ob
     )
     winner = statuses.index(200)
     accepted = gate.check_sse(results[winner])
-    _response(gate, f"{kind}-continuation", contenders[winner], accepted, "success")
+    await _response(
+        gate, f"{kind}-continuation", contenders[winner], accepted, "success"
+    )
 
     # Reusing the same accepted request is a read of the original run. A new request aimed at
     # the consumed slot must be rejected. Neither may create another script execution.
@@ -363,6 +449,20 @@ async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, ob
         "repeat submit did not attach to accepted run",
     )
     expect_status(await gate.owner_a.send("POST", route, continuation(decisions)), 409)
+    return {
+        "winner_statuses": statuses,
+        **await _effects(gate, thread_id, skill_id, kind, real_id, decisions),
+    }
+
+
+async def _effects(
+    gate: Gate,
+    thread_id: str,
+    skill_id: str,
+    kind: str,
+    real_id: str,
+    decisions: list[dict[str, str]],
+) -> dict[str, object]:
     expected_files = int(kind != "rejected")
     expected_after = {
         "runs": 2,
@@ -382,7 +482,7 @@ async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, ob
         f"expected {expected_files} DOCX process starts, got {attempts}",
     )
     await _check_claim(gate, thread_id, real_id, decisions)
-    name = "moldy-hitl-multi-1.docx" if mixed else "moldy-docx-demo.docx"
+    name = "moldy-hitl-multi-1.docx" if kind == "mixed" else "moldy-docx-demo.docx"
     artifact = None
     if expected_files:
         artifact = await _file(gate, thread_id, name)
@@ -393,7 +493,6 @@ async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, ob
         require(artifacts == [], "declined action exposed a generated file")
     return {
         "thread_id": thread_id,
-        "winner_statuses": statuses,
         "counts": counts,
         "process_starts": attempts,
         "file": artifact,
@@ -402,7 +501,37 @@ async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, ob
 
 async def check_approval(gate: Gate) -> dict[str, object]:
     skill = await _docx_skill(gate)
-    return {
-        kind: await _check_decisions(gate, skill, kind)
-        for kind in ("single", "mixed", "rejected", "expired")
-    }
+    cases = {}
+    failures = []
+    for kind in ("immediate", "single", "mixed", "rejected", "expired"):
+        try:
+            cases[kind] = {
+                "passed": True,
+                "result": await _check_decisions(gate, skill, kind),
+            }
+        except (
+            AssertionError,
+            ValueError,
+            KeyError,
+            IndexError,
+            TypeError,
+            httpx.HTTPError,
+            psycopg.Error,
+            OSError,
+            TimeoutError,
+        ) as exc:
+            failures.append(kind)
+            cases[kind] = {
+                "passed": False,
+                "error_type": type(exc).__name__,
+                "source_lines": [
+                    frame.lineno
+                    for frame in traceback.extract_tb(exc.__traceback__)
+                    if Path(frame.filename).resolve() == Path(__file__).resolve()
+                ],
+            }
+        (gate.evidence_dir / "approval-case-results.json").write_text(
+            json.dumps(cases, indent=2, default=str) + "\n"
+        )
+    require(not failures, f"failed approval cases: {', '.join(failures)}")
+    return cases
