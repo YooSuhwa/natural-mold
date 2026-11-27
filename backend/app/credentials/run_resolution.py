@@ -27,6 +27,7 @@ from typing import Any
 
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.authz.credential_binding_scope import account_bindings, binding_of
 from app.authz.error_codes import authorization_error
@@ -53,6 +54,19 @@ logger = logging.getLogger(__name__)
 Resource = Tool | McpServer
 # ``auth_needed`` keeps the existing flow: OAuth refresh is attempted and fails as before.
 USABLE_STATUSES = frozenset({"active", "auth_needed"})
+
+
+CREDENTIAL_POLICY_COLUMNS = load_only(
+    Credential.id,
+    Credential.user_id,
+    Credential.org_id,
+    Credential.tenant_id,
+    Credential.is_system,
+    Credential.status,
+    Credential.definition_key,
+    Credential.scope,
+    raiseload=True,
+)
 
 
 def subject_mismatch() -> ValidationError:
@@ -162,16 +176,22 @@ class RunCredentialResolver:
             raise subject_mismatch()
         return credential
 
-    async def bound(self, row: Resource, kind: str) -> Credential | None:
+    async def bound(
+        self, row: Resource, kind: str, *, metadata_only: bool = False
+    ) -> Credential | None:
         if self.db is None:  # read-only masking without a session: nothing to resolve
             return None
         ctx, account = self.subject.context, self.subject.account_user_id
-        binding = await self.db.scalar(
-            select(Binding).where(account_bindings(ctx, account), binding_of(kind, row.id))
+        query = (
+            select(Credential)
+            .join(Binding, Binding.credential_id == Credential.id)
+            .where(account_bindings(ctx, account), binding_of(kind, row.id))
         )
-        credential = None
-        if binding is not None:
-            credential = await self.db.get(Credential, binding.credential_id)
+        if metadata_only:
+            query = query.options(CREDENTIAL_POLICY_COLUMNS).execution_options(
+                populate_existing=True
+            )
+        credential = await self.db.scalar(query)
         if credential is None:
             return self._missing(kind, row, "missing")
         if self.read_only or await self._usable(credential, row):

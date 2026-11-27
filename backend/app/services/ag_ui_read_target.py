@@ -23,6 +23,7 @@ from app.services.ag_ui_read_cursor import CursorScope
 from app.services.ag_ui_read_pending import constrain_legacy_child_visibility
 from app.services.ag_ui_spawn_parent import spawned_parent_public_id
 from app.services.ag_ui_tool_continuations import ContinuationCache, read_tool_continuations
+from app.services.ag_ui_widget_access import readable_widget_bindings
 
 
 def snapshot_required() -> ConflictError:
@@ -42,6 +43,7 @@ class ReadTarget:
     scope: CursorScope
     visibility: ChildVisibility
     artifacts: frozenset[tuple[str, str]]
+    widget_bindings: frozenset[tuple[str, str]] = frozenset()
     delegated: bool = False
     tool_continuations: tuple[ToolContinuation, ...] = ()
 
@@ -56,6 +58,7 @@ def cursor_scope_for(
     artifacts: frozenset[tuple[str, str]],
     parent_id: str | None,
     tool_continuations: tuple[ToolContinuation, ...],
+    widget_bindings: frozenset[tuple[str, str]] = frozenset(),
 ) -> CursorScope:
     branch = orjson.dumps([start_checkpoint, conversation.active_branch_checkpoint_id])
     grants = [
@@ -69,6 +72,8 @@ def cursor_scope_for(
     ]
     if visibility.historical_bindings:
         grants.append(sorted(visibility.historical_bindings))
+    if widget_bindings:
+        grants.append(sorted(widget_bindings))
     access = orjson.dumps(grants)
     return CursorScope(
         thread_id=str(conversation.id),
@@ -115,6 +120,7 @@ async def resolve_read_target(
         allow_legacy_details=False, tool_call_ids=frozenset(), namespaces=frozenset()
     )
     artifacts: frozenset[tuple[str, str]] = frozenset()
+    widget_bindings: frozenset[tuple[str, str]] = frozenset()
     if physical_id is not None:
         run = await require_read_run(
             db, conversation=conversation, context=context, run_id=physical_id
@@ -126,6 +132,9 @@ async def resolve_read_target(
             )
         artifacts = await readable_artifact_versions(
             db, context=context, conversation_id=conversation.id, run_id=physical_id
+        )
+        widget_bindings = await readable_widget_bindings(
+            db, conversation=conversation, context=context, run=run
         )
         if binding is None and isinstance(run.metadata_json, dict):
             checkpoint = run.metadata_json.get("checkpoint_id")
@@ -167,7 +176,9 @@ async def resolve_read_target(
             artifacts,
             parent_id,
             tool_continuations,
+            widget_bindings,
         ),
+        widget_bindings=widget_bindings,
         artifacts=artifacts,
         delegated=conversation.source == INDEPENDENT_JOB_SOURCE,
         visibility=visibility,
