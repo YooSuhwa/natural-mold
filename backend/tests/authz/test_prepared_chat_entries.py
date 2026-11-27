@@ -9,21 +9,25 @@ is never called and nothing is hydrated after the marker.
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.types import Command
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime import checkpointer
+from app.agent_runtime import checkpointer, langgraph_agent_stream_runner
 from app.agent_runtime.agent_stream_runner import execute_agent_stream, resume_agent_stream
 from app.agent_runtime.langgraph_agent_stream_runner import (
     execute_agent_stream_langgraph,
     resume_agent_stream_langgraph,
 )
 from app.agent_runtime.prepared_run_registry import get_prepared_run_registry
+from app.agent_runtime.runtime_config import AgentConfig
 from app.exceptions import AppError
 from app.models.audit_event import AuditEvent
 from app.models.conversation import Conversation
@@ -185,6 +189,50 @@ async def test_resume_continues_the_captured_interrupt_through_the_lease(
     _assert_prepared(harness, row, sends=2)
     assert harness.server.calls == 1
     assert len(harness.leases) == 2
+
+
+@pytest.mark.asyncio
+async def test_workflow_resume_retains_its_output_schema_on_the_native_runner(
+    db: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    call = AIMessage("", tool_calls=[{"name": "lookup", "args": {}, "id": "tool-1"}])
+    harness = await ekit.setup(db, tmp_path, monkeypatch, [call])
+    fallbacks: Counter[str] = Counter()
+    monkeypatch.setattr(prepared_conversation_start, "FALLBACKS", fallbacks)
+    first = await ekit.run_through_worker(
+        harness,
+        harness.seeded.run_id,
+        await ekit.entry_cfg(harness),
+        {"messages": [{"role": "user", "content": "look up the value"}]},
+        execute_agent_stream_langgraph,
+    )
+    assert first.status == "interrupted"
+    schema = {"type": "object", "properties": {"value": {"type": "string"}}}
+    cfg = await ekit.entry_cfg(harness)
+    cfg.output_schema = schema
+    cfg.unattended_approval = "wait"
+    decisions = {"decisions": [{"type": "approve"}]}
+    received: list[tuple[object, object, object]] = []
+
+    async def capture(
+        config: AgentConfig, *, stream_input: Command, **kwargs: object
+    ) -> AsyncIterator[str]:
+        received.append((config.output_schema, config.unattended_approval, stream_input.resume))
+        yield ""
+
+    monkeypatch.setattr(langgraph_agent_stream_runner, "_run_langgraph_agent_stream", capture)
+    resumed = await ekit.run_through_worker(
+        harness,
+        await ekit.queued_run(harness, source="resume"),
+        cfg,
+        decisions,
+        resume_agent_stream_langgraph,
+        moldy_source="resume",
+    )
+    assert received == [(schema, "wait", decisions)]
+    assert fallbacks == {"workflow_resume_schema": 1}
+    assert resumed.status == "completed" and resumed.runtime_materialized_at is None
+    assert len(harness.leases) == 1
 
 
 @pytest.mark.asyncio
