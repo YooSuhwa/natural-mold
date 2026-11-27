@@ -80,7 +80,9 @@ async def test_journal_advances_only_on_committed_contiguous_events(
                 assert not first.gap and not first.has_more
                 assert [(e.ordinal, e.source_id) for e in first.entries] == [(1, first_id)]
 
-                caught_up = JournalPage(first.generation, (), False, False, "streaming")
+                caught_up = JournalPage(
+                    first.generation, (), False, False, "streaming", high_water=1
+                )
                 await _append(writer, own.conversation, own.run, 20)
                 assert await page(1) == caught_up
                 await writer.rollback()
@@ -108,7 +110,9 @@ async def test_journal_advances_only_on_committed_contiguous_events(
                         )
                     )
                     assert deleted.rowcount == 1
-                assert await page(1) == JournalPage(first.generation, (), False, True, "streaming")
+                assert await page(1) == JournalPage(
+                    first.generation, (), False, True, "streaming", high_water=3
+                )
         finally:
             await reads.dispose()
             await writes.dispose()
