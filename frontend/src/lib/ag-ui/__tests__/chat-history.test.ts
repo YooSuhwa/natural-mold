@@ -306,38 +306,143 @@ describe('AG-UI chat history', () => {
 
   it('binds a saved UI card to its tool-only parent on the correct physical run', async () => {
     const otherRun = '657a1ce4-3491-43f4-b33e-499e62555d2f'
+    const publicCallId = 'tool-ebb22f7a-33b5-5e37-86b0-b3be709a3449'
     const tool = {
-      id: 'same-call',
+      id: publicCallId,
       type: 'function',
       function: { name: 'show_note', arguments: '{}' },
     }
+    const scope = { physicalRunId: physical, runId: 'public-right' }
+    const card = (id: string, claims: Record<string, unknown> = {}) => ({
+      id,
+      role: 'activity',
+      activityType: 'moldy.ui_data',
+      content: {
+        type: 'demo_note',
+        props: { text: id },
+        tool_call_id: 'provider-private-call',
+        public_tool_call_id: publicCallId,
+        run_id: scope.runId,
+        ...claims,
+      },
+    })
+    const cards = [
+      card('Right branch note'),
+      card('missing public ID', { public_tool_call_id: undefined, tool_call_id: publicCallId }),
+      card('unissued public ID', { public_tool_call_id: 'unissued', public_message_id: 'right' }),
+      card('wrong owner', { public_message_id: 'left', message_id: 'right' }),
+      card('wrong run', { run_id: physical }),
+      card('wrong tool link'),
+    ]
     const repo = await load({
       activeTipMessageId: 'right',
       messages: [
         { id: 'question', role: 'user', content: 'Compare notes' },
         { id: 'left', role: 'assistant', toolCalls: [tool] },
         { id: 'right', role: 'assistant', toolCalls: [tool] },
-        {
-          id: 'card',
-          role: 'activity',
-          activityType: 'moldy.ui_data',
-          content: {
-            type: 'demo_note',
-            props: { text: 'Right branch note' },
-            tool_call_id: 'same-call',
-          },
-        },
+        ...cards,
       ],
       messageLinks: [
         link('question', null),
         link('left', 'question', { physicalRunId: otherRun, runId: 'public-left' }),
-        link('right', 'question', { physicalRunId: physical, runId: 'public-right' }),
-        link('card', null, { uiMessageId: null, physicalRunId: physical, runId: 'public-right' }),
+        link('right', 'question', scope),
+        ...cards.map(({ id }) =>
+          link(id, null, {
+            uiMessageId: null,
+            ...scope,
+            parentToolCallId: id === 'wrong tool link' ? 'another-call' : publicCallId,
+          }),
+        ),
       ],
     })
     const cardOwner = repo.messages.find(({ message }) => message.id === 'right')
-    expect(JSON.stringify(cardOwner?.message.content)).toContain('Right branch note')
+    expect(cardOwner?.message.content.filter((part) => part.type === 'data')).toMatchObject([
+      {
+        data: {
+          type: 'demo_note',
+          props: { text: 'Right branch note' },
+          public_tool_call_id: publicCallId,
+          public_message_id: 'right',
+        },
+      },
+    ])
+    expect(JSON.stringify(repo.messages)).not.toContain('provider-private-call')
     const sibling = repo.messages.find(({ message }) => message.id === 'left')
     expect(JSON.stringify(sibling?.message.content)).not.toContain('Right branch note')
+  })
+
+  it('restores a bound child card inside the invoking tool and retains independent notes', async () => {
+    const child = { subagentRunId: 'child-a' }
+    const scope = { runId: 'public-run', physicalRunId: physical }
+    const call = (id: string, name: string) => ({
+      id,
+      type: 'function',
+      function: { name, arguments: '{}' },
+    })
+    const childCall = 'tool-9d08469c-2437-5b30-8591-aeb7bfaa6e27'
+    const note = (id: string, claims: Record<string, unknown>) => ({
+      role: 'activity',
+      activityType: 'moldy.ui_data',
+      id,
+      ...child,
+      content: { type: 'demo_note', props: { text: id }, ...claims },
+    })
+    const repo = await load({
+      activeTipMessageId: 'parent',
+      messages: [
+        { id: 'question', role: 'user', content: 'Compare notes' },
+        { id: 'parent', role: 'assistant', toolCalls: [call('delegate', 'task')] },
+        {
+          id: 'child-model',
+          role: 'assistant',
+          toolCalls: [call(childCall, 'show_note')],
+          ...child,
+        },
+        note('child bound', { tool_call_id: 'private-source', public_tool_call_id: childCall }),
+        note('child independent', { public_message_id: 'child-model' }),
+        note('crossed parent', {
+          public_message_id: 'child-model',
+          public_tool_call_id: 'delegate',
+        }),
+      ],
+      messageLinks: [
+        link('question', null),
+        link('parent', 'question', scope),
+        link('child-model', 'parent', { ...scope, ...child }),
+        ...['child bound', 'child independent', 'crossed parent'].map((id) =>
+          link(id, 'child-model', { ...scope, ...child, uiMessageId: null }),
+        ),
+      ],
+      subagents: [
+        {
+          ...child,
+          parentMessageId: 'parent',
+          parentToolCallId: 'delegate',
+          name: 'worker',
+          status: 'completed',
+        },
+      ],
+    })
+    const parent = repo.messages.find(({ message }) => message.id === 'parent')?.message
+    const task = parent?.content.find((part) => part.type === 'tool-call')
+    const nested = task?.type === 'tool-call' ? task.messages?.[0] : undefined
+    expect(nested?.content.filter((part) => part.type === 'data')).toMatchObject([
+      {
+        data: {
+          type: 'demo_note',
+          props: { text: 'child bound' },
+          public_tool_call_id: childCall,
+          public_message_id: 'child-model',
+        },
+      },
+      {
+        data: {
+          type: 'demo_note',
+          props: { text: 'child independent' },
+        },
+      },
+    ])
+    expect(parent?.content.some((part) => part.type === 'data')).toBe(false)
+    expect(JSON.stringify(repo.messages)).not.toContain('private-source')
   })
 })
