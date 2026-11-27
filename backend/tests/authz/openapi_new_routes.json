@@ -35453,7 +35453,98 @@
       "title": "ArtifactTextContent",
       "type": "object"
     },
-    "AssistantMessage": {
+    "AssistantMessage-Input": {
+      "additionalProperties": true,
+      "description": "A message from the agent. Content is optional because a turn may consist\nonly of tool calls.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "assistant",
+          "default": "assistant",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCalls": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/ToolCall"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Toolcalls"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "AssistantMessage",
+      "type": "object"
+    },
+    "AssistantMessage-Output": {
       "additionalProperties": true,
       "description": "A message from the agent. Content is optional because a turn may consist\nonly of tool calls.",
       "properties": {
@@ -51964,6 +52055,15 @@
     "PinConversationSummaryRequest": {
       "description": "Select an existing assistant message as the conversation summary.",
       "properties": {
+        "id_kind": {
+          "default": "source",
+          "enum": [
+            "source",
+            "public"
+          ],
+          "title": "Id Kind",
+          "type": "string"
+        },
         "message_id": {
           "maxLength": 255,
           "minLength": 1,
@@ -52019,6 +52119,17 @@
         "source_message_id": {
           "title": "Source Message Id",
           "type": "string"
+        },
+        "source_public_message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Public Message Id"
         },
         "source_status": {
           "enum": [
@@ -52531,21 +52642,21 @@
       "discriminator": {
         "mapping": {
           "activity": "#/components/schemas/ActivityMessage",
-          "assistant": "#/components/schemas/AssistantMessage",
-          "tool": "#/components/schemas/ToolMessage",
-          "user": "#/components/schemas/UserMessage"
+          "assistant": "#/components/schemas/AssistantMessage-Output",
+          "tool": "#/components/schemas/ToolMessage-Output",
+          "user": "#/components/schemas/UserMessage-Output"
         },
         "propertyName": "role"
       },
       "oneOf": [
         {
-          "$ref": "#/components/schemas/UserMessage"
+          "$ref": "#/components/schemas/UserMessage-Output"
         },
         {
-          "$ref": "#/components/schemas/AssistantMessage"
+          "$ref": "#/components/schemas/AssistantMessage-Output"
         },
         {
-          "$ref": "#/components/schemas/ToolMessage"
+          "$ref": "#/components/schemas/ToolMessage-Output"
         },
         {
           "$ref": "#/components/schemas/ActivityMessage"
@@ -54489,12 +54600,12 @@
             "discriminator": {
               "mapping": {
                 "activity": "#/components/schemas/ActivityMessage",
-                "assistant": "#/components/schemas/AssistantMessage",
+                "assistant": "#/components/schemas/AssistantMessage-Input",
                 "developer": "#/components/schemas/DeveloperMessage",
                 "reasoning": "#/components/schemas/ReasoningMessage",
                 "system": "#/components/schemas/SystemMessage",
-                "tool": "#/components/schemas/ToolMessage",
-                "user": "#/components/schemas/UserMessage"
+                "tool": "#/components/schemas/ToolMessage-Input",
+                "user": "#/components/schemas/UserMessage-Input"
               },
               "propertyName": "role"
             },
@@ -54506,13 +54617,13 @@
                 "$ref": "#/components/schemas/SystemMessage"
               },
               {
-                "$ref": "#/components/schemas/AssistantMessage"
+                "$ref": "#/components/schemas/AssistantMessage-Input"
               },
               {
-                "$ref": "#/components/schemas/UserMessage"
+                "$ref": "#/components/schemas/UserMessage-Input"
               },
               {
-                "$ref": "#/components/schemas/ToolMessage"
+                "$ref": "#/components/schemas/ToolMessage-Input"
               },
               {
                 "$ref": "#/components/schemas/ActivityMessage"
@@ -62743,7 +62854,119 @@
       "title": "ToolInstanceResponse",
       "type": "object"
     },
-    "ToolMessage": {
+    "ToolMessage-Input": {
+      "additionalProperties": true,
+      "description": "What a tool returned, as a message in the conversation. Stands alone\nrather than composing BaseMessage, because it carries no name.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "audio": "#/components/schemas/AudioPart",
+                    "document": "#/components/schemas/DocumentPart",
+                    "image": "#/components/schemas/ImagePart",
+                    "text": "#/components/schemas/TextPart",
+                    "video": "#/components/schemas/VideoPart"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImagePart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AudioPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VideoPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentPart"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "role": {
+          "const": "tool",
+          "default": "tool",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCallId": {
+          "title": "Toolcallid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "toolCallId"
+      ],
+      "title": "ToolMessage",
+      "type": "object"
+    },
+    "ToolMessage-Output": {
       "additionalProperties": true,
       "description": "What a tool returned, as a message in the conversation. Stands alone\nrather than composing BaseMessage, because it carries no name.",
       "properties": {
@@ -64969,7 +65192,114 @@
       "title": "UserMemorySettingsUpdate",
       "type": "object"
     },
-    "UserMessage": {
+    "UserMessage-Input": {
+      "additionalProperties": true,
+      "description": "A message from the person using the application.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "audio": "#/components/schemas/AudioPart",
+                    "document": "#/components/schemas/DocumentPart",
+                    "image": "#/components/schemas/ImagePart",
+                    "text": "#/components/schemas/TextPart",
+                    "video": "#/components/schemas/VideoPart"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImagePart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AudioPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VideoPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentPart"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "user",
+          "default": "user",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "title": "UserMessage",
+      "type": "object"
+    },
+    "UserMessage-Output": {
       "additionalProperties": true,
       "description": "A message from the person using the application.",
       "properties": {

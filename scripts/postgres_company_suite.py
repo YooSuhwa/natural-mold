@@ -9,6 +9,8 @@ from typing import Final
 # backend/. The ordinary registry contract compares this tuple with the files on disk.
 COMPANY_ADMINISTRATION_MODULES: Final[tuple[str, ...]] = (
     "tests/authz/test_ag_ui_command_receipt_integration.py",
+    "tests/authz/test_ag_ui_journal_integration.py",
+    "tests/authz/test_ag_ui_read_access_integration.py",
     "tests/integration/test_ag_ui_start_attachment_concurrency.py",
     "tests/integration/test_ag_ui_resume_http_concurrency.py",
     "tests/test_ag_ui_deferred_dispatch_postgres.py",
