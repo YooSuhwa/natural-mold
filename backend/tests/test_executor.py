@@ -88,14 +88,14 @@ def _stored_policy(mode: str, *, todo_enabled: bool = True):
     )
 
 
-def _deep_research_skill() -> dict[str, object]:
+def _deep_research_skill(dependency: str = "tavily_search") -> dict[str, object]:
     return {
         "id": "00000000-0000-0000-0000-0000000000d1",
         "slug": "deep-research",
         "name": "Deep Research",
         "description": "Deep research",
         "storage_path": "skills/deep-research",
-        "execution_profile": {"tool_dependencies": ["tavily_search"]},
+        "execution_profile": {"tool_dependencies": [dependency]},
     }
 
 
@@ -979,6 +979,59 @@ async def test_execute_stream_runtime_tool_called_per_entry(
     assert len(tools_passed) == 5
 
 
+@pytest.mark.parametrize(
+    ("dependency", "other_tool"),
+    [
+        ("research_search", {"definition_key": "http_request", "name": "research search"}),
+        (
+            "research_search",
+            {
+                "mcp_server_url": "https://example.invalid",
+                "mcp_tool_name": "research_search",
+                "name": "friendly name",
+                "definition_key": "mcp",
+            },
+        ),
+        ("tavily_search", {"definition_key": "http_request", "name": "tavily_search"}),
+    ],
+)
+def test_skill_dependency_rejects_unrelated_tool_using_runtime_name(
+    dependency: str, other_tool: dict[str, str]
+) -> None:
+    from app.agent_runtime.skill_tool_dependencies import build_skill_dependency_tool_configs
+
+    with pytest.raises(ValueError, match="Skill requires the registered tool"):
+        build_skill_dependency_tool_configs(
+            agent_skills=[_deep_research_skill(dependency)],
+            existing_tool_configs=[
+                {"name": dependency, "definition_key": dependency},
+                other_tool,
+            ],
+            user_id=str(TEST_USER_ID),
+            agent_id=None,
+        )
+
+
+def test_missing_definition_does_not_shadow_registered_skill_dependency() -> None:
+    from app.agent_runtime.skill_tool_dependencies import build_skill_dependency_tool_configs
+
+    configs = build_skill_dependency_tool_configs(
+        agent_skills=[_deep_research_skill("research_search")],
+        existing_tool_configs=[{"name": "research_search", "definition_key": "deleted_tool"}],
+        user_id=str(TEST_USER_ID),
+        agent_id=None,
+    )
+
+    assert [config["definition_key"] for config in configs] == ["research_search"]
+
+
+@pytest.mark.parametrize(
+    ("dependency", "description"),
+    [
+        ("tavily_search", "Hosted Tavily web search used by attached skills."),
+        ("research_search", "Search approved providers for cited research."),
+    ],
+)
 @pytest.mark.asyncio
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
@@ -995,6 +1048,8 @@ async def test_execute_stream_injects_skill_tool_dependency(
     mock_checkpointer: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    dependency: str,
+    description: str,
 ):
     from app.agent_runtime.agent_stream_runner import execute_agent_stream
 
@@ -1009,7 +1064,7 @@ async def test_execute_stream_injects_skill_tool_dependency(
         yield "done"
 
     mock_stream.return_value = fake_stream()
-    cfg = _cfg(agent_skills=[_deep_research_skill()])
+    cfg = _cfg(agent_skills=[_deep_research_skill(dependency)])
 
     async for _ in execute_agent_stream(cfg, []):
         pass
@@ -1017,14 +1072,16 @@ async def test_execute_stream_injects_skill_tool_dependency(
     assert cfg.tools_config == []
     assert captured_configs == [
         {
-            "tool_id": "skill-dependency:tavily_search",
-            "definition_key": "tavily_search",
-            "name": "tavily_search",
-            "description": "Hosted Tavily web search used by attached skills.",
+            "tool_id": f"skill-dependency:{dependency}",
+            "definition_key": dependency,
+            "name": dependency,
+            "description": description,
             "parameters": {},
             "credential_id": None,
             "credentials": None,
-            "user_id": None,
+            "user_id": str(cfg.org_context.user_id),
+            "org_id": str(cfg.org_context.org_id),
+            "tenant_id": str(cfg.org_context.tenant_id),
             "agent_id": None,
             "is_skill_dependency": True,
         }
