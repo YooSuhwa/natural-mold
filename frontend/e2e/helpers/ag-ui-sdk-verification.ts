@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 
 import { HttpAgent, parseSSEStream, runHttpRequest, verifyEvents } from '@ag-ui/client'
-import { EventSchema } from '@ag-ui/core/schemas'
+import { EventSchema, RunAgentInputSchema } from '@ag-ui/core/schemas'
 import { from, lastValueFrom, map, toArray } from 'rxjs'
 
 type RunOutcome = 'success' | 'interrupt' | 'cancelled' | 'error'
@@ -11,6 +11,7 @@ interface TranscriptExpectation {
   readonly threadId: string
   readonly runId: string
   readonly outcome: RunOutcome
+  readonly request?: unknown
   readonly assistantText?: string
   readonly interruptIds?: readonly string[]
   readonly forbiddenText?: readonly string[]
@@ -18,6 +19,11 @@ interface TranscriptExpectation {
 
 /** Decode the exact captured product response without making a second server request. */
 export async function verifyAgUiTranscript(expected: TranscriptExpectation) {
+  if (expected.request !== undefined) {
+    const input = RunAgentInputSchema.parse(expected.request)
+    assert.equal(input.runId, expected.runId)
+    assert.equal(input.threadId, expected.threadId)
+  }
   const response = () =>
     new Response(expected.sse, { headers: { 'content-type': 'text/event-stream; charset=utf-8' } })
   const raw = parseSSEStream(runHttpRequest(async () => response()))
