@@ -12,10 +12,12 @@ from app.authz.child_task_authorization import (
     authorize_child_target,
     require_same_child_identity,
 )
-from app.authz.conversation_run_scope import private_run_predicate
+from app.authz.conversation_run_scope import owned_run_predicate, private_run_predicate
 from app.authz.execution_transaction_tracker import claimed_locks
 from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
 from app.models.agent_lifecycle import ConversationRunAgent
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_child_task import ConversationChildInstruction, ConversationChildTask
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.services.child_task_errors import ChildTaskStopped
@@ -93,12 +95,15 @@ async def begin_child_task(
     participants = await db.execute(
         select(ConversationRunAgent.role, ConversationRunAgent.identity_mode_at_accept)
         .join(ConversationRun, ConversationRunAgent.run_id == ConversationRun.id)
+        .join(Conversation, Conversation.id == ConversationRun.conversation_id)
         .where(
+            Conversation.source != INDEPENDENT_JOB_SOURCE,
             ConversationRun.id == run_id,
             ConversationRun.conversation_id == conversation_id,
             ConversationRun.status == "running",
             ConversationRun.cancel_requested_at.is_(None),
-            private_run_predicate(context),
+            owned_run_predicate(context),
+            private_scope_predicate(Conversation, context),
             ConversationRunAgent.agent_id == ConversationRunAgent.agent_id_snapshot,
             (
                 (ConversationRunAgent.role == "root")
@@ -202,9 +207,15 @@ async def _locked_child(
 ) -> ConversationChildTask:
     ref = (
         await db.execute(
-            select(
-                ConversationChildTask.current_run_id, ConversationChildTask.child_agent_id
-            ).where(ConversationChildTask.id == child_id)
+            select(ConversationChildTask.current_run_id, ConversationChildTask.child_agent_id)
+            .join(ConversationRun, ConversationRun.id == ConversationChildTask.current_run_id)
+            .join(Conversation, Conversation.id == ConversationRun.conversation_id)
+            .where(
+                ConversationChildTask.id == child_id,
+                Conversation.source != INDEPENDENT_JOB_SOURCE,
+                owned_run_predicate(context),
+                private_scope_predicate(Conversation, context),
+            )
         )
     ).one_or_none()
     if ref is None or ref.current_run_id != run_id:

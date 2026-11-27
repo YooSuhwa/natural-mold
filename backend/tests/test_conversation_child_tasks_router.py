@@ -16,13 +16,14 @@ from app.dependencies import get_org_context
 from app.models.agent import Agent
 from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.agent_subagent import AgentSubAgentLink
-from app.models.conversation import Conversation
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_child_task import ConversationChildTask
 from app.models.conversation_run import ConversationRun
 from app.models.organization import Organization, OrganizationMember
 from app.services import agent_execution_owner
 from app.services.agent_execution_acceptance import OwnedExecutionRequest
-from app.services.child_tasks_runtime import begin_child_task
+from app.services.child_task_errors import ChildTaskStopped
+from app.services.child_tasks_runtime import begin_child_task, next_child_instructions
 from tests.authz.unit_scope_fixture import unit_context
 from tests.test_agent_lifecycle_run_ownership import _seed_execution_tree
 
@@ -433,3 +434,39 @@ async def test_task_id_in_another_org_is_indistinguishable_from_unknown(
     unknown = await client.post(f"{base}/{uuid4()}/cancel")
     assert known.status_code == unknown.status_code == 404
     assert known.json() == unknown.json()
+
+
+async def test_independent_room_preserves_child_history_and_rejects_nested_commands(
+    db: AsyncSession, client: AsyncClient, delegation: Delegation
+) -> None:
+    # Exercise an existing persistent child binding with valid actor and graph pins.
+    # A synthetic absent child would return a 404 before exercising the room guard.
+    room = await db.get(Conversation, delegation.conversation_id)
+    assert room is not None
+    room.source = INDEPENDENT_JOB_SOURCE
+    await db.commit()
+    target = f"{delegation.base}/{delegation.child_id}"
+    request = {"client_request_id": "unchanged", "text": "이전 조사 수정"}
+
+    assert (await client.post(f"{target}/instructions", json=request)).status_code == 409
+    assert (await client.post(f"{target}/cancel")).status_code == 409
+    history = await client.get(f"{target}/wait", params={"timeout_seconds": 0})
+    assert history.status_code == 200, history.text
+    assert history.json()["status"] == "running"
+    assert history.json()["instructions"] == []
+
+    with pytest.raises(ChildTaskStopped):
+        await next_child_instructions(
+            db, context=delegation.context, child_id=delegation.child_id, run_id=delegation.run_id
+        )
+    with pytest.raises(ChildTaskStopped):
+        await begin_child_task(
+            db,
+            context=delegation.context,
+            conversation_id=room.id,
+            run_id=delegation.run_id,
+            child_agent_id=delegation.child_agent_id,
+            tool_call_id="nested",
+            role="researcher",
+            checkpoint_ns="tools:nested|child",
+        )

@@ -387,3 +387,44 @@ async def test_inherited_writable_memory_hides_target_and_refuses_explicit_hando
     assert await db.scalar(select(func.count()).select_from(IndependentChatJob)) == 0
     assert await db.get(UserMemorySettings, TEST_USER_ID) is None
     launch.assert_not_awaited()
+
+
+async def test_independent_room_rejects_goals_and_root_steer(
+    db: AsyncSession, client: AsyncClient, job_request: JobRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.models.conversation_goal import ConversationGoal
+    from app.models.conversation_run_steer import ConversationRunSteer
+
+    context = unit_context(TEST_USER_ID)
+    monkeypatch.setattr(settings, "conversation_goal_org_ids", frozenset({context.org_id}))
+    monkeypatch.setattr(settings, "chat_steer_enabled", True)
+    job = await job_request.create(client)
+    base = f"/api/conversations/{job.child_conversation_id}"
+    steer = f"{base}/runs/{job.child_run_id}/steers"
+    goal = {
+        "expected_revision": 0,
+        "title": "가격 비교",
+        "criteria": [{"kind": "nonempty_file", "logical_path": "표.csv"}],
+    }
+    assert (await client.get(f"{base}/goal")).json() == {"enabled": False, "goal": None}
+    assert (await client.put(f"{base}/goal", json=goal)).status_code == 409
+    response = await client.post(steer, json={"client_request_id": str(uuid4()), "text": "새 조사"})
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "STEER_RUN_INACTIVE"
+    assert (await client.get(steer)).json() == []
+    assert await db.scalar(select(func.count()).select_from(ConversationRunSteer)) == 0
+    assert await db.scalar(select(func.count()).select_from(ConversationGoal)) == 0
+    assert await db.scalar(select(func.count()).select_from(IndependentChatJob)) == 1
+
+    run = await db.get(ConversationRun, job.child_run_id)
+    assert run is not None and run.run_source == "CHAT" and run.source == "start"
+    await transition_run(db, run, "running", worker_instance_id="independent")
+    await transition_run(db, run, "completed")
+    await db.commit()
+    from app.services.conversation_goal_worker import reconcile_goal_run
+
+    await reconcile_goal_run(db, run.id, job.child_conversation_id)
+    await db.commit()
+    inputs = (await db.scalars(select(ConversationRunInput))).all()
+    assert len(inputs) == 1 and inputs[0].run_id == run.id
+    assert inputs[0].source != "goal_followup"

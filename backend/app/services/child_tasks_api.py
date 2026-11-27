@@ -14,6 +14,7 @@ from app.authz.run_decisions import open_request_memo
 from app.config import settings
 from app.exceptions import AppError, ConflictError, NotFoundError
 from app.models.agent_lifecycle import ConversationRunAgent
+from app.models.conversation import INDEPENDENT_JOB_SOURCE
 from app.models.conversation_child_task import ConversationChildInstruction, ConversationChildTask
 from app.models.conversation_run import ConversationRun
 from app.schemas.conversation_child_task import (
@@ -141,14 +142,20 @@ async def _load(
     conversation_id: UUID,
     child_id: UUID,
     context: OrgContext,
+    *,
+    command: bool = False,
 ) -> tuple[ConversationChildTask, ConversationRun]:
-    await require_private_conversation(db, conversation_id, context)
+    conversation = await require_private_conversation(db, conversation_id, context)
     stmt = _in_conversation(conversation_id, context).where(ConversationChildTask.id == child_id)
     child = await db.scalar(stmt)
     if child is None:
         raise _not_found()
     current_id = child.current_run_id
     run = await _authorize_target(db, context, child)
+    if command and conversation.source == INDEPENDENT_JOB_SOURCE:
+        raise ConflictError(
+            "CHILD_TASK_CLOSED", "현재 상태에서는 위임한 작업을 변경할 수 없습니다."
+        )
     # Recheck the binding under the same authorization, including on reads. A
     # resumed parent can take over a suspended child while its old run is checked.
     with claimed_locks(db):
@@ -194,7 +201,7 @@ async def instruct_child(
     context: OrgContext,
     payload: ChildInstructionCreate,
 ) -> ChildTaskResponse:
-    child, run = await _load(db, conversation_id, child_id, context)
+    child, run = await _load(db, conversation_id, child_id, context, command=True)
     request = await db.scalar(
         select(ConversationChildInstruction).where(
             ConversationChildInstruction.child_id == child.id,
@@ -236,7 +243,7 @@ async def cancel_child(
     child_id: UUID,
     context: OrgContext,
 ) -> ChildTaskResponse:
-    child, run = await _load(db, conversation_id, child_id, context)
+    child, run = await _load(db, conversation_id, child_id, context, command=True)
     if child.status != "cancelled":
         await _require_open(db, context, child, run)
         await settle_child_status_locked(db, child, status="cancelled")
