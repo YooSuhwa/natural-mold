@@ -16,6 +16,7 @@ from uuid import UUID
 from approval_card_evidence import approval_card_observations
 from branch_evidence import branch_observation
 from goal_case_evidence import GOAL_CASE_FILE, GOAL_CASE_TITLE, goal_case_observations
+from multi_turn_evidence import multi_turn_observations
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictInt
 from pydantic.alias_generators import to_camel
 
@@ -574,6 +575,9 @@ def _case(spec: dict, test: dict, owned_root: Path, group: str, performance_timi
                     errors.append("incomplete_performance_waterfall")
         observed.update(
             branch_observation(filename, title, group, result, owned_root, _attachment_body)
+        )
+        observed.update(
+            multi_turn_observations(filename, title, group, result, owned_root, _attachment_body)
         )
         if group == "cutover" and title in CUTOVER_CASES:
             try:
