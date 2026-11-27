@@ -142,9 +142,17 @@ async def _read_run_proof(
             denied = True
             actionable = False
             continue
-        if checkpoint.native_kinds.get(ident) not in {"approval", "ask_user", "auth_required"}:
+        kind = checkpoint.native_kinds.get(ident)
+        value = slot["value"]
+        if kind in ("ask_user", "auth_required"):
+            # Only a typed, unanswered native interrupt can supply either form.
+            # An approval that happens to invoke ask_user keeps its review policy.
+            value = checkpoint.native_prompt_values.get(ident, {"type": "unknown"})
+            if value.get("type") != kind:
+                actionable = False
+        elif kind != "approval":
             actionable = False
-        slots.append(ProtocolInterrupt(id=ident, value=slot["value"], ns=list(ns)))
+        slots.append(ProtocolInterrupt(id=ident, value=value, ns=list(ns)))
     if denied:
         # A batch denial is deliberately anonymous. Preserve genuine root
         # declarations, and disclose no child's prompt, expiry, or grant marker.

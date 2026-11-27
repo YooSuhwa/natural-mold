@@ -41,6 +41,7 @@ async def test_current_batch_authority_expiry_and_checkpoint_identity(
         {"child": deadline},
         {"root": "ask_user", "child": "approval"},
         legacy_child_bindings={"child": binding},
+        native_prompt_values={"root": {"type": "ask_user", "question": "Continue?"}},
     )
     read = AsyncMock(return_value=checkpoint)
     proof = AsyncMock(return_value=frozenset({"child"}))
