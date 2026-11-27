@@ -2815,6 +2815,8 @@
       "expired": "Expired"
     },
     "page": {
+      "draftStartFailed": "Could not start a new chat.",
+      "retryDraft": "Try again",
       "sourceUnavailable": "The chat type could not be verified.",
       "retrySource": "Check again",
       "settings": "Settings",
