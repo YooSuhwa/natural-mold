@@ -23,7 +23,9 @@ from app.dependencies import CurrentUser
 from app.exceptions import AppError
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.audit_event import AuditEvent
-from app.models.conversation_run import ConversationRun, utc_now_naive
+from app.models.conversation import Conversation
+from app.models.conversation_run import ConversationRun, ConversationRunToolReceipt, utc_now_naive
+from app.models.conversation_run_input import ConversationRunInput
 from app.models.independent_chat_job import IndependentChatJob
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
@@ -40,6 +42,7 @@ from app.services.agent_execution_acceptance import OwnedExecutionRequest, accep
 from app.services.conversation_agent_context import resolve_agent_context
 from app.services.conversation_run_prepared_recovery import terminalize_orphaned_prepared_runs
 from app.services.conversation_run_queue_worker import recover_conversation_queue
+from app.services.conversation_run_service import sweep_stale_conversation_runs
 from app.services.conversation_run_state import transition_run
 from app.services.conversation_run_worker import start_conversation_run
 from app.services.independent_job_notifications import reconcile_job_approval
@@ -48,7 +51,7 @@ from tests.authz import prepared_adapter_testkit as akit
 from tests.authz import prepared_materialization_testkit as kit
 from tests.authz import prepared_queue_testkit as qkit
 from tests.authz.unit_scope_fixture import unit_context
-from tests.conftest import TestSession
+from tests.conftest import TestSession, make_user
 from tests.test_agent_lifecycle_run_ownership import _seed_execution_tree
 
 pytestmark = pytest.mark.asyncio
@@ -127,16 +130,35 @@ async def handoff(
     return Handoff(handoff.job, ctx, factory, server, model.model_name)
 
 
+@pytest.fixture
+async def aged_handoff(db: AsyncSession, handoff: Handoff) -> Handoff:
+    child = await db.get(ConversationRun, handoff.job.child_run_id)
+    assert child is not None
+    claimed = await db.scalar(
+        select(ConversationRunInput).where(ConversationRunInput.run_id == child.id)
+    )
+    assert claimed is not None
+    old = utc_now_naive() - timedelta(seconds=settings.chat_run_stale_after_seconds + 3600)
+    child.created_at = child.updated_at = old
+    claimed.created_at = claimed.updated_at = claimed.claimed_at = old
+    await db.commit()
+    return handoff
+
+
 @pytest.mark.parametrize("revoke", [False, True])
-async def test_restart_claims_child_only_once_after_parent_finished(
-    db: AsyncSession, handoff: Handoff, revoke: bool
+async def test_stale_sweep_then_restart_claims_aged_child_only_once_after_parent_finished(
+    db: AsyncSession, aged_handoff: Handoff, revoke: bool
 ) -> None:
-    job = handoff.job
+    job = aged_handoff.job
     if revoke:
         link = await db.get(AgentSubAgentLink, (job.parent_agent_id, job.child_agent_id))
         assert link is not None
         await db.delete(link)
         await db.commit()
+    await sweep_stale_conversation_runs(session_factory=TestSession)
+    waiting = await db.get(ConversationRun, job.child_run_id, populate_existing=True)
+    assert waiting is not None and waiting.status == "queued" and waiting.is_active
+    assert not kit.SENDS
     await recover_conversation_queue()
     child = await qkit.await_run(job.child_run_id)
     if revoke:
@@ -161,6 +183,96 @@ async def test_restart_claims_child_only_once_after_parent_finished(
         )
     )
     assert count == int(not revoke)
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        "missing-job",
+        "missing-input",
+        "input-failed",
+        "wrong-request",
+        "foreign-conversation",
+        "foreign-user",
+        "wrong-input-source",
+        "wrong-agent",
+        "ordinary-dialog",
+        "resume",
+        "unattributed",
+        "worker",
+        "started",
+        "heartbeat",
+        "marker",
+        "model-attempt",
+        "tool-receipt",
+    ],
+)
+async def test_stale_sweep_does_not_rescue_unproven_handoffs(
+    db: AsyncSession, aged_handoff: Handoff, evidence: str
+) -> None:
+    job = aged_handoff.job
+    child = await db.get(ConversationRun, job.child_run_id)
+    assert child is not None
+    claimed = await db.scalar(
+        select(ConversationRunInput).where(ConversationRunInput.run_id == child.id)
+    )
+    assert claimed is not None
+    match evidence:
+        case "missing-job":
+            await db.delete(job)
+        case "missing-input":
+            await db.delete(claimed)
+        case "input-failed":
+            claimed.status = "failed"
+        case "wrong-request":
+            claimed.client_request_id = str(uuid4())
+        case "foreign-conversation":
+            claimed.conversation_id = job.parent_conversation_id
+        case "foreign-user":
+            claimed.user_id = (await make_user(db)).id
+        case "wrong-input-source":
+            claimed.source = "steer"
+        case "wrong-agent":
+            claimed.agent_id = job.parent_agent_id
+        case "ordinary-dialog":
+            conversation = await db.get(Conversation, child.conversation_id)
+            assert conversation is not None
+            conversation.source = "ui"
+        case "resume":
+            child.source = "resume"
+        case "unattributed":
+            child.run_source = None
+        case "worker":
+            child.worker_instance_id = "previous-process"
+        case "started":
+            child.started_at = child.created_at
+        case "heartbeat":
+            child.heartbeat_at = child.created_at
+        case "marker":
+            child.runtime_materialized_at = child.created_at
+            child.runtime_materialization_sha256 = "a" * 64
+        case "model-attempt":
+            child.recovery_model_attempts = {"calls": {"persisted-call": 1}}
+        case "tool-receipt":
+            db.add(
+                ConversationRunToolReceipt(
+                    run_id=child.id,
+                    tenant_id=job.tenant_id,
+                    org_id=job.org_id,
+                    tool_call_id="write",
+                    tool_name="notify",
+                    arguments_sha256="b" * 64,
+                    effect_kind="external_write",
+                    status="started",
+                    owner_generation=1,
+                )
+            )
+    await db.commit()
+    await sweep_stale_conversation_runs(session_factory=TestSession)
+    await db.refresh(child)
+    assert child.status == "stale" and not child.is_active
+    assert await recover_conversation_queue() == 0
+    assert not kit.SENDS
 
 
 async def test_missing_durable_parent_cannot_turn_child_into_ordinary_chat(
