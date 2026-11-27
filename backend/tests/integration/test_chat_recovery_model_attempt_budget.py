@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
@@ -14,6 +15,8 @@ from langchain_core.messages import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agent_runtime.recovery_checkpoint_saver import RecoveryCheckpointSaver
@@ -21,6 +24,7 @@ from app.agent_runtime.runtime.direct_stream_retry import DirectStreamRetryMiddl
 from app.agent_runtime.runtime_component_builder import _build_model_candidates
 from app.agent_runtime.stream_retry_authority import check_stream_attempt
 from app.authz.conversation_run_scope import RunConversationTarget, RunExecutionTarget
+from app.authz.org_context import OrgContext
 from app.chat_recovery.fence import RunFence, claim_run_owner, run_fence_scope
 from app.chat_recovery.model_attempts import RecoveryModelAttemptBlocked, new_model_attempt_budget
 from app.config import settings
@@ -61,6 +65,12 @@ class BudgetRun:
             owner = claim_run_owner(row, "replacement")
             await db.commit()
             return owner
+
+    async def committed_debits(self) -> list[int]:
+        async with self.sessions() as db:
+            run = await db.get(ConversationRun, self.target.run_id)
+            assert run is not None and run.recovery_model_attempts is not None
+            return list(run.recovery_model_attempts["calls"].values())
 
     def graph(
         self,
@@ -231,3 +241,61 @@ async def test_old_pending_step_with_unknown_send_count_stops_before_recovery_se
         await asyncio.create_task(run.stream(run.graph(replacement), replacement, resume=True))
     assert blocked.value.code == "recovery_model_attempt_unproven"
     assert len(gateway.models) == 1
+
+
+async def test_worker_loss_after_commit_before_first_post_spends_one_attempt(
+    run: BudgetRun, gateway: Gateway
+) -> None:
+    debit_committed = asyncio.Event()
+
+    async def admit_and_park() -> None:
+        await check_stream_attempt()
+        debit_committed.set()
+        await asyncio.Event().wait()
+
+    first = await run.claim()
+    task = asyncio.create_task(
+        run.stream(run.graph(first, admit=admit_and_park), first, resume=False)
+    )
+    try:
+        async with asyncio.timeout(10):
+            await debit_committed.wait()
+        assert await run.committed_debits() == [1]
+        assert gateway.models == []
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    successor = await run.claim()
+    gateway.respond = lambda: _stream(_error(CONCURRENCY))
+    with pytest.raises(RecoveryModelAttemptBlocked) as blocked:
+        await asyncio.create_task(run.stream(run.graph(successor), successor, resume=True))
+    assert blocked.value.code == "recovery_model_attempt_limit"
+    assert len(gateway.models) == 2
+    assert await run.committed_debits() == [3]
+
+
+async def test_database_rejecting_reservation_at_commit_prevents_first_post(
+    run: BudgetRun, gateway: Gateway, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    @asynccontextmanager
+    async def fail_at_commit(context: OrgContext) -> AsyncIterator[AsyncSession]:
+        async with tenant_session(context, maker=run.sessions) as db:
+            # Both inserts succeed. PostgreSQL rejects the same COMMIT that
+            # would have made the model-attempt UPDATE visible to a successor.
+            await db.execute(
+                text(
+                    "CREATE TEMP TABLE budget_commit_fixture "
+                    "(item integer UNIQUE DEFERRABLE INITIALLY DEFERRED) ON COMMIT DROP"
+                )
+            )
+            await db.execute(text("INSERT INTO budget_commit_fixture VALUES (1), (1)"))
+            yield db
+
+    monkeypatch.setattr("app.services.stream_attempt_owner.tenant_session", fail_at_commit)
+    owner = await run.claim()
+    with pytest.raises(IntegrityError, match="budget_commit_fixture"):
+        await asyncio.create_task(run.stream(run.graph(owner), owner, resume=False))
+    assert gateway.models == []
+    assert await run.committed_debits() == []
