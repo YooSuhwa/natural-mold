@@ -87,7 +87,7 @@ async def open_dispatch_permit(
     if registry.state(lease.binding.run_id) not in (LeaseState.ACTIVE, LeaseState.DISPATCHING):
         raise DispatchDeniedError("prepared_run_lease_missing")
     binding = lease.binding
-    if binding.independent_job and kind == "child_launch":
+    if binding.independent_job and kind in {"child_launch", "child_control"}:
         raise DispatchDeniedError("independent_job_depth_exceeded")
     context = _context(lease)
     async with session_factory() as db:

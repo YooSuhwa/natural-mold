@@ -202,15 +202,18 @@ async def test_independent_job_rechecks_its_bound_run_before_each_leaf(
 
 
 @pytest.mark.asyncio
-async def test_independent_job_cannot_redelegate_or_drop_its_binding(db: AsyncSession) -> None:
+@pytest.mark.parametrize("kind", ["child_launch", "child_control"])
+async def test_independent_job_cannot_redelegate_or_drop_its_binding(
+    db: AsyncSession, kind: PermitKind
+) -> None:
     graph = await seed_graph(db)
     _, lease = await _active_lease(graph, independent_job=True)
     with pytest.raises(DispatchDeniedError, match="independent_job_depth_exceeded"):
         async with open_dispatch_permit(
             lease,
-            kind="child_launch",
-            descriptor_id="tool:search",
-            allowed_descriptors=DESCRIPTORS,
+            kind=kind,
+            descriptor_id="root/researcher",
+            allowed_descriptors=frozenset({"root/researcher"}),
             session_factory=TestSession,
         ):
             pytest.fail("nested task started")

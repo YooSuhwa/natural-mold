@@ -301,8 +301,9 @@ def build_preparation_inputs(
         stored_policy=_stored(cfg),
         ask_user_tool=None if trigger else bindings.ask_user_tool,
     )
+    allow_children = not (cfg.goal_followup or cfg.independent_job)
     children, child_tools, child_sets = (
-        ([], {}, []) if cfg.goal_followup else _child_specs(sources, bindings)
+        _child_specs(sources, bindings) if allow_children else ([], {}, [])
     )
     if trigger or cfg.unattended_approval is not None:
         _refuse_unattended_approvals(sources, bindings, root_tools, child_sets)
@@ -354,7 +355,7 @@ def build_preparation_inputs(
             for child in sources.children
             if child.agent_id is not None
         }
-        if sources.track_child_tasks
+        if allow_children and sources.track_child_tasks
         else {},
         interrupt_on=_interrupts(
             cfg.middleware_configs,
