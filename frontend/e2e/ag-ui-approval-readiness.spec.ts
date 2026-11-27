@@ -82,14 +82,14 @@ test('submits the first native answer once after the durable approval snapshot a
       await route.fulfill({ response: original })
     })
     await page.goto(`/agents/${setup.parentAgentId}/conversations/${conversationId}`)
-    const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
+    const form = page.locator('form[data-moldy-thread-composer]').last()
+    const composer = form.locator('textarea[data-moldy-composer-input="true"]')
+    await composer.fill('E2E_ASK_USER_FRUIT')
+    await expect(form.locator('button[type="submit"]')).toBeEnabled({ timeout: 30_000 })
     const first = await standardCommand(
       page,
       conversationId,
-      async () => {
-        await composer.fill('E2E_ASK_USER_FRUIT')
-        await composer.press('Enter')
-      },
+      () => composer.press('Enter'),
       'interrupt',
     )
     expect(first.body.resume ?? []).toEqual([])
