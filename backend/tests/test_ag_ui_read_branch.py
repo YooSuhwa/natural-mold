@@ -4,6 +4,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
@@ -28,9 +29,12 @@ async def test_fork_accepts_only_its_last_stamped_root_checkpoint(
     saver = InMemorySaver()
     monkeypatch.setattr(checkpointer, "get_checkpointer", lambda: saver)
 
+    def reply(state: MessagesState) -> MessagesState:
+        return {"messages": [AIMessage(content=f"reply {len(state['messages'])}")]}
+
     graph = (
         StateGraph(MessagesState)
-        .add_node("reply", lambda _: {"messages": [("assistant", "edited turn")]})
+        .add_node("reply", reply)
         .add_edge(START, "reply")
         .add_edge("reply", END)
         .compile(checkpointer=saver)
@@ -38,9 +42,10 @@ async def test_fork_accepts_only_its_last_stamped_root_checkpoint(
     config: RunnableConfig = {
         "configurable": run_configurable(str(room.id), run.id, actor.tenant_id)
     }
-    await graph.ainvoke({"messages": [("user", "edit")]}, config)
+    await graph.ainvoke({"messages": [HumanMessage(content="edit")]}, config)
     own_heads = [
-        s.config["configurable"]["checkpoint_id"] async for s in graph.aget_state_history(config)
+        s.config.get("configurable", {})["checkpoint_id"]
+        async for s in graph.aget_state_history(config)
     ]
     assert len(own_heads) > 1
     run.source = operation
@@ -59,10 +64,10 @@ async def test_fork_accepts_only_its_last_stamped_root_checkpoint(
         other: RunnableConfig = {
             "configurable": run_configurable(str(room.id), foreign_run, foreign_tenant)
         }
-        await graph.ainvoke({"messages": [("user", "other")]}, other)
-        room.active_branch_checkpoint_id = (await graph.aget_state(other)).config["configurable"][
-            "checkpoint_id"
-        ]
+        await graph.ainvoke({"messages": [HumanMessage(content="other")]}, other)
+        room.active_branch_checkpoint_id = (await graph.aget_state(other)).config.get(
+            "configurable", {}
+        )["checkpoint_id"]
         await db.commit()
         assert not await accepts_fork_handoff(db, room, actor, run)
 
