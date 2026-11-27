@@ -16301,6 +16301,116 @@
         ]
       }
     },
+    "/api/orgs/{org_id}/research-search-policy": {
+      "get": {
+        "operationId": "get_research_search_policy_api_orgs__org_id__research_search_policy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchSearchPolicyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Research Search Policy",
+        "tags": [
+          "organization administration"
+        ]
+      },
+      "put": {
+        "operationId": "put_research_search_policy_api_orgs__org_id__research_search_policy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchSearchPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchSearchPolicyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Research Search Policy",
+        "tags": [
+          "organization administration"
+        ]
+      }
+    },
     "/api/orgs/{org_id}/retention": {
       "get": {
         "operationId": "get_org_retention_api_orgs__org_id__retention_get",
@@ -49476,6 +49586,74 @@
         "id"
       ],
       "title": "RequestUser",
+      "type": "object"
+    },
+    "ResearchSearchPolicy": {
+      "additionalProperties": false,
+      "description": "Providers are attempted in the configured order. Each dispatch consumes one attempt.",
+      "properties": {
+        "monthly_attempt_limit": {
+          "maximum": 2147483647.0,
+          "minimum": 0.0,
+          "title": "Monthly Attempt Limit",
+          "type": "integer"
+        },
+        "providers": {
+          "items": {
+            "enum": [
+              "tavily",
+              "searxng"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Providers",
+          "type": "array"
+        },
+        "searxng_endpoint": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Searxng Endpoint"
+        }
+      },
+      "required": [
+        "providers",
+        "monthly_attempt_limit"
+      ],
+      "title": "ResearchSearchPolicy",
+      "type": "object"
+    },
+    "ResearchSearchPolicyView": {
+      "description": "An absent policy is distinguishable from an explicitly empty provider list.",
+      "properties": {
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ResearchSearchPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "policy",
+        "updated_at"
+      ],
+      "title": "ResearchSearchPolicyView",
       "type": "object"
     },
     "ResourceOriginSummaryOut": {
