@@ -248,6 +248,25 @@ describe('managed child interrupt forms', () => {
     expect(registerDecision).toHaveBeenCalledTimes(1)
   })
 
+  it.each(['history', 'sdk'])(
+    'hides an admitted child when the %s batch contains a read-only slot',
+    (source) => {
+      const readOnly: Interrupt = {
+        id: 'restricted-slot',
+        reason: 'moldy.input_required',
+        metadata: { moldy: { actionable: false } },
+      }
+      const question = ask()
+      const state = session(source === 'history' ? [question, readOnly] : [question], {
+        interruptIds: [question.id],
+      })
+      wire.interrupts.mockReturnValue(source === 'sdk' ? [question, readOnly] : [question])
+      render(forms(state))
+      expect(screen.queryByText('Which format?')).toBeNull()
+      expect(wire.detail).not.toHaveBeenCalled()
+    },
+  )
+
   it.each([
     { childTaskId: undefined },
     { runId: 'historical-run' },
