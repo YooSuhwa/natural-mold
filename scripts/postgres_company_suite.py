@@ -34,6 +34,7 @@ COMPANY_ADMINISTRATION_MODULES: Final[tuple[str, ...]] = (
     "tests/integration/test_goal_queue_denial.py",
     "tests/authz/test_chat_recovery_checkpoint_generation_integration.py",
     "tests/integration/test_chat_recovery_stream_retry.py",
+    "tests/integration/test_chat_approval_transition_pg.py",
     "tests/integration/test_chat_image_description_receipts_postgres.py",
     "tests/integration/test_image_description_usage_settlement_pg.py",
     "tests/integration/test_chat_recovery_model_attempt_budget.py",
