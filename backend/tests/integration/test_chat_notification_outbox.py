@@ -16,8 +16,6 @@ from app.approvals import recording, service
 from app.authz.org_context import OrgContext
 from app.config import settings
 from app.database import SessionTenant, tenant_session
-from app.dependencies import CurrentUser
-from app.models.agent import Agent
 from app.models.approval_request import ApprovalRequest
 from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation import Conversation
