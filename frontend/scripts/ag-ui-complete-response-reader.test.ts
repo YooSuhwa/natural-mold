@@ -13,6 +13,8 @@ const secret = 'local-test'
 const start = { type: 'RUN_STARTED', protocolVersion: '1.0', threadId, runId }
 const finish = { type: 'RUN_FINISHED', threadId, runId, outcome: { type: 'success' } }
 
+const cancelled = { ...finish, outcome: { type: 'cancelled' } }
+
 function frame(event: unknown) {
   return 'id: resume-cursor\r\ndata: ' + JSON.stringify(event) + '\r\n\r\n'
 }
@@ -79,11 +81,15 @@ afterEach(() => {
 
 describe('native application reads of AG-UI command responses', () => {
   it.each([
-    { type: 'success' },
-    { type: 'interrupt', interrupts: [{ id: 'choice-1', reason: '사용자 승인' }] },
+    { outcome: finish.outcome, expectedKind: 'eof' },
+    {
+      outcome: { type: 'interrupt', interrupts: [{ id: 'choice-1', reason: '사용자 승인' }] },
+      expectedKind: 'eof',
+    },
+    { outcome: cancelled.outcome, expectedKind: 'cancelled-eof' },
   ])(
-    'observes a complete $type outcome only after the native reader returns EOF',
-    async (outcome) => {
+    'reports $expectedKind for $outcome.type only after the native reader returns EOF',
+    async ({ outcome, expectedKind }) => {
       const h = harness()
       const originalRead = vi.spyOn(ReadableStreamDefaultReader.prototype, 'read')
       const bytes = new TextEncoder().encode(
@@ -102,11 +108,25 @@ describe('native application reads of AG-UI command responses', () => {
         expect(await pending).toEqual({ done: false, value: Uint8Array.of(byte) })
       }
       expect(h.reportsOf('eof')).toEqual([])
+      expect(h.reportsOf('cancelled-eof')).toEqual([])
+      const expectedTerminalCount = outcome.type === 'cancelled' ? 1 : 0
+      expect(h.reportsOf('cancelled-terminal')).toHaveLength(expectedTerminalCount)
       expect(await reader.read()).toEqual({ done: true, value: undefined })
       reader.releaseLock()
-      expect(h.reportsOf('eof')).toEqual([
-        { kind: 'eof', document: expect.any(String), secret, threadId, runId, physicalRunId },
+      expect(h.reportsOf(expectedKind)).toEqual([
+        {
+          kind: expectedKind,
+          document: expect.any(String),
+          secret,
+          threadId,
+          runId,
+          physicalRunId,
+        },
       ])
+      expect(h.reportsOf(expectedKind === 'eof' ? 'cancelled-eof' : 'eof')).toEqual([])
+      h.controller.abort()
+      expect(h.reportsOf('cancelled-terminal')).toHaveLength(expectedTerminalCount)
+      expect(h.reportsOf('invalid')).toEqual([])
     },
   )
 
@@ -131,7 +151,12 @@ describe('native application reads of AG-UI command responses', () => {
       [start, { ...finish, outcome: { type: 'interrupt', interrupts: {} } }],
     ],
     ['run error', [start, { type: 'RUN_ERROR', message: 'failed' }]],
-    ['cancelled outcome', [start, { ...finish, outcome: { type: 'cancelled' } }]],
+    ['cancel with wrong thread', [start, { ...cancelled, threadId: 'other' }]],
+    ['cancel with wrong run', [start, { ...cancelled, runId: 'other' }]],
+    [
+      'cancel with extra outcome fields',
+      [start, { ...cancelled, outcome: { type: 'cancelled', reason: 'unexpected' } }],
+    ],
     ['duplicate start', [start, start, finish]],
     ['duplicate terminal', [start, finish, finish]],
     [
@@ -145,7 +170,9 @@ describe('native application reads of AG-UI command responses', () => {
       h.write(events.map(frame).join(''))
       h.source.close()
       await h.readAll()
+      expect(h.reportsOf('cancelled-terminal')).toEqual([])
       expect(h.reportsOf('eof')).toEqual([])
+      expect(h.reportsOf('cancelled-eof')).toEqual([])
     },
   )
 
@@ -187,20 +214,46 @@ describe('native application reads of AG-UI command responses', () => {
         expect((await replacement.read()).done).toBe(true)
       }
       expect(h.reportsOf('eof')).toEqual([])
+      expect(h.reportsOf('cancelled-eof')).toEqual([])
     },
   )
 
-  it('invalidates an observed EOF if the same document subsequently aborts the command', async () => {
-    const h = harness()
-    h.write(frame(start) + frame(finish))
-    h.source.close()
-    await h.readAll()
-    expect(h.reportsOf('eof')).toHaveLength(1)
-    h.controller.abort()
-    expect(h.reportsOf('invalid')).toEqual([
-      { kind: 'invalid', document: expect.any(String), secret, threadId, runId, physicalRunId },
-    ])
-  })
+  it.each(['reader cancel', 'request abort', 'read rejection'])(
+    'denies cancelled completion when %s precedes EOF',
+    async (operation) => {
+      const h = harness()
+      h.write(frame(start) + frame(cancelled))
+      const reader = await h.reader()
+      expect((await reader.read()).done).toBe(false)
+      expect(h.reportsOf('cancelled-terminal')).toEqual([
+        {
+          kind: 'cancelled-terminal',
+          document: expect.any(String),
+          secret,
+          threadId,
+          runId,
+          physicalRunId,
+        },
+      ])
+      expect(h.reportsOf('invalid')).toEqual([])
+      if (operation === 'read rejection') {
+        const failure = new Error('stream disconnected after terminal')
+        h.source.error(failure)
+        await expect(reader.read()).rejects.toBe(failure)
+      } else {
+        if (operation === 'reader cancel') await reader.cancel()
+        else {
+          h.controller.abort()
+          h.source.close()
+        }
+        expect((await reader.read()).done).toBe(true)
+      }
+      expect(h.reportsOf('eof')).toEqual([])
+      expect(h.reportsOf('cancelled-eof')).toEqual([])
+      expect(h.reportsOf('cancelled-terminal')).toHaveLength(1)
+      expect(h.reportsOf('invalid')).toHaveLength(1)
+    },
+  )
 
   it('refuses an oversized unterminated frame while preserving the original bytes', async () => {
     const h = harness()
