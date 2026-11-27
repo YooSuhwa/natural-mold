@@ -454,7 +454,8 @@ async def _seed_deep_research_skill(
         execution_profile=DEEP_RESEARCH_EXECUTION_PROFILE,
         release_notes=(
             "Search can use an approved alternative when the primary provider is unavailable. "
-            "Update the installed skill to use research_search and report the source provider."
+            "Before updating, have an organization administrator approve a provider and set a "
+            "positive monthly search limit. Update the installed skill to use research_search."
         ),
         source_path="deep-research",
         created_by=None,
