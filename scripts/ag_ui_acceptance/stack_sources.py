@@ -18,6 +18,7 @@ import yaml
 _SDK_HELPER = "frontend/e2e/helpers/ag-ui-sdk-verification.ts"
 _BROWSER_FILES = (
     "frontend/e2e/ag-ui-approval-readiness.spec.ts",
+    "frontend/e2e/helpers/approval-readiness-fetch.ts",
     "frontend/e2e/manual/chat-ag-ui-cutover.spec.ts",
     "frontend/e2e/helpers/ag-ui-cutover.ts",
     _SDK_HELPER,
