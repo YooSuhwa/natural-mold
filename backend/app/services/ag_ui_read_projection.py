@@ -112,6 +112,21 @@ class CommittedProjection:
             for index, evt in enumerate(events)
         ]
 
+    def _ended_before_start(self, ordinal: int, source: str) -> FrameBatch:
+        self._terminal = True
+        frame = self._frame(
+            {
+                "type": "RUN_ERROR",
+                "code": "AG_UI_INPUT_UNAVAILABLE",
+                "message": "The queued input ended before a run was started.",
+            },
+            "terminal",
+            ordinal,
+            0,
+            source,
+        )
+        return FrameBatch([frame], False, True)
+
     def fold(
         self,
         target: ReadTarget,
@@ -124,27 +139,21 @@ class CommittedProjection:
             # An unclaimed queue entry owns no graph execution.
             if target.input_status not in {"canceled", "failed"}:
                 return FrameBatch([], False, False)
-            self._terminal = True
-            frame = self._frame(
-                {
-                    "type": "RUN_ERROR",
-                    "code": "AG_UI_INPUT_UNAVAILABLE",
-                    "message": "The queued input ended before a run was started.",
-                },
-                "terminal",
-                1,
-                0,
-                str(target.input_id),
-            )
-            return FrameBatch([frame], False, True)
+            return self._ended_before_start(1, str(target.input_id))
 
         if page is None or page.gap:
             raise snapshot_required()
         if self.generation is not None and self.generation != page.generation:
             raise snapshot_required()
         self.generation = page.generation
-        if target.run.status == "queued" and not page.entries and not self._started:
-            return FrameBatch([], False, False)
+        if not self._started and target.run.started_at is None:
+            if target.run.status in {"queued", "canceling"}:
+                return FrameBatch([], False, False)
+            if target.run.status == "canceled" and target.run.worker_instance_id is None:
+                # The native queue can allocate a physical UUID and persist a
+                # cancellation record before any worker ever owns the run.
+                return self._ended_before_start(page.high_water + 1, str(target.run.id))
+
         frames: list[CommittedFrame] = []
         if not self._started:
             self._started = True
