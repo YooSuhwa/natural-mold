@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import secrets
 from dataclasses import replace
 from uuid import uuid4
@@ -13,11 +12,14 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.credentials import tenant_encryption
+from app.models.credential import Credential
 from app.models.organization import Tenant
 from app.security import cipher, key_provider, tenant_keys
-from app.services.ag_ui_delivery_envelope import (
+from app.security.ag_ui_delivery_envelope import (
     DeliveryIdentity,
     InvalidDelivery,
+    _binding,
     open_delivery,
     seal_delivery,
 )
@@ -78,17 +80,41 @@ async def test_only_bound_command_can_read_payload(
     damaged = bytearray(base64.b64decode(blob))
     damaged[-1] ^= 1
     altered = base64.b64encode(damaged).decode("ascii")
-    for unreadable in (
-        altered,
-        "",
-        "malformed",
-        cipher.encrypt(
-            json.dumps({"binding": identity.binding(), "payload": payload}),
-            key_provider.get_active_key(),
-        ),
-    ):
+    for unreadable in (altered, "", "malformed"):
         with pytest.raises(InvalidDelivery, match="^Invalid AG-UI delivery$"):
             await open_delivery(db, identity, unreadable)
+
+
+@pytest.mark.parametrize("credential_company_key", [False, True])
+@pytest.mark.parametrize("command_company_key", [False, True])
+async def test_command_and_credential_storage_reject_each_others_ciphertext(
+    db: AsyncSession,
+    identity: DeliveryIdentity,
+    credential_company_key: bool,
+    command_company_key: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The row IDs, principals, and plaintext structure match. Only the authenticated
+    # purpose should distinguish the command from a valid credential on the same row ID.
+    row = Credential(
+        id=identity.run_id,
+        tenant_id=identity.tenant_id,
+        org_id=identity.org_id,
+        user_id=identity.user_id,
+        is_system=False,
+    )
+    content = {"binding": _binding(identity), "payload": {"decision": "approve"}}
+    monkeypatch.setattr(settings, "tenant_data_keys_enabled", credential_company_key)
+    await tenant_encryption.seal(row, content, db=db)
+    assert await tenant_encryption.open_payload(row, db=db) == content
+    monkeypatch.setattr(settings, "tenant_data_keys_enabled", command_company_key)
+    command = await seal_delivery(db, identity, content["payload"])
+    assert await open_delivery(db, identity, command) == content["payload"]
+    with pytest.raises(InvalidDelivery):
+        await open_delivery(db, identity, row.data_encrypted)
+    row.data_encrypted = command
+    with pytest.raises(cipher.DecryptionError):
+        await tenant_encryption.open_payload(row, db=db)
 
 
 async def test_instance_rotation_reads_existing_delivery(

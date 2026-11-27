@@ -191,8 +191,8 @@ async def test_committed_fork_rebuilds_just_its_branch_after_reopening_database(
     from app.models.conversation_run import ConversationRun
     from app.models.conversation_run_input import ConversationRunInput
     from app.models.message_attachment import MessageAttachment
+    from app.security.ag_ui_delivery_envelope import DeliveryIdentity, open_delivery
     from app.services.ag_ui_commands import find_or_reserve
-    from app.services.ag_ui_delivery_envelope import DeliveryIdentity, open_delivery
     from app.services.ag_ui_fork import prepare_fork_delivery
     from app.services.ag_ui_start import accept_start
     from app.services.conversation_agent_context import resolve_agent_context
