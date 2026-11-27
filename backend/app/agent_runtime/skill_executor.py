@@ -6,7 +6,6 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
 
 from langchain_core.tools import BaseTool, StructuredTool
@@ -365,7 +364,13 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
         ),
     )
     if isinstance(tool, RootGoalSkillTool):
-        tool._child_coroutine = partial(dispatch, replace(ctx, goal_sandbox_run_id=None))  # noqa: SLF001
+        child_ctx = replace(ctx, goal_sandbox_run_id=None)
+
+        # LangGraph reads callable annotations when it builds a ToolNode.
+        async def execute_as_child(skill_directory: str, command: str) -> str:
+            return await dispatch(child_ctx, skill_directory, command)
+
+        tool._child_coroutine = execute_as_child  # noqa: SLF001
     # Which skill a call means decides whether it asks (``app.approvals.tool_modes``).
     attach_parts(
         tool,
