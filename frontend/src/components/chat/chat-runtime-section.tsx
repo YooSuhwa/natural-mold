@@ -56,6 +56,7 @@ type ThreadRenderProps = Pick<
   AssistantThreadProps,
   | 'agentImageUrl'
   | 'agentName'
+  | 'isIndependentJob'
   | 'composerHint'
   | 'enableRunSteer'
   | 'conversationId'
@@ -74,6 +75,7 @@ type ThreadRenderProps = Pick<
 > & { readonly retryLastFailedRunId?: string }
 
 export interface ChatRuntimeSectionProps {
+  readonly isIndependentJob?: boolean
   readonly compact?: boolean
   readonly threadHeader?: ReactNode
   readonly activeConversationId: string | null
@@ -107,6 +109,7 @@ export interface ChatRuntimeSectionProps {
 }
 
 export function ChatRuntimeSection({
+  isIndependentJob,
   compact,
   threadHeader,
   activeConversationId,
@@ -144,6 +147,7 @@ export function ChatRuntimeSection({
   const threadProps = useMemo<ThreadRenderProps>(
     () => ({
       compact,
+      isIndependentJob,
       threadHeader,
       agentImageUrl,
       agentName,
@@ -167,6 +171,7 @@ export function ChatRuntimeSection({
     }),
     [
       compact,
+      isIndependentJob,
       threadHeader,
       activeConversationId,
       agentImageUrl,

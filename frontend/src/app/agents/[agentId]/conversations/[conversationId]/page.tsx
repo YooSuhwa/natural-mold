@@ -47,6 +47,9 @@ import { ChatEmptyState } from '@/components/chat/chat-empty-state'
 import { ConversationGoalCard } from './_components/conversation-goal-card'
 import { conversationGoalKeys } from '@/lib/hooks/use-conversation-goal'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
+import { useIndependentChatJobs } from '@/lib/hooks/use-independent-chat-jobs'
+import { IndependentJobPanel } from '@/components/chat/independent-job-panel'
+import { IndependentJobCancelProvider } from '@/components/chat/independent-job-cancel-provider'
 import { PinnedConversationSummary } from '@/components/chat/pinned-conversation-summary'
 import { AgentReadinessGate } from '@/components/readiness/agent-readiness-gate'
 import { ExportDialog } from '@/components/chat/export-dialog'
@@ -203,6 +206,15 @@ export default function ChatPage({
     ? langGraphDraftConversationId
     : routeConversationId
   const resolvedSideEffectConversationId = activeConversationId ?? routeConversationId
+  const envelopeRun = envelope?.active_run ?? envelope?.latest_run
+  const independentJobs = useIndependentChatJobs(
+    activeConversationId,
+    envelopeRun?.conversation_id === activeConversationId ? envelopeRun.id : null,
+  )
+  const jobList = independentJobs.query.isSuccess ? independentJobs.query.data : null
+  const isIndependentJob =
+    envelope?.conversation_source === 'independent_job' ||
+    jobList?.parent_job?.child_conversation_id === activeConversationId
   const titleConversationId = routeConversationId
   const resolvedConversationTitle = useConversationTitle(
     agentId,
@@ -442,85 +454,102 @@ export default function ChatPage({
 
   return (
     <SideChatWorkspace
+      disabled={isIndependentJob}
       key={activeConversationId ?? 'draft'}
       conversationId={useLangGraphRuntime ? activeConversationId : null}
       title={currentTitle ?? agent?.name ?? ''}
     >
       <div className="moldy-app-surface flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
         {/* 메인 채팅 카드 */}
-        <section className="moldy-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <ChatPageHeader
-            agent={agent}
-            agentId={agentId}
-            title={currentTitle}
-            onNewConversation={handleNewConversation}
-            onOpenSettings={handleOpenSettings}
-            onOpenTrace={handleOpenTrace}
-            onToggleArtifacts={handleToggleArtifacts}
-          />
-          {activeConversationId ? (
-            <ConversationGoalCard
-              key={activeConversationId}
-              conversationId={activeConversationId}
-              onCreating={isDraftConversation ? retainDraftConversation : undefined}
-              onCreated={handleGoalCreated}
+        <IndependentJobCancelProvider
+          conversationId={activeConversationId}
+          jobs={jobList?.jobs ?? []}
+        >
+          <section className="moldy-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <ChatPageHeader
+              agent={agent}
+              agentId={agentId}
+              title={currentTitle}
+              onNewConversation={handleNewConversation}
+              onOpenSettings={handleOpenSettings}
+              onOpenTrace={handleOpenTrace}
+              onToggleArtifacts={handleToggleArtifacts}
             />
-          ) : null}
-          <PinnedConversationSummary conversationId={activeConversationId} />
-          <AgentReadinessGate
-            agentId={agentId}
-            agentName={agent?.name}
-            conversationId={activeConversationId}
-          />
-
-          {/* Thread */}
-          {(!isPromotedDraftRoute && !isDraftConversation && messagesLoading) ||
-          isLangGraphDraftBootstrapping ? (
-            <div className="flex-1 px-4 py-4">
-              <div className="mx-auto max-w-3xl space-y-4">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="flex gap-3">
-                    <Skeleton className="size-8 rounded-full" />
-                    <Skeleton className="moldy-skeleton-message h-16 flex-1" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <ToolIconProvider iconIds={toolIconIds} mcpServers={mcpServerNames}>
-              <ChatRuntimeSection
-                enableRunSteer
-                activeConversationId={activeConversationId}
-                activeRun={envelope?.active_run ?? null}
-                agentId={agentId}
-                agentImageUrl={agent?.image_url}
-                agentName={agent?.name}
-                attachmentAdapter={moldyAttachmentAdapter}
-                emptyContent={renderedEmptyContent}
-                feedbackAdapter={feedbackAdapter}
-                latestRun={envelope?.latest_run ?? null}
-                messages={messages}
-                modelName={agent?.model?.display_name}
-                showContextGauge
-                contextWindow={agent?.model?.context_window ?? null}
-                onBeforeNewMessage={handleBeforeNewMessage}
-                onNewMessageAccepted={handleNewMessageAccepted}
-                onRuntimeStatusChange={handleRuntimeStatusChange}
-                onStreamEnd={onStreamEnd}
-                streamFn={streamFn}
-                totalCost={envelope?.total_estimated_cost}
-                useLangGraphRuntime={useLangGraphRuntime}
-                user={user}
-                linkedSkills={agent?.skills}
-                commandActions={{
-                  createNewConversation: handleNewConversation,
-                  openFilesRail: handleToggleArtifacts,
-                  ...(activeConversationId ? { openExportChooser: () => setExportOpen(true) } : {}),
-                }}
+            {activeConversationId && jobList ? (
+              <IndependentJobPanel
+                conversationId={activeConversationId}
+                runId={isIndependentJob ? null : independentJobs.runId}
+                list={jobList}
+                onJob={independentJobs.applyJob}
               />
-            </ToolIconProvider>
-          )}
-        </section>
+            ) : null}
+            {activeConversationId && !isIndependentJob ? (
+              <ConversationGoalCard
+                key={activeConversationId}
+                conversationId={activeConversationId}
+                onCreating={isDraftConversation ? retainDraftConversation : undefined}
+                onCreated={handleGoalCreated}
+              />
+            ) : null}
+            <PinnedConversationSummary conversationId={activeConversationId} />
+            <AgentReadinessGate
+              agentId={agentId}
+              agentName={agent?.name}
+              conversationId={activeConversationId}
+            />
+
+            {/* Thread */}
+            {(!isPromotedDraftRoute && !isDraftConversation && messagesLoading) ||
+            isLangGraphDraftBootstrapping ? (
+              <div className="flex-1 px-4 py-4">
+                <div className="mx-auto max-w-3xl space-y-4">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex gap-3">
+                      <Skeleton className="size-8 rounded-full" />
+                      <Skeleton className="moldy-skeleton-message h-16 flex-1" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <ToolIconProvider iconIds={toolIconIds} mcpServers={mcpServerNames}>
+                <ChatRuntimeSection
+                  enableRunSteer={!isIndependentJob}
+                  activeConversationId={activeConversationId}
+                  isIndependentJob={isIndependentJob}
+                  activeRun={envelope?.active_run ?? null}
+                  agentId={agentId}
+                  agentImageUrl={agent?.image_url}
+                  agentName={agent?.name}
+                  attachmentAdapter={moldyAttachmentAdapter}
+                  emptyContent={renderedEmptyContent}
+                  feedbackAdapter={feedbackAdapter}
+                  latestRun={envelope?.latest_run ?? null}
+                  messages={messages}
+                  modelName={agent?.model?.display_name}
+                  showContextGauge
+                  contextWindow={agent?.model?.context_window ?? null}
+                  onBeforeNewMessage={handleBeforeNewMessage}
+                  onNewMessageAccepted={handleNewMessageAccepted}
+                  onRuntimeStatusChange={handleRuntimeStatusChange}
+                  onStreamEnd={onStreamEnd}
+                  streamFn={streamFn}
+                  totalCost={envelope?.total_estimated_cost}
+                  useLangGraphRuntime={useLangGraphRuntime}
+                  user={user}
+                  linkedSkills={agent?.skills}
+                  commandActions={{
+                    createNewConversation: handleNewConversation,
+                    openFilesRail: handleToggleArtifacts,
+                    ...(activeConversationId
+                      ? { openExportChooser: () => setExportOpen(true) }
+                      : {}),
+                  }}
+                />
+              </ToolIconProvider>
+            )}
+          </section>
+        </IndependentJobCancelProvider>
 
         {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
         <ConversationDetailRail conversationId={activeConversationId} />

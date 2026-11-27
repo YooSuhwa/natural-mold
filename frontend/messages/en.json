@@ -2531,6 +2531,44 @@
     }
   },
   "chat": {
+    "independentJobs": {
+      "runtimeUnavailable": "This agent’s runtime settings do not support separate jobs.",
+      "targetUnavailable": "This job cannot be started. Reopen the chat to check which agents are available.",
+      "noTarget": "No agents are available for a separate job.",
+      "jobs": "Separate jobs",
+      "start": "Continue as a separate job",
+      "howItRuns": "The selected agent will keep working in its own chat after this chat finishes.",
+      "target": "Agent for this job",
+      "selectTarget": "Select an agent",
+      "instruction": "Task instructions",
+      "submit": "Start job",
+      "back": "Go back",
+      "startFailed": "The job could not be confirmed. Retry with the same instructions.",
+      "reference": "#{id}",
+      "openApproval": "Open request",
+      "openResult": "Open result",
+      "openJob": "Open job",
+      "stopJob": "Stop this job",
+      "cancelFailed": "The job could not be stopped. Please try again.",
+      "openParent": "Open original chat",
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "waiting_for_approval": "Waiting for input or approval",
+        "canceling": "Stopping",
+        "canceled": "Stopped",
+        "completed": "Completed",
+        "failed": "Failed",
+        "needs_review": "Outcome needs review"
+      },
+      "cancelScope": {
+        "title": "What would you like to stop?",
+        "description": "{count, plural, one {One separate job is} other {# separate jobs are}} still active for this run.",
+        "parentOnly": "Stop parent run only",
+        "withChildren": "Stop parent and separate jobs",
+        "dismiss": "Go back"
+      }
+    },
     "defaultAgentName": "Default Agent Name",
     "emptyState": {
       "canDo": "What this agent can do",

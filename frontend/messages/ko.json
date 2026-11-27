@@ -2531,6 +2531,44 @@
     }
   },
   "chat": {
+    "independentJobs": {
+      "runtimeUnavailable": "이 에이전트의 실행 설정은 별도 작업을 지원하지 않습니다.",
+      "targetUnavailable": "이 작업을 시작할 수 없습니다. 대화를 다시 열어 가능한 에이전트를 확인해 주세요.",
+      "noTarget": "별도 작업에 사용할 수 있는 에이전트가 없습니다.",
+      "jobs": "별도 작업",
+      "start": "별도 작업으로 계속",
+      "howItRuns": "이 대화가 끝나도 선택한 에이전트가 별도 대화에서 계속 작업합니다.",
+      "target": "작업할 에이전트",
+      "selectTarget": "에이전트 선택",
+      "instruction": "맡길 일",
+      "submit": "작업 시작",
+      "back": "돌아가기",
+      "startFailed": "작업을 등록했는지 확인할 수 없습니다. 같은 내용으로 다시 시도해 주세요.",
+      "reference": "#{id}",
+      "openApproval": "응답·승인 요청 열기",
+      "openResult": "결과 열기",
+      "openJob": "작업 열기",
+      "stopJob": "이 작업 중지",
+      "cancelFailed": "작업을 중지하지 못했습니다. 다시 시도해 주세요.",
+      "openParent": "원래 대화 열기",
+      "status": {
+        "queued": "시작 대기",
+        "running": "진행 중",
+        "waiting_for_approval": "응답 또는 승인 대기",
+        "canceling": "중지 중",
+        "canceled": "중지됨",
+        "completed": "완료",
+        "failed": "실패",
+        "needs_review": "수행 여부 확인 필요"
+      },
+      "cancelScope": {
+        "title": "어디까지 중지할까요?",
+        "description": "이 실행에서 시작한 별도 작업이 {count}개 진행 중입니다.",
+        "parentOnly": "부모 실행만 중지",
+        "withChildren": "별도 작업도 중지",
+        "dismiss": "돌아가기"
+      }
+    },
     "defaultAgentName": "에이전트",
     "emptyState": {
       "canDo": "이 에이전트가 할 수 있는 것",

@@ -183,6 +183,15 @@ describe('AssistantThread message actions', () => {
     expect(screen.queryByTestId('user-avatar')).not.toBeInTheDocument()
   })
 
+  it('keeps history and copy available on an independent job without exposing a new turn or fork', () => {
+    render(<AssistantThread isIndependentJob />)
+    expect(screen.getAllByText('메시지').length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: '복사' }).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('textbox', { name: 'message input' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '편집' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '재생성' })).toBeNull()
+  })
+
   it('renders message actions as fixed-width icon-first controls with accessible names', () => {
     render(<AssistantThread />)
 
