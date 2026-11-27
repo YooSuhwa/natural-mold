@@ -139,6 +139,7 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
       // not open a modal over their settings, regardless of the host timezone.
       await page.addInitScript(
         ({ onboarding, welcome }) => {
+          if (window.top !== window) return
           sessionStorage.setItem(onboarding, '1')
           sessionStorage.setItem(welcome, '1')
         },

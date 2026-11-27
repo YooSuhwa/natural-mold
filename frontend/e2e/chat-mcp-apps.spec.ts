@@ -10,7 +10,11 @@ import {
   test,
   type CsrfHeaders,
 } from './fixtures'
-import { startMcpAppsFixture, type McpAppsFixture } from './helpers/mcp-apps-fixture'
+import {
+  servePinnedMcpAppShim,
+  startMcpAppsFixture,
+  type McpAppsFixture,
+} from './helpers/mcp-apps-fixture'
 import {
   isKnownShimRequestFailure,
   unexpectedMcpAppsBrowserErrors,
@@ -118,11 +122,14 @@ test.describe('Chat MCP Apps', () => {
   )
 
   test('rehydrates a real bound app and proxies its widget tool call', async ({
+    baseURL,
     page,
     request,
     errors,
   }, testInfo) => {
     test.setTimeout(60_000)
+    if (!baseURL) throw new Error('MCP Apps E2E requires a configured frontend URL')
+    const shimRequests = await servePinnedMcpAppShim(page, new URL(baseURL).origin)
     const consoleErrors: ConsoleErrorObservation[] = []
     const requestFailures: RequestFailureObservation[] = []
     page.on('console', (message) => {
@@ -174,6 +181,7 @@ test.describe('Chat MCP Apps', () => {
       await expect(appFrame).toHaveCount(1, { timeout: 20_000 })
       const frame = appFrame.contentFrame()
       await expect(frame.getByText('Weather: 23 C')).toBeVisible({ timeout: 20_000 })
+      expect(shimRequests()).toBeGreaterThan(0)
       const [toolResponse] = await Promise.all([
         page.waitForResponse((response) => isToolCallProxyResponse(response, appSeed)),
         frame.getByRole('button', { name: 'Refresh weather' }).click(),

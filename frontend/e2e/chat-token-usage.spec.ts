@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures'
+import type { ToolApprovalView } from '../src/lib/types/tool-approval'
 
 const ISO = '2026-06-04T00:00:00.000Z'
 const AGENT_ID = '10000000-0000-4000-8000-000000000001'
@@ -155,6 +156,18 @@ test.describe('Chat token usage hover', () => {
       route.fulfill({ json: { total_unread: 0 } }),
     )
     await page.route(`**/api/agents/${AGENT_ID}`, (route) => route.fulfill({ json: FAKE_AGENT }))
+    await page.route(`**/api/agents/${AGENT_ID}/tool-approval`, (route) =>
+      route.fulfill({
+        json: {
+          settings: null,
+          company_actions: {},
+          company_always_ask: [],
+          tools: [],
+          parts: [],
+          unresolved: [],
+        } satisfies ToolApprovalView,
+      }),
+    )
     // S21 readiness for the fixture agent (the real backend does not know its id).
     await page.route(`**/api/agents/${AGENT_ID}/readiness**`, (route) =>
       route.fulfill({ json: { overall: 'ready', items: [] } }),
@@ -169,6 +182,9 @@ test.describe('Chat token usage hover', () => {
       route.fulfill({ json: FAKE_CONVERSATION }),
     )
     await page.route(`**/api/conversations/${CONVERSATION_ID}/files`, (route) =>
+      route.fulfill({ json: [] }),
+    )
+    await page.route(`**/api/conversations/${CONVERSATION_ID}/tool-grants`, (route) =>
       route.fulfill({ json: [] }),
     )
     await page.route(`**/api/conversations/${CONVERSATION_ID}/pinned-summary`, (route) =>

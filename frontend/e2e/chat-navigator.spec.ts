@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures'
 import type { Page, Route } from '@playwright/test'
+import type { ToolApprovalView } from '../src/lib/types/tool-approval'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { MOCK_ORGANIZATIONS } from './helpers/organization-mock'
@@ -201,6 +202,23 @@ async function mockApi(route: Route) {
   }
   if (pathname.endsWith('/files')) {
     await route.fulfill({ json: [] })
+    return
+  }
+  if (/^\/api\/conversations\/[^/]+\/tool-grants$/.test(pathname)) {
+    await route.fulfill({ json: [] })
+    return
+  }
+  if (/^\/api\/agents\/[^/]+\/tool-approval$/.test(pathname)) {
+    await route.fulfill({
+      json: {
+        settings: null,
+        company_actions: {},
+        company_always_ask: [],
+        tools: [],
+        parts: [],
+        unresolved: [],
+      } satisfies ToolApprovalView,
+    })
     return
   }
   await route.fulfill({ json: { items: [], total: 0 } })
