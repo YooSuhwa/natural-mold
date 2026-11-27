@@ -15,6 +15,7 @@ class LeaderSchedulerJobId(StrEnum):
     MCP_HEALTH = "mcp_health_poll"
     CONVERSATION_QUEUE_RECOVERY = "conversation_queue_recovery"
     CONVERSATION_RUN_STALE_SWEEP = "conversation_run_stale_sweep"
+    GOAL_SANDBOX_MAINTENANCE = "goal_sandbox_maintenance"
     SKILL_RUNTIME_CLEANUP = "skill_runtime_cleanup"
     BROKER_EVICTION = "broker_eviction"
     AUTHZ_OUTBOX_DRAIN = "authz_outbox_drain"

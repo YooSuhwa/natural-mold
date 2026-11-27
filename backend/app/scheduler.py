@@ -911,6 +911,21 @@ def cleanup_skill_runtime_roots() -> None:
     )
 
 
+def register_goal_sandbox_maintenance_job() -> None:
+    """Keep draining old workspaces when new persistent runs have been disabled."""
+    scheduler = get_scheduler()
+    if scheduler.running:
+        scheduler.add_job(
+            _leader_job_runner(),
+            IntervalTrigger(seconds=30),
+            id=LeaderSchedulerJobId.GOAL_SANDBOX_MAINTENANCE.value,
+            args=[LeaderSchedulerJobId.GOAL_SANDBOX_MAINTENANCE],
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+
+
 def register_skill_runtime_cleanup_job() -> None:
     """Register the recurring per-thread runtime root cleanup. Idempotent.
 

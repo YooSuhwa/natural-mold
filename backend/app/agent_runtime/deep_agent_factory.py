@@ -33,6 +33,7 @@ from app.agent_runtime.deep_agent_middleware_factory import (
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.runtime.connection_guard_order import order_connection_guard
 from app.agent_runtime.runtime.goal_run import GoalRunMiddleware
+from app.agent_runtime.skill_executor import RootGoalSkillTool
 from app.approvals.unattended import UnattendedMode, apply_unattended
 from app.guardrails.approval import has_approval_rules, with_approvals
 from app.guardrails.middleware import Guard, guard_stack
@@ -140,6 +141,14 @@ def normalize_declarative_subagents_impl(
 
         child_permissions = spec.get("permissions", permissions)
         child = dict(spec)
+        # The SDK also inherits the parent tool list when a child omits "tools".
+        # Preserve that default except when a root-only workspace must be unbound.
+        child_tools = child.get("tools", tools)
+        if child_tools and any(isinstance(tool, RootGoalSkillTool) for tool in child_tools):
+            child["tools"] = [
+                tool.for_subagent() if isinstance(tool, RootGoalSkillTool) else tool
+                for tool in child_tools
+            ]
         default_actor = (
             general_purpose_actor if spec.get("name") == general_purpose_subagent_name else None
         )
@@ -172,7 +181,10 @@ def normalize_declarative_subagents_impl(
         general_purpose = dict(
             general_purpose_subagent,
             model=model,
-            tools=list(tools),
+            tools=[
+                tool.for_subagent() if isinstance(tool, RootGoalSkillTool) else tool
+                for tool in tools
+            ],
             middleware=general_purpose_middleware,
             permissions=_agent_permissions(general_purpose_middleware, permissions),
             interrupt_on=interrupt_on,

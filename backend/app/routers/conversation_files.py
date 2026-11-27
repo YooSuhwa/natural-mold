@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
@@ -21,6 +20,7 @@ from app.dependencies import (
 from app.schemas.conversation import FileItem
 from app.services import chat_service
 from app.services.conversation_file_service import resolve_conversation_file
+from app.services.goal_sandbox_file_reads import ConversationFileResponse
 
 router = APIRouter(tags=["conversations"])
 
@@ -59,17 +59,18 @@ async def get_conversation_file(
     conversation_id: uuid.UUID,
     file_path: str,
     variant: Literal["original", "preview"] = Query("original"),
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
-):
+    context: OrgContext = Depends(get_org_context),
+) -> ConversationFileResponse:
     resolved = await resolve_conversation_file(
         Path(settings.conversation_output_dir),
         conversation_id,
         file_path,
         variant,
     )
-    return FileResponse(
+    return ConversationFileResponse(
         resolved.path,
+        context=context,
+        conversation_id=conversation_id,
         media_type=resolved.media_type,
         headers={"Cache-Control": resolved.cache_control},
     )

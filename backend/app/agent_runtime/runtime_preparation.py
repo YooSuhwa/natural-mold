@@ -189,6 +189,13 @@ async def prepare_runtime_components_impl(
             data_dir=bindings.data_dir,
             output_root=bindings.conversation_output_dir,
         )
+        if (
+            not stored_policy
+            and not is_trigger_mode
+            and cfg.run_path == "chat"
+            and cfg.usage_root_agent_id is None
+        ):
+            skill_ctx.goal_sandbox_run_id = run_id
         if cfg.user_id and not stored_policy:
             async with bindings.runtime_db_session_factory(cfg.org_context) as runtime_db:
                 await bindings.resolve_runtime_credentials(skill_ctx, db=runtime_db, cfg=cfg)
