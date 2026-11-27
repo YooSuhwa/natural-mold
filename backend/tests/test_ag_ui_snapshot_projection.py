@@ -139,7 +139,12 @@ def test_widget_requires_proven_lane_run_and_binding_and_omits_resource() -> Non
     run = "932968e9-1461-4a26-a1ba-826b39667c98"
     binding = "0d2f07df-efc0-40ae-8454-aaa9aa42c84a"
     fold = AgUiRunSnapshot(public_activity_types={"moldy.mcp_app"}, physical_run_id=run)
-    content = {"run_id": run, "binding_id": binding, "tool_call_id": "call"}
+    content = {
+        "run_id": run,
+        "binding_id": binding,
+        "tool_call_id": "raw-call",
+        "public_tool_call_id": "call",
+    }
     event = {"type": "ACTIVITY_SNAPSHOT", "activityType": "moldy.mcp_app", "messageId": "widget"}
     fold.apply({**event, "content": content})
     assert fold.messages() == []
@@ -152,6 +157,9 @@ def test_widget_requires_proven_lane_run_and_binding_and_omits_resource() -> Non
         }
     )
     fold.apply({"type": "TEXT_MESSAGE_START", "messageId": "last"})
+    fold.apply({**event, "content": {"run_id": run, "binding_id": binding, "tool_call_id": "call"}})
+    fold.apply({**event, "content": {**content, "public_message_id": "last"}})
+    fold.apply({**event, "content": {**content, "public_tool_call_id": "missing"}})
     fold.apply({**event, "subagentRunId": "other", "content": content})
     fold.apply({**event, "content": {**content, "run_id": "another-run"}})
     fold.apply({**event, "content": {**content, "binding_id": "malformed"}})
@@ -306,27 +314,65 @@ def test_namespaced_widget_and_child_todos_use_public_owner_and_protected_lookup
 
 def test_ui_card_without_text_start_resolves_only_unique_issuing_call() -> None:
     fold = AgUiRunSnapshot(public_activity_types={"moldy.ui_data"})
-    fold.apply(
-        {
-            "type": "TOOL_CALL_START",
-            "parentMessageId": "issuer",
-            "toolCallId": "card",
-            "toolCallName": "render",
-        }
-    )
     card = {
         "type": "ACTIVITY_SNAPSHOT",
-        "messageId": "card-ui",
         "activityType": "moldy.ui_data",
-        "content": {"type": "table", "tool_call_id": "card"},
     }
-    fold.apply(card)
-    assert fold.links_by_id()["card-ui"] == {
-        "parentMessageId": "issuer",
-        "parentToolCallId": "card",
+    for lane, owner in (("main", {}), ("nested", {"subagentRunId": "child"})):
+        issuer, call_id, mid = f"assistant-{lane}", f"call-{lane}", f"card-{lane}"
+        fold.apply(
+            {
+                "type": "TOOL_CALL_START",
+                "parentMessageId": issuer,
+                "toolCallId": call_id,
+                "toolCallName": "render",
+                **owner,
+            }
+        )
+        content = {"type": "table", "tool_call_id": call_id, "public_tool_call_id": call_id}
+        fold.apply({**card, **owner, "messageId": mid, "content": content})
+        assert fold.links_by_id()[mid] == {
+            "parentMessageId": issuer,
+            "parentToolCallId": call_id,
+            **owner,
+        }
+    root_target = {
+        "type": "table",
+        "tool_call_id": "call-main",
+        "public_tool_call_id": "call-main",
+        "public_message_id": "assistant-main",
     }
-    fold.apply({**card, "messageId": "other-ui", "subagentRunId": "other"})
-    assert "parentMessageId" not in fold.links_by_id()["other-ui"]
+    fold.apply({"type": "TEXT_MESSAGE_START", "messageId": "other-root"})
+    for claims in (
+        {"type": "table", "tool_call_id": "call-main", "public_message_id": "assistant-main"},
+        {**root_target, "public_message_id": "other-root"},
+        {**root_target, "public_tool_call_id": "missing"},
+        {**root_target, "tool_call_id": "raw-alias"},
+        {**root_target, "tool_call_id": "call-nested", "public_tool_call_id": "call-nested"},
+    ):
+        fold.apply({**card, "messageId": "unproven", "content": claims})
+        assert "unproven" not in fold.links_by_id()
+    fold.apply({**card, "messageId": "card-nested", "replace": True, "content": root_target})
+    assert fold.links_by_id()["card-nested"]["parentToolCallId"] == "call-nested"
+
+
+def test_ui_card_without_a_tool_preserves_only_explicit_proven_message_parent() -> None:
+    fold = AgUiRunSnapshot(public_activity_types={"moldy.ui_data"})
+    fold.apply({"type": "TEXT_MESSAGE_START", "messageId": "visible"})
+    card = {"type": "ACTIVITY_SNAPSHOT", "activityType": "moldy.ui_data"}
+    for target in ({"message_id": "visible"}, {"public_message_id": "missing"}):
+        fold.apply({**card, "messageId": "invalid", "content": {"type": "table", **target}})
+        assert "invalid" not in fold.links_by_id()
+    fold.apply({**card, "messageId": "standalone", "content": {"type": "table"}})
+    assert fold.links_by_id()["standalone"] == {}
+    fold.apply(
+        {
+            **card,
+            "messageId": "attached",
+            "content": {"type": "table", "message_id": "visible", "public_message_id": "visible"},
+        }
+    )
+    assert fold.links_by_id()["attached"] == {"parentMessageId": "visible"}
 
 
 def test_canonical_cancel_and_owned_interrupts_are_distinct() -> None:
