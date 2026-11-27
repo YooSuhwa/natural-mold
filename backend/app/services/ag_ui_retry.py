@@ -20,7 +20,10 @@ from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput, JsonValue
 from app.schemas.chat_resource_context import PUBLIC_RESOURCE_CONTEXT_KEY
-from app.services.ag_ui_start_input import start_message_id
+from app.schemas.conversation_graph_input import OMITTED_MEDIA_KEY
+from app.services.ag_ui_queue_branch import bound_ag_ui_input
+from app.services.ag_ui_queue_edit import validate_ag_ui_queue_delivery
+from app.services.ag_ui_start_input import start_message_id, validate_chat_text
 from app.services.chat_resource_context_payload import public_resource_context_from_payload
 from app.services.conversation_run_queue_mutations import (
     queue_input_not_found,
@@ -45,7 +48,7 @@ def _retry_conflict() -> HTTPException:
 
 
 def _retry_payload(
-    queued: ConversationRunInput, public_run_id: str
+    queued: ConversationRunInput, public_run_id: str, *, omitted: bool
 ) -> tuple[dict[str, JsonValue], list[UUID]]:
     stored = queued.input_payload
     if not isinstance(stored, dict):
@@ -62,6 +65,7 @@ def _retry_payload(
     # Legacy browser messages include text blocks and URLs. Only server-linked
     # uploads, verified by the admission service, can supply media to a retry.
     text = content_to_text(content)
+    validate_chat_text(text)
     raw_ids = queued.attachment_ids
     if not isinstance(raw_ids, list) or not all(isinstance(value, str) for value in raw_ids):
         raise _retry_conflict()
@@ -70,7 +74,7 @@ def _retry_payload(
     except ValueError as exc:
         raise _retry_conflict() from exc
     refs = public_resource_context_from_payload(stored)
-    if not text.strip() and not uploads and not refs:
+    if not text.strip() and not uploads and not refs and not omitted:
         raise _retry_conflict()
 
     stored_id = last.get("id")
@@ -81,6 +85,7 @@ def _retry_payload(
                 "id": start_message_id(queued.conversation_id, public_run_id, message_id),
                 "role": "user",
                 "content": text,
+                **({"additional_kwargs": {OMITTED_MEDIA_KEY: True}} if omitted else {}),
             }
         ]
     }
@@ -168,7 +173,10 @@ async def load_retry_start(
                 ConversationRunInput.id == input_id,
                 ConversationRunInput.run_id == run_id,
                 ConversationRunInput.source == "chat",
-                ConversationRunInput.checkpoint_id.is_(None),
+                or_(
+                    ConversationRunInput.checkpoint_id.is_(None),
+                    bound_ag_ui_input(context, conversation.id, input_id),
+                ),
                 ConversationRunInput.status.in_(("claimed", "failed")),
             ),
             conversation_input_parent(),
@@ -177,4 +185,5 @@ async def load_retry_start(
     )
     if queued is None:
         raise _retry_conflict()
-    return _retry_payload(queued, public_run_id)
+    omitted = await validate_ag_ui_queue_delivery(db, context, queued)
+    return _retry_payload(queued, public_run_id, omitted=omitted)

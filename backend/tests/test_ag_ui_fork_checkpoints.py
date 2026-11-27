@@ -14,6 +14,8 @@ from langgraph.types import Overwrite
 
 from app.services.ag_ui_fork_checkpoints import load_fork_checkpoint
 
+_TEST_TENANT = uuid.uuid4()
+
 
 def conversation_graph(saver: InMemorySaver) -> Any:
     graph = StateGraph(DeepAgentState)
@@ -34,7 +36,7 @@ async def test_fork_matches_the_native_delta_channel_including_deletions_and_ove
     await graph.aupdate_state(config, {"messages": [RemoveMessage(id="reply")]})
     current = await graph.aget_state(config)
     head = current.config["configurable"]["checkpoint_id"]
-    args = {"thread_id": thread, "selected": None, "expected": head}
+    args = {"thread_id": thread, "tenant_id": _TEST_TENANT, "selected": None, "expected": head}
     assert await load_fork_checkpoint(saver, target=head, operation="edit", **args) == (
         head,
         current.values["messages"],
@@ -49,7 +51,13 @@ async def test_fork_matches_the_native_delta_channel_including_deletions_and_ove
     )
     head = (await graph.aget_state(config)).config["configurable"]["checkpoint_id"]
     _, entries = await load_fork_checkpoint(
-        saver, thread_id=thread, selected=None, target=head, expected=head, operation="edit"
+        saver,
+        thread_id=thread,
+        tenant_id=_TEST_TENANT,
+        selected=None,
+        target=head,
+        expected=head,
+        operation="edit",
     )
     assert [entry.id for entry in entries] == ["u2"]
 
@@ -78,6 +86,7 @@ async def test_fork_stays_in_the_selected_lineage_and_rejects_changed_heads() ->
             await load_fork_checkpoint(
                 saver,
                 thread_id=thread,
+                tenant_id=_TEST_TENANT,
                 selected=selected,
                 target=target,
                 expected=expected,
@@ -87,6 +96,7 @@ async def test_fork_stays_in_the_selected_lineage_and_rejects_changed_heads() ->
     _, result = await load_fork_checkpoint(
         saver,
         thread_id=thread,
+        tenant_id=_TEST_TENANT,
         selected=old_head,
         target=old_head,
         expected=old_head,
@@ -114,7 +124,13 @@ async def test_unresolved_tool_call_and_nested_namespace_are_not_chat_fork_targe
     inflight = (await graph.aget_state(config)).config["configurable"]["checkpoint_id"]
     with pytest.raises(HTTPException, match="unresolved tool call"):
         await load_fork_checkpoint(
-            saver, thread_id=thread, selected=None, target=inflight, expected=None, operation="edit"
+            saver,
+            thread_id=thread,
+            tenant_id=_TEST_TENANT,
+            selected=None,
+            target=inflight,
+            expected=None,
+            operation="edit",
         )
 
     await graph.aupdate_state(
@@ -125,6 +141,7 @@ async def test_unresolved_tool_call_and_nested_namespace_are_not_chat_fork_targe
         await load_fork_checkpoint(
             saver,
             thread_id=thread,
+            tenant_id=_TEST_TENANT,
             selected=None,
             target=head,
             expected=head,
@@ -145,6 +162,7 @@ async def test_unresolved_tool_call_and_nested_namespace_are_not_chat_fork_targe
         await load_fork_checkpoint(
             saver,
             thread_id=thread,
+            tenant_id=_TEST_TENANT,
             selected=None,
             target=nested_id,
             expected=None,
@@ -153,9 +171,12 @@ async def test_unresolved_tool_call_and_nested_namespace_are_not_chat_fork_targe
     assert caught.value.status_code == 409
 
 
-@pytest.mark.parametrize("operation", ["edit", "regenerate"])
+@pytest.mark.parametrize(
+    ("operation", "omitted"), [("edit", False), ("edit", True), ("regenerate", False)]
+)
 async def test_committed_fork_rebuilds_just_its_branch_after_reopening_database(
     operation: str,
+    omitted: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ag_ui.core import RunAgentInput
@@ -213,7 +234,20 @@ async def test_committed_fork_rebuilds_just_its_branch_after_reopening_database(
         if operation == "edit"
         else []
     )
-    files = [str(attachment)] if operation == "edit" else []
+    if omitted:
+        latest = [
+            {
+                "role": "user",
+                "id": "browser-id",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {"type": "url", "value": "https://example.invalid/photo"},
+                    }
+                ],
+            }
+        ]
+    files = [str(attachment)] if operation == "edit" and not omitted else []
     command = RunAgentInput.model_validate(
         {
             "threadId": str(conv_id),
@@ -278,8 +312,12 @@ async def test_committed_fork_rebuilds_just_its_branch_after_reopening_database(
         }
         native, ids = await prepare_fork_delivery(db, **delivery)
         expected = "edited turn" if operation == "edit" else "original branch"
-        assert [m.content for m in native["messages"].value] == [expected]
+        assert [m.content for m in native["messages"].value] == ["" if omitted else expected]
         assert native[FORK_APPEND_COUNT] == int(operation == "edit")
+        if omitted:
+            assert ids == []
+            assert native["messages"].value[-1].additional_kwargs == {"moldy_omitted_media": True}
+            return
         if operation == "edit":
             assert ids == [attachment]
             assert native["messages"].value[-1].id != "browser-id"

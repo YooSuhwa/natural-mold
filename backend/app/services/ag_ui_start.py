@@ -13,10 +13,12 @@ from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.error_codes import conversation_not_found
 from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
+from app.models.conversation_run_input import JsonValue
+from app.schemas.conversation_graph_input import is_omitted_user_message
 from app.services import chat_service, conversation_run_queue_service, conversation_run_service
 from app.services.ag_ui_commands import AgUiRunBinding, CommandAdmission, bind_command
 from app.services.ag_ui_start_effects import apply_start_effects, authorize_start_attachments
-from app.services.ag_ui_start_input import parse_start_input
+from app.services.ag_ui_start_input import OMITTED_MEDIA_SUFFIX, parse_start_input
 from app.services.chat_resource_context_integration import (
     QueuedResourceContextInput,
     freeze_queued_resource_context_payload,
@@ -25,6 +27,19 @@ from app.services.chat_resource_context_sources import ResourceContextScope
 from app.services.conversation_agent_context import resolve_agent_context
 from app.services.conversation_run_queue_payload import input_preview
 from app.services.conversation_run_queue_promotion import interrupt_active_for_input
+
+
+def _queued_message_identity(payload: dict[str, JsonValue]) -> tuple[UUID, bool]:
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or len(messages) != 1:
+        raise ValueError("Expected one normalized AG-UI user message")
+    message = messages[0]
+    if not isinstance(message, dict) or message.get("role") != "user":
+        raise ValueError("Expected a normalized AG-UI user message")
+    message_id = message.get("id")
+    if not isinstance(message_id, str):
+        raise ValueError("Missing server-generated user message ID")
+    return UUID(message_id), is_omitted_user_message(message)
 
 
 async def accept_start(
@@ -92,6 +107,11 @@ async def accept_start(
             public_run_id=admission.public_run_id,
         )
         request_id = f"agui-retry:{parsed.retry_input_id.hex}"
+    # The receipt targets an immutable input ID. Queue edits may change the text,
+    # but must never replace its graph message or manufacture an omitted-media note.
+    input_id, omitted_media = _queued_message_identity(payload)
+    if omitted_media:
+        request_id += OMITTED_MEDIA_SUFFIX
     await authorize_start_attachments(
         db, context, conversation.id, attachments, require_linked=parsed.operation == "retry"
     )
@@ -110,6 +130,7 @@ async def accept_start(
         attachment_ids=attachments,
         checkpoint_id=None,
         priority=100 if parsed.strategy == "interrupt" else 0,
+        input_id=input_id,
     )
     if not enqueued.created:
         # A matching AG-UI retry returned its original receipt before reaching this point.

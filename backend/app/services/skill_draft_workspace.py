@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.config import settings
+from app.error_codes import file_not_found
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillDraftFile, SkillDraftFileRole
 from app.skills.display_limits import DISPLAY_TEXT_SNIFF_BYTES, MAX_DISPLAY_TEXT_BYTES
@@ -109,26 +110,39 @@ def seed_workspace_from_skill(skill: Skill, session_id: uuid.UUID) -> str:
     return storage_path
 
 
-def _copy_stable_input(src: Path, inputs_dir: Path, attachment_id: uuid.UUID, name: str) -> Path:
-    """Publish the complete blob atomically under the same name on every retry."""
-    stem = attachment_id.hex + "-"
-    safe_name = name.encode("utf-8")[: 255 - len(stem)].decode("utf-8", "ignore")
-    destination = inputs_dir / (stem + safe_name)
-    if inputs_dir.is_symlink() or destination.is_symlink():
-        raise ValueError("Invalid draft input path")
+def _stable_input_paths(
+    storage_path: str, attachments: Sequence[MessageAttachment]
+) -> list[tuple[Path, Path, Path]]:
+    workspace = resolve_workspace_dir(storage_path)
+    inputs_dir = workspace / INPUTS_DIR
+    if workspace != Path(settings.data_root).resolve() / storage_path or inputs_dir.is_symlink():
+        raise file_not_found()
+    files: list[tuple[Path, Path, Path]] = []
+    for attachment in attachments:
+        src = upload_data_path(attachment.storage_path, attachment.tenant_id)
+        name = Path(attachment.filename).name or "upload"
+        prefix = attachment.id.hex + "-"
+        name = name.encode("utf-8")[: 255 - len(prefix)].decode("utf-8", "ignore")
+        destination = inputs_dir / (prefix + name)
+        if not src.is_file() or destination.is_symlink():
+            raise file_not_found()
+        files.append((src, destination, inputs_dir / f".{attachment.id.hex}.part"))
+    return files
+
+
+def _copy_stable_input(src: Path, destination: Path, staging: Path) -> Path:
+    """The locked upload owns its staging name, including after an interrupted write."""
+    staging.unlink(missing_ok=True)
     if destination.is_file():
         return destination
-    with tempfile.NamedTemporaryFile(
-        dir=inputs_dir, prefix=".input-", delete_on_close=False
-    ) as tmp:
-        with src.open("rb") as blob:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as tmp, src.open("rb") as blob:
             shutil.copyfileobj(blob, tmp)
-        tmp.close()
-        try:
-            os.link(tmp.name, destination)
-        except FileExistsError:
-            if destination.is_symlink() or not destination.is_file():
-                raise
+        os.link(staging, destination)
+    finally:
+        staging.unlink(missing_ok=True)
     return destination
 
 
@@ -145,6 +159,10 @@ def copy_attachments_to_inputs(
     없으면 건너뛴다 (orphan GC와의 경합 허용).
     """
 
+    if stable_names:
+        # Validate every path before publishing the first file in this command.
+        files = _stable_input_paths(storage_path, attachments)
+        return [f"{INPUTS_DIR}/{_copy_stable_input(*paths).name}" for paths in files]
     inputs_dir = resolve_workspace_dir(storage_path) / INPUTS_DIR
     inputs_dir.mkdir(parents=True, exist_ok=True)
     copied: list[str] = []
@@ -159,10 +177,6 @@ def copy_attachments_to_inputs(
             continue
         # 파일명 새니타이즈: 경로 성분 제거(traversal 차단) + 빈 이름 방어.
         safe_name = Path(attachment.filename).name or f"attachment-{attachment.id}"
-        if stable_names:
-            destination = _copy_stable_input(src, inputs_dir, attachment.id, safe_name)
-            copied.append(f"{INPUTS_DIR}/{destination.name}")
-            continue
         destination = inputs_dir / safe_name
         counter = 1
         while destination.exists():

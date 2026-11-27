@@ -21,6 +21,7 @@ from app.authz.conversation_run_scope import (
     lock_executable_run,
     owned_run_predicate,
 )
+from app.authz.worker_conversation_scope import WorkerConversationTarget, load_worker_conversation
 from app.chat_recovery.model_attempts import new_model_attempt_budget
 from app.config import settings
 from app.database import TenantScoped
@@ -88,8 +89,14 @@ async def _transition(
     tenant: TenantScoped,
     llm_credential_scope: str | None = None,
     partial_output: PartialOutput | None = None,
+    fork_target: WorkerConversationTarget | None = None,
 ) -> tuple[ConversationRun | None, TerminalRunState]:
     async with _tenant_session(tenant) as session:
+        fork_conversation = (
+            await load_worker_conversation(session, fork_target)
+            if fork_target is not None and status in {"completed", "interrupted"}
+            else None
+        )
         job = (
             await lock_job_for_terminal(session, run_id)
             if status in {"completed", "interrupted"}
@@ -127,6 +134,14 @@ async def _transition(
                     append_terminal_event=terminal_event is None,
                     terminal_event=terminal_event,
                 )
+            if (
+                fork_conversation is not None
+                and fork_target is not None
+                and effective_status in {"completed", "interrupted"}
+            ):
+                from app.services.ag_ui_fork_branch import adopt_fork_branch
+
+                await adopt_fork_branch(session, fork_conversation, fork_target.context, run)
             await conversation_run_service.transition_run(
                 session,
                 run,

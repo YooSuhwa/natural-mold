@@ -105,6 +105,9 @@ async def _launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
         current_user = metadata.queue_current_user(user)
         input_payload = queued.input_payload
         try:
+            from app.services.ag_ui_queue_edit import validate_ag_ui_queue_delivery
+
+            await validate_ag_ui_queue_delivery(db, context, queued)
             cfg = await facade_attr("resolve_agent_context")(
                 db,
                 queued.conversation_id,
@@ -136,7 +139,9 @@ async def _launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
                     "queued resource context unavailable input_id=%s", input_id, exc_info=True
                 )
                 error_code = "queue_resource_context_unavailable"
-        attachment_ids = [uuid.UUID(value) for value in queued.attachment_ids]
+        attachment_ids = (
+            [uuid.UUID(value) for value in queued.attachment_ids] if error_code is None else []
+        )
         conversation_id = queued.conversation_id
         run_id = run.id
         source = "chat" if queued.source in {"steer", "goal_followup"} else queued.source
