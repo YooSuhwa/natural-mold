@@ -8,6 +8,8 @@ from uuid import UUID, uuid4
 
 import pytest
 import sqlalchemy as sa
+from langgraph.checkpoint.base import empty_checkpoint
+from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -30,6 +32,7 @@ from app.services.conversation_run_cancellation_recovery import (
 from app.services.conversation_run_queue_claim import claim_next_input
 from app.services.conversation_run_queue_persistence import enqueue_input
 from app.services.conversation_run_state import request_cancel_run
+from app.tenancy.checkpoint_audit import checkpoint_tenant
 from tests.authz.i06_rls_lab import RlsLab, async_url, rls_lab
 from tests.authz.test_goal_rls_integration import _actor  # noqa: PLC2701
 
@@ -84,9 +87,7 @@ def actor(lab: RlsLab, tenant_id: UUID) -> Actor:
     return Actor(OrgContext(org, tenant, owner), conversation)
 
 
-async def enqueue_and_bind(
-    db: AsyncSession, owner: Actor, admission: commands.CommandAdmission
-) -> UUID:
+async def enqueue_pending(db: AsyncSession, owner: Actor) -> UUID:
     queued = await enqueue_input(
         db,
         conversation_id=owner.conversation,
@@ -99,9 +100,16 @@ async def enqueue_and_bind(
         checkpoint_id=None,
         priority=0,
     )
-    bound = await commands.bind_command(db, admission, input_id=queued.id, checkpoint_id="base")
-    assert bound.input_id == queued.id and bound.run_id is None
     return queued.id
+
+
+async def enqueue_and_bind(
+    db: AsyncSession, owner: Actor, admission: commands.CommandAdmission
+) -> UUID:
+    queued_id = await enqueue_pending(db, owner)
+    bound = await commands.bind_command(db, admission, input_id=queued_id, checkpoint_id="base")
+    assert bound.input_id == queued_id and bound.run_id is None
+    return queued_id
 
 
 @pytest.mark.parametrize("first_commits", [True, False], ids=["commit-replay", "crash-retry"])
@@ -328,3 +336,131 @@ async def test_workerless_cancel_resolves_only_one_scoped_physical_run(
         # A one-item page must also consider the second match outside the requested page.
         assert await commands.load_public_run_id(db, context, conversation, run_id) is None
         assert await commands.load_public_run_id(db, context, conversation, copied.id) is None
+
+
+async def test_selected_queue_claim_rolls_back_unpinned_run_under_rls(
+    lab: RlsLab, sessions: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner, other = actor(lab, lab.tenant_a), actor(lab, lab.tenant_b)
+    context, conversation = owner.context, owner.conversation
+    saver = InMemorySaver()
+    selected = empty_checkpoint()
+    await saver.aput(
+        {
+            "configurable": {
+                "thread_id": str(conversation),
+                "checkpoint_ns": "",
+                **checkpoint_tenant(context.tenant_id),
+            }
+        },
+        selected,
+        {},
+        {},
+    )
+    monkeypatch.setattr("app.agent_runtime.checkpointer.get_checkpointer", lambda: saver)
+    async with tenant_session(context, maker=sessions) as db:
+        assert await db.scalar(
+            sa.text(
+                "SELECT current_user = :role AND NOT rolsuper AND NOT rolbypassrls "
+                "FROM pg_roles WHERE rolname = current_user"
+            ),
+            {"role": lab.role},
+        )
+        admission = await commands.find_or_reserve(db, context, conversation, _PUBLIC, _DIGEST)
+        input_id = await enqueue_and_bind(db, owner, admission)
+        await db.execute(
+            sa.update(Conversation)
+            .where(Conversation.id == conversation)
+            .values(active_branch_checkpoint_id=selected["id"])
+        )
+        await db.commit()
+
+    async with tenant_session(other.context, maker=sessions) as db:
+        assert (
+            await db.scalar(
+                sa.update(ConversationRunInput)
+                .where(ConversationRunInput.id == input_id)
+                .values(status="claimed", run_id=uuid4())
+                .returning(ConversationRunInput.id)
+            )
+            is None
+        )
+
+    async with tenant_session(context, maker=sessions) as db:
+        # The old claimant flushed a new run before it bound the pending queue input.
+        queued = await db.get(ConversationRunInput, input_id)
+        assert queued is not None
+        unpinned = ConversationRun(
+            conversation_id=conversation,
+            agent_id=queued.agent_id,
+            user_id=context.user_id,
+            tenant_id=context.tenant_id,
+            org_id=context.org_id,
+            source="chat",
+            status="queued",
+            is_active=True,
+        )
+        db.add(unpinned)
+        await db.flush()
+        unpinned_id = unpinned.id
+        assert (
+            await db.scalar(sa.select(ConversationRun.id).where(ConversationRun.id == unpinned_id))
+            == unpinned_id
+        )
+        queued.status = "claimed"
+        queued.run_id = unpinned_id
+        with pytest.raises(IntegrityError) as failed:
+            await db.commit()
+        assert getattr(failed.value.orig, "sqlstate", None) == "23514"
+        server_error = getattr(failed.value.orig, "__cause__", None)
+        assert getattr(server_error, "constraint_name", None) == "ck_ag_ui_selected_queue_claim"
+        await db.rollback()
+
+    async with tenant_session(context, maker=sessions) as db:
+        assert await db.get(ConversationRun, unpinned_id) is None
+        queued = await db.get(ConversationRunInput, input_id)
+        assert queued is not None
+        assert (queued.status, queued.run_id, queued.checkpoint_id) == ("pending", None, None)
+        claimed = await claim_next_input(db, conversation_id=conversation, context=context)
+        assert claimed is not None and claimed.input.id == input_id
+        accepted_id = claimed.run.id
+        assert claimed.input.checkpoint_id == selected["id"]
+        await db.commit()
+
+    async with tenant_session(context, maker=sessions) as db:
+        binding = await commands.load_run_binding(db, context, conversation, _PUBLIC)
+        assert binding is not None
+        assert (binding.input_id, binding.run_id) == (input_id, accepted_id)
+        assert (
+            await db.scalars(
+                sa.select(ConversationRun.id).where(ConversationRun.conversation_id == conversation)
+            )
+        ).all() == [accepted_id]
+        queued = await db.get(ConversationRunInput, input_id)
+        assert queued is not None and queued.checkpoint_id == selected["id"]
+
+
+@pytest.mark.parametrize("bound", [False, True], ids=["selected-v3", "unselected-ag-ui"])
+async def test_unpinned_claim_remains_available_without_selected_ag_ui_receipt(
+    lab: RlsLab, sessions: async_sessionmaker[AsyncSession], bound: bool
+) -> None:
+    owner = actor(lab, lab.tenant_a)
+    context, conversation = owner.context, owner.conversation
+    async with tenant_session(context, maker=sessions) as db:
+        if bound:
+            admission = await commands.find_or_reserve(db, context, conversation, _PUBLIC, _DIGEST)
+            input_id = await enqueue_and_bind(db, owner, admission)
+        else:
+            input_id = await enqueue_pending(db, owner)
+            await db.execute(
+                sa.update(Conversation)
+                .where(Conversation.id == conversation)
+                .values(active_branch_checkpoint_id="v3-selection")
+            )
+        await db.commit()
+
+    async with tenant_session(context, maker=sessions) as db:
+        claimed = await claim_next_input(db, conversation_id=conversation, context=context)
+        assert claimed is not None and claimed.input.id == input_id
+        assert claimed.input.checkpoint_id is None
+        await db.commit()

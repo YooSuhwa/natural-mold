@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import case, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.runtime_policy import (
@@ -12,6 +12,7 @@ from app.agent_runtime.runtime_policy import (
     validate_runtime_policy_snapshot,
 )
 from app.approvals.emergency import refuse_run
+from app.authz.child_task_authorization import admitted_root_accounts
 from app.authz.client import AuthzUnavailable
 from app.authz.conversation_agent_checks import current_authz
 from app.authz.denials import authz_unavailable
@@ -36,7 +37,6 @@ async def _original_chat_root(
     # only the compiler can insert the reserved general-purpose role. Its graph
     # shares the root's tools, model account, permissions and approval policy.
     pin = ConversationRunAgent
-    account = case((Agent.identity_mode == "per_user", context.user_id), else_=Agent.user_id)
     rows = (
         await db.execute(
             select(
@@ -73,9 +73,7 @@ async def _original_chat_root(
                 ConversationRun.agent_id == Agent.id,
                 ConversationRun.run_source == "CHAT",
                 ConversationRun.invoker_type == "user",
-                ConversationRun.resource_owner_user_id == Agent.user_id,
-                ConversationRun.credential_subject_user_id == account,
-                ConversationRun.on_behalf_of_user_id == account,
+                admitted_root_accounts(pin, context),
                 ConversationRun.runtime_policy_hash == Conversation.runtime_policy_hash,
                 ConversationRun.runtime_policy_source == Conversation.runtime_policy_source,
                 ConversationRun.runtime_policy_version == Conversation.runtime_policy_version,
@@ -83,9 +81,6 @@ async def _original_chat_root(
                 pin.agent_id == Agent.id,
                 pin.agent_id_snapshot == Agent.id,
                 pin.invoker_type == "user",
-                pin.resource_owner_user_id == Agent.user_id,
-                pin.on_behalf_of_user_id == account,
-                pin.credential_subject_user_id == account,
                 or_(
                     pin.identity_mode_at_accept.is_(None),
                     pin.identity_mode_at_accept == Agent.identity_mode,
