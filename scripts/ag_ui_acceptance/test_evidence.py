@@ -111,3 +111,172 @@ def test_attachment_has_typed_fields_and_requires_owned_files(tmp_path: Path) ->
     attachment["path"] = str(tmp_path.parent / "unowned.json")
     with pytest.raises(ValueError, match="Unexpected cutover attachment path"):
         cutover_attachments([result], tmp_path)
+
+
+def attach_waterfall(report: dict, value: dict) -> None:
+    body = base64.b64encode(json.dumps(value).encode()).decode()
+    report["suites"][0]["specs"][0]["tests"][0]["results"][0]["attachments"] = [
+        {"name": "perf-waterfall", "contentType": "application/json", "body": body}
+    ]
+
+
+@pytest.fixture
+def timing() -> dict:
+    epoch = 1_700_000_000_000
+    return {
+        "schemaVersion": 1,
+        "expectedMode": "langgraph_v3",
+        "mode": "langgraph_v3",
+        "sampleId": "717fd7ad-a798-4be6-8ba5-c15d6b210d72",
+        "conversationId": "1cfa5919-43f1-4998-85cc-0a62d891a710",
+        "publicRunId": None,
+        "physicalRunId": None,
+        "runIds": [],
+        "submittedAtMs": epoch,
+        "firstFrameAtMs": epoch + 25,
+        "lastFrameAtMs": epoch + 6000,
+        "parserIssues": 0,
+        "routes": [
+            {
+                "kind": "v3-command",
+                "method": "POST",
+                "requestAtMs": epoch,
+                "headersAtMs": epoch + 4,
+                "frameCount": 0,
+            },
+            {
+                "kind": "v3-attach",
+                "method": "POST",
+                "requestAtMs": epoch - 200,
+                "headersAtMs": epoch - 150,
+                "frameCount": 14,
+            },
+        ],
+        "ordinals": [
+            {"ordinal": n, "networkAtMs": epoch + n * 900, "domAtMs": epoch + n * 900 + 12}
+            for n in range(1, 7)
+        ],
+        "backendTiming": {
+            "errors": [],
+            "model": [{"ordinal": n, "sourceEpochMs": epoch + n * 850} for n in range(1, 7)],
+            "journal": [{"ordinal": n, "commitEpochMs": epoch + 5500} for n in range(1, 7)],
+        },
+    }
+
+
+def measured(report: dict, tmp_path: Path) -> dict:
+    return playwright_report(
+        report,
+        tmp_path,
+        group="performance-langgraph_v3",
+        specs=["chat.spec.ts"],
+        performance_timing=True,
+    )
+
+
+def test_batched_commit_and_v3_delivery_before_commit_are_valid(
+    report: dict, timing: dict, tmp_path: Path
+) -> None:
+    attach_waterfall(report, timing)
+    summary = measured(report, tmp_path)
+    assert summary["passed"]
+    sample = summary["cases"][0]["attempts"][0]["waterfall"]
+    assert sample["complete"]
+    assert not any(sample["missingOrdinals"].values())
+    first = sample["ordinals"][0]
+    assert first["networkAtMs"] < first["commitEpochMs"]
+    assert first["commitEpochMs"] == sample["ordinals"][-1]["commitEpochMs"]
+    assert sample["publicRunId"] is None
+
+
+def test_partial_receipt_retains_observations_and_independent_ttft(
+    report: dict, timing: dict, tmp_path: Path
+) -> None:
+    marker = "private-assertion-text"
+    timing["backendTiming"]["errors"] = [marker]
+    timing["backendTiming"]["model"][4]["sourceEpochMs"] = None
+    timing["ordinals"][2]["networkAtMs"] = 0
+    timing["routes"][0]["authorization"] = marker
+    attach_waterfall(report, timing)
+    summary = measured(report, tmp_path)
+    assert not summary["passed"]
+    assert marker not in json.dumps(summary)
+    attempt = summary["cases"][0]["attempts"][0]
+    assert attempt["perf"]["ttft_ms"] == 100
+    assert attempt["waterfall"]["missingOrdinals"] == {
+        "sourceEpochMs": [5],
+        "commitEpochMs": [],
+        "networkAtMs": [3],
+        "domAtMs": [],
+    }
+    assert attempt["waterfall"]["ordinals"][2]["domAtMs"] == timing["ordinals"][2]["domAtMs"]
+
+
+def test_mismatched_mode_and_duplicate_ordinal_are_unverified(
+    report: dict, timing: dict, tmp_path: Path
+) -> None:
+    timing["mode"] = "unknown"
+    timing["ordinals"].append(timing["ordinals"][0])
+    attach_waterfall(report, timing)
+    summary = measured(report, tmp_path)
+    errors = summary["cases"][0]["attempts"][0]["waterfall"]["errors"]
+    assert "transport_mode_unverified" in errors
+    assert "duplicate_ordinal" in errors
+    assert not summary["passed"]
+
+
+def test_performance_attachment_mandatory_only_when_requested(report: dict, tmp_path: Path) -> None:
+    assert not measured(report, tmp_path)["passed"]
+    ordinary = playwright_report(
+        report,
+        tmp_path,
+        group="ordinary-regressions-ag_ui",
+        specs=["chat.spec.ts"],
+        performance_timing=True,
+    )
+    assert ordinary["passed"]
+    assert "waterfall" not in ordinary["cases"][0]["attempts"][0]
+    unmeasured = playwright_report(
+        report, tmp_path, group="performance-ag_ui", specs=["chat.spec.ts"]
+    )
+    assert unmeasured["passed"]
+    assert "waterfall" not in unmeasured["cases"][0]["attempts"][0]
+
+
+def test_spec_line_selector_matches_declaration_and_rejects_other_cases(
+    report: dict, tmp_path: Path
+) -> None:
+    group = "ordinary-regressions-ag_ui"
+    spec = report["suites"][0]["specs"][0]
+    spec["line"] = 398
+    report["suites"] = [
+        {"specs": [], "suites": [{"file": "chat.spec.ts", "line": 310, "specs": [spec]}]}
+    ]
+    for selector in ("frontend/e2e/chat.spec.ts:398", "e2e/chat.spec.ts:310"):
+        assert playwright_report(report, tmp_path, group=group, specs=[selector])["passed"]
+    result = playwright_report(report, tmp_path, group=group, specs=["chat.spec.ts:505"])
+    assert "missing_or_unexpected_spec_line" in result["errors"]
+    suite = report["suites"][0]["suites"][0]
+    suite["specs"].append({**spec, "title": "another selected case", "line": 505})
+    report["stats"]["expected"] = 2
+    result = playwright_report(report, tmp_path, group=group, specs=["chat.spec.ts:398"])
+    assert "missing_or_unexpected_spec_line" in result["errors"]
+
+
+def test_ag_ui_command_stream_carries_the_measured_response(
+    report: dict, timing: dict, tmp_path: Path
+) -> None:
+    timing["expectedMode"] = timing["mode"] = "ag_ui"
+    timing["publicRunId"] = "3d957dcc-aaff-41b9-a285-084c636ae108"
+    route = timing["routes"].pop()
+    route.update(kind="standard-command", method="POST")
+    timing["routes"] = [route]
+    attach_waterfall(report, timing)
+    args = {"group": "performance-ag_ui", "specs": ["chat.spec.ts"], "performance_timing": True}
+    assert playwright_report(report, tmp_path, **args)["passed"]
+    route["frameCount"] = 0
+    attach_waterfall(report, timing)
+    result = playwright_report(report, tmp_path, **args)
+    assert (
+        "missing_stream_route_evidence" in result["cases"][0]["attempts"][0]["waterfall"]["errors"]
+    )

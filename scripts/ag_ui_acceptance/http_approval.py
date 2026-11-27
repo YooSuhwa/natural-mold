@@ -17,7 +17,7 @@ from zipfile import ZipFile
 
 import httpx
 import psycopg
-from http_common import Gate, expect_status, require
+from http_common import Gate, expect_status, require, sdk_event_adapter
 from skill_attempts import docx_attempts
 
 
@@ -513,6 +513,8 @@ async def _effects(
 
 async def check_approval(gate: Gate) -> dict[str, object]:
     skill = await _docx_skill(gate)
+    # SDK schema compilation is client startup, outside the immediate decision timer.
+    sdk_event_adapter()
     cases = {}
     failures = []
     for kind in ("immediate", "single", "mixed", "rejected", "expired"):
