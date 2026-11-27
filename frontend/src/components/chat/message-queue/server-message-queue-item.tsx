@@ -35,14 +35,14 @@ export function ServerMessageQueueItem({
   labels,
   previousId,
   nextId,
-  officialActions,
+  actions,
 }: {
   readonly id: string
   readonly text: string
   readonly labels: MessageQueueLabels
   readonly previousId?: string
   readonly nextId?: string
-  readonly officialActions: boolean
+  readonly actions: 'runtime' | 'server' | 'promoted'
 }) {
   const controller = useServerMessageQueueController()
   const [editing, setEditing] = useState(false)
@@ -55,6 +55,25 @@ export function ServerMessageQueueItem({
     await controller.edit(id, editedMessage(trimmed))
     setEditing(false)
   }
+  const confirmSteer = (
+    <Button
+      type="button"
+      size="sm"
+      aria-label={labels.sendNow}
+      data-moldy-queue-send-now={id}
+      onClick={
+        actions === 'server'
+          ? () => {
+              setSteerArmed(false)
+              void controller.move(id, { lane: 'steer', insertAfter: null })
+            }
+          : undefined
+      }
+    >
+      <FastForwardIcon className="size-3.5" />
+      {labels.sendNow}
+    </Button>
+  )
 
   return (
     <li
@@ -69,7 +88,7 @@ export function ServerMessageQueueItem({
             className="min-h-10 w-full resize-y rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-hidden"
             onChange={(event) => setDraft(event.currentTarget.value)}
           />
-        ) : officialActions ? (
+        ) : actions === 'runtime' ? (
           <QueueItemPrimitive.Text className="line-clamp-2 text-sm text-foreground" />
         ) : (
           <span className="line-clamp-2 text-sm text-foreground">{text}</span>
@@ -96,7 +115,7 @@ export function ServerMessageQueueItem({
           </>
         ) : (
           <>
-            {officialActions && !steerArmed ? (
+            {actions !== 'promoted' && !steerArmed ? (
               <Button
                 type="button"
                 size="sm"
@@ -108,19 +127,13 @@ export function ServerMessageQueueItem({
                 <FastForwardIcon className="size-3.5" />
                 {labels.steerAction}
               </Button>
-            ) : officialActions ? (
+            ) : actions !== 'promoted' ? (
               <>
-                <QueueItemPrimitive.Steer asChild>
-                  <Button
-                    type="button"
-                    size="sm"
-                    aria-label={labels.sendNow}
-                    data-moldy-queue-send-now={id}
-                  >
-                    <FastForwardIcon className="size-3.5" />
-                    {labels.sendNow}
-                  </Button>
-                </QueueItemPrimitive.Steer>
+                {actions === 'runtime' ? (
+                  <QueueItemPrimitive.Steer asChild>{confirmSteer}</QueueItemPrimitive.Steer>
+                ) : (
+                  confirmSteer
+                )}
                 <Button
                   type="button"
                   size="icon-sm"
