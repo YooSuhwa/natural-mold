@@ -26,6 +26,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.approvals import registrations, service
+from app.approvals.independent_visibility import independent_job_approval_is_current
 from app.approvals.recording import INBOX_LINK
 from app.approvals.waiters import abandon_best_effort
 from app.authz.conversation_scope import load_private_conversation
@@ -161,6 +162,8 @@ async def decide(
     """The decider's answer from the inbox; resumes the run (``InboxError`` otherwise)."""
     row = await db.get(ApprovalRequest, approval_id)
     if row is None or not await _decides(db, row, user, context):
+        raise InboxError("approval_not_found", "approval request not found", 404)
+    if not await independent_job_approval_is_current(db, row, context):
         raise InboxError("approval_not_found", "approval request not found", 404)
     if row.status != "pending":
         raise InboxError("approval_stale", f"the approval request is already {row.status}")
@@ -322,6 +325,9 @@ async def _expire_one(due: _Due) -> None:
         row = await db.get(ApprovalRequest, due.id)
         if row is None or row.status != "pending":
             return
+        if not await independent_job_approval_is_current(db, row, context):
+            await close(db, row, "independent_job_unavailable")
+            return
         if row.kind == "business":
             from app.workflows import approvals as workflow_approvals
 
@@ -405,6 +411,22 @@ async def notify_expiring() -> int:
             row = await db.get(ApprovalRequest, due.id)
             if row is None or row.status != "pending" or row.expiring_notified_at is not None:
                 continue
+            if row.kind == "tool" and due.org_id is not None:
+                context = OrgContext(
+                    org_id=due.org_id, tenant_id=due.tenant_id, user_id=due.subject_user_id
+                )
+                try:
+                    current = await independent_job_approval_is_current(db, row, context)
+                except AppError as exc:
+                    if exc.status < 500:
+                        raise
+                    logger.warning(
+                        "Approval permission check will retry for approval_id=%s", due.id
+                    )
+                    continue
+                if not current:
+                    await close(db, row, "independent_job_unavailable")
+                    continue
             row.expiring_notified_at = service.now()
             await notify(
                 db,

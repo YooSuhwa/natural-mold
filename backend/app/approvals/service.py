@@ -457,7 +457,10 @@ async def _mine(db: AsyncSession, context: OrgContext) -> ColumnElement[bool]:
     A registration request has no one decider (tool-governance-plan G9): company
     administrators see the company's, an organization's administrators see theirs.
     """
+    from app.approvals.independent_visibility import readable_approval
+
     own = and_(
+        await readable_approval(db, context),
         ApprovalRequest.kind != "registration",
         ApprovalRequest.decider_user_id == context.user_id,
         or_(ApprovalRequest.org_id == context.org_id, ApprovalRequest.org_id.is_(None)),

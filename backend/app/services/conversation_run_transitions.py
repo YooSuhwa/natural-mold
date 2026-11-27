@@ -37,6 +37,7 @@ from app.services.conversation_run_task_registry import (
     _tenant_session,
     worker_attr,
 )
+from app.services.independent_job_notifications import lock_job_for_terminal, project_job_terminal
 
 logger = logging.getLogger("app.services.conversation_run_worker")
 
@@ -75,6 +76,11 @@ async def _transition(
     llm_credential_scope: str | None = None,
 ) -> tuple[ConversationRun | None, TerminalRunState]:
     async with _tenant_session(tenant) as session:
+        job = (
+            await lock_job_for_terminal(session, run_id)
+            if status in {"completed", "interrupted"}
+            else None
+        )
         run = await session.get(ConversationRun, run_id, with_for_update=True)
         if run is None:
             return None, status
@@ -110,6 +116,8 @@ async def _transition(
                 cancellation_ack_worker_id=cancellation_ack_worker_id,
                 allow_workerless_cancellation_ack=allow_workerless_cancellation_ack,
             )
+            if job is not None:
+                await project_job_terminal(session, run, job)
             await persist_run_metrics_and_usage(
                 session,
                 run=run,

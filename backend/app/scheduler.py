@@ -743,8 +743,12 @@ APPROVAL_SWEEP_JOB_ID = "approval_sweep"
 async def sweep_approvals() -> None:
     """Approval inbox (순번 13): expiring notices, then expired requests end as rejected."""
     from app.approvals.inbox import sweep
+    from app.services.independent_job_notifications import recover_independent_job_approvals
 
-    await sweep()
+    try:
+        await sweep()
+    finally:
+        await recover_independent_job_approvals()
 
 
 def register_approval_sweep_job() -> None:

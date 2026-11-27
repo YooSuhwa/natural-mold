@@ -18,7 +18,8 @@ from app.models.independent_chat_job import IndependentChatJob
 from app.schemas.independent_chat_job import IndependentJobOut, JobStatus
 
 
-def _lineage(job_ids: Sequence[UUID], context: OrgContext) -> CTE:
+def job_run_lineage(context: OrgContext, job_ids: Sequence[UUID] | None = None) -> CTE:
+    """Reach only the initial child and its legitimate resumes in the exact private scope."""
     scope = (
         ConversationRun.tenant_id == context.tenant_id,
         ConversationRun.org_id == context.org_id,
@@ -36,7 +37,6 @@ def _lineage(job_ids: Sequence[UUID], context: OrgContext) -> CTE:
         .join(ConversationRun, ConversationRun.id == IndependentChatJob.child_run_id)
         .join(Conversation, Conversation.id == IndependentChatJob.child_conversation_id)
         .where(
-            IndependentChatJob.id.in_(job_ids),
             private_scope_predicate(IndependentChatJob, context),
             private_scope_predicate(Conversation, context),
             Conversation.source == INDEPENDENT_JOB_SOURCE,
@@ -46,12 +46,14 @@ def _lineage(job_ids: Sequence[UUID], context: OrgContext) -> CTE:
             ConversationRun.parent_run_id.is_(None),
             *scope,
         )
-        .cte(recursive=True)
     )
+    if job_ids is not None:
+        found = found.where(IndependentChatJob.id.in_(job_ids))
+    chain = found.cte(recursive=True)
     # UNION terminates even when reading a malformed historical resume cycle.
-    return found.union(
+    return chain.union(
         select(
-            found.c.job_id,
+            chain.c.job_id,
             ConversationRun.id,
             ConversationRun.conversation_id,
             ConversationRun.agent_id,
@@ -59,11 +61,11 @@ def _lineage(job_ids: Sequence[UUID], context: OrgContext) -> CTE:
             ConversationRun.status,
         ).where(
             *scope,
-            ConversationRun.parent_run_id == found.c.run_id,
-            found.c.status == "interrupted",
+            ConversationRun.parent_run_id == chain.c.run_id,
+            chain.c.status == "interrupted",
             ConversationRun.source == "resume",
-            ConversationRun.conversation_id == found.c.conversation_id,
-            ConversationRun.agent_id == found.c.agent_id,
+            ConversationRun.conversation_id == chain.c.conversation_id,
+            ConversationRun.agent_id == chain.c.agent_id,
         )
     )
 
@@ -80,7 +82,7 @@ def _is_latest_resume(chain: CTE) -> ColumnElement[bool]:
 async def current_job_run(
     db: AsyncSession, job: IndependentChatJob, context: OrgContext, *, lock: bool = False
 ) -> ConversationRun | None:
-    chain = _lineage([job.id], context)
+    chain = job_run_lineage(context, [job.id])
     query = (
         select(ConversationRun)
         .join(chain, chain.c.run_id == ConversationRun.id)
@@ -100,7 +102,7 @@ async def describe_jobs(
 ) -> list[IndependentJobOut]:
     if not jobs:
         return []
-    chain = _lineage([job.id for job in jobs], context)
+    chain = job_run_lineage(context, [job.id for job in jobs])
     # Evaluate concurrent siblings in the same database snapshot. Only the
     # latest validated resume contributes its status and destination run ID.
     ranked = (
