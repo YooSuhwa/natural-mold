@@ -279,5 +279,7 @@ async def stream_agent_response_langgraph(
             )
         )
     finally:
-        await events.aclose()
-        await delivery.close()
+        try:
+            await events.aclose()
+        finally:
+            await delivery.close()
