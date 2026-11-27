@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from contextlib import nullcontext
 from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from ag_ui.core import AssistantMessage
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.agent_runtime.message_utils import parse_msg_id
@@ -28,7 +28,7 @@ from app.services.ag_ui_snapshot_runs import SnapshotRuns
 
 @dataclass
 class Case:
-    db: SimpleNamespace
+    db: AsyncSession
     conversation: Conversation
     context: OrgContext
     history: SnapshotHistory
@@ -38,8 +38,21 @@ class Case:
     resolve: AsyncMock
     pending: AsyncMock
 
-    async def load(self, **kwargs: object) -> AgUiSnapshot:
-        return await api.load_ag_ui_snapshot(self.db, self.conversation, self.context, **kwargs)
+    async def load(
+        self,
+        *,
+        run_id: UUID | None = None,
+        public_run_id: str | None = None,
+        cursor: str | None = None,
+    ) -> AgUiSnapshot:
+        return await api.load_ag_ui_snapshot(
+            self.db,
+            self.conversation,
+            self.context,
+            run_id=run_id,
+            public_run_id=public_run_id,
+            cursor=cursor,
+        )
 
 
 @pytest.fixture
@@ -84,7 +97,7 @@ def case(monkeypatch: pytest.MonkeyPatch) -> Case:
     monkeypatch.setattr(api, "read_pending_checkpoint", pending)
     monkeypatch.setattr(api, "read_pending_child_authority", AsyncMock(return_value=frozenset()))
     return Case(
-        SimpleNamespace(no_autoflush=nullcontext()),
+        AsyncSession(),
         conv,
         context,
         history,
