@@ -450,49 +450,10 @@ async def measure(
     return report
 
 
-def _verify_package_pair(report: dict) -> None:
-    workload = report.get("workload", {})
-    if "skill_tree_sha256s" not in workload:
-        return  # Existing single-package measurements precede per-stage records.
-    pair = workload["skill_tree_sha256s"]
-    if (
-        not isinstance(pair, list)
-        or len(pair) != 2
-        or any(
-            not isinstance(digest, str) or not re.fullmatch("[a-f0-9]{64}", digest)
-            for digest in pair
-        )
-        or workload.get("skill_tree_sha256") != pair[0]
-    ):
-        raise ValueError("Require the two ordered package digests for the measured workflow.")
-    if pair[0] != pair[1] and workload.get("private_intermediate") is not True:
-        raise ValueError("Different packages require private-intermediate measurements.")
-    for name, arm in report["arms"].items():
-        stages = arm.get("stages", [])
-        if [stage.get("skill_tree_sha256") for stage in stages] != pair:
-            raise ValueError(
-                "The two measured stages must use the same ordered packages in both arms."
-            )
-        if [stage.get("label") for stage in stages] != [label for label, _ in STAGES]:
-            raise ValueError("The measured stage names must match the paired workflow.")
-        ids = arm["sandbox_ids"] if name == "per_call" else arm["sandbox_ids"] * 2
-        if [stage.get("sandbox_id") for stage in stages] != ids:
-            raise ValueError("Each stage needs its corresponding measured resource ID.")
-        if any(
-            not math.isfinite(stage["total_seconds"]) or stage["total_seconds"] <= 0
-            for stage in stages
-        ):
-            raise ValueError("Each measured stage must have positive duration.")
-        if (
-            name == "retained"
-            and workload.get("private_intermediate")
-            and stages[0]["downloaded_bytes"] != 0
-        ):
-            raise ValueError("Private intermediate bytes appeared in the retained public outputs.")
-
-
 def assess(report: dict, invoice: dict) -> dict:
     """Link a reconciled total per sandbox (including idle, storage and transfer) to the run."""
+    from app.services.goal_sandbox_profile import verify_package_pair
+
     if report["provider"] != "opensandbox" or invoice["run_id"] != report["run_id"]:
         raise ValueError("Billing must match an OpenSandbox measurement run.")
     image = report.get("profile", {}).get("image", "")
@@ -500,7 +461,7 @@ def assess(report: dict, invoice: dict) -> dict:
         r"(?:[^@]+@)?sha256:[a-f0-9]{64}", image
     ):
         raise ValueError("Billing requires a version 1 measurement and an immutable image digest.")
-    _verify_package_pair(report)
+    verify_package_pair(report)
     currency = invoice["currency"]
     if not re.fullmatch("[A-Z]{3}", currency) or not invoice["evidence_ref"].strip():
         raise ValueError("Billing requires a currency and evidence reference.")

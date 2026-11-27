@@ -123,10 +123,31 @@ def test_tree_digest_matches_package_hash_and_covers_all_uploaded_files(tmp_path
 
 def test_both_measured_packages_can_open_only_the_reviewed_pair(report):
     first, second = "c" * 64, "d" * 64
-    report["workload"]["skill_tree_sha256s"] = [first, second]
+    report["workload"].update(skill_tree_sha256s=[first, second], private_intermediate=True)
+    for name, arm in report["arms"].items():
+        resources = arm["sandbox_ids"]
+        stage_ids = resources if name == "per_call" else resources * 2
+        arm["stages"] = [
+            {
+                "label": label,
+                "skill_tree_sha256": digest,
+                "sandbox_id": resource,
+                "total_seconds": 3,
+                "downloaded_bytes": 0,
+            }
+            for label, digest, resource in zip(
+                ("edit", "verify"), (first, second), stage_ids, strict=True
+            )
+        ]
     assert accepted(report, first) == accepted(report, second) == (first, second)
     assert accepted(report, "e" * 64) is None
     report["workload"]["skill_tree_sha256s"] = [second, first]
     assert accepted(report, second) is None
+    report["workload"]["skill_tree_sha256s"] = [first, second]
+    report["arms"]["retained"]["stages"][0]["downloaded_bytes"] = 512
+    assert accepted(report, first) is None
+    report["arms"]["retained"]["stages"][0]["downloaded_bytes"] = 0
     report["workload"]["skill_tree_sha256s"] = [first, first]
+    for arm in report["arms"].values():
+        arm["stages"][1]["skill_tree_sha256"] = first
     assert accepted(report, first) == (first,)

@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from collections.abc import Sequence
 from decimal import Decimal
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.skills.package_hash import digest_package_files
@@ -83,6 +84,48 @@ def goal_sandbox_provider_fingerprint() -> str:
     return hashlib.sha256(data.encode()).hexdigest()
 
 
+def verify_package_pair(report: dict[str, Any]) -> None:
+    """Validate both packages, their per-stage resources, and private file retention."""
+    workload = report.get("workload", {})
+    if "skill_tree_sha256s" not in workload:
+        return  # Existing single-package measurements precede per-stage records.
+    pair = workload["skill_tree_sha256s"]
+    if (
+        not isinstance(pair, list)
+        or len(pair) != 2
+        or any(
+            not isinstance(digest, str) or not re.fullmatch("[a-f0-9]{64}", digest)
+            for digest in pair
+        )
+        or workload.get("skill_tree_sha256") != pair[0]
+    ):
+        raise ValueError("Require the two ordered package digests for the measured workflow.")
+    if pair[0] != pair[1] and workload.get("private_intermediate") is not True:
+        raise ValueError("Different packages require private-intermediate measurements.")
+    for name, arm in report["arms"].items():
+        stages = arm.get("stages", [])
+        if [stage.get("skill_tree_sha256") for stage in stages] != pair:
+            raise ValueError(
+                "The two measured stages must use the same ordered packages in both arms."
+            )
+        if [stage.get("label") for stage in stages] != ["edit", "verify"]:
+            raise ValueError("The measured stage names must match the paired workflow.")
+        ids = arm["sandbox_ids"] if name == "per_call" else arm["sandbox_ids"] * 2
+        if [stage.get("sandbox_id") for stage in stages] != ids:
+            raise ValueError("Each stage needs its corresponding measured resource ID.")
+        if any(
+            not math.isfinite(stage["total_seconds"]) or stage["total_seconds"] <= 0
+            for stage in stages
+        ):
+            raise ValueError("Each measured stage must have positive duration.")
+        if (
+            name == "retained"
+            and workload.get("private_intermediate")
+            and stages[0]["downloaded_bytes"] != 0
+        ):
+            raise ValueError("Private intermediate bytes appeared in the retained public outputs.")
+
+
 def measured_skill_hashes(skill_hash: str) -> tuple[str, ...] | None:
     """Only a configured operator artifact can authorize its exact measured profile."""
     path = settings.goal_sandbox_evidence_path
@@ -101,8 +144,10 @@ def measured_skill_hashes(skill_hash: str) -> tuple[str, ...] | None:
             raw = stream.read(65_537)
         if len(raw) > 65_536:
             return None
-        report = _Report.model_validate_json(raw)
-    except (OSError, ValidationError):
+        payload = json.loads(raw)
+        report = _Report.model_validate(payload)
+        verify_package_pair(payload)
+    except (AttributeError, OSError, KeyError, TypeError, ValueError):
         return None
     base, retained = report.arms.per_call, report.arms.retained
     costs = report.cost.totals
