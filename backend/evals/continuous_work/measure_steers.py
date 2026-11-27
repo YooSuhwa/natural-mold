@@ -6,7 +6,7 @@ From backend, supply a throwaway, migrated, local PostgreSQL 16 database:
     CHAT_STEER_ENABLED=true \
     DATABASE_URL=postgresql+asyncpg://USER@localhost:PORT/moldy_pg_lane_goal_latency \
     DATABASE_URL_SYNC=postgresql://USER@localhost:PORT/moldy_pg_lane_goal_latency \
-    ENCRYPTION_KEYS=<throwaway-64-hex> python -m evals.continuous_work.measure_steers \
+    ENCRYPTION_KEYS="$(openssl rand -hex 32)" python -m evals.continuous_work.measure_steers \
     --output /tmp/steer-latency.json
 
 Use temporary HOME and data directories. Each repetition creates a new synthetic account,
@@ -41,6 +41,7 @@ from langchain_core.outputs import ChatGenerationChunk
 from langchain_core.tools import StructuredTool
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.agent_runtime import checkpointer, tool_factory
 from app.agent_runtime.chat_steer_model_delivery import steer_message_id
@@ -67,6 +68,7 @@ class RunProbe:
     model_times: list[datetime] = field(default_factory=list)
     monotonic_times: list[int] = field(default_factory=list)
     tool_calls: int = 0
+    clock_result: str | None = None
 
     def model(self) -> type[E2EScriptedChatModel]:
         probe = self
@@ -90,7 +92,13 @@ class RunProbe:
                     ]
                 )
                 probe.tool_result_seen.append(
-                    any(isinstance(m, ToolMessage) and m.tool_call_id == "clock" for m in messages)
+                    any(
+                        isinstance(m, ToolMessage)
+                        and m.tool_call_id == "clock"
+                        and m.status == "success"
+                        and m.content == probe.clock_result
+                        for m in messages
+                    )
                 )
                 if len(probe.inputs) == 1:
                     chunk = AIMessageChunk(
@@ -115,7 +123,8 @@ class RunProbe:
             self.tool_calls += 1
             self.tool_started.set()
             await asyncio.wait_for(self.release_tool.wait(), 20)
-            return await clock()
+            self.clock_result = await clock()
+            return self.clock_result
 
         tool.coroutine = wait_and_read
         return tool
@@ -140,7 +149,9 @@ def check_lane() -> None:
 
 async def trial(number: int) -> dict[str, Any]:
     probe = RunProbe()
-    user_id, agent_id, conversation_id = await _seed_conversation(async_session)
+    user_id, agent_id, conversation_id = await _seed_conversation(
+        async_sessionmaker(engine, expire_on_commit=False)
+    )
     async with async_session() as db:
         agent = await db.get_one(Agent, agent_id)
         model = await db.get_one(Model, agent.model_id)
@@ -220,18 +231,34 @@ async def trial(number: int) -> dict[str, Any]:
             )
             instruction_ids = [steer_message_id(UUID(row["id"])) for row in receipts]
             require(probe.positions[1][1:] == ["clock", *instruction_ids], "Misplaced input IDs")
-            response = await client.get(f"{run_url}/steers")
-            response.raise_for_status()
+            # Terminal status and the checkpoint-based receipt reconciliation commit separately.
+            # Poll only to verify durable delivery. The measured endpoint was already captured.
+            checks = 0
             expected = [(row["id"], "applied") for row in receipts]
-            require(
-                [(r["id"], r["status"]) for r in response.json()] == expected, "Missing receipt"
-            )
+            async with asyncio.timeout(5):
+                while True:
+                    response = await client.get(f"{run_url}/steers")
+                    response.raise_for_status()
+                    checks += 1
+                    rows = response.json()
+                    if [(row["id"], row["status"]) for row in rows] == expected:
+                        break
+                    require(
+                        all(row["status"] in ("pending", "applied") for row in rows),
+                        "Receipt moved to a different run or needs review",
+                    )
+                    await asyncio.sleep(0.025)
     observed = probe.model_times[1]
     created = [datetime.fromisoformat(row["created_at"]).replace(tzinfo=UTC) for row in receipts]
     durations = [round((observed - at).total_seconds() * 1000, 3) for at in created]
     ack_durations = [round((probe.monotonic_times[1] - at) / 1_000_000, 3) for at in ack_times]
     require(all(ms >= 0 for ms in durations + ack_durations), "Invalid clock interval")
-    return {"trial": number, "receipt_to_model_ms": durations, "ack_to_model_ms": ack_durations}
+    return {
+        "trial": number,
+        "receipt_to_model_ms": durations,
+        "ack_to_model_ms": ack_durations,
+        "post_terminal_receipt_reads": checks,
+    }
 
 
 def require(condition: bool, message: str) -> None:
