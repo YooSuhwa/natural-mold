@@ -112,9 +112,11 @@ export function RunSteerHistory({ conversationId }: { readonly conversationId: s
 export function RunSteerSend({
   conversationId,
   hasResourceContext,
+  submissionPending = false,
 }: {
   readonly conversationId: string
   readonly hasResourceContext: boolean
+  readonly submissionPending?: boolean
 }) {
   const t = useTranslations('chat.runSteer')
   const { visible, disabled, send, retryOriginal, overLimit, textOnly, errorMessage } =
@@ -132,7 +134,7 @@ export function RunSteerSend({
           size="sm"
           variant="outline"
           data-moldy-run-steer-send
-          disabled={disabled}
+          disabled={disabled || submissionPending}
           title={reason ?? t('send')}
           onClick={send}
         >
