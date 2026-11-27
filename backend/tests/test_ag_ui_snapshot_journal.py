@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime import ag_ui_v1
+from app.agent_runtime import ag_ui_v1, ag_ui_v1_issuance
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.agent_runtime.protocol_events import stored_protocol_event
 from app.authz.org_context import OrgContext
@@ -18,7 +18,9 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.services import ag_ui_snapshot_journal, conversation_run_service, trace_storage
 from app.services.ag_ui_journal import JournalEntry, JournalPage, read_journal_page
-from app.services.ag_ui_read_cursor import matches_source, parse_cursor
+from app.services.ag_ui_read_cursor import parse_cursor
+from app.services.ag_ui_read_pending import CurrentReadInterrupts
+from app.services.ag_ui_read_projection import CommittedProjection
 from app.services.ag_ui_read_target import resolve_read_target
 from app.services.ag_ui_snapshot_journal import (
     SnapshotRunReplay,
@@ -50,7 +52,7 @@ async def _running_chat(db: AsyncSession) -> tuple[Conversation, ConversationRun
 
 
 @pytest.mark.asyncio
-async def test_legacy_input_and_native_answer_reopen_with_exact_terminal_cursor(
+async def test_legacy_chat_reopens_with_exact_terminal_cursor(
     db: AsyncSession,
 ) -> None:
     chat, run, context = await _running_chat(db)
@@ -72,7 +74,14 @@ async def test_legacy_input_and_native_answer_reopen_with_exact_terminal_cursor(
         db,
         conversation_id=chat.id,
         assistant_msg_id=str(run.id),
-        events_chunk=[start, _answer(2, run.id, chat.id, "answer")],
+        events_chunk=[
+            start,
+            {
+                "id": f"{run.id}-2",
+                "event": "message_end",
+                "data": {"content": "answer", "status": "completed"},
+            },
+        ],
     )
     await trace_storage.finalize_turn(db, assistant_msg_id=str(run.id))
     await conversation_run_service.transition_run(db, run, "completed")
@@ -109,7 +118,12 @@ async def test_legacy_input_and_native_answer_reopen_with_exact_terminal_cursor(
     assert [(m["role"], m["content"]) for m in first.messages] == [("assistant", "answer")]
     pos = parse_cursor(first.cursor, target.scope)
     assert (pos.kind, pos.ordinal) == ("terminal", 3)
-    assert record is not None and matches_source(pos, source_id="finish", generation=str(record.id))
+    page = await read_journal_page(db, conversation=chat, physical_run_id=run.id)
+    live = CommittedProjection(target, ()).fold(target, page, CurrentReadInterrupts())
+    terminal = live.frames[-1]
+    assert record is not None and terminal.generation == str(record.id)
+    assert terminal.source_id == "finish" and terminal.event["type"] == "RUN_FINISHED"
+    assert terminal.id == first.cursor and terminal.matches(pos)
 
 
 @pytest.mark.asyncio
@@ -256,3 +270,52 @@ def test_native_child_path_restores_observed_lane_without_exposing_an_unrelated_
     assert result.child_namespaces == {visible: child}
     assert result.pending_namespaces == {"pending-1": visible}
     assert result.unresolved_pending_ids == {"pending-2"}
+
+
+@pytest.mark.asyncio
+async def test_snapshot_matches_checkpoint_call_to_the_issuing_root_message(
+    db: AsyncSession,
+) -> None:
+    chat, run, context = await _running_chat(db)
+    raw_id = "provider-call-1"
+    parent = "assistant-who-called"
+    answer = stored_protocol_event(
+        run_id=str(run.id),
+        thread_id=str(chat.id),
+        seq=1,
+        method="messages",
+        data={
+            "id": parent,
+            "type": "ai",
+            "content": "",
+            "tool_calls": [{"type": "tool_call", "name": "lookup", "id": raw_id, "args": {}}],
+        },
+    )
+    await trace_storage.append_events(
+        db, conversation_id=chat.id, assistant_msg_id=str(run.id), events_chunk=[dict(answer)]
+    )
+    await db.commit()
+    result = await replay_snapshot_run(
+        db,
+        conversation=chat,
+        context=context,
+        run=run,
+        public_id=str(run.id),
+        parent_public_id=None,
+        secret_values=(),
+    )
+    public_id = ag_ui_v1_issuance.public_tool_call_id(str(run.id), None, parent, raw_id)
+    assert result.root_issuances == {(parent, raw_id): public_id}
+    assert result.messages == [
+        {
+            "id": parent,
+            "role": "assistant",
+            "toolCalls": [
+                {
+                    "id": public_id,
+                    "type": "function",
+                    "function": {"name": "lookup", "arguments": "{}"},
+                }
+            ],
+        }
+    ]

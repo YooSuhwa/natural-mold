@@ -23,7 +23,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.services.ag_ui_journal import JournalPage, read_journal_page
 from app.services.ag_ui_read_cursor import CursorScope
-from app.services.ag_ui_read_pending import current_read_interrupts
+from app.services.ag_ui_read_pending import CurrentReadInterrupts, current_read_interrupts
 from app.services.ag_ui_read_projection import CommittedProjection
 from app.services.ag_ui_read_target import resolve_read_target, snapshot_required
 from app.services.ag_ui_snapshot_projection import AgUiRunSnapshot, Row
@@ -35,6 +35,7 @@ class SnapshotRunReplay:
     scope: CursorScope | None = None
     messages: list[Row] = field(default_factory=list)
     message_links: dict[str, Row] = field(default_factory=dict)
+    root_issuances: dict[tuple[str | None, str], str] = field(default_factory=dict)
     subagents: list[Row] = field(default_factory=list)
     todos_by_owner: dict[str | None, list[Row]] = field(default_factory=dict)
     legacy_users: list[Row] = field(default_factory=list)
@@ -144,7 +145,7 @@ async def replay_snapshot_run(
         pending = (
             await current_read_interrupts(db, conversation, context, current)
             if last and not page.has_more and current.run and current.run.status == "interrupted"
-            else []
+            else CurrentReadInterrupts()
         )
         try:
             batch = projection.fold(current, page, pending)
@@ -163,6 +164,7 @@ async def replay_snapshot_run(
             break
     result.messages = fold.messages()
     result.message_links = fold.links_by_id()
+    result.root_issuances = projection.root_issuances
     result.subagents = fold.subagents()
     result.todos_by_owner = fold.todos_by_owner()
     result.complete = True
