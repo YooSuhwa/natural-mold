@@ -24,6 +24,7 @@ _SERVICES = (
     "collect_conversation_secret_values",
     "read_journal_page",
     "current_read_interrupts",
+    "committed_run_changed",
 )
 
 
@@ -78,7 +79,12 @@ def _measure_reader(
             "duration_ms": (end - start) / 1_000_000,
             "stages_ms": {key: round(ns / 1_000_000, 3) for key, ns in costs.items()},
         }
-        frames = value.frames if name == "poll" else args[:1]
+        frames = ()
+        if name == "poll":
+            frames = value.frames
+        elif name == "check_delivery":
+            frames = args[:1]
+
         row["frame_count"] = len(frames)
         # Keep ordinals of the fixed test-model strings only. Never log content or event data.
         row["text_ordinals"] = [
@@ -113,12 +119,16 @@ def observe_read_durations(ledger: Path) -> Iterator[None]:
         )
         stack.callback(os.close, fd)
         for name in _SERVICES:
-            fn = getattr(ag_ui_read, name)
+            fn = getattr(ag_ui_read, name, None)
+            if fn is None:
+                continue
             stack.enter_context(
                 patch.object(ag_ui_read, name, _measure_service(fn, name))
             )
-        for name in ("poll", "check_delivery"):
-            fn = getattr(ag_ui_read._Reader, name)
+        for name in ("poll", "check_delivery", "wait_for_change"):
+            fn = getattr(ag_ui_read._Reader, name, None)
+            if fn is None:
+                continue
             stack.enter_context(
                 patch.object(
                     ag_ui_read._Reader, name, _measure_reader(fn, name, fd, parts)
