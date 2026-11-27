@@ -8,16 +8,16 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
+from app.authz.child_task_authorization import (
+    authorize_child_target,
+    require_same_child_identity,
+)
 from app.authz.conversation_run_scope import private_run_predicate
 from app.authz.execution_transaction_tracker import claimed_locks
 from app.authz.org_context import OrgContext
 from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.conversation_child_task import ConversationChildInstruction, ConversationChildTask
 from app.models.conversation_run import ConversationRun, utc_now_naive
-from app.services.child_task_authorization import (
-    authorize_child_target,
-    require_same_child_identity,
-)
 from app.services.child_task_errors import ChildTaskStopped
 
 _TERMINAL = frozenset({"cancelled", "failed", "completed"})
@@ -46,9 +46,7 @@ def _resume_lineage(run: ConversationRun) -> Select[tuple[UUID]]:
         .where(
             lineage.c.source == "resume",
             ConversationRun.status == "interrupted",
-            ConversationRun.user_id == run.user_id,
-            ConversationRun.tenant_id == run.tenant_id,
-            ConversationRun.org_id == run.org_id,
+            private_run_predicate(OrgContext(run.org_id, run.tenant_id, run.user_id)),
             ConversationRun.conversation_id == run.conversation_id,
             ConversationRun.agent_id == run.agent_id,
         )

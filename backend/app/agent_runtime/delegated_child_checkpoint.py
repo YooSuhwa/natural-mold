@@ -15,6 +15,7 @@ from langgraph.constants import CONFIG_KEY_CHECKPOINTER
 from langgraph.graph.message import _messages_delta_reducer
 
 from app.authz.org_context import OrgContext
+from app.schemas.conversation_graph_input import CHILD_RECEIPTS_CHANNEL
 from app.tenancy.checkpoint_audit import CHECKPOINT_TENANT_KEY
 
 
@@ -99,7 +100,7 @@ async def saved_child_step(
     ):
         return None
 
-    marker = saved.checkpoint["channel_values"].get("moldy_child_model_receipts")
+    marker = saved.checkpoint["channel_values"].get(CHILD_RECEIPTS_CHANNEL)
     if (
         not messages_by_id
         or not isinstance(marker, Mapping)

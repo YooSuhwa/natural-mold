@@ -37,6 +37,7 @@ from app.authz.org_context import OrgContext
 from app.config import settings
 from app.database import tenant_session
 from app.exceptions import AppError
+from app.schemas.conversation_graph_input import CHILD_RECEIPTS_CHANNEL, STEER_INPUT_MARKER
 from app.services import child_tasks_runtime as store
 from app.services.child_task_errors import ChildTaskStopped
 
@@ -309,7 +310,7 @@ class ChildInstructionMiddleware(AgentMiddleware[Any, Any, Any]):
             if freshly_claimed and message_id not in present:
                 messages.append(
                     HumanMessage(
-                        content=text, id=message_id, response_metadata={"moldy_steer_input": True}
+                        content=text, id=message_id, response_metadata={STEER_INPUT_MARKER: True}
                     )
                 )
             task.sent[instruction_id] = text
@@ -338,7 +339,7 @@ class ChildInstructionMiddleware(AgentMiddleware[Any, Any, Any]):
             "outputs": {message_id: sorted(ids) for message_id, ids in matched.items()},
         }
         return ExtendedModelResponse(
-            model_response=response, command=Command(update={"moldy_child_model_receipts": proof})
+            model_response=response, command=Command(update={CHILD_RECEIPTS_CHANNEL: proof})
         )
 
     async def aafter_model(self, state: AgentState, runtime: Runtime) -> None:

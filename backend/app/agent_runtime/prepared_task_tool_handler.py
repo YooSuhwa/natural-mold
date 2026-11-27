@@ -32,9 +32,10 @@ from langgraph.types import Command
 from app.agent_runtime.chat_steer_middleware import RunSteerMiddleware
 from app.agent_runtime.lease_dispatch_permit import DispatchDeniedError
 from app.agent_runtime.prepared_child_launch import ChildLaunchKey, ChildLaunchReservation
+from app.schemas.conversation_graph_input import CHILD_RECEIPTS_CHANNEL
 
 EXCLUDED_STATE_KEYS = frozenset(
-    {"messages", "todos", "structured_response", "moldy_child_model_receipts"}
+    {"messages", "todos", "structured_response", CHILD_RECEIPTS_CHANNEL}
 )
 TASK_PATH_KEY = "_moldy_prepared_task_path"
 TERMINALIZED = "prepared_run_terminalized"

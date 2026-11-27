@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz import child_task_authorization as authorization
 from app.authz.client import Consistency
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.organization_execution_proof import live_proof
@@ -23,7 +24,6 @@ from app.models.conversation_run import ConversationRun
 from app.models.organization import Organization, OrganizationMember, TenantMember
 from app.models.resource_policy import ResourcePolicy
 from app.models.user import User
-from app.services import child_task_authorization as authorization
 from app.services.agent_execution_acceptance import OwnedExecutionRequest, accept_owned_execution
 from app.services.child_task_errors import ChildTaskStopped
 from tests.authz.authz_service_testkit import RecordingClient, service
