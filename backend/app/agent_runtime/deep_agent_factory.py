@@ -9,7 +9,7 @@ from typing import Any, Protocol, cast
 from deepagents.backends import BackendProtocol, StateBackend
 from deepagents.middleware.async_subagents import AsyncSubAgent
 from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
-from deepagents.middleware.subagents import CompiledSubAgent, SubAgent
+from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT, CompiledSubAgent, SubAgent
 from deepagents.middleware.summarization import create_summarization_middleware
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.human_in_the_loop import InterruptOnConfig
@@ -201,6 +201,42 @@ def normalize_declarative_subagents_impl(
     return normalized
 
 
+def _guard_implicit_child_retries(
+    normalized: list[dict[str, Any]],
+    supplied: list[dict[str, Any]] | None,
+    root_middleware: Sequence[AgentMiddleware],
+) -> list[dict[str, Any]]:
+    from app.agent_runtime.runtime.direct_stream_retry import DirectStreamRetryMiddleware
+
+    name = GENERAL_PURPOSE_SUBAGENT["name"]
+    if any(child.get("name") == name for child in supplied or ()):
+        return normalized
+    retry = next(
+        (mw for mw in root_middleware if isinstance(mw, DirectStreamRetryMiddleware)), None
+    )
+    if retry is None:
+        return normalized
+    # The synthesized child runs the root's primary model. Linked children
+    # have their own model grants; parent fallback credentials never follow a delegation.
+    return [
+        {
+            **child,
+            "middleware": [
+                *(child.get("middleware") or []),
+                DirectStreamRetryMiddleware(
+                    fallbacks=[],
+                    max_attempts=retry.max_attempts,
+                    check_authority=retry.check_authority,
+                    initial_delay=retry.initial_delay,
+                ),
+            ],
+        }
+        if child.get("name") == name
+        else child
+        for child in normalized
+    ]
+
+
 def _guarded(
     middleware: list[Any],
     subagents: list[dict[str, Any]],
@@ -357,6 +393,9 @@ def build_agent_impl(
             permissions=permissions,
             interrupt_on=interrupt_on,
             skills=skills,
+        )
+        compatible_subagents = _guard_implicit_child_retries(
+            compatible_subagents, subagents, middleware or ()
         )
         if tool_risk is not None:
             # Company actions per tool risk level, for the root and each child (C5).

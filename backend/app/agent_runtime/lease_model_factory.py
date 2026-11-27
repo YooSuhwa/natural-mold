@@ -166,7 +166,7 @@ def _create(spec: LeaseModelSpec, guard: LeaseSendGuard) -> LeaseOwnedModel:
         try:
             with pending_google_transport(bundle):
                 google = LeaseGoogleChatModel(**kwargs)
-            google.bind_lease_guard(guard)
+            google.bind_lease_guard(guard, provider=spec.provider)
         except BaseException:
             close_unused_owned(bundle.cleanup.aclose)
             raise
@@ -203,5 +203,7 @@ def _build_http_model(
             spec.provider, kwargs.get("base_url"), spec.params.get("prompt_cache_key")
         )
     )
-    model = build_openai_family_model({**kwargs, "stream_usage": True}, guard=guard, owned=owned)
+    model = build_openai_family_model(
+        {**kwargs, "stream_usage": True}, guard=guard, owned=owned, provider=spec.provider
+    )
     return model, model.openai_api_base

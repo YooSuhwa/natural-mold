@@ -45,6 +45,7 @@ class RunMetadata(TypedDict):
     status: str
     error_code: NotRequired[str]
     error_message: NotRequired[str]
+    partial_output: NotRequired[dict[str, JsonValue]]
 
 
 class ThreadStateMetadata(TypedDict):
@@ -89,6 +90,8 @@ def _run_metadata_json(metadata: RunMetadata) -> dict[str, JsonValue]:
         value["error_code"] = metadata["error_code"]
     if "error_message" in metadata:
         value["error_message"] = metadata["error_message"]
+    if "partial_output" in metadata:
+        value["partial_output"] = metadata["partial_output"]
     return value
 
 

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Literal
 
 import openai
+from langgraph.errors import NodeCancelledError
 
 from app.config import settings
 
@@ -82,10 +83,13 @@ def record_stream_attempt(*, attempt: int, output_started: bool, outcome: Attemp
     )
 
 
-def stop_delegation_retry(error: Exception) -> None:
+def stop_delegation_retry(error: BaseException) -> None:
     """Preserve the provider error and tell a parent tool wrapper to propagate it."""
     error.__dict__["_moldy_stream_attempt_terminal"] = True
 
 
 def delegation_retry_stopped(error: Exception) -> bool:
-    return error.__dict__.get("_moldy_stream_attempt_terminal") is True
+    # LangGraph translates cancellation raised inside a model node and chains
+    # the original CancelledError. Its parent task must still propagate the stop.
+    original = error.__cause__ if isinstance(error, NodeCancelledError) else error
+    return original is not None and original.__dict__.get("_moldy_stream_attempt_terminal") is True

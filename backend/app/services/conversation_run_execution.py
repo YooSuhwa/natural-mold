@@ -46,7 +46,10 @@ from app.services.conversation_run_task_registry import (
     worker_attr,
 )
 from app.services.conversation_run_terminal_delivery import OwnerTerminalDelivery
+from app.services.conversation_run_transitions import _execution_target
 from app.services.conversation_stream_service import StreamCtx
+from app.services.partial_model_output import PARTIAL_STREAM_ERROR, capture_partial_output
+from app.services.stream_attempt_owner import stream_attempt_owner
 
 logger = logging.getLogger("app.services.conversation_run_worker")
 
@@ -166,7 +169,10 @@ async def _run_conversation(
             run_id=ctx.run_id,
             output_dir=prepared_start.lease_output_dir(start),  # M1: index the lease output
         )
-        with conversation_prompt_cache(cfg.org_context, conversation_id, run_path=cfg.run_path):
+        with (
+            conversation_prompt_cache(cfg.org_context, conversation_id, run_path=cfg.run_path),
+            stream_attempt_owner(_execution_target(run_id, conversation_id, cfg), registry),
+        ):
             async for chunk in (start.executor or executor_fn)(
                 cfg,
                 input_payload,
@@ -273,6 +279,18 @@ async def _run_conversation(
                     model_name=getattr(cfg, "model_name", "unknown"),
                     tenant=cfg.org_context,
                     llm_credential_scope=getattr(cfg, "llm_credential_scope", None),
+                    **(
+                        {
+                            "partial_output": capture_partial_output(
+                                ctx.trace_sink,
+                                run_id=ctx.run_id,
+                                thread_id=str(conversation_id),
+                                secret_values=cfg.secret_values,
+                            )
+                        }
+                        if final_status == "failed" and error_code == PARTIAL_STREAM_ERROR
+                        else {}
+                    ),
                     terminal_event_for_status=(
                         lambda status: terminal_delivery.terminal_events_for_status(status)[1]
                     )

@@ -44,6 +44,11 @@ from app.services.conversation_run_task_registry import (
     _tenant_session,
     worker_attr,
 )
+from app.services.partial_model_output import (
+    PARTIAL_OUTPUT_KEY,
+    PARTIAL_STREAM_ERROR,
+    PartialOutput,
+)
 
 logger = logging.getLogger("app.services.conversation_run_worker")
 
@@ -80,6 +85,7 @@ async def _transition(
     terminal_event_for_status: Callable[[TerminalRunState], dict[str, Any]] | None = None,
     tenant: TenantScoped,
     llm_credential_scope: str | None = None,
+    partial_output: PartialOutput | None = None,
 ) -> tuple[ConversationRun | None, TerminalRunState]:
     async with _tenant_session(tenant) as session:
         fence = current_run_fence()
@@ -125,6 +131,15 @@ async def _transition(
                 cancellation_ack_worker_id=cancellation_ack_worker_id,
                 allow_workerless_cancellation_ack=allow_workerless_cancellation_ack,
             )
+            if (
+                effective_status == "failed"
+                and error_code == PARTIAL_STREAM_ERROR
+                and partial_output
+            ):
+                run.metadata_json = {
+                    **(run.metadata_json or {}),
+                    PARTIAL_OUTPUT_KEY: partial_output.model_dump(mode="json"),
+                }
             await persist_run_metrics_and_usage(
                 session,
                 run=run,

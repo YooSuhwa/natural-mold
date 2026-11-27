@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse, Response
@@ -51,6 +52,11 @@ from app.schemas.conversation_history_protocol import RunMetadata, ThreadStateRe
 from app.services import conversation_run_service
 from app.services.conversation_run_worker import start_conversation_run
 from app.services.conversation_stream_service import sse_response
+from app.services.partial_model_output import (
+    PARTIAL_OUTPUT_KEY,
+    PARTIAL_STREAM_ERROR,
+    read_partial_output,
+)
 
 router = APIRouter(tags=["conversations"])
 
@@ -80,6 +86,23 @@ def _run_metadata(run: object | None) -> RunMetadata | None:
         if error_code == "stream_error" and isinstance(error_message, str) and error_message:
             metadata["error_message"] = error_message
     return metadata
+
+
+def _latest_run_metadata(
+    run: object | None, checkpoint_run_id: str | None, secrets: Collection[str]
+) -> RunMetadata | None:
+    result = _run_metadata(run)
+    if (
+        result is not None
+        and result.get("error_code") == PARTIAL_STREAM_ERROR
+        and result["id"] == checkpoint_run_id
+    ):
+        metadata = getattr(run, "metadata_json", None)
+        if isinstance(metadata, dict):
+            projected = read_partial_output(metadata.get(PARTIAL_OUTPUT_KEY), secrets)
+            if projected is not None:
+                result["partial_output"] = projected
+    return result
 
 
 def _active_thread_next_nodes(run: object | None) -> list[str]:
@@ -123,6 +146,7 @@ async def get_thread_state(
     conversation_id: uuid.UUID,
     thread_id: str,
     request: Request,
+    read_only: bool = False,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
@@ -182,7 +206,7 @@ async def get_thread_state(
         conversation_id=conversation.id,
         context=context,
     )
-    if current_run is not None and current_run.is_active:
+    if not read_only and current_run is not None and current_run.is_active:
         stale = await maybe_mark_stale_active_run(
             db,
             run_id=current_run.id,
@@ -202,7 +226,7 @@ async def get_thread_state(
         checkpoint_by_message_id=snapshot.checkpoint_by_message_id,
         parent_checkpoint_by_message_id=snapshot.parent_checkpoint_by_message_id,
         active_run=_run_metadata(current_run),
-        latest_run=_run_metadata(latest_run),
+        latest_run=_latest_run_metadata(latest_run, snapshot.checkpoint_run_id, secrets),
     )
 
 
@@ -364,6 +388,7 @@ async def subscribe_thread_events(
 async def get_compat_thread_state(
     conversation_id: uuid.UUID,
     request: Request,
+    read_only: bool = False,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
@@ -387,7 +412,7 @@ async def get_compat_thread_state(
         conversation_id=conversation.id,
         context=context,
     )
-    if current_run is not None and current_run.is_active:
+    if not read_only and current_run is not None and current_run.is_active:
         stale = await maybe_mark_stale_active_run(
             db,
             run_id=current_run.id,
@@ -407,7 +432,7 @@ async def get_compat_thread_state(
         checkpoint_by_message_id=snapshot.checkpoint_by_message_id,
         parent_checkpoint_by_message_id=snapshot.parent_checkpoint_by_message_id,
         active_run=_run_metadata(current_run),
-        latest_run=_run_metadata(latest_run),
+        latest_run=_latest_run_metadata(latest_run, snapshot.checkpoint_run_id, secrets),
     )
     return {
         "thread_id": str(conversation.id),
@@ -417,5 +442,5 @@ async def get_compat_thread_state(
         "checkpoint_by_message_id": snapshot.checkpoint_by_message_id,
         "parent_checkpoint_by_message_id": snapshot.parent_checkpoint_by_message_id,
         "active_run": _run_metadata(current_run),
-        "latest_run": _run_metadata(latest_run),
+        "latest_run": state["metadata"].get("latest_run"),
     }

@@ -115,6 +115,12 @@ def create_chat_model(
         kwargs.update(
             prompt_cache_options(provider, kwargs.get("base_url"), extra.get("prompt_cache_key"))
         )
+
+    if extra.get("_moldy_single_send") is True:
+        # The direct chat retry middleware allocates every candidate send.
+        # Google's SDK counts attempts; OpenAI and Anthropic count retries.
+        kwargs["max_retries"] = 1 if provider == "google" else 0
+        kwargs["metadata"] = {"moldy_provider": provider}
     kwargs["stream_usage"] = True
     cw = int(context_window) if isinstance(context_window, int) and context_window > 0 else None
     cache_key = _model_cache_key(

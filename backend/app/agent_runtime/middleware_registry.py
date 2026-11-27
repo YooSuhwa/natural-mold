@@ -8,6 +8,7 @@ is not yet installed, build_middleware_instances() returns an empty list.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -364,6 +365,20 @@ def _coerce_tuple_params(params: dict[str, Any], config_schema: dict[str, Any]) 
     return result
 
 
+def _delegation_aware_retry(retry_on: Any) -> Callable[[Exception], bool]:
+    from langchain.agents.middleware._retry import should_retry_exception
+    from langgraph.errors import GraphInterrupt
+
+    from app.agent_runtime.stream_retry_policy import delegation_retry_stopped
+
+    def predicate(exc: Exception) -> bool:
+        if isinstance(exc, GraphInterrupt) or delegation_retry_stopped(exc):
+            return False
+        return retry_on is None or should_retry_exception(exc, retry_on)
+
+    return predicate
+
+
 def build_middleware_instances(middleware_configs: list[dict[str, Any]]) -> list:
     """Build middleware instances from a list of config dicts.
 
@@ -411,10 +426,7 @@ def build_middleware_instances(middleware_configs: list[dict[str, Any]]) -> list
                     raise exc
                 return f"Tool failed after retries: {exc}"
 
-            coerced.setdefault(
-                "retry_on",
-                lambda exc: not isinstance(exc, GraphInterrupt),
-            )
+            coerced["retry_on"] = _delegation_aware_retry(coerced.get("retry_on"))
             coerced.setdefault("on_failure", _on_failure_reraise_interrupt)
 
         try:

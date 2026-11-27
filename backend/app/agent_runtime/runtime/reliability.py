@@ -2,34 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
+from contextlib import AbstractContextManager, nullcontext
+from typing import Any, cast
 
-from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
+from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage
 
+from app.agent_runtime.runtime.model_response_content import (
+    has_visible_ai_content as _has_visible_ai_content,
+)
 from app.agent_runtime.runtime.models import _is_retryable_model_error
-
-
-def _has_visible_ai_content(response: ModelResponse[Any] | AIMessage) -> bool:
-    messages = [response] if isinstance(response, AIMessage) else list(response.result)
-    for message in messages:
-        if getattr(message, "type", None) != "ai":
-            continue
-        if getattr(message, "tool_calls", None):
-            return True
-        content = getattr(message, "content", None)
-        if isinstance(content, str):
-            if content.strip():
-                return True
-            continue
-        if isinstance(content, list):
-            for block in content:
-                if isinstance(block, str) and block.strip():
-                    return True
-                if isinstance(block, dict) and str(block.get("text") or "").strip():
-                    return True
-    return False
 
 
 class EmptyContentRetryMiddleware(AgentMiddleware):
@@ -49,12 +31,21 @@ class EmptyContentRetryMiddleware(AgentMiddleware):
         return response
 
     async def awrap_model_call(self, request: ModelRequest, handler: Any) -> Any:
-        response = None
-        for attempt in range(self.max_retries + 1):
-            response = await handler(request)
-            if _has_visible_ai_content(response) or attempt >= self.max_retries:
-                return response
-        return response
+        # An opted-in lease stream owns its entire retry budget. A plain
+        # non-streaming empty answer still uses the existing recovery path.
+        observe = getattr(request.model, "observe_stream_retry_budget", None)
+        scope = cast(AbstractContextManager[Any], observe()) if callable(observe) else nullcontext()
+        with scope as observation:
+            response = None
+            for attempt in range(self.max_retries + 1):
+                response = await handler(request)
+                if (
+                    (observation is not None and observation.started)
+                    or _has_visible_ai_content(response)
+                    or attempt >= self.max_retries
+                ):
+                    return response
+            return response
 
 
 def _build_default_reliability_middleware(

@@ -14,6 +14,11 @@ from langchain_core.tools import BaseTool
 from app.agent_runtime.memory_paths import memory_access
 from app.agent_runtime.runtime import memory_context
 from app.agent_runtime.runtime.connection_guard import with_connection_guard
+from app.agent_runtime.runtime.direct_stream_retry import (
+    DirectStreamRetryMiddleware,
+    configured_attempts,
+    direct_stream_retry_for,
+)
 from app.agent_runtime.runtime.goal_run import GoalRunMiddleware, readable_goal_tool_configs
 from app.agent_runtime.runtime.memory_recall_middleware import MemoryRecallMiddleware
 from app.agent_runtime.runtime.shared_memo import load_shared_memo, memo_governed
@@ -156,11 +161,13 @@ async def prepare_runtime_components_impl(
     configured_middleware_types = {
         str(config.get("type")) for config in (cfg.middleware_configs or []) if config.get("type")
     }
+    guarded_retry = direct_stream_retry_for(cfg)
     rules = effective_rules(cfg)
     filtered_middleware = [
         config
         for config in (cfg.middleware_configs or [])
         if config.get("type") not in bindings.deepagent_builtin_types
+        and not (guarded_retry and config.get("type") == "model_retry")
         # The old PII middleware steps aside where the guardrail checks the same value.
         and not covered_by_guardrails(config, rules)
     ]
@@ -168,12 +175,23 @@ async def prepare_runtime_components_impl(
         filtered_middleware,
         cfg.provider_api_keys or {},
     )
-    middleware = bindings.build_default_reliability_middleware(
-        model_candidates,
-        configured_types=configured_middleware_types,
+    middleware = (
+        []
+        if guarded_retry
+        else bindings.build_default_reliability_middleware(
+            model_candidates,
+            configured_types=configured_middleware_types,
+        )
     )
     middleware += bindings.build_middleware_instances(resolved_middleware)
     middleware += bindings.get_provider_middleware(cfg.provider)
+    if guarded_retry:
+        middleware.append(
+            DirectStreamRetryMiddleware(
+                fallbacks=model_candidates[1:],
+                max_attempts=configured_attempts(cfg.middleware_configs),
+            )
+        )
     mark_timing("middleware_ms")
 
     backend = (
