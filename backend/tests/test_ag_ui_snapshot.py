@@ -164,7 +164,7 @@ async def test_only_confirmed_pending_slots_survive_with_true_owners(case: Case)
     ns = ("tools:child",)
     case.replay.child_namespaces[ns] = "public-child"
     case.replay.pending_namespaces.update({"known": ns})
-    case.replay.unresolved_pending_ids.add("revoked")
+    case.replay.unresolved_pending_namespaces["revoked"] = None
     case.pending.return_value = SimpleNamespace(
         actionable=True,
         legacy_child_ids=frozenset(),

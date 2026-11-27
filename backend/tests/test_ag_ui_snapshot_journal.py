@@ -161,6 +161,7 @@ def test_hidden_or_conflicting_owners_never_restore_a_root_or_child_control() ->
         pending={
             "visible": {visible},
             "hidden": {hidden},
+            "echo": {(), visible},
             "ambiguous": {visible, hidden},
             "root": {()},
         },
@@ -168,7 +169,11 @@ def test_hidden_or_conflicting_owners_never_restore_a_root_or_child_control() ->
     owners.bind(result, "thread", {child: "approved-task"})
     assert result.child_namespaces == {visible: child}
     assert result.pending_namespaces == {"visible": visible}
-    assert result.unresolved_pending_ids == {"hidden", "ambiguous"}
+    assert result.unresolved_pending_namespaces == {
+        "hidden": hidden,
+        "ambiguous": None,
+        "echo": visible,
+    }
     assert result.subagents[0]["childTaskId"] == "approved-task"
 
 
@@ -269,7 +274,7 @@ def test_native_child_path_restores_observed_lane_without_exposing_an_unrelated_
     assert "childTaskId" not in result.subagents[0]
     assert result.child_namespaces == {visible: child}
     assert result.pending_namespaces == {"pending-1": visible}
-    assert result.unresolved_pending_ids == {"pending-2"}
+    assert result.unresolved_pending_namespaces == {"pending-2": hidden}
 
 
 @pytest.mark.asyncio
