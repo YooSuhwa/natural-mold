@@ -47,9 +47,7 @@ class NativePostgres:
                 FROM pg_roles r WHERE r.rolname = current_user
             """)
             if cursor.fetchone() != (_APP, False, False, False):
-                raise RuntimeError(
-                    "Temporary app role can bypass the intended permissions"
-                )
+                raise RuntimeError("Temporary app role can bypass the intended permissions")
             cursor.execute("""
                 SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity,
                        pg_has_role(c.relowner, 'MEMBER') AS owns_table,
@@ -64,14 +62,10 @@ class NativePostgres:
             """)
             rows = cursor.fetchall()
             if len(rows) != 4 or any(owns or not dml for _, _, _, owns, dml in rows):
-                raise RuntimeError(
-                    "Migration did not supply the expected app DML privileges"
-                )
+                raise RuntimeError("Migration did not supply the expected app DML privileges")
             for name, enabled, forced, _, _ in rows:
                 if rls and name == "conversations" and not (enabled and forced):
-                    raise RuntimeError(
-                        "Migration did not enforce conversation tenant isolation"
-                    )
+                    raise RuntimeError("Migration did not enforce conversation tenant isolation")
 
 
 def _pg16_bin(env: dict[str, str]) -> Path:
@@ -191,9 +185,7 @@ def native_postgres() -> Iterator[NativePostgres]:
                 deadline = time.monotonic() + 40
                 while True:
                     if server.poll() is not None:
-                        raise RuntimeError(
-                            "Temporary acceptance PostgreSQL failed to start"
-                        )
+                        raise RuntimeError("Temporary acceptance PostgreSQL failed to start")
                     if (
                         subprocess.run(
                             [binaries / "pg_isready", *admin_flags, "-q", "-t", "1"],
@@ -205,9 +197,7 @@ def native_postgres() -> Iterator[NativePostgres]:
                     ):
                         break
                     if time.monotonic() >= deadline:
-                        raise RuntimeError(
-                            "Temporary acceptance PostgreSQL readiness timed out"
-                        )
+                        raise RuntimeError("Temporary acceptance PostgreSQL readiness timed out")
                     time.sleep(0.1)
 
                 password = secrets.token_hex(24)

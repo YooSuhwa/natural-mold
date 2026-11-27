@@ -50,11 +50,7 @@ def observe(conversation: UUID, sample: UUID) -> dict:
             for row in read():
                 ordinal = row["ordinal"]
                 value = row[key]
-                if (
-                    ordinal not in range(1, 7)
-                    or ordinal in values
-                    or not math.isfinite(value)
-                ):
+                if ordinal not in range(1, 7) or ordinal in values or not math.isfinite(value):
                     raise ValueError("Invalid measured token binding")
                 values[ordinal] = value
             if len(values) != 6:
@@ -62,9 +58,7 @@ def observe(conversation: UUID, sample: UUID) -> dict:
         except (KeyError, OSError, psycopg.Error, TypeError, ValueError) as exc:
             # No frames, connection strings, query values or provider data in the capture.
             output["errors"].append(f"{name}_{type(exc).__name__}")
-        output[name] = [
-            {"ordinal": ordinal, key: values.get(ordinal)} for ordinal in range(1, 7)
-        ]
+        output[name] = [{"ordinal": ordinal, key: values.get(ordinal)} for ordinal in range(1, 7)]
     return output
 
 

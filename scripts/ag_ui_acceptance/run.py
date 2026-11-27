@@ -53,9 +53,7 @@ def arguments() -> argparse.Namespace:
         default=HARNESS,
         help="checkout with installed locked workspace packages",
     )
-    parser.add_argument(
-        "--skill-deps", type=Path, help="optional locked skill dependency checkout"
-    )
+    parser.add_argument("--skill-deps", type=Path, help="optional locked skill dependency checkout")
     parser.add_argument(
         "--reference-python",
         type=Path,
@@ -66,12 +64,8 @@ def arguments() -> argparse.Namespace:
         action="store_true",
         help="measure actual scripted emission, PG commit, streaming receipt and DOM display per token",
     )
-    parser.add_argument(
-        "--phase", choices=("smoke", "api", "browser", "full"), default="full"
-    )
-    parser.add_argument(
-        "--output", type=Path, required=True, help="new local evidence directory"
-    )
+    parser.add_argument("--phase", choices=("smoke", "api", "browser", "full"), default="full")
+    parser.add_argument("--output", type=Path, required=True, help="new local evidence directory")
     parser.add_argument(
         "--extra-probe",
         type=Path,
@@ -166,11 +160,7 @@ def browser_gate(
         )
         wait_ready(proc, log, build_env, url=f"{url}/login", timeout=90)
         cache = dist / "cache" / "webpack"
-        if (
-            cache.is_dir()
-            and not cache.is_symlink()
-            and cache.resolve().is_relative_to(root)
-        ):
+        if cache.is_dir() and not cache.is_symlink() and cache.resolve().is_relative_to(root):
             # Next only reads its webpack cache on a subsequent compilation.
             shutil.rmtree(cache)
         frontend_envs[mode] = build_env
@@ -185,15 +175,13 @@ def browser_gate(
     ordinary = [spec for spec in extra_specs if spec != independent]
     if ordinary:
         suites.extend(
-            (f"ordinary-regressions-{mode}", mode, ordinary)
-            for mode in ("langgraph_v3", "ag_ui")
+            (f"ordinary-regressions-{mode}", mode, ordinary) for mode in ("langgraph_v3", "ag_ui")
         )
     if ag_ui_specs:
         suites.append(("standard-client-regressions", "ag_ui", ag_ui_specs))
     if run_delegation:
         suites.extend(
-            (f"independent-{mode}", mode, [independent])
-            for mode in ("langgraph_v3", "ag_ui")
+            (f"independent-{mode}", mode, [independent]) for mode in ("langgraph_v3", "ag_ui")
         )
     failed = []
     for name, mode, specs in suites:
@@ -235,9 +223,7 @@ def browser_gate(
                     performance_timing=env.get("E2E_AGUI_PERF_TIMING") == "1",
                 )
             record["browser"][name] = report
-            (output / f"{name}-results.json").write_text(
-                json.dumps(report, indent=2) + "\n"
-            )
+            (output / f"{name}-results.json").write_text(json.dumps(report, indent=2) + "\n")
         if command_failed or not report["passed"]:
             failed.append(name)
     if failed:
@@ -266,9 +252,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
             processes.append(name)
         record["cleaned"] = not remaining and not processes
         if remaining or processes:
-            raise RuntimeError(
-                f"Owned resources survived cleanup: {remaining}, {processes}"
-            )
+            raise RuntimeError(f"Owned resources survived cleanup: {remaining}, {processes}")
 
     with ExitStack() as stack:
         stack.callback(check_cleanup)
@@ -301,9 +285,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
             skill_deps=args.skill_deps.resolve() if args.skill_deps else None,
             require_protocol=args.phase != "smoke",
         )
-        record["dependencies"] = json.loads(
-            (root / "source-dependencies.json").read_text()
-        )
+        record["dependencies"] = json.loads((root / "source-dependencies.json").read_text())
         backend = repo / "backend"
         fga = stack.enter_context(acceptance_openfga(backend))
         pg = stack.enter_context(native_postgres())
@@ -319,9 +301,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
             "ag_ui": f"http://localhost:{web}",
             "langgraph_v3": f"http://localhost:{previous}",
         }
-        urls = {
-            label: f"http://localhost:{port}" for label, port in (("a", a), ("b", b))
-        }
+        urls = {label: f"http://localhost:{port}" for label, port in (("a", a), ("b", b))}
         scope = uuid5(NAMESPACE_URL, "moldy/e2e-organization")
         env.update(
             {
@@ -485,9 +465,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                 "file": "sdk-transcripts.json",
             }
             if sdk["status"] != "passed":
-                final_errors.append(
-                    "Incomplete or invalid public SDK request or event sequence"
-                )
+                final_errors.append("Incomplete or invalid public SDK request or event sequence")
             if args.reference_python:
                 try:
                     record["reference_comparison"] = {"status": "running"}
@@ -518,9 +496,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                         raise RuntimeError(
                             "Missing official structured approval comparison receipt"
                         )
-                    (output / f"{label}.json").write_text(
-                        json.dumps(reports[0], indent=2) + "\n"
-                    )
+                    (output / f"{label}.json").write_text(json.dumps(reports[0], indent=2) + "\n")
                     record["reference_comparison"] = {
                         "status": "passed",
                         "file": f"{label}.json",
@@ -596,9 +572,7 @@ def main() -> int:
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
     finally:
         record["elapsed_seconds"] = round(time.monotonic() - started, 2)
-        (args.output / "stack.json").write_text(
-            json.dumps(record, indent=2, default=str) + "\n"
-        )
+        (args.output / "stack.json").write_text(json.dumps(record, indent=2, default=str) + "\n")
     return 0 if record["passed"] else 1
 
 

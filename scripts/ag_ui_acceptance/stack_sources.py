@@ -17,6 +17,7 @@ import yaml
 
 _SDK_HELPER = "frontend/e2e/helpers/ag-ui-sdk-verification.ts"
 _BROWSER_FILES = (
+    "frontend/e2e/ag-ui-approval-readiness.spec.ts",
     "frontend/e2e/manual/chat-ag-ui-cutover.spec.ts",
     "frontend/e2e/helpers/ag-ui-cutover.ts",
     _SDK_HELPER,
@@ -82,9 +83,7 @@ def _python_versions(repo: Path, require_protocol: bool) -> dict[str, str]:
         try:
             installed = metadata.version(name)
         except metadata.PackageNotFoundError:
-            raise ValueError(
-                f"{name} is absent from the selected Python environment"
-            ) from None
+            raise ValueError(f"{name} is absent from the selected Python environment") from None
         if installed != target:
             raise ValueError(
                 f"{name}: source lock requires {target}, selected Python has {installed}"
@@ -112,34 +111,21 @@ def _skill_graph(lock: dict) -> dict:
 def _installed_version(modules: Path, store: Path, name: str, version: str) -> str:
     package = modules / name / "package.json"
     if not package.is_file() or not package.resolve().is_relative_to(store):
-        raise ValueError(
-            f"{name} is absent or resolves outside its verified pnpm store"
-        )
+        raise ValueError(f"{name} is absent or resolves outside its verified pnpm store")
     manifest = json.loads(package.read_bytes())
     if manifest["name"] != name or manifest["version"] != version:
-        raise ValueError(
-            f"{name}: installed manifest disagrees with the locked {version}"
-        )
+        raise ValueError(f"{name}: installed manifest disagrees with the locked {version}")
     return version
 
 
-def _node_modules(
-    repo: Path, deps: Path, skill_deps: Path, require_protocol: bool
-) -> dict:
+def _node_modules(repo: Path, deps: Path, skill_deps: Path, require_protocol: bool) -> dict:
     source_lock = repo / "pnpm-lock.yaml"
     lock_digest = digest(source_lock)
     store = (deps / "node_modules/.pnpm").resolve()
-    if (
-        not (store / "lock.yaml").is_file()
-        or digest(store / "lock.yaml") != lock_digest
-    ):
-        raise ValueError(
-            "The installed frontend pnpm store lock differs from the source revision"
-        )
+    if not (store / "lock.yaml").is_file() or digest(store / "lock.yaml") != lock_digest:
+        raise ValueError("The installed frontend pnpm store lock differs from the source revision")
     if digest(deps / "pnpm-lock.yaml") != lock_digest:
-        raise ValueError(
-            "Frontend dependency checkout lock differs from the source revision"
-        )
+        raise ValueError("Frontend dependency checkout lock differs from the source revision")
     lock = yaml.safe_load(source_lock.read_bytes())
     frontend = deps / "frontend/node_modules"
     importer = lock["importers"]["frontend"]
@@ -158,9 +144,7 @@ def _node_modules(
     skill_store = (skill_deps / "node_modules/.pnpm").resolve()
     skill_lock = skill_store / "lock.yaml"
     if not skill_lock.is_file():
-        raise ValueError(
-            "Missing skill dependency store; select its checkout with --skill-deps"
-        )
+        raise ValueError("Missing skill dependency store; select its checkout with --skill-deps")
     if digest(skill_lock) != lock_digest and _skill_graph(
         yaml.safe_load(skill_lock.read_bytes())
     ) != _skill_graph(lock):
@@ -171,17 +155,11 @@ def _node_modules(
         entry = lock["packages"][f"{name}@{reference.split('(', 1)[0]}"]
         if reference.startswith("file:"):
             archive = repo / reference.removeprefix("file:")
-            checksum = base64.b64encode(
-                hashlib.sha512(archive.read_bytes()).digest()
-            ).decode()
+            checksum = base64.b64encode(hashlib.sha512(archive.read_bytes()).digest()).decode()
             if f"sha512-{checksum}" != entry["resolution"]["integrity"]:
-                raise ValueError(
-                    f"{name} vendored package integrity differs from pnpm-lock.yaml"
-                )
+                raise ValueError(f"{name} vendored package integrity differs from pnpm-lock.yaml")
         version = entry.get("version", reference.split("(", 1)[0])
-        skill_versions[name] = _installed_version(
-            skill_modules, skill_store, name, version
-        )
+        skill_versions[name] = _installed_version(skill_modules, skill_store, name, version)
     for rel, modules in (
         ("node_modules", deps / "node_modules"),
         ("frontend/node_modules", frontend),
@@ -209,9 +187,7 @@ def stage(
     repo = root / "source"
     repo.mkdir()
     # git archive excludes .env, DB/workspace state, node_modules, and uncommitted changes.
-    producer = subprocess.Popen(
-        ["git", "-C", str(source), "archive", sha], stdout=subprocess.PIPE
-    )
+    producer = subprocess.Popen(["git", "-C", str(source), "archive", sha], stdout=subprocess.PIPE)
     try:
         assert producer.stdout
         with tarfile.open(fileobj=producer.stdout, mode="r|") as tar:
@@ -244,18 +220,14 @@ def stage(
         capture_output=True,
     )
     if (deps / "node_modules").is_dir():
-        (root / "node_modules").symlink_to(
-            deps / "node_modules", target_is_directory=True
-        )
+        (root / "node_modules").symlink_to(deps / "node_modules", target_is_directory=True)
     if require_protocol:
         # The standard preparation step mirrors only frontend sources.
         (root / sdk_verifier).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(repo / sdk_verifier, root / sdk_verifier)
     for rel, checksum in probes.items():
         if digest(root / rel) != checksum:
-            raise RuntimeError(
-                f"Staged probe differs from the acceptance harness: {rel}"
-            )
+            raise RuntimeError(f"Staged probe differs from the acceptance harness: {rel}")
     (root / "source-dependencies.json").write_text(
         json.dumps(
             {

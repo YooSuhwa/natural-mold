@@ -16,9 +16,9 @@ from psycopg.rows import DictRow, dict_row
 def snapshot(conversation_id: UUID) -> dict[str, object]:
     url = os.environ["MOLDY_AGUI_OBSERVER_URL"]
     info = conninfo_to_dict(url)
-    if not str(info.get("host", "")).startswith("/") or not str(
-        info.get("dbname", "")
-    ).startswith("moldy_e2e_scripted_"):
+    if not str(info.get("host", "")).startswith("/") or not str(info.get("dbname", "")).startswith(
+        "moldy_e2e_scripted_"
+    ):
         raise ValueError("The observation requires the private acceptance cluster")
     statements: dict[str, LiteralString] = {
         "runs": "SELECT id, parent_run_id, status FROM conversation_runs WHERE conversation_id=%s ORDER BY id",
@@ -32,9 +32,7 @@ def snapshot(conversation_id: UUID) -> dict[str, object]:
             "JOIN conversation_runs AS r ON r.id=t.run_id WHERE r.conversation_id=%s ORDER BY 1,2"
         ),
     }
-    with psycopg.Connection[DictRow].connect(
-        url, row_factory=dict_row, connect_timeout=5
-    ) as conn:
+    with psycopg.Connection[DictRow].connect(url, row_factory=dict_row, connect_timeout=5) as conn:
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         rows = {
             key: conn.execute(statement, (conversation_id,)).fetchall()

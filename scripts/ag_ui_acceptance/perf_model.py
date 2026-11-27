@@ -35,9 +35,7 @@ def observe_model_yields(ledger: Path) -> Iterator[None]:
     chars = 0
     for index, text in enumerate(SLOW_STREAM_PARTS):
         if text in parts:
-            raise ValueError(
-                "The slow-stream fixture requires unique chunks for correlation"
-            )
+            raise ValueError("The slow-stream fixture requires unique chunks for correlation")
         chars += len(text)
         parts[text] = (index, chars)
 
@@ -106,10 +104,7 @@ def model_timing(sample_id: UUID, ledger: Path) -> list[dict[str, int | float]]:
             ):
                 raise ValueError("Invalid or repeated scripted model yield")
             times[ordinal] = stamp
-    return [
-        {"ordinal": ordinal, "sourceEpochMs": times[ordinal]}
-        for ordinal in sorted(times)
-    ]
+    return [{"ordinal": ordinal, "sourceEpochMs": times[ordinal]} for ordinal in sorted(times)]
 
 
 def main() -> None:

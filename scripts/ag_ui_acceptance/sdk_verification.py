@@ -59,11 +59,7 @@ def _receipt(file: Path, result: dict) -> dict:
         errors.append("required_request_not_checked")
     if bool(ids["interruptIds"]) != (outcome == "interrupt"):
         errors.append("unexpected_interrupt_ids")
-    if (
-        name.endswith("-continuation")
-        and checked
-        and not capture["request"].get("resume")
-    ):
+    if name.endswith("-continuation") and checked and not capture["request"].get("resume"):
         errors.append("missing_resume_decision")
     return {
         "status": "failed" if errors else "passed",
@@ -78,9 +74,7 @@ def _receipt(file: Path, result: dict) -> dict:
     }
 
 
-def typescript_receipts(
-    root: Path, output: Path, env: dict[str, str], logs: Path
-) -> dict:
+def typescript_receipts(root: Path, output: Path, env: dict[str, str], logs: Path) -> dict:
     """Write safe receipts for all available captures. A partial set never clears the gate."""
     available = [name for name in CAPTURES if (output / name).is_file()]
     missing = [name for name in CAPTURES if name not in available]
@@ -155,8 +149,7 @@ def typescript_receipts(
                 captured[name] = {"status": "failed", "errors": ["invalid_sdk_result"]}
     elif not version:
         captured = {
-            name: {"status": "failed", "errors": ["node_22_required"]}
-            for name in available
+            name: {"status": "failed", "errors": ["node_22_required"]} for name in available
         }
     if missing:
         errors.append("missing_captures")

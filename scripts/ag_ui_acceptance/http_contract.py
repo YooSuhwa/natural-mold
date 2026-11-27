@@ -40,9 +40,7 @@ def _answer(events: list[dict[str, Any]]) -> tuple[str, str]:
     return mid, "".join(chunks)
 
 
-def _public_events(
-    events: list[dict[str, Any]], tid: str, rid: str, private: str
-) -> None:
+def _public_events(events: list[dict[str, Any]], tid: str, rid: str, private: str) -> None:
     require(
         events[0]["type"] == "RUN_STARTED" and events[-1]["type"] == "RUN_FINISHED",
         "incomplete normal run",
@@ -62,9 +60,7 @@ def _public_events(
     )
     dump = json.dumps(events, ensure_ascii=False)
     require(
-        private not in dump
-        and '"rawEvent"' not in dump
-        and '"moldy.raw_event"' not in dump,
+        private not in dump and '"rawEvent"' not in dump and '"moldy.raw_event"' not in dump,
         "private state reached the public protocol",
     )
 
@@ -133,9 +129,7 @@ async def _recoverable_cursor(
             break
         require(bool(batch) and len(suffix) < 5000, "suffix cursor did not advance")
         after = batch[-1]["id"]
-    require(
-        suffix == ids[midpoint + 1 :], "exclusive cursor skipped or repeated frames"
-    )
+    require(suffix == ids[midpoint + 1 :], "exclusive cursor skipped or repeated frames")
     unknown = await gate.owner_b.send(
         "GET",
         f"{base}/events?{urlencode({'runId': public, 'after': 'missing-cursor'})}",
@@ -160,9 +154,7 @@ async def check_start_and_recover(gate: Gate) -> dict[str, object]:
         "threadId": tid,
         "runId": rid,
         "protocolVersion": "1.0",
-        "messages": [
-            {"id": f"msg-{uuid4().hex}", "role": "user", "content": "E2E_SLOW_STREAM"}
-        ],
+        "messages": [{"id": f"msg-{uuid4().hex}", "role": "user", "content": "E2E_SLOW_STREAM"}],
     }
     require((await _counts(gate, tid))["runs"] == 0, "fresh chat already has a run")
     forbidden = await gate.owner_a.send("POST", path, request, csrf=False)
@@ -182,14 +174,10 @@ async def check_start_and_recover(gate: Gate) -> dict[str, object]:
     )
     transcripts = [checked_sse(ra), checked_sse(rb)]
     for response, events in zip((ra, rb), transcripts, strict=True):
-        require(
-            response.headers.get("X-Run-Id") == rid, "public HTTP run identity changed"
-        )
+        require(response.headers.get("X-Run-Id") == rid, "public HTTP run identity changed")
         _public_events(events, tid, rid, private)
     answer = _answer(transcripts[0])
-    require(
-        answer == _answer(transcripts[1]), "duplicate start produced different messages"
-    )
+    require(answer == _answer(transcripts[1]), "duplicate start produced different messages")
     require(
         answer[1] == "E2E slow stream completed after detached navigation.",
         "scripted model final text changed",
@@ -264,9 +252,7 @@ async def check_start_and_recover(gate: Gate) -> dict[str, object]:
             denied.json() == missing.json(),
             "foreign read distinguishes a private resource",
         )
-    recovered = checked_sse(
-        await gate.owner_b.send("GET", f"{reads}/runs/{rid}/stream")
-    )
+    recovered = checked_sse(await gate.owner_b.send("GET", f"{reads}/runs/{rid}/stream"))
     _public_events(recovered, tid, rid, private)
     require(
         _answer(recovered) == answer,
@@ -315,9 +301,7 @@ async def check_detach(gate: Gate) -> dict[str, object]:
         "threadId": thread,
         "runId": public,
         "protocolVersion": "1.0",
-        "messages": [
-            {"id": f"msg-{uuid4().hex}", "role": "user", "content": "E2E_SLOW_STREAM"}
-        ],
+        "messages": [{"id": f"msg-{uuid4().hex}", "role": "user", "content": "E2E_SLOW_STREAM"}],
     }
     partial = ""
     async with (
@@ -399,9 +383,7 @@ async def run(selected: list[str]) -> None:
                 # fails, keeping arbitrary server/SDK values out of persistent diagnostics.
                 failures.append(name)
                 results[name] = {
-                    "failure": str(exc)
-                    if isinstance(exc, GateFailure)
-                    else type(exc).__name__,
+                    "failure": str(exc) if isinstance(exc, GateFailure) else type(exc).__name__,
                     "source": [
                         f"{Path(frame.filename).name}:{frame.lineno}"
                         for frame in traceback.extract_tb(exc.__traceback__)
@@ -424,8 +406,5 @@ if __name__ == "__main__":
     )
     options = parser.parse_args()
     asyncio.run(
-        run(
-            options.case
-            or ["start", "detach", "termination", "approval", "compatibility"]
-        )
+        run(options.case or ["start", "detach", "termination", "approval", "compatibility"])
     )

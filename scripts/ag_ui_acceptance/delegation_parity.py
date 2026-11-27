@@ -50,10 +50,9 @@ class ResearchModel:
     ready: asyncio.Event = field(default_factory=asyncio.Event)
     release: asyncio.Event = field(default_factory=asyncio.Event)
     arrivals: set[str] = field(default_factory=set)
-    histories: dict[str, list[int]] = field(
-        default_factory=lambda: {k: [] for k in SOURCES}
-    )
+    histories: dict[str, list[int]] = field(default_factory=lambda: {k: [] for k in SOURCES})
     requests: int = 0
+    guard_alpha: bool = False
 
     async def respond(self, req: web.Request) -> web.Response:
         if req.headers.get("Authorization") != f"Bearer {self.key}":
@@ -79,10 +78,21 @@ class ResearchModel:
         else:
             received = users.count(FOLLOWUP)
             self.histories[source].append(received)
-            if tool_results:
-                message["content"] = (
-                    f"report {source}, addressed instructions {received}"
+            if self.guard_alpha and source == "alpha" and len(tool_results) == 1:
+                require(
+                    received == 1,
+                    "targeted child missed its instruction before asking approval",
                 )
+                offered = {t["function"]["name"] for t in body["tools"]}
+                require(
+                    "glob" in offered,
+                    "the protected synthetic file lookup is unavailable",
+                )
+                message["tool_calls"] = [
+                    call("glob", "protected-alpha", {"pattern": "*.txt", "path": "/"})
+                ]
+            elif tool_results:
+                message["content"] = f"report {source}, addressed instructions {received}"
             else:
                 self.arrivals.add(source)
                 if self.arrivals == set(SOURCES):
@@ -90,9 +100,7 @@ class ResearchModel:
                 await asyncio.wait_for(self.release.wait(), 60)
                 offered = {t["function"]["name"] for t in body["tools"]}
                 if "ls" not in offered:
-                    raise web.HTTPBadRequest(
-                        text="A read-only file listing tool is required"
-                    )
+                    raise web.HTTPBadRequest(text="A read-only file listing tool is required")
                 message["tool_calls"] = [call("ls", f"list-{source}", {"path": "/"})]
         finish = "tool_calls" if "tool_calls" in message else "stop"
         envelope = {
@@ -106,32 +114,25 @@ class ResearchModel:
                 {
                     **envelope,
                     "object": "chat.completion",
-                    "choices": [
-                        {"index": 0, "message": message, "finish_reason": finish}
-                    ],
+                    "choices": [{"index": 0, "message": message, "finish_reason": finish}],
                     "usage": usage,
                 }
             )
         if "tool_calls" in message:
-            message["tool_calls"] = [
-                {"index": i, **c} for i, c in enumerate(message["tool_calls"])
-            ]
+            message["tool_calls"] = [{"index": i, **c} for i, c in enumerate(message["tool_calls"])]
         rows = [
             {"choices": [{"index": 0, "delta": message, "finish_reason": None}]},
             {"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]},
             {"choices": [], "usage": usage},
         ]
-        frames = [
-            json.dumps({**envelope, "object": "chat.completion.chunk", **r})
-            for r in rows
-        ]
+        frames = [json.dumps({**envelope, "object": "chat.completion.chunk", **r}) for r in rows]
         return web.Response(
             content_type="text/event-stream",
             text="".join(f"data: {value}\n\n" for value in [*frames, "[DONE]"]),
         )
 
 
-async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]:
+async def begin_targeted_run(gate: Gate, model: ResearchModel, url: str) -> tuple[str, str]:
     http = gate.owner_a
     name = f"sibling-model-{uuid4().hex[:8]}"
     credential = await http.json(
@@ -166,6 +167,16 @@ async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]
             "name": name,
             "system_prompt": "Check the assigned source.",
             "model_id": definition["id"],
+            "middleware_configs": [
+                {
+                    "type": "human_in_the_loop",
+                    "params": {
+                        "interrupt_on": {"glob": {"allowed_decisions": ["approve", "reject"]}}
+                    },
+                }
+            ]
+            if model.guard_alpha
+            else [],
         },
         expected=201,
     )
@@ -194,11 +205,7 @@ async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]
             "method": "run.start",
             "params": {
                 "client_request_id": request,
-                "input": {
-                    "messages": [
-                        {"role": "user", "content": "Check both local sources."}
-                    ]
-                },
+                "input": {"messages": [{"role": "user", "content": "Check both local sources."}]},
             },
         },
     )
@@ -214,7 +221,7 @@ async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]
                 )
                 require(
                     status[0]["status"] in {"accepted", "queued", "running"},
-                    f"parent ended before sibling dispatch: {status}, provider calls={model.requests}",
+                    f"parent ended before child dispatch: {status}, calls={model.requests}",
                 )
     controls = f"{base}/child-tasks"
     tasks = (await gate.owner_b.json("GET", controls))["items"]
@@ -237,9 +244,16 @@ async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]
         expect_status(await gate.other_b.send("GET", controls), 404)
     finally:
         model.release.set()
-    public = checked_sse(
-        await gate.owner_b.send("GET", f"{base}/ag-ui/runs/{rid}/stream")
-    )
+    return thread, rid
+
+
+async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]:
+    thread, rid = await begin_targeted_run(gate, model, url)
+    http = gate.owner_a
+    base = f"/api/conversations/{thread}"
+    legacy = f"{base}/langgraph/threads/{thread}"
+    controls = f"{base}/child-tasks"
+    public = checked_sse(await gate.owner_b.send("GET", f"{base}/ag-ui/runs/{rid}/stream"))
     require(public[-1]["type"] == "RUN_FINISHED", "siblings failed to finish")
     require(
         model.histories == {"alpha": [0, 1], "beta": [0, 0]},
@@ -291,9 +305,7 @@ async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]
                 "calls": t["tool_call_id"],
                 "status": t["status"],
                 "receipt_states": [r["status"] for r in t["instructions"]],
-                "result_matches": [
-                    s for s in SOURCES if f"report {s}" in (t["result"] or "")
-                ],
+                "result_matches": [s for s in SOURCES if f"report {s}" in (t["result"] or "")],
             }
             for t in saved
         ],
@@ -320,9 +332,7 @@ async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]
         "standard root reply missing",
     )
     snapshot_children = {s["childTaskId"]: s for s in snapshot["subagents"]}
-    scope_by_message = {
-        m["messageId"]: m.get("subagentRunId") for m in snapshot["messageLinks"]
-    }
+    scope_by_message = {m["messageId"]: m.get("subagentRunId") for m in snapshot["messageLinks"]}
     public_by_call = {e["parentToolCallId"]: e["subagentRunId"] for e in starts}
     consumed: set[str] = set()
     for task in saved:
@@ -331,8 +341,7 @@ async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]
         result = f"report {source}, addressed instructions {int(source == 'alpha')}"
         receipts = task["instructions"]
         require(
-            [r["status"] for r in receipts]
-            == (["applied"] if source == "alpha" else []),
+            [r["status"] for r in receipts] == (["applied"] if source == "alpha" else []),
             "wrong child receipt",
         )
         require(
@@ -341,8 +350,7 @@ async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]
         )
         require(
             any(
-                m.get("tool_call_id") == raw_call
-                and message_text(m.get("content")) == result
+                m.get("tool_call_id") == raw_call and message_text(m.get("content")) == result
                 for m in native_messages
             ),
             "v3 result attached to the wrong child",
@@ -371,21 +379,13 @@ async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]
         )
         require(
             result in child_text
-            and all(
-                f"report {other}," not in child_text
-                for other in SOURCES
-                if other != source
-            ),
+            and all(f"report {other}," not in child_text for other in SOURCES if other != source),
             "child output was attributed to another invocation",
         )
         consumed.add(scoped)
     require(consumed == set(ends), "missing scoped child result on reattach")
-    expect_status(
-        await gate.other_b.send("GET", f"{base}/ag-ui/snapshot?runId={rid}"), 404
-    )
-    runs = await gate.sql(
-        "SELECT id FROM conversation_runs WHERE conversation_id = %s", (thread,)
-    )
+    expect_status(await gate.other_b.send("GET", f"{base}/ag-ui/snapshot?runId={rid}"), 404)
+    runs = await gate.sql("SELECT id FROM conversation_runs WHERE conversation_id = %s", (thread,))
     require(len(runs) == 1 and str(runs[0]["id"]) == rid, "reads created a new run")
     require(model.requests == model_calls, "reads caused a model request")
     return {
@@ -400,17 +400,25 @@ async def run_case(gate: Gate, model: ResearchModel, url: str) -> dict[str, Any]
 
 
 async def main() -> None:
-    model = ResearchModel()
-    app = web.Application()
-    app.router.add_post("/v1/chat/completions", model.respond)
-    async with open_gate() as gate, TestServer(app, host="127.0.0.1") as server:
-        try:
-            result = await run_case(gate, model, str(server.make_url("/v1")))
-            (gate.evidence_dir / "same-role-delegation.json").write_text(
-                json.dumps(result, indent=2) + "\n"
-            )
-        finally:
-            model.release.set()
+    from delegation_approval import check_targeted_approval
+
+    for guarded in (False, True):
+        model = ResearchModel(guard_alpha=guarded)
+        app = web.Application()
+        app.router.add_post("/v1/chat/completions", model.respond)
+        async with open_gate() as gate, TestServer(app, host="127.0.0.1") as server:
+            try:
+                url = str(server.make_url("/v1"))
+                if guarded:
+                    thread, rid = await begin_targeted_run(gate, model, url)
+                    await check_targeted_approval(gate, model, thread, rid)
+                else:
+                    result = await run_case(gate, model, url)
+                    (gate.evidence_dir / "same-role-delegation.json").write_text(
+                        json.dumps(result, indent=2) + "\n"
+                    )
+            finally:
+                model.release.set()
 
 
 if __name__ == "__main__":
