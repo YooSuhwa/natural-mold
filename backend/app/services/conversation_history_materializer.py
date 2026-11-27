@@ -215,6 +215,7 @@ def _checkpoint_json(item: CheckpointProjection) -> JsonValue:
 
 def _event_json(item: EventProjection) -> JsonValue:
     return {
+        **({"sequence_start": item.sequence_start} if item.sequence_start else {}),
         "assistant_message_id": item.assistant_message_id,
         "events": item.events,
         "payload_sha256": item.payload_sha256,

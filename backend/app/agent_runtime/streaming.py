@@ -15,6 +15,7 @@ from langgraph.types import Command
 
 from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
+from app.agent_runtime.journal_continuity import JOURNAL_GAP_BEFORE, trim_journal_retry_buffer
 from app.agent_runtime.langgraph_compaction_start import is_internal_summary
 from app.agent_runtime.memory_event_projection import (
     MEMORY_TOOL_NAMES,
@@ -279,39 +280,36 @@ async def stream_agent_response(
     flush_buffer: list[dict[str, Any]] = []
     last_flush_at = time.monotonic()
     background_persist_tasks: set[asyncio.Task[None]] = set()
-    # Failed-chunk retry buffer — partial flush가 실패하면 final flush에서
-    # 한 번 더 시도. DB 일시 장애로 chunk가 silently 사라지는 것을 막는
-    # safety net. final flush도 실패하면 그때만 영구 손실 (log).
+    # Keep writes ordered even when several flush tasks are waiting on the DB.
+    persist_lock = asyncio.Lock()
     retry_buffer: list[dict[str, Any]] = []
 
     async def _safe_persist(chunk: list[dict[str, Any]]) -> None:
-        """Background task wrapper — swallow exceptions so a DB hiccup
-        doesn't kill the live stream. 실패한 chunk는 retry_buffer에 보관
-        해서 finally의 final flush에서 한 번 더 시도한다.
-
-        retry_buffer 가 한도(``_MAX_RETRY_BUFFER_EVENTS``) 를 초과하면
-        oldest 부터 drop + log (event 한 개 수준의 손실은 stream 유지
-        보다 낮은 우선순위)."""
+        """Append the previous failed prefix and this flush in producer order."""
+        nonlocal retry_buffer
         if persist_callback is None:
             return
-        try:
-            await persist_callback(chunk)
-        except Exception:
-            logger.exception(
-                "partial flush persist_callback failed (run_id=%s) — chunk queued for final retry",
-                msg_id,
-            )
-            retry_buffer.extend(chunk)
-            if len(retry_buffer) > _MAX_RETRY_BUFFER_EVENTS:
-                overflow = len(retry_buffer) - _MAX_RETRY_BUFFER_EVENTS
-                del retry_buffer[:overflow]
-                logger.warning(
-                    "retry_buffer overflow (run_id=%s) — dropped %d oldest "
-                    "events to stay under cap=%d",
+        async with persist_lock:
+            pending = retry_buffer + chunk if retry_buffer else chunk
+            try:
+                await persist_callback(pending)
+            except Exception:
+                logger.exception(
+                    "partial flush persist_callback failed (run_id=%s) — queued for retry",
                     msg_id,
-                    overflow,
-                    _MAX_RETRY_BUFFER_EVENTS,
                 )
+                retry_buffer = pending.copy()
+                overflow = trim_journal_retry_buffer(retry_buffer, _MAX_RETRY_BUFFER_EVENTS)
+                if overflow:
+                    logger.warning(
+                        "retry_buffer overflow (run_id=%s) — dropped %d oldest "
+                        "events to stay under cap=%d",
+                        msg_id,
+                        overflow,
+                        _MAX_RETRY_BUFFER_EVENTS,
+                    )
+            else:
+                retry_buffer.clear()
 
     def emit(event: str, data: dict[str, Any]) -> str:
         nonlocal seq, last_flush_at
@@ -657,10 +655,14 @@ async def stream_agent_response(
             if flush_buffer:
                 final_chunks.append(flush_buffer.copy())
                 flush_buffer.clear()
+            lost_prefix = False
             for chunk in final_chunks:
+                if lost_prefix:
+                    chunk[0] = {**chunk[0], JOURNAL_GAP_BEFORE: True}
                 try:
                     await persist_callback(chunk)
                 except Exception:
+                    lost_prefix = True
                     logger.exception(
                         "final flush persist_callback failed "
                         "(run_id=%s) — %d events permanently lost",
