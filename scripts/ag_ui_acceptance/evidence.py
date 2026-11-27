@@ -13,6 +13,7 @@ from types import TracebackType
 from typing import Annotated, Literal
 from uuid import UUID
 
+from approval_card_evidence import approval_card_observations
 from branch_evidence import branch_observation
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictInt
 from pydantic.alias_generators import to_camel
@@ -548,6 +549,9 @@ def _case(spec: dict, test: dict, owned_root: Path, group: str, performance_timi
                 if len(results) == 1:
                     annotations = [*annotations, *test.get("annotations", [])]
                 attempt["network"] = _usage_network_annotations(annotations)
+        observed.update(
+            approval_card_observations(filename, title, group, result, owned_root, _attachment_body)
+        )
         if status == "skipped":
             types = {
                 a.get("type")
