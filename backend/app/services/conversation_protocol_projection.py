@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from langchain_core.messages import BaseMessage
 from langgraph.checkpoint.base import CheckpointTuple
+from langgraph.constants import START
 from langgraph.types import Send
 from pydantic import TypeAdapter
 
@@ -51,7 +52,13 @@ def checkpoint_channel_values(checkpoint_tuple: CheckpointTuple) -> dict[str, Js
     channel_values = checkpoint.get("channel_values")
     if not isinstance(channel_values, Mapping):
         return {}
-    return {str(key): serialize_checkpoint_value(value) for key, value in channel_values.items()}
+    # START holds pending graph input (including fork Overwrite operations) until the first step.
+    # Only committed channel values belong in a public snapshot.
+    return {
+        str(key): serialize_checkpoint_value(value)
+        for key, value in channel_values.items()
+        if key != START
+    }
 
 
 def serialize_checkpoint_value(value: CheckpointValue) -> JsonValue:
