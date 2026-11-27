@@ -11,6 +11,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 from sqlalchemy.sql import Select
 
 from app.authz import runtime as authz_runtime
@@ -112,6 +113,7 @@ async def linked_tool(
     tool_id: UUID | None,
     tool_name: str,
     context: OrgContext,
+    for_replay: bool = False,
 ) -> McpTool | None:
     """An enabled tool linked to the caller's private agent, if the caller may invoke it."""
     stmt = (
@@ -134,5 +136,22 @@ async def linked_tool(
     stmt = resource_candidates(stmt, McpServer, context)
     if tool_id is not None:
         stmt = stmt.where(McpTool.id == tool_id)
-    tool = await db.scalar(stmt.execution_options(populate_existing=True, autoflush=False))
+    stmt = stmt.execution_options(populate_existing=True, autoflush=False)
+    if for_replay:
+        # A connected reader may span grant changes. Check the current caller's
+        # grant, then re-read the link and its review state after the FGA call.
+        if tool_id is None or await db.scalar(stmt.with_only_columns(McpTool.id)) is None:
+            return None
+        obj = f"mcp_tool:{tool_id}"
+        visible = await authz_runtime.runtime_authz().filter_visible(
+            Principal.for_user(context),
+            "can_invoke",
+            [obj],
+            legacy=[obj],
+            consistency="HIGHER_CONSISTENCY",
+        )
+        if obj not in visible:
+            return None
+        return await db.scalar(stmt.options(load_only(McpTool.id, McpTool.metadata_json)))
+    tool = await db.scalar(stmt)
     return tool if tool is not None and await actor_can_invoke(context, tool.id) else None
