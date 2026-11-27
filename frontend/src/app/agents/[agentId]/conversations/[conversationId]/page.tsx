@@ -217,8 +217,9 @@ export default function ChatPage({
   const activeConversationId =
     (isDraftConversation ? langGraphDraftConversationId : routeConversationId) || null
   const resolvedSideEffectConversationId = activeConversationId ?? routeConversationId
+  // A newly created draft has no runs. Existing conversations get their run scope from history.
   const independentJobs = useIndependentChatJobs(
-    activeConversationId,
+    isDraftConversation || envelope ? activeConversationId : null,
     envelope?.active_run?.id ?? envelope?.latest_run?.id ?? null,
   )
   const jobList =

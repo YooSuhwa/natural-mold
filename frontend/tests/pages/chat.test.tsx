@@ -111,6 +111,7 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
               messages: result.data,
               conversation_source: result.source === undefined ? 'ui' : result.source,
               active_run: result.activeRun,
+              latest_run: result.latestRun,
               active_checkpoint_id: null,
               total_cost: 0,
             },
@@ -442,6 +443,60 @@ describe('ChatPage', () => {
     }
   })
 
+  it('lists jobs for a server-created draft before it has a run', async () => {
+    const mode = vi.spyOn(runtimeMode, 'getChatRuntimeMode').mockReturnValue('langgraph_v3')
+    const runtime = vi.spyOn(chatRuntime, 'ChatRuntimeSection').mockReturnValue(<></>)
+    const listJobs = vi.spyOn(independentJobsApi, 'list').mockResolvedValue({
+      enabled: true,
+      parent_job: null,
+      jobs: [],
+      targets: [],
+    })
+    server.use(
+      http.post('*/api/agents/agent-1/conversations/draft', () =>
+        HttpResponse.json({ id: 'created-draft' }, { status: 201 }),
+      ),
+      http.delete('*/api/conversations/created-draft', () => new HttpResponse(null, { status: 204 })),
+    )
+    const params = { agentId: 'agent-1', conversationId: 'new' }
+    const { unmount } = render(<ChatPage params={params as unknown as Promise<typeof params>} />)
+    try {
+      await waitFor(() => expect(listJobs).toHaveBeenCalledTimes(1))
+      expect(listJobs).toHaveBeenCalledWith('created-draft', null, expect.any(AbortSignal))
+    } finally {
+      unmount()
+      mode.mockRestore()
+      runtime.mockRestore()
+      listJobs.mockRestore()
+    }
+  })
+
+  it.each([null, 'latest-run'])('waits for history before listing jobs for %s', async (runId) => {
+    const listJobs = vi.spyOn(independentJobsApi, 'list').mockResolvedValue({
+      enabled: true,
+      parent_job: null,
+      jobs: [],
+      targets: [],
+    })
+    const params = { agentId: 'agent-1', conversationId: 'conv-1' }
+    const page = () => <ChatPage params={params as unknown as Promise<typeof params>} />
+    mockUseMessages.mockReturnValue({ isLoading: true })
+    const { rerender, unmount } = render(page())
+    try {
+      expect(listJobs).not.toHaveBeenCalled()
+      mockUseMessages.mockReturnValue({
+        data: [],
+        latestRun: runId && { id: runId, conversation_id: params.conversationId },
+      })
+      rerender(page())
+      await waitFor(() => expect(listJobs).toHaveBeenCalledTimes(1))
+      expect(listJobs).toHaveBeenCalledWith(params.conversationId, runId, expect.any(AbortSignal))
+    } finally {
+      unmount()
+      listJobs.mockRestore()
+    }
+  })
+
   it('restores the composer only after the new route has its own history', async () => {
     const listJobs = vi.spyOn(independentJobsApi, 'list').mockResolvedValue({
       enabled: true,
@@ -466,11 +521,7 @@ describe('ChatPage', () => {
       })
       rerender(route('ordinary-conversation'))
       expect(screen.queryByPlaceholderText('메시지 입력...')).not.toBeInTheDocument()
-      expect(listJobs).not.toHaveBeenCalledWith(
-        'ordinary-conversation',
-        'child-run',
-        expect.anything(),
-      )
+      expect(listJobs.mock.calls.some(([id]) => id === 'ordinary-conversation')).toBe(false)
       mockUseMessages.mockReturnValue({
         data: [],
         source: 'ui',
