@@ -157,6 +157,7 @@ async def _handle_input_respond_command(
     start_run: StartConversationRun,
     executor_fn: AgentStreamExecutor,
     approval_channel: str = "chat",
+    approval_run_id: uuid.UUID | None = None,
     wait_for_parent: bool = False,
 ) -> JSONResponse:
     resume = build_resume_payload(command.params)
@@ -181,7 +182,11 @@ async def _handle_input_respond_command(
         conversation_id=conversation.id,
         context=context,
     )
-    if parent_run is None or (wait_for_parent and parent_run.id != expected_parent_id):
+    if (
+        parent_run is None
+        or (wait_for_parent and parent_run.id != expected_parent_id)
+        or (approval_run_id is not None and parent_run.id != approval_run_id)
+    ):
         return command_error(
             command,
             code="RESUME_NOT_FOUND",
