@@ -13,6 +13,7 @@ from types import TracebackType
 from typing import Annotated, Literal
 from uuid import UUID
 
+from branch_evidence import branch_observation
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictInt
 from pydantic.alias_generators import to_camel
 
@@ -566,6 +567,9 @@ def _case(spec: dict, test: dict, owned_root: Path, group: str, performance_timi
                 attempt["waterfall"] = waterfall
                 if not waterfall["complete"]:
                     errors.append("incomplete_performance_waterfall")
+        observed.update(
+            branch_observation(filename, title, group, result, owned_root, _attachment_body)
+        )
         if group == "cutover" and title in CUTOVER_CASES:
             try:
                 observed = cutover_attachments([result], owned_root)
