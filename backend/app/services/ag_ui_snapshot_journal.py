@@ -17,6 +17,7 @@ from app.agent_runtime.ag_ui_v1_children import (
 from app.agent_runtime.ag_ui_v1_issuance import ToolContinuation
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.agent_runtime.protocol_events import protocol_interrupts_from_event
+from app.approvals.service import approval_actions
 from app.authz.org_context import OrgContext
 from app.error_codes import resume_not_found
 from app.exceptions import ConflictError
@@ -63,6 +64,8 @@ class _ObservedOwners:
 
     namespaces: set[Namespace] = field(default_factory=set)
     pending: dict[str, set[Namespace]] = field(default_factory=dict)
+    tool_approval_ids: set[str] = field(default_factory=set)
+    other_interrupt_ids: set[str] = field(default_factory=set)
 
     def observe(self, page: JournalPage) -> None:
         for entry in page.entries:
@@ -77,7 +80,20 @@ class _ObservedOwners:
                     if owner_ns is None:
                         continue
                     owner_ns = owner_ns or namespace
-                    self.pending.setdefault(interrupt["id"], set()).add(owner_ns)
+                    ident, payload = interrupt["id"], interrupt["value"]
+                    self.pending.setdefault(ident, set()).add(owner_ns)
+                    if (
+                        isinstance(payload, Mapping)
+                        and payload.get("type") in (None, "approval")
+                        and isinstance(payload.get("review_configs"), list)
+                        and approval_actions(payload) is not None
+                    ):
+                        self.tool_approval_ids.add(ident)
+                    elif isinstance(payload, Mapping) and (
+                        isinstance(payload.get("type"), str) or "action_requests" in payload
+                    ):
+                        # A sparse historical echo alone cannot identify a slot's kind.
+                        self.other_interrupt_ids.add(ident)
                     if owner_ns:
                         self.namespaces.add(owner_ns)
 
@@ -100,9 +116,13 @@ class _ObservedOwners:
 
         for interrupt_id, observed in self.pending.items():
             delegates = observed - {()}
-            if observed == {()}:
+            tool_approval = (
+                interrupt_id in self.tool_approval_ids
+                and interrupt_id not in self.other_interrupt_ids
+            )
+            if tool_approval and observed == {()}:
                 result.approval_interrupt_owners[interrupt_id] = None
-            elif len(delegates) == 1:
+            elif tool_approval and len(delegates) == 1:
                 # A delegated interruption is usually echoed at root. A revoked
                 # or unprojected namespace must not turn that echo into a root approval.
                 child = result.child_namespaces.get(next(iter(delegates)))
