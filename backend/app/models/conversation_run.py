@@ -10,15 +10,17 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
+    func,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.resource_scope import NullableOrgScope, resource_scope_constraints
+from app.models.resource_scope import NullableOrgScope, RequiredOrgScope, resource_scope_constraints
 
 if TYPE_CHECKING:
     from app.models.conversation_run_metrics import ConversationRunMetrics
@@ -46,6 +48,7 @@ class ConversationRun(NullableOrgScope, Base):
     __tablename__ = "conversation_runs"
     __table_args__ = (
         *resource_scope_constraints("conversation_runs", system=False),
+        Index("uq_conversation_runs_id_scope", "id", "tenant_id", "org_id", unique=True),
         Index("ix_conversation_runs_org_created", "org_id", "created_at"),
         Index(
             "ix_conversation_runs_conversation_created",
@@ -91,6 +94,22 @@ class ConversationRun(NullableOrgScope, Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     worker_instance_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    owner_generation: Mapped[int] = mapped_column(
+        Integer,
+        CheckConstraint("owner_generation >= 0", name="ck_run_owner_generation"),
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
+    owner_token: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    recovery_attempts: Mapped[int] = mapped_column(
+        Integer,
+        CheckConstraint("recovery_attempts >= 0", name="ck_run_recovery_attempts"),
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
+    recovery_runtime_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     interrupt_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     input_preview: Mapped[str | None] = mapped_column(String(500), nullable=True)
     last_event_id: Mapped[str | None] = mapped_column(
@@ -142,6 +161,42 @@ class ConversationRun(NullableOrgScope, Base):
         cascade="all, delete-orphan",
         lazy="selectin",
         uselist=False,
+    )
+
+
+class ConversationRunToolReceipt(RequiredOrgScope, Base):
+    """Durable execution evidence scoped to a specific tool invocation and chat run."""
+
+    __tablename__ = "conversation_run_tool_receipts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["run_id", "tenant_id", "org_id"],
+            ["conversation_runs.id", "conversation_runs.tenant_id", "conversation_runs.org_id"],
+            name="fk_run_tool_receipt_scoped_run",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "effect_kind IN ('read','idempotent_write','external_write')",
+            name="ck_run_tool_receipt_effect",
+        ),
+        CheckConstraint("status IN ('started','completed')", name="ck_run_tool_receipt_status"),
+        CheckConstraint("owner_generation > 0", name="ck_run_tool_receipt_generation"),
+        CheckConstraint("length(arguments_sha256) = 64", name="ck_run_tool_receipt_digest"),
+    )
+
+    run_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    tool_call_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    tool_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    arguments_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    effect_kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    owner_generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    result_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 

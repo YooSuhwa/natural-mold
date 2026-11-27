@@ -32,7 +32,7 @@ from app.models.conversation_history import (
     ConversationHistoryManifest,
 )
 from app.models.conversation_pinned_summary import ConversationPinnedSummary
-from app.models.conversation_run import ConversationRun
+from app.models.conversation_run import ConversationRun, ConversationRunToolReceipt
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.conversation_run_metrics import ConversationRunMetrics
 from app.models.conversation_run_steer import ConversationRunSteer
@@ -166,6 +166,7 @@ __all__ = [
     "ConversationRunInput",
     "ConversationRunMetrics",
     "ConversationRunSteer",
+    "ConversationRunToolReceipt",
     "Credential",
     "CredentialAuditLog",
     "CredentialDefault",

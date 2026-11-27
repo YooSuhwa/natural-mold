@@ -34,6 +34,7 @@ REDACTED: Final = "<redacted>"
 # Secret material never leaves the instance in an export (credentials, envelope keys,
 # token digests, MCP env/header values); every ``*_encrypted`` column is added too.
 SECRET_COLUMNS: Final[Mapping[str, frozenset[str]]] = {
+    "conversation_runs": frozenset({"owner_token"}),
     "credentials": frozenset({"data_encrypted"}),
     "mcp_servers": frozenset({"env_vars", "headers"}),
     "agent_api_keys": frozenset({"key_hash"}),

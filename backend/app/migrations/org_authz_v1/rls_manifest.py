@@ -43,6 +43,7 @@ DIRECT_TENANT: Final = frozenset(
         "conversation_artifacts",
         "conversation_goals",
         "conversation_run_steers",
+        "conversation_run_tool_receipts",
         "conversation_runs",
         "conversations",
         "credential_defaults",
