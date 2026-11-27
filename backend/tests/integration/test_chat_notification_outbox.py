@@ -655,7 +655,7 @@ async def test_access_removal_overlapping_delivery_retries_before_publishing(
         ),
         pytest.param(
             {"type": "auth_required", "reason": "expired", "attempt": 1, "items": []},
-            id="authorization",
+            id="expired_connection",
         ),
     ],
 )
