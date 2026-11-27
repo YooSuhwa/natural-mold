@@ -26,18 +26,18 @@ def test_goal_schema_enforces_deduplication_and_preserves_existing_conversations
     runs = [uuid4() for _ in range(4)]
     with engine.begin() as connection:
         connection.exec_driver_sql("PRAGMA foreign_keys = ON")
-        for table, row_ids in (
+        for table_name, row_ids in (
             ("users", [user]),
             ("tenants", [tenant]),
             ("conversations", [conversation]),
             ("conversation_runs", runs),
             ("conversation_run_inputs", [input_id]),
         ):
-            connection.exec_driver_sql(f"CREATE TABLE {table} (id CHAR(32) PRIMARY KEY)")
-            connection.exec_driver_sql(
-                f"INSERT INTO {table} VALUES (?)",
-                [(v.hex,) for v in row_ids],  # noqa: S608 - fixed tables
+            table = sa.Table(
+                table_name, sa.MetaData(), sa.Column("id", sa.CHAR(32), primary_key=True)
             )
+            table.create(connection)
+            connection.execute(table.insert(), [{"id": value.hex} for value in row_ids])
         connection.exec_driver_sql(
             "CREATE TABLE organizations (id CHAR(32),tenant_id CHAR(32),PRIMARY KEY(id,tenant_id))"
         )
