@@ -49,6 +49,7 @@ def test_queue_concurrency_runner_selects_reviewed_queue_and_steering_cases(
             "tests.postgres_execution_plugin",
             "tests/integration/test_conversation_queue_concurrency.py",
             "tests/integration/test_chat_steer_concurrency.py",
+            "tests/integration/test_ag_ui_v1_read_faults_postgres.py",
             "tests/integration/test_steer_recovery.py",
             (
                 "tests/test_chat_steer_checkpoint.py"
