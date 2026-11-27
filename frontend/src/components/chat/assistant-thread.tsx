@@ -20,6 +20,7 @@ import { ArrowDownIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { ChatSearchOverlay } from '@/components/chat/chat-search-overlay'
 import { MissionControlBar } from '@/components/chat/mission-control-bar'
+import { DelegatedChildTasks } from '@/components/chat/delegated-child-tasks'
 import { SubagentTeamStrip } from '@/components/chat/subagent-team-strip'
 import { MemoryRecallChip } from '@/components/chat/memory-recall-chip'
 import { ExcludedCapabilitiesBanner } from '@/components/chat/excluded-capabilities-banner'
@@ -178,7 +179,12 @@ export function AssistantThread({
           {!isBuilder && deepAgentsState && deepAgentsState.todos.length > 0 ? (
             <MissionControlBar todos={deepAgentsState.todos} />
           ) : null}
-          {!isBuilder ? <SubagentTeamStrip /> : null}
+          {!isBuilder &&
+            (conversationId ? (
+              <DelegatedChildTasks conversationId={conversationId} />
+            ) : (
+              <SubagentTeamStrip />
+            ))}
           {!isBuilder ? <MemoryRecallChip /> : null}
           {!isBuilder ? <ExcludedCapabilitiesBanner /> : null}
           {!isBuilder ? <ConversationToolGrantChips /> : null}

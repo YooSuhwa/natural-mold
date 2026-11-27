@@ -24,10 +24,8 @@ import { useBrowserDictation } from '@/components/chat/use-browser-dictation'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { RunSteerStreamSync } from '@/lib/chat/langgraph-runtime/run-steer-events'
 import { useMoldyLangGraphStream } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
-import {
-  SubagentRuntimeProvider,
-  usePublishSubagentRuntime,
-} from '@/lib/chat/langgraph-runtime/subagent-runtime'
+import { ScopedSubagentRuntimeProvider } from '@/components/chat/delegated-child-tasks'
+import { usePublishSubagentRuntime } from '@/lib/chat/langgraph-runtime/subagent-runtime'
 import { HiTLContext, type HiTLContextValue } from '@/lib/chat/hitl-context'
 import { ALL_DATA_UI } from '@/lib/chat/data-ui'
 import { ALL_TOOLKIT, createMoldyChatTools } from '@/lib/chat/tool-ui-registry'
@@ -419,7 +417,10 @@ function RuntimeFrame({
 
   const thread = (
     <HiTLContext.Provider value={hitlValue}>
-      <SubagentRuntimeProvider stream={subagentStream}>
+      <ScopedSubagentRuntimeProvider
+        conversationId={threadProps.conversationId}
+        stream={subagentStream}
+      >
         <FailedMessageRetryProvider
           value={{
             failedRunId,
@@ -442,7 +443,7 @@ function RuntimeFrame({
             enableMessageQueue={Boolean(messageQueue)}
           />
         </FailedMessageRetryProvider>
-      </SubagentRuntimeProvider>
+      </ScopedSubagentRuntimeProvider>
     </HiTLContext.Provider>
   )
 

@@ -2,6 +2,10 @@ export const conversationQueryKeys = {
   pageRoot: ['conversations', 'page'] as const,
   agentPageRoot: (agentId: string) => ['agents', agentId, 'conversations', 'page'] as const,
   prefix: (conversationId: string) => ['conversations', conversationId] as const,
+  childTasks: (conversationId: string, orgGeneration: number) =>
+    ['conversations', conversationId, 'child-tasks', orgGeneration] as const,
+  childTask: (conversationId: string, orgGeneration: number, childId: string) =>
+    [...conversationQueryKeys.childTasks(conversationId, orgGeneration), childId] as const,
   messages: (conversationId: string) => ['conversations', conversationId, 'messages'] as const,
   steers: (conversationId: string) => ['conversations', conversationId, 'steers'] as const,
   steersBefore: (conversationId: string, before: number) =>
