@@ -206,6 +206,9 @@ test.describe('Chat token usage hover', () => {
       if (route.request().method() !== 'GET') return route.fallback()
       return route.fulfill({ json: { enabled: false, goal: null } satisfies GoalEnvelope })
     })
+    await page.route(`**/api/conversations/${CONVERSATION_ID}/steers`, (route) =>
+      route.request().method() === 'GET' ? route.fulfill({ json: [] }) : route.fallback(),
+    )
     await page.route(
       `**/api/conversations/${CONVERSATION_ID}/child-tasks?limit=50&offset=0`,
       (route) => {
