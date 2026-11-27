@@ -21,6 +21,7 @@ from app.agent_runtime.skill_sandbox import (
     SkillSandboxError,
 )
 from app.authz.org_context import OrgContext
+from app.authz.scoping import same_private_scope
 from app.config import settings
 from app.models.conversation_artifact import ConversationArtifact
 from app.models.conversation_run import ConversationRun
@@ -94,9 +95,7 @@ async def check_goal_output_destinations(
         select(ConversationArtifact)
         .where(
             ConversationArtifact.conversation_id == scope.conversation_id,
-            ConversationArtifact.tenant_id == scope.tenant_id,
-            ConversationArtifact.org_id == scope.org_id,
-            ConversationArtifact.user_id == scope.user_id,
+            same_private_scope(ConversationArtifact, scope),
             ConversationArtifact.assistant_msg_id == str(run_id),
             ConversationArtifact.logical_path.in_(list(manifest)),
         )
@@ -123,9 +122,7 @@ async def index_goal_outputs(
         select(ConversationRun).where(
             ConversationRun.id == run_id,
             ConversationRun.conversation_id == scope.conversation_id,
-            ConversationRun.user_id == scope.user_id,
-            ConversationRun.tenant_id == scope.tenant_id,
-            ConversationRun.org_id == scope.org_id,
+            same_private_scope(ConversationRun, scope),
             ConversationRun.agent_id == scope.agent_id,
             ConversationRun.runtime_policy_hash == scope.policy_hash,
             ConversationRun.runtime_policy_version == scope.policy_version,

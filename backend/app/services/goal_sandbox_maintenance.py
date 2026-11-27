@@ -26,6 +26,7 @@ from app.agent_runtime.skill_sandbox import (
     MAX_OUTPUT_TOTAL_BYTES,
     SkillSandboxError,
 )
+from app.authz.scoping import same_private_scope
 from app.config import settings
 from app.database import SessionTenant, platform_session, tenant_sessions
 from app.models.conversation import Conversation
@@ -147,9 +148,7 @@ async def _apply(db: AsyncSession, claim: leases.SandboxClaim) -> None:
             select(Conversation.id)
             .where(
                 Conversation.id == scope.conversation_id,
-                Conversation.tenant_id == scope.tenant_id,
-                Conversation.org_id == scope.org_id,
-                Conversation.user_id == scope.user_id,
+                same_private_scope(Conversation, scope),
             )
             .with_for_update()
         )

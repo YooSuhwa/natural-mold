@@ -189,9 +189,7 @@ async def publish_goal_approval(
             Notification.kind == "approval.requested",
             Notification.target_type == "approval_request",
             Notification.target_id == request.id,
-            Notification.user_id == ref.user_id,
-            Notification.org_id == ref.org_id,
-            Notification.tenant_id == ref.tenant_id,
+            private_scope_predicate(Notification, ctx),
         )
         .order_by(Notification.created_at.desc(), Notification.id.desc())
         .limit(1)

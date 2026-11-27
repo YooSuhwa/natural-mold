@@ -15,7 +15,9 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.approvals.emergency import refuse_run
+from app.authz.conversation_input_scope import owned_input_predicate
 from app.authz.org_context import OrgContext
+from app.authz.scoping import same_private_scope
 from app.config import settings
 from app.exceptions import AppError, ConflictError
 from app.models.conversation import Conversation
@@ -83,9 +85,7 @@ async def get_goal(db: AsyncSession, conversation: Conversation) -> Conversation
     return await db.scalar(
         select(ConversationGoal).where(
             ConversationGoal.conversation_id == conversation.id,
-            ConversationGoal.org_id == conversation.org_id,
-            ConversationGoal.tenant_id == conversation.tenant_id,
-            ConversationGoal.user_id == conversation.user_id,
+            same_private_scope(ConversationGoal, conversation),
         )
     )
 
@@ -187,9 +187,7 @@ async def _target_predecessor(
 ) -> ConversationRun | None:
     query = select(ConversationRun).where(
         ConversationRun.conversation_id == conversation.id,
-        ConversationRun.user_id == conversation.user_id,
-        ConversationRun.org_id == conversation.org_id,
-        ConversationRun.tenant_id == conversation.tenant_id,
+        same_private_scope(ConversationRun, conversation),
         ConversationRun.run_source == "CHAT",
         ConversationRun.invoker_type == "user",
         ConversationRun.source.in_(("chat", "start", "resume")),
@@ -313,9 +311,7 @@ async def _resume_work(
         select(ConversationRun.id)
         .where(
             ConversationRun.conversation_id == conversation.id,
-            ConversationRun.user_id == conversation.user_id,
-            ConversationRun.org_id == conversation.org_id,
-            ConversationRun.tenant_id == conversation.tenant_id,
+            same_private_scope(ConversationRun, conversation),
             ConversationRun.run_source == "CHAT",
             ConversationRun.invoker_type == "user",
             ConversationRun.source.in_(("chat", "start", "edit", "regenerate", "resume")),
@@ -548,7 +544,7 @@ async def _user_input_waits(db: AsyncSession, conversation: Conversation) -> boo
             select(ConversationRunInput.id)
             .where(
                 ConversationRunInput.conversation_id == conversation.id,
-                ConversationRunInput.user_id == conversation.user_id,
+                owned_input_predicate(conversation),
                 ConversationRunInput.status == "pending",
                 ConversationRunInput.source != "goal_followup",
             )
@@ -685,9 +681,7 @@ async def _reservation(
             .join(GoalAttempt, GoalAttempt.goal_id == ConversationGoal.id)
             .where(
                 ConversationGoal.conversation_id == conversation.id,
-                ConversationGoal.user_id == conversation.user_id,
-                ConversationGoal.org_id == conversation.org_id,
-                ConversationGoal.tenant_id == conversation.tenant_id,
+                same_private_scope(ConversationGoal, conversation),
                 ConversationGoal.status == "active",
                 GoalAttempt.goal_version == ConversationGoal.version,
                 GoalAttempt.status == "followup_reserved",

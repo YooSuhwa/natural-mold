@@ -37,7 +37,7 @@ from app.authz.memory_agent_access import shared_memory_agent_ids
 from app.authz.memory_scope import recallable_memory_record_predicate
 from app.authz.org_context import OrgContext
 from app.authz.run_decisions import decisions_sealed, fresh_run_decision_scope
-from app.authz.scoping import private_scope_predicate
+from app.authz.scoping import private_scope_predicate, same_private_scope
 from app.config import settings
 from app.database import bind_tenant
 from app.models.conversation_run import ConversationRun
@@ -753,9 +753,7 @@ async def run_inputs(db: AsyncSession, run: ConversationRun) -> list[str]:
         select(ConversationRun.input_preview)
         .where(
             ConversationRun.conversation_id == run.conversation_id,
-            ConversationRun.user_id == run.user_id,
-            ConversationRun.tenant_id == run.tenant_id,
-            ConversationRun.org_id == run.org_id,
+            same_private_scope(ConversationRun, run),
             ConversationRun.created_at <= run.created_at,
             ConversationRun.input_preview.is_not(None),
             ConversationRun.id != run.id,

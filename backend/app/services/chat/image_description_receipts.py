@@ -21,6 +21,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
+from app.authz.conversation_run_scope import owned_run_predicate
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
 from app.authz.scoping import private_scope_predicate
@@ -81,7 +82,7 @@ def _scoped_receipts(context: OrgContext) -> Select[tuple[ChatImageDescription, 
                 MessageAttachment.content_sha256 == ChatImageDescription.content_sha256,
             ),
             ConversationRun.conversation_id == Conversation.id,
-            ConversationRun.user_id == context.user_id,
+            owned_run_predicate(context),
         )
     )
 
@@ -215,7 +216,7 @@ async def reserve_description(
             ConversationRun.id == run_id,
             ConversationRun.status.in_(("queued", "running")),
             ConversationRun.cancel_requested_at.is_(None),
-            ConversationRun.user_id == context.user_id,
+            owned_run_predicate(context),
         )
         .with_for_update(of=MessageAttachment)
     )

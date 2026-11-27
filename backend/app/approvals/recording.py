@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.approvals import service
 from app.authz.notifications import Target, notify
 from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
 from app.database import async_session, tenant_session
 from app.models.agent import Agent
 from app.models.approval_request import ApprovalRequest
@@ -98,9 +99,7 @@ async def record_independent_approvals(
         select(Conversation.agent_name_snapshot).where(
             Conversation.id == run.conversation_id,
             Conversation.source == INDEPENDENT_JOB_SOURCE,
-            Conversation.user_id == context.user_id,
-            Conversation.org_id == context.org_id,
-            Conversation.tenant_id == context.tenant_id,
+            private_scope_predicate(Conversation, context),
         )
     )
     if name is None:

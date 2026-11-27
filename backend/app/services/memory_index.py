@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.memory_agent_access import shared_memory_agent_ids
 from app.authz.memory_scope import recallable_memory_record_predicate
 from app.authz.org_context import OrgContext
+from app.authz.scoping import same_private_scope
 from app.config import settings
 from app.jobs import registry
 from app.jobs import service as jobs
@@ -202,9 +203,7 @@ async def _eligible_records(
             Conversation,
             and_(
                 Conversation.id == MemoryRecord.source_conversation_id,
-                Conversation.user_id == MemoryRecord.user_id,
-                Conversation.tenant_id == tenant_id,
-                Conversation.org_id == org_id,
+                same_private_scope(Conversation, MemoryRecord),
             ),
         )
         .where(

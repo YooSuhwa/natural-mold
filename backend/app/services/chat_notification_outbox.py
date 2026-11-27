@@ -13,6 +13,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.notifications import Target, notify
+from app.authz.scoping import same_private_scope
 from app.config import settings
 from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation import Conversation
@@ -52,13 +53,9 @@ async def _enqueue(
             .join(Conversation, Conversation.id == ConversationRun.conversation_id)
             .where(
                 Conversation.id == intent.conversation_id,
-                Conversation.tenant_id == intent.tenant_id,
-                Conversation.org_id == intent.org_id,
-                Conversation.user_id == intent.user_id,
+                same_private_scope(Conversation, intent),
                 ConversationRun.id == intent.run_id,
-                ConversationRun.tenant_id == intent.tenant_id,
-                ConversationRun.org_id == intent.org_id,
-                ConversationRun.user_id == intent.user_id,
+                same_private_scope(ConversationRun, intent),
             )
         )
     ).one_or_none()

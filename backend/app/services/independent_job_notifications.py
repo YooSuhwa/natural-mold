@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
-from app.authz.scoping import private_scope_predicate
+from app.authz.scoping import private_scope_predicate, same_private_scope
 from app.database import platform_session, tenant_session
 from app.exceptions import AppError
 from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
@@ -31,12 +31,8 @@ async def lock_job_for_terminal(db: AsyncSession, run_id: UUID) -> IndependentCh
         .where(
             ConversationRun.id == run_id,
             Conversation.source == INDEPENDENT_JOB_SOURCE,
-            Conversation.user_id == IndependentChatJob.user_id,
-            Conversation.tenant_id == IndependentChatJob.tenant_id,
-            Conversation.org_id == IndependentChatJob.org_id,
-            ConversationRun.user_id == IndependentChatJob.user_id,
-            ConversationRun.tenant_id == IndependentChatJob.tenant_id,
-            ConversationRun.org_id == IndependentChatJob.org_id,
+            same_private_scope(Conversation, IndependentChatJob),
+            same_private_scope(ConversationRun, IndependentChatJob),
             ConversationRun.agent_id == IndependentChatJob.child_agent_id,
         )
         .with_for_update(of=IndependentChatJob)

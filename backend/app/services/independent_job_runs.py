@@ -22,9 +22,7 @@ from app.schemas.independent_chat_job import IndependentJobOut, JobStatus
 def job_run_lineage(context: OrgContext, job_ids: Sequence[UUID] | None = None) -> CTE:
     """Reach only the initial child and its legitimate resumes in the exact private scope."""
     scope = (
-        ConversationRun.tenant_id == context.tenant_id,
-        ConversationRun.org_id == context.org_id,
-        ConversationRun.user_id == context.user_id,
+        private_scope_predicate(ConversationRun, context),
         ConversationRun.run_source == "CHAT",
     )
     found = (

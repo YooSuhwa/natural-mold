@@ -21,6 +21,8 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
 from app.models.goal_sandbox import GoalSandbox, GoalSandboxRead
 
 Action = Literal["create", "resume", "connect", "pause", "recover", "delete"]
@@ -485,10 +487,9 @@ async def retire_erased_scope(
 def _reader_scope(
     tenant_id: UUID, org_id: UUID, user_id: UUID, conversation_id: UUID
 ) -> tuple[ColumnElement[bool], ...]:
+    context = OrgContext(org_id=org_id, tenant_id=tenant_id, user_id=user_id)
     return (
-        GoalSandbox.tenant_id == tenant_id,
-        GoalSandbox.org_id == org_id,
-        GoalSandbox.user_id == user_id,
+        private_scope_predicate(GoalSandbox, context),
         GoalSandbox.conversation_id == conversation_id,
     )
 

@@ -45,6 +45,33 @@ class RequiredPrivateScopedModel(RequiredOrgScopedModel, Protocol):
     user_id: Mapped[UUID]
 
 
+class PrivateScopeValues(Protocol):
+    @property
+    def user_id(self) -> UUID: ...
+
+    @property
+    def org_id(self) -> UUID: ...
+
+    @property
+    def tenant_id(self) -> UUID: ...
+
+
+class CompanyPrivateScopedModel(Protocol):
+    """Company notifications keep an owner and tenant even without an organization."""
+
+    user_id: Mapped[UUID]
+    org_id: Mapped[UUID | None]
+    tenant_id: Mapped[UUID]
+
+
+type PrivateScopeModel = (
+    PrivateScopedModel
+    | RequiredPrivateScopedModel
+    | OwnedOrgScopedModel
+    | CompanyPrivateScopedModel
+)
+
+
 class PrivateParentModel(PrivateScopedModel, Protocol):
     __table__: ClassVar[FromClause]
 
@@ -109,11 +136,18 @@ def resource_candidates[*Row](
     ).execution_options(autoflush=False)
 
 
-def private_scope_predicate(
-    model: type[PrivateScopedModel] | type[RequiredPrivateScopedModel] | type[OwnedOrgScopedModel],
-    ctx: OrgContext,
+def private_scope_predicate(model: type[PrivateScopeModel], ctx: OrgContext) -> ColumnElement[bool]:
+    """Compose the mandatory owner/org/company boundary for the current actor."""
+    return same_private_scope(model, ctx)
+
+
+def same_private_scope(
+    model: type[PrivateScopeModel],
+    reference: PrivateScopeValues | PrivateScopeModel | type[PrivateScopeModel],
 ) -> ColumnElement[bool]:
-    """Compose the same mandatory owner/org/company boundary inside existing queries."""
+    """Match an existing scope during a relationship lookup; this grants no permissions."""
     return and_(
-        model.user_id == ctx.user_id, model.org_id == ctx.org_id, model.tenant_id == ctx.tenant_id
+        model.user_id == reference.user_id,
+        model.org_id == reference.org_id,
+        model.tenant_id == reference.tenant_id,
     )

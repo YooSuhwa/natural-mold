@@ -26,7 +26,7 @@ def conversation_input_parent() -> PrivateParent:
     )
 
 
-def owned_input_predicate(context: OrgContext) -> ColumnElement[bool]:
+def owned_input_predicate(context: OrgContext | Conversation) -> ColumnElement[bool]:
     """Owner match for queue inputs read under their already locked private Conversation."""
     return ConversationRunInput.user_id == context.user_id
 

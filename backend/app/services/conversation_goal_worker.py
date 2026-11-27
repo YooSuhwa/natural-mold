@@ -14,9 +14,12 @@ from app.agent_runtime.runtime.goal_run import goal_setup_allowed
 from app.agent_runtime.runtime_config import AgentConfig
 from app.approvals.emergency import refuse_run
 from app.authz.conversation_agent_checks import queue_dispatch_denial
+from app.authz.conversation_input_scope import owned_input_predicate
 from app.authz.conversation_scope import resolve_conversation_actor
 from app.authz.dispatch_block import TRANSIENT, block_reason
 from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate, same_private_scope
+from app.authz.worker_conversation_scope import goal_reservation_owner_predicate
 from app.config import settings
 from app.database import SessionTenant
 from app.exceptions import AppError
@@ -92,7 +95,7 @@ async def _supersede_older_queue_items(
     # in the gap between evaluation and the worker's next dispatch.
     query = select(ConversationRunInput.id).where(
         ConversationRunInput.conversation_id == conversation.id,
-        ConversationRunInput.user_id == conversation.user_id,
+        owned_input_predicate(conversation),
         ConversationRunInput.source == GOAL_INPUT_SOURCE,
         ConversationRunInput.status == "pending",
     )
@@ -130,9 +133,7 @@ async def configure_goal_runtime(db: AsyncSession, run: ConversationRun, cfg: Ag
             GoalAttempt.run_id == run.id,
             GoalAttempt.goal_version == ConversationGoal.version,
             ConversationGoal.conversation_id == run.conversation_id,
-            ConversationGoal.org_id == cfg.org_context.org_id,
-            ConversationGoal.tenant_id == cfg.org_context.tenant_id,
-            ConversationGoal.user_id == cfg.org_context.user_id,
+            private_scope_predicate(ConversationGoal, cfg.org_context),
             ConversationGoal.status == "active",
         )
     )
@@ -178,9 +179,7 @@ async def reconcile_goal_run(db: AsyncSession, run_id: UUID, conversation_id: UU
         select(ConversationRun).where(
             ConversationRun.id == run_id,
             ConversationRun.conversation_id == conversation.id,
-            ConversationRun.tenant_id == conversation.tenant_id,
-            ConversationRun.org_id == conversation.org_id,
-            ConversationRun.user_id == conversation.user_id,
+            same_private_scope(ConversationRun, conversation),
             ConversationRun.status.in_(RUN_TERMINAL_STATUSES),
         )
     )
@@ -352,8 +351,7 @@ async def stop_reservations_on_denial(
         select(Conversation)
         .where(
             Conversation.id == conversation_id,
-            Conversation.tenant_id == scope.tenant_id,
-            Conversation.user_id == scope.user_id,
+            goal_reservation_owner_predicate(scope),
         )
         .with_for_update()
     )
@@ -368,14 +366,12 @@ async def stop_reservations_on_denial(
             .join(ConversationRunInput, ConversationRunInput.id == GoalAttempt.followup_input_id)
             .where(
                 ConversationGoal.conversation_id == conversation.id,
-                ConversationGoal.org_id == conversation.org_id,
-                ConversationGoal.tenant_id == conversation.tenant_id,
-                ConversationGoal.user_id == conversation.user_id,
+                same_private_scope(ConversationGoal, conversation),
                 ConversationGoal.status == "active",
                 GoalAttempt.status == "followup_reserved",
                 GoalAttempt.goal_version == ConversationGoal.version,
                 ConversationRunInput.conversation_id == conversation.id,
-                ConversationRunInput.user_id == conversation.user_id,
+                owned_input_predicate(conversation),
                 ConversationRunInput.source == GOAL_INPUT_SOURCE,
                 ConversationRunInput.status.in_(("pending", "claimed")),
             )

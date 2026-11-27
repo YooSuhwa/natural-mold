@@ -8,7 +8,10 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.config import settings
+from app.database import SessionTenant
+from app.exceptions import ForbiddenError
 from app.models.conversation import Conversation
 from app.models.conversation_goal import ConversationGoal, GoalAttempt
 from app.models.conversation_run import ConversationRun
@@ -151,7 +154,6 @@ async def test_manual_input_wins_and_supersedes_a_reserved_automatic_run(
 async def test_revoked_permission_cancels_reservation_before_queue_can_claim(
     db: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.exceptions import ForbiddenError
     from app.services import conversation_run_queue_claim as claim
 
     conversation, goal = await _seed(db, monkeypatch)
@@ -188,6 +190,46 @@ async def test_revoked_permission_cancels_reservation_before_queue_can_claim(
             db, conversation_id=conversation.id, context=unit_context(TEST_USER_ID)
         )
         is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_queue_denial_stops_only_its_own_tenant_scoped_reservation(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversation, goal = await _seed(db, monkeypatch)
+    run = await _accept(db, conversation)
+    await runs.transition_run(db, run, "running", worker_instance_id="goal-worker")
+    await runs.transition_run(db, run, "completed")
+    await db.commit()
+    await worker.reconcile_goal_run(db, run.id, conversation.id)
+    await db.commit()
+    item = (
+        await db.scalars(
+            select(ConversationRunInput).where(
+                ConversationRunInput.conversation_id == conversation.id,
+                ConversationRunInput.source == worker.GOAL_INPUT_SOURCE,
+            )
+        )
+    ).one()
+    error = ForbiddenError("permission_revoked", "Permission revoked")
+    for wrong_scope in (
+        SessionTenant(uuid4(), conversation.user_id),
+        SessionTenant(conversation.tenant_id),
+        SessionTenant(conversation.tenant_id, uuid4()),
+        OrgContext(uuid4(), conversation.tenant_id, conversation.user_id),
+    ):
+        await worker.stop_reservations_on_denial(db, conversation.id, wrong_scope, error)
+        assert (goal.status, item.status) == ("active", "pending")
+
+    # The queue worker still has its recorded private company/owner after membership loss.
+    await worker.stop_reservations_on_denial(
+        db, conversation.id, SessionTenant(conversation.tenant_id, conversation.user_id), error
+    )
+    assert (goal.status, goal.blocked_reason, item.status) == (
+        "blocked",
+        "permission_revoked",
+        "canceled",
     )
 
 

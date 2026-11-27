@@ -12,6 +12,7 @@ from sqlalchemy.sql import Select
 from sqlalchemy.sql.selectable import TableValuedAlias
 
 from app.agent_runtime.protocol_redaction import REDACTED_SENSITIVE_FIELD
+from app.authz.scoping import same_private_scope
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent, MessageEventChunk
@@ -58,9 +59,7 @@ class ArchivePublicText:
 def _scope(conversation: Conversation) -> tuple:
     return (
         ConversationRun.conversation_id == conversation.id,
-        ConversationRun.user_id == conversation.user_id,
-        ConversationRun.tenant_id == conversation.tenant_id,
-        ConversationRun.org_id == conversation.org_id,
+        same_private_scope(ConversationRun, conversation),
     )
 
 

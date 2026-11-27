@@ -8,6 +8,7 @@ from uuid import UUID
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.orm import aliased
 
 from app.authz import scoping
 from tests.authz.scoping_fixture import (
@@ -112,3 +113,34 @@ def test_composed_private_predicate_matches_scoped_query(
         == (scope_fixture.connection.scalars(scoped).all())
         == ([2] if other_company else [1])
     )
+
+
+def test_joined_private_rows_match_all_three_keys_without_matching_nulls(
+    scope_fixture: ScopeFixture,
+) -> None:
+    target = aliased(ScopedResource)
+    origin = aliased(ScopedResource)
+    query = (
+        select(target.id)
+        .join_from(target, origin, scoping.same_private_scope(target, origin))
+        .where(origin.id == 1)
+    )
+    assert scope_fixture.connection.scalars(query).all() == [1]
+
+    # SQL equality remains strict for column-to-column joins, even when both are NULL.
+    null_query = (
+        select(target.id)
+        .join_from(target, origin, scoping.same_private_scope(target, origin))
+        .where(origin.id == 5)
+    )
+    assert scope_fixture.connection.scalars(null_query).all() == []
+
+
+def test_persisted_owner_with_legacy_null_org_matches_only_same_legacy_scope(
+    scope_fixture: ScopeFixture,
+) -> None:
+    origin = OwnedNullableScopedResource(user_id=scope_fixture.context.user_id)
+    query = select(OwnedNullableScopedResource.id).where(
+        scoping.same_private_scope(OwnedNullableScopedResource, origin)
+    )
+    assert scope_fixture.connection.scalars(query).all() == [2]

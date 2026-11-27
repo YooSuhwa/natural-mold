@@ -13,7 +13,7 @@ from app.authz.notification_delivery_scope import lock_active_notice_recipient
 from app.authz.notifications import RETENTION, now
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
-from app.authz.scoping import private_scope_predicate
+from app.authz.scoping import private_scope_predicate, same_private_scope
 from app.exceptions import AppError
 from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation import Conversation
@@ -80,23 +80,15 @@ async def _authorized_destinations(
         .outerjoin(version, version.id == ref.version_id)
         .where(
             ref.id.in_(ids),
-            ref.user_id == ctx.user_id,
-            ref.org_id == ctx.org_id,
-            ref.tenant_id == ctx.tenant_id,
-            Conversation.user_id == ref.user_id,
-            Conversation.org_id == ref.org_id,
-            Conversation.tenant_id == ref.tenant_id,
+            private_scope_predicate(ref, ctx),
+            same_private_scope(Conversation, ref),
             ConversationRun.conversation_id == ref.conversation_id,
-            ConversationRun.user_id == ref.user_id,
-            ConversationRun.org_id == ref.org_id,
-            ConversationRun.tenant_id == ref.tenant_id,
+            same_private_scope(ConversationRun, ref),
             or_(
                 and_(ref.artifact_id.is_(None), ref.version_id.is_(None)),
                 and_(
                     artifact.conversation_id == ref.conversation_id,
-                    artifact.user_id == ref.user_id,
-                    artifact.org_id == ref.org_id,
-                    artifact.tenant_id == ref.tenant_id,
+                    same_private_scope(artifact, ref),
                     artifact.status == "ready",
                     version.artifact_id == artifact.id,
                 ),
@@ -104,9 +96,7 @@ async def _authorized_destinations(
             or_(
                 and_(
                     goal.conversation_id == ref.conversation_id,
-                    goal.user_id == ref.user_id,
-                    goal.org_id == ref.org_id,
-                    goal.tenant_id == ref.tenant_id,
+                    same_private_scope(goal, ref),
                     goal.version == ref.goal_version,
                     goal.revision == ref.goal_revision,
                     intent.goal_id == ref.goal_id,
@@ -129,9 +119,7 @@ async def _authorized_destinations(
     )
     if published:
         query = query.join(Notification, Notification.id == ref.notification_id).where(
-            Notification.user_id == ref.user_id,
-            Notification.org_id == ref.org_id,
-            Notification.tenant_id == ref.tenant_id,
+            same_private_scope(Notification, ref),
             Notification.target_type == WORK_TARGET,
             Notification.target_id == ref.id,
             Notification.kind == ref.kind,
@@ -231,9 +219,7 @@ async def open_chat_notification(
         .where(
             ChatNotificationOutbox.id == Notification.target_id,
             Notification.id == notification_id,
-            Notification.user_id == ctx.user_id,
-            Notification.org_id == ctx.org_id,
-            Notification.tenant_id == ctx.tenant_id,
+            private_scope_predicate(Notification, ctx),
             Notification.target_type == WORK_TARGET,
         )
     )

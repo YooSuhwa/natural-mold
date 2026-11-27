@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.scoping import same_private_scope
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
@@ -23,9 +24,7 @@ async def recorded_approval_displays(
         .where(
             MessageEvent.assistant_msg_id == str(run.id),
             Conversation.id == run.conversation_id,
-            Conversation.user_id == run.user_id,
-            Conversation.org_id == run.org_id,
-            Conversation.tenant_id == run.tenant_id,
+            same_private_scope(Conversation, run),
         )
     )
     if record is None:
