@@ -265,9 +265,8 @@ async def _pinned_pending_writes(agent: Any, state: Any) -> list[PendingInputPay
         return []
     saver = getattr(agent, "checkpointer", None)
     if saver is None or not callable(getattr(saver, "aget_tuple", None)):
-        from app.agent_runtime.checkpointer import get_checkpointer
-
-        saver = get_checkpointer()
+        # Native and prepared graphs own their saver, including fence/lease limits.
+        raise PendingInputStateUnavailable("pending input state unavailable")
     saved = await saver.aget_tuple(state.config)
     coordinates = state.config["configurable"]
     if (
