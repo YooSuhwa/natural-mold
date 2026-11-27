@@ -367,6 +367,14 @@ class AgUiV1Projector:
             )
         elif (self._hidden_interrupts or passive) and status == "interrupted":
             self._pending.mark_passive()
+        if status == "interrupted" and any(
+            item.subagent_run_id is not None
+            and self._children.historical_only(self._slot_scopes.get(item.subagent_run_id, ()))
+            for item in self._pending.public()
+        ):
+            # An already-consumed historical binding cannot authorize a second
+            # resume, including when its journal is replayed without a checkpoint.
+            self._pending.mark_passive()
         terminal = run_terminal_event(
             self.thread_id,
             self.run_id,
