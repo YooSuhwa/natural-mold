@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl'
 import { AgUiActivityProvider } from '@/lib/ag-ui/activity-context'
 import { MOLDY_AG_UI_DATA_UI } from '@/lib/ag-ui/activity-data-ui'
 import { useMoldyAgUiActivityEffects } from '@/lib/ag-ui/activity-effects'
+import { mergeAgUiRunActivities } from '@/lib/ag-ui/activity-native-summary'
 import { toMoldyRunActivities } from '@/lib/ag-ui/activity-projection'
 import { AgUiFollowupCompletionContext } from '@/lib/ag-ui/followup-completion-context'
 import { AgUiChatActionContext } from '@/lib/ag-ui/chat-action-context'
@@ -96,13 +97,20 @@ export function AgUiRuntimeSection(props: AgUiRuntimeSectionProps) {
   const hitl = useAgUiHitlActions({ runtime, conversationId, agentId })
   const activityRunId = state.physicalRunId ?? state.lastTerminalPhysicalRunId
   const activities = useMemo(
-    () => (activityRunId ? toMoldyRunActivities(state.activities, activityRunId) : []),
-    [state.activities, activityRunId],
+    () =>
+      activityRunId
+        ? mergeAgUiRunActivities(
+            state.nativeActivities,
+            toMoldyRunActivities(state.activities, activityRunId),
+            activityRunId,
+          )
+        : [],
+    [state.nativeActivities, state.activities, activityRunId],
   )
   useMoldyAgUiActivityEffects(conversationId, state.activities, {
     runId: activityRunId,
     liveActivityIds: state.liveActivityIds,
-    serverMessages,
+    serverMessages: state.snapshot && !state.readDenied ? serverMessages : undefined,
   })
 
   if (state.readDenied) {
@@ -152,6 +160,7 @@ export function AgUiRuntimeSection(props: AgUiRuntimeSectionProps) {
           links={state.messageLinks}
         >
           <AgUiActivityProvider
+            physicalRunId={state.physicalRunId}
             conversationId={conversationId}
             activities={state.activities}
             links={state.messageLinks}
