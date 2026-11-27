@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz import denials
 from app.authz.candidates import granted_resource_ids
 from app.authz.error_codes import authorization_error
+from app.authz.goal_approval_notifications import accessible_goal_approvals, is_goal_approval
 from app.authz.notifications import RETENTION, now
 from app.authz.org_context import OrgContext
 from app.authz.principal import Principal
@@ -72,6 +73,9 @@ async def _accessible(
 ) -> set[str]:
     work_ids = {row.target_id for row in rows if row.target_type == WORK_TARGET and row.target_id}
     kept = await accessible_work_targets(db, ctx, work_ids)
+    kept.update(
+        await accessible_goal_approvals(db, ctx, [row.id for row in rows if is_goal_approval(row)])
+    )
     principal = Principal.for_user(ctx)
     for name, kind in SHARE_TYPES.items():
         ids = {row.target_id for row in rows if row.target_type == name and row.target_id}
@@ -123,13 +127,19 @@ async def _views(
     }
     views: list[NotificationView] = []
     for row in rows:
-        payload = {k: v for k, v in (row.payload or {}).items() if k != "target_name"}
+        goal_approval = is_goal_approval(row)
+        payload = {
+            k: v for k, v in (row.payload or {}).items() if k not in {"target_name", "chat_goal"}
+        }
         target, link = None, row.link
         if row.target_type is not None:
             # H-06 usage warnings name the recipient's own limit, not a shared resource;
             # approval notices go only to the request's own decider (17.2); a workflow's
             # notify step writes only to the run's own runner (workflow-nodes-plan N6).
-            own = row.target_type in {"usage_limit", "approval_request", "workflow_run"}
+            own = (
+                row.target_type in {"usage_limit", "approval_request", "workflow_run"}
+                and not goal_approval
+            )
             key = f"{row.target_type}:{row.target_id}"
             disclosed = row.kind == "grant.received" and key in shared
             visible = own or key in kept or disclosed
@@ -138,6 +148,8 @@ async def _views(
                 target.id, target.name = row.target_id, (row.payload or {}).get("target_name")
             if not (own or key in kept):
                 link = None
+                if goal_approval:
+                    payload = {}
         actor = None
         if row.actor_id is not None and (target is None or target.accessible):
             actor = NotificationActor(id=row.actor_id, display_name=people.get(row.actor_id))
