@@ -92,13 +92,15 @@ test.describe('HITL tool approval — reject', () => {
     const observer = observeApprovalCard(page, { apiBase: API, conversationId, agentId })
     await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
 
-    const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
+    const form = page.locator('form[data-moldy-thread-composer]').last()
+    const composer = form.locator('textarea[data-moldy-composer-input="true"]')
     await expect(composer).toBeVisible()
     await composer.fill('mcp 도구 사용 승인 HITL')
-    await composer.press('Enter')
-
-    // 1. The tool call pauses on an approval card before executing.
     try {
+      await expect(form.locator('button[type="submit"]')).toBeEnabled({ timeout: 30_000 })
+      await composer.press('Enter')
+
+      // 1. The tool call pauses on an approval card before executing.
       await expect(page.getByText('승인이 필요합니다').last()).toBeVisible({ timeout: 30_000 })
     } catch (error) {
       await observer.attachOnFailure(test.info()).catch(() => undefined)
