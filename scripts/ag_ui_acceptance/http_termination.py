@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 from uuid import uuid4
@@ -23,13 +24,16 @@ async def check_termination(gate: Gate) -> dict[str, object]:
     base = f"/api/conversations/{tid}/ag-ui"
     public = f"cancel-{uuid4().hex}"
     sent_cancel = False
-    async with gate.owner_a.client.stream(
-        "POST",
-        f"{base}/runs",
-        json=_input(tid, public, "E2E_VISUAL_SLOW_STREAM"),
-        headers=gate.owner_a.csrf,
-        timeout=90,
-    ) as stream:
+    async with (
+        asyncio.timeout(90),
+        gate.owner_a.client.stream(
+            "POST",
+            f"{base}/runs",
+            json=_input(tid, public, "E2E_VISUAL_SLOW_STREAM"),
+            headers=gate.owner_a.csrf,
+            timeout=90,
+        ) as stream,
+    ):
         expect_status(stream, 200)
         observed = []
         async for line in stream.aiter_lines():

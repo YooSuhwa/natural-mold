@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -65,13 +66,16 @@ class Participant:
         require(
             path.startswith("/") and not path.startswith("//"), "expected an API path"
         )
-        return await self.client.request(
-            method,
-            path,
-            json=body,
-            timeout=timeout,
-            headers={**(self.csrf if csrf else {}), **(headers or {})},
-        )
+        # Idle timeouts reset on every SSE heartbeat. A synthetic turn must also finish
+        # inside the requested wall-clock budget.
+        async with asyncio.timeout(timeout):
+            return await self.client.request(
+                method,
+                path,
+                json=body,
+                timeout=timeout,
+                headers={**(self.csrf if csrf else {}), **(headers or {})},
+            )
 
     async def json(
         self, method: str, path: str, body: Any = None, *, expected: int = 200

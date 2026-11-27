@@ -323,9 +323,12 @@ async def check_detach(gate: Gate) -> dict[str, object]:
         ],
     }
     partial = ""
-    async with gate.owner_a.client.stream(
-        "POST", f"{base}/runs", json=body, headers=gate.owner_a.csrf, timeout=90
-    ) as response:
+    async with (
+        asyncio.timeout(90),
+        gate.owner_a.client.stream(
+            "POST", f"{base}/runs", json=body, headers=gate.owner_a.csrf, timeout=90
+        ) as response,
+    ):
         expect_status(response, 200)
         async for line in response.aiter_lines():
             name, _, data = line.partition(":")
@@ -390,6 +393,7 @@ async def run(selected: list[str]) -> None:
             except (
                 AssertionError,
                 KeyError,
+                TimeoutError,
                 ValueError,
                 httpx.HTTPError,
                 psycopg.Error,
