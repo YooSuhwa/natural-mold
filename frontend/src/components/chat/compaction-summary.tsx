@@ -2,6 +2,7 @@
 
 import { Fragment, useId, useState } from 'react'
 import { Minimize2Icon } from 'lucide-react'
+import { hashKey } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import {
@@ -55,7 +56,11 @@ export function HistoryEvidencePanel({ target }: { readonly target: CompactionEv
   )
 }
 
-export function CompactionSummary({ className, evidence }: CompactionSummaryProps) {
+export function CompactionSummary(props: CompactionSummaryProps) {
+  return <CompactionDisclosure key={props.evidence && hashKey([props.evidence])} {...props} />
+}
+
+function CompactionDisclosure({ className, evidence }: CompactionSummaryProps) {
   const t = useTranslations('chat.compaction')
   const [expanded, setExpanded] = useState(false)
   const panelId = useId()

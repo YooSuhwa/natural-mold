@@ -13,8 +13,12 @@ from uuid import UUID, uuid4
 
 import pytest
 from deepagents.backends import StateBackend
+from langchain.tools import ToolRuntime
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
-from langchain_core.tools import BaseTool
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import BaseTool, tool
+from langgraph.graph import START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +44,7 @@ from app.services import goal_sandbox_runner as runner
 from tests.authz.agent_execution_runtime_fixture import seed_runtime_run
 from tests.authz.registration_fixture import seed_registration_default
 from tests.authz.run_fixture_config import run_fixture_config
+from tests.authz.runtime_prototype import ScriptedModel
 from tests.authz.unit_scope_fixture import unit_context
 from tests.sqlite_test_engine import TestSession
 
@@ -358,9 +363,19 @@ async def test_existing_user_output_is_never_replaced_by_goal(skill: SkillRun) -
     skill.ephemeral.assert_not_awaited()
 
 
-async def test_explicit_and_inherited_children_do_not_receive_root_goal_workspaces(
-    skill: SkillRun,
+@pytest.mark.parametrize("enabled", [False, True], ids=["disabled", "enabled"])
+async def test_root_and_inherited_skill_tools_compile_and_dispatch(
+    skill: SkillRun, enabled: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(settings, "goal_sandbox_enabled", enabled)
+    assert skill.ctx.goal_sandbox_run_id
+    root = skill_executor._create_skill_execute_tool(skill.ctx)
+
+    @tool
+    def read_call_id(runtime: ToolRuntime) -> str:
+        """Read the tool-call ID the graph assigned."""
+        return str(runtime.tool_call_id)
+
     specs = runtime_component_builder._normalize_declarative_subagents(
         [
             {"name": "inherited", "description": "Task", "system_prompt": "Do the task"},
@@ -368,31 +383,91 @@ async def test_explicit_and_inherited_children_do_not_receive_root_goal_workspac
                 "name": "selected",
                 "description": "Task",
                 "system_prompt": "Do the task",
-                "tools": [skill.tool],
+                "tools": [root, read_call_id],
             },
             {"name": "empty", "description": "Task", "system_prompt": "Do the task", "tools": []},
         ],
         model=FakeListChatModel(responses=["done"]),
-        tools=[skill.tool],
+        tools=[root, read_call_id],
         backend=StateBackend(),
         permissions=None,
         interrupt_on=None,
         skills=["/skills/"],
     )
-    tools = {spec["name"]: spec["tools"] for spec in specs}
-    assert tools["empty"] == []
-    for name in ["general-purpose", "inherited", "selected"]:
-        child = tools[name][0]
-        assert child.name == "execute_in_skill"
-        assert child.metadata == skill.tool.metadata
-        assert child.args == skill.tool.args
-        assert (
-            await child.ainvoke({"skill_directory": "demo", "command": "python scripts/run.py"})
-            == "ordinary"
+    scopes = {spec["name"]: spec["tools"] for spec in specs}
+    assert scopes.pop("empty") == []
+    assert set(scopes) == {"general-purpose", "inherited", "selected"}
+    # Dispatch children first to prove they cannot create the parent's private workspace.
+    scopes["root"] = [root, read_call_id]
+    for name, tools in scopes.items():
+        execute, injected_tool = tools
+        assert execute.name == "execute_in_skill"
+        assert execute.metadata == root.metadata
+        assert set(execute.tool_call_schema.model_json_schema()["properties"]) == {
+            "skill_directory",
+            "command",
+        }
+        assert injected_tool is read_call_id
+        assert "runtime" not in injected_tool.tool_call_schema.model_json_schema()["properties"]
+        graph = StateGraph(MessagesState)
+        graph.add_node("tools", ToolNode(tools))
+        graph.add_edge(START, "tools")
+        call_id = f"{name}-injected"
+        request = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": execute.name,
+                    "args": {
+                        "skill_directory": "demo",
+                        "command": "python scripts/run.py",
+                        "ctx": {"goal_sandbox_run_id": skill.ctx.goal_sandbox_run_id},
+                    },
+                    "id": f"{name}-skill",
+                },
+                {"name": injected_tool.name, "args": {}, "id": call_id},
+            ],
         )
-    skill.resolve.assert_not_awaited()
-    assert await skill.workspace() is None
-    assert "finished" in await skill.invoke()
+        result = await graph.compile().ainvoke({"messages": [request]})
+        messages = {m.tool_call_id: m for m in result["messages"] if isinstance(m, ToolMessage)}
+        assert messages[call_id].content == call_id
+        if name == "root" and enabled:
+            assert "finished" in messages[f"{name}-skill"].content
+            assert await skill.workspace() is not None
+        else:
+            assert messages[f"{name}-skill"].content == "ordinary"
+            skill.resolve.assert_not_awaited()
+            assert await skill.workspace() is None
+
+
+async def test_task_delegates_to_general_purpose_without_root_workspace(skill: SkillRun) -> None:
+    def call(name: str, arguments: dict[str, str], call_id: str) -> AIMessage:
+        return AIMessage(content="", tool_calls=[{"name": name, "args": arguments, "id": call_id}])
+
+    args = {"skill_directory": "demo", "command": "python scripts/run.py"}
+    model = ScriptedModel(
+        responses=[
+            call(
+                "task",
+                {"subagent_type": "general-purpose", "description": "Use the demo skill"},
+                "delegate",
+            ),
+            call("execute_in_skill", args, "child-skill"),
+            AIMessage(content="child done"),
+            call("execute_in_skill", args, "root-skill"),
+            AIMessage(content="root done"),
+        ]
+    )
+    graph = runtime_component_builder.build_agent(model, [skill.tool], "Use the demo skill")
+    result = await graph.ainvoke(
+        {"messages": [{"role": "user", "content": "Delegate the first step"}]}
+    )
+    assert result["messages"][-1].content == "root done"
+    replies = {m.tool_call_id: m.content for m in result["messages"] if isinstance(m, ToolMessage)}
+    assert "child done" in replies["delegate"]
+    assert "finished" in replies["root-skill"]
+    skill.ephemeral.assert_awaited_once()
+    skill.command.assert_awaited_once()
     assert await skill.workspace() is not None
 
 

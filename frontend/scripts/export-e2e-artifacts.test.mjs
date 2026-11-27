@@ -88,7 +88,8 @@ function withSwap(phase, target, action) {
   }
 }
 
-describe('E2E artifact exporter', () => {
+// Export checks launch the native filesystem helper in separate processes.
+describe('E2E artifact exporter', { timeout: 60_000 }, () => {
   it('writes a hash-verifiable manifest and compatible receipt through the CLI', () => {
     const fixture_ = fixture()
     try {

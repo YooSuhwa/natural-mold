@@ -54,13 +54,7 @@ export function AssistantCompactionMarker() {
               : undefined,
         }
       : undefined
-  return (
-    <CompactionSummary
-      key={JSON.stringify([conversationId, source, evidence?.historyId, evidence?.cutoffIndex])}
-      className="mt-2"
-      evidence={evidence}
-    />
-  )
+  return <CompactionSummary className="mt-2" evidence={evidence} />
 }
 
 export function AssistantArtifactCards() {

@@ -10,6 +10,7 @@ const scriptsDir = path.dirname(fileURLToPath(import.meta.url))
 const frontendRoot = path.resolve(scriptsDir, '..')
 
 describe('JSX accessibility guard', () => {
+  // The CLI starts pnpm and ESLint in separate processes with a cold Next.js config.
   it('fails closed when a new accessibility warning is absent from the reviewed baseline', () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'moldy-jsx-a11y-'))
     try {
@@ -46,5 +47,5 @@ describe('JSX accessibility guard', () => {
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
-  })
+  }, 60_000)
 })
