@@ -132,6 +132,8 @@ const runtimePolicyCaptureSpecGlobs = [
 ]
 const scriptedFullIgnore = [
   ...(independentJobEnv ? [] : [`**/${path.posix.basename(INDEPENDENT_JOB_SPEC)}`]),
+  // Its runner provisions a historical skill catalog and local search providers.
+  '**/deep-research-upgrade-fallback.spec.ts',
   ...LIVE_E2E_SPEC_GLOBS,
   ...legacyCaptureSpecGlobs,
   '**/*live*.spec.ts',

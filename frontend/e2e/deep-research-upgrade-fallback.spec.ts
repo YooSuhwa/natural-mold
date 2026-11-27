@@ -95,10 +95,7 @@ async function searchTurn(page: Page, csrf: CsrfHeaders, agentId: string, marker
 test('an upgraded Deep Research skill executes authorized fallback and restores its original citation', async ({
   page,
 }, testInfo) => {
-  test.skip(
-    process.env.E2E_RESEARCH_FIXTURE !== '1',
-    'Requires the isolated research provider fixture',
-  )
+  expect(process.env.E2E_RESEARCH_FIXTURE, 'Run scripts/run-research-search-e2e.sh').toBe('1')
   test.setTimeout(240_000)
   expect(['127.0.0.1', 'localhost']).toContain(new URL(API_BASE).hostname)
   const port = Number(process.env.E2E_RESEARCH_FIXTURE_PORT)
@@ -116,14 +113,12 @@ test('an upgraded Deep Research skill executes authorized fallback and restores 
   const home = orgs.find((org) => org.is_active)
   if (!home) throw new Error('No active organization for the isolated test account')
   const me = id.parse(await apiGetJson(request, `${API_BASE}/api/auth/me`))
-  const org = z
-    .object({ organization: id })
-    .parse(
-      await apiPostJson(request, `${API_BASE}/api/tenants/${home.tenant_id}/organizations`, csrf, {
-        name: `Research fixture ${randomUUID()}`,
-        administrator: { user_id: me.id },
-      }),
-    ).organization
+  const org = z.object({ organization: id }).parse(
+    await apiPostJson(request, `${API_BASE}/api/tenants/${home.tenant_id}/organizations`, csrf, {
+      name: `Research fixture ${randomUUID()}`,
+      administrator: { user_id: me.id },
+    }),
+  ).organization
   await apiPostJson(request, `${API_BASE}/api/me/active-org`, csrf, { org_id: org.id })
   try {
     await setProviders(request, csrf, org.id, ['tavily', 'searxng'])
