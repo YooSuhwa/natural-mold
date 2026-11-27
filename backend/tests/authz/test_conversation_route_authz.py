@@ -12,7 +12,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.authz import runtime
-from app.authz.policies import RES, policy_kind, policy_of
+from app.authz.policies import PRIVATE, RES, policy_kind, policy_of
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService, ShadowSample, Verdict
 from app.config import settings
@@ -28,6 +28,8 @@ DOMAIN_MODULES = {
     for name in [
         "artifacts",
         "conversation_ag_ui",
+        "conversation_ag_ui_commands",
+        "conversation_ag_ui_v1_read",
         "conversation_agent_protocol",
         "conversation_agent_protocol_sdk",
         "conversation_branches",
@@ -76,8 +78,29 @@ def test_conversation_family_routes_declare_their_plan_policy(monkeypatch) -> No
         if isinstance(route, APIRoute) and route.endpoint.__module__ in DOMAIN_MODULES
         for method in route.methods
     ]
-    # +9 memory routes (plan 15 PR-B1), +5 (PR-B2), +2 (Q14), +3 (PR-B3)
-    assert len(routes) == 115
+    # Existing family plus the six standard transport routes and the protected widget read.
+    assert len(routes) == 122
+    conversation = "/api/conversations/{conversation_id}"
+    protocol = conversation + "/ag-ui"
+    scoped_routes = {
+        ("POST", protocol + "/runs"),
+        ("GET", protocol + "/snapshot"),
+        ("GET", protocol + "/stream"),
+        ("GET", protocol + "/events"),
+        ("GET", protocol + "/runs/{public_run_id:path}/stream"),
+        ("GET", protocol + "/runs/{public_run_id:path}/events"),
+        ("GET", conversation + "/runs/{run_id}/mcp-apps/{tool_call_id:path}"),
+    }
+    declared = {
+        (method, route.path): policy_of(route.endpoint)
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        for method in route.methods
+        if (method, route.path) in scoped_routes
+    }
+    assert declared == dict.fromkeys(
+        scoped_routes, PRIVATE("conversations", param="conversation_id")
+    )
     assert [r for r in routes if r[2] != _expected(r[1])] == []
     memory = next(r for r in app.routes if isinstance(r, APIRoute) and r.path in RES_ROUTES)
     assert policy_of(memory.endpoint) == RES(
