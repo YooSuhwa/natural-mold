@@ -128,16 +128,21 @@ test('quotes, comments, independent side run and return to main', async ({ page,
     const sideComposer = side.locator('textarea[data-moldy-composer-input]')
     await sideComposer.fill('선택한 부분을 자세히 알려 주세요.')
     if (agUi) {
-      const [response] = await Promise.all([
-        page.waitForResponse(
-          (res) =>
-            res.request().method() === 'POST' &&
-            new URL(res.url()).pathname === `/api/conversations/${sideId}/ag-ui/runs`,
+      // Drafts and quote chips are editable while the newly opened side thread loads its snapshot.
+      await expect(side.getByRole('button', { name: '전송', exact: true })).toBeEnabled()
+      const [submitted] = await Promise.all([
+        page.waitForRequest(
+          (req) =>
+            req.method() === 'POST' &&
+            new URL(req.url()).pathname === `/api/conversations/${sideId}/ag-ui/runs`,
         ),
         sideComposer.press('Enter'),
       ])
-      expect(response.ok()).toBe(true)
-      expect(response.headers()['content-type']).toContain('text/event-stream')
+      const response = await test.step('receive the side run stream', () => submitted.response(), {
+        timeout: 30_000,
+      })
+      expect(response?.ok()).toBe(true)
+      expect(response?.headers()['content-type']).toContain('text/event-stream')
     } else {
       const runRequest = page.waitForRequest(
         (req) => req.url().includes(sideId) && (req.postData() ?? '').includes('resource_context'),
