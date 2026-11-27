@@ -25,18 +25,21 @@ from collections.abc import Callable, Collection, Sequence
 from contextlib import AbstractAsyncContextManager, nullcontext
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Final, Literal
 
 import numpy as np
-from sqlalchemy import or_, select, text, update
+from sqlalchemy import event, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session, SessionTransaction
 
 from app.authz.memory_agent_access import shared_memory_agent_ids
-from app.authz.memory_scope import memory_owned_by, recallable_memory_record_predicate
+from app.authz.memory_scope import recallable_memory_record_predicate
 from app.authz.org_context import OrgContext
 from app.authz.run_decisions import decisions_sealed, fresh_run_decision_scope
 from app.authz.scoping import private_scope_predicate
 from app.config import settings
+from app.database import bind_tenant
 from app.models.conversation_run import ConversationRun
 from app.models.memory import (
     MemoryEmbedding,
@@ -448,6 +451,7 @@ async def rank(
     query_vectors: list[np.ndarray] | None = None,
     now: datetime | None = None,
     candidate_floor: float | None = None,
+    on_missing_vectors: Callable[[memory_embedder.MemoryEmbedder], None] | None = None,
 ) -> Ranked:
     """Candidates that pass a raw-score floor, best first (``final``)."""
     started = time.monotonic()
@@ -487,7 +491,10 @@ async def rank(
             if await current_serving_embedder(db, context, authorized) is None:
                 cosine, fallback = {}, "policy_changed"
             elif fallback == "index_incomplete":
-                await _ask_for_backfill(db, context, authorized)
+                if on_missing_vectors is None:
+                    await _ask_for_backfill(db, context, authorized)
+                else:
+                    on_missing_vectors(authorized)
         checked_at = now + timedelta(seconds=time.monotonic() - started)
         records = await _candidates(
             db, context, filters, checked_at, record_ids=initial.keys(), shared=shared
@@ -694,15 +701,36 @@ class RunRecall:
     dropped: int = 0
 
 
-async def _chain_root(db: AsyncSession, run: ConversationRun) -> ConversationRun:
-    current, seen = run, set()
-    while current.parent_run_id is not None and current.id not in seen and len(seen) < 64:
-        seen.add(current.id)
-        parent = await db.get(ConversationRun, current.parent_run_id)
+async def _recall_root(
+    db: AsyncSession, context: OrgContext, run_id: str, agent_id: uuid.UUID | None
+) -> tuple[ConversationRun, ConversationRun] | None:
+    """Only a complete chain of this actor's approval resumes may reuse the first receipt."""
+    try:
+        key = uuid.UUID(run_id)
+    except ValueError:
+        return None
+    scoped = select(ConversationRun).where(private_scope_predicate(ConversationRun, context))
+    run = await db.scalar(scoped.where(ConversationRun.id == key))
+    if run is None or (agent_id is not None and run.agent_id != agent_id):
+        return None
+    current = run
+    seen = {run.id}
+    while current.source == "resume" or (current.run_source or "").lower() == "resume":
+        parent_id = current.parent_run_id
+        if parent_id is None or parent_id in seen or len(seen) >= 64:
+            return None
+        seen.add(parent_id)
+        parent = await db.scalar(
+            scoped.where(
+                ConversationRun.id == parent_id,
+                ConversationRun.conversation_id == run.conversation_id,
+                ConversationRun.agent_id == run.agent_id,
+            )
+        )
         if parent is None:
-            break
+            return None
         current = parent
-    return current
+    return run, current
 
 
 async def run_inputs(db: AsyncSession, run: ConversationRun) -> list[str]:
@@ -726,11 +754,8 @@ async def run_inputs(db: AsyncSession, run: ConversationRun) -> list[str]:
     return [*own, *earlier][:QUERY_MESSAGES]
 
 
-async def _records_of(
-    db: AsyncSession, context: OrgContext, run_id: str, filters: Filters
-) -> list[MemoryRecord]:
-    """The memories ``run_id`` recalled that are still readable now (revoked: dropped)."""
-    ids = list(
+async def _record_ids(db: AsyncSession, context: OrgContext, run_id: str) -> tuple[uuid.UUID, ...]:
+    return tuple(
         await db.scalars(
             select(MemoryRecall.record_id)
             .where(
@@ -742,6 +767,12 @@ async def _records_of(
             .limit(CANDIDATE_LIMIT)
         )
     )
+
+
+async def _readable_records(
+    db: AsyncSession, context: OrgContext, ids: Sequence[uuid.UUID], filters: Filters
+) -> list[MemoryRecord]:
+    """The previously selected memories that are still readable (revoked: dropped)."""
     if not ids:
         return []
     readable = {
@@ -751,13 +782,24 @@ async def _records_of(
     return [readable[i] for i in ids if i in readable]
 
 
+async def _existing_receipt(
+    db: AsyncSession, context: OrgContext, root_id: str
+) -> tuple[uuid.UUID, ...] | None:
+    exists = await db.scalar(
+        select(MemoryRecallRun.id).where(
+            private_scope_predicate(MemoryRecallRun, context), MemoryRecallRun.run_id == root_id
+        )
+    )
+    return await _record_ids(db, context, root_id) if exists else None
+
+
 async def _previous_run_id(
     db: AsyncSession, context: OrgContext, conversation_id: uuid.UUID, before: str
 ) -> str | None:
     return await db.scalar(
         select(MemoryRecallRun.run_id)
         .where(
-            memory_owned_by(MemoryRecallRun, context),
+            private_scope_predicate(MemoryRecallRun, context),
             MemoryRecallRun.conversation_id == conversation_id,
             MemoryRecallRun.run_id != before,
         )
@@ -838,6 +880,139 @@ async def record_recalls(
     )
 
 
+async def _select_for_run(
+    db: AsyncSession,
+    context: OrgContext,
+    run: ConversationRun,
+    root: ConversationRun,
+    filters: Filters,
+    now: datetime,
+    embedder: memory_embedder.MemoryEmbedder | None,
+    existing: tuple[uuid.UUID, ...] | None,
+    *,
+    on_missing_vectors: Callable[[memory_embedder.MemoryEmbedder], None] | None = None,
+) -> tuple[str, Selection, str | None, Query | None]:
+    root_id = str(root.id)
+    if existing is not None:
+        chosen = _block_for(await _readable_records(db, context, existing, filters), now)
+        return "reused", chosen, None, None
+    inputs = await run_inputs(db, root)
+    rule = short_message_rule(inputs[0]) if inputs else "skip"
+    query = None
+    fallback = None
+    if rule == "skip":
+        mode, chosen = "skipped", Selection()
+    elif rule == "reference" and run.conversation_id is not None:
+        previous = await _previous_run_id(db, context, run.conversation_id, root_id)
+        prior_ids = await _record_ids(db, context, previous) if previous else ()
+        records = await _readable_records(db, context, prior_ids, filters)
+        mode, chosen = "reference", _block_for(records, now)
+    else:
+        query = Query.of(inputs)
+        ranked = await rank(
+            db,
+            context,
+            query,
+            filters,
+            embedder=embedder,
+            now=now,
+            on_missing_vectors=on_missing_vectors,
+        )
+        mode, chosen, fallback = "fresh", select_within_budget(ranked.items, now), ranked.fallback
+    return mode, chosen, fallback, query
+
+
+def _recall_result(mode: str, chosen: Selection, now: datetime) -> RunRecall:
+    return RunRecall(
+        render_block(chosen.lines, now),
+        tuple(i.record for i in chosen.items),
+        mode,
+        chosen.tokens,
+        chosen.dropped,
+    )
+
+
+# Instance-level listeners persist only for the lifetime of an owner session. A savepoint
+# release transfers its work to its parent; rollback, close or a failed commit drops it.
+_SHADOW_HOOKS = "moldy_memory_shadow_hooked"
+_SHADOW_PENDING = "moldy_memory_shadow_after_commit"
+
+
+def _commit_shadow(session: Session) -> None:
+    pending = session.info.get(_SHADOW_PENDING, {})
+    transaction = session.get_nested_transaction() or session.get_transaction()
+    callbacks = pending.pop(transaction, [])
+    if not callbacks or transaction is None:
+        return
+    if transaction.parent is not None:
+        pending.setdefault(transaction.parent, []).extend(callbacks)
+        return
+    for callback in callbacks:
+        try:
+            callback()
+        except Exception as exc:  # scheduling must never invalidate a committed receipt
+            logger.info("memory shadow scheduling failed: %s", type(exc).__name__)
+
+
+def _discard_shadow(session: Session, ended: SessionTransaction) -> None:
+    pending = session.info.get(_SHADOW_PENDING)
+    if pending is not None:
+        pending.pop(ended, None)
+        if not pending:
+            session.info.pop(_SHADOW_PENDING, None)
+
+
+def _shadow_after_commit(
+    db: AsyncSession,
+    sessions: SessionFactory | None,
+    context: OrgContext,
+    root_id: uuid.UUID,
+    filters: Filters,
+    query: Query | None,
+    embedder: memory_embedder.MemoryEmbedder | None,
+    result: RunRecall,
+) -> None:
+    if query is None or sessions is None:
+        return
+    try:
+        from app.services import memory_recall_shadow
+
+        trial = memory_recall_shadow.trial_identity(embedder)
+        if trial is None:
+            return
+        sync = db.sync_session
+        transaction = sync.get_nested_transaction() or sync.get_transaction()
+        if transaction is None:
+            return
+        if not sync.info.get(_SHADOW_HOOKS):
+            event.listen(sync, "after_commit", _commit_shadow)
+            event.listen(sync, "after_transaction_end", _discard_shadow)
+            sync.info[_SHADOW_HOOKS] = True
+        callback = partial(
+            memory_recall_shadow.schedule,
+            sessions,
+            context,
+            root_id,
+            filters,
+            query,
+            trial,
+            {r.id for r in result.records},
+            estimate_tokens(result.block),
+        )
+        sync.info.setdefault(_SHADOW_PENDING, {}).setdefault(transaction, []).append(callback)
+    except Exception as exc:
+        logger.info("memory shadow observation unavailable: %s", type(exc).__name__)
+
+
+async def _resolve_recall_model(context: OrgContext) -> memory_embedder.MemoryEmbedder | None:
+    try:
+        async with asyncio.timeout(settings.memory_recall_statement_timeout_ms / 1000):
+            return await memory_embedder.resolve_embedder(context.tenant_id, org_id=context.org_id)
+    except Exception as exc:  # optional model discovery cannot displace keyword recall
+        logger.info("memory recall model unavailable: %s", type(exc).__name__)
+        return None
+
+
 async def recall_for_run(
     db: AsyncSession,
     context: OrgContext,
@@ -849,46 +1024,18 @@ async def recall_for_run(
 ) -> RunRecall:
     """Automatic recall for ``run_id`` (commits its records in ``db``, its own session)."""
     now = _now()
-    try:
-        run = await db.get(ConversationRun, uuid.UUID(run_id))
-    except ValueError:
-        run = None
-    actor = (context.tenant_id, context.org_id, context.user_id)
-    if run is None or (run.tenant_id, run.org_id, run.user_id) != actor:
+    lineage = await _recall_root(db, context, run_id, filters.agent_id)
+    if lineage is None:
         return RunRecall("", (), "none")
+    run, root = lineage
     await _set_statement_timeout(db)
-    root = await _chain_root(db, run)
-    if (root.tenant_id, root.org_id, root.user_id) != actor:
-        return RunRecall("", (), "none")
     root_id = str(root.id)
-    if await db.scalar(
-        select(MemoryRecallRun.id).where(
-            memory_owned_by(MemoryRecallRun, context), MemoryRecallRun.run_id == root_id
-        )
-    ):
-        # An approval resume or a re-prepare keeps the chain's first recall (5.4-2); what
-        # was revoked or deleted since then drops out.
-        chosen = _block_for(await _records_of(db, context, root_id, filters), now)
-        return RunRecall(
-            render_block(chosen.lines, now),
-            tuple(i.record for i in chosen.items),
-            "reused",
-            chosen.tokens,
-            chosen.dropped,
-        )
-
-    inputs = await run_inputs(db, root)
-    rule = short_message_rule(inputs[0]) if inputs else "skip"
-    fallback = None
-    if rule == "skip":
-        mode, chosen = "skipped", Selection()
-    elif rule == "reference" and run.conversation_id is not None:
-        previous = await _previous_run_id(db, context, run.conversation_id, root_id)
-        records = await _records_of(db, context, previous, filters) if previous else []
-        mode, chosen = "reference", _block_for(records, now)
-    else:
-        ranked = await rank(db, context, Query.of(inputs), filters, embedder=embedder, now=now)
-        mode, chosen, fallback = "fresh", select_within_budget(ranked.items, now), ranked.fallback
+    existing = await _existing_receipt(db, context, root_id)
+    mode, chosen, fallback, query = await _select_for_run(
+        db, context, run, root, filters, now, embedder, existing
+    )
+    if mode == "reused":
+        return _recall_result(mode, chosen, now)
     await _record(
         db,
         context,
@@ -899,28 +1046,81 @@ async def recall_for_run(
         chosen=chosen,
         fallback=fallback,
     )
+    result = _recall_result(mode, chosen, now)
+    _shadow_after_commit(db, shadow_sessions, context, root.id, filters, query, embedder, result)
     await db.commit()
-    result = RunRecall(
-        render_block(chosen.lines, now),
-        tuple(i.record for i in chosen.items),
-        mode,
-        chosen.tokens,
-        chosen.dropped,
-    )
-    if (
-        mode == "fresh"
-        and shadow_sessions is not None
-        and isinstance(embedder, memory_embedder.OpenAIShapedEmbedder)
-        and embedder.recall_mode == "shadow"
-    ):
-        from app.services import memory_recall_shadow
+    return result
 
-        try:
-            memory_recall_shadow.schedule(
-                shadow_sessions, context, root.id, filters, Query.of(inputs), embedder, result
+
+async def prepared_recall_for_run(
+    owner: AsyncSession,
+    session_factory: SessionFactory,
+    context: OrgContext,
+    *,
+    run_id: str,
+    filters: Filters,
+) -> RunRecall:
+    """Keep recall receipts atomic with lease activation and bound ranking on a reader.
+
+    The owner already holds the conversation, organization and agent rows FOR UPDATE.
+    A detached receipt writer would wait on those same FK targets. Only the reader
+    may be timed out or rolled back separately; even an ORM savepoint on the owner
+    would invalidate its execution proof.
+    """
+    lineage = await _recall_root(owner, context, run_id, filters.agent_id)
+    if lineage is None:
+        return RunRecall("", (), "none")
+    run, root = lineage
+    existing = await _existing_receipt(owner, context, str(root.id))
+    now = _now()
+    backfill = None
+
+    def request_backfill(model: memory_embedder.MemoryEmbedder) -> None:
+        nonlocal backfill
+        backfill = model
+
+    embedder = await _resolve_recall_model(context) if existing is None else None
+    limit = settings.memory_recall_statement_timeout_ms / 1000 + (
+        settings.memory_embedding_timeout_seconds if vector_floor(embedder) is not None else 0
+    )
+    try:
+        async with asyncio.timeout(limit + 0.5), session_factory() as reader:
+            await bind_tenant(reader, context)
+            await _set_statement_timeout(reader)
+            mode, chosen, fallback, query = await _select_for_run(
+                reader,
+                context,
+                run,
+                root,
+                filters,
+                now,
+                embedder,
+                existing=existing,
+                on_missing_vectors=request_backfill,
             )
-        except Exception as exc:  # the delivered selection is already committed
-            logger.info("memory shadow scheduling failed: %s", type(exc).__name__)
+    except Exception as exc:  # optional ranking never rolls back the owning transaction
+        logger.warning("prepared memory recall fell back: %s", type(exc).__name__)
+        mode, chosen, fallback, query = "fallback", Selection(), type(exc).__name__[:40], None
+        backfill = None
+
+    if backfill is not None:
+        from app.services import memory_index
+
+        await memory_index.enqueue_backfill(owner, context, backfill)
+    if existing is None:
+        await _record(
+            owner,
+            context,
+            root_id=str(root.id),
+            run=run,
+            agent_id=filters.agent_id,
+            mode=mode,
+            chosen=chosen,
+            fallback=fallback,
+        )
+        await owner.flush()
+    result = _recall_result(mode, chosen, now)
+    _shadow_after_commit(owner, session_factory, context, root.id, filters, query, embedder, result)
     return result
 
 
@@ -934,14 +1134,7 @@ async def timed_recall_for_run(
     """``recall_for_run`` in its own session under one time limit; a timeout or failure
     leaves the run with its profile documents only and records the fallback."""
     started = time.perf_counter()
-    try:
-        async with asyncio.timeout(settings.memory_recall_statement_timeout_ms / 1000):
-            embedder = await memory_embedder.resolve_embedder(
-                context.tenant_id, org_id=context.org_id
-            )
-    except Exception as exc:  # optional model discovery cannot displace keyword recall
-        logger.info("memory recall model unavailable: %s", type(exc).__name__)
-        embedder = None
+    embedder = await _resolve_recall_model(context)
     limit = settings.memory_recall_statement_timeout_ms / 1000 + (
         settings.memory_embedding_timeout_seconds if vector_floor(embedder) is not None else 0
     )
@@ -975,10 +1168,10 @@ async def _record_fallback(
 ) -> None:
     try:
         async with session_factory() as db:
-            run = await db.get(ConversationRun, uuid.UUID(run_id))
-            if run is None:
+            lineage = await _recall_root(db, context, run_id, filters.agent_id)
+            if lineage is None:
                 return
-            root = await _chain_root(db, run)
+            run, root = lineage
             await _record(
                 db,
                 context,

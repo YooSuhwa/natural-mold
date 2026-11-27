@@ -44,7 +44,9 @@ def _log(status: str, trial_id: str, **metrics: int | float) -> None:
     logger.info("memory recall shadow %s", json.dumps(fields, separators=(",", ":")), extra=fields)
 
 
-def _trial(embedder: memory_embedder.MemoryEmbedder | None) -> tuple[str, int, float] | None:
+def trial_identity(
+    embedder: memory_embedder.MemoryEmbedder | None,
+) -> tuple[str, int, float] | None:
     if (
         isinstance(embedder, memory_embedder.OpenAIShapedEmbedder)
         and embedder.recall_mode == "shadow"
@@ -66,13 +68,11 @@ def schedule(
     root_id: UUID,
     filters: memory_recall.Filters,
     query: memory_recall.Query,
-    embedder: memory_embedder.MemoryEmbedder | None,
-    delivered: memory_recall.RunRecall,
+    trial: tuple[str, int, float],
+    keyword_ids: set[UUID],
+    keyword_tokens: int,
 ) -> None:
-    """Snapshot just the actual selection and model identity after the keyword run commits."""
-    trial = _trial(embedder)
-    if trial is None:
-        return
+    """Start a comparison using the committed selection's IDs and rendered token estimate."""
     # The model key includes the registry, provider, endpoint, name and dimensions.
     # Hash the exact trial before the text-normalizing, tenant-keyed digest. Workers
     # using the same active master key can aggregate the same trial's observations.
@@ -92,8 +92,8 @@ def schedule(
             query,
             trial,
             trial_id,
-            {record.id for record in delivered.records},
-            memory_recall.estimate_tokens(delivered.block),
+            keyword_ids,
+            keyword_tokens,
         ),
         name="memory-recall-shadow",
         context=Context(),
@@ -146,7 +146,7 @@ async def _compare(
             current = await memory_embedder.resolve_embedder(
                 context.tenant_id, org_id=context.org_id
             )
-            if current is None or _trial(current) != trial:
+            if current is None or trial_identity(current) != trial:
                 _log("policy_changed", trial_id)
                 return
             vectors = await current.embed(

@@ -4,6 +4,7 @@ import asyncio
 import os
 import uuid
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,14 +16,30 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.agent_runtime.runtime import memory_context
+from app.agent_runtime.runtime_config import AgentConfig
+from app.authz.conversation_run_scope import (
+    RunConversationTarget,
+    RunExecutionTarget,
+    lock_executable_run,
+)
+from app.authz.org_context import OrgContext
+from app.authz.organization_execution_proof import live_proof
 from app.dependencies import CurrentUser
 from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.memory import AgentMemorySettings, MemoryRecall, MemoryRecallRun, MemoryRecord
 from app.models.model import Model
 from app.models.user import User
-from app.services import conversation_run_service, memory_service, user_service
+from app.services import (
+    conversation_run_service,
+    memory_embedder,
+    memory_recall,
+    memory_service,
+    user_service,
+)
 from app.services.chat import conversations as conversation_service
 from tests.authz.unit_scope_fixture import (
     TEST_ORG_ID,
@@ -464,3 +481,164 @@ async def test_run_creation_user_fence_allows_memory_settings_insert_before_comm
             await create_db.rollback()
     finally:
         await memory_engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("commit", "ranking_timeout"),
+    [(False, False), (True, False), (True, True)],
+    ids=["rollback", "commit", "ranking-timeout"],
+)
+async def test_prepared_recall_shares_the_locked_runs_transaction(
+    pg_factory: async_sessionmaker[AsyncSession],
+    graph: SeededGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    commit: bool,
+    ranking_timeout: bool,
+) -> None:
+    context = unit_context(graph.user_id)
+
+    @asynccontextmanager
+    async def reader_for(_context: OrgContext) -> AsyncGenerator[AsyncSession, None]:
+        async with pg_factory() as reader:
+            await reader.execute(text("SET LOCAL lock_timeout = '2s'"))
+            yield reader
+
+    # The default test sessions point to SQLite. Exercise every read and write on PostgreSQL.
+    monkeypatch.setattr(memory_context, "recall_session", reader_for)
+    monkeypatch.setattr(memory_embedder, "async_session", pg_factory)
+    if ranking_timeout:
+
+        async def exceed_reader_timeout(
+            reader: AsyncSession, *_args: object, **_kwargs: object
+        ) -> None:
+            await reader.execute(text("SET LOCAL statement_timeout = '30ms'"))
+            await reader.execute(text("SELECT pg_sleep(2)"))
+            pytest.fail("PostgreSQL should have canceled the ranking query")
+
+        monkeypatch.setattr(memory_recall, "rank", exceed_reader_timeout)
+    fact = "세션 만료 시간은 30분이다"
+    async with pg_factory() as db:
+        record = MemoryRecord(
+            user_id=graph.user_id,
+            org_id=context.org_id,
+            tenant_id=context.tenant_id,
+            scope="user",
+            content=fact,
+            store_path="user/session-expiry",
+        )
+        db.add_all(
+            [record, AgentMemorySettings(agent_id=graph.agent_id, memory_policy_override="off")]
+        )
+        run = await _create_run(db, graph)
+        run.input_preview = "세션 만료 시간 알려줘"
+        await db.commit()
+    cfg = AgentConfig(
+        provider="openai",
+        model_name="unused",
+        api_key=None,
+        base_url=None,
+        system_prompt="",
+        tools_config=[],
+        org_context=context,
+        thread_id=str(graph.conversation_id),
+        user_id=str(graph.user_id),
+        agent_id=str(graph.agent_id),
+        memory_run_id=str(run.id),
+    )
+    receipts = select(MemoryRecallRun.mode).where(MemoryRecallRun.run_id == str(run.id))
+    recalled = select(MemoryRecall.record_id).where(MemoryRecall.run_id == str(run.id))
+    target = RunExecutionTarget(
+        run.id, RunConversationTarget(graph.conversation_id, graph.agent_id, context)
+    )
+    async with pg_factory() as owner, pg_factory() as observer:
+        locked_run = await lock_executable_run(owner, target)
+        assert locked_run is not None
+        proof = live_proof(owner)
+        assert proof is not None
+        await owner.execute(text("SET LOCAL statement_timeout = '23s'"))
+        # A separate insert needs a foreign-key lock on this already locked conversation.
+        with anyio.fail_after(15):
+            _, briefs = await memory_context.load_memory_context_in(cfg, owner)
+        expected_ids = [] if ranking_timeout else [str(record.id)]
+        assert [brief["id"] for brief in briefs] == expected_ids
+        assert (fact in (cfg.memory_recall_block or "")) is (not ranking_timeout)
+        if commit and not ranking_timeout:
+            # The reader cannot see pending writes. A second prepare in this transaction
+            # must still re-use the exact selected record and its original receipt.
+            _, repeated = await memory_context.load_memory_context_in(cfg, owner)
+            assert repeated == briefs
+            await conversation_run_service.transition_run(owner, locked_run, "running")
+            await conversation_run_service.transition_run(
+                owner, locked_run, "interrupted", interrupt_id="approval"
+            )
+        assert live_proof(owner) is proof
+        assert await owner.scalar(text("SHOW statement_timeout")) == "23s"
+        assert await owner.scalar(receipts) == ("fallback" if ranking_timeout else "fresh")
+        assert await observer.scalar(receipts) is None
+        if commit:
+            await owner.commit()
+        else:
+            await owner.rollback()
+        assert len((await observer.scalars(receipts)).all()) == int(commit)
+        assert list(await observer.scalars(recalled)) == (
+            [record.id] if commit and not ranking_timeout else []
+        )
+        assert await observer.scalar(
+            select(MemoryRecord.recall_count).where(MemoryRecord.id == record.id)
+        ) == int(commit and not ranking_timeout)
+
+    if commit and not ranking_timeout:
+        await _assert_resume_reader_failure_preserves_receipt(
+            pg_factory, cfg, target, record.id, monkeypatch
+        )
+
+
+async def _assert_resume_reader_failure_preserves_receipt(
+    pg_factory: async_sessionmaker[AsyncSession],
+    cfg: AgentConfig,
+    target: RunExecutionTarget,
+    record_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with pg_factory() as db:
+        resumed = await conversation_run_service.create_run(
+            db,
+            conversation_id=target.conversation.conversation_id,
+            agent_id=target.conversation.agent_id,
+            context=cfg.org_context,
+            source="resume",
+            parent_run_id=target.run_id,
+            interrupt_id="approval",
+            input_preview=None,
+        )
+        await db.commit()
+    failed_read = False
+
+    @asynccontextmanager
+    async def unavailable_reader(_context: OrgContext) -> AsyncGenerator[AsyncSession, None]:
+        nonlocal failed_read
+        failed_read = True
+        async with pg_factory() as reader:
+            await reader.execute(text("SELECT 1 / 0"))
+            yield reader
+
+    monkeypatch.setattr(memory_context, "recall_session", unavailable_reader)
+    cfg.memory_run_id = str(resumed.id)
+    async with pg_factory() as owner:
+        assert await lock_executable_run(owner, RunExecutionTarget(resumed.id, target.conversation))
+        _, briefs = await memory_context.load_memory_context_in(cfg, owner)
+        assert failed_read and not briefs and not cfg.memory_recall_block
+        await owner.commit()
+    async with pg_factory() as check:
+        chain = (str(target.run_id), str(resumed.id))
+        assert list(
+            await check.scalars(
+                select(MemoryRecallRun.mode).where(MemoryRecallRun.run_id.in_(chain))
+            )
+        ) == ["fresh"]
+        assert list(
+            await check.scalars(
+                select(MemoryRecall.record_id).where(MemoryRecall.run_id.in_(chain))
+            )
+        ) == [record_id]

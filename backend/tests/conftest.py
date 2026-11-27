@@ -201,7 +201,7 @@ def _patch_conversation_run_worker_session(monkeypatch):
     monkeypatch.setattr(
         runtime_memory_context,
         "recall_session",
-        lambda cfg: tenant_session(cfg.org_context, maker=TestSession),
+        lambda context: tenant_session(context, maker=TestSession),
     )
 
 

@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 from typing import Any, Final
 
 from sqlalchemy import and_, delete, or_, select
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.memory_agent_access import shared_memory_agent_ids
@@ -98,42 +100,47 @@ async def enqueue_backfill(
     )
     if any(state not in TERMINAL_STATES for state in choices.values()):
         return
-    if key not in choices:
-        await jobs.enqueue(
-            db,
-            context,
-            jobs.EnqueueRequest(type=INDEX_JOB, payload={"all": True}, idempotency_key=key),
-            actor_id=None,
-        )
-        return
-
-    # Recall observed a missing or invalid vector after an earlier pass. Keep the
-    # completed job's audit history and coalesce concurrent requests on the next number.
-    group = memory_embedder.text_hash(key)
-    repair_number = Job.payload["repair_number"].as_integer()
-    latest = (
-        await db.execute(
-            select(Job.state, repair_number)
-            .where(
-                Job.tenant_id == context.tenant_id, Job.type == INDEX_JOB, Job.resource_id == group
+    job_key = key
+    payload: dict[str, Any] = {"all": True}
+    group = None
+    if key in choices:
+        # Recall observed a missing or invalid vector after an earlier pass. Keep the
+        # completed job's audit history and coalesce concurrent requests on the next number.
+        group = memory_embedder.text_hash(key)
+        repair_number = Job.payload["repair_number"].as_integer()
+        latest = (
+            await db.execute(
+                select(Job.state, repair_number)
+                .where(
+                    Job.tenant_id == context.tenant_id,
+                    Job.type == INDEX_JOB,
+                    Job.resource_id == group,
+                )
+                .order_by(repair_number.desc())
+                .limit(1)
             )
-            .order_by(repair_number.desc())
-            .limit(1)
-        )
-    ).first()
-    if latest is not None and latest[0] not in TERMINAL_STATES:
-        return
-    number = latest[1] + 1 if latest is not None else 1
-    await jobs.enqueue(
-        db,
-        context,
-        jobs.EnqueueRequest(
-            type=INDEX_JOB,
-            payload={"all": True, "choice": key, "repair_number": number},
-            resource_id=group,
-            idempotency_key=f"all:repair:{group}:{number}",
-        ),
+        ).first()
+        if latest is not None and latest[0] not in TERMINAL_STATES:
+            return
+        number = latest[1] + 1 if latest is not None else 1
+        payload.update(choice=key, repair_number=number)
+        job_key = f"all:repair:{group}:{number}"
+
+    # A prepared lease owns the parent transaction. A duplicate is harmless and must
+    # not enter an ORM savepoint, which would invalidate that transaction's lock proof.
+    insert = sqlite_insert if db.get_bind().dialect.name == "sqlite" else postgres_insert
+    statement = insert(Job).values(
+        tenant_id=context.tenant_id,
+        org_id=context.org_id,
+        type=INDEX_JOB,
         actor_id=None,
+        payload=payload,
+        resource_id=group,
+        idempotency_key=job_key,
+        run_after=jobs.now(),
+    )
+    await db.execute(
+        statement.on_conflict_do_nothing(index_elements=["tenant_id", "type", "idempotency_key"])
     )
 
 

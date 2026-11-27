@@ -1058,15 +1058,21 @@ async def run_recall(
     scopes: str,
     agent_id: uuid.UUID | None,
     exclude: frozenset[uuid.UUID],
+    owner: AsyncSession | None = None,
 ) -> Any:
-    """``memory_recall.timed_recall_for_run`` (its own session, one time limit)."""
+    """Rank the current run's memories and record the selection in its owning transaction."""
     from app.services import memory_recall
 
+    filters = memory_recall.Filters(scopes=scopes, agent_id=agent_id, exclude=exclude)
+    if owner is not None:
+        return await memory_recall.prepared_recall_for_run(
+            owner, session_factory, context, run_id=run_id, filters=filters
+        )
     return await memory_recall.timed_recall_for_run(
         session_factory,
         context,
         run_id=run_id,
-        filters=memory_recall.Filters(scopes=scopes, agent_id=agent_id, exclude=exclude),
+        filters=filters,
     )
 
 
