@@ -51,7 +51,7 @@ def _receipt(file: Path, result: dict) -> dict:
     ids = {}
     for key in ("interruptIds", "messageIds", "toolCallIds"):
         if not isinstance(result[key], list):
-            raise ValueError("Unexpected SDK identifier list")
+            raise TypeError("Unexpected SDK identifier list")
         ids[key] = [_safe_id(value) for value in result[key]]
 
     errors = []
@@ -59,7 +59,11 @@ def _receipt(file: Path, result: dict) -> dict:
         errors.append("required_request_not_checked")
     if bool(ids["interruptIds"]) != (outcome == "interrupt"):
         errors.append("unexpected_interrupt_ids")
-    if name.endswith("-continuation") and checked and not capture["request"].get("resume"):
+    if (
+        name.endswith("-continuation")
+        and checked
+        and not capture["request"].get("resume")
+    ):
         errors.append("missing_resume_decision")
     return {
         "status": "failed" if errors else "passed",
@@ -74,7 +78,9 @@ def _receipt(file: Path, result: dict) -> dict:
     }
 
 
-def typescript_receipts(root: Path, output: Path, env: dict[str, str], logs: Path) -> dict:
+def typescript_receipts(
+    root: Path, output: Path, env: dict[str, str], logs: Path
+) -> dict:
     """Write safe receipts for all available captures. A partial set never clears the gate."""
     available = [name for name in CAPTURES if (output / name).is_file()]
     missing = [name for name in CAPTURES if name not in available]
@@ -85,7 +91,7 @@ def typescript_receipts(root: Path, output: Path, env: dict[str, str], logs: Pat
     version = None
     if node:
         with suppress(OSError, subprocess.SubprocessError):
-            version = subprocess.check_output(  # noqa: S603 -- resolved local Node binary.
+            version = subprocess.check_output(
                 [node, "--version"],
                 cwd=root,
                 env=env,
@@ -99,7 +105,7 @@ def typescript_receipts(root: Path, output: Path, env: dict[str, str], logs: Pat
 
     def verify(executable: str, files: list[str]) -> list[dict] | None:
         try:
-            result = subprocess.run(  # noqa: S603 -- executable and fixed helper are local.
+            result = subprocess.run(
                 [
                     executable,
                     str(root / "scripts/ag_ui_acceptance/verify_transcripts.mjs"),
@@ -138,7 +144,10 @@ def typescript_receipts(root: Path, output: Path, env: dict[str, str], logs: Pat
                 if single:
                     row = single[0]
             if row is None:
-                captured[name] = {"status": "failed", "errors": ["sdk_verification_failed"]}
+                captured[name] = {
+                    "status": "failed",
+                    "errors": ["sdk_verification_failed"],
+                }
                 continue
             try:
                 captured[name] = _receipt(output / name, row)
@@ -146,7 +155,8 @@ def typescript_receipts(root: Path, output: Path, env: dict[str, str], logs: Pat
                 captured[name] = {"status": "failed", "errors": ["invalid_sdk_result"]}
     elif not version:
         captured = {
-            name: {"status": "failed", "errors": ["node_22_required"]} for name in available
+            name: {"status": "failed", "errors": ["node_22_required"]}
+            for name in available
         }
     if missing:
         errors.append("missing_captures")
