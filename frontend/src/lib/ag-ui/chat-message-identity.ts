@@ -1,4 +1,5 @@
 import type { ThreadMessage } from '@assistant-ui/react'
+import { z } from 'zod'
 import type { AgUiMessageLink } from './chat-history-types'
 
 export type ChatMessageIdentity = Pick<ThreadMessage, 'id' | 'metadata'>
@@ -54,4 +55,14 @@ export function findChatMessageLink(
       (!stored || link.uiMessageId === stored),
   )
   return candidates.length === 1 ? candidates[0] : undefined
+}
+
+const feedbackId = z.string().uuid()
+
+export function storedFeedbackTarget(
+  message: ChatMessageIdentity,
+  links: readonly AgUiMessageLink[],
+) {
+  const id = findChatMessageLink(message, links)?.uiMessageId
+  return id && feedbackId.safeParse(id).success ? id : undefined
 }

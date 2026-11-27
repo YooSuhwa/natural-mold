@@ -1,6 +1,6 @@
 import { cleanup } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { render, screen, userEvent, waitFor } from '../../../../tests/test-utils'
+import { render, screen, userEvent, waitFor, within } from '../../../../tests/test-utils'
 import {
   answer,
   installChatApi,
@@ -55,6 +55,8 @@ it('saves one positive rating on a live reply while an older messages read is st
   const api = installChatApi({ textOnly: true })
   const runApi = globalThis.fetch
   const oldRead = Promise.withResolvers<void>()
+  const releaseSelectedHistory = Promise.withResolvers<void>()
+  const selectedHistoryArrived = vi.fn()
   const savedMessage = {
     id: storedAnswerId,
     runtime_message_id: 'assistant-done',
@@ -67,6 +69,14 @@ it('saves one positive rating on a live reply while an older messages read is st
     const path = new URL(input instanceof Request ? input.url : String(input), 'http://localhost')
       .pathname
     const method = init?.method ?? 'GET'
+    if (method === 'GET' && path.endsWith('/ag-ui/snapshot') && api.commands.length) {
+      // The browser has seen the SDK's terminal frame. The selected history that assigns
+      // a public UUID to the answer has not yet been delivered to the transcript.
+      const response = await runApi(input, init)
+      selectedHistoryArrived()
+      await releaseSelectedHistory.promise
+      return response
+    }
     if (method === 'GET' && path === '/api/conversations/' + threadId + '/messages') {
       messageReads()
       if (messageReads.mock.calls.length === 1) {
@@ -98,7 +108,12 @@ it('saves one positive rating on a live reply while an older messages read is st
     expect(await screen.findByText(answer)).toBeVisible()
     expect(api.commands).toHaveLength(1)
     expect(votes).not.toHaveBeenCalled()
-    await user.click(await screen.findByRole('button', { name: '도움이 됨' }))
+    await waitFor(() => expect(selectedHistoryArrived).toHaveBeenCalled())
+    expect(screen.getByRole('button', { name: '도움이 됨' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '도움이 안 됨' })).toBeDisabled()
+    releaseSelectedHistory.resolve()
+    await waitFor(() => expect(screen.getByRole('button', { name: '도움이 됨' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: '도움이 됨' }))
     await waitFor(() => expect(refreshing).toHaveBeenCalledOnce())
     oldRead.resolve()
     await waitFor(() =>
@@ -112,6 +127,78 @@ it('saves one positive rating on a live reply while an older messages read is st
     )
     expect(api.commands).toHaveLength(1)
   } finally {
+    releaseSelectedHistory.resolve()
     oldRead.resolve()
   }
+})
+
+it('rates an older stored answer on the selected branch after opening saved history', async () => {
+  csrfStore.set('synthetic-csrf')
+  const api = installChatApi()
+  const runApi = globalThis.fetch
+  const turns = [
+    { role: 'user', content: '첫 질문' },
+    { role: 'assistant', content: '첫 답변' },
+    { role: 'user', content: '다음 질문' },
+    { role: 'assistant', content: '최근 답변' },
+  ]
+  const rows = turns.map((turn, index) => ({
+    ...turn,
+    id: crypto.randomUUID(),
+    runtime_message_id: 'wire-' + index,
+    conversation_id: threadId,
+    tool_calls: null,
+    tool_call_id: null,
+    created_at: '2026-11-27T00:00:00Z',
+  }))
+  const votes = vi.fn()
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    const address = new URL(
+      input instanceof Request ? input.url : String(input),
+      'http://localhost',
+    )
+    if (address.pathname.endsWith('/ag-ui/snapshot')) {
+      const base = await (await runApi(input, init)).json()
+      return Response.json({
+        ...base,
+        checkpointId: 'last-checkpoint',
+        activeTipMessageId: rows[3].runtime_message_id,
+        messages: rows.map((row) => ({
+          id: row.runtime_message_id,
+          role: row.role,
+          content: row.content,
+        })),
+        messageLinks: rows.map((row, index) => ({
+          messageId: row.runtime_message_id,
+          uiMessageId: row.id,
+          parentMessageId: rows[index - 1]?.runtime_message_id ?? null,
+          checkpointId: 'saved-' + index,
+          runId: index < 2 ? 'earlier-run' : 'later-run',
+        })),
+      })
+    }
+    if (address.pathname === '/api/conversations/' + threadId + '/messages')
+      return Response.json({ messages: rows })
+    if (address.pathname.endsWith('/feedback')) {
+      votes(address.pathname, init?.method, JSON.parse(String(init?.body)))
+      return Response.json({ message_id: rows[1].id, rating: 'up', conversation_id: threadId })
+    }
+    return runApi(input, init)
+  })
+  render(<ChatWithFeedback onRefresh={vi.fn()} />)
+  const text = await screen.findByText('첫 답변')
+  const older = text.closest<HTMLElement>('[data-moldy-message-role="assistant"]')
+  if (!older) throw new Error('Missing the first saved assistant row')
+  expect(older).toHaveAttribute('data-moldy-message-id', rows[1].id)
+  const positive = within(older).getByRole('button', { name: '도움이 됨' })
+  expect(positive).toBeEnabled()
+  await userEvent.setup().click(positive)
+  await waitFor(() =>
+    expect(votes).toHaveBeenCalledExactlyOnceWith(
+      '/api/messages/' + rows[1].id + '/feedback',
+      'POST',
+      { rating: 'up', conversation_id: threadId },
+    ),
+  )
+  expect(api.commands).toHaveLength(0)
 })

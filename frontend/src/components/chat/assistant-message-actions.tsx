@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 import { copyTextToClipboard, getMessageCopyText } from '@/components/chat/message-copy'
 import { reportClientWarning } from '@/lib/logging/client-logger'
+import { useMoldyAgUiActivities } from '@/lib/ag-ui/activity-context'
+import { storedChatMessageId, storedFeedbackTarget } from '@/lib/ag-ui/chat-message-identity'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { PinConversationSummaryButton } from '@/components/chat/pin-conversation-summary-button'
 import { PartialStreamRecovery } from '@/components/chat/partial-stream-recovery'
@@ -202,6 +204,14 @@ export function RetryButton() {
 
 export function FeedbackButtons() {
   const t = useTranslations('chat.message')
+  const activity = useMoldyAgUiActivities()
+  const ready = useAuiState((s) => {
+    if (!activity) return true
+    if (!s.thread.capabilities.feedback) return false
+    // The live SDK row can be replaced when the selected history supplies its stored identity.
+    const publicId = s.message && storedChatMessageId(s.message)
+    return !!publicId && publicId === storedFeedbackTarget(s.message, activity.links)
+  })
   const submitted = useAuiState(
     (s) =>
       (s.message?.metadata as { submittedFeedback?: { type: 'positive' | 'negative' } } | undefined)
@@ -210,6 +220,7 @@ export function FeedbackButtons() {
   return (
     <>
       <ActionBarPrimitive.FeedbackPositive
+        disabled={!ready}
         className={cn(
           MESSAGE_ACTION_CLASS,
           submitted === 'positive'
@@ -222,6 +233,7 @@ export function FeedbackButtons() {
         <ThumbsUpIcon className="size-3" />
       </ActionBarPrimitive.FeedbackPositive>
       <ActionBarPrimitive.FeedbackNegative
+        disabled={!ready}
         className={cn(
           MESSAGE_ACTION_CLASS,
           submitted === 'negative'
