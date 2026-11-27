@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { useAtomValue } from 'jotai'
 import { useLocale, useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
+import { IndependentJobHandoff } from '@/components/chat/independent-job-handoff'
 import { Textarea } from '@/components/ui/textarea'
 import { childTaskLabels } from '@/lib/chat/child-task-labels'
 import { chatSubagentNamesAtom } from '@/lib/stores/chat-subagent-names'
@@ -125,6 +126,14 @@ function TaskDetails({
         </p>
       )}
       {task.result && <p className="whitespace-pre-wrap break-words text-sm">{task.result}</p>}
+      {task.child_agent_id && (
+        <IndependentJobHandoff
+          conversationId={conversationId}
+          runId={task.run_id}
+          childTaskId={task.id}
+          childAgentId={task.child_agent_id}
+        />
+      )}
       {task.instructions.length > 0 && (
         <ul aria-label={t('instructions')} className="space-y-2">
           {task.instructions.map((item) => (

@@ -1,3 +1,4 @@
+import { webcrypto } from 'node:crypto'
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
@@ -13,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import messages from '../../../../messages/en.json'
 import { createTestQueryClient } from '../../../../tests/test-utils'
+import { independentJobsApi } from '@/lib/api/independent-chat-jobs'
 import { ChatConversationContext } from '../conversation-context'
 import { DelegatedChildTasks } from '../delegated-child-tasks'
 import { conversationQueryKeys } from '@/lib/query-keys/conversations'
@@ -115,7 +117,50 @@ function renderRestoredStrip(selectedTaskId?: string) {
 describe('managed child task controls', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    vi.spyOn(independentJobsApi, 'list').mockResolvedValue({
+      enabled: false,
+      parent_job: null,
+      jobs: [],
+      targets: [],
+    })
     serveTasks([researcher, reviewer])
+  })
+
+  it('delegates the selected restored child task with its persisted identity and origin run', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(independentJobsApi, 'list').mockResolvedValue({
+      enabled: true,
+      parent_job: null,
+      jobs: [],
+      targets: [{ id: reviewer.child_agent_id, name: reviewer.role }],
+    })
+    const start = vi
+      .spyOn(independentJobsApi, 'start')
+      .mockRejectedValueOnce(new Error('lost response'))
+    vi.stubGlobal('crypto', webcrypto)
+    try {
+      renderTasks(reviewer.id)
+      await user.click(await screen.findByRole('button', { name: 'Continue as a separate job' }))
+      await user.type(
+        screen.getByRole('textbox', { name: 'Task instructions' }),
+        'Finish the review',
+      )
+      await user.click(screen.getByRole('button', { name: 'Start job' }))
+      await waitFor(() =>
+        expect(start).toHaveBeenCalledWith(
+          conversationId,
+          reviewer.run_id,
+          expect.objectContaining({
+            source_child_task_id: reviewer.id,
+            target_id: reviewer.child_agent_id,
+            instruction: 'Finish the review',
+          }),
+        ),
+      )
+    } finally {
+      vi.unstubAllGlobals()
+      sessionStorage.clear()
+    }
   })
 
   it('opens the persisted child by its durable id after reconnecting with no live stream', async () => {
