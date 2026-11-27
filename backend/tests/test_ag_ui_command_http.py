@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 import anyio
 import pytest
+from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from httpx import AsyncClient
 from sqlalchemy import func, select
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.conversation_scope import require_conversation_agent_id
 from app.authz.org_context import OrgContext
+from app.dependencies import get_db
 from app.models.ag_ui_command_receipt import AgUiCommandReceipt
 from app.models.audit_event import AuditEvent
 from app.models.conversation import Conversation
@@ -26,7 +28,7 @@ from app.services import (
     conversation_run_worker,
 )
 from tests.authz.unit_scope_fixture import unit_context
-from tests.conftest import TEST_USER_ID, AuthSession, make_model, register_session
+from tests.conftest import TEST_USER_ID, AuthSession, make_model, override_get_db, register_session
 from tests.integration._seed import seed_conversation_with_agent
 
 
@@ -288,7 +290,10 @@ async def test_cookie_and_csrf_precede_receipt_lookup(
 
 
 async def test_stream_headers_follow_the_public_input_from_queue_to_physical_claim(
-    raw_client: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    raw_client: AsyncClient,
+    raw_test_app: FastAPI,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.services import ag_ui_read, conversation_run_queue_service
 
@@ -314,8 +319,19 @@ async def test_stream_headers_follow_the_public_input_from_queue_to_physical_cla
     # httpx ASGITransport buffers to EOF. Close after the reader's own first
     # SSE record, just as a browser may detach without cancelling a command.
     stream = ag_ui_read._stream  # noqa: SLF001
+    posting: list[AsyncSession] = []
+
+    async def track_submission_session() -> AsyncIterator[AsyncSession]:
+        async for session_db in override_get_db():
+            posting.append(session_db)
+            yield session_db
+
+    monkeypatch.setitem(raw_test_app.dependency_overrides, get_db, track_submission_session)
 
     async def first_record(*args: Any) -> AsyncIterator[bytes]:
+        # The primary tab and its idempotent replay can both remain connected. Only
+        # detached reader polls may hold a connection while either stream is open.
+        assert posting and not posting[-1].in_transaction()
         records = stream(*args)
         assert isinstance(records, AsyncGenerator)
         try:
