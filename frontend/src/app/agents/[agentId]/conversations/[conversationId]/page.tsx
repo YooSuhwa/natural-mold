@@ -106,11 +106,19 @@ export default function ChatPage({
   // W7-4 — envelope에서 conversation 누적 비용을 가져와 토큰 바에 흘림. 같은
   // query observer 하나에서 messages와 cost를 함께 파생해 채팅 트리 리렌더를 줄인다.
   const {
-    data: envelope,
+    data: fetchedEnvelope,
+    isPlaceholderData: isHistoryPlaceholder,
     isLoading: messagesLoading,
     isError: historyFailed,
     refetch: retryHistory,
   } = useMessagesEnvelope(messageEnvelopeConversationId, shouldLoadMessageEnvelope)
+  const envelopeRun = fetchedEnvelope?.active_run ?? fetchedEnvelope?.latest_run
+  const envelope =
+    shouldLoadMessageEnvelope &&
+    !isHistoryPlaceholder &&
+    (!envelopeRun || envelopeRun.conversation_id === messageEnvelopeConversationId)
+      ? fetchedEnvelope
+      : undefined
   const messages = envelope?.messages ?? EMPTY_MESSAGES
   const markConversationRead = useMarkConversationRead(agentId)
   const { mutate: markRead, isPending: isMarkingRead } = markConversationRead
@@ -206,19 +214,23 @@ export default function ChatPage({
     runtimeMode,
     onConversationId: handleLangGraphDraftConversationId,
   })
-  const activeConversationId = isDraftConversation
-    ? langGraphDraftConversationId
-    : routeConversationId
+  const activeConversationId =
+    (isDraftConversation ? langGraphDraftConversationId : routeConversationId) || null
   const resolvedSideEffectConversationId = activeConversationId ?? routeConversationId
-  const envelopeRun = envelope?.active_run ?? envelope?.latest_run
   const independentJobs = useIndependentChatJobs(
     activeConversationId,
-    envelopeRun?.conversation_id === activeConversationId ? envelopeRun.id : null,
+    envelope?.active_run?.id ?? envelope?.latest_run?.id ?? null,
   )
-  const jobList = independentJobs.query.isSuccess ? independentJobs.query.data : null
+  const jobList =
+    activeConversationId &&
+    independentJobs.query.isSuccess &&
+    !independentJobs.query.isPlaceholderData
+      ? independentJobs.query.data
+      : null
   const isIndependentJob =
-    envelope?.conversation_source === 'independent_job' ||
-    jobList?.parent_job?.child_conversation_id === activeConversationId
+    activeConversationId !== null &&
+    (envelope?.conversation_source === 'independent_job' ||
+      jobList?.parent_job?.child_conversation_id === activeConversationId)
   const sourceUnavailable =
     !isDraftConversation && (historyFailed || !envelope?.conversation_source)
   const readOnlyConversation = isIndependentJob || sourceUnavailable

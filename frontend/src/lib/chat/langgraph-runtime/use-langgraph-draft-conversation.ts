@@ -110,6 +110,9 @@ export function useLangGraphDraftConversation({
     void conversationsApi
       .createDraft(agentId)
       .then((conversation) => {
+        if (typeof conversation?.id !== 'string' || !conversation.id.trim()) {
+          throw new Error('Draft response is missing its conversation ID')
+        }
         if (
           activeKeyRef.current !== requestKey ||
           requestKeyRef.current !== requestKey ||
