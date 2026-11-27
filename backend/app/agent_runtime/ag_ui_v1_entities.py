@@ -20,10 +20,13 @@ class PublicChatEntities:
         allow_tool: Callable[[str | None, str], bool],
         *,
         secret_values: Iterable[str] = (),
+        allow_scoped_tool: Callable[[str | None, str, str | None], bool] | None = None,
     ) -> None:
         secrets = prepare_secret_values(secret_values)
         self._messages = PublicTextMessages(run_id, secrets)
-        self._calls = PublicToolCalls(run_id, allow_tool, secret_values=secrets)
+        self._calls = PublicToolCalls(
+            run_id, allow_tool, secret_values=secrets, allow_scoped_tool=allow_scoped_tool
+        )
         self._non_assistant_streams: set[str | None] = set()
         self._non_assistant_ids: set[tuple[str | None, str]] = set()
 
@@ -41,6 +44,9 @@ class PublicChatEntities:
 
     def public_tool_id(self, owner: str | None, raw_id: str | None) -> str | None:
         return self._calls.public_id(owner, raw_id)
+
+    def public_delegation_tool_id(self, owner: str | None, raw_id: str | None) -> str | None:
+        return self._calls.delegation_id(owner, raw_id)
 
     def tool_parent_message_id(self, owner: str | None, raw_id: str | None) -> str | None:
         return self._calls.parent_id(owner, raw_id)
