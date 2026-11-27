@@ -195,14 +195,11 @@ async def test_legacy_retained_checkpoint_hides_pending_input_on_read(
     body = history.json()
     assert body["state"] == body["checkpoints"][0]["channel_values"] == {"summary": "masked"}
     assert body["checkpoints"][0]["payload_sha256"] == checkpoint.payload_sha256
-    assert (
-        state.json()["values"]
-        == versions.json()[0]["values"]
-        == {
-            "messages": body["messages"],
-            "summary": "masked",
-        }
-    )
+    for public_state in (state.json(), versions.json()[0]):
+        assert public_state["metadata"]["agent_id"] is None
+        assert public_state["values"]["messages"] == body["messages"]
+        assert public_state["values"]["summary"] == "masked"
+        assert START not in public_state["values"]
     await scenario.db.refresh(checkpoint)
     assert checkpoint.channel_values[START] == {"messages": ["private-input"]}
 
