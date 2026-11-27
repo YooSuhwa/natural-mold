@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.notifications import Target, notify
@@ -214,6 +215,17 @@ async def drain_chat_notification_outbox(
                 row.notification_id = notification.id if notification is not None else None
                 row.finished_at = now
         except Exception as error:
+            if isinstance(error, DBAPIError) and getattr(error.orig, "sqlstate", None) == "55P03":
+                # The concurrent editor owns the parent. A second outbox UPDATE in
+                # this transaction can trigger another FK check against that same
+                # row. Its attempt is already recorded; retry on the next sweep.
+                logger.info(
+                    "chat_notice_busy id=%s attempt=%d queue_age_seconds=%d",
+                    row_id,
+                    attempts,
+                    queue_age,
+                )
+                continue
             # The savepoint rolled back the bell write, including failures after
             # notify() flushed. A later attempt can safely create it once.
             retry_delay = min(5 * (2 ** min(attempts - 1, 6)), 300)
