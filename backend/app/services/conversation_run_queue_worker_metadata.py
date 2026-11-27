@@ -12,7 +12,8 @@ from app.authz.conversation_input_scope import conversation_input_parent
 from app.authz.conversation_run_scope import private_run_predicate
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
-from app.authz.scoping import private_parent_scoped, private_scope_predicate
+from app.authz.run_agent_loader import run_agent_scope_predicate
+from app.authz.scoping import private_parent_scoped
 from app.dependencies import CurrentUser
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -173,7 +174,7 @@ async def authorize_queue_target(
             scope,
         )
         .join(Agent, Agent.id == Conversation.agent_id)
-        .where(private_scope_predicate(Agent, scope))
+        .where(run_agent_scope_predicate(scope))
     )
     if bound_id is None:
         raise QueueBindingInvalidError
