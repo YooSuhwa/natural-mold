@@ -28,9 +28,11 @@ from app.agent_runtime.offload_storage import OffloadIdentity, ScopedOffloadBack
 from app.agent_runtime.offload_storage_types import LegacyHistoryKind, rollback_session_id
 from app.authz.org_context import OrgContext
 from app.dependencies import get_org_context
+from app.models.agent import Agent
 from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
 from app.models.organization import OrganizationMember
+from app.models.user import User
 from app.services import audit_service
 from app.services import conversation_history_evidence as evidence
 from tests.authz.agent_execution_runtime_fixture import seed_runtime_run
@@ -255,6 +257,49 @@ async def test_published_rollback_leaf_uses_conversation_owner_only(
     result = response.json()
     assert result["format"] == "legacy_markdown"
     assert result["excerpts"] == [{"role": "user", "text": question, "truncated": False}]
+
+
+async def test_verified_import_whose_name_matches_rollback_uses_agent_owner_namespace(
+    client: AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run, agent, conv = await seed_runtime_run()
+    legacy_owner = uuid.uuid4()
+    async with TestSession() as db:
+        db.add(
+            User(id=legacy_owner, email="shared-agent@example.invalid", name="Shared agent owner")
+        )
+        await db.flush()
+        await db.execute(update(Agent).where(Agent.id == agent.id).values(user_id=legacy_owner))
+        await db.commit()
+    question = "수입 단가"
+    await _published(run.id, conv.id, question, None)
+    row = HumanMessage(content=question)
+    session = "session_" + ("e" * 12) + "f13cf13c" + ("1" * 12)
+    leaf = f"{session}.md"
+    raw = get_buffer_string([row], format="xml")
+    (tmp_path / "conversation_history").mkdir()
+    (tmp_path / "conversation_history" / leaf).write_text(raw)
+    storage = ScopedOffloadBackend(
+        tmp_path,
+        OffloadIdentity(str(legacy_owner), str(conv.id), "import", frozenset({leaf})),
+        agent.id,
+    )
+    imported = storage.migrate_legacy_history(LegacyHistoryKind.SESSION, source_filename=leaf)
+    saver = _Saver(
+        str(conv.id),
+        {
+            "_summarization_event": {"file_path": imported.virtual_path, "cutoff_index": 1},
+            "messages": [row],
+        },
+    )
+    monkeypatch.setattr(checkpointer, "get_checkpointer", lambda: saver)
+    monkeypatch.setattr(evidence, "runtime_data_dir", lambda: tmp_path)
+    response = await client.get(f"/api/conversations/{conv.id}/history-evidence/cp1")
+    assert response.status_code == 200, response.text
+    assert response.json()["content_sha256"] == imported.content_sha256
+    assert response.json()["excerpts"][0]["text"] == question
 
 
 @pytest.mark.parametrize("wrong", ["tenant", "org", "owner", "revoked"])

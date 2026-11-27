@@ -246,6 +246,7 @@ def _read_evidence(
             raw = read_rollback_history(
                 data_dir,
                 owner_id=str(conversation.user_id),
+                legacy_owner_id=str(actor_owner),
                 conversation_id=str(conversation.id),
                 actor_id=conversation.agent_id,
                 leaf=ref.leaf,

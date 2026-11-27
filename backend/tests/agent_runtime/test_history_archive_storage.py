@@ -318,3 +318,121 @@ def test_interrupted_rollback_is_invisible_and_recoverable(
     restored = backend.download_files([legacy])[0]
     assert restored.content and "원문" in restored.content.decode()
     assert b"incomplete prefix" not in restored.content
+
+
+def _historical_import_and_rollback(
+    tmp_path: Path,
+) -> tuple[ScopedOffloadBackend, str, str]:
+    from app.agent_runtime.offload_storage_types import rollback_session_id
+
+    first = _backend(tmp_path, agent_owner="author", conversation_owner="member")
+    archive = first.archive_compaction(
+        "before", [HumanMessage(content="새 형식 원문", id="initial")]
+    )
+    session = rollback_session_id(archive, "next-checkpoint")
+    leaf = f"{session}.md"
+    source = tmp_path / "conversation_history" / leaf
+    source.parent.mkdir()
+    source.write_text("이전에 가져온 원문", encoding="utf-8")
+    verified = ScopedOffloadBackend(
+        tmp_path,
+        OffloadIdentity("author", "thread", "run", verified_legacy_sessions=frozenset({leaf})),
+        _ROOT_ACTOR,
+        archive_owner_id="member",
+    )
+    return verified, archive, session
+
+
+def test_preexisting_import_matching_reserved_session_stays_readable_until_deletion(
+    tmp_path: Path,
+) -> None:
+    from app.agent_runtime.offload_storage_io import read_rollback_history
+    from app.agent_runtime.offload_storage_types import LegacyHistoryKind
+
+    backend, archive, session = _historical_import_and_rollback(tmp_path)
+    leaf = f"{session}.md"
+    imported = backend.migrate_legacy_history(LegacyHistoryKind.SESSION, source_filename=leaf)
+    assert backend.edit(imported.virtual_path, "원문", "수정한 원문").error is None
+    expected = "이전에 가져온 수정한 원문".encode()
+    assert backend.download_files([imported.virtual_path])[0].content == expected
+
+    def read_evidence() -> bytes:
+        return read_rollback_history(
+            tmp_path,
+            owner_id="member",
+            legacy_owner_id="author",
+            conversation_id="thread",
+            actor_id=_ROOT_ACTOR,
+            leaf=leaf,
+        )
+
+    assert read_evidence() == expected
+    with pytest.raises(OffloadSecurityError, match="conflicts with imported"):
+        backend.archive_checkpoint_to_legacy(
+            archive, session, [AIMessage(content="덮어쓸 수 없음")]
+        )
+    assert read_evidence() == expected
+
+    delete_conversation_offloads(tmp_path, owner_id="member", conversation_id="thread")
+    assert backend.read(imported.virtual_path).error
+    with pytest.raises(OffloadSecurityError, match="deleted"):
+        read_evidence()
+    with pytest.raises(OffloadSecurityError, match="deleted"):
+        backend.write(imported.virtual_path, "되살릴 수 없음")
+
+
+def test_import_and_rollback_cannot_both_claim_same_shared_history(tmp_path: Path) -> None:
+    from app.agent_runtime.offload_storage_types import LegacyHistoryKind
+
+    backend, archive, session = _historical_import_and_rollback(tmp_path)
+    leaf = f"{session}.md"
+    barrier = Barrier(2)
+
+    def import_or_rollback(importing: bool) -> bytes:
+        barrier.wait(timeout=10)
+        if importing:
+            backend.migrate_legacy_history(LegacyHistoryKind.SESSION, source_filename=leaf)
+            return "이전에 가져온 원문".encode()
+        backend.archive_checkpoint_to_legacy(archive, session, [AIMessage(content="이후 요약")])
+        return "이후 요약".encode()
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        attempts = [workers.submit(import_or_rollback, mode) for mode in (False, True)]
+        failures = [future for future in attempts if future.exception(timeout=15) is not None]
+        assert len(failures) == 1 and isinstance(failures[0].exception(), OffloadSecurityError)
+        winner = next(future.result() for future in attempts if future not in failures)
+    ref = f"{backend.artifacts_root}/conversation_history/{leaf}"
+    actual = backend.download_files([ref])[0].content
+    assert actual and winner in actual
+    assert ("이후 요약".encode() in actual) != ("이전에 가져온 원문".encode() in actual)
+
+
+def test_invalid_rollback_file_cannot_fall_back_to_verified_import(tmp_path: Path) -> None:
+    from app.agent_runtime.offload_storage_io import read_rollback_history, rollback_history_path
+    from app.agent_runtime.offload_storage_types import (
+        LegacyHistoryKind,
+        OffloadMutationScope,
+        token,
+    )
+
+    backend, _, session = _historical_import_and_rollback(tmp_path)
+    leaf = f"{session}.md"
+    imported = backend.migrate_legacy_history(LegacyHistoryKind.SESSION, source_filename=leaf)
+    scope = OffloadMutationScope(
+        tmp_path / ".moldy-internal" / "offload",
+        token("owner", "member"),
+        token("conversation", "thread"),
+    )
+    malformed = rollback_history_path(scope, token("actor", str(_ROOT_ACTOR)), leaf)
+    malformed.parent.mkdir(parents=True, exist_ok=True)
+    malformed.symlink_to(tmp_path / "conversation_history" / leaf)
+    assert backend.download_files([imported.virtual_path])[0].error
+    with pytest.raises((OSError, OffloadSecurityError)):
+        read_rollback_history(
+            tmp_path,
+            owner_id="member",
+            legacy_owner_id="author",
+            conversation_id="thread",
+            actor_id=_ROOT_ACTOR,
+            leaf=leaf,
+        )

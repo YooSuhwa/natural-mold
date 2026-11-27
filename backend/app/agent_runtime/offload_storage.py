@@ -101,7 +101,7 @@ class ScopedOffloadBackend(CompositeBackend):
             internal, token("owner", archive_owner_id or identity.owner_id), self._conversation
         )
         self._archive = HistoryArchive(archive_scope, self._actor)
-        self._rollback_history = RollbackHistoryBackend(archive_scope, self._actor)
+        self._rollback_history = RollbackHistoryBackend(archive_scope, self._actor, self._owner)
         routes = {
             f"{artifacts_root}/conversation_history/": HistoryBackend(
                 history_root,
@@ -308,7 +308,17 @@ class ScopedOffloadBackend(CompositeBackend):
         history = self.routes[f"{self.artifacts_root}/conversation_history/"]
         if not isinstance(history, HistoryBackend):
             raise OffloadSecurityError(reason="durable history route is unavailable")
-        with conversation_mutation_lock(self._mutation_scope):
+        reserved = ROLLBACK_SESSION_FILE.fullmatch(destination_name) is not None
+        lock = (
+            self._rollback_history.import_or_rollback_lock()
+            if reserved
+            else conversation_mutation_lock(self._mutation_scope)
+        )
+        with lock:
+            if reserved and self._rollback_history.published(destination_name):
+                raise OffloadSecurityError(
+                    reason="import conflicts with published rollback history"
+                )
             safe_dir(
                 self._internal_root,
                 ("history", self._owner, self._conversation),

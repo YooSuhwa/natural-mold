@@ -14,6 +14,7 @@ from uuid import UUID
 
 from app.agent_runtime.offload_storage_fd import nofollow_flags
 from app.agent_runtime.offload_storage_fd import open_scoped_directory as _open_scoped_directory
+from app.agent_runtime.offload_storage_lock import check_conversation_offloads_active
 from app.agent_runtime.offload_storage_types import (
     PHYSICAL_ROOT,
     ROLLBACK_SESSION_FILE,
@@ -155,8 +156,55 @@ def rollback_history_path(scope: OffloadMutationScope, actor_token: str, leaf: s
     )
 
 
+def private_file_exists(path: Path) -> bool:
+    """Distinguish an absent file from a malformed or inaccessible scoped file."""
+    parent = _open_scoped_directory(path.parent, ())
+    if parent is None:
+        return False
+    try:
+        try:
+            descriptor = os.open(
+                path.name, nofollow_flags(os.O_RDONLY | os.O_NONBLOCK), dir_fd=parent
+            )
+        except FileNotFoundError:
+            return False
+        try:
+            _validate_private_regular_file(descriptor, parent, path.name, "invalid history file")
+        finally:
+            os.close(descriptor)
+        return True
+    finally:
+        os.close(parent)
+
+
+def imported_session_path(scope: OffloadMutationScope, legacy_owner_token: str, leaf: str) -> Path:
+    return scope.internal_root.joinpath(
+        "history", legacy_owner_token, scope.conversation, token("history-path", leaf)
+    )
+
+
+def resolve_rollback_session(
+    scope: OffloadMutationScope, actor_token: str, leaf: str, *, legacy_owner_token: str | None
+) -> Path:
+    """An imported session can share the reserved name; prefer a published rollback."""
+    current = rollback_history_path(scope, actor_token, leaf)
+    if legacy_owner_token is None or private_file_exists(current):
+        return current
+    imported = imported_session_path(scope, legacy_owner_token, leaf)
+    if private_file_exists(imported):
+        check_conversation_offloads_active(scope)
+        return imported
+    return current
+
+
 def read_rollback_history(
-    data_dir: Path, *, owner_id: str, conversation_id: str, actor_id: UUID | str, leaf: str
+    data_dir: Path,
+    *,
+    owner_id: str,
+    conversation_id: str,
+    actor_id: UUID | str,
+    leaf: str,
+    legacy_owner_id: str | None = None,
 ) -> bytes:
     """Read a checkpoint-authorized rollback session without creating files."""
     scope = OffloadMutationScope(
@@ -164,7 +212,12 @@ def read_rollback_history(
         token("owner", owner_id),
         token("conversation", conversation_id),
     )
-    path = rollback_history_path(scope, token("actor", parse_actor(actor_id)), leaf)
+    path = resolve_rollback_session(
+        scope,
+        token("actor", parse_actor(actor_id)),
+        leaf,
+        legacy_owner_token=token("owner", legacy_owner_id) if legacy_owner_id is not None else None,
+    )
     return read_scoped_regular_file(path.parent, (path.name,))
 
 
