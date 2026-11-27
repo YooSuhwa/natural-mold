@@ -17,11 +17,7 @@ def _command() -> dict[str, Any]:
     return {
         "id": 1,
         "method": "run.start",
-        "params": {
-            "input": {
-                "messages": [{"role": "user", "content": "E2E_TOKEN_USAGE_STREAM"}]
-            }
-        },
+        "params": {"input": {"messages": [{"role": "user", "content": "E2E_TOKEN_USAGE_STREAM"}]}},
     }
 
 
@@ -49,9 +45,7 @@ async def _can_run(agent: str, user: str) -> bool:
 async def _terminal(owner: Participant, conversation: str, run_id: str) -> str:
     async with asyncio.timeout(80):
         while True:
-            data = await owner.json(
-                "GET", f"/api/conversations/{conversation}/runs/{run_id}"
-            )
+            data = await owner.json("GET", f"/api/conversations/{conversation}/runs/{run_id}")
             if data["status"] not in {"accepted", "queued", "running"}:
                 return data["status"]
             await asyncio.sleep(0.25)
@@ -71,9 +65,7 @@ async def _exercise(gate: Gate, mode: str, source: str | None) -> dict[str, Any]
     await owner.json("GET", f"{path}/files")
     denied_session = await foreign.send("GET", path)
     absent_session = await foreign.send("GET", f"/api/skill-builder/{uuid4()}")
-    endpoint = (
-        f"/api/conversations/{conversation}/langgraph/threads/{conversation}/commands"
-    )
+    endpoint = f"/api/conversations/{conversation}/langgraph/threads/{conversation}/commands"
     other = await foreign.send("POST", endpoint, _command())
     absent = str(uuid4())
     missing = await foreign.send(
@@ -95,9 +87,7 @@ async def _exercise(gate: Gate, mode: str, source: str | None) -> dict[str, Any]
     missing_grants = await owner.send("GET", missing_share_path)
     missing_sharing = await owner.send("POST", missing_share_path, grant_body)
     transfer_body = {"new_owner_id": foreign.user_id}
-    transfer = await owner.send(
-        "POST", f"/api/resources/agent/{agent}/transfer", transfer_body
-    )
+    transfer = await owner.send("POST", f"/api/resources/agent/{agent}/transfer", transfer_body)
     missing_transfer = await owner.send(
         "POST", f"/api/resources/agent/{uuid4()}/transfer", transfer_body
     )
