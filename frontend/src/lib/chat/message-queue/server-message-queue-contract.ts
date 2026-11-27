@@ -70,8 +70,8 @@ export interface ServerMessageQueueController {
   updateCallbacks(
     callbacks: Pick<ServerMessageQueueOptions, 'submit' | 'createRequestId' | 'onClaimedRun'>,
   ): void
-  enqueue(message: AppendMessage): Promise<void>
-  steer(message: AppendMessage): Promise<void>
+  enqueue(message: AppendMessage, requestId?: string): Promise<void>
+  steer(message: AppendMessage, requestId?: string): Promise<void>
   edit(inputId: string, message: AppendMessage): Promise<void>
   move(inputId: string, placement: Parameters<ExternalThreadQueueAdapter['move']>[1]): Promise<void>
   remove(inputId: string): Promise<void>

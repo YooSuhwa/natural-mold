@@ -99,8 +99,8 @@ export function createServerMessageQueue(
   const submit = async (
     message: AppendMessage,
     strategy: 'enqueue' | 'interrupt',
+    requestId = callbacks.createRequestId(),
   ): Promise<void> => {
-    const requestId = callbacks.createRequestId()
     setOperation({ kind: 'sending', requestId })
     try {
       const accepted = await callbacks.submit(message, { strategy, requestId })
@@ -158,8 +158,8 @@ export function createServerMessageQueue(
     updateCallbacks: (nextCallbacks) => {
       callbacks = nextCallbacks
     },
-    enqueue: (message) => submit(message, 'enqueue'),
-    steer: (message) => submit(message, 'interrupt'),
+    enqueue: (message, requestId) => submit(message, 'enqueue', requestId),
+    steer: (message, requestId) => submit(message, 'interrupt', requestId),
     edit: async (inputId, message) => {
       const input = serverInputs.find((item) => item.id === inputId && item.status === 'pending')
       if (!input) {
