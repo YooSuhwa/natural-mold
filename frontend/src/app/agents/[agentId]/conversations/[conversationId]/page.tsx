@@ -47,6 +47,7 @@ import { ChatEmptyState } from '@/components/chat/chat-empty-state'
 import { ConversationGoalCard } from './_components/conversation-goal-card'
 import { conversationGoalKeys } from '@/lib/hooks/use-conversation-goal'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
+import { ChatWorkCommandConversationContext } from '@/components/chat/conversation-context'
 import { useIndependentChatJobs } from '@/lib/hooks/use-independent-chat-jobs'
 import { IndependentJobPanel } from '@/components/chat/independent-job-panel'
 import { IndependentJobCancelProvider } from '@/components/chat/independent-job-cancel-provider'
@@ -566,7 +567,11 @@ export default function ChatPage({
         </IndependentJobCancelProvider>
 
         {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
-        <ConversationDetailRail conversationId={activeConversationId} />
+        <ChatWorkCommandConversationContext.Provider
+          value={readOnlyConversation ? null : activeConversationId}
+        >
+          <ConversationDetailRail conversationId={activeConversationId} />
+        </ChatWorkCommandConversationContext.Provider>
         <SideChatPanel agent={agent} user={user} />
         {activeConversationId ? (
           <ExportDialog

@@ -15,7 +15,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import messages from '../../../../messages/en.json'
 import { createTestQueryClient } from '../../../../tests/test-utils'
 import { independentJobsApi } from '@/lib/api/independent-chat-jobs'
-import { ChatConversationContext } from '../conversation-context'
+import {
+  ChatConversationContext,
+  ChatWorkCommandConversationContext,
+} from '../conversation-context'
 import { DelegatedChildTasks } from '../delegated-child-tasks'
 import { conversationQueryKeys } from '@/lib/query-keys/conversations'
 import { currentOrgScope } from '@/lib/org-scope/org-scope-signal'
@@ -73,11 +76,18 @@ function serveTasks<T extends { readonly id: string }>(items: readonly T[]) {
   })
 }
 
-function renderContent(children: ReactNode) {
+function renderContent(
+  children: ReactNode,
+  writableConversationId: string | null = conversationId,
+) {
   const queryClient = createTestQueryClient()
   const view = render(
     <NextIntlClientProvider locale="en" messages={messages}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <ChatWorkCommandConversationContext.Provider value={writableConversationId}>
+          {children}
+        </ChatWorkCommandConversationContext.Provider>
+      </QueryClientProvider>
     </NextIntlClientProvider>,
   )
   return { ...view, queryClient }
@@ -427,6 +437,46 @@ describe('managed child task controls', () => {
     expect(screen.queryByRole('button', { name: /stop task/i })).not.toBeInTheDocument()
     expect(api.sendChildInstruction).not.toHaveBeenCalled()
   })
+
+  it.each([null, 'other-conversation'])(
+    'keeps restored task details and waiting available outside the writable room (%s)',
+    async (writableConversationId) => {
+      const user = userEvent.setup()
+      const active = { ...reviewer, brief: 'Inspect the captured report' }
+      serveTasks([active])
+      api.waitForChildTask.mockResolvedValue(active)
+      const store = createStore()
+      store.set(chatRightRailAtom, {
+        mode: 'subagent',
+        subagent: {
+          conversationId,
+          toolCallId: active.tool_call_id,
+          childTaskId: active.id,
+          agentName: active.role,
+        },
+      })
+      renderContent(
+        <JotaiProvider store={store}>
+          <ChatRightRail conversationId={conversationId} />
+        </JotaiProvider>,
+        writableConversationId,
+      )
+
+      const panels = await screen.findAllByRole('region', { name: active.role })
+      const panel = within(panels[0])
+      expect(panel.getByText(active.brief)).toBeVisible()
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /stop task/i })).not.toBeInTheDocument()
+      await user.click(panel.getByRole('button', { name: /wait for result/i }))
+      await waitFor(() => expect(api.waitForChildTask).toHaveBeenCalledTimes(1))
+      expect(api.sendChildInstruction).not.toHaveBeenCalled()
+      expect(api.cancelChildTask).not.toHaveBeenCalled()
+      expect(independentJobsApi.list).not.toHaveBeenCalled()
+      expect(
+        screen.queryByRole('button', { name: 'Continue as a separate job' }),
+      ).not.toBeInTheDocument()
+    },
+  )
 
   it('still permits waiting and stopping a captured task after new instructions are disabled', async () => {
     api.listChildTasks.mockResolvedValue({

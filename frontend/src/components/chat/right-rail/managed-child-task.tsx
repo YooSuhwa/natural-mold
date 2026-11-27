@@ -1,10 +1,11 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useContext, useRef, useState } from 'react'
 import { useAtomValue } from 'jotai'
 import { useLocale, useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { IndependentJobHandoff } from '@/components/chat/independent-job-handoff'
+import { ChatWorkCommandConversationContext } from '@/components/chat/conversation-context'
 import { Textarea } from '@/components/ui/textarea'
 import { childTaskLabels } from '@/lib/chat/child-task-labels'
 import { chatSubagentNamesAtom } from '@/lib/stores/chat-subagent-names'
@@ -94,13 +95,14 @@ function TaskDetails({
 }) {
   const t = useTranslations('chat.childTasks')
   const locale = useLocale()
+  const mayChangeTask = useContext(ChatWorkCommandConversationContext) === conversationId
   const { send, stop, wait } = useChildTaskCommands(conversationId, task.id)
   const [text, setText] = useState('')
   const submission = useRef<ChildInstructionRequest | null>(null)
   function submit(event: React.FormEvent) {
     event.preventDefault()
     const value = text.trim()
-    if (!value || send.isPending) return
+    if (!mayChangeTask || !canSend || !value || send.isPending) return
     // A lost acknowledgement can be retried with the same id until the draft changes.
     if (submission.current?.text !== value) {
       submission.current = { client_request_id: crypto.randomUUID(), text: value }
@@ -126,7 +128,7 @@ function TaskDetails({
         </p>
       )}
       {task.result && <p className="whitespace-pre-wrap break-words text-sm">{task.result}</p>}
-      {task.child_agent_id && (
+      {mayChangeTask && task.child_agent_id && (
         <IndependentJobHandoff
           conversationId={conversationId}
           runId={task.run_id}
@@ -157,7 +159,7 @@ function TaskDetails({
       )}
       {isActiveChildTask(task) && (
         <>
-          {canSend && (
+          {mayChangeTask && canSend && (
             <form onSubmit={submit} className="space-y-2">
               <Textarea
                 aria-label={t('input', { role: label })}
@@ -191,15 +193,17 @@ function TaskDetails({
             >
               {t(wait.isPending ? 'waiting' : 'wait')}
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={stop.isPending || send.isPending}
-              onClick={() => stop.mutate()}
-            >
-              {t('cancel')}
-            </Button>
+            {mayChangeTask && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={stop.isPending || send.isPending}
+                onClick={() => stop.mutate()}
+              >
+                {t('cancel')}
+              </Button>
+            )}
           </div>
           {wait.isSuccess && isActiveChildTask(wait.data) && (
             <p role="status" className="text-sm text-muted-foreground">
