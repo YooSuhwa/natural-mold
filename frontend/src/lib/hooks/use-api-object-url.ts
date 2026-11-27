@@ -50,8 +50,13 @@ export function useApiObjectUrl(url: string | null): ApiObjectUrlState {
 }
 
 /** Download an API resource as `filename` via a short-lived object URL. */
-export async function downloadApiFile(url: string, filename: string): Promise<void> {
-  const blob = await apiFetchBinary(url)
+export async function downloadApiFile(
+  url: string,
+  filename: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const blob = await apiFetchBinary(url, signal)
+  signal?.throwIfAborted()
   const objectUrl = URL.createObjectURL(blob)
   try {
     const anchor = document.createElement('a')

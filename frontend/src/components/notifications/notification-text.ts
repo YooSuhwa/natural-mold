@@ -1,6 +1,16 @@
-import type { NotificationView } from '@/lib/types/notification'
+import type { NotificationView, WorkNotificationKind } from '@/lib/types/notification'
 
 type Translate = (key: string, values?: Record<string, string>) => string
+
+const WORK_MESSAGES = {
+  'chat_goal.completed': 'kinds.goalCompleted',
+  'chat_goal.blocked': 'kinds.goalBlocked',
+  'chat_task.completed': 'kinds.taskCompleted',
+} as const satisfies Record<WorkNotificationKind, string>
+
+export function isWorkNotification(kind: string): kind is keyof typeof WORK_MESSAGES {
+  return Object.hasOwn(WORK_MESSAGES, kind)
+}
 
 const LEVELS = new Set(['consumer', 'viewer', 'editor', 'manager'])
 const REASONS = new Set([
@@ -20,6 +30,9 @@ function field(item: NotificationView, key: string): string | null {
 
 /** The S25 line of one notification (14.2 kinds); unknown kinds get a generic line. */
 export function notificationText(item: NotificationView, t: Translate): string {
+  if (isWorkNotification(item.kind)) {
+    return t(item.target?.accessible ? WORK_MESSAGES[item.kind] : 'workUnavailable')
+  }
   const target = item.target?.accessible ? (item.target.name ?? t('unnamed')) : t('hidden')
   const actor = item.actor?.display_name ?? t('someone')
   const level = field(item, 'level')

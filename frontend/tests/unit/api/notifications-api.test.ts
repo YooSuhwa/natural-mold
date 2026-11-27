@@ -6,6 +6,14 @@ vi.mock('@/lib/api/client', () => ({ apiFetch: fetchMock }))
 describe('notificationsApi', () => {
   beforeEach(() => fetchMock.mockReset().mockResolvedValue(undefined))
 
+  it('resolves each result when opened and encodes the row ID in both endpoints', async () => {
+    await notificationsApi.destination('a/b')
+    expect(fetchMock.mock.calls).toEqual([
+      ['/api/notifications/a%2Fb/destination', { cache: 'no-store' }],
+    ])
+    expect(notificationsApi.resultPath('a/b')).toBe('/api/notifications/a%2Fb/result')
+  })
+
   it('calls the H-02 routes', async () => {
     await notificationsApi.list()
     await notificationsApi.unreadCount()

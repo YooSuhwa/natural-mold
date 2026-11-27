@@ -4,6 +4,7 @@ import { BellIcon, CheckCheckIcon } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 import {
   DropdownMenu,
@@ -17,11 +18,12 @@ import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
   useNotifications,
+  useOpenWorkNotification,
   useUnreadNotificationCount,
 } from '@/lib/hooks/use-notifications'
 import type { NotificationView } from '@/lib/types/notification'
 import { cn } from '@/lib/utils'
-import { notificationText } from './notification-text'
+import { isWorkNotification, notificationText } from './notification-text'
 
 function badgeLabel(count: number): string {
   return count > 99 ? '99+' : String(count)
@@ -40,6 +42,7 @@ export function NotificationsBell() {
   const orgId = useActiveOrganization().activeOrganization?.id
   const unread = useUnreadNotificationCount(orgId).data?.total ?? 0
   const list = useNotifications(orgId, open)
+  const openWork = useOpenWorkNotification()
   const markRead = useMarkNotificationRead(orgId)
   const markAll = useMarkAllNotificationsRead(orgId)
   const label = unread > 0 ? t('bellUnread', { count: unread }) : t('bell')
@@ -48,7 +51,20 @@ export function NotificationsBell() {
   function select(item: NotificationView) {
     setOpen(false)
     if (!item.read_at) markRead.mutate(item.id)
-    if (item.link) router.push(item.link)
+    if (!isWorkNotification(item.kind)) {
+      if (item.link) router.push(item.link)
+      return
+    }
+    if (!item.target?.accessible) return
+    openWork.mutate(
+      { id: item.id, kind: item.kind, fallbackFilename: t('resultFilename') },
+      {
+        onSuccess: (path) => {
+          if (path) router.push(path)
+        },
+        onError: () => toast.error(t('workUnavailable')),
+      },
+    )
   }
 
   return (

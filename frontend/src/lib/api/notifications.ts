@@ -1,5 +1,9 @@
 import { apiFetch } from './client'
-import type { NotificationPage, UnreadCount } from '@/lib/types/notification'
+import type {
+  NotificationPage,
+  UnreadCount,
+  WorkNotificationDestination,
+} from '@/lib/types/notification'
 
 const BASE = '/api/notifications'
 
@@ -7,6 +11,11 @@ const BASE = '/api/notifications'
 export const notificationsApi = {
   list: (limit = 20) =>
     apiFetch<NotificationPage>(`${BASE}?${new URLSearchParams({ limit: String(limit) })}`),
+  destination: (id: string) =>
+    apiFetch<WorkNotificationDestination>(`${BASE}/${encodeURIComponent(id)}/destination`, {
+      cache: 'no-store',
+    }),
+  resultPath: (id: string) => `${BASE}/${encodeURIComponent(id)}/result`,
   unreadCount: () => apiFetch<UnreadCount>(`${BASE}/unread-count`),
   markRead: (id: string) =>
     apiFetch<void>(`${BASE}/${encodeURIComponent(id)}/read`, { method: 'POST' }),

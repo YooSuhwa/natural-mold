@@ -7279,6 +7279,8 @@
     "hidden": "An item you can't access",
     "unnamed": "Untitled",
     "someone": "Someone",
+    "workUnavailable": "This notification's destination is unavailable",
+    "resultFilename": "Task result",
     "unreadMark": "Unread",
     "levels": {
       "consumer": "run",
@@ -7316,6 +7318,9 @@
       "approvalDecided": "An approval request of {target} expired and was rejected",
       "emergencyStopApplied": "{target} was emergency-stopped",
       "emergencyStopReleased": "The emergency stop of {target} was released",
+      "goalCompleted": "Your goal is complete",
+      "goalBlocked": "Your goal needs attention",
+      "taskCompleted": "Your background task is complete",
       "memoryConsolidationStopped": "Memory consolidation stopped after failing three times in 24 hours",
       "generic": "You have a new notification",
       "workflowNotify": "Workflow notice: {title}"

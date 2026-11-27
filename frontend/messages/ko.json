@@ -7279,6 +7279,8 @@
     "hidden": "접근할 수 없는 항목",
     "unnamed": "이름 없음",
     "someone": "누군가",
+    "workUnavailable": "이 알림의 대상을 열 수 없어요",
+    "resultFilename": "목표 결과",
     "unreadMark": "안읽음",
     "levels": {
       "consumer": "실행",
@@ -7316,6 +7318,9 @@
       "approvalDecided": "{target}의 승인 요청이 만료되어 거절됐어요",
       "emergencyStopApplied": "{target}이(가) 긴급 중지됐어요",
       "emergencyStopReleased": "{target}의 긴급 중지가 해제됐어요",
+      "goalCompleted": "목표를 완료했어요",
+      "goalBlocked": "목표를 계속 진행하려면 확인이 필요해요",
+      "taskCompleted": "백그라운드 작업이 끝났어요",
       "memoryConsolidationStopped": "기억 정리가 24시간 안에 세 번 실패해 멈췄어요",
       "generic": "새 알림이 있어요",
       "workflowNotify": "워크플로 알림: {title}"

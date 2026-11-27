@@ -2,6 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { downloadApiFile } from '@/lib/hooks/use-api-object-url'
+import {
+  currentOrgScope,
+  isOrgScopeCurrent,
+  signalForOrgScope,
+} from '@/lib/org-scope/org-scope-signal'
+import type { WorkNotificationKind } from '@/lib/types/notification'
 import { notificationsApi } from '@/lib/api/notifications'
 import { notificationQueryKeys } from '@/lib/query-keys/notifications'
 
@@ -40,4 +47,40 @@ export function useMarkNotificationRead(orgId: string | null | undefined) {
 export function useMarkAllNotificationsRead(orgId: string | null | undefined) {
   const refresh = useRefresh(orgId)
   return useMutation({ mutationFn: notificationsApi.markAllRead, onSuccess: refresh })
+}
+
+export function useOpenWorkNotification() {
+  return useMutation({
+    mutationFn: async ({
+      id,
+      kind,
+      fallbackFilename,
+    }: {
+      id: string
+      kind: WorkNotificationKind
+      fallbackFilename: string
+    }) => {
+      const scope = currentOrgScope()
+      try {
+        const destination = await notificationsApi.destination(id)
+        if (!isOrgScopeCurrent(scope)) return null
+        if (destination.artifact_id || destination.version_id) {
+          if (!destination.artifact_id || !destination.version_id)
+            throw new Error('Incomplete file reference')
+          const resultPath = notificationsApi.resultPath(id)
+          await downloadApiFile(
+            resultPath,
+            destination.filename ?? fallbackFilename,
+            signalForOrgScope(scope, resultPath),
+          )
+        }
+        if (!isOrgScopeCurrent(scope)) return null
+        const path = `/agents/${encodeURIComponent(destination.agent_id)}/conversations/${encodeURIComponent(destination.conversation_id)}`
+        return kind === 'chat_task.completed' ? path : `${path}#conversation-goal`
+      } catch (error) {
+        if (!isOrgScopeCurrent(scope)) return null
+        throw error
+      }
+    },
+  })
 }
