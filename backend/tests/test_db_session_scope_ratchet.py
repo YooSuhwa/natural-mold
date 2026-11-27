@@ -53,6 +53,8 @@ PLATFORM_REASONS: dict[str, str] = {
     "platform model with a platform credential",
     "guardrail.model_settings": "8.9 instance-wide guardrail model service setting",
     "jobs.worker": "순번 5 job worker: claims due jobs of every company; runs each in its own",
+    "scheduler.chat_notifications": "F03: discover only companies with due inbox notices; "
+    "deliver inside each company session",
     "workflow.chat_resume": "workflow tools: leader lists ended runs a chat waits for, of every "
     "company; each is resumed in its own company session",
     "workflow.schedule_sweep": "workflow schedules: leader lists due schedules of every company; "

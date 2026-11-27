@@ -61,6 +61,10 @@ from app.scheduler import (
     try_acquire_scheduler_leader,
     update_model_catalog,
 )
+from app.scheduler_chat_notifications import (
+    drain_due_chat_notifications,
+    register_chat_notification_job,
+)
 from app.scheduler_job_ids import LeaderSchedulerJobId
 from app.scheduler_tenant_purge import (
     register_tenant_export_gc_job,
@@ -113,6 +117,8 @@ async def run_leader_scheduler_job(job_id: LeaderSchedulerJobId) -> None:
             await authz_job_run(job_id)
         case LeaderSchedulerJobId.APPROVAL_SWEEP:
             await sweep_approvals()
+        case LeaderSchedulerJobId.CHAT_NOTIFICATION_DRAIN:
+            await drain_due_chat_notifications()
         case LeaderSchedulerJobId.WORKFLOW_CHAT_RESUME:
             await resume_workflow_chats()
         case LeaderSchedulerJobId.WORKFLOW_SCHEDULES:
@@ -219,6 +225,7 @@ async def activate_scheduler() -> None:
     register_tenant_purge_job()
     register_tenant_export_gc_job()
     register_approval_sweep_job()
+    register_chat_notification_job()
     register_workflow_chat_resume_job()
     register_workflow_schedules_job()
     trigger_count = await reconcile_trigger_jobs()

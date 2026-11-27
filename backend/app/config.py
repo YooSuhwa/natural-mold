@@ -390,6 +390,8 @@ class Settings(AuthzSettings):
     e2e_llm_model: str = ""
     # Explicit organization enrollment for continuous goals. Empty disables new work.
     conversation_goal_org_ids: frozenset[UUID] = frozenset()
+    # Controls new notifications. Already queued work drains after disabling the switch.
+    chat_work_notifications_enabled: bool = False
     chat_run_stale_after_seconds: int = 300
     chat_run_stale_sweep_interval_seconds: int = 60
     # Admit text instructions for the next model call of an existing chat run.
