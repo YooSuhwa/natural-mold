@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from app.authz import denials
-from app.authz.client import AuthzUnavailable
+from app.authz.client import AuthzUnavailable, Consistency
 from app.authz.principal import Principal
 from app.authz.service import AuthzService, Verdict
 from app.exceptions import AppError
@@ -32,6 +32,7 @@ class RunDecisionMemo:
     sealed: bool = False
     asked_after_seal: int = 0  # misses answered "no" without OpenFGA (fail closed)
     unavailable: bool = False  # OpenFGA was down while deciding: sealed misses stay 503
+    consistency: Consistency = "MINIMIZE_LATENCY"
 
     def seal(self) -> None:
         self.sealed = True
@@ -46,8 +47,10 @@ def open_request_memo() -> None:
 
 
 @contextmanager
-def fresh_run_decision_scope() -> Iterator[RunDecisionMemo]:
-    memo = RunDecisionMemo()
+def fresh_run_decision_scope(
+    *, consistency: Consistency = "MINIMIZE_LATENCY"
+) -> Iterator[RunDecisionMemo]:
+    memo = RunDecisionMemo(consistency=consistency)
     token = _memo.set(memo)
     try:
         yield memo
@@ -90,7 +93,7 @@ async def batch_decide(
             raise AuthzUnavailable("sealed run decisions")
     elif missing:
         try:
-            answers = await authz.batch_check(p, missing)
+            answers = await authz.batch_check(p, missing, consistency=memo.consistency)
         except AuthzUnavailable:
             memo.unavailable = True
             raise

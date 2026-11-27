@@ -15,6 +15,7 @@ from app.authz.run_decisions import fresh_run_decision_scope
 from app.authz.service import AuthzService
 from app.credentials import service as credential_service
 from app.credentials.creation import CredentialCreation
+from app.mcp.apps_binding_connection import binding_connection_visible
 from app.mcp.apps_binding_store import AuthorizedBinding
 from app.models.conversation_run import ConversationRun
 from app.models.credential import Credential
@@ -23,7 +24,6 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.organization import Tenant
 from app.models.user import User
-from app.services import mcp_apps_service
 from tests.authz.e07_support import credential as company_credential
 from tests.authz.f03_support import GraphFake
 
@@ -55,7 +55,7 @@ async def pointer_visible(db: AsyncSession, target: AuthorizedBinding) -> bool:
 
     event.listen(db.sync_session, "do_orm_execute", assert_metadata_only)
     try:
-        return await mcp_apps_service.binding_connection_visible(db, target)
+        return await binding_connection_visible(db, target)
     finally:
         event.remove(db.sync_session, "do_orm_execute", assert_metadata_only)
 
