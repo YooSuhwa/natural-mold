@@ -29,8 +29,8 @@ def usage(
     *,
     child: str | None = None,
     **fields: Any,
-) -> None:
-    collector.observe_usage(
+) -> str | None:
+    return collector.observe_usage(
         {
             "assistant_msg_id": raw,
             "run_id": "physical-run",
@@ -105,11 +105,11 @@ def test_cumulative_usage_groups_distinct_calls_and_models_and_discards_replayed
 
 def test_current_run_id_on_historical_activity_does_not_charge_prior_turn() -> None:
     tracker = RunUsage()
-    usage(tracker, "prior-turn", None, 100, 100)
+    assert usage(tracker, "prior-turn", None, 100, 100) is None
     assert tracker.terminal_usage() is None
     record(tracker, "reply", "public-reply")
-    usage(tracker, "reply", "public-reply", 8, 4)
-    usage(tracker, "prior-turn", None, 100, 100)
+    assert usage(tracker, "reply", "public-reply", 8, 4) == "public-reply"
+    assert usage(tracker, "prior-turn", None, 100, 100) is None
     usage(tracker, "reply", None, 100, 100, child="historical-child")
     assert tracker.terminal_usage() == [
         TokenUsage(input_tokens=8, output_tokens=4, total_tokens=12)
@@ -278,9 +278,10 @@ def test_v3_finish_and_its_derived_idless_journal_entry_are_counted_once() -> No
             assert companion is not None
             payload = companion["data"]["payload"]
             assert "assistant_msg_id" not in payload
-            tracker.observe_usage(
+            parent = tracker.observe_usage(
                 payload, subagent_run_id="child", public_message_id=None, event_id=companion["id"]
             )
+            assert parent == "public-call"
     assert tracker.terminal_usage() == [
         TokenUsage(
             provider="anthropic",
@@ -304,7 +305,7 @@ def test_anonymous_receipt_requires_exact_event_id_owner_parent_and_measurement(
         public_message_id="public-call",
         event_id="finish",
     )
-    tracker.observe_usage(
+    parent = tracker.observe_usage(
         {
             "assistant_msg_id": "unknown" if forged == "source" else None,
             "prompt_tokens": 77 if forged == "totals" else 8,
@@ -314,6 +315,7 @@ def test_anonymous_receipt_requires_exact_event_id_owner_parent_and_measurement(
         public_message_id="other" if forged == "parent" else None,
         event_id="unrelated:usage" if forged == "event-id" else "finish:usage",
     )
+    assert parent is None
     assert tracker.terminal_usage() is None
 
 
