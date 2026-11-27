@@ -1,28 +1,15 @@
 import type { RunAgentInput } from '@ag-ui/core'
 import { expect, vi } from 'vitest'
+import docxApproval from './docx-approval.json'
 
 export const threadId = 'a904bd9b-33fa-4160-9caf-d34f9e52134c'
 const firstPhysicalRunId = 'd7205d63-102b-4127-bcaf-665934361a10'
 const resumedPhysicalRunId = '8b35686a-4212-4ccd-85ae-e5712ee52e01'
 export const question = '합성 보고서 전송을 준비해줘'
 export const answer = '승인이 반영되었습니다.'
-const recipient = 'synthetic@example.invalid'
-const args = { to: recipient }
-
-function approval(id: string) {
-  return {
-    id,
-    reason: 'moldy.tool_approval',
-    message: '보고서를 보내도 될까요?',
-    responseSchema: { type: 'object' },
-    metadata: {
-      moldy: {
-        action_requests: [{ name: 'send_mail', args }],
-        review_configs: [{ action_name: 'send_mail', allowed_decisions: ['approve', 'reject'] }],
-      },
-    },
-  }
-}
+// Public, model-free execute_in_skill capture from the scripted API. Native middleware
+// supplies a tool-call ID on the stream and omits it from the interrupt.
+export const docxInterruptId = docxApproval.interrupt.id
 
 export const nativeQuestion = {
   question: '선택을 비워두면 기본 형식으로 진행합니다.',
@@ -64,12 +51,12 @@ export function installChatApi({
 }: { activeRunId?: string | null; delayNativeCheckpoint?: boolean } = {}) {
   let physicalRunId = firstPhysicalRunId
 
-  const toolCallId = delayNativeCheckpoint ? 'ask-call' : 'mail-call'
+  const toolCallId = delayNativeCheckpoint ? 'ask-call' : docxApproval.toolCallId
   let expired = false
 
   const selectedTool = delayNativeCheckpoint
     ? { name: 'ask_user', args: nativeQuestion }
-    : { name: 'send_mail', args }
+    : docxApproval.interrupt.metadata.moldy.action_requests[0]
   const slot = () =>
     delayNativeCheckpoint
       ? {
@@ -86,7 +73,7 @@ export function installChatApi({
             },
           },
         }
-      : approval(pendingId)
+      : { ...docxApproval.interrupt, id: pendingId }
   const observedRunningCheckpoint = vi.fn()
   const observedInterruption = vi.fn()
   const appliedResponses: NonNullable<RunAgentInput['resume']>[number]['payload'][] = []
@@ -94,14 +81,14 @@ export function installChatApi({
   let phase: 'empty' | 'running' | 'interrupted' | 'completed' = activeRunId ? 'running' : 'empty'
   let selectedRunId = activeRunId
   const streamReads: string[] = []
-  let pendingId = delayNativeCheckpoint ? nativeId : 'original-approval'
+  let pendingId = delayNativeCheckpoint ? nativeId : docxInterruptId
   let userId = activeRunId ? 'previous-user-question' : ''
   const commands: RunAgentInput[] = []
   const writes: string[] = []
   const snapshotReads = vi.fn()
   const user = () => ({ id: userId, role: 'user', content: question })
   const requestingTool = {
-    id: 'assistant-calling',
+    id: delayNativeCheckpoint ? 'assistant-calling' : docxApproval.parentMessageId,
     role: 'assistant',
     content: '',
     toolCalls: [
@@ -163,7 +150,7 @@ export function installChatApi({
               type: 'TOOL_CALL_START',
               toolCallId,
               toolCallName: selectedTool.name,
-              parentMessageId: 'assistant-calling',
+              parentMessageId: requestingTool.id,
             },
             { type: 'TOOL_CALL_ARGS', toolCallId, delta: JSON.stringify(selectedTool.args) },
             { type: 'TOOL_CALL_END', toolCallId },
