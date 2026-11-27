@@ -8,6 +8,7 @@ from typing import Final
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
+APPROVED_GOAL_FILE_MARKER: Final = "E2E_APPROVED_GOAL_FILE"
 RUNTIME_FILESYSTEM_INSPECT_MARKER: Final = "E2E_RUNTIME_FILESYSTEM_INSPECT"
 RUNTIME_FILESYSTEM_ARTIFACT_WRITE_MARKER: Final = "E2E_RUNTIME_FILESYSTEM_ARTIFACT_WRITE"
 RUNTIME_FILESYSTEM_INSPECT_FINAL_CONTENT: Final = (
@@ -29,6 +30,21 @@ def runtime_filesystem_policy_message(
     human_text: str,
 ) -> AIMessage | None:
     """Return the fixed filesystem-policy E2E tool sequence for an explicit marker."""
+    if APPROVED_GOAL_FILE_MARKER in human_text:
+        workspace = _conversation_workspace(messages)
+        if workspace is None:
+            return AIMessage(content="E2E goal file workspace unavailable.")
+        call_id = "call_e2e_approved_goal_write"
+        if call_id in _tool_message_ids(messages):
+            return AIMessage(content="The requested file is ready.")
+        return _tool_call_message(
+            call_id,
+            "write_file",
+            {
+                "file_path": f"{workspace}/{RUNTIME_FILESYSTEM_ARTIFACT_NAME}",
+                "content": RUNTIME_FILESYSTEM_ARTIFACT_FINAL_CONTENT,
+            },
+        )
     if RUNTIME_FILESYSTEM_INSPECT_MARKER in human_text:
         return _runtime_filesystem_inspect_message(messages)
     if RUNTIME_FILESYSTEM_ARTIFACT_WRITE_MARKER in human_text:
