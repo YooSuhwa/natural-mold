@@ -7,8 +7,9 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from langgraph.constants import START
 from pydantic import ValidationError
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -163,6 +164,47 @@ async def test_lifecycle_history_returns_complete_purged_manifest_and_recorded_r
     assert download.content == b"retained-history!"
     assert message_mutation.status_code == 409, message_mutation.text
     assert state_mutation.status_code == 409, state_mutation.text
+
+
+@pytest.mark.asyncio
+async def test_legacy_retained_checkpoint_hides_pending_input_on_read(
+    purged_history_context: PurgedHistoryTestContext,
+) -> None:
+    scenario = purged_history_context
+    seeded = await seed_purged_history(scenario.db, scenario.storage)
+    checkpoint = await scenario.db.scalar(
+        select(ConversationHistoryCheckpoint).where(
+            ConversationHistoryCheckpoint.conversation_id == seeded.conversation_id
+        )
+    )
+    assert checkpoint is not None
+    checkpoint.channel_values = {
+        **checkpoint.channel_values,
+        START: {"messages": ["private-input"]},
+    }
+    await scenario.db.commit()
+
+    base = f"/api/conversations/{seeded.conversation_id}"
+    thread = f"{base}/langgraph/threads/{seeded.conversation_id}"
+    history = await scenario.client.get(f"{base}/history")
+    state = await scenario.client.get(f"{thread}/state")
+    versions = await scenario.client.post(f"{thread}/history", json={"limit": 1})
+    for response in (history, state, versions):
+        assert response.status_code == 200, response.text
+        assert "private-input" not in response.text
+    body = history.json()
+    assert body["state"] == body["checkpoints"][0]["channel_values"] == {"summary": "masked"}
+    assert body["checkpoints"][0]["payload_sha256"] == checkpoint.payload_sha256
+    assert (
+        state.json()["values"]
+        == versions.json()[0]["values"]
+        == {
+            "messages": body["messages"],
+            "summary": "masked",
+        }
+    )
+    await scenario.db.refresh(checkpoint)
+    assert checkpoint.channel_values[START] == {"messages": ["private-input"]}
 
 
 @pytest.mark.asyncio

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
+from langgraph.constants import START
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -125,9 +126,7 @@ async def read_purged_history_content(
         )
     )
     try:
-        retained_checkpoints = [
-            ConversationHistoryCheckpointResponse.model_validate(row) for row in checkpoints
-        ]
+        retained_checkpoints = [_public_retained_checkpoint(row) for row in checkpoints]
     except ValidationError as exc:
         raise ConflictError(
             "CONVERSATION_HISTORY_INVALID",
@@ -157,6 +156,17 @@ async def read_purged_history_content(
         checkpoint_payloads,
         [ConversationHistoryEventResponse.model_validate(row) for row in events],
     )
+
+
+def _public_retained_checkpoint(
+    row: ConversationHistoryCheckpoint,
+) -> ConversationHistoryCheckpointResponse:
+    checkpoint = ConversationHistoryCheckpointResponse.model_validate(row)
+    if START not in checkpoint.channel_values:
+        return checkpoint
+    # Older manifests can contain pending graph input. Keep the stored bytes and their checksum.
+    values = {key: value for key, value in checkpoint.channel_values.items() if key != START}
+    return checkpoint.model_copy(update={"channel_values": values})
 
 
 __all__ = [
