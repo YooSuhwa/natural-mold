@@ -20,8 +20,9 @@ from app.services.ag_ui_attachment_access import readable_artifact_versions
 from app.services.ag_ui_commands import load_public_run_id, load_run_binding
 from app.services.ag_ui_read_access import load_child_visibility, require_read_run
 from app.services.ag_ui_read_cursor import CursorScope
+from app.services.ag_ui_read_pending import constrain_legacy_child_visibility
 from app.services.ag_ui_spawn_parent import spawned_parent_public_id
-from app.services.ag_ui_tool_continuations import read_tool_continuations
+from app.services.ag_ui_tool_continuations import ContinuationCache, read_tool_continuations
 
 
 def snapshot_required() -> ConflictError:
@@ -79,7 +80,12 @@ def cursor_scope_for(
 
 
 async def resolve_read_target(
-    db: AsyncSession, conversation: Conversation, context: OrgContext, public_id: str
+    db: AsyncSession,
+    conversation: Conversation,
+    context: OrgContext,
+    public_id: str,
+    *,
+    continuation_cache: ContinuationCache | None = None,
 ) -> ReadTarget:
     binding = await load_run_binding(db, context, conversation.id, public_id)
     if binding is not None:
@@ -113,6 +119,10 @@ async def resolve_read_target(
             db, conversation=conversation, context=context, run_id=physical_id
         )
         visibility = await load_child_visibility(db, conversation, context, physical_id)
+        if visibility.allow_legacy_details and run.status == "interrupted":
+            visibility = await constrain_legacy_child_visibility(
+                db, conversation, context, run, visibility
+            )
         artifacts = await readable_artifact_versions(
             db, context=context, conversation_id=conversation.id, run_id=physical_id
         )
@@ -130,7 +140,12 @@ async def resolve_read_target(
                 )
         if run.source == "resume":
             tool_continuations = await read_tool_continuations(
-                db, conversation=conversation, context=context, run=run, checkpoint_id=checkpoint_id
+                db,
+                conversation=conversation,
+                context=context,
+                run=run,
+                checkpoint_id=checkpoint_id,
+                cache=continuation_cache,
             )
     return ReadTarget(
         public_id=public_id,

@@ -284,3 +284,55 @@ async def test_snapshot_refuses_a_legacy_grant_revoked_before_delivery(case: Cas
     case.pending.side_effect = [first, revoked]
     with pytest.raises(ConflictError):
         await case.load()
+
+
+@pytest.mark.asyncio
+async def test_past_child_outcomes_do_not_reintroduce_interrupt_identifiers(case: Case) -> None:
+    case.run.status, case.run.is_active = "completed", False
+    case.replay.subagents.append(
+        {
+            "subagentRunId": "old-child",
+            "name": "research",
+            "status": "interrupted",
+            "interruptIds": ["stale-approval"],
+            "parentMessageId": "answer",
+        }
+    )
+    view = await case.load()
+    assert view.subagents[0].interrupt_ids == []
+    assert not view.subagents[0].legacy_interrupt_access
+    assert "stale-approval" not in view.model_dump_json()
+
+
+@pytest.mark.asyncio
+async def test_explicit_historical_receipt_keeps_its_own_physical_identity(
+    case: Case,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case.run.status, case.run.is_active = "completed", False
+    later = ConversationRun(
+        id=uuid4(), conversation_id=case.conversation.id, status="running", is_active=True
+    )
+    later_scope = CursorScope(
+        str(case.conversation.id), "public-later", str(later.id), "1", "selected"
+    )
+    case.selection.candidates.append(later)
+    case.selection.public_ids[later.id] = "public-later"
+    case.selection.branch_verified.add(later.id)
+    later_replay = SnapshotRunReplay(visibility=case.replay.visibility, scope=later_scope)
+    replay = AsyncMock(side_effect=[case.replay, later_replay])
+    monkeypatch.setattr(api, "replay_snapshot_run", replay)
+    first = case.resolve.return_value
+    last = SimpleNamespace(run=later, scope=later_scope)
+    case.resolve.side_effect = [first, first, last]
+    view = await case.load(public_run_id="public-r")
+    assert (view.run_id, view.run_status, view.selected_physical_run_id) == (
+        "public-r",
+        "completed",
+        str(case.run.id),
+    )
+    assert (view.active_run_id, view.physical_run_id, view.latest_physical_run_id) == (
+        "public-later",
+        str(later.id),
+        str(later.id),
+    )

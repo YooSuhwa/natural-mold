@@ -26,6 +26,8 @@ from app.services.ag_ui_read_cursor import CursorPosition, InvalidReadCursor, pa
 from app.services.ag_ui_read_pending import CurrentReadInterrupts, current_read_interrupts
 from app.services.ag_ui_read_projection import CommittedFrame, CommittedProjection, FrameBatch
 from app.services.ag_ui_read_target import ReadTarget, resolve_read_target, snapshot_required
+from app.services.ag_ui_read_wake import committed_run_changed
+from app.services.ag_ui_tool_continuations import ContinuationCache
 from app.services.chat.secrets import collect_conversation_secret_values
 
 
@@ -43,8 +45,10 @@ class _Reader:
         self.projection: CommittedProjection | None = None
         self.target: ReadTarget | None = None
         self.secrets: tuple[str, ...] = ()
+        self.continuation_cache = ContinuationCache()
         self.checked_at = 0.0
         self.pending = CurrentReadInterrupts()
+        self.trace_status: str | None = None
 
     async def _can_continue(
         self, db: AsyncSession, conversation: Conversation, target: ReadTarget
@@ -149,20 +153,27 @@ class _Reader:
                 context=source.context,
                 conversation_id=source.conversation_id,
             )
-            current = await resolve_read_target(db, conversation, source.context, source.public_id)
+            current = await resolve_read_target(
+                db,
+                conversation,
+                source.context,
+                source.public_id,
+                continuation_cache=self.continuation_cache,
+            )
             if self.target is None or (
                 current.scope != self.target.scope
                 and not await self._can_continue(db, conversation, current)
             ):
                 raise snapshot_required()
-            if frame.kind == "terminal" and current.run and current.run.status == "interrupted":
-                # Another tab can consume an approval after the final batch is
-                # projected. Never send its former action as a current decision.
-                if (
-                    await current_read_interrupts(db, conversation, source.context, current)
-                    != self.pending
-                ):
-                    raise snapshot_required()
+            # Another tab can consume an approval after the final batch is projected.
+            if (
+                frame.kind == "terminal"
+                and current.run is not None
+                and current.run.status == "interrupted"
+                and await current_read_interrupts(db, conversation, source.context, current)
+                != self.pending
+            ):
+                raise snapshot_required()
             self.checked_at = time.monotonic()
 
     async def poll(self) -> FrameBatch:
@@ -176,7 +187,13 @@ class _Reader:
                 context=source.context,
                 conversation_id=source.conversation_id,
             )
-            target = await resolve_read_target(db, conversation, source.context, source.public_id)
+            target = await resolve_read_target(
+                db,
+                conversation,
+                source.context,
+                source.public_id,
+                continuation_cache=self.continuation_cache,
+            )
             extra: list[CommittedFrame] = []
             initial = self.projection is None or (
                 self.target is not None and self.target.run is None and target.run is not None
@@ -207,10 +224,38 @@ class _Reader:
                     pending = await current_read_interrupts(
                         db, conversation, source.context, target
                     )
+            self.trace_status = page.trace_status if page else None
             self.pending = pending
             batch = self.projection.fold(target, page, pending)
             self.checked_at = time.monotonic()
             return FrameBatch(extra + batch.frames, batch.more, batch.terminal) if extra else batch
+
+    async def wait_for_change(self, delay: float) -> None:
+        target, projection = self.target, self.projection
+        interval = 0.15
+        if target is None or target.run is None or projection is None:
+            await asyncio.sleep(min(delay, 0.25))
+            return
+        # Empty polls still reauthorize at least once per second. Between them a
+        # single indexed SELECT wakes a different replica as soon as the writer
+        # commits. A busy token stream never triggers one ACL rebuild per tick.
+        loop = asyncio.get_running_loop()
+        until = loop.time() + delay
+        while (remaining := until - loop.time()) > interval:
+            await asyncio.sleep(interval)
+            async with tenant_session(
+                self.source.context, maker=conversation_stream_service.async_session
+            ) as db:
+                if await committed_run_changed(
+                    db,
+                    self.source.context,
+                    target.run,
+                    projection.generation,
+                    projection.source_ordinal,
+                    self.trace_status,
+                ):
+                    return
+        await asyncio.sleep(max(0.0, remaining))
 
     def parse(self, token: str) -> CursorPosition:
         if self.target is None:
@@ -268,7 +313,7 @@ async def _stream(reader: _Reader, batch: FrameBatch) -> AsyncIterator[bytes]:
                 if time.monotonic() - last_heartbeat >= 10:
                     yield b": connected\n\n"
                     last_heartbeat = time.monotonic()
-                await asyncio.sleep(delay)
+                await reader.wait_for_change(delay)
             if await reader.source.request.is_disconnected():
                 return
             batch = await reader.poll()

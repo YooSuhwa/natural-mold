@@ -13,6 +13,7 @@ from ag_ui.core import Interrupt, RunErrorEvent
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.ag_ui_v1_outcomes import PendingInterrupts, run_terminal_event
+from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.agent_runtime.message_utils import parse_msg_id
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.protocol_events import ProtocolInterrupt
@@ -49,6 +50,7 @@ class _RunEvidence:
     """Keep authorization, progress and ownership after releasing a run's journal transcript."""
 
     scope: CursorScope | None
+    visibility: ChildVisibility
     cursor: str | None
     complete: bool
     child_namespaces: dict[tuple[str, ...], str]
@@ -60,6 +62,7 @@ class _RunEvidence:
     def from_replay(cls, replay: SnapshotRunReplay) -> _RunEvidence:
         return cls(
             replay.scope,
+            replay.visibility,
             replay.cursor,
             replay.complete,
             replay.child_namespaces,
@@ -132,6 +135,23 @@ async def _current_interrupts(
                 checkpoint.legacy_bindings,
                 public_run_id=public_run_id,
                 physical_run_id=run.id,
+                secret_values=secret_values,
+            )
+        )
+    if replay.visibility.bindings:
+        from app.services.ag_ui_snapshot_managed_children import restore_managed_children
+
+        owners.update(
+            await restore_managed_children(
+                db,
+                conversation=conversation,
+                context=context,
+                run=run,
+                public_run_id=public_run_id,
+                history=history,
+                merged=merged,
+                pending=checkpoint,
+                visibility=replay.visibility,
                 secret_values=secret_values,
             )
         )
@@ -343,6 +363,9 @@ async def load_ag_ui_snapshot(
         for row in merged.subagents:
             row = dict(row)
             child_id = row["subagentRunId"]
+            # A terminal journal entry can predate a resume, expiry or delegation change.
+            row["interruptIds"] = []
+            row.pop("legacyInterruptAccess", None)
             row["todos"] = _todos(merged.todos_by_owner.get(child_id, []))
             if latest and row.get("physicalRunId") == str(latest.id):
                 slots = [item for item in pending if item.subagent_run_id == child_id]

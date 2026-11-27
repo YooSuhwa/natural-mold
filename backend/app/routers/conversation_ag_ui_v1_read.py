@@ -53,13 +53,18 @@ async def read_snapshot(
         target = (
             await resolve_read_target(db, conversation, context, public_id) if public_id else None
         )
-        return await load_ag_ui_snapshot(
+        snapshot = await load_ag_ui_snapshot(
             db,
             conversation,
             context,
             run_id=target.run.id if target and target.run else None,
             public_run_id=public_id,
         )
+        # A large history may outlive the incoming credential.
+        await require_read_conversation(
+            db, request=request, context=context, conversation_id=conversation_id
+        )
+        return snapshot
 
 
 @router.get("/stream", response_class=StreamingResponse, responses=_SSE_RESPONSE)
