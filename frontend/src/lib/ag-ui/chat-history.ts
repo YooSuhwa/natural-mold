@@ -11,7 +11,7 @@ import {
 } from '@/lib/chat/langgraph-runtime/partial-model-output'
 import { recoveryErrorCode, type RecoveryErrorCode } from '@/lib/chat-runs/recovery-error'
 import type { Message as MoldyMessage } from '@/lib/types'
-import { anySignal } from '@/lib/org-scope/org-scope-signal'
+import { anySignal, withOrgScopeSignal } from '@/lib/org-scope/org-scope-signal'
 import { restoreAgUiNativeActivities } from './activity-native-restore'
 import { rebindAgUiNativeActivities, reduceAgUiNativeActivities } from './activity-native-summary'
 import type { AgUiHistoryChild } from './chat-history-children'
@@ -98,17 +98,36 @@ export class SupersededHistoryRead extends DOMException {
   }
 }
 
+const CHECKPOINT_RETRY_DELAYS = [200, 400, 800] as const
+
+function waitForCheckpointRead(delay: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve()
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', finish)
+      resolve()
+    }
+    const timer = setTimeout(finish, delay)
+    signal.addEventListener('abort', finish, { once: true })
+  })
+}
+
 /** The wire adapter is read-only. Only the run API can persist or advance a conversation. */
 export function createAgUiChatSession({
   conversationId,
   readSnapshot,
   getServerMessages,
 }: SessionOptions) {
+  const orgSignal = withOrgScopeSignal(
+    `/api/conversations/${encodeURIComponent(conversationId)}/ag-ui/snapshot`,
+  )
   let state = initialState()
   let disposed = false
   let lastResetRunId: string | null = null
   let locallyAcceptedId: string | null = null
   let readGeneration = 0
+  let retryWait: AbortController | null = null
   let readAccess = new AbortController()
   const listeners = new Set<() => void>()
   const unclaimedActivities = new Set<AgUiActivitySnapshot>()
@@ -135,6 +154,8 @@ export function createAgUiChatSession({
   function invalidateHistoryRead() {
     // A new command or branch makes an older response ineligible to update the visible thread.
     readGeneration++
+    retryWait?.abort()
+    retryWait = null
   }
 
   function cancelHistoryReads() {
@@ -155,16 +176,51 @@ export function createAgUiChatSession({
     })
   }
 
+  async function readSelectedSnapshot(signal: AbortSignal, isCurrent: () => boolean) {
+    for (let attempt = 0; ; attempt++) {
+      signal.throwIfAborted()
+      if (!isCurrent()) throw new SupersededHistoryRead()
+      try {
+        return await readSnapshot(signal, isCurrent)
+      } catch (error) {
+        if (
+          !(error instanceof ApiError) ||
+          error.status !== 409 ||
+          error.code !== 'AG_UI_SNAPSHOT_REQUIRED' ||
+          !isCurrent()
+        )
+          throw error
+        // The authorized selection changed while the server assembled this GET.
+        // Retire its approval evidence without scheduling a separate history read.
+        if (state.interrupts.length) publish({ interrupts: [] })
+        const delay = CHECKPOINT_RETRY_DELAYS[attempt]
+        if (delay === undefined) throw error
+        const waiting = new AbortController()
+        retryWait = waiting
+        try {
+          await waitForCheckpointRead(delay, anySignal([signal, waiting.signal]))
+        } finally {
+          waiting.abort()
+          if (retryWait === waiting) retryWait = null
+        }
+      }
+    }
+  }
+
   async function refreshRepository({
     signal,
   }: { signal?: AbortSignal } = {}): Promise<ExportedMessageRepository> {
     if (disposed) throw new SupersededHistoryRead()
-    const generation = ++readGeneration
-    const readSignal = signal ? anySignal([signal, readAccess.signal]) : readAccess.signal
+    invalidateHistoryRead()
+    const generation = readGeneration
+    const signals = [readAccess.signal]
+    if (signal) signals.push(signal)
+    if (orgSignal) signals.push(orgSignal)
+    const readSignal = anySignal(signals)
     const isCurrent = () => generation === readGeneration && !readSignal.aborted && !disposed
     try {
       readSignal.throwIfAborted()
-      const snapshot = await readSnapshot(readSignal, isCurrent)
+      const snapshot = await readSelectedSnapshot(readSignal, isCurrent)
       readSignal.throwIfAborted()
       if (!isCurrent()) throw new SupersededHistoryRead()
       if (snapshot.threadId !== conversationId) throw new Error('Chat history thread mismatch.')
@@ -210,6 +266,7 @@ export function createAgUiChatSession({
       })
       return repository
     } catch (error) {
+      if (orgSignal?.aborted && !disposed && !state.readDenied) revokeRead()
       readSignal.throwIfAborted()
       if (!isCurrent()) throw new SupersededHistoryRead()
       if (
