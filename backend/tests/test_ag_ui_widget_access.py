@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import pytest
-from sqlalchemy import delete, event, select
+from sqlalchemy import delete, event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import ORMExecuteState
 
@@ -18,15 +18,16 @@ from app.authz.org_context import OrgContext
 from app.authz.service import AuthzService
 from app.credentials import service as credential_service
 from app.credentials.creation import CredentialCreation
-from app.mcp.apps_binding_store import BindingDraft, mint_invocation_binding
+from app.mcp.apps_binding_store import AuthorizedBinding, BindingDraft, mint_invocation_binding
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.mcp_app_invocation import McpAppInvocationBinding
 from app.models.mcp_server import McpServer
-from app.models.mcp_tool import McpTool
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.organization import Organization, OrganizationMember
 from app.models.resource_credential_binding import ResourceCredentialBinding
+from app.services import ag_ui_widget_access
 from app.services.ag_ui_widget_access import readable_widget_bindings
 
 if TYPE_CHECKING:
@@ -228,3 +229,38 @@ async def test_widget_requires_current_connection_without_opening_credentials_or
     )
     await db.commit()
     assert not await widget.read(db)
+
+
+@pytest.mark.parametrize("changed", ["connection_mode", "delegation"])
+async def test_committed_authority_change_during_widget_check_suppresses_the_old_result(
+    db: AsyncSession, widget: Widget, changed: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    check = ag_ui_widget_access.binding_connection_visible
+    checked = False
+
+    async def change_after_check(reader: AsyncSession, binding: AuthorizedBinding) -> bool:
+        nonlocal checked
+        assert await check(reader, binding)
+        assert binding.binding.id == widget.minted
+        async with AsyncSession(db.bind) as writer, writer.begin():
+            if changed == "connection_mode":
+                await writer.execute(
+                    update(McpServer)
+                    .where(McpServer.id == binding.server.id)
+                    .values(credential_mode="per_user", credential_definition_key="http_bearer")
+                )
+            else:
+                await writer.execute(
+                    update(AgentMcpToolLink)
+                    .where(
+                        AgentMcpToolLink.agent_id == widget.run.agent_id,
+                        AgentMcpToolLink.mcp_tool_id == binding.origin_tool.id,
+                    )
+                    .values(link_status="broken")
+                )
+        checked = True
+        return True
+
+    monkeypatch.setattr(ag_ui_widget_access, "binding_connection_visible", change_after_check)
+    assert not await widget.read(db)
+    assert checked
