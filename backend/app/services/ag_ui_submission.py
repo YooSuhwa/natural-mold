@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import re
 import unicodedata
@@ -17,6 +15,7 @@ from app.dependencies import CurrentUser
 from app.exceptions import ValidationError
 from app.models.conversation import Conversation
 from app.services.ag_ui_commands import AgUiRunBinding, find_or_reserve
+from app.services.ag_ui_request_digest import ag_ui_request_digest
 from app.services.ag_ui_start import accept_start, wake_queued_start
 
 logger = logging.getLogger(__name__)
@@ -34,21 +33,6 @@ def _validate_version(version: str | None) -> None:
         logger.warning("Consumer requested a newer AG-UI minor version; serving protocol 1.0")
 
 
-def _request_digest(run_input: RunAgentInput) -> str:
-    # Include explicit nulls: for example, a cancelled resume must omit payload.
-    # Only the digest is persisted, never echoed history, forwardedProps or tool definitions.
-    try:
-        encoded = json.dumps(
-            run_input.model_dump(mode="json", by_alias=True, exclude_unset=True),
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        )
-    except (ValueError, TypeError, RecursionError) as exc:
-        raise ValidationError("AG_UI_INVALID_INPUT", "Invalid AG-UI JSON input") from exc
-    return hashlib.sha256(encoded.encode("ascii")).hexdigest()
-
-
 async def submit_ag_ui_run(
     db: AsyncSession,
     *,
@@ -57,6 +41,7 @@ async def submit_ag_ui_run(
     user: CurrentUser,
     conversation: Conversation,
     run_input: RunAgentInput,
+    wire_input: dict[str, object] | None = None,
 ) -> AgUiRunBinding:
     if run_input.thread_id != str(conversation.id):
         raise ValidationError("AG_UI_THREAD_MISMATCH", "The thread ID must match the conversation")
@@ -67,9 +52,8 @@ async def submit_ag_ui_run(
     _validate_version(run_input.protocol_version)
     conversation_id = conversation.id
     try:
-        admission = await find_or_reserve(
-            db, context, conversation_id, run_input.run_id, _request_digest(run_input)
-        )
+        digest = ag_ui_request_digest(wire_input if wire_input is not None else run_input)
+        admission = await find_or_reserve(db, context, conversation_id, run_input.run_id, digest)
         binding = admission.existing
         if binding is None:
             if run_input.resume:

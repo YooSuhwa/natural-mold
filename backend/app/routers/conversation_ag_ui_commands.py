@@ -60,6 +60,7 @@ async def post_ag_ui_run(
         user=user,
         conversation=conversation,
         run_input=run_input,
+        wire_input=await request.json(),
     )
     response = await ag_ui_run_response(request, context, conversation_id, binding.public_run_id)
     last = run_input.messages[-1] if run_input.messages else None
