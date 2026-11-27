@@ -15,6 +15,7 @@ class PinConversationSummaryRequest(BaseModel):
     """Select an existing assistant message as the conversation summary."""
 
     message_id: str = Field(min_length=1, max_length=255)
+    id_kind: Literal["source", "public"] = "source"
 
     model_config = ConfigDict(frozen=True)
 
@@ -22,6 +23,7 @@ class PinConversationSummaryRequest(BaseModel):
 class PinnedConversationSummaryResponse(BaseModel):
     conversation_id: uuid.UUID
     source_message_id: str
+    source_public_message_id: str | None = None
     source_branch_checkpoint_id: str
     snapshot_text: str = Field(max_length=PINNED_SUMMARY_MAX_CHARS)
     source_status: PinnedSummarySourceStatus

@@ -34,6 +34,8 @@ export interface RunActivity {
   readonly endedAt?: string
   readonly toolCallId?: string
   readonly parentId?: string
+  /** Set only when the execution service declares the parent run terminal. */
+  readonly terminalRunStatus?: 'completed' | 'canceled' | 'failed' | 'interrupted' | 'stale'
   readonly data?: Record<string, unknown>
 }
 

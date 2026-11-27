@@ -3,7 +3,9 @@
 import {
   forwardRef,
   useCallback,
+  useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   type ClipboardEvent,
   type ForwardedRef,
@@ -11,9 +13,12 @@ import {
   type TextareaHTMLAttributes,
   type FormHTMLAttributes,
 } from 'react'
-import { useAui, useAuiState } from '@assistant-ui/react'
+import { useAui, useAuiState, type RunConfig } from '@assistant-ui/react'
 import { useSetAtom } from 'jotai'
+import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 
+import { AgUiChatActionContext } from '@/lib/ag-ui/chat-action-context'
 import { reportClientError } from '@/lib/logging/client-logger'
 import { cn } from '@/lib/utils'
 import { pendingEditBranchPickerSuppressionAtom } from '@/lib/stores/chat-store'
@@ -42,6 +47,57 @@ function assignRef<T>(ref: ForwardedRef<T>, value: T | null): void {
   }
 }
 
+// Resolving a saved checkpoint can outlive the selected message or its conversation.
+export function useMessageBranchAction() {
+  const actions = useContext(AgUiChatActionContext)
+  const aui = useAui()
+  const conversationId = useChatConversationId()
+  const t = useTranslations('chat.page')
+  const pending = useRef<symbol | null>(null)
+  const enabled = Boolean(actions)
+  useLayoutEffect(
+    () => () => {
+      pending.current = null
+    },
+    [aui, conversationId, enabled],
+  )
+
+  if (!actions) return null
+  return async (
+    operation: 'edit' | 'regenerate',
+    apply: (config: RunConfig) => void,
+    existing?: RunConfig,
+  ): Promise<void> => {
+    if (pending.current !== null) return
+    const thread = aui.thread.getState()
+    if (thread.isDisabled || thread.isRunning) return
+    const message = aui.message.getState()
+    const head = thread.messages.at(-1)?.id
+    const request = Symbol()
+    pending.current = request
+    try {
+      const config = await actions.getBranchRunConfig(operation, message, existing)
+      if (pending.current !== request) return
+      const current = aui.thread.getState()
+      if (
+        current.isDisabled ||
+        current.isRunning ||
+        current.messages.at(-1)?.id !== head ||
+        aui.message.getState().id !== message.id
+      )
+        return
+      apply(config)
+    } catch (error) {
+      if (pending.current === request) {
+        reportClientError('MessageBranchAction', operation, error)
+        toast.error(t('runFailed'))
+      }
+    } finally {
+      if (pending.current === request) pending.current = null
+    }
+  }
+}
+
 export function MessageEditComposerRoot({
   children,
   onSubmit,
@@ -49,6 +105,7 @@ export function MessageEditComposerRoot({
 }: MessageEditComposerRootProps) {
   const aui = useAui()
   const conversationId = useChatConversationId()
+  const runBranchAction = useMessageBranchAction()
   const setPendingBranchPickerSuppression = useSetAtom(pendingEditBranchPickerSuppressionAtom)
 
   function handleSubmit(event: MessageEditComposerSubmitEvent) {
@@ -60,13 +117,37 @@ export function MessageEditComposerRoot({
     const state = composer.getState()
     if (!state.isEditing || state.isEmpty) return
     const message = aui.message.getState()
-    setPendingBranchPickerSuppression({
-      conversationId,
-      messageId: typeof message.id === 'string' ? message.id : null,
-      content: state.text,
-    })
-    composer.send()
-    requestThreadComposerFocus()
+    const send = () => {
+      setPendingBranchPickerSuppression({
+        conversationId,
+        messageId: typeof message.id === 'string' ? message.id : null,
+        content: state.text,
+      })
+      composer.send()
+      requestThreadComposerFocus()
+    }
+    if (runBranchAction) {
+      void runBranchAction(
+        'edit',
+        (config) => {
+          const current = composer.getState()
+          if (
+            !current.isEditing ||
+            current.text !== state.text ||
+            current.runConfig !== state.runConfig ||
+            current.quote !== state.quote ||
+            current.attachments.length !== state.attachments.length ||
+            current.attachments.some((item, index) => item.id !== state.attachments[index]?.id)
+          )
+            return
+          composer.setRunConfig(config)
+          send()
+        },
+        state.runConfig,
+      )
+    } else {
+      send()
+    }
   }
 
   return (
@@ -78,13 +159,15 @@ export function MessageEditComposerRoot({
 
 export function useMessageEditComposerControls() {
   const aui = useAui()
+  const agUiActions = useContext(AgUiChatActionContext)
   const setPendingBranchPickerSuppression = useSetAtom(pendingEditBranchPickerSuppressionAtom)
   const canCancel = useAuiState((state) => state.message.composer.canCancel)
   const canSend = useAuiState(
     (state) =>
       state.message.composer.isEditing &&
       !state.message.composer.isEmpty &&
-      !state.thread.isDisabled,
+      !state.thread.isDisabled &&
+      (!agUiActions || !state.thread.isRunning),
   )
 
   const cancel = useCallback(() => {

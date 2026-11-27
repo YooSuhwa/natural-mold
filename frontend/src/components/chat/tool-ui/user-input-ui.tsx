@@ -221,11 +221,15 @@ function normalizeQuestions(args: AskUserArgs): UserInputQuestion[] {
   return []
 }
 
-export function UserInputUI({
+export function UserInputUI(props: ToolCallMessagePartProps<AskUserArgs, unknown>) {
+  return <UserInputForm {...props} />
+}
+
+export function UserInputForm({
   args,
   result,
   status,
-}: ToolCallMessagePartProps<AskUserArgs, unknown>) {
+}: Pick<ToolCallMessagePartProps<AskUserArgs, unknown>, 'args' | 'status' | 'result'>) {
   const t = useTranslations('chat.userInput')
   const hitl = useHiTL()
   const [answers, setAnswers] = useState<Answers>({})

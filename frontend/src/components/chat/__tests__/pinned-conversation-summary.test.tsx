@@ -1,16 +1,25 @@
+import { AgUiChatActionContext } from '@/lib/ag-ui/chat-action-context'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '../../../../tests/test-utils'
 
 const mocks = vi.hoisted(() => ({
   messageId: 'message-1',
   isRunning: false,
+  pinPublic: vi.fn(),
+  links: [] as Array<{ messageId: string; uiMessageId: string }>,
+  resolveMessageId: vi.fn(),
   summary: null as null | {
     source_message_id: string
+    source_public_message_id?: string
     source_status: 'current' | 'changed' | 'deleted' | 'other_branch'
     snapshot_text: string
   },
   pin: vi.fn(async () => undefined),
   unpin: vi.fn(async () => undefined),
+}))
+
+vi.mock('@/lib/ag-ui/activity-context', () => ({
+  useMoldyAgUiActivities: () => ({ conversationId: 'conversation-1', links: mocks.links }),
 }))
 
 vi.mock('@assistant-ui/react', () => ({
@@ -29,6 +38,7 @@ vi.mock('@/lib/hooks/use-pinned-conversation-summary', () => ({
     isLoading: false,
     isMutating: false,
     pin: mocks.pin,
+    pinPublic: mocks.pinPublic,
     unpin: mocks.unpin,
   }),
 }))
@@ -39,6 +49,7 @@ import { PinnedConversationSummary } from '../pinned-conversation-summary'
 describe('PinnedConversationSummary', () => {
   beforeEach(() => {
     mocks.summary = null
+    mocks.links = []
     mocks.messageId = 'message-1'
     mocks.isRunning = false
     vi.clearAllMocks()
@@ -139,6 +150,84 @@ describe('PinnedConversationSummary', () => {
 
     // Then
     expect(mocks.unpin).toHaveBeenCalledOnce()
+  })
+
+  it('pins the confirmed public message when the official runtime uses a local ID', async () => {
+    const action = {
+      resolveMessageId: mocks.resolveMessageId,
+      queueDraft: vi.fn(),
+      shouldQueue: false,
+      getBranchRunConfig: vi.fn(),
+      stopActiveRun: vi.fn(),
+    }
+    mocks.resolveMessageId.mockResolvedValueOnce('stored-id')
+    const user = (await import('@testing-library/user-event')).default.setup()
+    render(
+      <AgUiChatActionContext.Provider value={action}>
+        <PinConversationSummaryButton
+          conversationId="conversation-1"
+          pinLabel="Pin"
+          unpinLabel="Unpin"
+        />
+      </AgUiChatActionContext.Provider>,
+    )
+    await user.click(screen.getByRole('button', { name: 'Pin' }))
+    expect(mocks.pinPublic).toHaveBeenCalledExactlyOnceWith('stored-id')
+    expect(mocks.pin).not.toHaveBeenCalled()
+  })
+
+  it('unpins a stored raw source by its verified public alias after reloading', async () => {
+    mocks.links = [{ messageId: 'message-1', uiMessageId: 'stored-id' }]
+    mocks.summary = {
+      source_message_id: 'different-checkpoint-id',
+      source_public_message_id: 'stored-id',
+      source_status: 'current',
+      snapshot_text: 'An older pin',
+    }
+    const action = {
+      resolveMessageId: mocks.resolveMessageId,
+      queueDraft: vi.fn(),
+      shouldQueue: false,
+      getBranchRunConfig: vi.fn(),
+      stopActiveRun: vi.fn(),
+    }
+    const user = (await import('@testing-library/user-event')).default.setup()
+    render(
+      <AgUiChatActionContext.Provider value={action}>
+        <PinConversationSummaryButton
+          conversationId="conversation-1"
+          pinLabel="Pin"
+          unpinLabel="Unpin"
+        />
+      </AgUiChatActionContext.Provider>,
+    )
+    await user.click(screen.getByRole('button', { name: 'Unpin' }))
+    expect(mocks.unpin).toHaveBeenCalledOnce()
+    expect(mocks.pinPublic).not.toHaveBeenCalled()
+  })
+
+  it('ignores an AG-UI message without a durable pin target', async () => {
+    const action = {
+      resolveMessageId: mocks.resolveMessageId,
+      queueDraft: vi.fn(),
+      shouldQueue: false,
+      getBranchRunConfig: vi.fn(),
+      stopActiveRun: vi.fn(),
+    }
+    mocks.resolveMessageId.mockResolvedValueOnce(undefined)
+    const user = (await import('@testing-library/user-event')).default.setup()
+    render(
+      <AgUiChatActionContext.Provider value={action}>
+        <PinConversationSummaryButton
+          conversationId="conversation-1"
+          pinLabel="Pin"
+          unpinLabel="Unpin"
+        />
+      </AgUiChatActionContext.Provider>,
+    )
+    await user.click(screen.getByRole('button', { name: 'Pin' }))
+    expect(mocks.pinPublic).not.toHaveBeenCalled()
+    expect(mocks.pin).not.toHaveBeenCalled()
   })
 
   it('prevents pinning a message while it is still running', () => {

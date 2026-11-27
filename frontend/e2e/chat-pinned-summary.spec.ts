@@ -102,6 +102,7 @@ test.describe('Pinned conversation summary', () => {
   }) => {
     test.setTimeout(180_000)
     const fixture = await createFixture(request)
+    const agUi = process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui'
     const foreign = await playwright.request.newContext({ baseURL: API_BASE })
     let releaseState: () => void = () => undefined
     const stateGate = new Promise<void>((resolve) => {
@@ -114,17 +115,36 @@ test.describe('Pinned conversation summary', () => {
       await page.goto(`/agents/${fixture.agentId}/conversations/${fixture.conversationId}`)
       await sendMessage(page, '고정할 답변을 작성해줘')
       await waitForCompletedReply(request, fixture.conversationId)
-      // REST fallback remains actionable while checkpoint hydration is pending.
-      await page.route(
-        `**/api/conversations/${fixture.conversationId}/langgraph/threads/${fixture.conversationId}/state`,
-        async (route) => {
-          heldStateReads += 1
-          await stateGate
-          await route.continue()
-        },
-      )
-      await page.reload()
-      await expect.poll(() => heldStateReads).toBeGreaterThan(0)
+      if (agUi) {
+        const snapshotPath = `/api/conversations/${fixture.conversationId}/ag-ui/snapshot`
+        const [snapshot] = await Promise.all([
+          page.waitForResponse(
+            (response) =>
+              response.request().method() === 'GET' &&
+              new URL(response.url()).pathname === snapshotPath,
+          ),
+          page.reload(),
+        ])
+        expect(snapshot.status()).toBe(200)
+        const history: unknown = await snapshot.json()
+        expect(history).toMatchObject({
+          protocolVersion: '1.0',
+          threadId: fixture.conversationId,
+          messages: expect.arrayContaining([expect.objectContaining({ role: 'assistant' })]),
+        })
+      } else {
+        // The v3 REST fallback stays actionable while checkpoint hydration is pending.
+        await page.route(
+          `**/api/conversations/${fixture.conversationId}/langgraph/threads/${fixture.conversationId}/state`,
+          async (route) => {
+            heldStateReads += 1
+            await stateGate
+            await route.continue()
+          },
+        )
+        await page.reload()
+        await expect.poll(() => heldStateReads).toBeGreaterThan(0)
+      }
       const reply = page.getByText('E2E scripted document model is ready.').last()
       await expect(reply).toBeVisible({ timeout: 60_000 })
       const assistantMessage = page.locator('[data-moldy-message-role="assistant"]').last()
@@ -138,12 +158,16 @@ test.describe('Pinned conversation summary', () => {
       const source = envelope.messages.find(
         (message: unknown) => isRecord(message) && message.role === 'assistant',
       )
-      if (!isRecord(source) || typeof source.runtime_message_id !== 'string') {
-        throw new Error('REST assistant did not retain its checkpoint identity')
+      if (
+        !isRecord(source) ||
+        typeof source.id !== 'string' ||
+        typeof source.runtime_message_id !== 'string'
+      ) {
+        throw new Error('The assistant reply did not retain its public and checkpoint identities')
       }
       await expect(assistantMessage).toHaveAttribute(
         'data-moldy-message-id',
-        source.runtime_message_id,
+        agUi ? source.id : source.runtime_message_id,
       )
       await assistantMessage.hover()
       const pinResponse = page.waitForResponse(
@@ -153,8 +177,7 @@ test.describe('Pinned conversation summary', () => {
             `${API_BASE}/api/conversations/${fixture.conversationId}/pinned-summary`,
       )
       await assistantMessage.getByRole('button', { name: '대화 요약으로 고정' }).click()
-      await apiJson(await pinResponse, 'Pin REST fallback assistant summary')
-      // The same identity must also toggle to DELETE before checkpoint hydration.
+      await apiJson(await pinResponse, 'Pin restored assistant summary')
       const unpinResponse = page.waitForResponse(
         (response) =>
           response.request().method() === 'DELETE' &&
@@ -173,7 +196,7 @@ test.describe('Pinned conversation summary', () => {
             `${API_BASE}/api/conversations/${fixture.conversationId}/pinned-summary`,
       )
       await assistantMessage.getByRole('button', { name: '대화 요약으로 고정' }).click()
-      await apiJson(await repinResponse, 'Repin REST fallback assistant summary')
+      await apiJson(await repinResponse, 'Repin restored assistant summary')
       releaseState()
 
       await expect(page.getByText('고정된 대화 요약')).toBeVisible()
@@ -189,6 +212,7 @@ test.describe('Pinned conversation summary', () => {
       if (typeof sourceMessageId !== 'string') {
         throw new Error('Pinned summary source identity was invalid')
       }
+      if (agUi) expect(persisted.summary.source_public_message_id).toBe(source.id)
 
       await page.reload()
       await expect(page.getByText('고정된 대화 요약')).toBeVisible({ timeout: 30_000 })

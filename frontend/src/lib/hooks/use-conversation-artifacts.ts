@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useLayoutEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSetAtom } from 'jotai'
 import { artifactKeys, listConversationArtifacts } from '@/lib/api/artifacts'
@@ -15,10 +15,14 @@ export function useConversationArtifacts(conversationId: string | null | undefin
     staleTime: 15_000,
   })
 
-  useEffect(() => {
-    if (!conversationId || !query.data) return
-    setConversationArtifacts({ conversationId, items: query.data })
-  }, [conversationId, query.data, setConversationArtifacts])
+  // A failed refetch can retain old rows in the query cache. Keep the rail and
+  // its download actions in sync with the current viewer's lookup before paint.
+  const data = query.isError ? undefined : query.data
+  useLayoutEffect(() => {
+    if (conversationId && (query.isError || data)) {
+      setConversationArtifacts({ conversationId, items: data ?? [] })
+    }
+  }, [conversationId, data, query.isError, setConversationArtifacts])
 
-  return query
+  return query.isError ? { ...query, data: undefined } : query
 }

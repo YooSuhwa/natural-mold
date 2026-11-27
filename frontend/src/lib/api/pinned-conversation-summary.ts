@@ -9,10 +9,10 @@ export const pinnedConversationSummaryApi = {
     apiFetch<PinnedConversationSummaryEnvelope>(
       `/api/conversations/${conversationId}/pinned-summary`,
     ),
-  pin: (conversationId: string, messageId: string) =>
+  pin: (conversationId: string, messageId: string, idKind?: 'public') =>
     apiFetch<PinnedConversationSummary>(`/api/conversations/${conversationId}/pinned-summary`, {
       method: 'PUT',
-      body: JSON.stringify({ message_id: messageId }),
+      body: JSON.stringify({ message_id: messageId, id_kind: idKind }),
     }),
   unpin: (conversationId: string) =>
     apiFetch<void>(`/api/conversations/${conversationId}/pinned-summary`, {

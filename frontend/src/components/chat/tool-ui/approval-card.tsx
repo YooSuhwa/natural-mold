@@ -374,12 +374,25 @@ function ArgsEditor({
   )
 }
 
-export function ApprovalCard({
+export function ApprovalCard(props: ToolCallMessagePartProps<ApprovalArgs, unknown>) {
+  return <ApprovalForm {...props} />
+}
+
+type ApprovalFormProps = Pick<
+  ToolCallMessagePartProps<ApprovalArgs, unknown>,
+  'args' | 'status' | 'result'
+> & {
+  addResult?: (result: unknown) => void
+  showConversationGrant?: boolean
+}
+
+export function ApprovalForm({
   args,
   result,
   status,
   addResult,
-}: ToolCallMessagePartProps<ApprovalArgs, unknown>) {
+  showConversationGrant = true,
+}: ApprovalFormProps) {
   const t = useTranslations('chat.approval')
   const styles = useDecisionStyles()
   const hitl = useHiTL()
@@ -470,7 +483,7 @@ export function ApprovalCard({
         setDecision(null)
         return false
       }
-      addApprovalResultIfSupported(addResult, response)
+      if (addResult) addApprovalResultIfSupported(addResult, response)
       setLocalResult(response)
       setSubmitting(false)
       return true
@@ -653,7 +666,9 @@ export function ApprovalCard({
         </div>
       )}
 
-      {canApprove && !submitting ? <ConversationGrantButton tool={args?.tool_name} /> : null}
+      {showConversationGrant && canApprove && !submitting ? (
+        <ConversationGrantButton tool={args?.tool_name} />
+      ) : null}
 
       {noReviewConfig && (
         <p data-testid="approval-no-review-config" className="text-xs text-muted-foreground">

@@ -57,16 +57,17 @@ function MemoryRecallListWithJoin({
   readonly memories: readonly RecalledMemoryBrief[]
 }) {
   const records = useMemories()
+  const authorizedRecords = records.isError ? undefined : records.data
   const resolved = useMemo<readonly RecalledMemoryBrief[]>(() => {
     const contentById = new Map(
-      (records.data ?? []).map((record) => [record.id, record.content] as const),
+      (authorizedRecords ?? []).map((record) => [record.id, record.content] as const),
     )
     return memories.map((memory) =>
       memory.content === REDACTED_CONTENT && memory.id
         ? { ...memory, content: contentById.get(memory.id) ?? '' }
         : memory,
     )
-  }, [memories, records.data])
+  }, [memories, authorizedRecords])
   return <MemoryRecallList memories={resolved} />
 }
 

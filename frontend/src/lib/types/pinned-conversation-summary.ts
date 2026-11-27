@@ -3,6 +3,7 @@ export type PinnedSummarySourceStatus = 'current' | 'changed' | 'deleted' | 'oth
 export type PinnedConversationSummary = {
   readonly conversation_id: string
   readonly source_message_id: string
+  readonly source_public_message_id?: string | null
   readonly source_branch_checkpoint_id: string
   readonly snapshot_text: string
   readonly source_status: PinnedSummarySourceStatus

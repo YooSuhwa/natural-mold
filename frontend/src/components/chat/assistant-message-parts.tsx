@@ -9,6 +9,7 @@ import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-stream
 import { GenericToolFallback } from '@/components/chat/tool-ui/generic-tool-ui'
 import { ToolGroupContainer } from '@/components/chat/tool-ui/tool-group-container'
 import { GroupedApprovalCard } from '@/components/chat/tool-ui/grouped-approval-card'
+import { MoldyAgUiBoundTool } from '@/lib/ag-ui/activity-widget'
 import {
   groupAssistantParts,
   groupToolName,
@@ -90,7 +91,7 @@ function OrderedToolCall({
 }) {
   return (
     <div className="order-1">
-      {toolUI ?? (
+      <MoldyAgUiBoundTool toolUI={toolUI}>
         <ToolCallFallback
           toolCallId={toolCallId}
           toolName={toolName}
@@ -98,7 +99,7 @@ function OrderedToolCall({
           result={result}
           status={status}
         />
-      )}
+      </MoldyAgUiBoundTool>
     </div>
   )
 }

@@ -18,7 +18,7 @@ interface MoldyUIData {
   readonly props?: unknown
 }
 
-function DataUIDispatcher({ data }: DataMessagePartProps<MoldyUIData>) {
+export function DataUIDispatcher({ data }: DataMessagePartProps<MoldyUIData>) {
   const type = typeof data?.type === 'string' ? data.type : null
   const rawProps = data?.props
   // Memoize the Zod parse on the (stable, converter-cached) data reference so

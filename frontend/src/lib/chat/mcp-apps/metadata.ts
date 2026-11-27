@@ -7,6 +7,10 @@ const MAX_RESOURCE_URI_LENGTH = 2_048
 const MAX_PROJECTED_METADATA_LENGTH = 64 * 1_024
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+export function isMcpAppUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_PATTERN.test(value)
+}
+
 export interface McpAppRouteContext {
   readonly runId: string
   readonly toolCallId: string
@@ -76,10 +80,11 @@ export function readMcpAppRouteToken(value: unknown): McpAppRouteContext | null 
   }
 }
 
-function projectMcpApp(
+export function projectMcpApp(
   artifact: unknown,
   toolCallId: string,
   content: unknown,
+  binding?: { readonly runId: string; readonly bindingId: string },
 ): ProjectedMcpAppPart | null {
   if (!isRecord(artifact) || !isRecord(artifact.mcp_app)) return null
   const app = artifact.mcp_app
@@ -88,10 +93,9 @@ function projectMcpApp(
   const runId = app.run_id
   const resourceUri = app.resource_uri
   if (
-    typeof bindingId !== 'string' ||
-    !UUID_PATTERN.test(bindingId) ||
-    typeof runId !== 'string' ||
-    !UUID_PATTERN.test(runId) ||
+    !isMcpAppUuid(bindingId) ||
+    !isMcpAppUuid(runId) ||
+    (binding !== undefined && (runId !== binding.runId || bindingId !== binding.bindingId)) ||
     typeof resourceUri !== 'string' ||
     !resourceUri.startsWith('ui://') ||
     resourceUri.length > MAX_RESOURCE_URI_LENGTH ||

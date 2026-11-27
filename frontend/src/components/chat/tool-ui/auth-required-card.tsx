@@ -39,7 +39,13 @@ const REASON_KEYS: Record<string, string> = {
  * (G-04); owner-fixable items
  * only say the owner was notified. A re-ask (`attempt` > 1) says it is still not connected.
  */
-export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequiredArgs, unknown>) {
+export function AuthRequiredCard(props: ToolCallMessagePartProps<AuthRequiredArgs, unknown>) {
+  return <AuthRequiredForm {...props} />
+}
+
+export function AuthRequiredForm({
+  args,
+}: Pick<ToolCallMessagePartProps<AuthRequiredArgs, unknown>, 'args'>) {
   const t = useTranslations('chat.authRequired')
   const hitl = useHiTL()
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle')
