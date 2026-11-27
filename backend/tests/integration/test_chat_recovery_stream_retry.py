@@ -9,6 +9,7 @@ from uuid import UUID
 
 import pytest
 from langchain.agents import create_agent
+from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent_runtime.runtime.direct_stream_retry import DirectStreamRetryMiddleware
 from app.agent_runtime.runtime_component_builder import _build_model_candidates
@@ -118,12 +119,15 @@ async def test_gateway_retry_fences_replaced_worker_before_second_send(
         middleware = DirectStreamRetryMiddleware(
             fallbacks=models[1:], initial_delay=0, check_authority=admission
         )
-        graph = create_agent(model=models[0], middleware=[middleware])
+        graph = create_agent(
+            model=models[0], middleware=[middleware], checkpointer=InMemorySaver()
+        )
+        config = {"configurable": {"thread_id": str(conversation_id)}}
 
         async def old_worker() -> None:
             with run_fence_scope(first), stream_attempt_owner(target, registry):
                 with pytest.raises(RunOwnershipLost):
-                    async for _ in _messages(graph, [{"role": "user", "content": "Hi"}]):
+                    async for _ in _messages(graph, [{"role": "user", "content": "Hi"}], config):
                         pass
                 with pytest.raises(RunOwnershipLost):
                     await _publish_error(stream, "stale failure")

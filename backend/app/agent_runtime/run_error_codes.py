@@ -73,13 +73,20 @@ def run_error_code(error: BaseException | None, default: str) -> str:
     from app.agent_runtime.recovery_stream import RecoveryOutputStarted
     from app.agent_runtime.run_recovery_checkpoint import RecoveryCheckpointBlocked
     from app.chat_recovery.identity import RecoveryPolicyChanged
+    from app.chat_recovery.model_attempts import RecoveryModelAttemptBlocked
     from app.chat_recovery.receipts import ToolRecoveryBlocked
 
     for item in _chain(error):
         if isinstance(item, RecoveryOutputStarted):
             return "recovery_output_started"
         if isinstance(
-            item, (RecoveryPolicyChanged, RecoveryCheckpointBlocked, ToolRecoveryBlocked)
+            item,
+            (
+                RecoveryPolicyChanged,
+                RecoveryCheckpointBlocked,
+                ToolRecoveryBlocked,
+                RecoveryModelAttemptBlocked,
+            ),
         ):
             return item.code
     denial = denial_error_code(error)

@@ -110,6 +110,9 @@ class ConversationRun(NullableOrgScope, Base):
         nullable=False,
     )
     recovery_runtime_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    recovery_model_attempts: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True
+    )
     interrupt_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     input_preview: Mapped[str | None] = mapped_column(String(500), nullable=True)
     last_event_id: Mapped[str | None] = mapped_column(

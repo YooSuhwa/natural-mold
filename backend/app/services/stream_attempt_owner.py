@@ -10,12 +10,17 @@ from functools import partial
 
 from sqlalchemy import select
 
-from app.agent_runtime.stream_retry_authority import StreamAttemptDenied, bind_stream_attempt_check
+from app.agent_runtime.stream_retry_authority import (
+    StreamAttemptDenied,
+    bind_stream_attempt_check,
+    current_model_attempt,
+)
 from app.authz.conversation_run_scope import (
     RunExecutionTarget,
     lock_executable_run,
     private_run_predicate,
 )
+from app.chat_recovery.model_attempts import reserve_model_attempt
 from app.database import tenant_session
 from app.models.conversation_run import ConversationRun
 from app.services.conversation_run_fence import RunOwnershipLost, current_run_fence, lock_run_fence
@@ -80,5 +85,10 @@ async def _check_owner(owner: _Owner, prepared: bool) -> None:
                 or fence.conversation_id != conversation.conversation_id
             ):
                 raise RunOwnershipLost("Provider attempt belongs to another chat run")
-            await lock_run_fence(db, fence)
+            claimed = await lock_run_fence(db, fence)
+            attempt = current_model_attempt()
+            if not prepared and attempt is not None and reserve_model_attempt(claimed, attempt):
+                # Keep this charge even if the worker dies before HTTP returns.
+                # Holding a database lock across a network call would prevent handoff.
+                await db.commit()
     _check_local(owner)

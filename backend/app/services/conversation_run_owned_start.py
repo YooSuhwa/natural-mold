@@ -9,6 +9,10 @@ from functools import partial
 from typing import Any
 
 from app.agent_runtime.langgraph_agent_stream_runner import execute_agent_stream_langgraph
+from app.agent_runtime.runtime.direct_stream_retry import (
+    configured_attempts,
+    direct_stream_retry_for,
+)
 from app.agent_runtime.runtime_config import AgentConfig
 from app.authz.worker_conversation_scope import WorkerConversationTarget
 from app.chat_recovery.identity import (
@@ -128,7 +132,16 @@ async def prepare_owned_start(
     ):
         digest = recovery_runtime_digest(cfg)
         if digest is not None:
-            transition = partial(_transition_to_running, recovery_digest=digest)
+            attempt_limit = (
+                configured_attempts(cfg.middleware_configs)
+                if direct_stream_retry_for(cfg)
+                else None
+            )
+            transition = partial(
+                _transition_to_running,
+                recovery_digest=digest,
+                recovery_model_attempt_limit=attempt_limit,
+            )
 
     start = await prepared_start.start_owned_run(
         target,

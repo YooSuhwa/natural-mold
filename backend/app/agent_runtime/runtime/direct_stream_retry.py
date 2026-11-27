@@ -15,7 +15,11 @@ from langchain_core.messages import AIMessage
 from app.agent_runtime.lease_provider_retry_policy import is_retryable_provider_error
 from app.agent_runtime.runtime.model_response_content import has_visible_ai_content
 from app.agent_runtime.runtime_config import AgentConfig
-from app.agent_runtime.stream_retry_authority import StreamAttemptDenied, check_stream_attempt
+from app.agent_runtime.stream_retry_authority import (
+    StreamAttemptDenied,
+    check_stream_attempt,
+    model_attempt_scope,
+)
 from app.agent_runtime.stream_retry_policy import (
     AttemptOutcome,
     PartialModelStreamError,
@@ -144,7 +148,10 @@ class DirectStreamRetryMiddleware(AgentMiddleware):
             )
             boundary = _OutputBoundary()
             attempt_request = attempt_request.override(model=boundary.attach(candidate))
-            await self._admit(number)
+            with model_attempt_scope(
+                getattr(request.runtime, "execution_info", None), self.max_attempts
+            ):
+                await self._admit(number)
             try:
                 response = await handler(attempt_request)
             except asyncio.CancelledError:

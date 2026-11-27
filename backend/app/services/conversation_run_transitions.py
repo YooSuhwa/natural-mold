@@ -21,6 +21,7 @@ from app.authz.conversation_run_scope import (
     lock_executable_run,
     owned_run_predicate,
 )
+from app.chat_recovery.model_attempts import new_model_attempt_budget
 from app.config import settings
 from app.database import TenantScoped
 from app.error_codes import conversation_not_found
@@ -191,6 +192,7 @@ async def _transition_to_running(
     worker_instance_id: str,
     start: bool = True,
     recovery_digest: str | None = None,
+    recovery_model_attempt_limit: int | None = None,
 ) -> tuple[ConversationRun | None, bool]:
     """``queued -> running`` 전이 시도. ``(run, started)`` 반환.
 
@@ -254,6 +256,8 @@ async def _transition_to_running(
             and run.tenant_id
         ):
             run.recovery_runtime_digest = recovery_digest
+            if recovery_model_attempt_limit is not None:
+                run.recovery_model_attempts = new_model_attempt_budget(recovery_model_attempt_limit)
             claim_run_owner(run, worker_instance_id)
         await session.commit()
         return run, True

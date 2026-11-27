@@ -28,6 +28,7 @@ from app.agent_runtime.runtime_snapshot_catalog import (
     SnapshotCatalogBuilder,
     normalize_virtual_path,
 )
+from app.agent_runtime.stream_retry_policy import stream_retry_enabled
 from app.chat_recovery.fence import current_run_fence, lock_run_fence, open_run_session
 from app.guardrails.pinning import _snapshot
 from app.security import key_provider
@@ -152,6 +153,11 @@ def recovery_runtime_digest(cfg: AgentConfig) -> str | None:
         "redaction_values": sorted(cfg.secret_values),
         "guardrails": _snapshot(cfg.guardrail_rules, cfg.tool_risk),
     }
+    # Eligibility above excludes fallback chains and custom middleware. Pin
+    # whether this root provider requires a durable send budget. A policy
+    # change or a pre-reservation worker must not resume an uncounted call.
+    if stream_retry_enabled(cfg.provider):
+        material["model_attempt_budget_version"] = 1
     try:
         return recovery_digest(context.tenant_id, "config", material)
     except (TypeError, ValueError):

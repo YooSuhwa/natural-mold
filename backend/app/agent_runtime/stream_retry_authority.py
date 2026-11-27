@@ -6,6 +6,9 @@ import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
+
+from langgraph.runtime import ExecutionInfo
 
 
 class StreamAttemptDenied(PermissionError):
@@ -18,6 +21,29 @@ class StreamAttemptDenied(PermissionError):
 type AdmissionCheck = Callable[[bool], Awaitable[None]]
 
 _check: ContextVar[AdmissionCheck | None] = ContextVar("stream_attempt_check", default=None)
+
+
+@dataclass(frozen=True, slots=True)
+class ModelAttempt:
+    execution: ExecutionInfo | None
+    limit: int
+
+
+_attempt: ContextVar[ModelAttempt | None] = ContextVar("direct_model_attempt", default=None)
+
+
+@contextmanager
+def model_attempt_scope(execution: ExecutionInfo | None, limit: int) -> Iterator[None]:
+    """Carry graph-owned identity into the authority check for exactly one send."""
+    token = _attempt.set(ModelAttempt(execution, limit))
+    try:
+        yield
+    finally:
+        _attempt.reset(token)
+
+
+def current_model_attempt() -> ModelAttempt | None:
+    return _attempt.get()
 
 
 @contextmanager
