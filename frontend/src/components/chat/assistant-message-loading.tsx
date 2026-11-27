@@ -90,7 +90,8 @@ export function StreamingMessageLoadingIndicator({
     () => currentTurnSubagentToolCallIds(semanticActivities),
     [semanticActivities],
   )
-  const subagentProgress = useSubagentProgressSummary(subagentToolCallIds)
+  const messageId = useAuiState((state) => state.message.id)
+  const subagentProgress = useSubagentProgressSummary(subagentToolCallIds, messageId)
   if (!isStreamingMessage) return null
   const hasActivities = progressActivities.length > 0
   // Todos are owned by the assistant message's persistent "Plan" card

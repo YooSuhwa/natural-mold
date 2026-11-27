@@ -1,14 +1,30 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  type ReactNode,
+} from 'react'
 import type { AnyStream, SubagentDiscoverySnapshot } from '@langchain/react'
 import { atom, useAtomValue, useSetAtom } from 'jotai'
+import { useAuiState } from '@assistant-ui/react'
+import { indexAgUiSubagents, type AgUiSubagentSnapshot } from '@/lib/ag-ui/chat-history-children'
+import { selectAgUiChildTodos } from '@/lib/ag-ui/chat-child-todos'
+import type { AgUiActivitySnapshot, AgUiMessageLink } from '@/lib/ag-ui/chat-history-types'
+import { useChildTasks } from '@/lib/hooks/use-child-tasks'
 
 const EMPTY_SUBAGENTS: ReadonlyMap<string, SubagentDiscoverySnapshot> = new Map()
 const AUTO_COLLAPSE_COMPLETED_THRESHOLD = 5
 const DEFAULT_MAX_LIVE_INLINE_DETAILS = 2
 
+const EMPTY_ACTIVITIES: readonly AgUiActivitySnapshot[] = []
+const EMPTY_AG_UI_SUBAGENTS: ReadonlyMap<string, AgUiSubagentSnapshot> = new Map()
+
 interface SubagentRuntimeValue {
+  readonly subagentsByRunId?: ReadonlyMap<string, AgUiSubagentSnapshot>
   readonly stream: AnyStream | null
   readonly subagentsByToolCallId: ReadonlyMap<string, SubagentDiscoverySnapshot>
 }
@@ -21,10 +37,8 @@ const EMPTY_VALUE = {
 const SubagentRuntimeContext = createContext<SubagentRuntimeValue>(EMPTY_VALUE)
 const sharedSubagentRuntimeAtom = atom<SharedSubagentRuntime | null>(null)
 
-export interface SharedSubagentRuntime {
+export interface SharedSubagentRuntime extends SubagentRuntimeValue {
   readonly conversationId: string
-  readonly stream: AnyStream
-  readonly subagentsByToolCallId: ReadonlyMap<string, SubagentDiscoverySnapshot>
 }
 
 interface SubagentRuntimeProviderProps {
@@ -53,17 +67,98 @@ export function SubagentRuntimeProvider({ children, stream }: SubagentRuntimePro
   return <SubagentRuntimeContext.Provider value={value}>{children}</SubagentRuntimeContext.Provider>
 }
 
+interface AgUiProviderProps {
+  readonly conversationId: string
+  readonly children: ReactNode
+  readonly allowLegacyDetails?: boolean
+  readonly activities?: readonly AgUiActivitySnapshot[]
+  readonly links?: readonly AgUiMessageLink[]
+}
+
+export function AgUiSubagentRuntimeProvider(props: AgUiProviderProps) {
+  if (props.allowLegacyDetails !== undefined) {
+    return <AgUiChildPresentation {...props} allowLegacyDetails={props.allowLegacyDetails} />
+  }
+  return <AuthorizedAgUiChildren {...props} />
+}
+
+function AuthorizedAgUiChildren(props: AgUiProviderProps) {
+  const { allowLegacyDetails } = useChildTasks(props.conversationId)
+  return <AgUiChildPresentation {...props} allowLegacyDetails={allowLegacyDetails} />
+}
+
+function AgUiChildPresentation({
+  children,
+  conversationId,
+  allowLegacyDetails,
+  activities = EMPTY_ACTIVITIES,
+  links,
+}: AgUiProviderProps & { readonly allowLegacyDetails: boolean }) {
+  const messages = useAuiState((state) => state.thread.messages)
+  const setRuntime = useSetAtom(sharedSubagentRuntimeAtom)
+  // Managed children are read separately by durable task ID after a fresh
+  // authorization check. A public SDK transcript cannot grant that access.
+  const projected = useMemo(
+    () => (allowLegacyDetails ? indexAgUiSubagents(messages) : EMPTY_AG_UI_SUBAGENTS),
+    [allowLegacyDetails, messages],
+  )
+  const value = useMemo<SharedSubagentRuntime>(() => {
+    const subagentsByRunId = new Map<string, AgUiSubagentSnapshot>()
+    const unique = new Map<string, AgUiSubagentSnapshot>()
+    const seen = new Set<string>()
+    for (const [runId, child] of projected) {
+      const todos = selectAgUiChildTodos(activities, child, links)
+      const snapshot = todos ? { ...child, todos } : child
+      subagentsByRunId.set(runId, snapshot)
+      if (seen.has(snapshot.id)) unique.delete(snapshot.id)
+      else unique.set(snapshot.id, snapshot)
+      seen.add(snapshot.id)
+    }
+    return { conversationId, subagentsByRunId, subagentsByToolCallId: unique, stream: null }
+  }, [conversationId, projected, activities, links])
+  useLayoutEffect(() => {
+    setRuntime(value)
+    return () => setRuntime((current) => (current === value ? null : current))
+  }, [value, setRuntime])
+  return <SubagentRuntimeContext.Provider value={value}>{children}</SubagentRuntimeContext.Provider>
+}
+
+export function useRequiresProjectedSubagent(): boolean {
+  return useContext(SubagentRuntimeContext).subagentsByRunId !== undefined
+}
+
 export function useSubagentStream(): AnyStream | null {
   return useContext(SubagentRuntimeContext).stream
 }
 
-export function useSubagentSnapshot(toolCallId: string): SubagentDiscoverySnapshot | null {
-  return useContext(SubagentRuntimeContext).subagentsByToolCallId.get(toolCallId) ?? null
+export function useSubagentSnapshot(
+  toolCallId: string,
+  parentMessageId?: string,
+): SubagentDiscoverySnapshot | null {
+  const runtime = useContext(SubagentRuntimeContext)
+  if (!runtime.subagentsByRunId || !parentMessageId) {
+    return runtime.subagentsByToolCallId.get(toolCallId) ?? null
+  }
+  let found: AgUiSubagentSnapshot | null = null
+  for (const child of runtime.subagentsByRunId.values()) {
+    if (child.id !== toolCallId || child.parentMessageId !== parentMessageId) continue
+    if (found) return null
+    found = child
+  }
+  return found
 }
 
-export function useSubagentSnapshots(): readonly SubagentDiscoverySnapshot[] {
-  const subagentsByToolCallId = useContext(SubagentRuntimeContext).subagentsByToolCallId
-  return useMemo(() => Array.from(subagentsByToolCallId.values()), [subagentsByToolCallId])
+export function useSubagentSnapshots(
+  parentMessageId?: string,
+): readonly SubagentDiscoverySnapshot[] {
+  const { subagentsByRunId, subagentsByToolCallId } = useContext(SubagentRuntimeContext)
+  return useMemo(() => {
+    if (!subagentsByRunId) return Array.from(subagentsByToolCallId.values())
+    const children = Array.from(subagentsByRunId.values())
+    return parentMessageId
+      ? children.filter((child) => child.parentMessageId === parentMessageId)
+      : children
+  }, [subagentsByRunId, subagentsByToolCallId, parentMessageId])
 }
 
 export interface SubagentProgressSummary {
@@ -164,16 +259,18 @@ export function getSubagentInlinePolicy(
 
 export function useSubagentProgressSummary(
   toolCallIds?: readonly string[],
+  parentMessageId?: string,
 ): SubagentProgressSummary {
-  const snapshots = useSubagentSnapshots()
+  const snapshots = useSubagentSnapshots(parentMessageId)
   return useMemo(() => summarizeSubagentProgress(snapshots, toolCallIds), [snapshots, toolCallIds])
 }
 
 export function useSubagentInlinePolicy(
   toolCallId: string,
   toolCallIds?: readonly string[],
+  parentMessageId?: string,
 ): SubagentInlinePolicy {
-  const snapshots = useSubagentSnapshots()
+  const snapshots = useSubagentSnapshots(parentMessageId)
   return useMemo(
     () => getSubagentInlinePolicy(snapshots, toolCallId, toolCallIds),
     [snapshots, toolCallId, toolCallIds],

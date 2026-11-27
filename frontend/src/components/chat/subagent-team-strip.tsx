@@ -4,6 +4,7 @@ import { NetworkIcon } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import type { SubagentDiscoverySnapshot } from '@langchain/react'
+import { isAgUiSubagentSnapshot } from '@/components/chat/ag-ui-subagent-details'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import {
   summarizeSubagentProgress,
@@ -130,9 +131,10 @@ export function SubagentTeamStrip({
           })}
           {transient.map((snapshot) => {
             const displayName = resolveSubagentDisplayName(names, snapshot.name)
+            const runId = isAgUiSubagentSnapshot(snapshot) ? snapshot.subagentRunId : undefined
             return (
               <TeamChip
-                key={snapshot.id}
+                key={runId ?? snapshot.id}
                 status={snapshot.status}
                 nested={snapshot.depth > 1}
                 title={snapshot.taskInput ?? undefined}
@@ -143,8 +145,9 @@ export function SubagentTeamStrip({
                     subagent: {
                       conversationId,
                       toolCallId: snapshot.id,
-                      agentName: displayName,
-                      input: snapshot.taskInput ?? '',
+                      ...(runId !== undefined
+                        ? { subagentRunId: runId, agentName: '' }
+                        : { agentName: displayName, input: snapshot.taskInput ?? '' }),
                     },
                   })
                 }
