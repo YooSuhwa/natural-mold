@@ -1,13 +1,18 @@
 """Chat resume and background approval recording serialize on the private conversation."""
 
 import asyncio
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
-from sqlalchemy import insert, select, text
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy import delete, insert, select, text
+from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
+    AsyncEngine,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.approvals import recording, service
 from app.authz.org_context import OrgContext
@@ -17,6 +22,7 @@ from app.models import (
     ApprovalRequest,
     Conversation,
     ConversationRun,
+    Notification,
     OrganizationMember,
     TenantMember,
 )
@@ -74,6 +80,19 @@ async def interrupted(lab: RlsLab, engine: AsyncEngine) -> tuple[OrgContext, UUI
         await transition_run(db, run, "interrupted", interrupt_id=_INTERRUPT)
         await db.commit()
         return ctx, agent, room.id, run.id
+
+
+async def wait_for_pg_block(
+    probe: AsyncConnection, waiter: int, blocker: int, second_finished: Callable[[], bool]
+) -> None:
+    async with asyncio.timeout(10):
+        while not await probe.scalar(  # noqa: ASYNC110 - wait for a real PostgreSQL lock
+            text("SELECT :blocker = ANY(pg_blocking_pids(:waiter))"),
+            {"blocker": blocker, "waiter": waiter},
+        ):
+            if second_finished():
+                pytest.fail("The second operation completed before the first committed")
+            await asyncio.sleep(0.01)
 
 
 @pytest.mark.parametrize("record_first", [False, True], ids=["resume-first", "recorder-first"])
@@ -159,14 +178,9 @@ async def test_approval_recording_and_resume_cannot_leave_a_phantom_request(
                 written = group.create_task(recording.record_interrupted_run(parent_id, ctx))
                 waiter, blocker = recorder_pid, responder_pid
             try:
-                async with asyncio.timeout(10):
-                    while not await probe.scalar(  # noqa: ASYNC110 - wait for a real PostgreSQL lock
-                        text("SELECT :blocker = ANY(pg_blocking_pids(:waiter))"),
-                        {"blocker": blocker, "waiter": waiter},
-                    ):
-                        if (resumed if record_first else written).done():
-                            pytest.fail("The second operation completed before the first committed")
-                        await asyncio.sleep(0.01)
+                await wait_for_pg_block(
+                    probe, waiter, blocker, (resumed if record_first else written).done
+                )
             finally:
                 release_first.set()
 
@@ -194,3 +208,73 @@ async def test_approval_recording_and_resume_cannot_leave_a_phantom_request(
                 )
             else:
                 assert not rows and not written.result()
+
+
+@pytest.mark.parametrize("already_committed", [True, False], ids=["committed", "in-flight"])
+async def test_revoked_recipient_cannot_read_checkpoint_or_record_approval(
+    lab: RlsLab,
+    engine: AsyncEngine,
+    interrupted: tuple[OrgContext, UUID, UUID, UUID],
+    monkeypatch: pytest.MonkeyPatch,
+    already_committed: bool,
+) -> None:
+    ctx, _, room_id, run_id = interrupted
+    visited: list[UUID] = []
+
+    async def checkpoint(thread_id: UUID) -> list[service.PendingInterrupt]:
+        visited.append(thread_id)
+        return [service.PendingInterrupt(_INTERRUPT, {"action_requests": [{"name": "export"}]})]
+
+    monkeypatch.setattr(recording, "checkpoint_interrupts", checkpoint)
+    async with (
+        engine.connect() as recorder,
+        engine.connect() as revoker,
+        engine.connect() as probe,
+        tenant_session(
+            ctx, maker=async_sessionmaker(revoker, expire_on_commit=False)
+        ) as revocation,
+    ):
+        recorder_pid = await recorder.scalar(text("SELECT pg_backend_pid()"))
+        revoker_pid = await revocation.scalar(text("SELECT pg_backend_pid()"))
+        assert recorder_pid != revoker_pid
+        await recorder.commit()
+        monkeypatch.setattr(
+            recording, "async_session", async_sessionmaker(recorder, expire_on_commit=False)
+        )
+        deleted = await revocation.scalar(
+            delete(OrganizationMember)
+            .where(
+                OrganizationMember.tenant_id == ctx.tenant_id,
+                OrganizationMember.org_id == ctx.org_id,
+                OrganizationMember.user_id == ctx.user_id,
+            )
+            .returning(OrganizationMember.user_id)
+        )
+        assert deleted == ctx.user_id
+        if already_committed:
+            await revocation.commit()
+            assert await recording.record_interrupted_run(run_id, ctx) == []
+        else:
+            async with asyncio.TaskGroup() as group:
+                written = group.create_task(recording.record_interrupted_run(run_id, ctx))
+                try:
+                    await wait_for_pg_block(probe, recorder_pid, revoker_pid, written.done)
+                    assert not visited
+                finally:
+                    await revocation.commit()
+            assert written.result() == []
+
+    assert not visited
+    with lab.admin.connect() as audit:
+        assert (
+            audit.scalar(
+                select(ConversationRun.conversation_id).where(ConversationRun.id == run_id)
+            )
+            == room_id
+        )
+        assert (
+            audit.scalar(select(ApprovalRequest.id).where(ApprovalRequest.run_id == run_id)) is None
+        )
+        assert (
+            audit.scalar(select(Notification.id).where(Notification.user_id == ctx.user_id)) is None
+        )
