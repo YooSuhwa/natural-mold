@@ -25,12 +25,16 @@ from app.models.organization import OrganizationMember
 from app.models.user import User
 from app.services import ag_ui_commands as commands
 from app.services import conversation_run_queue_service as queue
+from app.services.conversation_run_cancellation_recovery import (
+    finalize_workerless_cancel_before_start,
+)
+from app.services.conversation_run_state import request_cancel_run
 from app.services.platform.tenant_data_scope import REDACTED
 from app.services.platform.tenant_export_redaction import clean_row
 from tests.artifact_test_helpers import seed_artifact_conversation
 from tests.authz.test_independent_job_authority import delegation as delegation
 from tests.authz.unit_scope_fixture import ensure_unit_scope, unit_context
-from tests.conftest import TEST_USER_ID
+from tests.conftest import TEST_USER_ID, TestSession
 
 pytestmark = pytest.mark.asyncio
 
@@ -149,6 +153,118 @@ async def test_queue_claim_updates_read_only_binding_and_reverse_lookup(db: Asyn
     assert (
         await commands.load_public_run_ids(db, OWNER, conversation_id, [run_id, other_run.id]) == {}
     )
+
+
+async def _cancel_claimed_turn(
+    db: AsyncSession, conversation_id: UUID
+) -> tuple[ConversationRunInput, ConversationRun]:
+    admission = await commands.find_or_reserve(db, OWNER, conversation_id, PUBLIC_ID, DIGEST)
+    queued = await _enqueue_turn(db, conversation_id)
+    await commands.bind_command(db, admission, input_id=queued.id)
+    await db.commit()
+    claimed = await queue.claim_next_input(db, conversation_id=conversation_id, context=OWNER)
+    assert claimed is not None
+    await db.commit()
+    active = await commands.load_run_binding(db, OWNER, conversation_id, PUBLIC_ID)
+    assert active is not None and active.run_id == claimed.run.id
+    assert active.revision == 2
+    await request_cancel_run(db, claimed.run)
+    await db.commit()
+
+    assert await finalize_workerless_cancel_before_start(
+        session_factory=TestSession, protected_run_ids=()
+    ) == [conversation_id]
+    await db.refresh(queued)
+    await db.refresh(claimed.run)
+    assert (queued.status, queued.revision, queued.run_id) == ("canceled", 3, None)
+    assert claimed.run.status == "canceled"
+
+    return queued, claimed.run
+
+
+async def test_workerless_cancel_keeps_historical_run_and_actual_queue_revision(
+    db: AsyncSession,
+) -> None:
+    conversation_id, agent_id = await seed_artifact_conversation()
+    foreign_id, foreign_agent = await seed_artifact_conversation()
+    queued, physical = await _cancel_claimed_turn(db, conversation_id)
+
+    # A different conversation copied the queue metadata. A same-conversation
+    # cancellation references the same input ID but a different request.
+    foreign = await _run(db, foreign_id, foreign_agent, OWNER)
+    foreign.status, foreign.metadata_json = "canceled", dict(physical.metadata_json or {})
+    unrelated = await _run(db, conversation_id, agent_id, OWNER)
+    unrelated.status = "canceled"
+    unrelated.metadata_json = {**(physical.metadata_json or {}), "client_request_id": "other"}
+    await db.commit()
+
+    terminal = await commands.load_run_binding(db, OWNER, conversation_id, PUBLIC_ID)
+    assert terminal is not None and terminal.run_id == physical.id
+    assert (terminal.input_id, terminal.input_status, terminal.revision) == (
+        queued.id,
+        "canceled",
+        3,
+    )
+    public = await commands.load_public_run_ids(
+        db, OWNER, conversation_id, [physical.id, foreign.id, unrelated.id]
+    )
+    assert public == {physical.id: PUBLIC_ID}
+    assert await commands.load_public_run_id(db, OWNER, conversation_id, physical.id) == PUBLIC_ID
+    assert await commands.load_public_run_id(db, OWNER, foreign_id, foreign.id) is None
+
+
+async def test_canceled_claim_refuses_alias_and_hides_ambiguous_historical_runs(
+    db: AsyncSession,
+) -> None:
+    conversation_id, agent_id = await seed_artifact_conversation()
+    _, physical = await _cancel_claimed_turn(db, conversation_id)
+    second = await commands.find_or_reserve(db, OWNER, conversation_id, "another-public-id", DIGEST)
+    with pytest.raises(ConflictError) as duplicate:
+        await commands.bind_command(db, second, run_id=physical.id)
+    assert duplicate.value.code == "AG_UI_TARGET_ALREADY_BOUND"
+    assert await commands.load_run_binding(db, OWNER, conversation_id, "another-public-id") is None
+
+    duplicate_marker = await _run(db, conversation_id, agent_id, OWNER)
+    duplicate_marker.status = "canceled"
+    duplicate_marker.metadata_json = dict(physical.metadata_json or {})
+    await db.commit()
+    ambiguous = await commands.load_run_binding(db, OWNER, conversation_id, PUBLIC_ID)
+    assert (
+        ambiguous is not None and ambiguous.input_status == "canceled" and ambiguous.run_id is None
+    )
+    assert (
+        await commands.load_public_run_ids(
+            db, OWNER, conversation_id, [physical.id, duplicate_marker.id]
+        )
+        == {}
+    )
+    assert await commands.load_public_run_id(db, OWNER, conversation_id, physical.id) is None
+
+
+async def test_never_claimed_input_cannot_adopt_run_from_copied_metadata(db: AsyncSession) -> None:
+    conversation_id, agent_id = await seed_artifact_conversation()
+    admission = await commands.find_or_reserve(db, OWNER, conversation_id, PUBLIC_ID, DIGEST)
+    queued = await _enqueue_turn(db, conversation_id)
+    await commands.bind_command(db, admission, input_id=queued.id)
+    await db.commit()
+    decoy = await _run(db, conversation_id, agent_id, OWNER)
+    decoy.status = "canceled"
+    decoy.metadata_json = {
+        "queue_input_id": str(queued.id),
+        "client_request_id": queued.client_request_id,
+    }
+    await db.commit()
+    pending = await commands.load_run_binding(db, OWNER, conversation_id, PUBLIC_ID)
+    assert pending is not None and pending.run_id is None and pending.input_status == "pending"
+
+    await queue.delete_pending_input(
+        db, context=OWNER, conversation_id=conversation_id, input_id=queued.id, expected_revision=1
+    )
+    await db.commit()
+    canceled = await commands.load_run_binding(db, OWNER, conversation_id, PUBLIC_ID)
+    assert canceled is not None and canceled.run_id is None
+    assert (canceled.input_status, canceled.revision) == ("canceled", 2)
+    assert await commands.load_public_run_id(db, OWNER, conversation_id, decoy.id) is None
 
 
 async def test_public_id_cannot_shadow_authorized_legacy_run(db: AsyncSession) -> None:
