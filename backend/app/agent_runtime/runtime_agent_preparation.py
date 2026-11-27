@@ -204,6 +204,9 @@ async def _prepare_runtime_components(
 ) -> RuntimeComponents:
     """Build reusable Deep Agents runtime pieces for a parent or child agent."""
     assert_pre_marker("_prepare_runtime_components")
+    if cfg.independent_job:
+        # Direct graphs do not check delegation on summary sends, retries and every tool.
+        raise PermissionError("independent_job_requires_lease")
     if cfg.goal_followup and not goal_setup_allowed(
         cfg.runtime_profile, cfg.middleware_configs or []
     ):

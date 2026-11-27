@@ -85,6 +85,7 @@ async def _run_conversation(
         persist_callback=ctx.persist_cb,
         trace_sink=ctx.trace_sink,
     )
+    run_audit = partial(_record_run_audit, user=user, tenant=cfg.org_context)
     start: prepared_start.PreparedRunStart | None = None
     try:
         input_payload, attachment_inputs = await worker_attr("_prepare_turn_attachment_inputs")(
@@ -119,7 +120,6 @@ async def _run_conversation(
         )
         run, started = start.run, start.started
         cfg = start.cfg or cfg  # prepared: locked metadata + the lease's secret set
-        run_audit = partial(_record_run_audit, user=user, tenant=cfg.org_context)
         if run is None:
             logger.warning("conversation run vanished before worker start run_id=%s", run_id)
             finalize_needed = False

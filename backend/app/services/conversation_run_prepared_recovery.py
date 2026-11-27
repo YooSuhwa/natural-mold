@@ -18,8 +18,8 @@ A row owned by another worker is treated as
 orphaned only when its heartbeat is stale — that is the only cross-process
 liveness signal; a remote owner with a fresh heartbeat is left alone. Runs
 without the pair stay with the ordinary queue recovery, which may freshly
-prepare them. Each row is isolated: one failure never stops the sweep. Entry
-is gated by ``settings.prepared_run_lease_enabled``.
+prepare them. Each row is isolated: one failure never stops the sweep. Independent
+children always use a lease, including when ordinary chat runs unleased.
 """
 
 from __future__ import annotations
@@ -33,11 +33,7 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.prepared_run_registry import (
-    LEASE_MISSING,
-    PreparedRunLeaseError,
-    get_prepared_run_registry,
-)
+from app.agent_runtime.prepared_run_registry import LEASE_MISSING
 from app.authz.conversation_run_scope import (
     RunConversationTarget,
     RunExecutionTarget,
@@ -46,8 +42,12 @@ from app.authz.conversation_run_scope import (
 from app.authz.conversation_scope import resolve_conversation_actor
 from app.config import settings
 from app.exceptions import AppError
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import ConversationRun
-from app.services.conversation_run_prepared_denied_recovery import terminalize_denied_orphan
+from app.services.conversation_run_prepared_denied_recovery import (
+    locked_orphan_lease_missing,
+    terminalize_denied_orphan,
+)
 from app.services.conversation_run_state import transition_run
 from app.services.prepared_run_state import fail_prepared_run
 
@@ -62,27 +62,33 @@ async def _candidates(
     reference_time = func.coalesce(
         ConversationRun.heartbeat_at, ConversationRun.started_at, ConversationRun.created_at
     )
-    result = await db.execute(
-        select(
-            ConversationRun.id,
-            ConversationRun.conversation_id,
-            ConversationRun.agent_id,
-            ConversationRun.user_id,
-        ).where(
-            ConversationRun.runtime_materialized_at.is_not(None),
-            ConversationRun.runtime_materialization_sha256.is_not(None),
-            ConversationRun.is_active.is_(True),
-            ConversationRun.status.in_(("running", "canceling")),
-            or_(
-                ConversationRun.worker_instance_id == worker_instance_id,
-                reference_time <= stale_before,
-            ),
-        )
+    query = select(
+        ConversationRun.id,
+        ConversationRun.conversation_id,
+        ConversationRun.agent_id,
+        ConversationRun.user_id,
+        ConversationRun.worker_instance_id,
+    ).where(
+        ConversationRun.runtime_materialized_at.is_not(None),
+        ConversationRun.runtime_materialization_sha256.is_not(None),
+        ConversationRun.is_active.is_(True),
+        ConversationRun.status.in_(("running", "canceling")),
+        or_(
+            ConversationRun.worker_instance_id == worker_instance_id,
+            reference_time <= stale_before,
+        ),
     )
+    if not settings.prepared_run_lease_enabled:
+        query = query.join(Conversation, Conversation.id == ConversationRun.conversation_id).where(
+            Conversation.source == INDEPENDENT_JOB_SOURCE
+        )
+    result = await db.execute(query)
     return list(result.all())
 
 
-async def _terminalize(session_factory: SessionFactory, row: Any) -> bool:
+async def _terminalize(
+    session_factory: SessionFactory, row: Any, *, worker_instance_id: str, stale_before: datetime
+) -> bool:
     async with session_factory() as db:
         try:
             context = await resolve_conversation_actor(db, row.conversation_id, row.user_id)
@@ -99,27 +105,25 @@ async def _terminalize(session_factory: SessionFactory, row: Any) -> bool:
             # worker loss must still terminalize, via the narrow terminal-only path.
             await db.rollback()
             async with session_factory() as denied:
-                return await terminalize_denied_orphan(denied, row)
-        digest = run.runtime_materialization_sha256
-        if not run.is_active or digest is None:
+                return await terminalize_denied_orphan(
+                    denied, row, worker_instance_id=worker_instance_id, stale_before=stale_before
+                )
+        if not locked_orphan_lease_missing(
+            run,
+            observed_owner=row.worker_instance_id,
+            worker_instance_id=worker_instance_id,
+            stale_before=stale_before,
+        ):
             await db.rollback()
             return False
-        try:
-            get_prepared_run_registry().ensure_live_for_marker(run.id, marker_digest=digest)
-        except PreparedRunLeaseError as error:
-            if error.code != LEASE_MISSING:
-                await db.rollback()
-                return False
-            if run.status == "canceling":
-                await transition_run(
-                    db, run, "canceled", cancellation_ack_worker_id=run.worker_instance_id
-                )
-            else:
-                await fail_prepared_run(db, run, LEASE_MISSING)
-            await db.commit()
-            return True
-        await db.rollback()
-        return False
+        if run.status == "canceling":
+            await transition_run(
+                db, run, "canceled", cancellation_ack_worker_id=run.worker_instance_id
+            )
+        else:
+            await fail_prepared_run(db, run, LEASE_MISSING)
+        await db.commit()
+        return True
 
 
 async def terminalize_orphaned_prepared_runs(
@@ -127,8 +131,6 @@ async def terminalize_orphaned_prepared_runs(
 ) -> list[uuid.UUID]:
     """Terminalize every orphaned paired run; return the terminalized run IDs."""
 
-    if not settings.prepared_run_lease_enabled:
-        return []
     # conversation_run_worker imports the sweep module — keep the import call-local.
     from app.services.conversation_run_worker import get_run_task_registry
 
@@ -142,7 +144,12 @@ async def terminalize_orphaned_prepared_runs(
         if row.agent_id is None or row.id in tasks.active_run_ids():
             continue
         try:
-            if await _terminalize(session_factory, row):
+            if await _terminalize(
+                session_factory,
+                row,
+                worker_instance_id=tasks.worker_instance_id,
+                stale_before=stale_before,
+            ):
                 failed.append(row.id)
         except Exception:  # noqa: BLE001 - isolate rows; the next sweep retries
             logger.exception("prepared run recovery failed run_id=%s", row.id)

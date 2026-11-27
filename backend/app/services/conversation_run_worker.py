@@ -33,6 +33,7 @@ from app.authz.conversation_run_scope import (
     RunExecutionTarget,
     lock_executable_run,
 )
+from app.authz.organization_execution_gateway import held_conversation
 from app.authz.worker_conversation_scope import (
     WorkerConversationTarget,
     load_worker_conversation,
@@ -43,6 +44,7 @@ from app.dependencies import CurrentUser
 from app.error_codes import conversation_not_found
 from app.exceptions import AppError
 from app.marketplace.redaction import replace_secret_values
+from app.models.conversation import INDEPENDENT_JOB_SOURCE
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service, thread_branch_service
 from app.services import conversation_stream_service as stream_service
@@ -198,6 +200,11 @@ async def start_conversation_run(
             raise conversation_not_found() from error
         run = await lock_executable_run(session, target)
         if run is None:
+            raise conversation_not_found()
+        conversation = held_conversation(session, conversation_id)
+        if conversation is None or cfg.independent_job != (
+            conversation.source == INDEPENDENT_JOB_SOURCE
+        ):
             raise conversation_not_found()
         from app.services.conversation_goal_worker import configure_goal_runtime
 

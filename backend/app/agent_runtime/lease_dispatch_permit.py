@@ -86,10 +86,26 @@ async def open_dispatch_permit(
     registry = get_prepared_run_registry()
     if registry.state(lease.binding.run_id) not in (LeaseState.ACTIVE, LeaseState.DISPATCHING):
         raise DispatchDeniedError("prepared_run_lease_missing")
+    binding = lease.binding
+    if binding.independent_job and kind == "child_launch":
+        raise DispatchDeniedError("independent_job_depth_exceeded")
+    context = _context(lease)
     async with session_factory() as db:
         try:
-            proof = await acquire_execution_proof(db, _context(lease), lease=lease)
-            registry.acquire(lease.binding, token=lease.token, digest=lease.digest)
+            if binding.independent_job:
+                from app.authz.independent_job_execution import authorize_independent_job_execution
+
+                if not await authorize_independent_job_execution(
+                    db,
+                    run_id=binding.run_id,
+                    conversation_id=binding.conversation_id,
+                    context=context,
+                ):
+                    raise DispatchDeniedError("independent_job_unavailable")
+            proof = await acquire_execution_proof(
+                db, context, lease=None if binding.independent_job else lease
+            )
+            registry.acquire(binding, token=lease.token, digest=lease.digest)
         except AppError as error:
             await db.rollback()
             code = (

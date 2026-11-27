@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.lease_dispatch_permit import DispatchDeniedError, open_dispatch_permit
+from app.agent_runtime.lease_dispatch_permit import (
+    DispatchDeniedError,
+    PermitKind,
+    open_dispatch_permit,
+)
 from app.agent_runtime.prepared_run_registry import (
     PreparedRunRegistry,
     reset_prepared_run_registry_for_tests,
 )
-from app.agent_runtime.runtime_config import PreparedRunBinding
+from app.agent_runtime.runtime_agent_preparation import _prepare_runtime_components
+from app.agent_runtime.runtime_config import AgentConfig, PreparedRunBinding
 from app.models.organization import Organization, OrganizationMember, Tenant, TenantMember
 from tests.authz import prepared_run_testkit as kit
 from tests.authz.execution_gateway_testkit import GatewayGraph, seed_graph
@@ -22,7 +29,7 @@ from tests.conftest import TestSession
 DESCRIPTORS = frozenset({"tool:search", "provider:root"})
 
 
-async def _active_lease(graph: GatewayGraph):
+async def _active_lease(graph: GatewayGraph, *, independent_job: bool = False):
     registry = PreparedRunRegistry()
     reset_prepared_run_registry_for_tests(registry)
     ctx = graph.context
@@ -34,6 +41,7 @@ async def _active_lease(graph: GatewayGraph):
         graph.conversation_ids[0],
         uuid.uuid4(),
         "thread",
+        independent_job=independent_job,
     )
     token = registry.reserve(binding)
     lease = kit.lease(binding, token)
@@ -154,3 +162,89 @@ async def test_archived_org_without_the_exact_lease_is_denied(db: AsyncSession) 
         await _permit(forged)
     assert denied.value.code == "prepared_run_lease_missing"
     assert (await _permit(lease)).archived_bypass is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["provider", "summary", "tool", "backend"])
+async def test_independent_job_rechecks_its_bound_run_before_each_leaf(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch, kind: PermitKind
+) -> None:
+    graph = await seed_graph(db)
+    _, lease = await _active_lease(graph, independent_job=True)
+    check = AsyncMock(side_effect=[True, False])
+    monkeypatch.setattr(
+        "app.authz.independent_job_execution.authorize_independent_job_execution", check
+    )
+
+    sent: list[str] = []
+
+    async def send_once() -> None:
+        async with open_dispatch_permit(
+            lease,
+            kind=kind,
+            descriptor_id="tool:search",
+            allowed_descriptors=DESCRIPTORS,
+            session_factory=TestSession,
+        ):
+            sent.append("effect")
+
+    await send_once()
+    with pytest.raises(DispatchDeniedError, match="independent_job_unavailable"):
+        await send_once()
+    assert sent == ["effect"]
+    assert check.await_count == 2
+    for call in check.await_args_list:
+        assert call.kwargs == {
+            "run_id": lease.binding.run_id,
+            "conversation_id": lease.binding.conversation_id,
+            "context": graph.context,
+        }
+
+
+@pytest.mark.asyncio
+async def test_independent_job_cannot_redelegate_or_drop_its_binding(db: AsyncSession) -> None:
+    graph = await seed_graph(db)
+    _, lease = await _active_lease(graph, independent_job=True)
+    with pytest.raises(DispatchDeniedError, match="independent_job_depth_exceeded"):
+        async with open_dispatch_permit(
+            lease,
+            kind="child_launch",
+            descriptor_id="tool:search",
+            allowed_descriptors=DESCRIPTORS,
+            session_factory=TestSession,
+        ):
+            pytest.fail("nested task started")
+
+    forged = replace(lease, binding=replace(lease.binding, independent_job=False))
+    with pytest.raises(DispatchDeniedError, match="prepared_run_lease_mismatch"):
+        await _permit(forged)
+
+
+@pytest.mark.asyncio
+async def test_independent_binding_on_an_ordinary_conversation_never_reaches_leaf(
+    db: AsyncSession,
+) -> None:
+    graph = await seed_graph(db)
+    _, lease = await _active_lease(graph, independent_job=True)
+    with pytest.raises(DispatchDeniedError, match="independent_job_unavailable"):
+        await _permit(lease)
+
+
+@pytest.mark.asyncio
+async def test_independent_config_refuses_direct_graph_construction(db: AsyncSession) -> None:
+    graph = await seed_graph(db)
+    cfg = AgentConfig(
+        provider="openai",
+        model_name="unused",
+        api_key=None,
+        base_url=None,
+        system_prompt="",
+        tools_config=[],
+        thread_id=str(graph.conversation_ids[0]),
+        org_context=graph.context,
+        independent_job=True,
+    )
+    with pytest.raises(PermissionError, match="independent_job_requires_lease"):
+        await _prepare_runtime_components(
+            cfg, is_trigger_mode=False, include_ask_user=True, include_agent_memory_file=True
+        )

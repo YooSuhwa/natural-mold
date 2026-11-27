@@ -20,6 +20,7 @@ from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 from app.approvals.emergency import refuse_run
 from app.authz.conversation_run_scope import private_run_predicate
 from app.authz.execution_lock_cursor import ExecutionProofError, LockClass
+from app.authz.execution_transaction_tracker import inserted_in_transaction
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import (
     acquire_execution_proof,
@@ -32,7 +33,7 @@ from app.authz.organization_execution_proof import (
 )
 from app.authz.scoping import private_scope_predicate
 from app.exceptions import AppError, ConflictError
-from app.models.conversation import Conversation
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import ConversationRun
 from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services.conversation_runtime_policy import (
@@ -179,6 +180,16 @@ async def create_run_from_locked_proof(
     conversation = proof.cursor.held_row(LockClass.CONVERSATION, conversation_id)
     if not isinstance(conversation, Conversation) or conversation.agent_id != agent_id:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    if conversation.source == INDEPENDENT_JOB_SOURCE:
+        new_child = source in {"chat", "start"} and inserted_in_transaction(
+            db, Conversation.__tablename__, conversation.id
+        )
+        if not new_child and (source != "resume" or parent_run_id is None):
+            raise _conflict("Independent work can only resume its own interrupted run")
+        if parent_run_id is not None and source == "resume":
+            from app.authz.independent_job_execution import require_independent_resume_ready
+
+            await require_independent_resume_ready(db, conversation_id, parent_run_id, context)
     # 17.4: nothing new runs for an emergency-stopped agent (resumes included).
     await refuse_run(db, tenant_id=conversation.tenant_id, agent_id=agent_id)
 

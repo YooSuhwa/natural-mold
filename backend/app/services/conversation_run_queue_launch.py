@@ -100,9 +100,13 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
                 checkpoint_id=queued.checkpoint_id,
                 **({"include_subagents": False} if queued.source == "goal_followup" else {}),
             )
-        except (AppError, HTTPException, ValueError):
+        except (AppError, HTTPException, ValueError) as exc:
             logger.warning("queued input rehydration failed input_id=%s", input_id, exc_info=True)
-            error_code = "queue_rehydrate_failed"
+            error_code = (
+                "independent_job_unsupported"
+                if isinstance(exc, AppError) and exc.code == "independent_job_unsupported"
+                else "queue_rehydrate_failed"
+            )
         if error_code is None:
             try:
                 input_payload = await reauthorize_resource_context_payload(

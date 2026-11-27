@@ -331,6 +331,7 @@ def build_preparation_inputs(
     if cfg.memory_recall_block:
         root_middleware.append(MemoryRecallMiddleware(cfg.memory_recall_block))
     return PreparationInputs(
+        independent_job=cfg.independent_job,
         thread_id=cfg.thread_id,
         system_prompt=prompt,
         messages=tuple(convert_to_langchain_messages(sources.messages_history)),

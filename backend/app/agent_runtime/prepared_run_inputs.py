@@ -139,6 +139,7 @@ class PreparationInputs:
     guardrails: PreparedGuardrails | None = None
     # Transient preparation resources closed before the marker is written.
     transient_closers: tuple[Closer, ...] = ()
+    independent_job: bool = field(default=False, kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)

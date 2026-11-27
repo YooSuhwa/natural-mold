@@ -28,6 +28,7 @@ from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import ConflictError
 from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER
+from app.models.conversation import INDEPENDENT_JOB_SOURCE
 from app.services import chat_service
 from app.services.authorized_runtime import prepare_authorized_runtime
 from app.services.conversation_runtime_policy import snapshot_from_conversation
@@ -72,6 +73,10 @@ async def resolve_agent_context(
         )
 
     if agent.runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER:
+        if conv.source == INDEPENDENT_JOB_SOURCE:
+            raise ConflictError(
+                "independent_job_unsupported", "독립 작업에 지원되지 않는 에이전트입니다"
+            )
         return await _resolve_skill_builder_agent_context(
             db,
             conv,
@@ -129,6 +134,7 @@ async def resolve_agent_context(
     cfg = AgentConfig(
         org_context=context,
         provider=agent.model.provider,
+        independent_job=conv.source == INDEPENDENT_JOB_SOURCE,
         model_name=agent.model.model_name,
         api_key=api_key,
         base_url=base_url,
@@ -170,7 +176,7 @@ async def resolve_agent_context(
     from app.approvals.tool_grants import live as live_tool_grants
 
     cfg.tool_grants = await live_tool_grants(db, conversation_id)
-    if include_subagents:
+    if include_subagents and not cfg.independent_job:
         cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
             agent,
             db=db,
