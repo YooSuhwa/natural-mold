@@ -9,6 +9,8 @@ from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, lazyload
 
+from app.agent_runtime.lease_dispatch_permit import DispatchDeniedError
+from app.agent_runtime.prepared_child_controls import lease_for_child_control
 from app.agent_runtime.prepared_run_registry import PreparedRunLeaseError, get_prepared_run_registry
 from app.agent_runtime.runtime_hydration_guard import active_lease_run
 from app.approvals.emergency import refuse_run
@@ -188,8 +190,17 @@ async def authorize_child_target(
     target = await _target(db, context, run_id, child_agent_id)
     await _require_delegation(target, context, child_agent_id)
     try:
+        lease = lease_for_child_control(
+            db, context=context, run_id=run_id, child_agent_id=child_agent_id
+        )
+        if active_lease_run() is not None and lease is None:
+            raise ChildTaskStopped("revoked")
         proof = await acquire_execution_proof(
-            db, context, root_agent_id=target.parent_id, conversation_ids=(target.conversation_id,)
+            db,
+            context,
+            root_agent_id=target.parent_id,
+            conversation_ids=(target.conversation_id,),
+            lease=lease,
         )
         if (
             not proof.covers_conversation(target.conversation_id)
@@ -202,6 +213,8 @@ async def authorize_child_target(
             raise ChildTaskStopped("revoked")
         await refuse_run(db, tenant_id=context.tenant_id, agent_id=target.parent_id)
         await refuse_run(db, tenant_id=context.tenant_id, agent_id=child_agent_id)
+    except DispatchDeniedError:
+        raise ChildTaskStopped("revoked") from None
     except AppError as exc:
         if exc.status in {403, 404, 409}:
             raise ChildTaskStopped("revoked") from None
@@ -218,14 +231,14 @@ async def authorize_child_target(
     )
     if run is None:
         raise ChildTaskStopped("revoked")
-    lease_id = active_lease_run()
-    if lease_id is not None:
-        if lease_id != str(run_id) or run.runtime_materialization_sha256 is None:
+    if lease is not None:
+        if (
+            active_lease_run() not in {None, str(run_id)}
+            or run.runtime_materialization_sha256 != lease.digest
+        ):
             raise ChildTaskStopped("revoked")
         try:
-            get_prepared_run_registry().ensure_live_for_marker(
-                run_id, marker_digest=run.runtime_materialization_sha256
-            )
+            get_prepared_run_registry().ensure_live_for_marker(run_id, marker_digest=lease.digest)
         except PreparedRunLeaseError:
             raise ChildTaskStopped("revoked") from None
     _require_status(run, require_active)
