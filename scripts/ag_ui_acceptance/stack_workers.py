@@ -36,6 +36,9 @@ def worker_pair(
             "MOLDY_AGUI_OBSERVER",
         }
     }
+    launch = [sys.executable, "-m"]
+    if runtime_env.get("MOLDY_AGUI_MODEL_TIMINGS"):
+        launch = [sys.executable, runtime_env["MOLDY_AGUI_PERF_MODEL_WRAPPER"]]
     process_ids = record["processes"]
     with ExitStack() as processes:
         for label in ("a", "b"):
@@ -50,8 +53,7 @@ def worker_pair(
                 managed(
                     api_name,
                     [
-                        sys.executable,
-                        "-m",
+                        *launch,
                         "uvicorn",
                         "app.main:app",
                         "--host",
@@ -75,7 +77,7 @@ def worker_pair(
             worker, job_log = processes.enter_context(
                 managed(
                     job_name,
-                    [sys.executable, "-m", "app.jobs.worker"],
+                    [*launch, "app.jobs.worker"],
                     backend,
                     runtime_env,
                     logs,

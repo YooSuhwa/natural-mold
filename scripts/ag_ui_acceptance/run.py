@@ -31,7 +31,7 @@ from native_postgres import native_postgres
 from openfga import acceptance_openfga
 from processes import command, managed, ports, wait_ready
 from skill_attempts import docx_attempt_environment
-from stack_sources import digest, revision, stage
+from stack_sources import digest, revision, stage, stage_probe_files
 
 
 def arguments() -> argparse.Namespace:
@@ -62,6 +62,11 @@ def arguments() -> argparse.Namespace:
         help="Python from the optional separate environment that contains the official LangGraph adapter",
     )
     parser.add_argument(
+        "--perf-timing",
+        action="store_true",
+        help="measure actual scripted emission, PG commit, streaming receipt and DOM display per token",
+    )
+    parser.add_argument(
         "--phase", choices=("smoke", "api", "browser", "full"), default="full"
     )
     parser.add_argument(
@@ -85,8 +90,16 @@ def arguments() -> argparse.Namespace:
         default=[],
         help="additional e2e relative spec after main cutover",
     )
+    parser.add_argument(
+        "--ag-ui-spec",
+        action="append",
+        default=[],
+        help="additional e2e spec that is meaningful only on the standard client",
+    )
     args = parser.parse_args()
-    for spec in args.extra_spec:
+    if args.perf_timing and args.phase not in {"browser", "full"}:
+        parser.error("--perf-timing requires a browser or full gate")
+    for spec in (*args.extra_spec, *args.ag_ui_spec):
         if not re.fullmatch(
             r"e2e/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+\.spec\.ts(?::[1-9][0-9]*)?", spec
         ):
@@ -104,6 +117,8 @@ def browser_gate(
     logs: Path,
     stack: ExitStack,
     extra_specs: list[str],
+    ag_ui_specs: list[str],
+    probes: Path,
     record: dict,
     start_delegation_pair: Callable[[], None],
 ) -> None:
@@ -173,6 +188,8 @@ def browser_gate(
             (f"ordinary-regressions-{mode}", mode, ordinary)
             for mode in ("langgraph_v3", "ag_ui")
         )
+    if ag_ui_specs:
+        suites.append(("standard-client-regressions", "ag_ui", ag_ui_specs))
     if run_delegation:
         suites.extend(
             (f"independent-{mode}", mode, [independent])
@@ -197,7 +214,7 @@ def browser_gate(
                     "playwright",
                     "test",
                     "-c",
-                    str(HERE / "playwright.cutover.cjs"),
+                    str(probes / "playwright.cutover.cjs"),
                     *specs,
                 ],
                 frontend,
@@ -211,7 +228,11 @@ def browser_gate(
             raw = Path(cfg["MOLDY_AGUI_PLAYWRIGHT_JSON"])
             if raw.is_file():
                 report = playwright_report(
-                    json.loads(raw.read_text()), root, group=name, specs=specs
+                    json.loads(raw.read_text()),
+                    root,
+                    group=name,
+                    specs=specs,
+                    performance_timing=env.get("E2E_AGUI_PERF_TIMING") == "1",
                 )
             record["browser"][name] = report
             (output / f"{name}-results.json").write_text(
@@ -258,13 +279,24 @@ def execute(args: argparse.Namespace, record: dict) -> None:
         logs = root / "logs"
         logs.mkdir(mode=0o700)
         stack.push(lambda t, e, tb: collect_failure(logs, record, t, e, tb))
+        probes = stage_probe_files(HERE, root)
+        record["acceptance_commit"] = revision(HARNESS, "HEAD")
+        record["fixtures"] = json.loads((root / "probe-files.json").read_text())
+
+        def selected_probe(file: Path) -> Path:
+            path = file.resolve(strict=True)
+            if path.is_relative_to(HERE):
+                return probes / path.relative_to(HERE)
+            record.setdefault("external_probes_sha256", {})[path.name] = digest(path)
+            return path
+
         use_browser = args.phase in {"browser", "full"}
         repo = stage(
             source,
             sha,
             deps,
             root,
-            HARNESS,
+            probes.parents[1],
             use_browser,
             skill_deps=args.skill_deps.resolve() if args.skill_deps else None,
             require_protocol=args.phase != "smoke",
@@ -317,28 +349,27 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                 "MOLDY_AGUI_EVIDENCE_DIR": str(output),
                 "MOLDY_AGUI_CUTOVER": "1",
                 "E2E_AGUI_LEGACY_FRONTEND_URL": modes["langgraph_v3"],
-                "MOLDY_AGUI_OBSERVER": str(HERE / "observe.py"),
+                "MOLDY_AGUI_OBSERVER": str(probes / "observe.py"),
                 "MOLDY_AGUI_OBSERVER_URL": pg.admin_database_url,
                 "MOLDY_AGUI_PROXY_RECEIPT": str(output / "replicas.json"),
                 "SKILL_NODE_MODULES_DIR": str(backend / "skill-node/node_modules"),
                 "PYTHONDONTWRITEBYTECODE": "1",
             }
         )
+        if args.perf_timing:
+            model_timings = output / "fixture-emission.jsonl"
+            model_timings.touch(mode=0o600, exist_ok=False)
+            env.update(
+                {
+                    "E2E_AGUI_PERF_TIMING": "1",
+                    "MOLDY_AGUI_MODEL_TIMINGS": str(model_timings),
+                    "MOLDY_AGUI_PERF_MODEL_WRAPPER": str(probes / "perf_model.py"),
+                    "MOLDY_AGUI_PERF_OBSERVER": str(probes / "perf_observe.py"),
+                }
+            )
         record["locks"] = {
             name: digest(repo / name) for name in ("pnpm-lock.yaml", "backend/uv.lock")
         }
-        record["fixtures"] = {p.name: digest(p) for p in sorted(HERE.glob("*.py"))}
-        record["fixtures"]["playwright.cutover.cjs"] = digest(
-            HERE / "playwright.cutover.cjs"
-        )
-        for name in (
-            "manual/chat-ag-ui-cutover.spec.ts",
-            "helpers/ag-ui-cutover.ts",
-            "helpers/ag-ui-sdk-verification.ts",
-        ):
-            manual = root / "frontend/e2e" / name
-            if manual.exists():
-                record["fixtures"][name] = digest(manual)
         command(
             "migration",
             [sys.executable, "-m", "alembic", "upgrade", "head"],
@@ -396,8 +427,8 @@ def execute(args: argparse.Namespace, record: dict) -> None:
         proc, log = stack.enter_context(
             managed(
                 "proxy",
-                [sys.executable, str(HERE / "replica_proxy.py"), str(proxy)],
-                HERE,
+                [sys.executable, str(probes / "replica_proxy.py"), str(proxy)],
+                probes,
                 runtime_env,
                 logs,
             )
@@ -425,7 +456,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                     "http-contract",
                     [
                         sys.executable,
-                        str(HERE / "http_contract.py"),
+                        str(probes / "http_contract.py"),
                         "--case",
                         "approval",
                         "--case",
@@ -446,6 +477,17 @@ def execute(args: argparse.Namespace, record: dict) -> None:
             except RuntimeError as exc:
                 record["http_verification"] = "failed"
                 final_errors.append(str(exc))
+            from sdk_verification import typescript_receipts
+
+            sdk = typescript_receipts(root, output, env, logs)
+            record["typescript_sdk"] = {
+                "status": sdk["status"],
+                "file": "sdk-transcripts.json",
+            }
+            if sdk["status"] != "passed":
+                final_errors.append(
+                    "Incomplete or invalid public SDK request or event sequence"
+                )
             if args.reference_python:
                 try:
                     record["reference_comparison"] = {"status": "running"}
@@ -454,7 +496,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                         label,
                         [
                             str(args.reference_python.absolute()),
-                            str(HERE / "compare_approval.py"),
+                            str(probes / "compare_approval.py"),
                             str(output / "ag-ui-approval-single-interrupt.json"),
                             str(output / "ag-ui-approval-single-continuation.json"),
                         ],
@@ -491,7 +533,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
         for probe in args.extra_probe:
             command(
                 probe.stem,
-                [sys.executable, str(probe.resolve())],
+                [sys.executable, str(selected_probe(probe))],
                 backend,
                 env,
                 logs,
@@ -507,6 +549,8 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                     logs,
                     stack,
                     args.extra_spec,
+                    args.ag_ui_spec,
+                    probes,
                     record,
                     start_delegation_pair,
                 )
@@ -517,7 +561,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                 start_delegation_pair()
                 command(
                     "delegation-probe",
-                    [sys.executable, str(args.delegation_probe.resolve())],
+                    [sys.executable, str(selected_probe(args.delegation_probe))],
                     backend,
                     env,
                     logs,
