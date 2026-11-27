@@ -27,6 +27,7 @@ from app.services.conversation_audit_service import record_conversation_audit
 
 if TYPE_CHECKING:
     from app.agent_runtime.runtime_config import AgentConfig
+    from app.models.conversation import Conversation
     from app.models.conversation_run import ConversationRun
 
 # M8-2 — 인터럽트 SSE 이벤트는 스트림 도중 즉시 클라이언트에 flush되지만,
@@ -40,25 +41,24 @@ _RESUME_INTERRUPT_WAIT_INTERVAL_S = 0.05
 async def _wait_for_interrupted_parent_run(
     db: AsyncSession,
     *,
-    conversation_id: uuid.UUID,
+    conversation: Conversation,
     context: OrgContext,
-) -> Any:
+) -> uuid.UUID | None:
+    """Pin an owned parent before execution locks can block its terminal trace insert."""
     deadline = time.monotonic() + _RESUME_INTERRUPT_WAIT_TIMEOUT_S
-    while True:
-        active = await conversation_run_service.get_active_run(
-            db, conversation_id=conversation_id, context=context
-        )
-        if active is None or time.monotonic() >= deadline:
-            # 전이 직후 창일 수 있으니 마지막으로 한 번 더 조회하고 포기한다.
-            return await conversation_run_service.get_latest_interrupted_run(
-                db, conversation_id=conversation_id, context=context
-            )
+    candidate = await conversation_run_service.resume_candidate_status(db, conversation, context)
+    if candidate is None:
+        return None
+    run_id, status = candidate
+    while status in {"queued", "running"} and time.monotonic() < deadline:
         await asyncio.sleep(_RESUME_INTERRUPT_WAIT_INTERVAL_S)
-        run = await conversation_run_service.get_latest_interrupted_run(
-            db, conversation_id=conversation_id, context=context
+        fresh = await conversation_run_service.resume_candidate_status(
+            db, conversation, context, run_id=run_id
         )
-        if run is not None:
-            return run
+        if fresh is None:
+            break
+        _, status = fresh
+    return run_id
 
 
 async def dispatch_queued_run_start(

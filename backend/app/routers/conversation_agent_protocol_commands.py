@@ -200,6 +200,18 @@ async def handle_thread_command(
     run_start_executor: AgentStreamExecutor = execute_agent_stream_langgraph,
     input_respond_executor: AgentStreamExecutor = resume_agent_stream_langgraph,
 ) -> JSONResponse:
+    if command.method == "input.respond":
+        return await _handle_input_respond_command(
+            conversation=conversation,
+            command=command,
+            request=request,
+            db=db,
+            user=user,
+            context=context,
+            start_run=start_run,
+            executor_fn=input_respond_executor,
+            wait_for_parent=True,
+        )
     # agent#can_run is decided once, in prepare_executable_conversation (start/fork).
     await chat_service.require_executable_conversation(db, conversation.id, context)
     if command.method == "run.start":
@@ -212,17 +224,6 @@ async def handle_thread_command(
             context=context,
             start_run=start_run,
             executor_fn=run_start_executor,
-        )
-    if command.method == "input.respond":
-        return await _handle_input_respond_command(
-            conversation=conversation,
-            command=command,
-            request=request,
-            db=db,
-            user=user,
-            context=context,
-            start_run=start_run,
-            executor_fn=input_respond_executor,
         )
     return command_error(
         command,
