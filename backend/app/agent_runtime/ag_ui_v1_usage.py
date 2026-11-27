@@ -173,8 +173,8 @@ class RunUsage:
         subagent_run_id: str | None,
         public_message_id: str | None,
         event_id: str | None = None,
-    ) -> None:
-        """Consume a canonical usage activity only if its source belongs to this run."""
+    ) -> str | None:
+        """Record attributable usage and return its verified public assistant message ID."""
         source = text_value(payload.get("assistant_msg_id"))
         input_tokens = _count(payload.get("prompt_tokens"))
         output_tokens = _count(payload.get("completion_tokens"))
@@ -190,23 +190,23 @@ class RunUsage:
                 or (input_tokens, output_tokens) != (sample.input_tokens, sample.output_tokens)
             ):
                 self._uncertain = True
-            # The measured parent already contains the counts, even when this
-            # canonical copy omits an ID or coerces malformed source values.
-            return
+                return None
+            # The measured parent already contains the counts for this canonical copy.
+            return parent
         if source is None:
             self._uncertain = True
-            return
+            return None
         known_public = self._source_ids.get((subagent_run_id, source))
         if public_message_id is None and known_public is None:
             # A values event can replay a previous turn's usage under today's run ID.
-            return
+            return None
         if public_message_id != known_public or known_public is None:
             self._uncertain = True
-            return
+            return None
         call = self._calls[(subagent_run_id, known_public)]
         if input_tokens is None or output_tokens is None:
             self._uncertain = True
-            return
+            return None
         call.record("input_tokens", input_tokens)
         call.record("output_tokens", output_tokens)
         # The journal normalizer fills unreported cache counts with zero. Only
@@ -215,6 +215,7 @@ class RunUsage:
         call.record(
             "cache_write_input_tokens", _count(payload.get("cache_creation_tokens")) or None
         )
+        return known_public
 
     def terminal_usage(self) -> list[TokenUsage] | None:
         if self._uncertain or not self._calls:
