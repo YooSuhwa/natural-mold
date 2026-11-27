@@ -38,6 +38,10 @@ class Settings(AuthzSettings):
     openai_prompt_cache_org_ids: frozenset[UUID] = frozenset()
     anthropic_api_key: str = ""
     google_api_key: str = ""
+    # Provider families whose gateway stream errors have been verified by the operator.
+    chat_stream_retry_providers: frozenset[Literal["openai", "openai_compatible", "openrouter"]] = (
+        frozenset()
+    )
 
     # Naver Open API
     naver_client_id: str = ""
