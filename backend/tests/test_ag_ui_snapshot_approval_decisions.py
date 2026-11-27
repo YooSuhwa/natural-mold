@@ -289,7 +289,6 @@ def test_conflicting_history_or_multiple_claims_cannot_assign_two_decisions_to_o
 
 def test_only_a_consistently_typed_observed_approval_can_supply_a_root_or_child_actor() -> None:
     from app.agent_runtime.ag_ui_v1 import public_subagent_id
-
     from app.agent_runtime.protocol_events import stored_protocol_event
     from app.services.ag_ui_journal import JournalEntry, JournalPage
     from app.services.ag_ui_snapshot_journal import SnapshotRunReplay, _ObservedOwners
