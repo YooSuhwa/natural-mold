@@ -2,14 +2,47 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+import httpx
 from http_common import Gate, checked_sse, expect_status, open_gate, require
 
 if TYPE_CHECKING:
     from delegation_parity import ResearchModel
+
+
+async def browser_decision(
+    fixture: dict[str, str], path: str
+) -> tuple[dict[str, Any], httpx.Response, dict[str, Any]]:
+    helper = Path(__file__).with_name("delegation_approval_browser.cjs")
+    proc = await asyncio.create_subprocess_exec(
+        "node",
+        str(helper),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(json.dumps(fixture).encode()), 150)
+    except TimeoutError:
+        proc.terminate()
+        await proc.wait()
+        raise
+    if proc.returncode != 0:
+        # The helper emits only its decision phase and reason on stderr.
+        raise AssertionError("child browser decision failed: " + stderr.decode()[-600:])
+    wire = json.loads(stdout)
+    body = wire["request"]
+    request = httpx.Request("POST", os.environ["E2E_API_BASE_URL"] + path, json=body)
+    response = httpx.Response(
+        wire["status"], headers=wire["headers"], content=wire["sse"].encode(), request=request
+    )
+    return body, response, wire["observations"]
 
 
 async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, rid: str) -> None:
@@ -130,7 +163,35 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
                 }
             ],
         }
-        response = await fresh.owner_b.send("POST", f"{base}/ag-ui/runs", body)
+        path = f"{base}/ag-ui/runs"
+        if os.environ.get("MOLDY_AGUI_BROWSER_READY") == "1":
+            room = await fresh.sql(
+                "SELECT agent_id::text AS id FROM conversations WHERE id=%s", (tid,)
+            )
+            visible, response, observations = await browser_decision(
+                {
+                    "threadId": tid,
+                    "agentId": room[0]["id"],
+                    "interruptId": iid,
+                    "sourceRunId": rid,
+                    "alphaTaskId": alpha["id"],
+                    "betaTaskId": beta["id"],
+                    "subagentRunId": sid,
+                    "expectedParentResult": "Both local checks have finished.",
+                    "expectedAlphaResult": "report alpha, addressed instructions 1",
+                },
+                path,
+            )
+            require(
+                visible["threadId"] == tid
+                and visible["resume"] == body["resume"]
+                and visible["runId"] != rid,
+                "browser resumed a different protected interrupt",
+            )
+            public_resume = visible["runId"]
+            record(phase="browser decision delivered", browser=observations)
+        else:
+            response = await fresh.owner_b.send("POST", path, body)
         record(
             phase="decision submitted",
             resumeRunId=public_resume,
