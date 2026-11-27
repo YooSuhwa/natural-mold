@@ -14,13 +14,18 @@ vi.mock('@/lib/hooks/use-api-object-url', () => ({
     url ? { status: 'ready', objectUrl: 'blob:test-image' } : { status: 'idle', objectUrl: null },
 }))
 
+let agUi: { conversationId: string; links: { messageId: string; uiMessageId: string }[] } | null =
+  null
+let wireId: string | undefined
+vi.mock('@/lib/ag-ui/activity-context', () => ({ useMoldyAgUiActivities: () => agUi }))
+
 let visibleMessageId: string | null = 'public-user'
 
 vi.mock('@assistant-ui/react', async () => ({
   ...(await vi.importActual<typeof import('@assistant-ui/react')>('@assistant-ui/react')),
   useAuiState: (
     selector: (state: {
-      message: { role: string; id: string; metadata: { custom: Record<string, string> } }
+      message: { role: string; id: string; metadata: { custom: Record<string, unknown> } }
     }) => unknown,
   ) =>
     selector({
@@ -28,7 +33,10 @@ vi.mock('@assistant-ui/react', async () => ({
         role: 'user',
         id: 'runtime-user',
         metadata: {
-          custom: visibleMessageId === null ? {} : { publicMessageId: visibleMessageId },
+          custom: {
+            ...(visibleMessageId === null ? {} : { publicMessageId: visibleMessageId }),
+            ...(wireId ? { agui: { messageId: wireId } } : {}),
+          },
         },
       },
     }),
@@ -62,6 +70,8 @@ vi.mock('@/lib/hooks/use-conversation-files', () => ({
   useConversationFiles: () => queryResult,
 }))
 afterEach(() => {
+  agUi = null
+  wireId = undefined
   visibleMessageId = 'public-user'
   queryResult = { data: [textFile], error: null }
 })
@@ -70,6 +80,51 @@ it('renders persisted attachments for a runtime message carrying its public ID',
   render(<UserMessageAttachments />)
   expect(screen.getByRole('button', { name: /quoted-report.txt/ })).toBeInTheDocument()
   expect(screen.getByText('모델에 전달 안 됨')).toBeInTheDocument()
+})
+
+it('locates official runtime uploads by their authorized wire-to-public link', () => {
+  agUi = {
+    conversationId: 'conversation',
+    links: [{ messageId: 'submitted-question', uiMessageId: 'public-user' }],
+  }
+  visibleMessageId = null
+  wireId = 'submitted-question'
+  queryResult.data = [
+    textFile,
+    { ...textFile, id: 'sibling', name: 'sibling.txt', message_id: 'different-turn' },
+  ]
+  const view = render(<UserMessageAttachments />)
+  expect(screen.getByRole('button', { name: /quoted-report/ })).toBeVisible()
+  expect(screen.queryByRole('button', { name: /sibling/ })).toBeNull()
+  agUi = { ...agUi, conversationId: 'another-conversation' }
+  view.rerender(<UserMessageAttachments />)
+  expect(screen.queryByRole('button')).toBeNull()
+})
+
+it('withholds a caption when multiple stored turns share the same projected runtime ID', () => {
+  agUi = { conversationId: 'conversation', links: [] }
+  visibleMessageId = null
+  wireId = 'duplicate'
+  queryResult.data = [
+    {
+      ...imageFile,
+      image_description_uses: [
+        {
+          message_id: 'first',
+          runtime_message_id: 'duplicate',
+          image_description: { status: 'ready', text: 'First' },
+        },
+        {
+          message_id: 'second',
+          runtime_message_id: 'duplicate',
+          image_description: { status: 'ready', text: 'Second' },
+        },
+      ],
+    },
+  ]
+  render(<UserMessageAttachments />)
+  expect(screen.queryByText('First')).toBeNull()
+  expect(screen.queryByText('Second')).toBeNull()
 })
 
 it('shows the persisted description with its original image after reopening the chat', async () => {
