@@ -115,7 +115,7 @@ export function ThreadComposer({
   )
   const serverQueueSend =
     agUi && (agUi.shouldQueue || isRunning || isSubmitting) ? sendQueued : undefined
-  const canStop = isRunning || Boolean(agUi?.canStopActiveRun)
+  const canStop = agUi?.canStopActiveRun ?? isRunning
   const stop = useCallback(async () => {
     try {
       if (agUi) await agUi.stopActiveRun()

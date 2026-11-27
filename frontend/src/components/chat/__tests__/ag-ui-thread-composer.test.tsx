@@ -212,6 +212,24 @@ describe('normal AG-UI chat composer', () => {
     expect(screen.queryByText(file.name)).not.toBeInTheDocument()
   })
 
+  it('waits for the server to identify the run before exposing Stop', async () => {
+    const { user, fetch, actions } = setupComposer(false)
+    const begin = fetch.getMockImplementation()
+    if (!begin) throw new Error('Missing test transport')
+    const release = Promise.withResolvers<void>()
+    fetch.mockImplementationOnce(async (...args) => {
+      await release.promise
+      return begin(...args)
+    })
+    await user.type(screen.getByRole('textbox'), 'wait for receipt{Enter}')
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('button', { name: '중단' })).not.toBeInTheDocument()
+    await act(async () => {
+      release.resolve()
+    })
+    expect(actions.stopActiveRun).not.toHaveBeenCalled()
+  })
+
   it.each(['stop button', '/stop'])('sends one explicit server stop using %s', async (entry) => {
     const { user, actions, fetch, unmount } = setupComposer(true)
     expect(actions.stopActiveRun).not.toHaveBeenCalled()
