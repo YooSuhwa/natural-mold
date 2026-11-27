@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -51,10 +52,10 @@ async def _read_public_views(
     return snapshot.json(), strict, frames[-1]["id"]
 
 
-async def _assert_native_and_public_access(
-    case: OldRun,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@asynccontextmanager
+async def _reader_client(
+    case: OldRun, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[AsyncClient]:
     async def isolated_db() -> AsyncIterator[AsyncSession]:
         async with case.db() as db:
             yield db
@@ -62,18 +63,26 @@ async def _assert_native_and_public_access(
     monkeypatch.setattr(conversation_stream_service, "async_session", case.db)
     app = create_app()
     app.dependency_overrides[get_db] = isolated_db
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        cookies={
+            settings.cookie_name_access: create_access_token(case.user_id),
+            ACTIVE_ORG_COOKIE: str(unit_context(case.user_id).org_id),
+        },
+    ) as client:
+        yield client
+
+
+async def _assert_native_and_public_access(
+    case: OldRun,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     scope = unit_context(case.user_id)
     async with (
         AsyncPostgresSaver.from_conn_string(case.dsn) as saver,
         case.db() as db,
-        AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-            cookies={
-                settings.cookie_name_access: create_access_token(case.user_id),
-                ACTIVE_ORG_COOKIE: str(scope.org_id),
-            },
-        ) as client,
+        _reader_client(case, monkeypatch) as client,
     ):
         monkeypatch.setattr(checkpointer, "_checkpointer", saver)
         ident = case.issued["interruptId"]
