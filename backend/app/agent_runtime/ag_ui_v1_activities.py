@@ -113,7 +113,7 @@ def _entity_key(name: str, content: dict[str, Any], source: StoredProtocolEvent)
         # event ID includes the stable element index assigned by the producer.
         return [source["id"]]
     if name == "usage":
-        return [content.get("assistant_msg_id") or source["id"]]
+        return [content.get("public_message_id") or content.get("assistant_msg_id") or source["id"]]
     if name == "mcp_app":
         return [content["tool_call_id"], content["binding_id"]]
     if name == "file_event":
@@ -188,12 +188,15 @@ class PublicActivities:
                 return []
             name, content = card
         if name == "usage":
-            self._usage.observe_usage(
+            # The v3 finish event may omit the model's source ID. Its uniquely
+            # derived usage receipt can still prove which public message incurred it.
+            public_message_id = self._usage.observe_usage(
                 content,
                 subagent_run_id=subagent_run_id,
                 public_message_id=public_message_id,
                 event_id=event["id"],
             )
+        if name in ("ui_data", "usage"):
             content["run_id"] = run_id
         if public_tool_call_id and name in ("ui_data", "mcp_app") and content.get("tool_call_id"):
             content["public_tool_call_id"] = public_tool_call_id

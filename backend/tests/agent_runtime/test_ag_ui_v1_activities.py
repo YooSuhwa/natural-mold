@@ -287,7 +287,7 @@ def test_usage_bridge_binds_real_model_start_finish_and_ignores_exact_derived_du
         },
         event_id="finish:usage",
     )
-    [card] = _frames(activities, usage, parent="verified-model")
+    [card] = _frames(activities, usage)
     assert card["content"] == {
         "prompt_tokens": 17,
         "completion_tokens": 5,
@@ -330,6 +330,7 @@ def test_ui_data_keeps_multiple_same_type_cards_emitted_by_one_tool() -> None:
     second = _custom("ui_data", {**body, "props": {"text": "둘째"}}, event_id="source:ui_data:1")
     [next_card] = _frames(activities, second, tool="call-visible")
     assert first["messageId"] != next_card["messageId"]
+    assert first["content"]["run_id"] == PUBLIC
     assert first["content"]["public_tool_call_id"] == "call-visible"
     assert first["content"]["props"] == {"text": "첫째"}
     assert _frames(activities, second, tool="call-visible") == []
