@@ -2944,6 +2944,8 @@
       "references": "Compare against {count} reference rows",
       "versionAndRuns": "Goal version {version} · {count} automatic follow-ups",
       "passed": "Verified",
+      "tableRulesPassed": "Checked the table structure and the specified column rules.",
+      "tableReferenceMatched": "All required cells match the reference rows you supplied.",
       "unmet": "Condition unverified.",
       "awaitingCheck": "Waiting for a run result",
       "evidence": "{path} · version {version}",

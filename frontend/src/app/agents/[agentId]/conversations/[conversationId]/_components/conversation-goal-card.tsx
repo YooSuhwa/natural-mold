@@ -11,6 +11,11 @@ import { useConversationGoal, goalEvidenceDownloadPath } from '@/lib/hooks/use-c
 import type { ConversationGoal, GoalAction, GoalCriterion } from '@/lib/types/conversation-goal'
 import { GoalCriterionForm, buildCriterion, criterionDraft } from './goal-criterion-form'
 
+function passedCheckLabel(criterion: GoalCriterion) {
+  if (criterion.kind !== 'csv_table') return 'passed'
+  return criterion.reference_rows?.length ? 'tableReferenceMatched' : 'tableRulesPassed'
+}
+
 type Draft = { revision: number; title: string; criteria: ReturnType<typeof criterionDraft>[] }
 
 function fromGoal(goal: ConversationGoal | null, additionalCriterion?: GoalCriterion): Draft {
@@ -188,7 +193,7 @@ export function ConversationGoalCard({ conversationId, onCreating, onCreated }: 
                   )}
                   <p className="text-xs text-muted-foreground">
                     {check?.passed
-                      ? t('passed')
+                      ? t(passedCheckLabel(criterion))
                       : reason && t.has(`checks.${reason}`)
                         ? t(`checks.${reason}`)
                         : check

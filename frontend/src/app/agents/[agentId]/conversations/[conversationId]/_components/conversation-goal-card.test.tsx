@@ -98,6 +98,46 @@ describe('ConversationGoalCard', () => {
     }
   })
 
+  it.each([
+    {
+      name: 'an older structural check',
+      references: {},
+      label: '표 구조와 지정한 열 조건을 확인했습니다.',
+    },
+    {
+      name: 'a comparison with confirmed facts',
+      references: {
+        reference_rows: [{ 업체: '한빛', 국가: '대한민국', 가격: '120', 출처: 'https://a.test/A' }],
+      },
+      label: '모든 필수 셀의 값이 등록한 기준 행과 일치합니다.',
+    },
+  ])('describes what passed for $name', async ({ references, label }) => {
+    const criterion = {
+      kind: 'csv_table',
+      logical_path: 'report.csv',
+      required_columns: ['업체', '국가', '가격', '출처'],
+      unique_by: '업체',
+      minimum_rows: 1,
+      column_equals: { 국가: '대한민국' },
+      ...references,
+    }
+    getConversationGoal.mockResolvedValue({
+      enabled: false,
+      goal: {
+        ...goal,
+        status: 'completed',
+        criteria: [criterion],
+        last_evidence: { ...goal.last_evidence, all_passed: true },
+      },
+    })
+    const user = userEvent.setup()
+    render(<ConversationGoalCard conversationId={conversationId} />)
+    await user.click(await screen.findByText(goal.title))
+    expect(screen.getByText(label)).toBeVisible()
+    expect(screen.getByText('국가 = 대한민국')).toBeVisible()
+    expect(screen.getByRole('link')).toBeVisible()
+  })
+
   it('pauses the observed state revision, independent of the goal content version', async () => {
     getConversationGoal.mockResolvedValue({ enabled: true, goal })
     const updated = { enabled: true, goal: { ...goal, status: 'paused' as const, revision: 8 } }

@@ -2944,6 +2944,8 @@
       "references": "기준 행 {count}개와 값 대조",
       "versionAndRuns": "목표 버전 {version} · 자동 후속 실행 {count}회",
       "passed": "확인됨",
+      "tableRulesPassed": "표 구조와 지정한 열 조건을 확인했습니다.",
+      "tableReferenceMatched": "모든 필수 셀의 값이 등록한 기준 행과 일치합니다.",
       "unmet": "이 조건을 확인하지 못했습니다.",
       "awaitingCheck": "실행 결과를 기다리는 중",
       "evidence": "{path} · 버전 {version}",
