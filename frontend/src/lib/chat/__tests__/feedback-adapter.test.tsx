@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { fromThreadMessageLike } from '@assistant-ui/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { feedbackApi } from '@/lib/api/feedback'
+import { beginOrgSwitch, finishOrgSwitch } from '@/lib/org-scope/org-scope-signal'
 import { resolveFeedbackMessageId, useChatFeedbackAdapter } from '../feedback-adapter'
 
 vi.mock('@/lib/api/feedback', () => ({
@@ -122,4 +123,32 @@ describe('feedback identity', () => {
     expect(feedbackApi.set).not.toHaveBeenCalled()
     expect(feedbackApi.clear).not.toHaveBeenCalled()
   })
+  it.each(['conversation', 'organization'])(
+    'drops a pending vote after changing %s',
+    async (change) => {
+      const read = Promise.withResolvers<{ id: string; rating: undefined }>()
+      const { result, rerender } = renderHook(
+        (conversationId: string) =>
+          useChatFeedbackAdapter(conversationId, () => undefined, {
+            resolveMessageId: () => undefined,
+            refreshMessageId: () => read.promise,
+          }),
+        { initialProps: 'first-conversation' },
+      )
+      act(() => result.current?.submit({ message: assistantMessage(), type: 'positive' }))
+      if (change === 'conversation') {
+        rerender('other-conversation')
+        rerender('first-conversation')
+      } else {
+        beginOrgSwitch()
+        finishOrgSwitch()
+      }
+      await act(async () => {
+        read.resolve({ id: 'public-answer', rating: undefined })
+        await read.promise
+      })
+      expect(feedbackApi.set).not.toHaveBeenCalled()
+      expect(feedbackApi.clear).not.toHaveBeenCalled()
+    },
+  )
 })

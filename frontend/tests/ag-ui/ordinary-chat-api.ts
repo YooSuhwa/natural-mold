@@ -4,6 +4,7 @@ import docxApproval from './docx-approval.json'
 
 export const threadId = 'a904bd9b-33fa-4160-9caf-d34f9e52134c'
 const firstPhysicalRunId = 'd7205d63-102b-4127-bcaf-665934361a10'
+export const storedAnswerId = 'a308c6bd-d3ce-453b-914d-849ea287f196'
 const resumedPhysicalRunId = '8b35686a-4212-4ccd-85ae-e5712ee52e01'
 export const question = '합성 보고서 전송을 준비해줘'
 export const answer = '승인이 반영되었습니다.'
@@ -48,7 +49,8 @@ const nativeResponseSchema = {
 export function installChatApi({
   activeRunId = null,
   delayNativeCheckpoint = false,
-}: { activeRunId?: string | null; delayNativeCheckpoint?: boolean } = {}) {
+  textOnly = false,
+}: { activeRunId?: string | null; delayNativeCheckpoint?: boolean; textOnly?: boolean } = {}) {
   let physicalRunId = firstPhysicalRunId
 
   const toolCallId = delayNativeCheckpoint ? 'ask-call' : docxApproval.toolCallId
@@ -127,10 +129,7 @@ export function installChatApi({
       cursor: null,
       messageLinks: messages.map((message, index) => ({
         messageId: message.id,
-        uiMessageId:
-          index === 0
-            ? '60735f5d-d6e9-4cca-b050-46e6d47be6ea'
-            : 'a308c6bd-d3ce-453b-914d-849ea287f196',
+        uiMessageId: index === 0 ? '60735f5d-d6e9-4cca-b050-46e6d47be6ea' : storedAnswerId,
         parentMessageId: index === 0 ? null : userId,
         runId: acceptedId,
         physicalRunId,
@@ -225,8 +224,9 @@ export function installChatApi({
     }
     selectedRunId = command.runId
     if (!isFirst) physicalRunId = resumedPhysicalRunId
-    phase = isFirst ? (delayNativeCheckpoint ? 'running' : 'interrupted') : 'completed'
-    return streamResponse(command.runId, isFirst)
+    const interrupted = isFirst && !textOnly
+    phase = interrupted ? (delayNativeCheckpoint ? 'running' : 'interrupted') : 'completed'
+    return streamResponse(command.runId, interrupted)
   }
   vi.stubGlobal('fetch', vi.fn(fetchFixture))
   return {
