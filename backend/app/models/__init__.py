@@ -45,6 +45,7 @@ from app.models.daily_spend_agent import DailySpendAgent
 from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
 from app.models.emergency_stop import EmergencyStop
+from app.models.goal_sandbox import GoalSandbox, GoalSandboxRead
 from app.models.guardrail_event import GuardrailEvent
 from app.models.guardrail_model_setting import GuardrailModelSetting
 from app.models.guardrail_pseudonym import GuardrailPseudonym
@@ -114,6 +115,8 @@ from app.models.workflow import Workflow, WorkflowRun, WorkflowStepRun, Workflow
 from app.models.workflow_start import WorkflowSchedule, WorkflowWebhook
 
 __all__ = [
+    "GoalSandbox",
+    "GoalSandboxRead",
     "AgentGuardrailBinding",
     "Organization",
     "OrganizationMember",

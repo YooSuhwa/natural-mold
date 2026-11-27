@@ -72,6 +72,7 @@ CHILDREN: Final = MappingProxyType(
             Parent("conversation_runs", "run_id", optional=True),
         ),
         "conversation_run_metrics": _rule(Parent("conversation_runs", "run_id")),
+        "goal_sandbox_reads": _rule(Parent("goal_sandboxes", "workspace_id")),
         "credential_audit_logs": _rule(Parent("credentials", "credential_id")),
         "credential_oauth_states": _rule(Parent("credentials", "credential_id")),
         "goal_attempts": _rule(
