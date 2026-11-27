@@ -42,6 +42,7 @@ class SnapshotRunReplay:
     legacy_users: list[Row] = field(default_factory=list)
     child_namespaces: dict[Namespace, str] = field(default_factory=dict)
     pending_namespaces: dict[str, Namespace] = field(default_factory=dict)
+    approval_interrupt_owners: dict[str, str | None] = field(default_factory=dict)
     unresolved_pending_namespaces: dict[str, Namespace | None] = field(default_factory=dict)
     cursor: str | None = None
     complete: bool = False
@@ -98,6 +99,15 @@ class _ObservedOwners:
                 child["childTaskId"] = handles[public_id]
 
         for interrupt_id, observed in self.pending.items():
+            delegates = observed - {()}
+            if observed == {()}:
+                result.approval_interrupt_owners[interrupt_id] = None
+            elif len(delegates) == 1:
+                # A delegated interruption is usually echoed at root. A revoked
+                # or unprojected namespace must not turn that echo into a root approval.
+                child = result.child_namespaces.get(next(iter(delegates)))
+                if child:
+                    result.approval_interrupt_owners[interrupt_id] = child
             if len(observed) == 1 and (ns := next(iter(observed))) in result.child_namespaces:
                 result.pending_namespaces[interrupt_id] = ns
             elif any(observed):
