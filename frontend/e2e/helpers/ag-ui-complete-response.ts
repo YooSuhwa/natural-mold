@@ -8,9 +8,12 @@ import { acceptedAgUiStream, agUiCommandThread } from './ag-ui-stream-acceptance
 interface CommandObservation {
   readonly request: Request
   readonly runId: string
+  readonly threadId: string
   readonly document: string
   physicalReceipt?: string
   completedPhysical?: string
+  cancelledTerminal?: boolean
+  stop?: { headersReceived: boolean; matchesRun: boolean }
   invalid: boolean
 }
 
@@ -29,22 +32,66 @@ export async function installCompletedAgUiResponseObserver(page: Page, apiBase: 
   const documents = new Set<string>()
   const commands = new Map<string, CommandObservation>()
   const byRequest = new WeakMap<Request, CommandObservation>()
+  const stops = new WeakMap<Request, CommandObservation>()
   const completed = new WeakSet<Request>()
   let activeDocument: string | undefined
   let disposed = false
 
   function update(item: CommandObservation) {
-    if (!item.invalid && item.physicalReceipt && item.physicalReceipt === item.completedPhysical)
+    if (
+      !item.invalid &&
+      item.physicalReceipt &&
+      item.physicalReceipt === item.completedPhysical &&
+      (!item.cancelledTerminal || item.stop?.matchesRun)
+    )
       completed.add(item.request)
     else completed.delete(item.request)
   }
 
   function onRequest(request: Request) {
-    if (!activeDocument || request.resourceType() !== 'fetch') return
-    const thread = agUiCommandThread(request, apiBase)
-    if (!thread || request.redirectedFrom() || request.serviceWorker()) return
+    if (
+      !activeDocument ||
+      request.method() !== 'POST' ||
+      request.resourceType() !== 'fetch' ||
+      request.redirectedFrom() ||
+      request.serviceWorker()
+    )
+      return
     try {
       if (request.frame() !== page.mainFrame()) return
+      const thread = agUiCommandThread(request, apiBase)
+      if (!thread) {
+        const url = new URL(request.url())
+        if (
+          url.origin !== new URL(apiBase).origin ||
+          url.search ||
+          url.hash ||
+          url.username ||
+          url.password
+        )
+          return
+        const stop = /^\/api\/conversations\/([^/]+)\/runs\/([^/]+)\/cancel$/.exec(url.pathname)
+        if (
+          !stop ||
+          request.postData() ||
+          !new Headers(request.headers()).get('X-CSRF-Token')?.trim()
+        )
+          return
+        const owners = [...commands.values()].filter(
+          (item) =>
+            item.threadId === stop[1] &&
+            item.physicalReceipt === stop[2] &&
+            !item.invalid &&
+            !item.cancelledTerminal &&
+            !item.completedPhysical,
+        )
+        if (owners.length === 1 && !owners[0].stop) {
+          const owner = owners[0]
+          owner.stop = { headersReceived: false, matchesRun: false }
+          stops.set(request, owner)
+        }
+        return
+      }
       const input: unknown = JSON.parse(request.postData() ?? '')
       if (
         !input ||
@@ -69,6 +116,7 @@ export async function installCompletedAgUiResponseObserver(page: Page, apiBase: 
       const item: CommandObservation = {
         request,
         runId: input.runId,
+        threadId: thread,
         document: activeDocument,
         invalid: false,
       }
@@ -79,7 +127,41 @@ export async function installCompletedAgUiResponseObserver(page: Page, apiBase: 
     }
   }
 
+  async function verifyStop(response: Response, item: CommandObservation) {
+    const stop = item.stop
+    if (!stop || item.document !== activeDocument || item.invalid || item.cancelledTerminal) return
+    const headers = new Headers(response.headers())
+    if (
+      response.status() !== 200 ||
+      response.fromServiceWorker() ||
+      response.url() !== response.request().url() ||
+      headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json'
+    )
+      return
+    stop.headersReceived = true
+    try {
+      const result: unknown = await response.json()
+      if (disposed || item.document !== activeDocument || !result || typeof result !== 'object')
+        return
+      stop.matchesRun =
+        'id' in result &&
+        result.id === item.physicalReceipt &&
+        'conversation_id' in result &&
+        result.conversation_id === item.threadId &&
+        'status' in result &&
+        (result.status === 'canceling' || result.status === 'canceled')
+      update(item)
+    } catch {
+      // An unreadable receipt cannot prove this worker was stopped.
+    }
+  }
+
   function onResponse(response: Response) {
+    const stopOwner = stops.get(response.request())
+    if (stopOwner) {
+      void verifyStop(response, stopOwner)
+      return
+    }
     const item = byRequest.get(response.request())
     if (!item || item.invalid || item.document !== activeDocument) return
     try {
@@ -125,7 +207,7 @@ export async function installCompletedAgUiResponseObserver(page: Page, apiBase: 
       return
     }
     if (
-      (signal.kind !== 'invalid' && signal.kind !== 'eof') ||
+      !['invalid', 'eof', 'cancelled-terminal', 'cancelled-eof'].includes(String(signal.kind)) ||
       !boundedId(signal.threadId) ||
       !boundedId(signal.runId) ||
       !boundedId(signal.physicalRunId)
@@ -133,7 +215,20 @@ export async function installCompletedAgUiResponseObserver(page: Page, apiBase: 
       return
     const item = commands.get(commandKey(signal.threadId, signal.runId))
     if (!item) return
-    if (signal.kind === 'invalid') item.invalid = true
+    if (signal.kind === 'cancelled-terminal') {
+      if (
+        !item.stop?.headersReceived ||
+        item.physicalReceipt !== signal.physicalRunId ||
+        item.cancelledTerminal
+      )
+        item.invalid = true
+      item.cancelledTerminal = true
+    } else if (
+      signal.kind === 'invalid' ||
+      (signal.kind === 'cancelled-eof' && !item.cancelledTerminal) ||
+      (signal.kind === 'eof' && item.cancelledTerminal)
+    )
+      item.invalid = true
     else if (item.completedPhysical && item.completedPhysical !== signal.physicalRunId)
       item.invalid = true
     else item.completedPhysical = signal.physicalRunId
