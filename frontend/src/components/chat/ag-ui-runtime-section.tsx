@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { AttachmentAdapter, DictationAdapter, FeedbackAdapter } from '@assistant-ui/react'
-import { useAgUiRuntime } from '@assistant-ui/react-ag-ui'
+import { useAgUiRuntime, type AgUiInterrupt } from '@assistant-ui/react-ag-ui'
 import { useTranslations } from 'next-intl'
+import { currentAgUiApprovalKey } from '@/lib/ag-ui/approval-admission'
 import { AgUiActivityProvider } from '@/lib/ag-ui/activity-context'
 import { MOLDY_AG_UI_DATA_UI } from '@/lib/ag-ui/activity-data-ui'
 import { useMoldyAgUiActivityEffects } from '@/lib/ag-ui/activity-effects'
@@ -96,7 +97,14 @@ export function AgUiRuntimeSection(props: AgUiRuntimeSectionProps) {
     runtimeIsRunning: isRunning,
     onClaimedRun: setClaimedRunId,
   })
-  const hitl = useAgUiHitlActions({ runtime, conversationId, agentId })
+  const getReadyBatchKey = useCallback(
+    (pending: readonly AgUiInterrupt[]) =>
+      threadProps.readOnlyConversation
+        ? null
+        : currentAgUiApprovalKey(conversationId, session.getSnapshot(), pending),
+    [conversationId, session, threadProps.readOnlyConversation],
+  )
+  const hitl = useAgUiHitlActions({ runtime, conversationId, agentId, getReadyBatchKey })
   const activityRunId = state.physicalRunId ?? state.lastTerminalPhysicalRunId
   const activities = useMemo(
     () =>
