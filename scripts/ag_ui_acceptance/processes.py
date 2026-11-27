@@ -10,6 +10,7 @@ import select
 import signal
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -62,7 +63,7 @@ def scrub_logs(logfile: Path, env: dict[str, str]) -> str:
 
 def _exited(process: subprocess.Popen[bytes], timeout: float) -> bool:
     """Observe an exit without releasing the leader's PID before group cleanup."""
-    if hasattr(select, "kqueue"):
+    if sys.platform != "linux":
         # Darwin does not expose waitid(WNOWAIT) in CPython. Registration after
         # exit returns ESRCH, while observation of a running child returns NOTE_EXIT.
         change = select.kevent(
@@ -95,9 +96,22 @@ def _exited(process: subprocess.Popen[bytes], timeout: float) -> bool:
 
 
 def _live_group(pgid: int) -> bool:
-    # BSD ps -g selects this process group; GNU ps -g selects its session.
-    # Every managed leader creates a new session, so filter by exact PGID on both.
-    result = subprocess.run(
+    if sys.platform == "linux":
+        # Minimal Python images omit procps. Read state only for our group.
+        for task in Path("/proc").iterdir():
+            if not task.name.isdecimal():
+                continue
+            try:
+                if os.getpgid(int(task.name)) != pgid:
+                    continue
+                # The comm field is parenthesized and can itself contain spaces or ')'.
+                state, _, group, _ = (task / "stat").read_bytes().rsplit(b") ", 1)[1].split(None, 3)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            if int(group) == pgid and state not in {b"Z", b"X"}:
+                return True
+        return False
+    result = subprocess.run(  # noqa: S603 - fixed BSD ps query limited to our numeric PGID
         ["/bin/ps", "-g", str(pgid), "-o", "pgid=,stat="],
         capture_output=True,
         text=True,
@@ -138,7 +152,7 @@ def managed(
 ) -> Iterator[tuple[subprocess.Popen[bytes], Path]]:
     output = logs / f"{name}.log"
     with output.open("wb") as f:
-        process = subprocess.Popen(
+        process = subprocess.Popen(  # noqa: S603 - acceptance runner supplies argv without a shell
             args,
             cwd=cwd,
             env=env,
@@ -195,7 +209,8 @@ def wait_ready(
     while not _exited(process, 0) and time.monotonic() < deadline:
         if url:
             try:
-                with urlopen(url, timeout=2) as response:
+                # run.py and stack_workers.py supply their freshly allocated loopback HTTP ports.
+                with urlopen(url, timeout=2) as response:  # noqa: S310
                     if response.status == 200:
                         return
             except (URLError, HTTPError, TimeoutError, ConnectionError):

@@ -53,6 +53,9 @@ class ResearchModel:
     histories: dict[str, list[int]] = field(default_factory=lambda: {k: [] for k in SOURCES})
     requests: int = 0
     guard_alpha: bool = False
+    directory: str = ""
+    marker: str = field(default_factory=lambda: f"targeted-proof-{uuid4().hex[:12]}.txt")
+    protected_results: list[bool] = field(default_factory=list)
 
     async def respond(self, req: web.Request) -> web.Response:
         if req.headers.get("Authorization") != f"Bearer {self.key}":
@@ -64,8 +67,20 @@ class ResearchModel:
         self.requests += 1
         message: dict[str, Any] = {"role": "assistant", "content": ""}
         if source is None:
-            if tool_results:
+            answered = {m.get("tool_call_id") for m in tool_results}
+            if any(f"delegate-{source}" in answered for source in SOURCES):
                 message["content"] = ROOT_REPLY
+            elif self.guard_alpha and "seed-proof" not in answered:
+                message["tool_calls"] = [
+                    call(
+                        "write_file",
+                        "seed-proof",
+                        {
+                            "file_path": f"{self.directory}/{self.marker}",
+                            "content": "Synthetic same-room approval fixture.\n",
+                        },
+                    )
+                ]
             else:
                 message["tool_calls"] = [
                     call(
@@ -89,9 +104,16 @@ class ResearchModel:
                     "the protected synthetic file lookup is unavailable",
                 )
                 message["tool_calls"] = [
-                    call("glob", "protected-alpha", {"pattern": "*.txt", "path": "/"})
+                    call(
+                        "glob", "protected-alpha", {"pattern": self.marker, "path": self.directory}
+                    )
                 ]
             elif tool_results:
+                self.protected_results.extend(
+                    source == "alpha" and self.marker in message_text(m.get("content"))
+                    for m in tool_results
+                    if m.get("tool_call_id") == "protected-alpha"
+                )
                 message["content"] = f"report {source}, addressed instructions {received}"
             else:
                 self.arrivals.add(source)
@@ -101,7 +123,7 @@ class ResearchModel:
                 offered = {t["function"]["name"] for t in body["tools"]}
                 if "ls" not in offered:
                     raise web.HTTPBadRequest(text="A read-only file listing tool is required")
-                message["tool_calls"] = [call("ls", f"list-{source}", {"path": "/"})]
+                message["tool_calls"] = [call("ls", f"list-{source}", {"path": self.directory})]
         finish = "tool_calls" if "tool_calls" in message else "stop"
         envelope = {
             "id": f"chatcmpl-{uuid4().hex}",
@@ -194,6 +216,7 @@ async def begin_targeted_run(gate: Gate, model: ResearchModel, url: str) -> tupl
             f"/api/agents/{ident}/memory-settings",
             {"memory_policy_override": "off"},
         )
+    model.directory = f"/conversations/{thread}"
     base = f"/api/conversations/{thread}"
     legacy = f"{base}/langgraph/threads/{thread}"
     request = str(uuid4())
