@@ -558,3 +558,37 @@ async def test_session_consent_requires_a_server_offer_for_an_eligible_tool(
     consent = session.tool_consents[tool]
     assert isinstance(consent, dict) and consent["scope"] == "session"
     assert waiting.rows[FIRST].resumed_run_id == child.id
+
+
+@pytest.mark.parametrize(
+    ("original_path", "edited_path", "accepted"),
+    [
+        ("/agents/known/AGENTS.md", "/conversations/demo/report.md", False),
+        ("/conversations/demo/report.md", "/agents/known/AGENTS.md", False),
+        ("/conversations/demo/report.md", "relative.md", False),
+        ("/conversations/demo/report.md", "<redacted>", True),
+    ],
+)
+async def test_native_approval_edits_cannot_change_a_governed_memo(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    original_path: str,
+    edited_path: str,
+    accepted: bool,
+) -> None:
+    waiting = await _pending(
+        db, monkeypatch, _slot(FIRST, _approval("edit_file", file_path=original_path))
+    )
+    answer = _resolved(
+        FIRST,
+        {"type": "edit", "edited_action": {"args": {"file_path": edited_path}}},
+    )
+    if accepted:
+        verified = await waiting.verify(answer)
+        edited = verified.input_payload[FIRST]["decisions"][0]["edited_action"]
+        assert edited == {"name": "edit_file", "args": {"file_path": original_path}}
+    else:
+        with pytest.raises(AppError) as denied:
+            await waiting.verify(answer)
+        assert denied.value.status == 422
+        assert waiting.rows[FIRST].status == "pending"

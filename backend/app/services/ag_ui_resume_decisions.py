@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
+from app.agent_runtime.ag_ui_v1_memo_files import private_memo_file_call
 from app.exceptions import ConflictError, ValidationError
 from app.routers.conversation_agent_protocol_resume_redaction import (
     RedactedResumeArgsUnavailable,
@@ -138,6 +139,14 @@ def checkpoint_response(
             raise ConflictError(code, message)
         raise ValidationError(code, message)
     try:
-        return _restore_redacted_response(response, actions)
+        restored = _restore_redacted_response(response, actions)
     except RedactedResumeArgsUnavailable as exc:
         raise _invalid("An edited field must be replaced explicitly") from exc
+    for index, action in enumerate(actions):
+        decision = restored["decisions"][index]
+        if decision["type"] == "edit" and (
+            private_memo_file_call(action["name"], action["args"])
+            or private_memo_file_call(action["name"], decision["edited_action"]["args"])
+        ):
+            raise _invalid("This file operation cannot be edited through a chat approval")
+    return restored
