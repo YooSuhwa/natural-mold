@@ -209,6 +209,20 @@ async def test_independent_checkpoint_keys_are_scoped_and_f14_metadata_is_typed(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("code", ["recovery_steer_unconfirmed", "recovery_model_attempt_limit"])
+async def test_snapshot_keeps_the_reason_a_failed_input_cannot_be_retried(
+    case: Case, code: str
+) -> None:
+    case.run.status = "failed"
+    case.run.is_active = False
+    case.run.error_code = code
+    case.run.error_message = "private provider diagnostic"
+    view = await case.load()
+    assert view.error_code == code and view.partial_output is None
+    assert "private provider diagnostic" not in view.model_dump_json()
+
+
+@pytest.mark.asyncio
 async def test_requested_sibling_refused_and_queue_not_active(case: Case) -> None:
     with pytest.raises(NotFoundError):
         await case.load(run_id=uuid4())

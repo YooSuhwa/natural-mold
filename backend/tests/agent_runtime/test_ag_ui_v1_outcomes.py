@@ -252,7 +252,27 @@ def test_clean_run_terminal_outcome_contains_only_the_reported_state(
     assert wire["outcome"] == {"type": expected}
 
 
-@pytest.mark.parametrize("code", ["partial_model_stream", "recovery_effect_unconfirmed"])
+@pytest.mark.parametrize(
+    "code",
+    [
+        "partial_model_stream",
+        "recovery_effect_unconfirmed",
+        "recovery_steer_unconfirmed",
+        "recovery_checkpoint_unavailable",
+        "recovery_policy_changed",
+        "recovery_limit_reached",
+        "recovery_model_attempt_limit",
+        "recovery_model_attempt_unproven",
+        "recovery_output_started",
+        "recovery_authority_revoked",
+        "recovery_launch_failed",
+        "recovery_disabled",
+        "recovery_tool_not_allowed",
+        "tool_result_unavailable",
+        "tool_receipt_conflict",
+        "tool_call_in_progress",
+    ],
+)
 def test_terminal_error_preserves_public_failure_classification(code: str) -> None:
     error = run_terminal_event("thread", "run", "failed", PendingInterrupts(), error_code=code)
     assert isinstance(error, RunErrorEvent)
@@ -261,11 +281,13 @@ def test_terminal_error_preserves_public_failure_classification(code: str) -> No
 
 def test_unknown_internal_failure_never_leaks_provider_error_in_code_or_message() -> None:
     error = run_terminal_event(
-        "thread", "run", "failed", PendingInterrupts(), error_code="hidden-error"
+        "thread", "run", "failed", PendingInterrupts(), error_code="recovery_hidden_provider_error"
     )
     assert isinstance(error, RunErrorEvent)
     assert error.code == "run_failed"
-    assert "hidden-error" not in error.model_dump_json(by_alias=True, exclude_none=True)
+    assert "recovery_hidden_provider_error" not in error.model_dump_json(
+        by_alias=True, exclude_none=True
+    )
 
 
 def test_partial_or_passive_group_cannot_offer_a_legacy_child_resume() -> None:
