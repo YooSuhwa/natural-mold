@@ -273,6 +273,7 @@ async def test_installed_deep_research_keeps_tavily_until_explicit_update(
     await db.refresh(skill)
     assert skill.source_marketplace_version_id == item.latest_version_id
     assert skill.version == "0.2.0"
+    assert skill.execution_profile is not None
     assert skill.execution_profile["tool_dependencies"] == ["research_search"]
     assert "`research_search`" in await asyncio.to_thread(installed_file.read_text)
     assert await asyncio.to_thread(legacy_file.read_text) == legacy_prompt

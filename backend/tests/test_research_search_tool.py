@@ -11,6 +11,7 @@ from urllib.parse import parse_qs
 
 import httpx
 import pytest
+from pydantic import JsonValue
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,13 +43,12 @@ async def permit(
 ) -> None:
     org = await db.get(Organization, actor.org_id)
     assert org is not None
-    org.settings = {
-        "research_search": {
-            "providers": providers,
-            "monthly_attempt_limit": budget,
-            "searxng_endpoint": ENDPOINT if "searxng" in providers else None,
-        }
+    search_policy: dict[str, JsonValue] = {
+        "providers": [*providers],
+        "monthly_attempt_limit": budget,
+        "searxng_endpoint": ENDPOINT if "searxng" in providers else None,
     }
+    org.settings = {"research_search": search_policy}
     await db.commit()
 
 

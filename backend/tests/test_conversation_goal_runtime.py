@@ -5,8 +5,9 @@ from deepagents import create_deep_agent
 from deepagents.backends import StateBackend
 from deepagents.middleware.filesystem import FilesystemMiddleware
 from langchain.agents.middleware import ModelRequest
+from langchain.tools import ToolRuntime
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from langchain_core.tools import tool
+from langchain_core.tools import BaseTool, tool
 from langgraph.prebuilt.tool_node import ToolCallRequest
 
 from app.agent_runtime.lease_middleware_policy import unsupported_middleware
@@ -16,15 +17,6 @@ from app.agent_runtime.runtime.goal_run import (
     readable_goal_tool_configs,
 )
 from tests.authz import test_prepared_runtime_installed_compiler as kit
-
-
-def _request(tool_obj: Any, args: dict[str, Any]) -> ToolCallRequest:
-    return ToolCallRequest(
-        tool=tool_obj,
-        tool_call={"name": tool_obj.name, "args": args, "id": "t"},
-        state={},
-        runtime=None,
-    )  # type: ignore[arg-type]
 
 
 def test_only_safe_sources_can_be_initialized_for_an_automatic_run() -> None:
@@ -57,11 +49,35 @@ def test_automatic_goal_only_allows_trusted_reads_and_this_conversations_artifac
         handled.append(name)
         return ToolMessage(content="ok", tool_call_id="t")
 
+    def dispatch(tool_obj: BaseTool, args: dict[str, Any]) -> ToolMessage:
+        state: dict[str, Any] = {}
+        runtime = ToolRuntime(
+            state=state,
+            context=None,
+            config={},
+            stream_writer=lambda _: None,
+            tool_call_id="t",
+            store=None,
+        )
+        request = ToolCallRequest(
+            tool=tool_obj,
+            tool_call={"name": tool_obj.name, "args": args, "id": "t"},
+            state=state,
+            runtime=runtime,
+        )
+        result = middleware.wrap_tool_call(request, handler)
+        assert isinstance(result, ToolMessage)
+        return result
+
     for name in ("ls", "read_file", "glob", "grep"):
-        assert middleware.wrap_tool_call(_request(fs[name], {}), handler).content == "ok"
+        assert dispatch(fs[name], {}).content == "ok"
     for name in ("write_file", "edit_file"):
-        req = _request(fs[name], {"file_path": "/conversations/c1/report.csv", "content": "ok"})
-        assert middleware.wrap_tool_call(req, handler).content == "ok"
+        assert (
+            dispatch(
+                fs[name], {"file_path": "/conversations/c1/report.csv", "content": "ok"}
+            ).content
+            == "ok"
+        )
         for path in (
             "/conversations/c2/result",
             "/agents/a/AGENTS.md",
@@ -70,11 +86,10 @@ def test_automatic_goal_only_allows_trusted_reads_and_this_conversations_artifac
             "/conversations/c1/",
             "/conversations/c1/.DS_Store",
         ):
-            req = _request(fs[name], {"file_path": path})
-            assert middleware.wrap_tool_call(req, handler).status == "error"
-    assert middleware.wrap_tool_call(_request(kit.echo, {}), handler).content == "ok"
-    assert middleware.wrap_tool_call(_request(aliased_tool, {}), handler).status == "error"
-    assert middleware.wrap_tool_call(_request(fs["delete"], {}), handler).status == "error"
+            assert dispatch(fs[name], {"file_path": path}).status == "error"
+    assert dispatch(kit.echo, {}).content == "ok"
+    assert dispatch(aliased_tool, {}).status == "error"
+    assert dispatch(fs["delete"], {}).status == "error"
     assert handled == ["ls", "read_file", "glob", "grep", "write_file", "edit_file", "echo"]
     assert unsupported_middleware([middleware]) is None
 
@@ -125,7 +140,7 @@ async def test_graph_refuses_delegation_and_external_effects_even_when_model_emi
             admission,
             tools=[send_email],
             leaf=middleware,
-        )  # type: ignore[arg-type]
+        )
     else:
         graph = create_deep_agent(model=agent, tools=[send_email], middleware=[middleware])
     result = await graph.ainvoke({"messages": [HumanMessage(content="go")]})
