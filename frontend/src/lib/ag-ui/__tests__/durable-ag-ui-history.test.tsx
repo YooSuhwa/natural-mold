@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { useAgUiRuntime, type UseAgUiRuntimeOptions } from '@assistant-ui/react-ag-ui'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { dispatchMoldyBranchSwitched } from '@/lib/chat/langgraph-runtime/branch-switch-events'
+import { currentAgUiApprovalKey } from '../approval-admission'
 import { useChatSession } from '../use-chat-session'
 import { useDurableAgUiHistory } from '../use-durable-ag-ui-history'
 
@@ -227,6 +228,142 @@ afterEach(() => {
 })
 
 describe('durable official chat history', () => {
+  function useCheckpointClock() {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  }
+
+  function snapshotError(status = 409, code = 'AG_UI_SNAPSHOT_REQUIRED') {
+    return Response.json(
+      { error: { code, message: 'Selected checkpoint unavailable' } },
+      { status },
+    )
+  }
+
+  function expectOnlySelectedReads(calls: RequestLog[], count: number) {
+    expect(calls.map(({ method, url }) => [method, url.pathname, url.search])).toEqual(
+      Array.from({ length: count }, () => [
+        'GET',
+        `/api/conversations/${conversationId}/ag-ui/snapshot`,
+        '',
+      ]),
+    )
+  }
+
+  it('retires a stale approval on conflict and imports the newly confirmed selection', async () => {
+    useCheckpointClock()
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    function paused(head: string) {
+      return savedChat(head, {
+        runStatus: 'interrupted',
+        runId: publicRunId,
+        latestPhysicalRunId: physicalRunId,
+        interruptRunId: publicRunId,
+        physicalInterruptRunId: physicalRunId,
+        interrupts: [
+          {
+            id: head,
+            reason: 'moldy.ask_user',
+            metadata: { moldy: { type: 'ask_user', question: head } },
+          },
+        ],
+      })
+    }
+    let reads = 0
+    const calls = intercept(() => {
+      reads++
+      if (reads === 2) return snapshotError()
+      return Response.json(paused(reads === 1 ? 'old' : 'confirmed'))
+    })
+    const view = mountChat()
+    const { runtime } = view.result.current
+    const state = view.session.getSnapshot
+    const pending = () => runtime.unstable_getPendingInterrupts()
+    const key = () => currentAgUiApprovalKey(conversationId, state(), pending())
+    await advance(0)
+    const oldKey = key()
+    expect(oldKey).toBeTypeOf('string')
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    await advance(0)
+    expect(key()).toBeNull()
+    expectOnlySelectedReads(calls, 2)
+    await advance(199)
+    expectOnlySelectedReads(calls, 2)
+    await advance(1)
+    expect(runtime.thread.getState().messages.at(-1)?.id).toBe('confirmed')
+    expect(pending().map(({ id }) => id)).toEqual(['confirmed'])
+    expect(key()).toBeTypeOf('string')
+    expect(key()).not.toBe(oldKey)
+    expectOnlySelectedReads(calls, 3)
+    view.unmount()
+  })
+
+  it('retries a conflicting initial history GET three times at 200, 400 and 800 ms', async () => {
+    useCheckpointClock()
+    const calls = intercept(() => snapshotError())
+    const onError = vi.fn()
+    const view = mountChat(false, { logger: { error: vi.fn() }, onError })
+    await advance(0)
+    for (const [retries, delay] of [200, 400, 800].entries()) {
+      await advance(delay - 1)
+      expectOnlySelectedReads(calls, retries + 1)
+      expect(onError).not.toHaveBeenCalled()
+      await advance(1)
+    }
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'AG_UI_SNAPSHOT_REQUIRED' }),
+    )
+    await advance(60_000)
+    expectOnlySelectedReads(calls, 4)
+    expect(view.result.current.runtime.thread.getState().isLoading).toBe(false)
+    view.unmount()
+  })
+
+  it.each([
+    [409, 'OTHER_CONFLICT'],
+    [403, 'FORBIDDEN'],
+  ] as const)('ends an initial history load after HTTP %i %s', async (status, code) => {
+    useCheckpointClock()
+    const calls = intercept(() => snapshotError(status, code))
+    const onError = vi.fn()
+    const view = mountChat(false, { logger: { error: vi.fn() }, onError })
+    await advance(0)
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code, status }))
+    expect(view.session.getSnapshot().readDenied).toBe(status === 403)
+    await advance(60_000)
+    expectOnlySelectedReads(calls, 1)
+    view.unmount()
+  })
+
+  it.each(['branch switch', 'unmount'] as const)(
+    'cancels the delayed initial checkpoint retry on %s',
+    async (change) => {
+      useCheckpointClock()
+      let switched = false
+      const calls = intercept(() =>
+        switched ? Response.json(savedChat('selected')) : snapshotError(),
+      )
+      const view = mountChat(false, { logger: { error: vi.fn() } })
+      await advance(0)
+      await advance(100)
+      expectOnlySelectedReads(calls, 1)
+      if (change === 'branch switch') {
+        switched = true
+        await act(async () =>
+          dispatchMoldyBranchSwitched({ conversationId, checkpointId: 'selected' }),
+        )
+        await advance(0)
+        expect(view.result.current.runtime.thread.getState().messages.at(-1)?.id).toBe('selected')
+      } else {
+        view.unmount()
+      }
+      await advance(60_000)
+      expectOnlySelectedReads(calls, switched ? 2 : 1)
+      if (switched) view.unmount()
+    },
+  )
+
   it('loads the newly selected branch when the first native history read is already pending', async () => {
     let releaseInitial: ((value: Response) => void) | undefined
     const calls = intercept(() =>
@@ -439,6 +576,13 @@ describe('durable official chat history', () => {
   it.each([
     { delayedRead: false, resume: false, terminal: false, name: 'a lost terminal frame' },
     {
+      delayedRead: false,
+      resume: false,
+      terminal: true,
+      checkpointConflict: true,
+      name: 'a conflict reading the checkpoint of a completed prompt',
+    },
+    {
       delayedRead: true,
       resume: false,
       terminal: true,
@@ -458,6 +602,7 @@ describe('durable official chat history', () => {
     let pendingRequest: RequestLog | undefined
     let refreshing = false
     let stored = false
+    let committedReads = 0
     const interrupt = { id: 'current-approval', reason: 'input_required', message: 'Continue?' }
     const decision = {
       interruptId: interrupt.id,
@@ -487,7 +632,11 @@ describe('durable official chat history', () => {
       }
       if (!call.url.pathname.endsWith('/snapshot'))
         throw new Error('Unexpected connection: ' + call.url.pathname)
-      if (submitted && stored) return Response.json(submitted.snapshot())
+      if (submitted && stored) {
+        committedReads++
+        if (scenario.checkpointConflict && committedReads === 1) return snapshotError()
+        return Response.json(submitted.snapshot())
+      }
       if (refreshing && !releaseRead) {
         pendingRequest = call
         return new Promise<Response>((resolve) => {
@@ -570,6 +719,7 @@ describe('durable official chat history', () => {
     expect(calls.filter(({ method }) => method === 'POST')).toHaveLength(1)
     expect(calls.filter(({ url }) => url.pathname.endsWith('/stream'))).toHaveLength(0)
     expect(calls.at(-1)?.method).toBe('GET')
+    if (scenario.checkpointConflict) expect(committedReads).toBe(2)
   })
 
   it.each([

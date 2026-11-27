@@ -1,6 +1,7 @@
 import { EventType } from '@ag-ui/core'
 import { describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/lib/api/errors'
+import { beginOrgSwitch, finishOrgSwitch } from '@/lib/org-scope/org-scope-signal'
 import { createAgUiChatSession } from '../chat-history'
 import { parseWireChatSnapshot, type WireChatSnapshot } from '../chat-history-types'
 
@@ -231,6 +232,36 @@ describe('AG-UI history session', () => {
     session.onRunAccepted({ runId: 'next', physicalRunId: physical })
     expect(session.getSnapshot().attachBlockedRunId).toBeNull()
     session.dispose()
+  })
+
+  it('retires the old organization and cancels a checkpoint retry before its next GET', async () => {
+    vi.useFakeTimers()
+    const read = vi
+      .fn<ReadSnapshot>()
+      .mockResolvedValueOnce(snapshot({ checkpointId: 'previous-selection' }))
+      .mockRejectedValue(new ApiError(409, 'AG_UI_SNAPSHOT_REQUIRED', 'Selection changed'))
+    const session = sessionFor(read)
+    try {
+      await session.history.load()
+      const update = expect(session.refreshRepository()).rejects.toMatchObject({
+        name: 'AbortError',
+      })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(read).toHaveBeenCalledTimes(2)
+      beginOrgSwitch()
+      await update
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(read).toHaveBeenCalledTimes(2)
+      expect(session.getSnapshot()).toMatchObject({
+        readDenied: true,
+        snapshot: null,
+        interrupts: [],
+      })
+    } finally {
+      session.dispose()
+      finishOrgSwitch()
+      vi.useRealTimers()
+    }
   })
 
   it('clears the visible conversation immediately on read denial and ignores late events', async () => {
