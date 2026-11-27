@@ -86,8 +86,8 @@ function physicalKey(activity: RunActivity, provisional: string, physical: strin
   const [run, kind, lane, entity] = tuple as unknown[]
   if (run !== provisional || kind !== activity.kind || typeof entity !== 'string') return
   if (lane !== null && typeof lane !== 'string') return
-  if (activity.id !== key(provisional, kind, entity, lane ?? undefined)) return
-  return key(physical, kind, entity, lane ?? undefined)
+  if (activity.id !== key(provisional, activity.kind, entity, lane ?? undefined)) return
+  return key(physical, activity.kind, entity, lane ?? undefined)
 }
 
 /** A verified receipt binds a locally observed submission to its physical run.
