@@ -213,9 +213,9 @@ class PublicChildren:
                     )
                 )
                 continue
-            ids = list(interrupt_ids(owner))
             outcome = None
             if status == "interrupted":
+                ids = None if self.historical_only(ns) else list(interrupt_ids(owner))
                 outcome = SubagentFinishedSuspendedOutcome(type="suspended", interrupt_ids=ids)
             events.append(SubagentFinishedEvent(subagent_run_id=owner, outcome=outcome))
         return events

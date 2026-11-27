@@ -370,7 +370,7 @@ def test_ambiguous_historical_call_and_current_slot_never_create_actions() -> No
     [closed] = wire(
         stream.project(event("lifecycle", {"event": "interrupted", "namespace": list(CHILD)}))
     )
-    assert closed["outcome"] == {"type": "suspended", "interruptIds": []}
+    assert closed["outcome"] == {"type": "suspended"}
     final = wire(
         stream.finish(
             "interrupted",
