@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -18,10 +19,13 @@ from app.agent_runtime.protocol_events import ProtocolInterrupt
 from app.authz.conversation_scope import require_private_conversation
 from app.authz.org_context import OrgContext
 from app.error_codes import resume_not_found
+from app.exceptions import NotFoundError
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun
 from app.schemas.ag_ui_snapshot import AgUiSnapshot, AgUiSnapshotMessageLink, SnapshotTodo
 from app.services.ag_ui_pending_checkpoint import read_pending_checkpoint
+from app.services.ag_ui_pending_child_authority import read_pending_child_authority
+from app.services.ag_ui_read_cursor import CursorScope
 from app.services.ag_ui_read_target import resolve_read_target, snapshot_required
 from app.services.ag_ui_snapshot_assembly import SnapshotAssembly
 from app.services.ag_ui_snapshot_history import (
@@ -40,6 +44,31 @@ from app.services.partial_model_output import (
     PARTIAL_STREAM_ERROR,
     read_partial_output,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _RunEvidence:
+    """Keep authorization, progress and ownership after releasing a run's journal transcript."""
+
+    scope: CursorScope | None
+    cursor: str | None
+    complete: bool
+    child_namespaces: dict[tuple[str, ...], str]
+    pending_namespaces: dict[str, tuple[str, ...]]
+    unresolved_pending_ids: set[str]
+    has_root_todos: bool
+
+    @classmethod
+    def from_replay(cls, replay: SnapshotRunReplay) -> _RunEvidence:
+        return cls(
+            replay.scope,
+            replay.cursor,
+            replay.complete,
+            replay.child_namespaces,
+            replay.pending_namespaces,
+            replay.unresolved_pending_ids,
+            None in replay.todos_by_owner,
+        )
 
 
 def _message_link(
@@ -81,7 +110,7 @@ async def _current_interrupts(
     context: OrgContext,
     history: SnapshotHistory,
     run: ConversationRun,
-    replay: SnapshotRunReplay,
+    replay: _RunEvidence,
     secret_values: Collection[str],
 ) -> list[Interrupt]:
     if run.status != "interrupted" or history.source != "checkpoint":
@@ -115,13 +144,28 @@ async def _current_interrupts(
     visible = pending.public()
     if {item.id for item in visible} != {item["id"] for item in checkpoint.interrupts}:
         return [_read_only_interrupt(item) for item in visible]
-    return visible
+    try:
+        legacy_ids = await read_pending_child_authority(
+            db, conversation=conversation, context=context, parent_run=run, pending=checkpoint
+        )
+    except NotFoundError:
+        return [_read_only_interrupt(item) for item in visible]
+    return [
+        _mark_interrupt(item, legacyInterruptAccess=True)
+        if item.id in legacy_ids and item.subagent_run_id
+        else item
+        for item in visible
+    ]
 
 
 def _read_only_interrupt(item: Interrupt) -> Interrupt:
+    return _mark_interrupt(item, actionable=False).model_copy(update={"response_schema": None})
+
+
+def _mark_interrupt(item: Interrupt, **flags: bool) -> Interrupt:
     metadata = dict(item.metadata or {})
-    metadata["moldy"] = {**(metadata.get("moldy") or {}), "actionable": False}
-    return item.model_copy(update={"metadata": metadata, "response_schema": None})
+    metadata["moldy"] = {**(metadata.get("moldy") or {}), **flags}
+    return item.model_copy(update={"metadata": metadata})
 
 
 def _todos(rows: Sequence[Mapping[str, Any]]) -> list[SnapshotTodo]:
@@ -172,18 +216,24 @@ async def load_ag_ui_snapshot(
             run_id=requested,
         )
         linked = []
+        idless_checkpoint_ids: set[str] = set()
         parent = None
         for ref, message in entries:
             linked.append((message, _message_link(conversation, ref, message, runs, parent)))
+            saved = ref.message
+            raw_id = saved.get("id") if isinstance(saved, dict) else saved.id
+            if not raw_id and ref.checkpoint_id in history.checkpoint_run_ids:
+                idless_checkpoint_ids.add(message["id"])
             if message["role"] in ("user", "assistant"):
                 parent = message["id"]
         assembly = SnapshotAssembly(
             linked,
             include_legacy_users=history.source == "legacy",
             require_run_link=runs.independent,
+            idless_checkpoint_ids=idless_checkpoint_ids,
         )
         accepted: dict[UUID, ConversationRun] = {}
-        replays: dict[UUID, SnapshotRunReplay] = {}
+        evidence: dict[UUID, _RunEvidence] = {}
         for run in runs.candidates:
             replay = await replay_snapshot_run(
                 db,
@@ -201,7 +251,7 @@ async def load_ag_ui_snapshot(
                 run.id, runs.public_ids[run.id], replay, restrict_to_checkpoint=not anchored
             )
             accepted[run.id] = run
-            replays[run.id] = replay
+            evidence[run.id] = _RunEvidence.from_replay(replay)
         full_runs = {key: run for key, run in accepted.items() if key in runs.branch_verified}
         if requested is not None and requested not in full_runs:
             raise resume_not_found()
@@ -226,7 +276,7 @@ async def load_ag_ui_snapshot(
             active = None
         pending = (
             await _current_interrupts(
-                db, conversation, context, history, latest, replays[latest.id], secrets
+                db, conversation, context, history, latest, evidence[latest.id], secrets
             )
             if latest
             else []
@@ -251,9 +301,9 @@ async def load_ag_ui_snapshot(
         # incoming cursor may refer to a retired chunk generation or an old selection.
         watermark = None
         if chosen and not queued and chosen.id not in merged.unreliable_run_ids:
-            replay = replays[chosen.id]
-            if replay.complete and chosen.id in runs.branch_verified:
-                watermark = replay.cursor
+            recovered = evidence[chosen.id]
+            if recovered.complete:
+                watermark = recovered.cursor
         root_todos = merged.todos_by_owner.get(None, [])
         known_checkpoints = {
             key for key, owner in history.checkpoint_run_ids.items() if owner in accepted
@@ -262,7 +312,7 @@ async def load_ag_ui_snapshot(
         if (
             history.source != "legacy"
             and leaf_allowed
-            and not (active and None in replays[active.id].todos_by_owner)
+            and not (active and evidence[active.id].has_root_todos)
         ):
             root_todos = list(history.todos)
         if runs.independent:
@@ -276,6 +326,15 @@ async def load_ag_ui_snapshot(
             row = dict(row)
             child_id = row["subagentRunId"]
             row["todos"] = _todos(merged.todos_by_owner.get(child_id, []))
+            if latest and row.get("physicalRunId") == str(latest.id):
+                slots = [item for item in pending if item.subagent_run_id == child_id]
+                if slots:
+                    row["status"] = "interrupted"
+                    row["interruptIds"] = [item.id for item in slots]
+                    row["legacyInterruptAccess"] = any(
+                        (item.metadata or {}).get("moldy", {}).get("legacyInterruptAccess") is True
+                        for item in slots
+                    )
             children.append(row)
         snapshot = AgUiSnapshot.model_validate(
             {
@@ -314,8 +373,8 @@ async def load_ag_ui_snapshot(
         current = await require_private_conversation(db, conversation.id, context)
         if current.active_branch_checkpoint_id != selection:
             raise snapshot_required()
-        for ident, replay in replays.items():
+        for ident, recovered in evidence.items():
             final_target = await resolve_read_target(db, current, context, runs.public_ids[ident])
-            if final_target.scope != replay.scope:
+            if final_target.scope != recovered.scope:
                 raise snapshot_required()
         return snapshot

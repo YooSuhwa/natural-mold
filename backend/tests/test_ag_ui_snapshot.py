@@ -82,6 +82,7 @@ def case(monkeypatch: pytest.MonkeyPatch) -> Case:
     monkeypatch.setattr(api, "snapshot_runs", AsyncMock(return_value=runs))
     monkeypatch.setattr(api, "replay_snapshot_run", AsyncMock(return_value=replay))
     monkeypatch.setattr(api, "read_pending_checkpoint", pending)
+    monkeypatch.setattr(api, "read_pending_child_authority", AsyncMock(return_value=frozenset()))
     return Case(
         SimpleNamespace(no_autoflush=nullcontext()),
         conv,
@@ -205,3 +206,38 @@ async def test_requested_sibling_refused_and_queue_not_active(case: Case) -> Non
     queued = await case.load(public_run_id="queue-receipt")
     assert queued.run_id == "queue-receipt" and queued.position == 2
     assert queued.active_run_id is None and queued.physical_run_id is None and queued.cursor is None
+
+
+@pytest.mark.asyncio
+async def test_live_legacy_child_requires_shared_post_authority(
+    case: Case, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    case.run.status, case.run.is_active = "interrupted", False
+    ns = ("tools:legacy",)
+    case.replay.child_namespaces[ns] = "child"
+    case.replay.subagents.append(
+        {
+            "subagentRunId": "child",
+            "parentMessageId": "answer",
+            "name": "research",
+            "status": "running",
+        }
+    )
+    case.pending.return_value = SimpleNamespace(
+        checkpoint_id="answer-cp",
+        expires_at={},
+        interrupts=[
+            {"id": "live", "ns": list(ns), "value": {"type": "ask_user", "question": "Choose"}}
+        ],
+    )
+    probe = AsyncMock(return_value=frozenset({"live"}))
+    monkeypatch.setattr(api, "read_pending_child_authority", probe)
+    view = await case.load()
+    assert view.subagents[0].legacy_interrupt_access
+    assert view.subagents[0].status == "interrupted" and view.subagents[0].interrupt_ids == ["live"]
+    assert (view.interrupts[0].metadata or {})["moldy"]["legacyInterruptAccess"] is True
+    probe.side_effect = NotFoundError("CHILD_TASK_NOT_FOUND", "Unavailable")
+    denied = await case.load()
+    assert not denied.subagents[0].legacy_interrupt_access
+    assert (denied.interrupts[0].metadata or {})["moldy"]["actionable"] is False
+    assert denied.interrupts[0].response_schema is None
