@@ -228,6 +228,54 @@ async def test_old_single_file_checks_exact_checkpoint_and_digest(
         assert (await client.get(url)).status_code == 404
 
 
+async def test_old_archive_materializes_only_introducing_graph_checkpoint_delta(
+    client: AsyncClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, agent, conv = await seed_runtime_run()
+    question = "어제 공개한 신제품의 단가를 알려줘"
+    await _published(run.id, conv.id, question, None)
+    row = HumanMessage(content=question, id="question")
+    kept = AIMessage(content="아직 요약에 포함되지 않은 답변", id="kept")
+    leaf = f"session_{uuid.uuid4().hex}.md"
+    backend = ScopedOffloadBackend(
+        tmp_path, OffloadIdentity(str(agent.user_id), str(conv.id), "run"), agent.id
+    )
+    path = f"{backend.artifacts_root}/conversation_history/{leaf}"
+    assert not backend.write(path, get_buffer_string([row, kept], format="xml")).error
+    event = {"file_path": path, "cutoff_index": 1, "cutoff_message_id": "kept"}
+
+    class _DeltaSaver(_Saver):
+        async def aget_tuple(self, config: dict[str, Any]) -> SimpleNamespace | None:
+            if config["configurable"].get("checkpoint_id") == "later":
+                return SimpleNamespace(
+                    config=config,
+                    checkpoint={"channel_values": self.values},
+                    metadata={"source": "loop"},
+                    parent_config={
+                        "configurable": {
+                            "thread_id": self.thread,
+                            "checkpoint_ns": "",
+                            "checkpoint_id": "cp1",
+                        }
+                    },
+                )
+            return await super().aget_tuple(config)
+
+        async def aget_delta_channel_history(
+            self, *, config: dict[str, Any], channels: list[str]
+        ) -> dict[str, Any]:
+            assert config["configurable"] == {"thread_id": self.thread, "checkpoint_id": "cp1"}
+            assert channels == ["messages"]
+            return {"messages": {"seed": None, "writes": [("task", "messages", [row, kept])]}}
+
+    saver = _DeltaSaver(str(conv.id), {"_summarization_event": event})
+    monkeypatch.setattr(checkpointer, "get_checkpointer", lambda: saver)
+    monkeypatch.setattr(evidence, "runtime_data_dir", lambda: tmp_path)
+    result = await client.get(f"/api/conversations/{conv.id}/history-evidence/later")
+    assert result.status_code == 200, result.text
+    assert result.json()["excerpts"] == [{"role": "user", "text": question, "truncated": False}]
+
+
 async def test_published_rollback_leaf_uses_conversation_owner_only(
     client: AsyncClient,
     tmp_path: Path,

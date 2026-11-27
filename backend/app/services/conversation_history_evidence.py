@@ -46,6 +46,7 @@ from app.services.conversation_archive_public_text import (
     load_archive_public_text,
 )
 from app.services.conversation_history_secrets import collect_strict_history_secrets
+from app.services.thread_branch_service import materialize_messages_at_checkpoint
 
 
 class EvidenceUnavailable(ValueError):
@@ -378,9 +379,15 @@ async def read_history_evidence(
     values = checkpoint.checkpoint.get("channel_values")
     if not isinstance(values, Mapping):
         raise EvidenceUnavailable
-    _history_reference(values, conversation, actor_owner)
+    ref = _history_reference(values, conversation, actor_owner)
     introducing_parent, origin = await _introducing_checkpoint(saver, thread_id, checkpoint)
     values = origin.checkpoint["channel_values"]
+    if ref.kind != "jsonl" and not isinstance(values.get("messages"), list):
+        # DeltaChannel checkpoints can omit the message list or wrap its snapshot.
+        # Reconstruct only the trusted originating branch before matching legacy XML.
+        origin_id = origin.config.get("configurable", {})["checkpoint_id"]
+        messages = await materialize_messages_at_checkpoint(saver, thread_id, origin_id)
+        values = {**values, "messages": messages}
     published = await load_archive_public_text(db, conversation)
     secrets = await collect_strict_history_secrets(db, conversation.agent_id, conversation.id)
     try:
