@@ -3,6 +3,7 @@ import type { APIRequestContext, Page, Request } from '@playwright/test'
 import { z } from 'zod'
 import { isSeededScriptedModel } from './helpers/scripted-model'
 import { branchStage, observeBranch } from './helpers/branch-observation'
+import { observeChatTurns } from './helpers/turn-observation'
 
 // Detailed coverage of the core chat interactions against the live backend +
 // the keyless scripted model: branching by regenerate, branching by editing a
@@ -15,9 +16,9 @@ const PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
 
 const branchTest = test.extend<{ branch: ReturnType<typeof observeBranch> }>({
-  branch: async ({ page }, use, info) => {
+  branch: async ({ page }, run, info) => {
     const branch = observeBranch(page, API)
-    await use(branch)
+    await run(branch)
     await info.attach('chat-branch-observation', {
       body: JSON.stringify(await branch.finish()),
       contentType: 'application/json',
@@ -224,18 +225,70 @@ test.describe('Chat interactions', () => {
 
   test('a multi-turn conversation keeps both exchanges', async ({ page, request }) => {
     test.setTimeout(90_000)
-    const convId = await startTurn(page, request, 'First turn message')
+    const first = 'First turn message'
+    const second = 'Second turn message'
+    const answer = 'E2E scripted document model is ready.'
+    const expectedContents = [first, answer, second, answer]
+    const observed = observeChatTurns(page, API)
+    let conversationId: string | undefined
+    try {
+      conversationId = await startTurn(page, request, first)
+      observed.reached('first-saved')
+      const users = page.locator('[data-moldy-message-role="user"]')
+      const assistants = page.locator('[data-moldy-message-role="assistant"]')
+      await expect(users.getByText(first, { exact: true })).toBeVisible()
+      const endpoint = API + '/api/conversations/' + conversationId + '/messages'
+      const readTurns = async () => {
+        const response = await request.get(endpoint)
+        expect(response.ok()).toBeTruthy()
+        const { messages } = (await response.json()) as {
+          messages: { id: string; role: string; content: string }[]
+        }
+        return messages.filter((m) => m.role === 'user' || m.role === 'assistant')
+      }
+      const original = (await readTurns()).map((m) => m.id)
+      expect(original).toHaveLength(2)
 
-    // Second turn into the same conversation.
-    await fillComposer(page, 'Second turn message')
-    await page.getByRole('button', { name: /전송/ }).click()
-    await expect(page.getByText('Second turn message').first()).toBeVisible()
-    await expect
-      .poll(() => assistantCount(request, convId), { timeout: 60_000 })
-      .toBeGreaterThanOrEqual(2)
+      await fillComposer(page, second)
+      // A completed server run can still be draining in the browser. Wait for
+      // normal Send; the preemption confirmation also contains the word 전송.
+      const form = page.locator('form[data-moldy-thread-composer]:visible')
+      await form.locator('button[type="submit"]').click()
+      observed.reached('second-sent')
+      await expect(users.getByText(second, { exact: true })).toBeVisible()
+      observed.reached('second-visible')
 
-    // Both user turns remain in the thread.
-    await expect(page.getByText('First turn message').first()).toBeVisible()
-    await expect(page.getByText('Second turn message').first()).toBeVisible()
+      await expect
+        .poll(
+          async () => {
+            const turns = await readTurns()
+            return {
+              orderedRoles: turns.map((m) => m.role),
+              matchesContents: turns.every((m, index) => m.content === expectedContents[index]),
+              keepsFirstTurn: original.every((id, index) => turns[index]?.id === id),
+              uniqueIds: new Set(turns.map((m) => m.id)).size,
+            }
+          },
+          { timeout: 60_000 },
+        )
+        .toEqual({
+          orderedRoles: ['user', 'assistant', 'user', 'assistant'],
+          matchesContents: true,
+          keepsFirstTurn: true,
+          uniqueIds: 4,
+        })
+      observed.reached('both-saved')
+      await expect(assistants.getByText(answer, { exact: true })).toHaveCount(2)
+      await expect(users.getByText(first, { exact: true })).toBeVisible()
+      await expect(users.getByText(second, { exact: true })).toBeVisible()
+      await page.reload()
+      await expect(users.getByText(first, { exact: true })).toBeVisible()
+      await expect(users.getByText(second, { exact: true })).toBeVisible()
+      await expect(assistants.getByText(answer, { exact: true })).toHaveCount(2)
+      observed.reached('both-restored')
+    } finally {
+      if (conversationId) await observed.attach(test.info(), request, conversationId)
+      observed.dispose()
+    }
   })
 })
