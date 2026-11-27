@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from app.agent_runtime.protocol_usage_normalization import text_value, usage_mapping
 
 _MAX_COUNT = (1 << 53) - 1
+_COMPACT_REF_FIELDS = {"id", "type", "index", "checkpoint_id", "checkpoint_ns"}
 _MODEL_LABEL = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.:/@-]{0,199}")
 
 
@@ -116,6 +117,14 @@ def _message_sample(data: Mapping[str, Any], metadata: Mapping[str, Any]) -> Tok
     return zero_sample
 
 
+@dataclass(frozen=True, slots=True)
+class _Receipt:
+    public_id: str
+    source_id: str | None
+    # Only a compact values row can prove a call without retaining its counts.
+    sample: TokenUsage | None
+
+
 class RunUsage:
     """One collector per physical run. Only current model messages establish ownership."""
 
@@ -124,7 +133,7 @@ class RunUsage:
         self._source_ids: dict[tuple[str | None, str], str] = {}
         # The journal derives a second usage record with an exact parent event ID.
         # In v3 a message-finish has usage but no assistant_msg_id.
-        self._derived: dict[tuple[str | None, str], tuple[str, TokenUsage | None]] = {}
+        self._derived: dict[tuple[str | None, str], _Receipt] = {}
         self._uncertain = False
 
     def observe_message(
@@ -163,8 +172,108 @@ class RunUsage:
         sample = _message_sample(data, metadata)
         if sample is not None:
             call.sample(sample)
-        if event_id and (usage_mapping(data) or usage_mapping(metadata)):
-            self._derived[subagent_run_id, f"{event_id}:usage"] = (public_message_id, sample)
+            if event_id:
+                # collect_protocol_usage_event uses id/assistant_msg_id for the
+                # companion. Native v3 message-finish has neither.
+                receipt_id = text_value(data.get("id") or data.get("assistant_msg_id"))
+                self._derived[subagent_run_id, f"{event_id}:usage"] = _Receipt(
+                    public_message_id, receipt_id, sample
+                )
+
+    def observe_values_parent(
+        self, data: Mapping[str, Any], *, event_id: str, subagent_run_id: str | None
+    ) -> None:
+        """Remember the exact authorized values row behind a possible journal receipt."""
+        messages = data.get("messages")
+        if not isinstance(messages, list):
+            return
+        key = (subagent_run_id, f"{event_id}:usage")
+        compact = True
+        current_ref: _Receipt | None = None
+        multiple_refs = False
+        for message in reversed(messages):
+            if not isinstance(message, Mapping):
+                return
+            compact = compact and message.keys() <= _COMPACT_REF_FIELDS
+            source = text_value(message.get("id") or message.get("assistant_msg_id"))
+            public = self._source_ids.get((subagent_run_id, source)) if source else None
+            assistant = str(message.get("type") or message.get("role") or "").lower() in {
+                "ai",
+                "assistant",
+                "aimessage",
+                "aimessagechunk",
+            }
+            metadata = _mapping(message.get("metadata"))
+            if usage_mapping(message) or usage_mapping(metadata):
+                sample = _message_sample(message, metadata)
+                # The writer skips all-zero placeholders and selects the last
+                # nonzero metered message. Unrecognized samples prove nothing.
+                if sample is None:
+                    return
+                if not (sample.input_tokens or sample.output_tokens):
+                    continue
+                if assistant and public:
+                    self._derived[key] = _Receipt(public, source, sample)
+                return
+            if assistant and public:
+                multiple_refs = current_ref is not None
+                current_ref = _Receipt(public, source, None)
+        # Durable checkpoints replaced message bodies with ID/type refs. An
+        # unknown/historical ID or multiple current candidate calls cannot
+        # establish which model's usage was removed during compaction.
+        if compact and current_ref is not None and not multiple_refs:
+            self._derived[key] = current_ref
+
+    def _verified_receipt(
+        self,
+        receipt: _Receipt,
+        payload: Mapping[str, Any],
+        owner: str | None,
+        public: str | None,
+    ) -> str | None:
+        if (
+            public not in (None, receipt.public_id)
+            or payload.get("assistant_msg_id") != receipt.source_id
+        ):
+            return None
+        prompt = _count(payload.get("prompt_tokens"))
+        completion = _count(payload.get("completion_tokens"))
+        if prompt is None or completion is None:
+            return None
+        call = self._calls[(owner, receipt.public_id)]
+        sample = receipt.sample
+        if sample is not None:
+            if (prompt, completion) != (sample.input_tokens, sample.output_tokens):
+                return None
+            for key, measured in (
+                ("cache_read_tokens", sample.cached_input_tokens),
+                ("cache_creation_tokens", sample.cache_write_input_tokens),
+            ):
+                if key in payload and _count(payload[key]) != (measured or 0):
+                    return None
+            call.sample(sample)
+        else:
+            # A compact source has no independent measured pair. Preserve any
+            # direct measurement already received for this same model call.
+            if (
+                call.counts.get("input_tokens", prompt) != prompt
+                or call.counts.get("output_tokens", completion) != completion
+            ):
+                return None
+            read = _count(payload.get("cache_read_tokens", 0))
+            write = _count(payload.get("cache_creation_tokens", 0))
+            if read is None or write is None or read + write > prompt:
+                return None
+            if (
+                call.counts.get("cached_input_tokens", read) != read
+                or call.counts.get("cache_write_input_tokens", write) != write
+            ):
+                return None
+            call.record("input_tokens", prompt)
+            call.record("output_tokens", completion)
+            call.record("cached_input_tokens", read or None)
+            call.record("cache_write_input_tokens", write or None)
+        return receipt.public_id
 
     def observe_usage(
         self,
@@ -178,21 +287,11 @@ class RunUsage:
         source = text_value(payload.get("assistant_msg_id"))
         input_tokens = _count(payload.get("prompt_tokens"))
         output_tokens = _count(payload.get("completion_tokens"))
-        receipt = self._derived.get((subagent_run_id, event_id)) if event_id else None
-        if receipt is not None:
-            parent, sample = receipt
-            if (
-                public_message_id not in (None, parent)
-                or (
-                    source is not None and self._source_ids.get((subagent_run_id, source)) != parent
-                )
-                or sample is None
-                or (input_tokens, output_tokens) != (sample.input_tokens, sample.output_tokens)
-            ):
-                self._uncertain = True
+        if event_id is not None:
+            receipt = self._derived.get((subagent_run_id, event_id))
+            if receipt is None:
                 return None
-            # The measured parent already contains the counts for this canonical copy.
-            return parent
+            return self._verified_receipt(receipt, payload, subagent_run_id, public_message_id)
         if source is None:
             self._uncertain = True
             return None

@@ -316,7 +316,9 @@ def test_anonymous_receipt_requires_exact_event_id_owner_parent_and_measurement(
         event_id="unrelated:usage" if forged == "event-id" else "finish:usage",
     )
     assert parent is None
-    assert tracker.terminal_usage() is None
+    assert tracker.terminal_usage() == [
+        TokenUsage(input_tokens=8, output_tokens=3, total_tokens=11)
+    ]
 
 
 def test_coercion_by_legacy_derived_event_does_not_turn_invalid_raw_counts_into_usage() -> None:
@@ -350,3 +352,118 @@ def test_coercion_by_legacy_derived_event_does_not_turn_invalid_raw_counts_into_
         payload, subagent_run_id=None, public_message_id="call", event_id=companion["id"]
     )
     assert tracker.terminal_usage() is None
+
+
+@pytest.mark.parametrize("compact", [False, True])
+def test_values_only_receipt_from_current_assistant_survives_persistence(compact: bool) -> None:
+    from app.agent_runtime.protocol_persistence import persistable_protocol_event
+
+    tracker = RunUsage()
+    record(tracker, "current", "public", child="child")
+    event = stored_protocol_event(
+        run_id="physical-run",
+        thread_id="thread",
+        seq=4,
+        method="values",
+        namespace=["child"],
+        data={
+            "messages": [
+                {
+                    "id": "previous",
+                    "type": "ai",
+                    "usage_metadata": {"input_tokens": 32, "output_tokens": 14},
+                },
+                {
+                    "id": "current",
+                    "type": "ai",
+                    "usage_metadata": {
+                        "input_tokens": 7,
+                        "output_tokens": 2,
+                        "input_token_details": {"cache_read": 3},
+                    },
+                },
+                {"id": "tool-output", "type": "tool", "content": "result"},
+            ]
+        },
+    )
+    companion, _ = collect_protocol_usage_event(
+        event,
+        next_seq=4,
+        seen_keys=set(),
+        usage_sink=None,
+        cost_per_input_token=None,
+        cost_per_output_token=None,
+    )
+    assert companion is not None
+    data = persistable_protocol_event(event)["data"] if compact else event["data"]
+    tracker.observe_values_parent(data, event_id=event["id"], subagent_run_id="child")
+    payload = companion["data"]["payload"]
+    assert (
+        tracker.observe_usage(
+            payload, event_id=companion["id"], subagent_run_id="child", public_message_id="public"
+        )
+        == "public"
+    )
+    assert tracker.terminal_usage() == [
+        TokenUsage(input_tokens=7, output_tokens=2, total_tokens=9, cached_input_tokens=3)
+    ]
+
+
+@pytest.mark.parametrize(
+    "orphan",
+    [
+        "arbitrary-id",
+        "companion-of-unseen-checkpoint",
+        "prior",
+        "hidden-scope",
+        "repeated-current-ref",
+        "multiple-current-refs",
+        "wrong-current-ref",
+        "wrong-counts",
+        "wrong-cache",
+        "wrong-compact-cache",
+    ],
+)
+def test_unproven_usage_activity_cannot_displace_observed_model_usage(orphan: str) -> None:
+    tracker = RunUsage()
+    measured = {"input_tokens": 4, "output_tokens": 2, "input_token_details": {"cache_read": 1}}
+    tracker.observe_message(
+        {"id": "current", "usage_metadata": measured},
+        event_id="measured",
+        subagent_run_id=None,
+        public_message_id="target",
+    )
+    ref = {"id": "current", "type": "ai"}
+    refs = [ref]
+    if orphan == "repeated-current-ref":
+        refs.append(ref)
+    if orphan == "multiple-current-refs":
+        refs.append({"id": "other", "type": "ai"})
+        record(tracker, "other", "other", usage_metadata=measured)
+    if orphan == "prior":
+        refs = [{"id": "previous", "type": "ai"}]
+    tracker.observe_values_parent({"messages": refs}, event_id="checkpoint", subagent_run_id=None)
+    metrics = {
+        "assistant_msg_id": "previous" if orphan in ("prior", "wrong-current-ref") else "current",
+        "prompt_tokens": 66 if orphan == "wrong-counts" else 4,
+        "completion_tokens": 2,
+        "cache_read_tokens": 3 if orphan in ("wrong-cache", "wrong-compact-cache") else 1,
+    }
+    event_id = {
+        "arbitrary-id": "unrelated",
+        "companion-of-unseen-checkpoint": "unseen:usage",
+        "wrong-cache": "measured:usage",
+    }.get(orphan, "checkpoint:usage")
+    parent = tracker.observe_usage(
+        metrics,
+        event_id=event_id,
+        subagent_run_id="hidden" if orphan == "hidden-scope" else None,
+        public_message_id="target",
+    )
+    assert parent is None
+    n = 2 if orphan == "multiple-current-refs" else 1
+    assert tracker.terminal_usage() == [
+        TokenUsage(
+            input_tokens=4 * n, output_tokens=2 * n, total_tokens=6 * n, cached_input_tokens=n
+        )
+    ]
