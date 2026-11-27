@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
+import psycopg
 from http_common import Gate, expect_status, require
 from skill_attempts import docx_attempts
 
@@ -214,6 +215,49 @@ async def _check_claim(
     )
 
 
+async def _expire_pending(gate: Gate, thread_id: str, interrupt_id: str) -> None:
+    # Leave a quiet window for the independent 60s expiry sweep, which legitimately
+    # auto-rejects overdue approvals. This case exercises the HTTP handler on a pending row.
+    async with asyncio.timeout(25):
+        while True:
+            jobs = await gate.sql(
+                "SELECT next_run_time - EXTRACT(EPOCH FROM clock_timestamp()) AS seconds "
+                "FROM apscheduler_jobs WHERE id='approval_sweep'"
+            )
+            if not jobs or jobs[0]["seconds"] is None or jobs[0]["seconds"] > 15:
+                break
+            await asyncio.sleep(0.3)
+
+    # Gate.dsn is the explicitly verified local throwaway DB and its unprivileged RLS role.
+    # Change only the clock on the fresh approval whose public interrupt we just validated.
+    async with await psycopg.AsyncConnection.connect(gate.dsn) as conn:
+        await conn.execute(
+            "SELECT set_config('app.tenant_id', %s, true)", (gate.tenant_id,)
+        )
+        cursor = await conn.execute(
+            """UPDATE approval_requests AS a SET expires_at = clock_timestamp() - interval '1 second'
+               FROM conversation_runs AS r WHERE a.conversation_id=%s AND a.interrupt_id=%s
+                 AND a.tenant_id=%s AND a.subject_user_id=%s AND a.decider_user_id=%s
+                 AND a.kind='tool' AND a.status='pending' AND a.decision_no=0
+                 AND a.expires_at>clock_timestamp() AND a.resumed_run_id IS NULL
+                 AND r.id=a.run_id AND r.conversation_id=a.conversation_id
+                 AND r.tenant_id=a.tenant_id AND r.org_id IS NOT DISTINCT FROM a.org_id
+                 AND r.interrupt_id=a.interrupt_id AND r.status='interrupted'
+               RETURNING a.id""",
+            (
+                thread_id,
+                interrupt_id,
+                gate.tenant_id,
+                gate.owner_a.user_id,
+                gate.owner_a.user_id,
+            ),
+        )
+        require(
+            len(await cursor.fetchall()) == 1,
+            "expected one currently pending test approval",
+        )
+
+
 async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, object]:
     """Approve competitively, or reject one action out of two after rejecting an incomplete batch."""
     mixed = kind == "mixed"
@@ -236,6 +280,7 @@ async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, ob
         "single": approvals,
         "mixed": [*approvals, reject],
         "rejected": [reject],
+        "expired": approvals,
     }[kind]
 
     def continuation(
@@ -265,6 +310,23 @@ async def _check_decisions(gate: Gate, skill_id: str, kind: str) -> dict[str, ob
         and docx_attempts(thread_id) == 0,
         "tool ran before approval",
     )
+    if kind == "expired":
+        await _expire_pending(gate, thread_id, real_id)
+        denied = await gate.owner_b.send("POST", route, continuation(decisions))
+        expect_status(denied, 409)
+        after = await _counts(gate, thread_id, skill_id)
+        attempts = docx_attempts(thread_id)
+        require(
+            after == expected_before and attempts == 0,
+            "expired approval caused a side effect",
+        )
+        return {
+            "thread_id": thread_id,
+            "resume_status": denied.status_code,
+            "before": expected_before,
+            "after": after,
+            "process_starts": attempts,
+        }
     expect_status(await gate.other_b.send("POST", route, continuation(decisions)), 404)
     expect_status(
         await gate.owner_b.send("POST", route, continuation(decisions, str(uuid4()))),
@@ -342,5 +404,5 @@ async def check_approval(gate: Gate) -> dict[str, object]:
     skill = await _docx_skill(gate)
     return {
         kind: await _check_decisions(gate, skill, kind)
-        for kind in ("single", "mixed", "rejected")
+        for kind in ("single", "mixed", "rejected", "expired")
     }
