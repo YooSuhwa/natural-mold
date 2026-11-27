@@ -64,11 +64,12 @@ export function nativeAuthRequiredPayload(
   if (value.type !== 'auth_required') return null
   const reason = typeof value.reason === 'string' ? value.reason : 'auth_needed'
   const items = Array.isArray(value.items) ? value.items : []
-  // A still-broken `retry` re-asks under the same LangGraph interrupt id; `attempt`
-  // tells the re-ask apart (card identity, resolved-interrupt bookkeeping).
   const attempt = typeof value.attempt === 'number' ? value.attempt : 1
   return {
     interrupt_id: interruptId,
+    ...(typeof value.auth_request_id === 'string' && value.auth_request_id
+      ? { auth_request_id: value.auth_request_id }
+      : {}),
     native: 'auth_required',
     action_requests: [{ name: AUTH_REQUIRED_ACTION, args: { reason, items, attempt } }],
     review_configs: [{ action_name: AUTH_REQUIRED_ACTION, allowed_decisions: ['respond'] }],

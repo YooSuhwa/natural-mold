@@ -536,6 +536,8 @@ export interface StandardInterruptPayload {
   review_configs: ReviewConfig[]
   /** Set only by the native interrupt adapter (F-07 `auth_required`), never by tool args. */
   native?: 'auth_required'
+  /** First interrupt ID of the connection request, shared by its retry attempts. */
+  auth_request_id?: string
 }
 
 /**
@@ -546,6 +548,7 @@ export interface StandardInterruptPayload {
 export interface AuthRequiredInterruptPayload {
   interrupt_id: string
   type: 'auth_required'
+  auth_request_id?: string
   reason?: string
   items?: unknown[]
   attempt?: number
