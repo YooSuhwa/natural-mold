@@ -83,9 +83,7 @@ def _exited(process: subprocess.Popen[bytes], timeout: float) -> bool:
             raise OSError(event.data, "Cannot observe managed child exit")
         return True
     deadline = time.monotonic() + timeout
-    while (
-        os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None
-    ):
+    while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return False
@@ -103,11 +101,7 @@ def _live_group(pgid: int) -> bool:
         timeout=5,
         check=False,
     )
-    if (
-        result.returncode == 1
-        and not result.stdout.strip()
-        and not result.stderr.strip()
-    ):
+    if result.returncode == 1 and not result.stdout.strip() and not result.stderr.strip():
         return False
     if result.returncode:
         raise RuntimeError("Could not verify the managed process group")
@@ -182,9 +176,7 @@ def command(
         if not _exited(proc, timeout):
             raise RuntimeError(f"{name} exceeded {timeout}s")
     if proc.returncode:
-        raise RuntimeError(
-            f"{name} exited {proc.returncode}\n{scrub_logs(logfile, env)}"
-        )
+        raise RuntimeError(f"{name} exited {proc.returncode}\n{scrub_logs(logfile, env)}")
 
 
 def wait_ready(
@@ -209,6 +201,4 @@ def wait_ready(
             return
         time.sleep(0.2)
     state = "exited" if _exited(process, 0) else "running"
-    raise RuntimeError(
-        f"{logfile.stem} not ready ({state})\n{scrub_logs(logfile, env)}"
-    )
+    raise RuntimeError(f"{logfile.stem} not ready ({state})\n{scrub_logs(logfile, env)}")
