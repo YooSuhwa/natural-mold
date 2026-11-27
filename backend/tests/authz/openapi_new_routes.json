@@ -5470,6 +5470,258 @@
         ]
       }
     },
+    "/api/conversations/{conversation_id}/child-tasks": {
+      "get": {
+        "operationId": "list_conversation_child_tasks_api_conversations__conversation_id__child_tasks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 2147483647,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChildTaskPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Conversation Child Tasks",
+        "tags": [
+          "conversations",
+          "conversation-child-tasks"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/child-tasks/{child_id}/cancel": {
+      "post": {
+        "operationId": "cancel_conversation_child_task_api_conversations__conversation_id__child_tasks__child_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "child_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Child Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChildTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Conversation Child Task",
+        "tags": [
+          "conversations",
+          "conversation-child-tasks"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/child-tasks/{child_id}/instructions": {
+      "post": {
+        "operationId": "add_conversation_child_instruction_api_conversations__conversation_id__child_tasks__child_id__instructions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "child_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Child Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChildInstructionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChildTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Conversation Child Instruction",
+        "tags": [
+          "conversations",
+          "conversation-child-tasks"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/child-tasks/{child_id}/wait": {
+      "get": {
+        "operationId": "wait_for_conversation_child_task_api_conversations__conversation_id__child_tasks__child_id__wait_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "child_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Child Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timeout_seconds",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 20,
+              "minimum": 0,
+              "title": "Timeout Seconds",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChildTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wait For Conversation Child Task",
+        "tags": [
+          "conversations",
+          "conversation-child-tasks"
+        ]
+      }
+    },
     "/api/conversations/{conversation_id}/debug/traces": {
       "get": {
         "operationId": "list_debug_traces_api_conversations__conversation_id__debug_traces_get",
@@ -34927,6 +35179,214 @@
         "filename"
       ],
       "title": "ChatNotificationDestination",
+      "type": "object"
+    },
+    "ChildInstructionCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "client_request_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Client Request Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_request_id",
+        "text"
+      ],
+      "title": "ChildInstructionCreate",
+      "type": "object"
+    },
+    "ChildInstructionResponse": {
+      "properties": {
+        "applied_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Applied At"
+        },
+        "client_request_id": {
+          "title": "Client Request Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "delivering",
+            "applied",
+            "cancelled",
+            "review_required"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "client_request_id",
+        "text",
+        "status",
+        "created_at",
+        "applied_at"
+      ],
+      "title": "ChildInstructionResponse",
+      "type": "object"
+    },
+    "ChildTaskPage": {
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/ChildTaskResponse"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Offset"
+        }
+      },
+      "required": [
+        "items",
+        "next_offset",
+        "enabled"
+      ],
+      "title": "ChildTaskPage",
+      "type": "object"
+    },
+    "ChildTaskResponse": {
+      "properties": {
+        "brief": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Brief"
+        },
+        "checkpointed": {
+          "title": "Checkpointed",
+          "type": "boolean"
+        },
+        "child_agent_id": {
+          "format": "uuid",
+          "title": "Child Agent Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "instructions": {
+          "items": {
+            "$ref": "#/components/schemas/ChildInstructionResponse"
+          },
+          "title": "Instructions",
+          "type": "array"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "awaiting_approval",
+            "completed",
+            "cancelled",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "title": "Tool Call Id",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "run_id",
+        "tool_call_id",
+        "role",
+        "child_agent_id",
+        "brief",
+        "status",
+        "checkpointed",
+        "created_at",
+        "updated_at",
+        "result",
+        "instructions"
+      ],
+      "title": "ChildTaskResponse",
       "type": "object"
     },
     "Clause": {

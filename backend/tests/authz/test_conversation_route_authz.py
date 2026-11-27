@@ -31,6 +31,7 @@ DOMAIN_MODULES = {
         "conversation_agent_protocol",
         "conversation_agent_protocol_sdk",
         "conversation_branches",
+        "conversation_child_tasks",
         "conversation_crud",
         "conversation_files",
         "conversation_followup",
@@ -76,7 +77,7 @@ def test_conversation_family_routes_declare_their_plan_policy(monkeypatch) -> No
         for method in route.methods
     ]
     # +9 memory routes (plan 15 PR-B1), +5 (PR-B2), +2 (Q14), +3 (PR-B3)
-    assert len(routes) == 111
+    assert len(routes) == 115
     assert [r for r in routes if r[2] != _expected(r[1])] == []
     memory = next(r for r in app.routes if isinstance(r, APIRoute) and r.path in RES_ROUTES)
     assert policy_of(memory.endpoint) == RES(
