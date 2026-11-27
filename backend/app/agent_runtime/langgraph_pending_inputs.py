@@ -4,6 +4,8 @@ import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any, TypedDict, cast
 
+from langgraph.pregel._task_status import read_task_statuses
+
 from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
     canonical_input_requested_events,
@@ -11,6 +13,7 @@ from app.agent_runtime.protocol_events import (
     stored_protocol_event,
 )
 from app.agent_runtime.streaming import _interrupt_to_standard_chunk
+from app.tenancy.checkpoint_audit import CHECKPOINT_TENANT_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +211,88 @@ async def interrupt_payloads_from_checkpointer(
     )
 
 
+def _snapshot_checkpoint(state: Any, scope: Mapping[str, Any]) -> str | None:
+    config = getattr(state, "config", None)
+    details = config.get("configurable") if isinstance(config, Mapping) else None
+    if (
+        not isinstance(details, Mapping)
+        or details.get("thread_id") != scope.get("thread_id")
+        or details.get("checkpoint_ns", "") != scope.get("checkpoint_ns", "")
+    ):
+        return None
+    checkpoint = details.get("checkpoint_id")
+    return checkpoint if isinstance(checkpoint, str) and checkpoint else None
+
+
+async def _pinned_run_output(
+    agent: Any, config: dict[str, Any], scope: Mapping[str, Any], run_id: str
+) -> tuple[Any, bool]:
+    # The graph executes at its pinned input. Only the terminal read is live:
+    # explicit checkpoint_id in aget_state returns the historical, replayable input.
+    coordinates = dict(scope)
+    seed = coordinates.pop("checkpoint_id")
+    live = {**config, "configurable": coordinates}
+    output = await agent.aget_state(live)
+    producer = coordinates.get("moldy_run_id")
+    if producer is not None and producer != run_id:
+        raise PendingInputStateUnavailable("pending input state unavailable")
+    tenant = coordinates.get(CHECKPOINT_TENANT_KEY)
+    expected = {
+        key: value
+        for key, value in (("moldy_run_id", producer), (CHECKPOINT_TENANT_KEY, tenant))
+        if value is not None
+    }
+
+    def owned(state: Any) -> bool:
+        metadata = getattr(state, "metadata", None) or {}
+        return bool(_snapshot_checkpoint(state, scope)) and all(
+            metadata.get(key) == value for key, value in expected.items()
+        )
+
+    if owned(output):
+        return output, True
+    if _snapshot_checkpoint(output, scope) == seed:
+        # A partially resumed parallel step can still occupy its (older) input
+        # checkpoint. The live snapshot applies task writes to that exact seed.
+        metadata = getattr(output, "metadata", None) or {}
+        if metadata.get(CHECKPOINT_TENANT_KEY) in (None, tenant):
+            return output, True
+    if producer is not None:
+        # Another authorized branch may have advanced this thread. Only inspect
+        # an output stamped by our physical run and company in the same namespace.
+        async for state in agent.aget_state_history(live, filter=expected, limit=1):
+            if owned(state):
+                return state, False
+    raise PendingInputStateUnavailable("pending input state unavailable")
+
+
+async def _pinned_pending_writes(agent: Any, state: Any) -> list[PendingInputPayload]:
+    if getattr(state, "next", None) == () and not getattr(state, "tasks", ()):
+        return []
+    saver = getattr(agent, "checkpointer", None)
+    if saver is None or not callable(getattr(saver, "aget_tuple", None)):
+        from app.agent_runtime.checkpointer import get_checkpointer
+
+        saver = get_checkpointer()
+    saved = await saver.aget_tuple(state.config)
+    coordinates = state.config["configurable"]
+    if (
+        saved is None
+        or _snapshot_checkpoint(saved, coordinates) != coordinates["checkpoint_id"]
+        or saved.checkpoint["id"] != coordinates["checkpoint_id"]
+        or any(
+            saved.metadata.get(key) != (state.metadata or {}).get(key)
+            for key in ("moldy_run_id", CHECKPOINT_TENANT_KEY)
+        )
+    ):
+        raise PendingInputStateUnavailable("pending input state unavailable")
+    writes = [
+        (task_id, "__interrupt__", task.pending_interrupts)
+        for task_id, task in read_task_statuses(saved.pending_writes or ()).items()
+    ]
+    return _interrupt_payloads_from_pending_writes(writes)
+
+
 async def pending_input_requested_events(
     agent: Any,
     config: dict[str, Any],
@@ -220,12 +305,19 @@ async def pending_input_requested_events(
     if not callable(raw_get_state):
         return []
     get_state = cast(Callable[[dict[str, Any]], Awaitable[Any]], raw_get_state)
+    coordinates = config.get("configurable") or {}
+    pinned = bool(coordinates.get("checkpoint_id"))
     try:
-        state = await get_state(config)
+        if pinned:
+            state, live = await _pinned_run_output(agent, config, coordinates, run_id)
+        else:
+            state, live = await get_state(config), True
     except Exception as exc:
         raise PendingInputStateUnavailable("pending input state unavailable") from exc
 
-    payloads = _interrupt_payloads_from_state(state)
+    # Historical snapshots include already answered interrupts. Pending writes on
+    # the verified output carry their current task status, even after a branch move.
+    payloads = _interrupt_payloads_from_state(state) if live else []
     # On the normal path ``state.tasks[].interrupts`` is already populated, so the
     # checkpointer fallback (a second ``aget_tuple`` DB read against the shared
     # checkpointer pool) is only needed when state carries no interrupts at all
@@ -233,7 +325,9 @@ async def pending_input_requested_events(
     if not payloads:
         _append_unique_payloads(
             payloads,
-            await interrupt_payloads_from_checkpointer(config),
+            await _pinned_pending_writes(agent, state)
+            if pinned
+            else await interrupt_payloads_from_checkpointer(config),
         )
 
     seen_interrupt_ids = _seen_interrupt_ids(emitted)
