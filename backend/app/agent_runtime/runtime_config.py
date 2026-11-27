@@ -169,6 +169,8 @@ class AgentConfig:
     # Memory policy plan 15 (5.2): the execution path that decides which memory the run may
     # read and write (``memory_paths``). Set by each entry; a resume takes its chain's origin.
     run_path: str = field(default="chat", kw_only=True)
+    # Set only by the server after it resolves the child conversation and its delegation.
+    independent_job: bool = field(default=False, kw_only=True)
     # Plan 15 (PR-B2, 5.4): the run whose chain keys automatic recall, the one-off recall
     # block the root agent's model calls carry (never the system prompt, the checkpoint or
     # a child agent), and the scopes ``search_memory`` may read (``None``: no tool).
@@ -237,6 +239,7 @@ class PreparedRunBinding:
     run_id: uuid.UUID
     thread_id: str
     participant_paths: tuple[str, ...] = ()
+    independent_job: bool = field(default=False, kw_only=True)
 
 
 @dataclass(frozen=True, eq=False, slots=True)

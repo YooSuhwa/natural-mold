@@ -403,6 +403,9 @@ class Settings(AuthzSettings):
     # Opt-in for checkpoint recovery of ordinary runs with durable owner fencing.
     chat_run_recovery_enabled: bool = False
     chat_run_recovery_max_attempts: int = Field(default=2, ge=0)
+    # Controls new notifications. Already queued work drains after disabling the switch.
+    chat_work_notifications_enabled: bool = False
+    independent_chat_jobs_enabled: bool = False
     chat_run_stale_after_seconds: int = 300
     chat_run_stale_sweep_interval_seconds: int = 60
     # Admit text instructions for the next model call of an existing chat run.
@@ -416,6 +419,7 @@ class Settings(AuthzSettings):
     # Write immutable original-message archives on standard chat roots. Prepared leases
     # only authorize run-local storage. Existing archive reads survive disabling writes.
     chat_archive_writes_enabled: bool = False
+    child_tasks_enabled: bool = False
     # Parent Task 10 — opt-in gate for executing runs through a prepared lease
     # (materialize under the canonical locks, then dispatch the frozen graph).
     # Off = every entry keeps the legacy ``_prepare_agent`` path.

@@ -223,7 +223,8 @@ class RunCredentialResolver:
                 self._opened[credential.id] = None
         return self._opened[credential.id]
 
-    async def _credential_for(self, row: Resource, kind: str) -> Credential | None:
+    async def credential_for(self, row: Resource, kind: str) -> Credential | None:
+        """Resolve the authorized binding row without opening or refreshing its secret."""
         if row.credential_mode == "per_user":
             return await self.bound(row, kind)
         return await self._shared(row)
@@ -245,7 +246,7 @@ class RunCredentialResolver:
 
     async def tool(self, tool: Tool) -> ResolvedCredential | None:
         await self.require_resource(tool, "tool", tool_not_found())
-        credential = await self._credential_for(tool, "tool")
+        credential = await self.credential_for(tool, "tool")
         if credential is None:
             return None
         return self._resolved(credential, tool, "tool", await self._open(credential))
@@ -257,7 +258,7 @@ class RunCredentialResolver:
             if server.credential_mode != "per_user":
                 await self._shared(server)
             return None
-        credential = await self._credential_for(server, "mcp_server")
+        credential = await self.credential_for(server, "mcp_server")
         static = dict(server.headers or {})
         if credential is None:
             return McpResolution(None, None, static)

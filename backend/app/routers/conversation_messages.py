@@ -173,6 +173,7 @@ async def list_messages(
 
     if tree is None:
         return MessagesEnvelope(
+            conversation_source=conv.source,
             messages=messages,
             active_run=active_run_response,
             latest_run=latest_run_response,
@@ -185,6 +186,7 @@ async def list_messages(
 
         active_tip = parse_msg_id(tree.active_tip_message_id, conversation_id, 0)
     return MessagesEnvelope(
+        conversation_source=conv.source,
         messages=messages,
         active_run=active_run_response,
         latest_run=latest_run_response,

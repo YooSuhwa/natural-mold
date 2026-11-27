@@ -36,6 +36,7 @@ class RuntimeOwnershipRequest:
     conversation_id: uuid.UUID
     root_agent_id: uuid.UUID
     context: OrgContext
+    independent_job: bool = False
 
 
 @dataclass(frozen=True, slots=True)

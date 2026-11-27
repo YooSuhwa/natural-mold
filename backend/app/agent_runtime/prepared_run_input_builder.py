@@ -17,6 +17,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from langchain.agents.middleware import AgentMiddleware
 
@@ -77,6 +78,7 @@ class PreparedChildSource:
     model: LeaseModelSpec
     tool_configs: tuple[Mapping[str, Any], ...] = ()
     middleware_configs: tuple[Mapping[str, Any], ...] = ()
+    agent_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +91,7 @@ class PreparedRunSources:
     children: tuple[PreparedChildSource, ...] = ()
     memory_prompt: str = ""
     is_trigger_mode: bool = False
+    track_child_tasks: bool = False
     secret_reference_ids: tuple[str, ...] = ()
     versions: Mapping[str, str] | None = None
     run_id: str | None = None
@@ -298,8 +301,9 @@ def build_preparation_inputs(
         stored_policy=_stored(cfg),
         ask_user_tool=None if trigger else bindings.ask_user_tool,
     )
+    allow_children = not (cfg.goal_followup or cfg.independent_job)
     children, child_tools, child_sets = (
-        ([], {}, []) if cfg.goal_followup else _child_specs(sources, bindings)
+        _child_specs(sources, bindings) if allow_children else ([], {}, [])
     )
     if trigger or cfg.unattended_approval is not None:
         _refuse_unattended_approvals(sources, bindings, root_tools, child_sets)
@@ -328,6 +332,7 @@ def build_preparation_inputs(
     if cfg.memory_recall_block:
         root_middleware.append(MemoryRecallMiddleware(cfg.memory_recall_block))
     return PreparationInputs(
+        independent_job=cfg.independent_job,
         thread_id=cfg.thread_id,
         system_prompt=prompt,
         messages=tuple(convert_to_langchain_messages(sources.messages_history)),
@@ -345,6 +350,13 @@ def build_preparation_inputs(
         root_middleware=tuple(root_middleware),
         mcp_interrupts=not trigger,
         child_tools=child_tools,
+        child_task_agents={
+            f"root/{child.runtime_name}": child.agent_id
+            for child in sources.children
+            if child.agent_id is not None
+        }
+        if allow_children and sources.track_child_tasks
+        else {},
         interrupt_on=_interrupts(
             cfg.middleware_configs,
             root_tools,

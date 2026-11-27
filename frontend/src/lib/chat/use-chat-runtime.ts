@@ -60,6 +60,7 @@ import { toStandardInterruptPayload } from './auth-required-interrupt'
 import { hasHydratedSingleActionInterrupt } from './legacy-pending-interrupt'
 import { artifactKeys } from '@/lib/api/artifacts'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
+import { useIndependentJobCancelChoice } from '@/components/chat/independent-job-cancel-provider'
 import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
 import { agentQueryKeys } from '@/lib/query-keys/agents'
 import { conversationQueryKeys } from '@/lib/query-keys/conversations'
@@ -399,6 +400,7 @@ export function useChatRuntime({
   const [, setStreamError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const cancelInFlightRef = useRef(false)
+  const chooseCancelScope = useIndependentJobCancelChoice(conversationId)
   const cancelNoticePendingRef = useRef(false)
   // 가장 최근에 emit된 interrupt_id (resume 시 stale 검증용)
   const lastInterruptIdRef = useRef<string | null>(null)
@@ -1383,7 +1385,24 @@ export function useChatRuntime({
     cancelInFlightRef.current = true
     setChatCancelInFlight(true)
     try {
-      const run = await conversationRunsApi.cancel(activeConversationId, runId)
+      const confirmation = chooseCancelScope?.(runId)
+      const scope = confirmation ? await confirmation : 'parent'
+      if (scope === 'dismiss') return
+      if (confirmation) {
+        const current = await conversationRunsApi.active(activeConversationId)
+        if (
+          current?.id !== runId ||
+          (current.status !== 'queued' && current.status !== 'running') ||
+          controller?.signal.aborted ||
+          activeConversationId !== conversationIdRef.current ||
+          runId !== runIdRef.current
+        )
+          return
+      }
+      const run =
+        scope === 'cascade'
+          ? await conversationRunsApi.cancel(activeConversationId, runId, true)
+          : await conversationRunsApi.cancel(activeConversationId, runId)
       queryClient.invalidateQueries({ queryKey: agentQueryKeys.all })
       queryClient.invalidateQueries({
         queryKey: conversationQueryKeys.prefix(activeConversationId),
@@ -1405,7 +1424,7 @@ export function useChatRuntime({
       cancelInFlightRef.current = false
       setChatCancelInFlight(false)
     }
-  }, [queryClient, setChatCancelInFlight])
+  }, [chooseCancelScope, queryClient, setChatCancelInFlight])
 
   /** M-CHAT1b — edit a user message in place via LangGraph thread fork. */
   const onEdit = useCallback(

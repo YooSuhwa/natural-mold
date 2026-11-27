@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
+from typing import Literal
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
+from app.models.agent import Agent
 from app.models.agent_api import AgentApiRun
 from app.models.agent_lifecycle import ConversationRunAgent
+from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -33,6 +38,7 @@ async def test_all_sources_accept_one_run_complete_participants_and_exact_envelo
     source: OwnedExecutionSource,
 ) -> None:
     await _skip_sqlite_advisory_locks(monkeypatch)
+    monkeypatch.setattr(settings, "child_tasks_enabled", True)
     root, child, conversation = await _seed_execution_tree(db)
     envelope: ExecutionEnvelopeRef | None = None
     if source == "api":
@@ -86,6 +92,9 @@ async def test_all_sources_accept_one_run_complete_participants_and_exact_envelo
         ).all()
     )
     assert {row.agent_id_snapshot for row in rows} == {root.id, child.id}
+    assert [row.identity_mode_at_accept for row in rows] == (
+        [root.identity_mode, child.identity_mode] if source == "chat" else [None, None]
+    )
     assert [(row.agent_id_snapshot, row.role, row.path) for row in rows] == [
         (root.id, "root", []),
         (child.id, "subagent", [str(root.id), str(child.id)]),
@@ -179,3 +188,109 @@ async def test_invalid_external_envelope_rejects_before_run_or_participant_effec
     assert await db.scalar(select(func.count()).select_from(ConversationRunAgent)) == 0
     if persisted is not None:
         assert persisted.conversation_run_id is None
+
+
+async def _identity_modes(db: AsyncSession, run_id: uuid.UUID) -> dict[uuid.UUID, str | None]:
+    rows = await db.execute(
+        select(
+            ConversationRunAgent.agent_id_snapshot, ConversationRunAgent.identity_mode_at_accept
+        ).where(ConversationRunAgent.run_id == run_id)
+    )
+    return dict(rows.tuples().all())
+
+
+@pytest.mark.parametrize(("initially_enabled", "enabled_on_resume"), [(True, False), (False, True)])
+async def test_chat_resume_keeps_participant_identity_pins_from_the_interrupted_run(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    initially_enabled: bool,
+    enabled_on_resume: bool,
+) -> None:
+    await _skip_sqlite_advisory_locks(monkeypatch)
+    root, child, conversation = await _seed_execution_tree(db)
+    root.identity_mode = "per_user"
+    child.identity_mode = "fixed"
+    await db.commit()
+    request = OwnedExecutionRequest(
+        conversation_id=conversation.id,
+        root_agent_id=root.id,
+        context=unit_context(root.user_id),
+        source="chat",
+        input_preview="Research",
+    )
+
+    monkeypatch.setattr(settings, "child_tasks_enabled", initially_enabled)
+    accepted = await agent_execution_owner.accept_owned_execution(db, request)
+    await db.commit()
+    expected = (
+        {root.id: "per_user", child.id: "fixed"}
+        if initially_enabled
+        else {root.id: None, child.id: None}
+    )
+    assert await _identity_modes(db, accepted.run_id) == expected
+
+    run = await db.get(ConversationRun, accepted.run_id, with_for_update=True)
+    assert run is not None
+    await conversation_run_service.transition_run(db, run, "running", worker_instance_id="owner")
+    await conversation_run_service.transition_run(db, run, "interrupted", interrupt_id="approval")
+    await db.commit()
+    # A resumed approval must not promote a newly linked participant or rewrite who
+    # an already running child acted as, even when all three agents have one owner.
+    root.identity_mode, child.identity_mode = "fixed", "per_user"
+    sibling = Agent(
+        user_id=root.user_id,
+        org_id=root.org_id,
+        tenant_id=root.tenant_id,
+        name="Late participant",
+        system_prompt="Follow up",
+        model_id=root.model_id,
+    )
+    db.add(sibling)
+    await db.flush()
+    db.add(AgentSubAgentLink(parent_agent_id=root.id, sub_agent_id=sibling.id, position=1))
+    await db.commit()
+
+    monkeypatch.setattr(settings, "child_tasks_enabled", enabled_on_resume)
+    resumed = await agent_execution_owner.accept_owned_execution(
+        db, replace(request, run_source="resume", parent_run_id=run.id, interrupt_id="approval")
+    )
+    await db.commit()
+    assert await _identity_modes(db, resumed.run_id) == {**expected, sibling.id: None}
+    assert await _identity_modes(db, accepted.run_id) == expected
+
+
+@pytest.mark.parametrize("source", ["edit", "regenerate", "resume"])
+async def test_child_identity_control_for_forks_and_legacy_resumes(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    source: Literal["edit", "regenerate", "resume"],
+) -> None:
+    await _skip_sqlite_advisory_locks(monkeypatch)
+    monkeypatch.setattr(settings, "child_tasks_enabled", True)
+    root, child, conversation = await _seed_execution_tree(db)
+    request = OwnedExecutionRequest(
+        conversation.id, root.id, unit_context(root.user_id), "chat", "Research"
+    )
+    accepted = await agent_execution_owner.accept_owned_execution(db, request)
+    await db.commit()
+    assert await _identity_modes(db, accepted.run_id) == {
+        root.id: root.identity_mode,
+        child.id: child.identity_mode,
+    }
+    run = await db.get(ConversationRun, accepted.run_id, with_for_update=True)
+    assert run is not None
+    await conversation_run_service.transition_run(db, run, "running", worker_instance_id="owner")
+    await conversation_run_service.transition_run(db, run, "completed")
+    await db.commit()
+
+    if source == "resume":
+        # Older persisted interrupts have no authoritative parent participant list.
+        followup = replace(
+            request, run_source=source, interrupt_id="legacy", allow_legacy_resume=True
+        )
+    else:
+        # A fork is freshly admitted under the current flag despite its parent reference.
+        monkeypatch.setattr(settings, "child_tasks_enabled", False)
+        followup = replace(request, run_source=source, parent_run_id=run.id)
+    next_run = await agent_execution_owner.accept_owned_execution(db, followup)
+    assert await _identity_modes(db, next_run.run_id) == {root.id: None, child.id: None}

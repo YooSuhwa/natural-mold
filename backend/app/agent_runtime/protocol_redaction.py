@@ -8,7 +8,7 @@ from typing import Any, Final
 from app.agent_runtime.memory_event_projection import MEMORY_EVENT_NAMES, MEMORY_TOOL_NAMES
 from app.agent_runtime.run_secrets import get_run_secrets
 from app.marketplace.redaction import prepare_secret_values, replace_prepared_secret_values
-from app.schemas.conversation_graph_input import STEER_RECEIPTS_CHANNEL
+from app.schemas.conversation_graph_input import PRIVATE_STEER_CHANNELS
 
 REDACTED_MEMORY_FIELD: Final = "<redacted>"
 REDACTED_SENSITIVE_FIELD: Final = "<redacted>"
@@ -285,7 +285,7 @@ def _mask_values_recursive(data: Any, secrets: tuple[str, ...]) -> Any:
                 else key
             ): _mask_values_recursive(value, secrets)
             for key, value in data.items()
-            if key != STEER_RECEIPTS_CHANNEL
+            if key not in PRIVATE_STEER_CHANNELS
         }
     if isinstance(data, Sequence) and not isinstance(data, str | bytes | bytearray):
         return [_mask_values_recursive(item, secrets) for item in data]
@@ -303,7 +303,7 @@ def _redact_sensitive_keys(data: Any, *, drop_private_channels: bool = True) -> 
                 else _redact_sensitive_keys(value, drop_private_channels=drop_private_channels)
             )
             for key, value in data.items()
-            if not (drop_private_channels and key == STEER_RECEIPTS_CHANNEL)
+            if not (drop_private_channels and key in PRIVATE_STEER_CHANNELS)
         }
     if isinstance(data, Sequence) and not isinstance(data, str | bytes | bytearray):
         return [

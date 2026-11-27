@@ -20,6 +20,7 @@ import { ArrowDownIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { ChatSearchOverlay } from '@/components/chat/chat-search-overlay'
 import { MissionControlBar } from '@/components/chat/mission-control-bar'
+import { DelegatedChildTasks } from '@/components/chat/delegated-child-tasks'
 import { SubagentTeamStrip } from '@/components/chat/subagent-team-strip'
 import { MemoryRecallChip } from '@/components/chat/memory-recall-chip'
 import { ExcludedCapabilitiesBanner } from '@/components/chat/excluded-capabilities-banner'
@@ -55,6 +56,7 @@ export {
 } from '@/components/chat/assistant-message-parts'
 
 export interface AssistantThreadProps {
+  readOnlyConversation?: boolean
   threadHeader?: ReactNode
   agentImageUrl?: string | null
   agentImagePublicAsset?: boolean
@@ -87,6 +89,7 @@ export interface AssistantThreadProps {
 }
 
 export function AssistantThread({
+  readOnlyConversation = false,
   threadHeader,
   agentImageUrl,
   agentImagePublicAsset = false,
@@ -134,6 +137,7 @@ export function AssistantThread({
       builderAgentSubtitle,
       deepAgentsState,
       isBuilder,
+      readOnlyConversation,
       showMessageTimestamp,
       user,
     }),
@@ -145,6 +149,7 @@ export function AssistantThread({
       builderAgentSubtitle,
       deepAgentsState,
       isBuilder,
+      readOnlyConversation,
       showMessageTimestamp,
       user,
     ],
@@ -178,7 +183,12 @@ export function AssistantThread({
           {!isBuilder && deepAgentsState && deepAgentsState.todos.length > 0 ? (
             <MissionControlBar todos={deepAgentsState.todos} />
           ) : null}
-          {!isBuilder ? <SubagentTeamStrip /> : null}
+          {!isBuilder &&
+            (conversationId ? (
+              <DelegatedChildTasks conversationId={conversationId} />
+            ) : (
+              <SubagentTeamStrip />
+            ))}
           {!isBuilder ? <MemoryRecallChip /> : null}
           {!isBuilder ? <ExcludedCapabilitiesBanner /> : null}
           {!isBuilder ? <ConversationToolGrantChips /> : null}
@@ -209,11 +219,12 @@ export function AssistantThread({
             >
               <ThreadPrimitive.Messages>
                 {({ message }) => {
-                  const Component = message.composer.isEditing
-                    ? ASSISTANT_THREAD_MESSAGE_COMPONENTS.UserEditComposer
-                    : message.role === 'user'
-                      ? ASSISTANT_THREAD_MESSAGE_COMPONENTS.UserMessage
-                      : ASSISTANT_THREAD_MESSAGE_COMPONENTS.AssistantMessage
+                  const Component =
+                    message.composer.isEditing && !readOnlyConversation
+                      ? ASSISTANT_THREAD_MESSAGE_COMPONENTS.UserEditComposer
+                      : message.role === 'user'
+                        ? ASSISTANT_THREAD_MESSAGE_COMPONENTS.UserMessage
+                        : ASSISTANT_THREAD_MESSAGE_COMPONENTS.AssistantMessage
                   return <Component />
                 }}
               </ThreadPrimitive.Messages>
@@ -226,7 +237,7 @@ export function AssistantThread({
             <DataComponent key={`data-${index}`} />
           ))}
           <ReconnectIndicator />
-          {isBuilder ? (
+          {readOnlyConversation ? null : isBuilder ? (
             <Suspense fallback={<BuilderComposerFallback />}>
               <BuilderComposer modelLabel={builderModelLabel} />
             </Suspense>

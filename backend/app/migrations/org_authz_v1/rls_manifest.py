@@ -40,6 +40,7 @@ DIRECT_TENANT: Final = frozenset(
         "audit_events",
         "authz_revocations",
         "builder_sessions",
+        "chat_notification_outbox",
         "conversation_artifacts",
         "conversation_goals",
         "conversation_run_steers",
@@ -59,6 +60,7 @@ DIRECT_TENANT: Final = frozenset(
         "guardrail_pseudonyms",  # conversation pseudonym maps (encrypted values)
         "guardrail_template_versions",  # published company templates (immutable)
         "guardrail_templates",  # company guardrail templates (drafts)
+        "independent_chat_jobs",
         "jobs",  # generic background jobs (app/jobs)
         "marketplace_installations",
         "marketplace_items",

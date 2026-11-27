@@ -82,6 +82,11 @@ async def transition_run(
             run.error_code = error_code
             run.error_message = error_message
 
+    if status in {"canceling", "canceled", "completed", "failed", "stale"}:
+        from app.services.child_tasks_runtime import settle_parent_children
+
+        await settle_parent_children(db, run)
+
     await project_owned_envelopes(db, run)
     await db.flush()
     return run

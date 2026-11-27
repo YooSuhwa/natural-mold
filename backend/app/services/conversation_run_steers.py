@@ -30,7 +30,7 @@ from app.authz.run_decisions import fresh_run_decision_scope
 from app.authz.scoping import private_scope_predicate
 from app.models.agent import Agent
 from app.models.approval_request import ApprovalRequest
-from app.models.conversation import Conversation
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.conversation_run_steer import ConversationRunSteer
@@ -71,6 +71,11 @@ async def lock_steer_conversation(
     agent_id = await require_queue_executable(db, conversation_id, context)
     if agent_id != candidate:
         raise _not_found()
+    conversation = await lock_owned_conversation(
+        db, conversation_id=conversation_id, context=context
+    )
+    if conversation.source == INDEPENDENT_JOB_SOURCE:
+        raise _conflict("STEER_RUN_INACTIVE")
     return agent_id
 
 
@@ -242,12 +247,12 @@ async def claim_steers_for_model(
     context = await resolve_private_actor(db, PrivateResourceActor(*actor))
     # This detached worker may have inherited the request's memo while the user still
     # had can_run. Recheck the relation for this model boundary.
-    with fresh_run_decision_scope():
-        agent_id = await lock_steer_conversation(db, conversation_id, context)
-    run = await _lock_target_run(db, conversation_id, run_id, agent_id, context)
-    if run is None or run.status != "running" or not run.is_active:
-        return []
     try:
+        with fresh_run_decision_scope():
+            agent_id = await lock_steer_conversation(db, conversation_id, context)
+        run = await _lock_target_run(db, conversation_id, run_id, agent_id, context)
+        if run is None or run.status != "running" or not run.is_active:
+            return []
         await _require_steerable(db, run, context)
     except HTTPException as exc:
         if exc.status_code != 409:

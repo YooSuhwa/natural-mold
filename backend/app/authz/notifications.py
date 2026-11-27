@@ -31,8 +31,11 @@ from sqlalchemy import and_, delete, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_administrators import active_org_users
+from app.authz.org_context import OrgContext
 from app.authz.share_targets import SHARE_TYPES
+from app.models.approval_request import ApprovalRequest
 from app.models.authz import ResourceGrant
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.notification import Notification
 from app.models.organization import Organization, OrganizationMember
 from app.models.organization_group import GroupMember
@@ -45,6 +48,8 @@ WINDOWS: Final = {
 }
 RETENTION: Final = timedelta(days=90)
 PayloadValue = str | int | bool | None
+APPROVAL_KINDS: Final = frozenset({"approval.requested", "approval.expiring", "approval.decided"})
+INDEPENDENT_APPROVAL_MARKER: Final = "independent_job"
 _LINKS: Final = {
     "agent": "/agents/{id}",
     "skill": "/skills/{id}",
@@ -186,10 +191,45 @@ async def notify(
     stamp = now()
     body: dict[str, PayloadValue] = {"target_name": target.name if target else None}
     body.update(payload or {})
+    # The persisted request supplies provenance; never trust a caller's payload marker.
+    body.pop(INDEPENDENT_APPROVAL_MARKER, None)
+    independent = False
+    if kind in APPROVAL_KINDS and target is not None and target.type == "approval_request":
+        request = (
+            await db.execute(
+                select(ApprovalRequest.conversation_id, Conversation.source)
+                .outerjoin(
+                    Conversation,
+                    and_(
+                        Conversation.id == ApprovalRequest.conversation_id,
+                        Conversation.org_id == ApprovalRequest.org_id,
+                        Conversation.tenant_id == ApprovalRequest.tenant_id,
+                    ),
+                )
+                .where(
+                    ApprovalRequest.id == target.id,
+                    ApprovalRequest.tenant_id == tenant_id,
+                    ApprovalRequest.org_id.is_not_distinct_from(org_id),
+                )
+            )
+        ).one_or_none()
+        if request is None or (request.conversation_id is not None and request.source is None):
+            return []
+        independent = request.source == INDEPENDENT_JOB_SOURCE
+        if independent:
+            body[INDEPENDENT_APPROVAL_MARKER] = True
     written: list[Notification] = []
     for user_id in dict.fromkeys(recipients):
         if user_id == actor_id:
             continue
+        if independent:
+            from app.approvals.independent_visibility import authorized_independent_approval_ids
+
+            if org_id is None or target is None:
+                continue
+            context = OrgContext(tenant_id=tenant_id, org_id=org_id, user_id=user_id)
+            if target.id not in await authorized_independent_approval_ids(db, context, {target.id}):
+                continue
         await _prune(db, user_id, stamp)
         await _lock_key(db, user_id, kind, target and target.id, tenant_id, org_id)
         window = WINDOWS.get(kind, MERGE_WINDOW)

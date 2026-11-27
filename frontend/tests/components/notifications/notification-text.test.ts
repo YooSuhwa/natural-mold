@@ -101,3 +101,15 @@ describe('notificationText memory.consolidation_stopped', () => {
     expect(notificationText(item, t)).toBe('기억 정리가 24시간 안에 세 번 실패해 멈췄어요')
   })
 })
+
+describe('chat work transitions', () => {
+  it.each([
+    ['chat_goal.completed', '목표를 완료했어요'],
+    ['chat_goal.blocked', '목표를 계속 진행하려면 확인이 필요해요'],
+    ['chat_task.completed', '백그라운드 작업이 끝났어요'],
+  ])('represents %s using only visible state', (kind, message) => {
+    const note = grant({ kind, actor: null, payload: { file: 'confidential' } })
+    expect(notificationText(note, t)).toBe(message)
+    expect(notificationText({ ...note, target: null }, t)).toBe('이 알림의 대상을 열 수 없어요')
+  })
+})

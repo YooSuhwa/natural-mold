@@ -420,6 +420,7 @@ export interface TokenUsageBreakdown {
  * Wraps the message list with branch/active-tip metadata.
  */
 export interface MessagesEnvelope {
+  conversation_source?: string | null
   messages: Message[]
   active_run?: ConversationRun | null
   /** 최신 run (상태 무관). active_run 은 terminal run 을 보고하지 않으므로

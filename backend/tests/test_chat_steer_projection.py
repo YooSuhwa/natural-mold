@@ -16,14 +16,14 @@ from app.agent_runtime.langgraph_protocol_adapter import (
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.protocol_events import to_protocol_wire_event
 from app.routers.conversation_agent_protocol_contracts import AgentCommandParams, UpdateStateRequest
-from app.schemas.conversation_graph_input import STEER_RECEIPTS_CHANNEL
+from app.schemas.conversation_graph_input import PRIVATE_STEER_CHANNELS
 from app.schemas.conversation_run_input import ConversationRunInputEditRequest
 from app.services.conversation_history_projection import sanitize_checkpoint_payload
 
 
 def _contains_private_state(value: Any) -> bool:
     if isinstance(value, Mapping):
-        return STEER_RECEIPTS_CHANNEL in value or any(
+        return not PRIVATE_STEER_CHANNELS.isdisjoint(value) or any(
             _contains_private_state(v) for v in value.values()
         )
     if isinstance(value, Sequence) and not isinstance(value, str | bytes):
@@ -31,12 +31,13 @@ def _contains_private_state(value: Any) -> bool:
     return value == "internal-receipt-id"
 
 
+@pytest.mark.parametrize("channel", sorted(PRIVATE_STEER_CHANNELS))
 @pytest.mark.parametrize("method", ["values", "updates", "checkpoints"])
 @pytest.mark.parametrize("v3", [True, False])
-def test_streams_and_replay_omit_private_receipts(method: str, v3: bool) -> None:
+def test_streams_and_replay_omit_private_receipts(method: str, v3: bool, channel: str) -> None:
     state = {
         "progress": "researching",
-        STEER_RECEIPTS_CHANNEL: {"run_id": "run", "ids": ["internal-receipt-id"]},
+        channel: {"run_id": "run", "ids": ["internal-receipt-id"]},
     }
     data = {"node": state, "messages": [{"type": "human", "content": "국내 사례만"}]}
     if v3:
@@ -59,19 +60,21 @@ def test_streams_and_replay_omit_private_receipts(method: str, v3: bool) -> None
         project_and_redact_protocol_data("protocol_replay", [to_protocol_wire_event(event)]),
     ):
         assert not _contains_private_state(view)
-    assert state[STEER_RECEIPTS_CHANNEL] == {"run_id": "run", "ids": ["internal-receipt-id"]}
+    assert state[channel] == {"run_id": "run", "ids": ["internal-receipt-id"]}
 
 
-def test_private_channel_is_removed_before_masking_dynamic_secret_keys() -> None:
-    data = {STEER_RECEIPTS_CHANNEL: {"ids": ["internal-receipt-id"]}}
-    projected = project_and_redact_protocol_data("values", data, secret_values=("run_steer",))
+@pytest.mark.parametrize("channel", sorted(PRIVATE_STEER_CHANNELS))
+def test_private_channel_is_removed_before_masking_dynamic_secret_keys(channel: str) -> None:
+    data = {channel: {"ids": ["internal-receipt-id"]}}
+    projected = project_and_redact_protocol_data("values", data, secret_values=(channel[6:12],))
     assert projected == {}
 
 
-def test_retained_checkpoint_preserves_messages_and_public_channels() -> None:
-    text = '{"moldy_run_steer_receipts": "example of authored JSON"}'
+@pytest.mark.parametrize("channel", sorted(PRIVATE_STEER_CHANNELS))
+def test_retained_checkpoint_preserves_messages_and_public_channels(channel: str) -> None:
+    text = '{"' + channel + '": "example of authored JSON"}'
     checkpoint = sanitize_checkpoint_payload(
-        {"progress": "done", STEER_RECEIPTS_CHANNEL: {"ids": ["internal-receipt-id"]}},
+        {"progress": "done", channel: {"ids": ["internal-receipt-id"]}},
         [HumanMessage(content=text, id="message-id")],
         (),
     )
@@ -81,6 +84,7 @@ def test_retained_checkpoint_preserves_messages_and_public_channels() -> None:
     assert checkpoint.messages[0]["id"] == "message-id"
 
 
+@pytest.mark.parametrize("channel", sorted(PRIVATE_STEER_CHANNELS))
 @pytest.mark.parametrize(
     ("model", "field", "extra"),
     [
@@ -93,10 +97,11 @@ def test_public_graph_fields_reserve_only_top_level_receipts(
     model: type[AgentCommandParams | UpdateStateRequest | ConversationRunInputEditRequest],
     field: str,
     extra: dict[str, Any],
+    channel: str,
 ) -> None:
     with pytest.raises(ValidationError, match="managed by the runtime"):
-        model.model_validate({**extra, field: {STEER_RECEIPTS_CHANNEL: None}})
+        model.model_validate({**extra, field: {channel: None}})
 
-    ordinary = {"messages": [], "user_data": {STEER_RECEIPTS_CHANNEL: "example"}}
+    ordinary = {"messages": [], "user_data": {channel: "example"}}
     validated = model.model_validate({**extra, field: ordinary})
     assert getattr(validated, field) == ordinary

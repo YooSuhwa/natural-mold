@@ -24,8 +24,10 @@ from app.models.authz import AuthzOutbox, AuthzRevocation, AuthzShadowDiff, Reso
 from app.models.authz_reconcile_run import AuthzReconcileRun
 from app.models.builder_session import BuilderSession
 from app.models.chat_image_description import ChatImageDescription
+from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
+from app.models.conversation_child_task import ConversationChildInstruction, ConversationChildTask
 from app.models.conversation_goal import ConversationGoal, GoalAttempt, GoalTransitionIntent
 from app.models.conversation_history import (
     ConversationHistoryCheckpoint,
@@ -57,6 +59,7 @@ from app.models.guardrail_template import (
 )
 from app.models.health_check_history import HealthCheckHistory
 from app.models.image_description_charge import ImageDescriptionCharge
+from app.models.independent_chat_job import IndependentChatJob
 from app.models.job import Job, JobWorker
 from app.models.marketplace import (
     MarketplaceInstallation,
@@ -163,6 +166,8 @@ __all__ = [
     "ImageDescriptionCharge",
     "Conversation",
     "ConversationArtifact",
+    "ConversationChildInstruction",
+    "ConversationChildTask",
     "ConversationGoal",
     "ConversationHistoryCheckpoint",
     "ConversationHistoryEvent",
@@ -189,6 +194,7 @@ __all__ = [
     "GuardrailTemplate",
     "GuardrailTemplateVersion",
     "HealthCheckHistory",
+    "IndependentChatJob",
     "Job",
     "JobWorker",
     "MarketplaceInstallation",
@@ -208,6 +214,7 @@ __all__ = [
     "MessageEventChunk",
     "MessageFeedback",
     "Model",
+    "ChatNotificationOutbox",
     "Notification",
     "AuthzReconcileRun",
     "RefreshToken",

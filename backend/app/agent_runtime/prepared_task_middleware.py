@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from types import MappingProxyType
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from deepagents.middleware.subagents import (
     SUBAGENT_RESPONSE_FORMAT_CONFIG_KEY,
@@ -50,6 +50,10 @@ from app.agent_runtime.prepared_task_tool_handler import (
     PreparedStateProjector,
     run_prepared_child,
 )
+
+if TYPE_CHECKING:
+    from app.agent_runtime.delegated_child_control import ChildTaskLifecycle
+
 
 TASK_TOOL_NAME = "task"
 type RunnableKey = tuple[str, str]
@@ -105,6 +109,7 @@ class PreparedTaskDispatchMiddleware(AgentMiddleware[Any, Any, Any]):
         runnables: Mapping[RunnableKey, Any],
         projector: PreparedStateProjector,
         admission_factory: Callable[[], ChildLaunchAdmission],
+        child_controls: Mapping[str, ChildTaskLifecycle] | None = None,
     ) -> None:
         super().__init__()
         self.tools = []
@@ -114,6 +119,7 @@ class PreparedTaskDispatchMiddleware(AgentMiddleware[Any, Any, Any]):
         self._runnables = MappingProxyType({k: v for k, v in runnables.items() if k[0] in ids})
         self._projector = projector
         self._admission_factory = admission_factory
+        self._child_controls = {k: v for k, v in (child_controls or {}).items() if k in ids}
 
     def wrap_tool_call(
         self,
@@ -169,13 +175,28 @@ class PreparedTaskDispatchMiddleware(AgentMiddleware[Any, Any, Any]):
             child_token=child.token,
             invocation_id=invocation_id,
         )
-        return await run_prepared_child(
-            reservation,
-            runnable,
-            child_input,
-            invocation_id=invocation_id,
-            projector=self._projector,
-        )
+
+        async def execute(_request: ToolCallRequest) -> ToolResult:
+            return await run_prepared_child(
+                reservation,
+                runnable,
+                child_input,
+                invocation_id=invocation_id,
+                projector=self._projector,
+            )
+
+        control = self._child_controls.get(child.child_id)
+        if control is None:
+            return await execute(request)
+        try:
+            run_id = _configurable(runtime.config).get("moldy_run_id")
+            if run_id != str(reservation.key.lease_id):
+                raise DispatchDeniedError("child_control_run_mismatch")
+            return await control.wrap_dispatch(request, execute)
+        finally:
+            # Drop an unlaunched reservation when control admission fails or
+            # returns early. A reservation already launched owns its own cleanup.
+            reservation.release()
 
 
 def compiled_subagent_entries(

@@ -8,6 +8,7 @@ from typing import Final
 # Every integration module added by B11/B12 and parent Task 10 (prepared leases), relative to
 # backend/. The ordinary registry contract compares this tuple with the files on disk.
 COMPANY_ADMINISTRATION_MODULES: Final[tuple[str, ...]] = (
+    "tests/integration/test_child_task_concurrency.py",
     "tests/authz/test_company_administration_migration_integration.py",
     "tests/integration/test_research_search_postgres.py",
     "tests/authz/test_b04_write_serialization_integration.py",
@@ -50,8 +51,11 @@ COMPANY_ADMINISTRATION_MODULES: Final[tuple[str, ...]] = (
     "tests/authz/test_personal_tenant_rls_postgres_integration.py",
     "tests/authz/test_legacy_upgrade_http_integration.py",
     "tests/integration/test_jobs_postgres.py",
+    "tests/integration/test_independent_chat_job_storage.py",
+    "tests/integration/test_independent_chat_job_idempotency.py",
     "tests/integration/test_memory_recall_postgres.py",
     "tests/test_goal_sandbox_postgres.py",
+    "tests/integration/test_chat_notification_outbox.py",
 )
 # Selected B04/B05/B08 nodes the company claims depend on (plan Task 14 legacy registry).
 COMPANY_ADMINISTRATION_LEGACY_NODES: Final[tuple[str, ...]] = (

@@ -2554,6 +2554,44 @@
     }
   },
   "chat": {
+    "independentJobs": {
+      "runtimeUnavailable": "This agent’s runtime settings do not support separate jobs.",
+      "targetUnavailable": "This job cannot be started. Reopen the chat to check which agents are available.",
+      "noTarget": "No agents are available for a separate job.",
+      "jobs": "Separate jobs",
+      "start": "Continue as a separate job",
+      "howItRuns": "The selected agent will keep working in its own chat after this chat finishes.",
+      "target": "Agent for this job",
+      "selectTarget": "Select an agent",
+      "instruction": "Task instructions",
+      "submit": "Start job",
+      "back": "Go back",
+      "startFailed": "The job could not be confirmed. Retry with the same instructions.",
+      "reference": "#{id}",
+      "openApproval": "Open request",
+      "openResult": "Open result",
+      "openJob": "Open job",
+      "stopJob": "Stop this job",
+      "cancelFailed": "The job could not be stopped. Please try again.",
+      "openParent": "Open original chat",
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "waiting_for_approval": "Waiting for input or approval",
+        "canceling": "Stopping",
+        "canceled": "Stopped",
+        "completed": "Completed",
+        "failed": "Failed",
+        "needs_review": "Outcome needs review"
+      },
+      "cancelScope": {
+        "title": "What would you like to stop?",
+        "description": "{count, plural, one {One separate job is} other {# separate jobs are}} still active for this run.",
+        "parentOnly": "Stop parent run only",
+        "withChildren": "Stop parent and separate jobs",
+        "dismiss": "Go back"
+      }
+    },
     "defaultAgentName": "Default Agent Name",
     "emptyState": {
       "canDo": "What this agent can do",
@@ -2777,6 +2815,8 @@
       "expired": "Expired"
     },
     "page": {
+      "sourceUnavailable": "The chat type could not be verified.",
+      "retrySource": "Check again",
       "settings": "Settings",
       "newConversation": "New Conversation",
       "emptyState": "Empty State",
@@ -3206,6 +3246,7 @@
       "openPanel": "Files"
     },
     "rightRail": {
+      "managedChildTitle": "Delegated task",
       "closePanel": "Close panel",
       "resizePanel": "Resize files panel",
       "collapsedPanel": "Files panel collapsed",
@@ -3343,6 +3384,35 @@
       "progressLabel": "Sub-agent progress",
       "running": "{count} running",
       "failed": "{count} failed"
+    },
+    "childTasks": {
+      "older": "Load older tasks",
+      "retry": "Retry",
+      "input": "Send an instruction to {role}",
+      "instructions": "Follow-up instructions",
+      "send": "Send instruction",
+      "wait": "Wait for result",
+      "waiting": "Waiting for result",
+      "stillActive": "The task is still active. You can close this panel.",
+      "cancel": "Stop task",
+      "loading": "Loading the delegated task.",
+      "unavailable": "This task is unavailable.",
+      "sendError": "Receipt could not be confirmed. You can retry the same instruction.",
+      "actionError": "The task status could not be confirmed. Try again.",
+      "status": {
+        "running": "Running",
+        "awaiting_approval": "Awaiting approval",
+        "completed": "Completed",
+        "cancelled": "Stopped",
+        "failed": "Failed"
+      },
+      "delivery": {
+        "pending": "Pending",
+        "delivering": "Delivering",
+        "applied": "Applied",
+        "review_required": "Delivery needs review",
+        "cancelled": "Delivery cancelled"
+      }
     },
     "teamStrip": {
       "title": "Team",
@@ -7356,6 +7426,8 @@
     "hidden": "An item you can't access",
     "unnamed": "Untitled",
     "someone": "Someone",
+    "workUnavailable": "This notification's destination is unavailable",
+    "resultFilename": "Task result",
     "unreadMark": "Unread",
     "levels": {
       "consumer": "run",
@@ -7393,6 +7465,9 @@
       "approvalDecided": "An approval request of {target} expired and was rejected",
       "emergencyStopApplied": "{target} was emergency-stopped",
       "emergencyStopReleased": "The emergency stop of {target} was released",
+      "goalCompleted": "Your goal is complete",
+      "goalBlocked": "Your goal needs attention",
+      "taskCompleted": "Your background task is complete",
       "memoryConsolidationStopped": "Memory consolidation stopped after failing three times in 24 hours",
       "generic": "You have a new notification",
       "workflowNotify": "Workflow notice: {title}"

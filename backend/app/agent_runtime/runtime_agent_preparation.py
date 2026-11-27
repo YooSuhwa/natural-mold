@@ -204,6 +204,9 @@ async def _prepare_runtime_components(
 ) -> RuntimeComponents:
     """Build reusable Deep Agents runtime pieces for a parent or child agent."""
     assert_pre_marker("_prepare_runtime_components")
+    if cfg.independent_job:
+        # Direct graphs do not check delegation on summary sends, retries and every tool.
+        raise PermissionError("independent_job_requires_lease")
     if cfg.goal_followup and not goal_setup_allowed(
         cfg.runtime_profile, cfg.middleware_configs or []
     ):
@@ -263,6 +266,11 @@ async def _prepare_agent(
     )
     middleware = list(components.middleware or [])
     middleware.extend(root_steer_middleware(cfg, run_id=run_id, is_trigger_mode=is_trigger_mode))
+    if cfg.subagents_config and cfg.run_path == "chat" and not is_trigger_mode:
+        from app.agent_runtime.delegated_child_control import DelegatedTaskDispatch, task_lifecycles
+
+        if targets := task_lifecycles(cfg.subagents_config):
+            middleware.insert(0, DelegatedTaskDispatch(targets))
     if cfg.attachment_inputs is not None and cfg.runtime_profile == "standard":
         from app.agent_runtime.attachment_inputs import AttachmentInputMiddleware
 

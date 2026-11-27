@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +12,7 @@ from app.authz.conversation_scope import lock_private_conversation
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.error_codes import agent_not_found, conversation_not_found
-from app.models.conversation import Conversation
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.schemas.conversation_scope import ConversationPolicyTarget
 from app.services import chat_service
 from app.services.conversation_runtime_policy import ensure_conversation_runtime_policy
@@ -24,6 +25,8 @@ async def get_or_create_side_chat(
     parent, _, _ = await ensure_conversation_runtime_policy(
         db, ConversationPolicyTarget(parent_id, context)
     )
+    if parent.source == INDEPENDENT_JOB_SOURCE:
+        raise HTTPException(409, "Independent job conversations cannot spawn side chats")
     existing = await db.scalar(
         select(Conversation).where(
             Conversation.side_chat_parent_id == parent.id,

@@ -242,6 +242,7 @@ async def cancel_conversation_run(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
     request: Request,
+    cancel_independent_jobs: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
@@ -254,6 +255,7 @@ async def cancel_conversation_run(
         user=user,
         context=context,
         request=request,
+        cancel_independent_jobs=cancel_independent_jobs,
     )
     return ConversationRunResponse.model_validate(result.run)
 

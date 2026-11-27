@@ -38,6 +38,7 @@ LEASE_MIDDLEWARE_ALLOWLIST: frozenset[str] = frozenset(
     {
         LEASE_TOOL_GUARD,
         PREPARED_TASK_DISPATCH,
+        "app.agent_runtime.delegated_child_control.ChildInstructionMiddleware",
         FILESYSTEM_MIDDLEWARE,
         "deepagents.middleware.skills.SkillsMiddleware",
         "deepagents.middleware.subagents.SubAgentMiddleware",

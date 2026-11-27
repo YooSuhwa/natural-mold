@@ -32,6 +32,7 @@ class ConversationRunAgent(Base):
     agent_id_snapshot: Mapped[uuid.UUID] = mapped_column(nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     path: Mapped[list[JsonValue]] = mapped_column(JSON, nullable=False)
+    identity_mode_at_accept: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # F-14 (11.10, Q22): this participant's identity in the run (``tenancy.attribution``).
     invoker_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     resource_owner_user_id: Mapped[uuid.UUID | None] = mapped_column(

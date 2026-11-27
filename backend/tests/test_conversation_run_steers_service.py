@@ -480,3 +480,20 @@ def test_text_only_schema_rejects_empty_oversize_and_unknown_fields(invalid: dic
     assert ConversationRunSteerCreate.model_validate(request).text == "한국 사례만"
     with pytest.raises(ValidationError):
         ConversationRunSteerCreate.model_validate(request | invalid)
+
+
+async def test_independent_room_exposes_old_receipts_without_delivering_them(
+    db: AsyncSession,
+) -> None:
+    from app.models.conversation import INDEPENDENT_JOB_SOURCE
+
+    run = await _running(db)
+    previous = await _admit(db, run, "이전 작업 기록")
+    room = await db.get(Conversation, run.conversation_id)
+    assert room is not None
+    room.source = INDEPENDENT_JOB_SOURCE
+    await db.commit()
+
+    assert await claim_steers_for_model(db, conversation_id=room.id, run_id=run.id) == []
+    visible = await list_steers(db, conversation_id=room.id, context=OWNER)
+    assert [(item.id, item.delivery_started_at) for item in visible] == [(previous.id, None)]

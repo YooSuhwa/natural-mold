@@ -14,6 +14,7 @@ from app.models.conversation_run import ConversationRun
 from app.services import chat_service, conversation_run_queue_service, conversation_run_service
 from app.services.conversation_audit_service import record_conversation_run_audit
 from app.services.conversation_run_worker import get_run_task_registry
+from app.services.independent_job_cancellation import cancel_children_for_parent
 
 _RUN_CANCEL_WAIT_TIMEOUT_SECONDS = 30.0
 _RUN_CANCEL_WAIT_INTERVAL_SECONDS = 0.05
@@ -32,6 +33,7 @@ async def cancel_owned_conversation_run(
     user: CurrentUser,
     context: OrgContext,
     request: Request,
+    cancel_independent_jobs: bool = False,
 ) -> ConversationRunCancelResult:
     conv = await chat_service.get_owned_conversation(db, conversation_id, context)
     if conv is None:
@@ -69,7 +71,16 @@ async def cancel_owned_conversation_run(
             request=request,
             status="canceling",
         )
+    child_run_ids = (
+        await cancel_children_for_parent(
+            db, conversation_id=conversation_id, run_id=run_id, context=context
+        )
+        if cancel_independent_jobs and cancel_requested
+        else []
+    )
     await db.commit()
+    for child_id in child_run_ids:
+        get_run_task_registry().request_cancel(child_id, reason="stop")
 
     if cancel_requested:
         registry = get_run_task_registry()

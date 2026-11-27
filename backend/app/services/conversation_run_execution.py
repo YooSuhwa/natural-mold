@@ -99,6 +99,7 @@ async def _run_conversation(
         persist_callback=ctx.persist_cb,
         trace_sink=ctx.trace_sink,
     )
+    run_audit = partial(_record_run_audit, user=user, tenant=cfg.org_context)
     start: prepared_start.PreparedRunStart | None = None
     # All child graph tasks inherit the claimed generation. Every exit unwinds the scope.
     owner_context = contextlib.ExitStack()

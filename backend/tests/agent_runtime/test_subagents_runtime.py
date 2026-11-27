@@ -64,12 +64,17 @@ def _agent(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("enable_child_tasks", [False, True])
 async def test_build_subagents_config_uses_child_identity_tools_skills_and_interrupts(
+    enable_child_tasks: bool,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app.agent_runtime.delegated_child_control import task_lifecycles
     from app.agent_runtime.subagents import build_subagents_config
+    from app.config import settings
 
+    monkeypatch.setattr(settings, "child_tasks_enabled", enable_child_tasks)
     owner_id = uuid.uuid4()
     caller_id = uuid.uuid4()
     await ensure_unit_scope(
@@ -132,7 +137,7 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
         base_url=None,
         system_prompt=parent.system_prompt,
         tools_config=[{"name": "parent_only_tool"}],
-        thread_id="thread-1",
+        thread_id=str(uuid.uuid4()),
         agent_id=str(parent.id),
         agent_name=parent.name,
         user_id=str(parent.user_id),
@@ -217,6 +222,13 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
         is_trigger_mode=False,
     )
 
+    targets = task_lifecycles(subagents)
+    assert list(targets) == ([child.runtime_name] if enable_child_tasks else [])
+    if enable_child_tasks:
+        binding = targets[child.runtime_name]
+        assert binding.child_agent_id == child.id
+        assert binding.conversation_id == uuid.UUID(parent_cfg.thread_id)
+        assert binding.context == parent_cfg.org_context
     assert display_names == {child.runtime_name: "Researcher"}
     assert len(subagents) == 1
     spec = subagents[0]
