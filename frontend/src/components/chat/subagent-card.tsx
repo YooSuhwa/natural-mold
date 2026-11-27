@@ -117,7 +117,11 @@ function SubagentHeaderMeta({
         </span>
       ) : null}
       {lead && namespaceLabel ? <span aria-hidden>·</span> : null}
-      {namespaceLabel ? <span className="shrink-0 font-mono">{namespaceLabel}</span> : null}
+      {namespaceLabel ? (
+        <span className="max-w-1/3 truncate font-mono" title={namespaceLabel}>
+          {namespaceLabel}
+        </span>
+      ) : null}
     </span>
   )
 }
