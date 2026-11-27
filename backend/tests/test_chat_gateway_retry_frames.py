@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from types import ModuleType
@@ -92,6 +93,9 @@ async def test_leased_sdk_recovers_once_per_call_across_100_pre_output_errors(
     monkeypatch: pytest.MonkeyPatch, message: str
 ) -> None:
     monkeypatch.setattr(settings, "chat_stream_retry_providers", {"openai"})
+    monkeypatch.setattr(
+        settings, "chat_stream_retry_origins", {"openai": ["https://api.openai.com"]}
+    )
     wire = install_wire(monkeypatch)
     calls = 0
 
@@ -142,6 +146,9 @@ async def test_leased_sdk_sends_once_for_disabled_unknown_or_denied_calls(
     message: str,
 ) -> None:
     monkeypatch.setattr(settings, "chat_stream_retry_providers", {"openai"} if enabled else set())
+    monkeypatch.setattr(
+        settings, "chat_stream_retry_origins", {"openai": ["https://api.openai.com"]}
+    )
     wire = install_wire(monkeypatch)
 
     def respond(_: Any, lib: ModuleType) -> Any:
@@ -195,3 +202,49 @@ def test_gateway_retry_requires_explicit_known_provider(
     monkeypatch.setenv("CHAT_STREAM_RETRY_PROVIDERS", '["all"]')
     with pytest.raises(ValidationError, match="chat_stream_retry_providers"):
         Settings()
+
+
+def test_gateway_allowlist_config_canonicalizes_origin_without_broadening_provider_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CHAT_STREAM_RETRY_ORIGINS", raising=False)
+    assert Settings().chat_stream_retry_origins == {}
+    monkeypatch.setenv(
+        "CHAT_STREAM_RETRY_ORIGINS",
+        '{"openai_compatible":["HTTPS://Gateway.Test:443/","https://gateway.test",'
+        '"http://[2001:0db8::1]:8080","https://한글.test"]}',
+    )
+    assert Settings().chat_stream_retry_origins == {
+        "openai_compatible": {
+            "https://gateway.test",
+            "http://[2001:db8::1]:8080",
+            "https://xn--bj0bj06e.test",
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://example.test/path",
+        "https://example.test?auth=fixture",
+        "https://example.test#fragment",
+        "https://untrusted:dummy-pass@example.test",
+        "https://@example.test",
+        "https://*.example.test",
+        "https://x..example.test",
+        "https://example.test:65536",
+        "http://example.test:0",
+        "https://example.test:",
+        "//example.test",
+    ],
+)
+def test_invalid_gateway_origins_are_rejected_without_echoing_values(
+    origin: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CHAT_STREAM_RETRY_ORIGINS", json.dumps({"openai": [origin]}))
+    with pytest.raises(ValidationError, match="chat_stream_retry_origins") as error:
+        Settings()
+    assert origin not in str(error.value)

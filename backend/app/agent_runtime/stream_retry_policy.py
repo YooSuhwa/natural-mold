@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, TypeGuard
 
 import openai
 from langgraph.errors import NodeCancelledError
 
+from app.chat_gateway_origin import StreamRetryProvider, gateway_origin
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -38,8 +39,17 @@ _FRAME_MESSAGES: dict[str, GatewayStatus] = {
 }
 
 
-def stream_retry_enabled(provider: str) -> bool:
+def stream_retry_enabled(provider: str) -> TypeGuard[StreamRetryProvider]:
     return provider in settings.chat_stream_retry_providers
+
+
+def verified_stream_origin(provider: str, url: object) -> str | None:
+    if not stream_retry_enabled(provider):
+        return None
+    origin = gateway_origin(url)
+    if origin is None or origin not in settings.chat_stream_retry_origins.get(provider, ()):
+        return None
+    return origin
 
 
 def gateway_stream_status(exc: BaseException) -> GatewayStatus | None:
@@ -63,13 +73,22 @@ def gateway_stream_status(exc: BaseException) -> GatewayStatus | None:
     return status
 
 
-def stream_error_retryable(exc: Exception, standard: Callable[[Exception], bool]) -> bool:
-    """Keep in-band error codes out of the existing transport/status retry policies."""
+def stream_error_retryable(
+    exc: Exception,
+    standard: Callable[[Exception], bool],
+    *,
+    provider: str,
+    client_base_url: object,
+) -> bool:
+    """Match the SDK client and the response origin before interpreting an in-band error."""
     if isinstance(exc, openai.APIStatusError):
         if exc.status_code in (401, 403):
             return False
     elif isinstance(exc, openai.APIError) and not isinstance(exc, openai.APIConnectionError):
-        return gateway_stream_status(exc) is not None
+        if gateway_stream_status(exc) is None:
+            return False
+        base = verified_stream_origin(provider, client_base_url)
+        return base is not None and base == gateway_origin(exc.request.url)
     return standard(exc)
 
 

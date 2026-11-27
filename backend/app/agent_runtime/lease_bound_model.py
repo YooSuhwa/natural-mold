@@ -22,7 +22,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
 from contextlib import AbstractAsyncContextManager, contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol, TypeVar, cast
 
 from app.agent_runtime.lease_dispatch_permit import (
@@ -41,10 +41,12 @@ from app.agent_runtime.stream_retry_authority import StreamAttemptDenied, check_
 from app.agent_runtime.stream_retry_policy import (
     AttemptOutcome,
     PartialModelStreamError,
+    gateway_stream_status,
     record_stream_attempt,
     stream_error_retryable,
     stream_retry_enabled,
 )
+from app.chat_gateway_origin import gateway_origin
 
 PROVIDER_TRANSPORT_NOT_SINGLE_SEND = "provider_transport_not_single_send"
 
@@ -142,6 +144,7 @@ class LeaseSendGuard:
     permit_opener: PermitOpener = open_dispatch_permit
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
     provider: str = ""
+    client_base_url: str | None = field(default=None, repr=False)
 
     def _permit(self) -> AbstractAsyncContextManager[DispatchPermit]:
         return self.permit_opener(
@@ -171,7 +174,12 @@ class LeaseSendGuard:
                 await self._backoff_or_raise(exc, number)
             number += 1
 
-    async def stream(self, attempt: Callable[[], AsyncIterator[T]]) -> AsyncIterator[T]:
+    async def stream(
+        self,
+        attempt: Callable[[], AsyncIterator[T]],
+        *,
+        current_base_url: Callable[[], object] | None = None,
+    ) -> AsyncIterator[T]:
         """Reopen only before delivery. Even an emitted role/tool delta stops replay."""
 
         enabled = stream_retry_enabled(self.provider)
@@ -181,6 +189,17 @@ class LeaseSendGuard:
         number = 1
         output_started = False
         unreported_send = 0
+        pending_gateway_error: Exception | None = None
+        pinned_origin = gateway_origin(self.client_base_url)
+
+        def retryable(exc: Exception) -> bool:
+            current = gateway_origin(current_base_url()) if current_base_url is not None else None
+            return stream_error_retryable(
+                exc,
+                is_retryable_provider_error,
+                provider=self.provider,
+                client_base_url=current if current == pinned_origin else None,
+            )
 
         def record(outcome: AttemptOutcome) -> None:
             nonlocal unreported_send
@@ -202,6 +221,12 @@ class LeaseSendGuard:
                 admitted = False
                 try:
                     async with self._permit():
+                        # The SDK base or operator allowlist may have changed during backoff.
+                        if pending_gateway_error is not None and not retryable(
+                            pending_gateway_error
+                        ):
+                            raise pending_gateway_error
+                        pending_gateway_error = None
                         admitted = True
                         # Count the previous response as retried only when its
                         # replacement is admitted. A stop in backoff has one send.
@@ -227,17 +252,15 @@ class LeaseSendGuard:
                         if enabled:
                             raise PartialModelStreamError() from exc
                         raise
-                    transient = (
-                        stream_error_retryable(exc, is_retryable_provider_error)
-                        if enabled
-                        else is_retryable_provider_error(exc)
-                    )
-                    if not transient:
+                    # Every SSE error passes this boundary, even for providers
+                    # outside the opt-in. Its body code is not an HTTP status.
+                    if not retryable(exc):
                         record("unclassified")
                         raise
                     if number >= self.policy.max_attempts:
                         record("exhausted")
                         raise
+                    pending_gateway_error = exc if gateway_stream_status(exc) is not None else None
                 finally:
                     await _aclose(chunks)
                 await self.sleep(self.policy.delay_for(number))
@@ -271,12 +294,22 @@ class LeaseBoundChatModelMixin:
     attribute; a model without a bound guard refuses to send.
     """
 
-    def bind_lease_guard(self, guard: LeaseSendGuard, *, provider: str | None = None) -> None:
+    def bind_lease_guard(
+        self,
+        guard: LeaseSendGuard,
+        *,
+        provider: str | None = None,
+        client_base_url: str | None = None,
+    ) -> None:
         """Bind the per-model send guard once, at lease construction."""
 
         if getattr(self, "_lease_guard", None) is not None:
             raise LeaseProviderTransportError("lease send guard is already bound")
-        self._lease_guard = guard if provider is None else replace(guard, provider=provider)
+        self._lease_guard = (
+            guard
+            if provider is None
+            else replace(guard, provider=provider, client_base_url=client_base_url)
+        )
 
     def _require_lease_guard(self) -> LeaseSendGuard:
         guard = getattr(self, "_lease_guard", None)
@@ -314,8 +347,14 @@ class LeaseBoundChatModelMixin:
         guard = self._require_lease_guard()
         reject_transport_overrides(kwargs, where="stream", forbidden_keys=INVOCATION_FORBIDDEN_KEYS)
         parent = cast(Any, super())._astream  # noqa: SLF001 — cooperative override
+
+        def current_base_url() -> object:
+            client = getattr(self, "root_async_client", None)
+            return getattr(client, "base_url", None)
+
         stream = guard.stream(
-            lambda: parent(messages, stop=stop, run_manager=run_manager, **kwargs)
+            lambda: parent(messages, stop=stop, run_manager=run_manager, **kwargs),
+            current_base_url=current_base_url,
         )
         async for chunk in stream:
             yield chunk
