@@ -169,6 +169,65 @@ describe('restoring pending AG-UI interrupts', () => {
     })
   })
 
+  it('shows a read-only batch as notices across root and child while retaining both SDK IDs', () => {
+    const rawForm = {
+      type: 'tool-call' as const,
+      toolName: 'ask_user',
+      toolCallId: 'native',
+      args: { question: 'Choose' },
+      argsText: '{"question":"Choose"}',
+    }
+    const child = { ...assistant('child'), content: [rawForm] }
+    const task = {
+      type: 'tool-call' as const,
+      toolName: 'task',
+      toolCallId: 'spawn',
+      args: {},
+      argsText: '{}',
+      messages: [child],
+    }
+    const history = [{ ...assistant('head'), content: [rawForm, task] }]
+    const interrupts: Interrupt[] = [
+      { ...ask('ask', 'Choose'), message: 'Root question' },
+      {
+        id: 'old',
+        subagentRunId: 'child',
+        reason: 'moldy.ask_user',
+        message: 'Historical child question',
+        metadata: { moldy: { actionable: false } },
+      },
+    ]
+    const restored = restoreAgUiInterrupts(history, interrupts, {
+      ...rootContext,
+      children: [
+        {
+          subagentRunId: 'child',
+          parentToolCallId: 'spawn',
+          parentMessageId: 'head',
+          name: 'researcher',
+          status: 'interrupted',
+          interruptIds: ['old'],
+        },
+      ],
+    })
+    expect(restored[0]).toMatchObject({
+      metadata: { custom: { agui: { interrupts } } },
+      content: [
+        {
+          toolCallId: 'spawn',
+          messages: [
+            {
+              id: 'child',
+              content: [{ type: 'text', text: 'Historical child question' }],
+              metadata: { custom: { agui: { interrupts: [interrupts[1]] } } },
+            },
+          ],
+        },
+        { type: 'text', text: 'Root question' },
+      ],
+    })
+  })
+
   it('attaches current cards only to the verified nested execution', () => {
     const call = (owner: string) => ({
       type: 'tool-call' as const,

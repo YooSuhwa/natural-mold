@@ -8,7 +8,8 @@ import type {
 import { hashKey } from '@tanstack/react-query'
 import { z } from 'zod'
 import { standardInterruptToToolCalls } from '@/lib/chat/standard-interrupt'
-import { moldyAgUiInterruptPayloads } from './chat-actions-interrupts'
+import { isReadOnlyAgUiInterrupt, moldyAgUiInterruptPayloads } from './chat-actions-interrupts'
+import { AUTH_REQUIRED_ACTION } from '@/lib/chat/auth-required-interrupt'
 import type { AgUiHistoryChild } from './chat-history-children'
 
 interface RestoreContext {
@@ -18,6 +19,7 @@ interface RestoreContext {
 }
 
 const waiting = { type: 'requires-action', reason: 'interrupt' } as const
+const decisionToolNames = new Set(['ask_user', 'request_approval', AUTH_REQUIRED_ACTION])
 const jsonArguments = z.record(z.string(), z.json())
 
 function sdkMetadata(message: ThreadAssistantMessage): Record<string, unknown> {
@@ -28,10 +30,21 @@ function sdkMetadata(message: ThreadAssistantMessage): Record<string, unknown> {
 function pendingCards(
   message: ThreadAssistantMessage,
   slots: readonly Interrupt[],
+  readOnlyBatch: boolean,
 ): ThreadAssistantMessagePart[] {
-  const content = [...message.content]
+  // Checkpoint messages can already contain a native ask_user call. Its renderer
+  // accepts responses independently of a synthetic approval card.
+  const content = message.content.filter(
+    (part) =>
+      !(
+        readOnlyBatch &&
+        part.type === 'tool-call' &&
+        part.result === undefined &&
+        decisionToolNames.has(part.toolName)
+      ),
+  )
   const byId = new Map(slots.map((slot) => [slot.id, slot]))
-  const payloads = moldyAgUiInterruptPayloads(slots)
+  const payloads = readOnlyBatch ? [] : moldyAgUiInterruptPayloads(slots)
   for (const payload of payloads) {
     const slot = byId.get(payload.interrupt_id)
     for (const [actionIndex, call] of standardInterruptToToolCalls(payload).entries()) {
@@ -78,7 +91,9 @@ function pendingCards(
   }
   for (const slot of slots) {
     if (
-      (slot.reason === 'moldy.workflow_wait' || slot.reason === 'moldy.input_required') &&
+      (readOnlyBatch ||
+        slot.reason === 'moldy.workflow_wait' ||
+        slot.reason === 'moldy.input_required') &&
       slot.message &&
       !content.some((part) => part.type === 'text' && part.text === slot.message)
     ) {
@@ -110,6 +125,7 @@ function restoreChildren(
   parentRunId: string | null,
   context: RestoreContext,
   byOwner: ReadonlyMap<string, Interrupt[]>,
+  readOnlyBatch: boolean,
 ): ThreadAssistantMessage {
   const content = message.content.map((part) => {
     if (part.type !== 'tool-call' || !part.messages?.length) return part
@@ -130,12 +146,12 @@ function restoreChildren(
       ) {
         return child
       }
-      const restored = restoreChildren(child, child.id, context, byOwner)
+      const restored = restoreChildren(child, child.id, context, byOwner, readOnlyBatch)
       const pending = byOwner
         .get(child.id)
         ?.filter((slot) => !record.interruptIds?.length || record.interruptIds.includes(slot.id))
       return pending?.length && record.status === 'interrupted'
-        ? markWaiting(restored, pending, pendingCards(restored, pending))
+        ? markWaiting(restored, pending, pendingCards(restored, pending, readOnlyBatch))
         : restored
     })
     return { ...part, messages: nested }
@@ -179,6 +195,7 @@ export function restoreAgUiInterrupts(
   const tip = messages.find((message) => message.id === context.headId)
   if (messages.length && !tip) return [...messages]
 
+  const readOnlyBatch = interrupts.some(isReadOnlyAgUiInterrupt)
   const byOwner = new Map<string, Interrupt[]>()
   const rootSlots: Interrupt[] = []
   for (const slot of interrupts) {
@@ -192,14 +209,14 @@ export function restoreAgUiInterrupts(
 
   const restored = messages.map((message) =>
     byOwner.size && message.role === 'assistant'
-      ? restoreChildren(message, null, context, byOwner)
+      ? restoreChildren(message, null, context, byOwner, readOnlyBatch)
       : message,
   )
   const tipIndex = restored.findIndex((message) => message.id === context.headId)
   const current = restored[tipIndex]
   const head =
     current?.role === 'assistant' ? current : createPendingHead(restored, interrupts, context, tip)
-  const waitingHead = markWaiting(head, interrupts, pendingCards(head, rootSlots))
+  const waitingHead = markWaiting(head, interrupts, pendingCards(head, rootSlots, readOnlyBatch))
   if (current?.role === 'assistant') restored[tipIndex] = waitingHead
   else restored.push(waitingHead)
   return restored
