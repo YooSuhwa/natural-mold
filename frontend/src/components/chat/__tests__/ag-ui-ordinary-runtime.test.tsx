@@ -5,6 +5,7 @@ import { render, screen, userEvent, waitFor } from '../../../../tests/test-utils
 import {
   installChatApi,
   docxInterruptId,
+  docxIssuerId,
   threadId,
   question,
   answer,
@@ -27,6 +28,16 @@ function openChat() {
       threadProps={{ conversationId: threadId, emptyContent: '대화를 시작하세요' }}
     />,
   )
+}
+
+async function expectIssuerDecision(label: '거부됨' | '승인됨') {
+  const badge = await screen.findByText(label)
+  expect(badge).toBeVisible()
+  expect(badge.closest('[data-moldy-message-role="assistant"]')).toHaveAttribute(
+    'data-moldy-wire-message-id',
+    docxIssuerId,
+  )
+  expect(screen.queryByRole('button', { name: '거부' })).not.toBeInTheDocument()
 }
 
 afterEach(() => {
@@ -160,7 +171,7 @@ it('rejects the captured execute_in_skill request only after confirmation', asyn
   csrfStore.set('synthetic-csrf')
   const api = installChatApi()
   const user = userEvent.setup()
-  openChat()
+  const original = openChat()
   await user.type(await screen.findByRole('textbox'), question + '{Enter}')
   expect(await screen.findByText(/승인이 필요합니다/)).toBeVisible()
   const reason = '합성 문서를 생성할 필요가 없습니다.'
@@ -176,6 +187,23 @@ it('rejects the captured execute_in_skill request only after confirmation', asyn
       payload: { decisions: [{ type: 'reject', message: reason }] },
     },
   ])
+  await waitFor(() => expect(api.observedCompletedSnapshot).toHaveBeenCalled())
+  expect(await screen.findByText(answer)).toBeVisible()
+  await expectIssuerDecision('거부됨')
+  original.unmount()
+  const before = api.snapshotReads.mock.calls.length
+  const reopened = openChat()
+  await waitFor(() => expect(api.snapshotReads.mock.calls.length).toBeGreaterThan(before))
+  await expectIssuerDecision('거부됨')
+  reopened.unmount()
+
+  // The tool's error text remains identical. A subsequent authorized read may
+  // withhold its approval record, in which case the decision must disappear.
+  api.withholdDecisionEvidence()
+  openChat()
+  expect(await screen.findByText(answer)).toBeVisible()
+  expect(screen.queryByText('거부됨')).not.toBeInTheDocument()
+  expect(api.commands).toHaveLength(2)
 })
 
 it('grants later calls only on explicit request and approves the current tool call separately', async () => {
@@ -243,6 +271,8 @@ it('grants later calls only on explicit request and approves the current tool ca
       payload: { decisions: [{ type: 'approve' }] },
     },
   ])
+  await waitFor(() => expect(api.observedCompletedSnapshot).toHaveBeenCalled())
+  await expectIssuerDecision('승인됨')
 })
 
 it('preserves a draft until the selected history permits an explicit send', async () => {
