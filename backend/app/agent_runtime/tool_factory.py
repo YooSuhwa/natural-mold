@@ -24,7 +24,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from langchain_core.tools import BaseTool, StructuredTool
+from langchain_core.tools import BaseTool, StructuredTool, ToolException
+from langgraph.errors import GraphBubbleUp
 from pydantic import BaseModel, Field, create_model
 
 from app.agent_runtime.temporal import (
@@ -42,10 +43,12 @@ from app.outbound.destination import (
     bind_destination,
     guarded_destination,
 )
+from app.services.research_search_policy import ResearchSearchActor
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.keys import ToolRef, attach_tool_ref, builtin_key, ref_from_config
 from app.tools.parameters import FieldKind
 from app.tools.registry import registry as tool_registry
+from app.tools.research_errors import RESEARCH_SEARCH_KEYS, public_search_failure
 from app.tools.risk import attach_tool_risk, builtin_tool_risk, risk_from_definition
 
 _KIND_TO_PY_TYPE: dict[FieldKind, type] = {
@@ -566,9 +569,17 @@ def _safe_uuid(value: Any) -> _uuid.UUID | None:
         return None
 
 
-def _summarize_output(output: Any) -> str | None:
-    """Cap tool output to the first 200 chars for the audit trail."""
+def _summarize_output(definition_key: str, output: Any) -> str | None:
+    """Record only provider/count for research; other tools keep their capped preview."""
 
+    if definition_key in RESEARCH_SEARCH_KEYS:
+        data = output if isinstance(output, dict) else {}
+        provider = "tavily" if definition_key == "tavily_search" else data.get("provider")
+        if provider not in ("tavily", "searxng"):
+            provider = "unknown"
+        results = data.get("results")
+        count = len(results) if isinstance(results, list) else 0
+        return f"provider={provider} results={count}"
     if output is None:
         return None
     text = output if isinstance(output, str) else str(output)
@@ -652,6 +663,15 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
     user_uuid = _safe_uuid(tool_config.get("user_id"))
     tenant_uuid = _safe_uuid(tool_config.get("tenant_id"))
     agent_uuid = _safe_uuid(tool_config.get("agent_id"))
+    org_uuid = _safe_uuid(tool_config.get("org_id"))
+    scope_user_uuid = _safe_uuid(tool_config.get("scope_user_id", user_uuid))
+    search_actor = (
+        ResearchSearchActor(
+            tenant_id=tenant_uuid, org_id=org_uuid, user_id=scope_user_uuid, agent_id=agent_uuid
+        )
+        if tenant_uuid is not None and org_uuid is not None and scope_user_uuid is not None
+        else None
+    )
     tool_display_name = tool_config.get("name") or definition.display_name
 
     async def _invoke(**runtime_args: Any) -> Any:
@@ -674,19 +694,27 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
                 parameters=merged,
                 credentials=credentials,
                 http_client=client,
+                search_actor=search_actor,
             )
             with bind_destination(guarded_destination(credentials, destination)):
                 output = await runner(run_ctx)
         except Exception as exc:
+            if definition_key not in RESEARCH_SEARCH_KEYS:
+                if hook_ctx is not None:
+                    await hooks.run_failure(hook_ctx, exc)
+                raise
+            if isinstance(exc, GraphBubbleUp):
+                raise
+            failure = public_search_failure(exc)
             if hook_ctx is not None:
-                await hooks.run_failure(hook_ctx, exc)
-            raise
+                await hooks.run_failure(hook_ctx, failure)
+            raise ToolException(str(failure)) from None
         if hook_ctx is not None:
             await hooks.run_post(
                 hook_ctx,
                 HookResult(
                     duration_ms=int((time.monotonic() - started) * 1000),
-                    output=_summarize_output(output),
+                    output=_summarize_output(definition_key, output),
                 ),
             )
         return output
@@ -707,6 +735,7 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
         name=safe_name,
         description=description,
         args_schema=args_schema,
+        handle_tool_error=definition_key in RESEARCH_SEARCH_KEYS,
     )
     attach_tool_ref(tool, ref_from_config(tool_config, name=safe_name))
     return attach_tool_risk(tool, risk_from_definition(definition))

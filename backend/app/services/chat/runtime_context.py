@@ -224,6 +224,8 @@ async def build_tools_config(
                 "name": tool.name,
                 "description": tool.description,
                 "parameters": dict(tool.parameters or {}),
+                "org_id": str(context.org_id),
+                "scope_user_id": str(context.user_id),
                 "credentials": resolved.values.reveal() if resolved else None,
                 "credential_id": str(resolved.credential_id) if resolved else None,
                 "credential_destination": destination_config(resolved, identity, agent.user_id),

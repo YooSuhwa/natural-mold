@@ -50,6 +50,8 @@ class BuildSkillDependencyTools(Protocol):
         existing_tool_configs: list[dict[str, Any]],
         user_id: str | None,
         agent_id: str | None,
+        org_id: str | None,
+        tenant_id: str | None,
     ) -> list[dict[str, Any]]: ...
 
 

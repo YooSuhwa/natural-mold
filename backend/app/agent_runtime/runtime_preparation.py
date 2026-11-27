@@ -89,8 +89,10 @@ async def prepare_runtime_components_impl(
         *bindings.build_skill_dependency_tool_configs(
             agent_skills=cfg.agent_skills or [],
             existing_tool_configs=cfg.tools_config,
-            user_id=cfg.user_id,
+            user_id=str(cfg.org_context.user_id),
             agent_id=cfg.agent_id,
+            org_id=str(cfg.org_context.org_id),
+            tenant_id=str(cfg.org_context.tenant_id),
         ),
     ]
     for tool_config in runtime_tool_configs:

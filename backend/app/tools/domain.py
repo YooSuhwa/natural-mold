@@ -10,12 +10,15 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from app.tools.parameters import FieldDef
 from app.tools.risk import DecisionType, ToolRiskLevel, risk_metadata_dict
+
+if TYPE_CHECKING:
+    from app.services.research_search_policy import ResearchSearchActor
 
 
 @dataclass
@@ -32,6 +35,8 @@ class ToolRunContext:
     parameters: dict[str, Any]
     credentials: dict[str, Any] | None
     http_client: httpx.AsyncClient
+    # Bound by the execution entry point, independently of persisted and model-supplied inputs.
+    search_actor: ResearchSearchActor | None = None
 
 
 # A runner is a coroutine that performs the side-effect and returns an
