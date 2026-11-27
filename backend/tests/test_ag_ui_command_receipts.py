@@ -132,6 +132,10 @@ async def test_queue_claim_updates_read_only_binding_and_reverse_lookup(db: Asyn
     assert claimed is not None
     await db.commit()
     run_id = claimed.run.id
+    async with TestSession() as reader:
+        reloaded = await reader.get(ConversationRun, run_id)
+        assert reloaded and reloaded.metadata_json
+        assert reloaded.metadata_json["ag_ui_projection_version"] == pending.projection_version
     unrelated = User(email="pending-agui@example.invalid", name="Unflushed")
     db.add(unrelated)
 
@@ -153,6 +157,22 @@ async def test_queue_claim_updates_read_only_binding_and_reverse_lookup(db: Asyn
     assert (
         await commands.load_public_run_ids(db, OWNER, conversation_id, [run_id, other_run.id]) == {}
     )
+
+
+async def test_queue_claim_without_receipt_keeps_native_journal_even_with_copied_marker(
+    db: AsyncSession,
+) -> None:
+    conversation_id, _ = await seed_artifact_conversation()
+    queued = await _enqueue_turn(db, conversation_id)
+    queued.input_payload = {**queued.input_payload, "ag_ui_projection_version": "1"}
+    await db.commit()
+
+    claim = await queue.claim_next_input(db, conversation_id=conversation_id, context=OWNER)
+    assert claim is not None
+    await db.commit()
+    async with TestSession() as reader:
+        reloaded = await reader.get(ConversationRun, claim.run.id)
+        assert reloaded and "ag_ui_projection_version" not in (reloaded.metadata_json or {})
 
 
 async def _cancel_claimed_turn(
