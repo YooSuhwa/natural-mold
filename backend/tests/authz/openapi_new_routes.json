@@ -5096,6 +5096,16 @@
               "title": "Conversation Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "only_if_draft",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Only If Draft",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -5760,6 +5770,218 @@
         "tags": [
           "conversations",
           "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/goal": {
+      "get": {
+        "operationId": "read_conversation_goal_api_conversations__conversation_id__goal_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Conversation Goal",
+        "tags": [
+          "conversations",
+          "conversation-goals"
+        ]
+      },
+      "put": {
+        "operationId": "put_conversation_goal_api_conversations__conversation_id__goal_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoalWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Conversation Goal",
+        "tags": [
+          "conversations",
+          "conversation-goals"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/goal/actions": {
+      "post": {
+        "operationId": "change_conversation_goal_state_api_conversations__conversation_id__goal_actions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoalActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Conversation Goal State",
+        "tags": [
+          "conversations",
+          "conversation-goals"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/goal/artifacts/{artifact_id}/versions/{version_id}/download": {
+      "get": {
+        "operationId": "download_goal_evidence_api_conversations__conversation_id__goal_artifacts__artifact_id__versions__version_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Goal Evidence",
+        "tags": [
+          "conversations",
+          "conversation-goals"
         ]
       }
     },
@@ -37409,6 +37631,85 @@
       "title": "CredentialUpdate",
       "type": "object"
     },
+    "CsvTableCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "column_equals": {
+          "additionalProperties": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxProperties": 32,
+          "propertyNames": {
+            "maxLength": 120,
+            "minLength": 1
+          },
+          "title": "Column Equals",
+          "type": "object"
+        },
+        "kind": {
+          "const": "csv_table",
+          "title": "Kind",
+          "type": "string"
+        },
+        "logical_path": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Logical Path",
+          "type": "string"
+        },
+        "minimum_rows": {
+          "maximum": 10000.0,
+          "minimum": 1.0,
+          "title": "Minimum Rows",
+          "type": "integer"
+        },
+        "reference_rows": {
+          "items": {
+            "additionalProperties": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            "propertyNames": {
+              "maxLength": 120,
+              "minLength": 1
+            },
+            "type": "object"
+          },
+          "maxItems": 100,
+          "title": "Reference Rows",
+          "type": "array"
+        },
+        "required_columns": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Required Columns",
+          "type": "array"
+        },
+        "unique_by": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Unique By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "logical_path",
+        "kind",
+        "required_columns",
+        "unique_by",
+        "minimum_rows"
+      ],
+      "title": "CsvTableCriterion",
+      "type": "object"
+    },
     "DebugTraceDetailResponse": {
       "properties": {
         "conversation_id": {
@@ -38778,6 +39079,318 @@
         "image_url"
       ],
       "title": "GenerateImageResponse",
+      "type": "object"
+    },
+    "GoalActionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "pause",
+            "resume",
+            "cancel"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "expected_revision": {
+          "minimum": 1.0,
+          "title": "Expected Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "action"
+      ],
+      "title": "GoalActionRequest",
+      "type": "object"
+    },
+    "GoalDetails": {
+      "properties": {
+        "auto_followups": {
+          "title": "Auto Followups",
+          "type": "integer"
+        },
+        "blocked_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Blocked Reason"
+        },
+        "criteria": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "csv_table": "#/components/schemas/CsvTableCriterion",
+                "manual": "#/components/schemas/ManualCriterion",
+                "nonempty_file": "#/components/schemas/NonemptyFileCriterion"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NonemptyFileCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/CsvTableCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/ManualCriterion"
+              }
+            ]
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "last_evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/GoalEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "paused",
+            "blocked",
+            "completed",
+            "canceled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "criteria",
+        "version",
+        "revision",
+        "status",
+        "auto_followups",
+        "blocked_reason",
+        "last_evidence"
+      ],
+      "title": "GoalDetails",
+      "type": "object"
+    },
+    "GoalEvidence": {
+      "properties": {
+        "all_passed": {
+          "title": "All Passed",
+          "type": "boolean"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/components/schemas/GoalEvidenceCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "progress": {
+          "title": "Progress",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "all_passed",
+        "progress",
+        "checks"
+      ],
+      "title": "GoalEvidence",
+      "type": "object"
+    },
+    "GoalEvidenceCheck": {
+      "properties": {
+        "artifact_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Artifact Id"
+        },
+        "criterion_index": {
+          "title": "Criterion Index",
+          "type": "integer"
+        },
+        "logical_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Logical Path"
+        },
+        "passed": {
+          "default": false,
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sha256"
+        },
+        "source_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Run Id"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version Id"
+        },
+        "version_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version Number"
+        }
+      },
+      "required": [
+        "criterion_index",
+        "reason"
+      ],
+      "title": "GoalEvidenceCheck",
+      "type": "object"
+    },
+    "GoalResponse": {
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/GoalDetails"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "enabled",
+        "goal"
+      ],
+      "title": "GoalResponse",
+      "type": "object"
+    },
+    "GoalWriteRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "criteria": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "csv_table": "#/components/schemas/CsvTableCriterion",
+                "manual": "#/components/schemas/ManualCriterion",
+                "nonempty_file": "#/components/schemas/NonemptyFileCriterion"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NonemptyFileCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/CsvTableCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/ManualCriterion"
+              }
+            ]
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Criteria",
+          "type": "array"
+        },
+        "expected_revision": {
+          "minimum": 0.0,
+          "title": "Expected Revision",
+          "type": "integer"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "title",
+        "criteria"
+      ],
+      "title": "GoalWriteRequest",
       "type": "object"
     },
     "GrantCreate": {
@@ -40790,6 +41403,28 @@
         }
       },
       "title": "LogoutResponse",
+      "type": "object"
+    },
+    "ManualCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "kind": {
+          "const": "manual",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "description"
+      ],
+      "title": "ManualCriterion",
       "type": "object"
     },
     "MarketplaceAclEntry": {
@@ -46846,6 +47481,28 @@
         "used"
       ],
       "title": "MyUsageLimit",
+      "type": "object"
+    },
+    "NonemptyFileCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "nonempty_file",
+          "title": "Kind",
+          "type": "string"
+        },
+        "logical_path": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Logical Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "logical_path",
+        "kind"
+      ],
+      "title": "NonemptyFileCriterion",
       "type": "object"
     },
     "NotificationActor": {

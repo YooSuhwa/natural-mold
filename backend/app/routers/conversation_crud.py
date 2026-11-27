@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.conversation_agent_checks import require_agent_run
+from app.authz.conversation_scope import lock_private_conversation
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
 from app.authz.runtime import get_authz
@@ -332,12 +333,17 @@ async def mark_conversation_read(
 async def delete_conversation(
     conversation_id: uuid.UUID,
     request: Request,
+    only_if_draft: bool = False,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
     conv: Conversation = Depends(owned_conversation),
 ):
+    if only_if_draft:
+        conv = await lock_private_conversation(db, conversation_id, context)
+        if conv.source != "draft":
+            return
     await record_conversation_audit(
         db,
         user=user,

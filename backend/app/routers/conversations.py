@@ -10,6 +10,7 @@ from app.routers import (
     conversation_crud,
     conversation_files,
     conversation_followup,
+    conversation_goals,
     conversation_messages,
     conversation_pinned_summaries,
     conversation_run_inputs,
@@ -22,6 +23,7 @@ from app.routers import (
 router = APIRouter(tags=["conversations"])
 
 router.include_router(conversation_crud.router)
+router.include_router(conversation_goals.router)
 router.include_router(conversation_side_chats.router)
 router.include_router(conversation_traces.router)
 router.include_router(conversation_runs.router)

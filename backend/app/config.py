@@ -388,6 +388,8 @@ class Settings(AuthzSettings):
     e2e_llm_base_url: str = ""
     e2e_llm_api_key: str = ""
     e2e_llm_model: str = ""
+    # Explicit organization enrollment for continuous goals. Empty disables new work.
+    conversation_goal_org_ids: frozenset[UUID] = frozenset()
     chat_run_stale_after_seconds: int = 300
     chat_run_stale_sweep_interval_seconds: int = 60
     # Admit text instructions for the next model call of an existing chat run.
