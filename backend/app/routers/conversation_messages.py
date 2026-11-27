@@ -122,10 +122,14 @@ async def list_messages(
     context: OrgContext = Depends(get_org_context),
     conv: Conversation = Depends(owned_conversation),
 ):
+    readable_run_ids = await conversation_run_service.readable_conversation_run_ids(
+        db, conv, context
+    )
     active_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation_id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     active_run_response = (
         ConversationRunHistoryResponse.model_validate(active_run)
@@ -136,6 +140,7 @@ async def list_messages(
         db,
         conversation_id=conversation_id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     latest_run_response = (
         ConversationRunHistoryResponse.model_validate(latest_run)

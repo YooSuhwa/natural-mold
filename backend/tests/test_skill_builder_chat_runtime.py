@@ -430,13 +430,16 @@ async def test_copy_conversation_attachments_filters_ownership(
     db: AsyncSession, tmp_path: Path
 ) -> None:
     from app.models.message_attachment import MessageAttachment
+    from tests.test_chat_resource_context_support import seed_resource_context
 
+    seeded = await seed_resource_context(db)
     session = await _make_active_session(db)
     blob = tmp_path / "uploads" / "a.bin"
     blob.parent.mkdir(parents=True, exist_ok=True)
     blob.write_bytes(b"csv,data")
     mine = MessageAttachment(
         user_id=TEST_USER_ID,
+        conversation_id=seeded.conversation.id,
         filename="mine.csv",
         mime_type="text/csv",
         size_bytes=8,
@@ -447,6 +450,7 @@ async def test_copy_conversation_attachments_filters_ownership(
     )
     theirs = MessageAttachment(
         user_id=uuid.uuid4(),
+        conversation_id=seeded.conversation.id,
         filename="theirs.csv",
         mime_type="text/csv",
         size_bytes=8,
@@ -461,6 +465,7 @@ async def test_copy_conversation_attachments_filters_ownership(
     copied = await workspace.copy_conversation_attachments_to_inputs(
         db,
         storage_path=session.draft_workspace_path or "",
+        conversation_id=seeded.conversation.id,
         attachment_ids=[mine.id, theirs.id],
         context=unit_context(TEST_USER_ID),
     )

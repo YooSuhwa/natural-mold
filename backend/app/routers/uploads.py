@@ -20,10 +20,9 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz.attachment_scope import private_attachment_predicate
+from app.authz.attachment_scope import load_private_attachment
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
@@ -108,12 +107,7 @@ async def _get_owned_attachment(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
-    result = await db.execute(
-        select(MessageAttachment)
-        .where(MessageAttachment.id == upload_id, private_attachment_predicate(context))
-        .execution_options(populate_existing=True, autoflush=False)
-    )
-    row = result.scalar_one_or_none()
+    row = await load_private_attachment(db, upload_id, context)
     if row is None:
         raise file_not_found()
     return row

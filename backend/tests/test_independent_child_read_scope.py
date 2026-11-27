@@ -111,6 +111,12 @@ async def test_initial_and_resumed_history_share_a_read_only_boundary(
             conversation_id=conversation_id,
             run_ids=requested,
         ) == {initial.id, first.id, last.id}
+        assert await reads.readable_independent_child_run_ids(
+            db, context=context, conversation_id=conversation_id
+        ) == {initial.id, first.id, last.id}
+        assert not await reads.readable_independent_child_run_ids(
+            db, context=context, conversation_id=conversation_id, run_ids=[]
+        )
         for run_id in requested:
             assert await reads.can_read_independent_child_run(
                 db,

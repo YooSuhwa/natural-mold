@@ -26,7 +26,11 @@ from app.authz.agent_execution_scope import (
     AgentExecutionTarget,
     load_agent_tree_for_execution,
 )
-from app.authz.conversation_scope import load_private_conversation, lock_private_conversation
+from app.authz.conversation_scope import (
+    load_private_conversation,
+    lock_private_conversation,
+    readable_conversation,
+)
 from app.authz.error_codes import agent_archived
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
@@ -38,7 +42,7 @@ from app.models.agent import (
     AGENT_RUNTIME_PROFILE_STANDARD,
     Agent,
 )
-from app.models.conversation import Conversation
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.message_attachment import MessageAttachment
@@ -229,7 +233,8 @@ async def get_owned_ui_conversation_with_agent(
     result = await db.execute(
         private_scoped(
             select(Conversation).where(
-                Conversation.id == conversation_id, Conversation.source == "ui"
+                Conversation.id == conversation_id,
+                Conversation.source.in_(("ui", INDEPENDENT_JOB_SOURCE)),
             ),
             Conversation,
             context,
@@ -241,7 +246,7 @@ async def get_owned_ui_conversation_with_agent(
         .options(contains_eager(Conversation.agent))
         .execution_options(populate_existing=True)
     )
-    return result.unique().scalar_one_or_none()
+    return await readable_conversation(db, result.unique().scalar_one_or_none(), context)
 
 
 async def delete_conversation(

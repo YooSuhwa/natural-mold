@@ -190,17 +190,19 @@ async def readable_independent_child_run_ids(
     db: AsyncSession,
     *,
     conversation_id: UUID,
-    run_ids: Collection[UUID],
+    run_ids: Collection[UUID] | None = None,
     context: OrgContext,
 ) -> set[UUID]:
-    """Read-only intersection with the original run and its approved resume lineage."""
-    if not run_ids:
+    """Read only the original run and its resumes, optionally intersect a candidate page."""
+    if run_ids is not None and not run_ids:
         return set()
     pairs = await readable_job_conversations(db, context, conversation_ids=[conversation_id])
     if not pairs:
         return set()
     chain = job_run_lineage(context, list(pairs))
-    query = select(chain.c.run_id).where(chain.c.run_id.in_(run_ids))
+    query = select(chain.c.run_id)
+    if run_ids is not None:
+        query = query.where(chain.c.run_id.in_(run_ids))
     return set(await db.scalars(query.execution_options(autoflush=False)))
 
 

@@ -42,9 +42,8 @@ async def load_live_protocol_events(
                 request.context,
             )
         )
-    records = await trace_storage.get_traces_for_conversation(
-        request.db,
-        request.conversation.id,
+    records = await trace_storage.get_readable_conversation_traces(
+        request.db, request.conversation, request.context
     )
     events: list[StoredProtocolEvent] = []
     for record in records:

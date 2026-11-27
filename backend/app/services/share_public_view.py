@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.message_utils import parse_msg_id
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
-from app.authz.conversation_scope import resolve_conversation_actor
 from app.error_codes import share_not_found
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -28,8 +27,7 @@ from app.services import artifact_service, chat_service, share_cache, share_serv
 from app.services.agent_image_paths import build_agent_image_url
 from app.services.artifact_service import ArtifactNotFoundError, is_text_preview_artifact
 from app.services.chat import secrets as chat_secrets
-
-PublicShare = tuple[ShareLink, Conversation, Agent]
+from app.services.share_service import PublicShare
 
 
 def _public_artifact_summary(summary: ArtifactSummary, share_token: str) -> ArtifactSummary:
@@ -45,10 +43,9 @@ def _public_artifact_summary(summary: ArtifactSummary, share_token: str) -> Arti
 
 async def _load_public_share_messages(
     db: AsyncSession,
-    *,
-    share_token: str,
-    conversation,
+    share: PublicShare,
 ) -> list[MessageResponse]:
+    conversation, share_token = share.conversation, share.link.share_token
     checkpoint_id = conversation.active_branch_checkpoint_id
     cached_envelope = share_cache.get_envelope(share_token, checkpoint_id)
     if cached_envelope is not None:
@@ -60,7 +57,7 @@ async def _load_public_share_messages(
         db,
         conversation,
         user_id=None,
-        context=await resolve_conversation_actor(db, conversation.id, conversation.user_id),
+        context=share.context,
     )
 
 
@@ -122,24 +119,17 @@ def _filter_public_share_traces(
 
 async def _list_public_share_visible_artifacts(
     db: AsyncSession,
-    *,
-    share_token: str,
-    user_id: uuid.UUID,
-    conversation,
+    share: PublicShare,
 ) -> list[ArtifactSummary]:
-    messages = await _load_public_share_messages(
-        db,
-        share_token=share_token,
-        conversation=conversation,
-    )
+    messages = await _load_public_share_messages(db, share)
     visible_message_ids = [str(message.id) for message in messages]
     if not visible_message_ids:
         return []
 
     artifacts_by_message_id = await artifact_service.list_conversation_artifacts_by_message_id(
         db,
-        context=await resolve_conversation_actor(db, conversation.id, conversation.user_id),
-        conversation_id=conversation.id,
+        context=share.context,
+        conversation_id=share.conversation.id,
     )
     visible_artifacts: list[ArtifactSummary] = []
     seen_artifact_ids: set[str] = set()
@@ -155,18 +145,10 @@ async def _list_public_share_visible_artifacts(
 
 async def _get_public_share_visible_artifact(
     db: AsyncSession,
-    *,
-    share_token: str,
-    user_id: uuid.UUID,
-    conversation,
+    share: PublicShare,
     artifact_id: uuid.UUID,
 ) -> ArtifactSummary:
-    visible_artifacts = await _list_public_share_visible_artifacts(
-        db,
-        share_token=share_token,
-        user_id=user_id,
-        conversation=conversation,
-    )
+    visible_artifacts = await _list_public_share_visible_artifacts(db, share)
     for artifact in visible_artifacts:
         if artifact.id == artifact_id:
             return artifact
@@ -201,22 +183,14 @@ def shared_conversation_view(
 
 async def public_artifact_file(
     db: AsyncSession,
-    share_token: str,
-    conversation: Conversation,
-    agent: Agent,
+    share: PublicShare,
     artifact_id: uuid.UUID,
     *,
     download: bool,
 ) -> ArtifactTextContent | FileResponse:
     """Body of a shared artifact: text preview / inline file, or the download."""
-    summary = await _get_public_share_visible_artifact(
-        db,
-        share_token=share_token,
-        user_id=agent.user_id,
-        conversation=conversation,
-        artifact_id=artifact_id,
-    )
-    context = await resolve_conversation_actor(db, conversation.id, conversation.user_id)
+    summary = await _get_public_share_visible_artifact(db, share, artifact_id)
+    context, conversation = share.context, share.conversation
     if not download and is_text_preview_artifact(summary):
         return await artifact_service.read_artifact_text_content(
             db, context=context, artifact_id=artifact_id, conversation_id=conversation.id
@@ -245,10 +219,8 @@ async def require_public_share(db: AsyncSession, share_token: str) -> PublicShar
     return bundle
 
 
-async def build_public_snapshot(
-    db: AsyncSession, link: ShareLink, conversation: Conversation, agent: Agent
-) -> SharedConversationView:
-    context = await resolve_conversation_actor(db, conversation.id, conversation.user_id)
+async def build_public_snapshot(db: AsyncSession, share: PublicShare) -> SharedConversationView:
+    context, conversation = share.context, share.conversation
     messages = await chat_service.list_messages_from_checkpointer(
         db, conversation, user_id=None, context=context
     )
@@ -263,15 +235,16 @@ async def build_public_snapshot(
         messages=messages,
         secret_values=secrets,
     )
-    return shared_conversation_view(link, conversation, agent, messages, traces)
+    return shared_conversation_view(share.link, conversation, share.agent, messages, traces)
 
 
-async def build_public_envelope(db: AsyncSession, conversation: Conversation) -> MessagesEnvelope:
+async def build_public_envelope(db: AsyncSession, share: PublicShare) -> MessagesEnvelope:
+    conversation = share.conversation
     messages = await chat_service.list_messages_from_checkpointer(
         db,
         conversation,
         user_id=None,
-        context=await resolve_conversation_actor(db, conversation.id, conversation.user_id),
+        context=share.context,
     )
     return MessagesEnvelope(
         messages=messages,

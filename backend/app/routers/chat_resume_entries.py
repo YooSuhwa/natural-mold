@@ -17,10 +17,11 @@ from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.memory_paths import origin_run_path
 from app.approvals.recording import claim_resume
 from app.approvals.service import ApprovalStale
-from app.authz.conversation_scope import load_private_conversation
+from app.authz.conversation_scope import can_read_conversation_run_id, load_private_conversation
 from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.error_codes import conversation_not_found, resume_interrupt_pending, resume_not_found
+from app.models.conversation import INDEPENDENT_JOB_SOURCE
 from app.models.message_event import MessageEvent
 from app.routers.chat_run_entries import _broker_resume_generator, _replay_resume_generator
 from app.routers.conversation_agent_protocol_interrupts import require_allowed_rest_resume
@@ -124,7 +125,7 @@ async def stream_resume(
     run_id_str = str(run_id)
 
     conv = await load_private_conversation(db, conversation_id, context)
-    if conv is None:
+    if conv is None or not await can_read_conversation_run_id(db, conv, run_id, context):
         _log_resume_reject("conv_unowned_or_missing", conversation_id, run_id_str, user=user.id)
         raise resume_not_found()
     secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conv, context))
@@ -220,6 +221,11 @@ async def resume_message(
         context=context,
     )
     legacy_interrupt_trace: MessageEvent | None = None
+    if conv.source == INDEPENDENT_JOB_SOURCE and (
+        parent_run is None
+        or not await can_read_conversation_run_id(db, conv, parent_run.id, context)
+    ):
+        raise resume_not_found()
     if parent_run is None:
         legacy_interrupt_trace = await _latest_pending_interrupt_trace(db, conversation_id)
         if legacy_interrupt_trace is None:

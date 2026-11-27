@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -25,6 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.agent_runtime.message_utils import parse_msg_id
+from app.authz.org_context import OrgContext
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.message_event import MessageEvent, MessageEventChunk
 
 # Status enum for message_events.status — DB CHECK 제약과 일치.
@@ -361,15 +363,48 @@ async def record_turn(
     return record
 
 
-async def get_traces_for_conversation(
-    db: AsyncSession, conversation_id: uuid.UUID
-) -> list[MessageEvent]:
-    """Return all turn traces for a conversation, oldest-first."""
-    result = await db.execute(
-        select(MessageEvent)
-        .where(MessageEvent.conversation_id == conversation_id)
-        .order_by(MessageEvent.created_at)
+async def independent_trace_ids(
+    db: AsyncSession, conversation_id: uuid.UUID, trace_ids: Collection[str], context: OrgContext
+) -> set[str]:
+    """The managed worker persists each turn under the canonical UUID of its run."""
+    from app.services.independent_job_runs import readable_independent_child_run_ids
+
+    candidates: set[uuid.UUID] = set()
+    for trace_id in trace_ids:
+        try:
+            run_id = uuid.UUID(trace_id)
+        except ValueError:
+            continue
+        if str(run_id) == trace_id:
+            candidates.add(run_id)
+    visible = await readable_independent_child_run_ids(
+        db, conversation_id=conversation_id, run_ids=candidates, context=context
     )
+    return {str(run_id) for run_id in visible}
+
+
+async def get_readable_conversation_traces(
+    db: AsyncSession, conversation: Conversation, context: OrgContext
+) -> list[MessageEvent]:
+    if conversation.source != INDEPENDENT_JOB_SOURCE:
+        return await get_traces_for_conversation(db, conversation.id)
+    trace_ids = await db.scalars(
+        select(MessageEvent.assistant_msg_id).where(MessageEvent.conversation_id == conversation.id)
+    )
+    visible = await independent_trace_ids(db, conversation.id, trace_ids.all(), context)
+    if not visible:
+        return []
+    return await get_traces_for_conversation(db, conversation.id, trace_ids=visible)
+
+
+async def get_traces_for_conversation(
+    db: AsyncSession, conversation_id: uuid.UUID, *, trace_ids: Collection[str] | None = None
+) -> list[MessageEvent]:
+    """Return turn traces for a conversation, oldest-first."""
+    query = select(MessageEvent).where(MessageEvent.conversation_id == conversation_id)
+    if trace_ids is not None:
+        query = query.where(MessageEvent.assistant_msg_id.in_(trace_ids))
+    result = await db.execute(query.order_by(MessageEvent.created_at))
     records = list(result.scalars().all())
     for record in records:
         set_committed_value(record, "events", await load_events(db, record))

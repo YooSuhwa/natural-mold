@@ -18,6 +18,7 @@ from app.agent_runtime.ag_ui_adapter import (
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
+from app.authz.conversation_scope import can_read_conversation_run_id
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
 from app.dependencies import (
@@ -160,6 +161,8 @@ async def stream_conversation_run_ag_ui(
     conversation: Conversation = Depends(owned_conversation),
 ) -> StreamingResponse:
     after_id = last_event_id or last_event_id_header
+    if not await can_read_conversation_run_id(db, conversation, run_id, context):
+        raise resume_not_found()
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,

@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz.conversation_input_scope import owned_input_predicate
+from app.authz.conversation_input_scope import lineage_input_predicate, owned_input_predicate
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import held_conversation, lock_many, lock_query
@@ -70,12 +70,14 @@ async def list_inputs(
     conversation_id: uuid.UUID,
     context: OrgContext,
 ) -> list[ConversationRunInput]:
-    await lock_owned_conversation(
+    from app.services.conversation_run_service import readable_conversation_run_ids
+
+    conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
         context=context,
     )
-    result = await db.execute(
+    query = (
         select(ConversationRunInput)
         .where(ConversationRunInput.conversation_id == conversation_id)
         .order_by(
@@ -84,7 +86,10 @@ async def list_inputs(
             ConversationRunInput.created_at,
         )
     )
-    return list(result.scalars().all())
+    run_ids = await readable_conversation_run_ids(db, conversation, context)
+    if run_ids is not None:
+        query = query.where(lineage_input_predicate(conversation, run_ids))
+    return list(await db.scalars(query))
 
 
 async def _pending_input_for_update(

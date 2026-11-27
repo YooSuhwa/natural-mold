@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.conversation_agent_checks import require_agent_run
-from app.authz.conversation_scope import lock_private_conversation
+from app.authz.conversation_scope import can_read_conversation_run_id, lock_private_conversation
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
 from app.authz.runtime import get_authz
@@ -144,7 +144,12 @@ async def get_conversation_detail(
     if not conv:
         raise conversation_not_found()
     active_runs = await _active_runs_by_conversation(db, [conv], context)
-    return _conversation_with_agent_response(conv, active_run=active_runs.get(conv.id))
+    active_run = active_runs.get(conv.id)
+    if active_run is not None and not await can_read_conversation_run_id(
+        db, conv, active_run.id, context
+    ):
+        active_run = None
+    return _conversation_with_agent_response(conv, active_run=active_run)
 
 
 @router.get(
@@ -338,12 +343,11 @@ async def delete_conversation(
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
-    conv: Conversation = Depends(owned_conversation),
 ):
-    if only_if_draft:
-        conv = await lock_private_conversation(db, conversation_id, context)
-        if conv.source != "draft":
-            return
+    # Deleting one's retained data does not disclose a detached child's history.
+    conv = await lock_private_conversation(db, conversation_id, context)
+    if only_if_draft and conv.source != "draft":
+        return
     await record_conversation_audit(
         db,
         user=user,

@@ -136,6 +136,7 @@ async def finalize_direct_run_start(
             await skill_draft_workspace.copy_conversation_attachments_to_inputs(
                 db,
                 storage_path=cfg.draft_workspace_path,
+                conversation_id=conversation.id,
                 attachment_ids=attachment_ids,
                 context=context,
             )

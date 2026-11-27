@@ -22,6 +22,7 @@ class RunMessageLinkQuery:
     conversation_id: uuid.UUID
     context: OrgContext
     message_ids: Sequence[str]
+    independent_child: bool = False
 
 
 async def list_run_message_links(
@@ -52,6 +53,7 @@ async def list_run_message_links(
         select(
             linked_values.c.value.label("message_id"),
             ConversationRun.id.label("run_id"),
+            MessageEvent.assistant_msg_id,
         )
         .select_from(MessageEvent)
         .join(linked_values, true())
@@ -69,8 +71,15 @@ async def list_run_message_links(
         .distinct()
     )
     rows = (await db.execute(linked_rows)).all()
+    if query.independent_child:
+        from app.services.trace_storage import independent_trace_ids
+
+        visible = await independent_trace_ids(
+            db, query.conversation_id, [row.assistant_msg_id for row in rows], query.context
+        )
+        rows = [row for row in rows if row.assistant_msg_id in visible]
     candidates: dict[str, set[uuid.UUID]] = {}
-    for message_id, run_id in rows:
+    for message_id, run_id, _ in rows:
         candidates.setdefault(message_id, set()).add(run_id)
     selected = {
         message_id: next(iter(run_ids))
