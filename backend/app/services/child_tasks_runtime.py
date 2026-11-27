@@ -282,6 +282,8 @@ async def record_child_checkpoint(
     db: AsyncSession, *, context: OrgContext, child_id: UUID, run_id: UUID, checkpoint_id: str
 ) -> None:
     child = await _locked_child(db, context, child_id, run_id)
+    if child.status != "running":
+        raise _stopped(child.status)
     if not 0 < len(checkpoint_id) <= 128:
         raise ValueError("Invalid child checkpoint ID")
     child.checkpoint_id = checkpoint_id
@@ -350,9 +352,9 @@ async def set_child_task_status(
     status: str,
     result: str | None = None,
 ) -> None:
-    child = await _locked_child(
-        db, context, child_id, run_id, require_active=status not in _TERMINAL
-    )
+    child = await _locked_child(db, context, child_id, run_id, require_active=status != "cancelled")
+    if child.status in _TERMINAL and child.status != status:
+        raise _stopped(child.status)
     await settle_child_status_locked(db, child, status=status, result=result)
 
 

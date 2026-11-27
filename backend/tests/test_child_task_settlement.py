@@ -76,3 +76,47 @@ async def test_parent_transition_is_atomic_and_preserves_actual_receipt_state(
         )
         == receipt_states
     )
+
+
+async def test_late_worker_cannot_complete_or_record_checkpoint_after_child_cancel(
+    db: AsyncSession,
+    child_case: ChildCase,  # noqa: F811
+) -> None:
+    from app.services.child_task_errors import ChildTaskStopped
+    from app.services.child_tasks_runtime import record_child_checkpoint, set_child_task_status
+
+    context = child_case.graph.context
+    run_id = child_case.run_id
+    child_id = await begin_child_task(
+        db,
+        context=context,
+        conversation_id=child_case.graph.conversation_ids[0],
+        run_id=run_id,
+        tool_call_id="call-cancel",
+        child_agent_id=child_case.child_id,
+        role="Researcher",
+        checkpoint_ns="task:cancel",
+    )
+    assert child_id is not None
+    await db.commit()
+    await set_child_task_status(
+        db, context=context, child_id=child_id, run_id=run_id, status="cancelled"
+    )
+    await db.commit()
+    with pytest.raises(ChildTaskStopped, match="cancelled"):
+        await set_child_task_status(
+            db,
+            context=context,
+            child_id=child_id,
+            run_id=run_id,
+            status="completed",
+            result="late worker",
+        )
+    await db.rollback()
+    with pytest.raises(ChildTaskStopped, match="cancelled"):
+        await record_child_checkpoint(
+            db, context=context, child_id=child_id, run_id=run_id, checkpoint_id="late-checkpoint"
+        )
+    await db.rollback()
+    saved = await db.get(ConversationChildTask, child_id)
+    assert saved and saved.status == "cancelled" and saved.result is None and not saved.checkpointed
