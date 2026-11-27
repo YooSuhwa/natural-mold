@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -126,7 +126,7 @@ def _turn_starts(
             dates.append((run.created_at if run else None) or link.created_at)
         if run and run.is_active:
             active_start = min(starts[-1], active_start)
-        end = max(end, last_position.get(rid, index))
+        end = max(end, last_position[rid] if rid else index)
     # An undated physical turn stays beside the following dated one, or after
     # the historical transcript when there is no following timestamp.
     clocks = [datetime.max.replace(tzinfo=UTC)] * len(dates)
@@ -142,8 +142,17 @@ def _turn_starts(
         and active_start == len(merged.messages)
         and any(run.is_active for run in runs.values())
     ):
-        # A claimed run may have emitted no public frame yet.
-        active_start = starts[-1]
+        # A claimed run may have emitted no public frame yet. Pin older history
+        # before its visible predecessor, including when only a child spoke later.
+        tip_index = next(
+            (
+                i
+                for i, link in enumerate(merged.message_links)
+                if link.message_id == merged.active_tip_message_id
+            ),
+            starts[-1],
+        )
+        active_start = starts[bisect_right(starts, tip_index) - 1]
     return starts, clocks, active_start
 
 

@@ -211,3 +211,19 @@ def test_empty_active_run_retains_existing_head_in_mixed_terminal_history() -> N
     assert [row["id"] for row in completed.messages] == ["existing", "imported"]
     assert completed.active_tip_message_id == "imported"
     assert completed.message_links[-1].run_id is None
+
+
+def test_claim_with_no_public_frame_keeps_head_when_last_visible_activity_was_a_child() -> None:
+    prior, nested, claimed = _run(1), _run(2), _run(3, active=True)
+    parent = _row("parent", "assistant", run=prior)
+    row, link = _row("child", "assistant", run=nested, parent="parent")
+    row["subagentRunId"] = "helper"
+    link = link.model_copy(update={"subagent_run_id": "helper"})
+    merged = _current([parent, (row, link)], "parent")
+
+    result = insert_legacy_transcript(
+        merged, [_row("imported", day=6)], {r.id: r for r in (prior, nested, claimed)}
+    )
+    assert result.active_tip_message_id == "parent"
+    assert [m["id"] for m in result.messages] == ["imported", "parent", "child"]
+    assert result.message_links[2].parent_message_id == "parent"
