@@ -96,6 +96,7 @@ function MultiSelectInput({
             >
               <input
                 type="checkbox"
+                aria-label={opt.label}
                 checked={checked}
                 onChange={() => onToggle(opt.label)}
                 className="size-3.5 rounded border-border accent-primary"
@@ -127,6 +128,7 @@ function TextInput({
     <div className="space-y-2">
       <p className="text-sm font-medium">{question.question}</p>
       <textarea
+        aria-label={question.question || question.label || placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={onFocus}

@@ -133,20 +133,6 @@
     "message": "A control must be associated with a text label."
   },
   {
-    "filePath": "src/components/chat/tool-ui/user-input-ui.tsx",
-    "line": 128,
-    "column": 7,
-    "ruleId": "jsx-a11y/control-has-associated-label",
-    "message": "A control must be associated with a text label."
-  },
-  {
-    "filePath": "src/components/chat/tool-ui/user-input-ui.tsx",
-    "line": 96,
-    "column": 15,
-    "ruleId": "jsx-a11y/control-has-associated-label",
-    "message": "A control must be associated with a text label."
-  },
-  {
     "filePath": "src/components/chat/trace-debugger-view.tsx",
     "line": 103,
     "column": 27,
