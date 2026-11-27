@@ -246,12 +246,19 @@ export function createAgUiChatSession({
     if (!activity) return
     const lane = activity.subagentRunId
     if (lane && !state.subagents.some((child) => child.subagentRunId === lane)) return
-    const toolId = id(activity.content.public_tool_call_id) ?? id(activity.content.tool_call_id)
+    const bound =
+      activity.activityType === 'moldy.mcp_app' ||
+      (activity.activityType === 'moldy.ui_data' && id(activity.content.tool_call_id))
+    const toolId = id(activity.content.public_tool_call_id)
+    // The private RPC ID and the SDK tool part ID belong to different namespaces.
+    if (bound && !toolId) return
+    const toolOwner = toolId ? toolOwnersByLane.get(lane)?.get(toolId) : undefined
     const messageId = activity.parentMessageId ?? id(activity.content.public_message_id)
+    if (toolOwner && messageId && toolOwner !== messageId) return
     const owner =
+      toolOwner ??
       messageId ??
-      (toolId && toolOwnersByLane.get(lane)?.get(toolId)) ??
-      (['moldy.mcp_app', 'moldy.subagent_todos'].includes(activity.activityType)
+      (bound || activity.activityType === 'moldy.subagent_todos'
         ? undefined
         : assistantByLane.get(lane))
     const scoped: AgUiActivitySnapshot = {

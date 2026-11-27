@@ -1,12 +1,15 @@
 'use client'
 
-import { useLayoutEffect, useRef } from 'react'
-import { hashKey } from '@tanstack/react-query'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { z } from 'zod'
-import { useAgUiInterrupts, type AgUiInterrupt } from '@assistant-ui/react-ag-ui'
+import { useAgUiInterrupts } from '@assistant-ui/react-ag-ui'
+import {
+  currentChildInterrupts,
+  verifiedChildInterrupts,
+  type ChildInterruptForm,
+} from '@/lib/ag-ui/child-interrupt-admission'
 import type { AgUiChatSessionState } from '@/lib/ag-ui/chat-history'
-import type { AgUiHistoryChild } from '@/lib/ag-ui/chat-history-children'
-import { moldyAgUiInterruptPayloads } from '@/lib/ag-ui/chat-actions-interrupts'
+import type { WireChatSnapshot } from '@/lib/ag-ui/chat-history-types'
 import { HiTLContext, useHiTL } from '@/lib/chat/hitl-context'
 import { standardInterruptToToolCalls } from '@/lib/chat/standard-interrupt'
 import { useChildTask, useChildTasks, type ChildTask } from '@/lib/hooks/use-child-tasks'
@@ -16,100 +19,18 @@ import { ApprovalForm } from './tool-ui/approval-card'
 import { AuthRequiredForm } from './tool-ui/auth-required-card'
 import { UserInputForm } from './tool-ui/user-input-ui'
 
-type BoundChild = AgUiHistoryChild & { childTaskId: string }
+type Managed = Extract<ChildInterruptForm, { mode: 'managed' }>
 type TaskList = ReturnType<typeof useChildTasks>
+type Recheck = (signal: AbortSignal) => Promise<boolean>
+type ReadSnapshot = (signal?: AbortSignal) => Promise<WireChatSnapshot>
 const toolArguments = z.record(z.string(), z.json())
 const waiting = { type: 'requires-action', reason: 'interrupt' } as const
 
-function currentSlots(
-  conversationId: string,
-  state: AgUiChatSessionState,
-  pending: readonly AgUiInterrupt[],
-) {
-  const wire = state.snapshot
-  // Only the authorized GET publishes this exact pair. A terminal event can arrive before
-  // its durable child binding, and a successor run clears the live interrupt list immediately.
-  if (
-    !wire ||
-    wire.threadId !== conversationId ||
-    state.readDenied ||
-    state.activeRunId ||
-    !wire.physicalInterruptRunId ||
-    !wire.interruptRunId ||
-    state.interrupts !== wire.interrupts
-  ) {
-    return []
-  }
-  const payloads = new Map(
-    moldyAgUiInterruptPayloads(pending).map((slot) => [slot.interrupt_id, slot]),
-  )
-  return moldyAgUiInterruptPayloads(wire.interrupts).flatMap((payload) => {
-    const id = payload.interrupt_id
-    const [slot, duplicate] = wire.interrupts.filter((item) => item.id === id)
-    const [live, ambiguous] = pending.filter((item) => item.id === id)
-    if (
-      duplicate ||
-      ambiguous ||
-      !slot?.subagentRunId ||
-      !live ||
-      live.subagentRunId !== slot.subagentRunId ||
-      live.reason !== slot.reason ||
-      live.toolCallId !== slot.toolCallId ||
-      live.expiresAt !== slot.expiresAt ||
-      (slot.expiresAt && !(Date.parse(slot.expiresAt) > Date.now())) ||
-      hashKey([payload]) !== hashKey([payloads.get(id)])
-    )
-      return []
-    const [child, other] = wire.subagents.filter(
-      (item) => item.subagentRunId === slot.subagentRunId,
-    )
-    if (
-      other ||
-      !child?.childTaskId ||
-      !child.parentToolCallId ||
-      !child.parentMessageId ||
-      child.runId !== wire.interruptRunId ||
-      child.physicalRunId !== wire.physicalInterruptRunId ||
-      child.status !== 'interrupted' ||
-      !child.interruptIds?.includes(id) ||
-      wire.subagents.some(
-        (sibling) =>
-          sibling !== child &&
-          (sibling.childTaskId === child.childTaskId || sibling.interruptIds?.includes(id)),
-      )
-    )
-      return []
-    const key = hashKey([
-      conversationId,
-      wire.interruptRunId,
-      wire.physicalInterruptRunId,
-      child.subagentRunId,
-      child.childTaskId,
-      payload,
-      slot.expiresAt,
-    ])
-    return [
-      {
-        child: { ...child, childTaskId: child.childTaskId },
-        payload,
-        key,
-        expiresAt: slot.expiresAt,
-      },
-    ]
-  })
-}
-
-type Pending = ReturnType<typeof currentSlots>[number]
-
-function matchesTask(task: ChildTask | undefined, child: BoundChild): task is ChildTask {
-  // Nested public tool IDs are scoped aliases. Only the server can join these to the
-  // durable task, using its exact namespace and original parent-run/tool-call identity.
+function matchesTask(task: ChildTask | undefined, taskId: string): task is ChildTask {
+  // The public spawning call is opaque, including at the root. The server binds
+  // childTaskId to that call and its verified namespace in this run.
   return (
-    !!task &&
-    task.id === child.childTaskId &&
-    !!task.child_agent_id &&
-    task.status === 'awaiting_approval' &&
-    (!!child.parentSubagentRunId || task.tool_call_id === child.parentToolCallId)
+    !!task && task.id === taskId && !!task.child_agent_id && task.status === 'awaiting_approval'
   )
 }
 
@@ -125,62 +46,149 @@ function sameAdmission(first: ChildTask, second: ChildTask) {
 export function AgUiChildPendingForms({
   conversationId,
   snapshot,
+  readSnapshot,
 }: {
   conversationId: string
   snapshot: AgUiChatSessionState
+  readSnapshot?: ReadSnapshot
 }) {
   const pending = useAgUiInterrupts()
-  const slots = currentSlots(conversationId, snapshot, pending)
-  return slots.length ? <ManagedForms conversationId={conversationId} slots={slots} /> : null
+  const slots = currentChildInterrupts(conversationId, snapshot, pending)
+  const wire = snapshot.snapshot
+  if (!wire || !slots.length) return null
+  const managed = slots.filter((slot) => slot.mode === 'managed')
+  return (
+    <div className="max-h-72 overflow-y-auto">
+      {managed.length > 0 && (
+        <ManagedForms conversationId={conversationId} slots={managed} wire={wire} />
+      )}
+      {readSnapshot &&
+        slots
+          .filter((slot) => slot.mode === 'legacy')
+          .map((slot) => (
+            <AuthorizedForm
+              key={slot.key}
+              slot={slot}
+              wire={wire}
+              recheck={async (signal) => {
+                const fresh = await readSnapshot(signal)
+                return verifiedChildInterrupts(conversationId, fresh, pending).some(
+                  (item) => item.key === slot.key,
+                )
+              }}
+            />
+          ))}
+    </div>
+  )
 }
 
-function ManagedForms({ conversationId, slots }: { conversationId: string; slots: Pending[] }) {
+function ManagedForms({
+  conversationId,
+  slots,
+  wire,
+}: {
+  conversationId: string
+  slots: Managed[]
+  wire: WireChatSnapshot
+}) {
   const list = useChildTasks(conversationId)
   if (list.enabled !== true || list.isError || !list.isFetched) return null
-  const forms = slots.map((slot) => {
-    const listed = list.tasks.find((task) => task.id === slot.child.childTaskId)
-    if (listed ? !matchesTask(listed, slot.child) : !list.hasNextPage) return null
-    // A task moving off a loaded page requires a new exact-UUID read.
+  return slots.map((slot) => {
+    const taskId = slot.child.childTaskId
+    const listed = list.tasks.find((task) => task.id === taskId)
+    if (listed ? !matchesTask(listed, taskId) : !list.hasNextPage) return null
+    // Moving off a loaded page requires a fresh exact-UUID read.
     return (
       <ManagedForm
         key={slot.key + ':' + Boolean(listed)}
-        {...{ conversationId, slot, list, listed }}
+        {...{ conversationId, slot, wire, list, listed }}
       />
     )
   })
-  return <div className="max-h-72 overflow-y-auto">{forms}</div>
 }
 
 function ManagedForm({
   conversationId,
   slot,
+  wire,
   list,
   listed,
 }: {
   conversationId: string
-  slot: Pending
+  slot: Managed
+  wire: WireChatSnapshot
   list: TaskList
   listed?: ChildTask
 }) {
-  const detail = useChildTask(conversationId, slot.child.childTaskId)
-  const actions = useHiTL()
+  const taskId = slot.child.childTaskId
+  const detail = useChildTask(conversationId, taskId)
   const current = detail.data
-  const authorized =
-    matchesTask(current, slot.child) &&
-    !detail.isError &&
-    (!listed || sameAdmission(current, listed))
-  const mounted = useRef(false)
+  if (
+    detail.isError ||
+    !matchesTask(current, taskId) ||
+    (listed && !sameAdmission(current, listed))
+  )
+    return null
+  async function recheck() {
+    const [page, row] = await Promise.all([
+      list.refetch({ cancelRefetch: false }),
+      detail.refetch({ cancelRefetch: false }),
+    ])
+    const pages = page.data?.pages
+    if (
+      !page.isSuccess ||
+      !row.isSuccess ||
+      !pages?.length ||
+      !pages.every((item) => item.enabled) ||
+      !current ||
+      !matchesTask(row.data, taskId) ||
+      !sameAdmission(row.data, current)
+    )
+      return false
+    const fresh = pages.flatMap((item) => item.items).find((item) => item.id === taskId)
+    return fresh
+      ? matchesTask(fresh, taskId) && sameAdmission(fresh, current)
+      : pages.at(-1)?.next_offset != null
+  }
+  return (
+    <AuthorizedForm
+      slot={slot}
+      wire={wire}
+      agentId={current.child_agent_id ?? undefined}
+      label={current.role}
+      recheck={recheck}
+    />
+  )
+}
+
+function AuthorizedForm({
+  slot,
+  wire,
+  agentId,
+  label,
+  recheck,
+}: {
+  slot: ChildInterruptForm
+  wire: WireChatSnapshot
+  agentId?: string
+  label?: string
+  recheck: Recheck
+}) {
+  const actions = useHiTL()
+  const [deniedAt, setDeniedAt] = useState<WireChatSnapshot | null>(null)
+  const lifetime = useRef<AbortController | null>(null)
+  const latestWire = useRef(wire)
   useLayoutEffect(() => {
-    mounted.current = authorized
-    return () => {
-      mounted.current = false
-    }
-  }, [authorized])
-  if (!authorized || !current?.child_agent_id || !actions?.registerDecision) return null
-  const agentId = current.child_agent_id
-  const register = actions.registerDecision
+    latestWire.current = wire
+  }, [wire])
+  useLayoutEffect(() => {
+    const controller = new AbortController()
+    lifetime.current = controller
+    return () => controller.abort()
+  }, [])
+  const register = actions?.registerDecision
+  if (!register || deniedAt === wire) return null
   const scope = currentOrgScope()
-  const { child, payload } = slot
   return (
     <HiTLContext.Provider
       value={{
@@ -188,53 +196,55 @@ function ManagedForm({
         onResumeDecisions: async () => {
           throw new Error('Child responses require an interrupt ID')
         },
-        registerDecision: async (index, decision, text, interruptId) => {
-          const [page, row] = await Promise.all([
-            list.refetch({ cancelRefetch: false }),
-            detail.refetch({ cancelRefetch: false }),
-          ])
-          const pages = page.data?.pages
-          const listed = pages
-            ?.flatMap((item) => item.items)
-            .find((item) => item.id === child.childTaskId)
+        registerDecision: async (index, decision, text, id) => {
+          const signal = lifetime.current?.signal
+          if (!signal || signal.aborted || id !== slot.payload.interrupt_id) {
+            throw new DOMException('The child request is no longer current', 'InvalidStateError')
+          }
+          let authorized = false
+          try {
+            authorized = await recheck(signal)
+          } finally {
+            if (!signal.aborted && !authorized) setDeniedAt(latestWire.current)
+          }
           if (
-            !mounted.current ||
+            !authorized ||
+            signal.aborted ||
             !isOrgScopeCurrent(scope) ||
-            interruptId !== payload.interrupt_id ||
-            (slot.expiresAt && !(Date.parse(slot.expiresAt) > Date.now())) ||
-            !page.isSuccess ||
-            !row.isSuccess ||
-            !pages?.length ||
-            !pages.every((item) => item.enabled) ||
-            (listed
-              ? !matchesTask(listed, child) || !sameAdmission(listed, current)
-              : pages.at(-1)?.next_offset == null) ||
-            !matchesTask(row.data, child) ||
-            !sameAdmission(row.data, current)
+            (slot.expiresAt && !(Date.parse(slot.expiresAt) > Date.now()))
           ) {
             throw new DOMException('The child request is no longer current', 'InvalidStateError')
           }
-          await register(index, decision, text, interruptId)
+          await register(index, decision, text, id)
         },
       }}
     >
-      <section aria-label={current.role} className="space-y-2 px-4 py-2">
-        <h3 className="text-sm font-semibold">{current.role}</h3>
-        <PendingActions payload={payload} />
-      </section>
+      <div className="space-y-2 px-4 py-2">
+        {label && <h3 className="text-sm font-semibold">{label}</h3>}
+        <PendingActions payload={slot.payload} allowConnections={!!agentId} />
+      </div>
     </HiTLContext.Provider>
   )
 }
 
-function PendingActions({ payload }: { payload: StandardInterruptPayload }) {
+function PendingActions({
+  payload,
+  allowConnections,
+}: {
+  payload: StandardInterruptPayload
+  allowConnections: boolean
+}) {
   return standardInterruptToToolCalls(payload).map((call) => {
     const args = toolArguments.safeParse(call.args)
     if (!args.success) return null
     if (call.name === 'ask_user')
       return <UserInputForm key={call.id} args={args.data} status={waiting} />
-    if (call.name === 'moldy_auth_required')
-      return <AuthRequiredForm key={call.id} args={args.data} />
-    if (call.name === 'request_approval')
+    if (call.name === 'moldy_auth_required') {
+      // A verified checkpoint can accept an auth answer without identifying a
+      // registered child agent to which credentials could safely be connected.
+      return <AuthRequiredForm key={call.id} args={args.data} allowConnections={allowConnections} />
+    }
+    if (call.name === 'request_approval') {
       return (
         <ApprovalForm
           key={call.id}
@@ -243,6 +253,7 @@ function PendingActions({ payload }: { payload: StandardInterruptPayload }) {
           showConversationGrant={false}
         />
       )
+    }
     return null
   })
 }

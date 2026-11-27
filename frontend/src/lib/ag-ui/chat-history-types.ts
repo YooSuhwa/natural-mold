@@ -59,6 +59,10 @@ const child = z.object({
     .transform((value) => value ?? undefined),
   error: optionalId,
   interruptIds: z.array(id).optional(),
+  legacyInterruptAccess: z
+    .unknown()
+    .transform((value) => (value === true ? (true as const) : undefined))
+    .optional(),
   todos: state.shape.todos.optional(),
 })
 
@@ -133,7 +137,15 @@ const publicActivityFields: Readonly<Record<string, readonly string[]>> = {
   'moldy.subagent_todos': ['todos'],
   'moldy.run_steer': ['conversation_id', 'run_id', 'steer_id', 'status'],
   'moldy.mcp_app': ['run_id', 'binding_id', 'tool_call_id', 'public_tool_call_id'],
-  'moldy.ui_data': ['schema_version', 'type', 'props', 'message_id', 'run_id', 'tool_call_id'],
+  'moldy.ui_data': [
+    'schema_version',
+    'type',
+    'props',
+    'message_id',
+    'run_id',
+    'tool_call_id',
+    'public_tool_call_id',
+  ],
   'moldy.excluded_capabilities': ['items', 'total'],
   'moldy.subagent_names': ['names'],
   'moldy.memory_recalled': ['memories'],
@@ -179,6 +191,14 @@ export function parsePublicActivities(raw: unknown): AgUiActivitySnapshot[] {
     } else {
       if (!Object.hasOwn(publicActivityFields, event.activityType)) continue
       content = pick(event.content, publicActivityFields[event.activityType])
+      const toolBound =
+        event.activityType === 'moldy.mcp_app' ||
+        (event.activityType === 'moldy.ui_data' && content.tool_call_id != null)
+      if (
+        toolBound &&
+        (typeof content.public_tool_call_id !== 'string' || !content.public_tool_call_id.trim())
+      )
+        continue
       if (event.activityType === 'moldy.memory_recalled') {
         const rows = z.array(object).safeParse(content.memories)
         if (!rows.success) continue
@@ -279,10 +299,21 @@ const interruptDetails = new Map<string, z.ZodType<Record<string, unknown>>>([
   ['moldy.tool_approval', approvals],
 ])
 
-export function parsePublicInterrupts(raw: unknown): Interrupt[] {
+export function parsePublicInterrupts(
+  raw: unknown,
+  currentChildren: readonly AgUiHistoryChild[] = [],
+): Interrupt[] {
   if (!Array.isArray(raw)) throw new Error('Invalid AG-UI interrupts')
   const active = new Map<string, { interrupt: Interrupt; attempt: number }>()
   const owners = new Map<string, string>()
+  const legacyOwners = new Map<string, string | null>()
+  for (const child of currentChildren) {
+    for (const slot of child.interruptIds ?? []) {
+      const eligible =
+        child.legacyInterruptAccess === true && child.status === 'interrupted' && !child.childTaskId
+      legacyOwners.set(slot, eligible && !legacyOwners.has(slot) ? child.subagentRunId : null)
+    }
+  }
   for (const value of raw) {
     const parsed = InterruptSchema.safeParse(value)
     if (!parsed.success || !parsed.data.id) throw new Error('Invalid AG-UI interrupt')
@@ -290,6 +321,13 @@ export function parsePublicInterrupts(raw: unknown): Interrupt[] {
       parsed.data
     const moldy = object.safeParse(metadata?.moldy)
     const readOnly = moldy.success && moldy.data.actionable === false
+    // Only the authorized snapshot supplies current child slots. A replayed
+    // RUN_FINISHED record can carry historical prompts, but cannot grant access.
+    const legacyAccess =
+      !readOnly &&
+      moldy.data?.legacyInterruptAccess === true &&
+      subagentRunId !== undefined &&
+      legacyOwners.get(id) === subagentRunId
     const details = interruptDetails.get(reason)?.safeParse(moldy.data)
     const owner = subagentRunId ?? ''
     if (owners.has(id) && owners.get(id) !== owner)
@@ -303,8 +341,16 @@ export function parsePublicInterrupts(raw: unknown): Interrupt[] {
       subagentRunId,
       expiresAt,
       ...(!readOnly && responseSchema && { responseSchema }),
-      ...(readOnly || details?.success
-        ? { metadata: { moldy: { ...details?.data, ...(readOnly && { actionable: false }) } } }
+      ...(readOnly || legacyAccess || details?.success
+        ? {
+            metadata: {
+              moldy: {
+                ...details?.data,
+                ...(readOnly && { actionable: false }),
+                ...(legacyAccess && { legacyInterruptAccess: true }),
+              },
+            },
+          }
         : {}),
     }
     const native = details?.success ? details.data : null
@@ -412,15 +458,32 @@ export function parseWireChatSnapshot(raw: unknown, expectedThreadId: string): W
     const parsed = child.safeParse(row)
     return parsed.success ? [parsed.data] : []
   })
+  const currentChildren = children.filter(
+    (actor) =>
+      snapshot.interruptRunId &&
+      snapshot.physicalInterruptRunId &&
+      (!actor.runId || actor.runId === snapshot.interruptRunId) &&
+      (!actor.physicalRunId || actor.physicalRunId === snapshot.physicalInterruptRunId),
+  )
+  const currentSlots = parsePublicInterrupts(interrupts, currentChildren)
+  const legacyOwners = new Set(
+    currentSlots
+      .filter((slot) => slot.metadata?.moldy?.legacyInterruptAccess === true)
+      .map((slot) => slot.subagentRunId),
+  )
   return {
     ...snapshot,
     errorCode: standardErrors.has(snapshot.errorCode ?? '')
       ? snapshot.errorCode
       : (recoveryErrorCode(snapshot.errorCode) ?? null),
     state: { todos: snapshot.todos },
-    subagents: children,
+    subagents: children.map((actor) =>
+      actor.legacyInterruptAccess && !legacyOwners.has(actor.subagentRunId)
+        ? { ...actor, legacyInterruptAccess: undefined }
+        : actor,
+    ),
     ...publicTranscript(messages, snapshot.messageLinks, children),
-    interrupts: parsePublicInterrupts(interrupts),
+    interrupts: currentSlots,
     ...(snapshot.failedPhysicalRunId &&
       snapshot.errorCode === 'partial_model_stream' && {
         partialOutput: parsePartialModelOutput(partialOutput),

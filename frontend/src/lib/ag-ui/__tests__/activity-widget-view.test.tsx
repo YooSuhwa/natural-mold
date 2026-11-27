@@ -26,7 +26,7 @@ const threadB = 'b3dcf3af-d3c2-47ba-978e-fd64972afd10'
 const runId = '45206ae0-c53f-4be6-9ef2-a6968ca04ab5'
 const bindingId = 'bff36309-e8ad-4745-8080-1f76f33099ee'
 const toolCallId = 'call/maps:1'
-const publicToolCallId = 'tool-78cf7fb2-999a-55a7-adb7-cca0fd4bc4b5'
+const publicToolCallId = 'tool-741a7b07d66c26375a19a7ae18c19cf05a107aa3ef44b505ee98e1917c481c56'
 const childId = 'child-bda589ad-368b-5292-a067-7e2d08d8f1d2'
 const ownerId = 'child-answer'
 const uri = 'ui://maps/widget.html'
@@ -89,7 +89,13 @@ function AssistantRow() {
   )
 }
 const renderers = { AssistantMessage: AssistantRow, UserMessage: () => null }
-function Harness({ conversationId }: { conversationId: string }) {
+function Harness({
+  conversationId,
+  pointers = activities,
+}: {
+  conversationId: string
+  pointers?: readonly AgUiActivitySnapshot[]
+}) {
   const runtime = useExternalStoreRuntime({
     messages,
     isRunning: false,
@@ -105,7 +111,7 @@ function Harness({ conversationId }: { conversationId: string }) {
     }),
   })
   return (
-    <AgUiActivityProvider conversationId={conversationId} activities={activities}>
+    <AgUiActivityProvider conversationId={conversationId} activities={pointers}>
       <AssistantRuntimeProvider runtime={runtime} config={config}>
         <ThreadPrimitive.Root>
           <ThreadPrimitive.Messages components={renderers} />
@@ -120,6 +126,16 @@ afterEach(() => {
 })
 
 describe('mounted widget authorization', () => {
+  it('keeps the generic tool and sends no request for a pointer missing its public tool ID', () => {
+    const incomplete = activities.map((activity) => ({
+      ...activity,
+      content: { binding_id: bindingId, run_id: runId, tool_call_id: publicToolCallId },
+    }))
+    const view = render(<Harness conversationId={threadA} pointers={incomplete} />)
+    expect(view.getByTestId('standard-tool')).toBeInTheDocument()
+    expect(apiFetch).not.toHaveBeenCalled()
+  })
+
   it('ignores a pending private response after switching threads', async () => {
     const pending = Promise.withResolvers<unknown>()
     vi.mocked(apiFetch).mockImplementation((path) =>

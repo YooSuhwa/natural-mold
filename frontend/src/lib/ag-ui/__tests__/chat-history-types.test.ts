@@ -124,6 +124,21 @@ describe('public chat snapshot decoding', () => {
     ).toEqual([{ id: 'm', scope: 'agent', content: '<redacted>' }])
   })
 
+  it('preserves the distinct public tool ID for a scoped UI card and drops incomplete bindings', () => {
+    const content = { type: 'demo_note', props: { text: 'Done' }, tool_call_id: 'provider-call' }
+    const ui = { type: 'ACTIVITY_SNAPSHOT', messageId: 'card', activityType: 'moldy.ui_data' }
+    const parsed = parsePublicActivities([
+      { ...ui, content: { ...content, public_tool_call_id: 'wire-call' } },
+      { ...ui, content },
+      { ...ui, activityType: 'moldy.mcp_app', content },
+    ])
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0].content).toMatchObject({
+      tool_call_id: 'provider-call',
+      public_tool_call_id: 'wire-call',
+    })
+  })
+
   it('keeps the latest auth attempt for each owner and rejects an ambiguous resumable ID', () => {
     function slot(id: string, owner: string, attempt: number) {
       return {
@@ -179,6 +194,53 @@ describe('public chat snapshot decoding', () => {
     expect(limited.metadata?.moldy).toEqual({ actionable: false })
     expect(limited.responseSchema).toBeUndefined()
     expect(normal.metadata).toBeUndefined()
+  })
+
+  it('honors a legacy child grant only for its current slot and run', () => {
+    const actor = {
+      subagentRunId: 'child',
+      runId,
+      physicalRunId,
+      parentToolCallId: 'call',
+      name: 'Worker',
+      status: 'interrupted',
+      interruptIds: ['current'],
+      legacyInterruptAccess: true,
+    }
+    const details = { type: 'ask_user', question: 'Continue?', legacyInterruptAccess: true }
+    const slot = {
+      id: 'current',
+      subagentRunId: 'child',
+      reason: 'moldy.ask_user',
+      metadata: { moldy: details },
+    }
+    const current = {
+      ...envelope,
+      interruptRunId: runId,
+      physicalInterruptRunId: physicalRunId,
+      subagents: [actor],
+      interrupts: [slot],
+    }
+    const allowed = parseWireChatSnapshot(current, threadId)
+    expect(allowed.subagents[0].legacyInterruptAccess).toBe(true)
+    expect(allowed.interrupts[0].metadata?.moldy?.legacyInterruptAccess).toBe(true)
+    const denied = [
+      { ...current, interruptRunId: null },
+      { ...current, physicalInterruptRunId: 'another-run' },
+      { ...current, subagents: [{ ...actor, legacyInterruptAccess: false }] },
+      { ...current, subagents: [{ ...actor, interruptIds: ['expired'] }] },
+      { ...current, interrupts: [{ ...slot, subagentRunId: 'sibling' }] },
+      {
+        ...current,
+        interrupts: [{ ...slot, metadata: { moldy: { ...details, actionable: false } } }],
+      },
+    ]
+    for (const snapshot of denied) {
+      const parsed = parseWireChatSnapshot(snapshot, threadId)
+      expect(parsed.interrupts[0].metadata?.moldy?.legacyInterruptAccess).toBeUndefined()
+      expect(parsed.subagents[0].legacyInterruptAccess).toBeUndefined()
+    }
+    expect(parsePublicInterrupts([slot])[0].metadata?.moldy?.legacyInterruptAccess).toBeUndefined()
   })
 
   it('decodes only a partial response scoped to a confirmed failed run', () => {

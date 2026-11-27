@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { AssistantRuntime } from '@assistant-ui/react'
+import { replaceEqualDeep } from '@tanstack/react-query'
 import { ApiError } from '@/lib/api/errors'
 import {
   isMoldyBranchSwitchedEvent,
@@ -64,6 +65,7 @@ export function useDurableAgUiHistory({
     let read: AbortController | null = null
     let timer: ReturnType<typeof setTimeout> | undefined
     let retryDelay = 200
+    let accessTimer: ReturnType<typeof setTimeout> | undefined
 
     function schedule() {
       if (scheduled || !mounted) return
@@ -94,7 +96,8 @@ export function useDurableAgUiHistory({
       schedule()
     }
 
-    async function importCurrentBranch() {
+    async function importCurrentBranch(recheckAccess = false) {
+      const previous = recheckAccess ? session.getSnapshot().snapshot : null
       const request = new AbortController()
       read = request
       needsRead = false
@@ -113,7 +116,9 @@ export function useDurableAgUiHistory({
           return
         }
         refreshRejected = false
-        thread.import(repo)
+        // A permission check can return the same pause. Preserve the user's local approval draft.
+        if (!previous || replaceEqualDeep(previous, state.snapshot) !== previous)
+          thread.import(repo)
         const disconnectedRunSettled = displayedRunId && state.activeRunId !== displayedRunId
         if (lastTerminal > notifiedTerminal || disconnectedRunSettled) {
           displayedRunId = null
@@ -132,7 +137,7 @@ export function useDurableAgUiHistory({
           reportClientWarning('AgUiHistory', 'Unable to read the selected conversation.')
           return
         }
-        retry()
+        if (!recheckAccess) retry()
       } finally {
         if (read === request) {
           read = null
@@ -168,7 +173,39 @@ export function useDurableAgUiHistory({
       schedule()
     }
 
+    function legacyApprovalVisible() {
+      const state = session.getSnapshot()
+      const native = thread.getState()
+      // The snapshot parser only grants this marker to a current interrupt whose child and run match.
+      return (
+        !readOnly &&
+        document.visibilityState === 'visible' &&
+        !state.readDenied &&
+        !state.activeRunId &&
+        !native.isLoading &&
+        !native.isRunning &&
+        !agent.isRunning &&
+        !!state.snapshot?.interruptRunId &&
+        state.interrupts.some((slot) => slot.metadata?.moldy?.legacyInterruptAccess === true)
+      )
+    }
+
+    function watchLegacyApproval() {
+      if (!legacyApprovalVisible()) {
+        clearTimeout(accessTimer)
+        accessTimer = undefined
+      } else if (accessTimer === undefined) {
+        accessTimer = setTimeout(() => {
+          accessTimer = undefined
+          if (mounted && !read && !needsRead && !attaching && legacyApprovalVisible()) {
+            void importCurrentBranch(true)
+          } else schedule()
+        }, 15_000)
+      }
+    }
+
     function reconcile() {
+      watchLegacyApproval()
       const state = session.getSnapshot()
       const native = thread.getState()
       if (state.readDenied && !denialCleared) {
@@ -234,6 +271,7 @@ export function useDurableAgUiHistory({
     }
     function visible() {
       if (document.visibilityState === 'visible') requestFreshHistory()
+      else schedule()
     }
     refresh.current = requestFreshHistory
     if (readOnly && agent.isRunning) {
@@ -254,6 +292,7 @@ export function useDurableAgUiHistory({
       refresh.current = null
       read?.abort()
       clearTimeout(timer)
+      clearTimeout(accessTimer)
       offSession()
       offThread()
       agentEvents.unsubscribe()
