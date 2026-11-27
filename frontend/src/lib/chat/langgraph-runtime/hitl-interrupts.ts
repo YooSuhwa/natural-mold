@@ -33,6 +33,7 @@ export interface ApprovalResult {
 export interface ResolvedInterruptToolCall {
   readonly toolCall: ToolCallInfo
   readonly result: ApprovalResult
+  readonly userMessageId?: string
   /** Original action (unredacted name/args) — lets the raw-pill strip match the
    * underlying model tool call even when the synthetic tool_args are redacted. */
   readonly action?: ActionRequest
