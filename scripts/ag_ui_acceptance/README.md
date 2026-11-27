@@ -41,7 +41,7 @@ OUT="$PWD/output/e2e-captures/$(date +%Y%m%d-%H%M%S)-ag-ui"
 
 ### 호환성 회귀를 포함한 검수
 
-`--extra-spec` 한 개당 Playwright 선택자 하나를 전달한다. 승인 화면에서 처음 보낸 답이 한 번만 처리되는지 보는 AG-UI 전용 검수에는 `--ag-ui-spec e2e/ag-ui-approval-readiness.spec.ts`를 사용한다. 실행기는 선택한 케이스를 **두 프런트엔드에서 각각** 실행한다. 아래 두 줄 번호는 문서 뷰어 4종과 대화 전환 시 사용량 초기화 테스트를 선택한다. 대상 커밋에서 줄이 바뀌면 두 테스트 선언 위치를 확인한다.
+`--extra-spec` 한 개당 Playwright 선택자 하나를 전달한다. 승인 화면에서 처음 보낸 답이 한 번만 처리되는지 보는 AG-UI 전용 검수에는 `--ag-ui-spec e2e/ag-ui-approval-readiness.spec.ts`를 사용한다. 실행기는 선택한 케이스를 **두 프런트엔드에서 각각** 실행한다. `--extra-case`는 대상 커밋의 Playwright 테스트 목록에서 정확한 제목을 찾아 선언 위치를 확인한다. 아래 예시는 문서 뷰어 4종과 대화 전환 시 사용량 초기화도 검수한다.
 
 ```bash
 specs=(
@@ -51,10 +51,11 @@ specs=(
   chat-side-chat.spec.ts skill-builder-chat.spec.ts
   chat-goal-steer-notice.spec.ts chat-message-queue.spec.ts
   chat-pinned-summary.spec.ts chat-run-summary.spec.ts
-  document-artifact-viewers.spec.ts:398 chat-langgraph-v3-regressions.spec.ts:505
 )
 extra=()
 for spec in "${specs[@]}"; do extra+=(--extra-spec "e2e/$spec"); done
+extra+=(--extra-case 'e2e/document-artifact-viewers.spec.ts::generates and previews DOCX, XLSX, PPTX, and HWPX artifacts')
+extra+=(--extra-case 'e2e/chat-langgraph-v3-regressions.spec.ts::resets token usage state when switching between conversations')
 "$PY" "$RUN" --revision "$SHA" --phase full --output "$OUT/parity" "${extra[@]}"
 ```
 
