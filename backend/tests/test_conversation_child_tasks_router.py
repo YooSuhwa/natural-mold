@@ -24,8 +24,13 @@ from app.models.conversation_run import ConversationRun
 from app.models.organization import Organization, OrganizationMember
 from app.services import agent_execution_owner
 from app.services.agent_execution_acceptance import OwnedExecutionRequest
+from app.services.conversation_run_service import RunSource
+from app.services.conversation_run_state import transition_run
 from tests.authz.unit_scope_fixture import unit_context
 from tests.test_agent_lifecycle_run_ownership import _seed_execution_tree
+from tests.test_independent_chat_jobs import JobRequest
+from tests.test_independent_chat_jobs import job_request as job_request
+from tests.test_independent_chat_jobs import launch as launch
 
 pytestmark = pytest.mark.asyncio
 
@@ -196,18 +201,13 @@ async def test_revoked_child_is_hidden_while_sibling_remains_authorized(
         await client.get(f"{url}/wait", params={"timeout_seconds": 0}),
     ]:
         assert denied.status_code == 404 and denied.json() == unknown
-    listed_ids = []
-    offset = 0
-    while True:
-        page = await client.get(base, params={"limit": 1, "offset": offset})
-        assert page.status_code == 200 and str(delegation.child_id) not in page.text
-        listed_ids.extend(row["id"] for row in page.json()["items"])
-        next_offset = page.json()["next_offset"]
-        if next_offset is None:
-            break
-        assert offset < next_offset < 3
-        offset = next_offset
-    assert listed_ids == [str(delegation.sibling_id)]
+    page = await client.get(base, params={"limit": 1})
+    assert page.status_code == 200
+    assert [item["id"] for item in page.json()["items"]] == [str(delegation.sibling_id)]
+    assert page.json()["next_offset"] is None
+    after = await client.get(base, params={"limit": 1, "offset": 1})
+    assert after.status_code == 200
+    assert after.json()["items"] == [] and after.json()["next_offset"] is None
 
 
 async def test_disabled_feature_preserves_replay_wait_and_cancel(
@@ -436,11 +436,10 @@ async def test_task_id_in_another_org_is_indistinguishable_from_unknown(
     assert known.json() == unknown.json()
 
 
-async def test_independent_room_preserves_child_history_and_rejects_nested_commands(
+async def test_private_child_history_requires_an_issued_independent_job(
     db: AsyncSession, client: AsyncClient, delegation: Delegation
 ) -> None:
-    # Exercise an existing persistent child binding with valid actor and graph pins.
-    # A synthetic absent child would return a 404 before exercising the room guard.
+    # The original child already has valid chat participant pins. Only its job proof is missing.
     room = await db.get(Conversation, delegation.conversation_id)
     assert room is not None
     room.source = INDEPENDENT_JOB_SOURCE
@@ -448,12 +447,13 @@ async def test_independent_room_preserves_child_history_and_rejects_nested_comma
     target = f"{delegation.base}/{delegation.child_id}"
     request = {"client_request_id": "unchanged", "text": "이전 조사 수정"}
 
-    assert (await client.post(f"{target}/instructions", json=request)).status_code == 409
-    assert (await client.post(f"{target}/cancel")).status_code == 409
-    history = await client.get(f"{target}/wait", params={"timeout_seconds": 0})
-    assert history.status_code == 200, history.text
-    assert history.json()["status"] == "running"
-    assert history.json()["instructions"] == []
+    for response in (
+        await client.get(delegation.base),
+        await client.get(f"{target}/wait", params={"timeout_seconds": 0}),
+        await client.post(f"{target}/instructions", json=request),
+        await client.post(f"{target}/cancel"),
+    ):
+        assert response.status_code == 404, response.text
 
     with pytest.raises(ChildTaskStopped):
         await next_child_instructions(
@@ -463,10 +463,133 @@ async def test_independent_room_preserves_child_history_and_rejects_nested_comma
         await begin_child_task(
             db,
             context=delegation.context,
-            conversation_id=room.id,
+            conversation_id=delegation.conversation_id,
             run_id=delegation.run_id,
             child_agent_id=delegation.child_agent_id,
             tool_call_id="nested",
             role="researcher",
             checkpoint_ns="tools:nested|child",
         )
+
+
+async def test_independent_room_preserves_child_history_and_rejects_nested_commands(
+    db: AsyncSession,
+    client: AsyncClient,
+    job_request: JobRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "child_tasks_enabled", True)
+    target = await db.get(Agent, job_request.target_id)
+    assert target is not None
+    context = unit_context(target.user_id)
+    grandchild = Agent(
+        name="검토자",
+        system_prompt="Review the report.",
+        model_id=target.model_id,
+        user_id=target.user_id,
+        tenant_id=target.tenant_id,
+        org_id=target.org_id,
+    )
+    other_room = Conversation(
+        agent_id=target.id,
+        agent_name_snapshot=target.name,
+        user_id=context.user_id,
+        tenant_id=context.tenant_id,
+        org_id=context.org_id,
+        last_activity_at=datetime.now(UTC),
+    )
+    db.add_all([grandchild, other_room])
+    await db.flush()
+    other_room_id = other_room.id
+    grandchild_id = grandchild.id
+    db.add(AgentSubAgentLink(parent_agent_id=target.id, sub_agent_id=grandchild_id, position=0))
+    await db.commit()
+    job = await job_request.create(client)
+    initial = await db.get(ConversationRun, job.child_run_id)
+    assert initial is not None
+    await transition_run(db, initial, "running", worker_instance_id="job-before-approval")
+    await transition_run(db, initial, "interrupted", interrupt_id="approve")
+    await db.commit()
+
+    async def admit(
+        room_id: UUID, source: RunSource, parent_id: UUID | None = None
+    ) -> ConversationRun:
+        accepted = await agent_execution_owner.accept_owned_execution(
+            db,
+            OwnedExecutionRequest(
+                room_id,
+                job.child_agent_id,
+                context,
+                "chat",
+                "검토",
+                run_source=source,
+                parent_run_id=parent_id,
+                interrupt_id="approve" if parent_id else None,
+            ),
+        )
+        run = await db.get(ConversationRun, accepted.run_id)
+        assert run is not None
+        await transition_run(db, run, "running", worker_instance_id="child-run")
+        return run
+
+    # Preserve real participant pins, then simulate a historical run attached to the wrong room.
+    unrelated = await admit(other_room_id, "start")
+    unrelated_id = unrelated.id
+    await transition_run(db, unrelated, "completed")
+    unrelated.conversation_id = job.child_conversation_id
+    await db.commit()
+    resume = await admit(job.child_conversation_id, "resume", job.child_run_id)
+
+    def historical_binding(call: str, origin: UUID, current: UUID) -> ConversationChildTask:
+        binding = ConversationChildTask(
+            tool_call_id=call,
+            role="검토자",
+            brief=call,
+            child_agent_id=grandchild_id,
+            run_id=origin,
+            current_run_id=current,
+            checkpoint_ns=f"tools:{call}|child",
+        )
+        db.add(binding)
+        return binding
+
+    # Insert already persisted historical bindings; new nested work is forbidden in this room.
+    historical = historical_binding("owned-review", job.child_run_id, resume.id)
+    await db.flush()
+    mixed_origin = historical_binding("unrelated-origin", unrelated_id, resume.id)
+    mixed_current = historical_binding("unrelated-current", job.child_run_id, unrelated_id)
+    await db.flush()
+    owned_id = historical.id
+    hidden_ids = [mixed_origin.id, mixed_current.id]
+    await db.commit()
+
+    base = f"/api/conversations/{job.child_conversation_id}/child-tasks"
+    page = await client.get(base, params={"limit": 1})
+    assert page.status_code == 200, page.text
+    assert [item["id"] for item in page.json()["items"]] == [str(owned_id)]
+    assert page.json()["next_offset"] is None
+    assert (await client.get(base, params={"offset": 1})).json()["items"] == []
+    request = {"client_request_id": "unchanged", "text": "이전 조사 수정"}
+    unknown = await client.get(f"{base}/{uuid4()}/wait", params={"timeout_seconds": 0})
+    assert unknown.status_code == 404
+    for child_id in hidden_ids:
+        for response in (
+            await client.get(f"{base}/{child_id}/wait", params={"timeout_seconds": 0}),
+            await client.post(f"{base}/{child_id}/instructions", json=request),
+            await client.post(f"{base}/{child_id}/cancel"),
+        ):
+            assert response.status_code == 404, response.text
+            assert response.json() == unknown.json()
+    assert (await client.post(f"{base}/{owned_id}/instructions", json=request)).status_code == 409
+    assert (await client.post(f"{base}/{owned_id}/cancel")).status_code == 409
+    history = await client.get(f"{base}/{owned_id}/wait", params={"timeout_seconds": 0})
+    assert history.status_code == 200, history.text
+    assert history.json()["brief"] == "owned-review"
+    assert history.json()["status"] == "running"
+    assert history.json()["instructions"] == []
+
+    monkeypatch.setattr(settings, "child_tasks_enabled", False)
+    disabled = await client.get(base)
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["allow_legacy_details"] is False
+    assert [item["id"] for item in disabled.json()["items"]] == [str(owned_id)]
