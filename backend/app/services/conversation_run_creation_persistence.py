@@ -102,6 +102,10 @@ async def mark_stale_active_runs(
     # Enrolled owners and their cancellation state belong to the fenced recovery sweep,
     # including the first sweep after an administrator disables new takeovers.
     conditions.append(ConversationRun.owner_generation == 0)
+    if include_workerless:
+        from app.services.ag_ui_delivery_scope import recoverable_private_delivery
+
+        conditions.append(~recoverable_private_delivery())
     if conversation_id is not None:
         conditions.append(ConversationRun.conversation_id == conversation_id)
     if protected_run_ids:

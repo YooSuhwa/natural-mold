@@ -65,7 +65,9 @@ async def recover_conversation_queue() -> int:
         )
         pending_conversation_ids = list(pending_result.scalars().all())
 
-    launched = 0
+    from app.services.ag_ui_deferred_delivery import recover_ag_ui_deliveries
+
+    launched = await recover_ag_ui_deliveries(registry=registry)
     for input_id in claimed_ids:
         if await facade_attr("launch_claimed_input")(input_id) is not None:
             launched += 1

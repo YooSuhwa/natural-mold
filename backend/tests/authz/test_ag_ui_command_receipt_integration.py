@@ -13,13 +13,23 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.authz.org_context import OrgContext
 from app.config import settings
-from app.database import tenant_session
+from app.database import platform_sessions, tenant_session
 from app.exceptions import AppError, ConflictError
-from app.models import Conversation, ConversationRunInput, OrganizationMember, TenantMember
+from app.models import (
+    Conversation,
+    ConversationRun,
+    ConversationRunInput,
+    OrganizationMember,
+    TenantMember,
+)
 from app.models.ag_ui_command_receipt import AgUiCommandReceipt
 from app.services import ag_ui_commands as commands
+from app.services.conversation_run_cancellation_recovery import (
+    finalize_workerless_cancel_before_start,
+)
 from app.services.conversation_run_queue_claim import claim_next_input
 from app.services.conversation_run_queue_persistence import enqueue_input
+from app.services.conversation_run_state import request_cancel_run
 from tests.authz.i06_rls_lab import RlsLab, async_url, rls_lab
 from tests.authz.test_goal_rls_integration import _actor  # noqa: PLC2701
 
@@ -257,3 +267,64 @@ async def test_removed_organization_membership_blocks_read_and_replay(
         with pytest.raises(AppError) as rejected:
             await commands.find_or_reserve(db, context, conversation, _PUBLIC, _DIGEST)
         assert rejected.value.status == 404
+
+
+async def test_workerless_cancel_resolves_only_one_scoped_physical_run(
+    lab: RlsLab, sessions: async_sessionmaker[AsyncSession]
+) -> None:
+    owner = actor(lab, lab.tenant_a)
+    other = actor(lab, lab.tenant_b)
+    context, conversation = owner.context, owner.conversation
+    async with tenant_session(context, maker=sessions) as db:
+        admission = await commands.find_or_reserve(db, context, conversation, _PUBLIC, _DIGEST)
+        input_id = await enqueue_and_bind(db, owner, admission)
+        claimed = await claim_next_input(db, conversation_id=conversation, context=context)
+        assert claimed is not None and claimed.input.id == input_id
+        run_id, revision = claimed.run.id, claimed.input.revision
+        await request_cancel_run(db, claimed.run)
+        await db.commit()
+    finalized = await finalize_workerless_cancel_before_start(
+        session_factory=platform_sessions("conversation_run.queue", maker=sessions),
+        protected_run_ids=(),
+    )
+    assert finalized == [conversation]
+
+    async with tenant_session(other.context, maker=sessions) as db:
+        assert await commands.load_run_binding(db, other.context, conversation, _PUBLIC) is None
+        assert await commands.load_public_run_id(db, other.context, conversation, run_id) is None
+    async with tenant_session(context, maker=sessions) as db:
+        queued = await db.get(ConversationRunInput, input_id)
+        run = await db.get(ConversationRun, run_id)
+        assert queued is not None and run is not None
+        assert (queued.status, queued.run_id, queued.revision) == ("canceled", None, revision + 1)
+        assert run.status == "canceled" and run.cancellation_acknowledged_at is not None
+        terminal = await commands.load_run_binding(db, context, conversation, _PUBLIC)
+        assert terminal is not None
+        assert (terminal.run_id, terminal.input_id, terminal.revision) == (
+            run_id,
+            input_id,
+            queued.revision,
+        )
+        assert await commands.load_run_identities(db, context, conversation, [run_id]) == {
+            run_id: (_PUBLIC, "base")
+        }
+        assert run.metadata_json is not None
+        copied = ConversationRun(
+            conversation_id=conversation,
+            user_id=context.user_id,
+            org_id=context.org_id,
+            tenant_id=context.tenant_id,
+            agent_id=run.agent_id,
+            source=run.source,
+            status="canceled",
+            metadata_json=dict(run.metadata_json),
+        )
+        db.add(copied)
+        await db.commit()
+
+    async with tenant_session(context, maker=sessions) as db:
+        ambiguous = await commands.load_run_binding(db, context, conversation, _PUBLIC)
+        assert ambiguous is not None and ambiguous.run_id is None and ambiguous.input_id == input_id
+        # A one-item page must also consider the second match outside the requested page.
+        assert await commands.load_public_run_id(db, context, conversation, run_id) is None
+        assert await commands.load_public_run_id(db, context, conversation, copied.id) is None

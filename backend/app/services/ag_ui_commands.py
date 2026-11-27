@@ -22,6 +22,7 @@ from app.models.ag_ui_command_receipt import AgUiCommandReceipt as Receipt
 from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
+from app.services.ag_ui_canceled_claims import canceled_claim_identities, canceled_input_candidates
 from app.services.chat.chat_execution_preparation import require_executable_conversation
 from app.services.conversation_run_service import get_run_for_user
 
@@ -35,9 +36,9 @@ class AgUiRunBinding:
     input_id: UUID | None
     input_status: str | None
     position: int | None
-    projection_version: str
-    checkpoint_id: str | None
-    parent_public_run_id: str | None
+    projection_version: str = PROJECTION_VERSION
+    checkpoint_id: str | None = None
+    parent_public_run_id: str | None = None
     revision: int | None = None
 
 
@@ -53,7 +54,7 @@ class CommandAdmission:
 
 def _bindings(
     context: OrgContext, conversation_id: UUID
-) -> Select[tuple[Receipt, UUID | None, str | None, int | None, int | None]]:
+) -> Select[tuple[Receipt, UUID | None, str | None, int | None, int | None, bool]]:
     # Queue inputs acquire their concrete run on claim. Only join a target belonging
     # to this receipt's owner and conversation, including when old data is malformed.
     queued = ConversationRunInput
@@ -65,6 +66,7 @@ def _bindings(
             Nullable(queued.status),
             Nullable(queued.position),
             Nullable(queued.revision),
+            queued.claimed_at.is_not(None),
         )
         .outerjoin(
             queued,
@@ -115,7 +117,10 @@ async def _binding(
     row = (await db.execute(stmt)).one_or_none()
     if row is None:
         return None
-    receipt, run_id, status, position, revision = row
+    receipt, run_id, status, position, revision, was_claimed = row
+    if run_id is None and was_claimed and status == "canceled" and receipt.input_id is not None:
+        history = await canceled_claim_identities(db, context, conversation.id, (receipt.input_id,))
+        run_id = next(iter(history), None)
     if not await can_read_conversation_run_id(db, conversation, run_id, context):
         return None
     return AgUiRunBinding(
@@ -168,9 +173,20 @@ async def load_run_identities(
         )
         .where(ConversationRun.id.in_(set(run_ids)))
     )
-    return {
+    result = {
         physical: (public, checkpoint) for physical, public, checkpoint in await db.execute(stmt)
     }
+    missing = set(run_ids).difference(result)
+    if missing:
+        candidates = await canceled_input_candidates(db, context, conversation.id, missing)
+        if candidates:
+            history = await canceled_claim_identities(db, context, conversation.id, candidates)
+            result.update(
+                (physical, identity)
+                for physical, identity in history.items()
+                if physical in missing
+            )
+    return result
 
 
 async def load_public_run_ids(
@@ -262,15 +278,16 @@ async def bind_command(
     if conversation is None:
         raise conversation_not_found()
     physical_id = run_id
+    status = None
     if physical_id is not None:
-        valid_target = await db.scalar(
-            select(ConversationRun.id).where(
+        status = await db.scalar(
+            select(ConversationRun.status).where(
                 ConversationRun.id == run_id,
                 ConversationRun.conversation_id == conversation.id,
                 private_scope_predicate(ConversationRun, context),
             )
         )
-        if valid_target is None:
+        if status is None:
             raise conversation_not_found()
     else:
         queued = (
@@ -297,7 +314,10 @@ async def bind_command(
         .with_only_columns(Receipt.public_run_id, maintain_column_froms=True)
         .where(or_(*targets))
     )
-    if await db.scalar(already_bound) is not None:
+    bound_id = await db.scalar(already_bound)
+    if bound_id is None and run_id is not None and status == "canceled":
+        bound_id = await load_public_run_id(db, context, conversation.id, run_id)
+    if bound_id is not None:
         raise ConflictError("AG_UI_TARGET_ALREADY_BOUND", "The target already has a public run ID")
     db.add(
         Receipt(
