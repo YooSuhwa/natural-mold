@@ -145,7 +145,9 @@ async def test_ambiguous_delegate_file_caption_wrong_namespace_and_partial_turn(
                 chat,
                 namespaced,
                 _trace(
-                    namespaced, ("message_end", {"namespace": ["child"], "content": "child text"})
+                    namespaced,
+                    _start(namespaced, "unproven turn"),
+                    ("message_end", {"subagentRunId": "child", "content": "child text"}),
                 ),
                 at,
             ),
@@ -182,3 +184,42 @@ async def test_unlinked_transcript_needs_owned_unbranched_legacy_chat(db: AsyncS
     chat.source = "api"
     await db.commit()
     assert not await read_unlinked_legacy_transcript(db, chat, ctx, source="legacy")
+    chat.source = "ui"
+    chat.agent_id = None
+    chat.agent_purged_at = datetime(2026, 6, 1)
+    chat.agent_lifecycle_state = "purged"
+    await db.commit()
+    assert not await read_unlinked_legacy_transcript(db, chat, ctx, source="legacy")
+
+
+@pytest.mark.asyncio
+async def test_unlinked_chunk_pages_redact_complete_turn_and_drop_broken_tail(
+    db: AsyncSession,
+) -> None:
+    _, chat = await _seed_conversation(db)
+    ctx = unit_context(chat.user_id)
+    good, broken = uuid4(), uuid4()
+    secret = "test-only-legacy-secret"
+    for key in (good, broken):
+        stream = _trace(
+            key,
+            _start(key, f"request {secret}"),
+            *(("content_delta", {"delta": "piece"}) for _ in range(128)),
+            ("message_end", {"content": f"answer {secret}"}),
+        )
+        if key == broken:
+            stream[-1]["id"] = f"{key}-135"
+        for part in (stream[:100], stream[100:]):
+            await trace_storage.append_events(
+                db, conversation_id=chat.id, assistant_msg_id=str(key), events_chunk=part
+            )
+        await trace_storage.finalize_turn(db, assistant_msg_id=str(key))
+    await db.commit()
+    rows = await read_unlinked_legacy_transcript(
+        db, chat, ctx, source="legacy", secret_values=[secret]
+    )
+    assert [message["role"] for message, _ in rows] == ["user", "assistant"]
+    assert rows[0][0]["content"].startswith("request ") and rows[1][0]["content"].startswith(
+        "answer "
+    )
+    assert secret not in repr(rows)

@@ -202,48 +202,60 @@ class AgUiRunSnapshot:
         if kind not in self._activity_types or not isinstance(content, dict):
             return
         existing = self._rows.get(mid)
-        if existing and (existing["role"] != "activity" or frame.get("replace") is False):
+        if existing and (
+            existing["role"] != "activity"
+            or existing.get("subagentRunId") != owner
+            or frame.get("replace") is False
+        ):
             return
         related = _string(content.get("public_message_id"))
         parent = related if related and self._matches(related, "assistant", owner) else None
         if not parent and kind == "moldy.compaction":
             parent = self._last_assistant.get(owner)
         call_id = None
-        if kind == "moldy.ui_data":
-            tool_id = _string(content.get("public_tool_call_id")) or _string(
-                content.get("tool_call_id")
-            )
-            calls = self._calls.get((owner, tool_id), []) if tool_id else []
-            if len(calls) == 1 and related in (None, calls[0].parent):
-                parent, call_id = calls[0].parent, tool_id
+        if kind in ("moldy.ui_data", "moldy.mcp_app"):
+            if "public_message_id" in content and not parent:
+                return
+            if (
+                kind == "moldy.ui_data"
+                and "message_id" in content
+                and (not parent or content["message_id"] != parent)
+            ):
+                return
+            if (
+                kind == "moldy.mcp_app"
+                or "tool_call_id" in content
+                or "public_tool_call_id" in content
+            ):
+                call_id = _string(content.get("public_tool_call_id"))
+                calls = self._calls.get((owner, call_id), []) if call_id else []
+                if len(calls) != 1 or related not in (None, calls[0].parent):
+                    return
+                if kind == "moldy.ui_data" and content.get("tool_call_id") != call_id:
+                    return
+                parent = calls[0].parent
         if kind == "moldy.subagent_todos" and owner:
             self._state({"snapshot": content}, owner)
         if kind == "moldy.mcp_app":
             protected_id = _string(content.get("tool_call_id"))
-            public_id = _string(content.get("public_tool_call_id"))
-            call_id = public_id or protected_id
             binding_id = _string(content.get("binding_id"))
-            if not protected_id or not call_id or not binding_id or not self._physical_run_id:
-                return
-            calls = self._calls.get((owner, call_id), [])
             if (
-                len(calls) != 1
+                not protected_id
+                or not binding_id
+                or not self._physical_run_id
                 or content.get("run_id") != self._physical_run_id
-                or related not in (None, calls[0].parent)
             ):
                 return
             try:
                 UUID(binding_id)
             except ValueError:
                 return
-            parent = calls[0].parent
             content = {
                 "tool_call_id": protected_id,
+                "public_tool_call_id": call_id,
                 "binding_id": binding_id,
                 "run_id": self._physical_run_id,
             }
-            if public_id:
-                content["public_tool_call_id"] = public_id
             if related:
                 content["public_message_id"] = related
         row: Row = {

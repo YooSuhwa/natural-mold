@@ -3,18 +3,29 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import UUID
 
+from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.schemas.ag_ui_snapshot import AgUiSnapshotMessageLink
+from app.services.ag_ui_snapshot_call_visibility import (
+    filter_checkpoint_calls,
+    visible_child_controls,
+)
+from app.services.ag_ui_snapshot_idless import match_idless_run_text
+from app.services.ag_ui_snapshot_matching import ScopedCheckpointCalls
 
 type Row = dict[str, Any]
 
 
 class _Replay(Protocol):
+    @property
+    def visibility(self) -> ChildVisibility: ...
+    @property
+    def root_issuances(self) -> Mapping[tuple[str | None, str], str]: ...
     @property
     def messages(self) -> Sequence[Mapping[str, Any]]: ...
     @property
@@ -94,12 +105,25 @@ class SnapshotAssembly:
         *,
         include_legacy_users: bool = False,
         require_run_link: bool = False,
+        idless_checkpoint_ids: Collection[str] = (),
+        thread_id: str | None = None,
     ) -> None:
         self._legacy = include_legacy_users and not checkpoint
         self._require_run = require_run_link
         self._checkpoint = [_Entry(deepcopy(row), link) for row, link in checkpoint]
+        self._thread_id = thread_id
+        self._raw_tool_rows: dict[str | None, list[tuple[int, Row, AgUiSnapshotMessageLink]]] = (
+            defaultdict(list)
+        )
+        self._turns: list[int] = []
+        self._unbound_call_turns: dict[int, list[tuple[int, Row, AgUiSnapshotMessageLink]]] = (
+            defaultdict(list)
+        )
+        self._projected_calls: set[int] = set()
+        self._hidden: set[int] = set()
+        self._idless_ids = frozenset(idless_checkpoint_ids)
+        self._visibility: dict[str, ChildVisibility] = {}
         self._by_id: dict[str, list[int]] = defaultdict(list)
-        self._by_call: dict[tuple[str, str], set[int]] = defaultdict(set)
         self._bound: dict[str, list[int]] = defaultdict(list)
         self._occupied: set[str] = set()
         self._extras: dict[int, list[_Entry]] = defaultdict(list)
@@ -108,27 +132,76 @@ class SnapshotAssembly:
         self._unreliable: set[UUID] = set()
         self._children: dict[str, Row] = {}
         self._todos: dict[str | None, list[Row]] = {}
+        turn = 0
         for index, entry in enumerate(self._checkpoint):
             row = entry.message
+            if row["role"] == "user":
+                turn += 1
+            self._turns.append(turn)
             mid = row["id"]
             self._by_id[mid].append(index)
             self._occupied.add(mid)
             if entry.link.physical_run_id:
                 self._bound[str(entry.link.physical_run_id)].append(index)
-            if row["role"] == "assistant":
-                for cid in _call_ids(row):
-                    self._by_call["assistant", cid].add(index)
-            elif row["role"] == "tool":
-                self._by_call["tool", row["toolCallId"]].add(index)
+            if row.get("toolCalls") or row["role"] == "tool":
+                source = (index, row, entry.link)
+                self._raw_tool_rows[entry.link.physical_run_id].append(source)
+                if not entry.link.physical_run_id:
+                    self._unbound_call_turns[turn].append(source)
 
-    def _match(self, row: Mapping[str, Any], physical_id: str | None) -> int | None:
+    def _candidate_calls(
+        self, physical: str | None, public_id: str, replay: _Replay
+    ) -> ScopedCheckpointCalls:
+        owned = self._bound.get(physical, ()) if physical else ()
+        turns = {self._turns[i] for i in owned}
+        # A provider call ID can recur in many turns. Only examine old unstamped
+        # calls alongside an actual root message or a checkpoint stamped for this run.
+        for message in replay.messages:
+            if not message.get("subagentRunId") and isinstance(mid := message.get("id"), str):
+                turns.update(self._turns[i] for i in self._by_id.get(mid, ()))
+        raw = [
+            item
+            for turn in turns
+            for item in self._unbound_call_turns.get(turn, ())
+            if item[0] not in self._projected_calls
+        ]
+        if physical:
+            for index, row, link in self._raw_tool_rows.get(physical, ()):
+                if link.run_id is None:
+                    # The supplied public ID was resolved for this exact physical run.
+                    link = link.model_copy(update={"run_id": public_id})
+                raw.append((index, row, link))
+        raw.sort(key=lambda item: item[0])
+        return ScopedCheckpointCalls(
+            raw, public_id=public_id, visibility=replay.visibility, issuances=replay.root_issuances
+        )
+
+    def _record_call(self, index: int, calls: ScopedCheckpointCalls) -> None:
+        if index not in calls.rows or index in self._projected_calls:
+            return
+        self._projected_calls.add(index)
+        entry = self._checkpoint[index]
+        raw_id = entry.message["id"]
+        safe = calls.rows[index]
+        if safe is None or (safe["id"] != raw_id and safe["id"] in self._occupied):
+            self._hidden.add(index)
+            return
+        entry.message = safe
+        if safe["id"] != raw_id:
+            self._aliases[raw_id] = safe["id"]
+            self._occupied.add(safe["id"])
+            entry.link = entry.link.model_copy(update={"message_id": safe["id"]})
+
+    def _match(
+        self, row: Mapping[str, Any], physical_id: str | None, calls: ScopedCheckpointCalls
+    ) -> int | None:
         if row.get("subagentRunId"):
             return None
         role = row.get("role")
         mid = row.get("id")
         if not isinstance(mid, str) or role not in ("assistant", "tool", "user"):
             return None
-        indices = self._by_id.get(mid)
+        indices = calls.by_id.get(mid) or self._by_id.get(mid)
         if indices:
             if len(indices) != 1:
                 return None
@@ -143,38 +216,49 @@ class SnapshotAssembly:
             candidates: set[int] = set()
             for key in keys:
                 if isinstance(key, str):
-                    candidates.update(self._by_call.get((role, key), ()))
+                    candidates.update(calls.by_call.get((role, key), ()))
             if len(candidates) != 1:
                 return None
             index = candidates.pop()
         entry = self._checkpoint[index]
+        saved = calls.rows.get(index, entry.message)
+        if saved is None:
+            return None
         known_owner = entry.link.physical_run_id
-        if entry.message["role"] != role or (
+        if saved["role"] != role or (
             known_owner and physical_id and str(known_owner) != physical_id
         ):
             return None
         if role == "assistant":
-            saved_text, text = entry.message.get("content"), row.get("content")
+            saved_text, text = saved.get("content"), row.get("content")
             if (
                 isinstance(saved_text, str)
                 and isinstance(text, str)
                 and not (saved_text.startswith(text) or text.startswith(saved_text))
             ):
                 return None
-            saved_calls, calls = _call_ids(entry.message), _call_ids(row)
-            if saved_calls and calls and saved_calls.isdisjoint(calls):
+            saved_calls, public_calls = _call_ids(saved), _call_ids(row)
+            if saved_calls and public_calls and saved_calls.isdisjoint(public_calls):
                 return None
-        if role == "tool" and row.get("toolCallId") != entry.message.get("toolCallId"):
+        if role == "tool" and row.get("toolCallId") != saved.get("toolCallId"):
             return None
-        if role == "user" and row.get("content") != entry.message.get("content"):
+        if role == "user" and row.get("content") != saved.get("content"):
             return None
         return index
 
-    def has_root_match(self, replay: _Replay, physical_run_id: UUID | None = None) -> bool:
+    def has_root_match(
+        self,
+        replay: _Replay,
+        physical_run_id: UUID | None = None,
+        *,
+        public_run_id: str | None = None,
+    ) -> bool:
         """An anchor on this branch establishes a prefix, never a whole historic fork."""
+        physical = str(physical_run_id) if physical_run_id else None
+        calls = self._candidate_calls(physical, public_run_id or physical or "", replay)
         return any(
             row.get("role") in ("assistant", "tool")
-            and self._match(row, str(physical_run_id) if physical_run_id else None) is not None
+            and self._match(row, physical, calls) is not None
             for row in replay.messages
         )
 
@@ -235,10 +319,20 @@ class SnapshotAssembly:
         if physical in self._runs:
             raise ValueError("A snapshot must fold each authorized physical run once")
         self._runs.add(physical)
+        self._visibility[physical] = replay.visibility
         rows = [*replay.legacy_users, *replay.messages]
-        matches = [self._match(row, physical) for row in rows]
-        anchors = [index for index in matches if index is not None]
+        calls = self._candidate_calls(physical, public_run_id, replay)
+        matches = [self._match(row, physical, calls) for row in rows]
         bound = self._bound.get(physical, [])
+        for index in bound:
+            self._record_call(index, calls)
+        ambiguous = match_idless_run_text(
+            rows,
+            matches,
+            {i: self._checkpoint[i].message for i in bound} if self._idless_ids else {},
+            self._idless_ids,
+        )
+        anchors = [index for index in matches if index is not None]
         # Extras before this run's first known message follow the preceding turn.
         # Active partial-only and legacy histories without checkpoints append at the tip.
         slot = anchors[0] if anchors else (bound[-1] + 1 if bound else len(self._checkpoint))
@@ -256,14 +350,22 @@ class SnapshotAssembly:
         )
         seen: set[int] = set()
         for row_number, (row, index) in enumerate(zip(rows, matches, strict=True)):
+            if row_number in ambiguous:
+                self._unreliable.add(physical_run_id)
+                continue
             mid = row.get("id")
             if not isinstance(mid, str) or not mid:
                 self._unreliable.add(physical_run_id)
                 continue
             meta = replay.message_links.get(mid, {})
             if index is not None:
-                if index in seen or not self._merge_checkpoint(
-                    index, row, public_run_id, physical, restrict_to_checkpoint, meta
+                self._record_call(index, calls)
+                if (
+                    index in seen
+                    or index in self._hidden
+                    or not self._merge_checkpoint(
+                        index, row, public_run_id, physical, restrict_to_checkpoint, meta
+                    )
                 ):
                     self._unreliable.add(physical_run_id)
                 seen.add(index)
@@ -331,6 +433,7 @@ class SnapshotAssembly:
                 prev.get(key) and item.get(key) and prev[key] != item[key]
                 for key in ("parentSubagentRunId", "parentToolCallId")
             ):
+                prev.pop("childTaskId", None)
                 self._unreliable.add(physical)
                 continue
             child = {**item, "runId": public_id, "physicalRunId": str(physical)}
@@ -342,27 +445,67 @@ class SnapshotAssembly:
             accepted.add(cid)
         return accepted
 
+    def _finish_unbound_calls(self) -> None:
+        # A history without run receipts owns no protected task. For regular
+        # tools it still has a thread-scoped identity and a chronological issuer.
+        for physical, raw in self._raw_tool_rows.items():
+            pending = [item for item in raw if item[0] not in self._projected_calls]
+            if not pending:
+                continue
+            scope = pending[0][2].run_id or (
+                "checkpoint:" + self._thread_id if self._thread_id else None
+            )
+            if not scope:
+                self._hidden.update(index for index, _, _ in pending)
+                # Keep public assistant text even without any identity for its tools.
+                for index, row, _ in pending:
+                    if row["role"] == "assistant" and row.get("content"):
+                        self._hidden.discard(index)
+                        self._checkpoint[index].message = {
+                            k: v for k, v in row.items() if k != "toolCalls"
+                        }
+                continue
+            calls = ScopedCheckpointCalls(
+                pending,
+                public_id=scope,
+                visibility=self._visibility.get(physical) if physical else None,
+                issuances={},
+            )
+            for index, _, _ in pending:
+                self._record_call(index, calls)
+
     def finish(self) -> AssembledSnapshot:
+        self._finish_unbound_calls()
         messages: list[Row] = []
         links: list[AgUiSnapshotMessageLink] = []
-        visible_ids = {entry.message["id"] for group in self._extras.values() for entry in group}
-        visible_checkpoints = {
-            entry.link.checkpoint_id
-            for entry in self._checkpoint
-            if not self._require_run or entry.link.physical_run_id in self._runs
+        extras = [(e.message, e.link) for group in self._extras.values() for e in group]
+        confirmed = [
+            (e.message, e.link)
+            for index, e in enumerate(self._checkpoint)
+            if index not in self._hidden
+            and (not self._require_run or e.link.physical_run_id in self._runs)
+        ]
+        checkpoint = filter_checkpoint_calls(confirmed, extras)
+        visible_ids = {row["id"] for row, _ in extras} | checkpoint.keys()
+        visible_calls = {
+            (link.physical_run_id, cid) for row, link in extras for cid in _call_ids(row)
         }
-        visible_ids.update(
-            entry.message["id"]
-            for entry in self._checkpoint
-            if not self._require_run or entry.link.physical_run_id in self._runs
+        visible_calls.update(
+            (link.physical_run_id, cid)
+            for row, link in confirmed
+            for cid in _call_ids(checkpoint.get(row["id"], {}))
         )
+        visible_checkpoints = {
+            link.checkpoint_id for row, link in confirmed if row["id"] in checkpoint
+        }
         tip: str | None = None
         for slot in range(len(self._checkpoint) + 1):
             entries = list(self._extras.get(slot, ()))
-            if slot < len(self._checkpoint):
+            if slot < len(self._checkpoint) and slot not in self._hidden:
                 saved = self._checkpoint[slot]
-                if not self._require_run or saved.link.physical_run_id in self._runs:
-                    entries.append(saved)
+                safe = checkpoint.get(saved.message["id"])
+                if safe is not None:
+                    entries.append(_Entry(safe, saved.link))
             for entry in entries:
                 message, link = entry.message, entry.link
                 root = message["role"] in ("assistant", "user") and not link.subagent_run_id
@@ -374,6 +517,11 @@ class SnapshotAssembly:
                 updates: Row = {}
                 if parent != link.parent_message_id:
                     updates["parent_message_id"] = parent
+                if (
+                    link.parent_tool_call_id
+                    and (link.physical_run_id, link.parent_tool_call_id) not in visible_calls
+                ):
+                    updates["parent_tool_call_id"] = None
                 if self._require_run:
                     if link.parent_checkpoint_id not in visible_checkpoints:
                         updates["parent_checkpoint_id"] = None
@@ -393,9 +541,16 @@ class SnapshotAssembly:
             item = child.copy()
             if parent_id := item.get("parentMessageId"):
                 parent_id = self._aliases.get(parent_id, parent_id)
-                if parent_id in visible_ids:
-                    item["parentMessageId"] = parent_id
-                else:
+                item["parentMessageId"] = parent_id
+                if parent_id not in visible_ids:
                     item.pop("parentMessageId")
+                    item.pop("childTaskId", None)
             children.append(item)
-        return AssembledSnapshot(messages, links, children, self._todos, tip, self._unreliable)
+        return AssembledSnapshot(
+            messages,
+            links,
+            visible_child_controls(children, messages, links),
+            self._todos,
+            tip,
+            self._unreliable,
+        )

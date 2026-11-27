@@ -34,7 +34,7 @@ def _transcript_entry(
 ) -> JournalEntry | None:
     """The journal has already checked the source identity, namespace and ordinal."""
     data = raw.get("data")
-    if not isinstance(data, dict):
+    if not isinstance(data, dict) or raw.keys() - {"event", "id", "data"}:
         return None
     name = raw.get("event")
     source_id = f"{record.assistant_msg_id}-{ordinal}"
@@ -42,7 +42,7 @@ def _transcript_entry(
         return None
     users: list[dict[str, Any]] = []
     if name == event_names.MESSAGE_START:
-        if data.get("id") != record.assistant_msg_id:
+        if data.get("id") != record.assistant_msg_id or data.keys() - {"id", "role", "input"}:
             return None
         # The historical UI submitted a string. Expanded file blocks and captions
         # in model input do not establish what the user typed into the composer.
@@ -65,6 +65,10 @@ def _transcript_entry(
             if not users:
                 return None
     if name == event_names.MESSAGE_END:
+        # The original root emitter did not include owner or branch fields. A
+        # newer enriched envelope cannot be recovered through this unlinked path.
+        if data.keys() - {"usage", "content", "status"}:
+            return None
         events = legacy_journal_events(record, raw, ordinal, secrets)
         if events is None:
             return None

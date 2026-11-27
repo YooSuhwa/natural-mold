@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -13,11 +13,17 @@ import orjson
 from ag_ui.core import BaseEvent
 
 from app.agent_runtime.ag_ui_v1 import AgUiV1Projector
-from app.agent_runtime.protocol_events import ProtocolInterrupt
 from app.models.conversation_run import RUN_TERMINAL_STATUSES
 from app.services.ag_ui_journal import JournalPage
 from app.services.ag_ui_read_cursor import CursorKind, CursorPosition, frame_cursor, matches_source
+from app.services.ag_ui_read_pending import CurrentReadInterrupts
 from app.services.ag_ui_read_target import ReadTarget, snapshot_required
+
+
+def _prefix_record(
+    kind: CursorKind, ordinal: int, index: int, source: str, event: dict[str, Any]
+) -> bytes:
+    return orjson.dumps((kind, ordinal, index, source, event), option=orjson.OPT_SORT_KEYS) + b"\n"
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,24 +35,19 @@ class CommittedFrame:
     kind: CursorKind
     source_id: str
     generation: str | None
+    source_proof: str
 
     def prefix_record(self) -> bytes:
         # Scope-bound cursors may change after a new file/child is admitted. The
         # public content and its committed position must still agree byte for byte.
-        return (
-            orjson.dumps(
-                (self.kind, self.ordinal, self.index, self.source_id, self.event),
-                option=orjson.OPT_SORT_KEYS,
-            )
-            + b"\n"
-        )
+        return _prefix_record(self.kind, self.ordinal, self.index, self.source_id, self.event)
 
     def matches(self, cursor: CursorPosition) -> bool:
         return (cursor.kind, cursor.ordinal, cursor.frame) == (
             self.kind,
             self.ordinal,
             self.index,
-        ) and matches_source(cursor, source_id=self.source_id, generation=self.generation)
+        ) and matches_source(cursor, source_id=self.source_proof, generation=self.generation)
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +69,7 @@ class CommittedProjection:
             parent_run_id=target.parent_public_id,
             secret_values=secrets,
             child_visibility=target.visibility,
+            tool_continuations=target.tool_continuations,
             readable_artifact_versions=target.artifacts,
             defer_terminal=True,
         )
@@ -82,21 +84,27 @@ class CommittedProjection:
     def child_task_handles(self) -> dict[str, str]:
         return self._projector.child_task_handles
 
+    @property
+    def root_issuances(self) -> dict[tuple[str | None, str], str]:
+        return self._projector.root_issuances
+
     def _frame(
         self, payload: dict[str, Any], kind: CursorKind, ordinal: int, index: int, source: str
     ) -> CommittedFrame:
+        self.prefix_digest.update(_prefix_record(kind, ordinal, index, source, payload))
+        self.frame_count += 1
+        # A replaced row can retain its external source ID and frame count. Bind
+        # the cursor to the visible committed prefix as well as its coordinates.
+        proof = self.prefix_digest.hexdigest()
         cursor = frame_cursor(
             self.scope,
             ordinal=ordinal,
             frame=index,
-            source_id=source,
+            source_id=proof,
             generation=self.generation,
             kind=kind,
         )
-        frame = CommittedFrame(cursor, payload, ordinal, index, kind, source, self.generation)
-        self.prefix_digest.update(frame.prefix_record())
-        self.frame_count += 1
-        return frame
+        return CommittedFrame(cursor, payload, ordinal, index, kind, source, self.generation, proof)
 
     def _frames(
         self, events: Iterable[BaseEvent], kind: CursorKind, ordinal: int, source: str
@@ -131,7 +139,7 @@ class CommittedProjection:
         self,
         target: ReadTarget,
         page: JournalPage | None,
-        pending: Sequence[ProtocolInterrupt],
+        pending: CurrentReadInterrupts,
     ) -> FrameBatch:
         if self._terminal or self.scope != target.scope:
             raise snapshot_required()
@@ -190,7 +198,12 @@ class CommittedProjection:
             frames.extend(
                 self._frames(
                     self._projector.finish(
-                        target.run.status, interrupts=pending, error_code=target.run.error_code
+                        target.run.status,
+                        interrupts=pending.interrupts,
+                        error_code=target.run.error_code,
+                        passive=not pending.actionable,
+                        expires_at=pending.expires_at,
+                        legacy_child_ids=pending.legacy_child_ids,
                     ),
                     "terminal",
                     self.source_ordinal + 1,

@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import time
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -15,7 +15,6 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.protocol_events import ProtocolInterrupt
 from app.authz.org_context import OrgContext
 from app.database import tenant_session
 from app.exceptions import AppError
@@ -24,7 +23,7 @@ from app.services import conversation_stream_service
 from app.services.ag_ui_journal import JournalPage, read_journal_page
 from app.services.ag_ui_read_access import require_read_conversation
 from app.services.ag_ui_read_cursor import CursorPosition, InvalidReadCursor, parse_cursor
-from app.services.ag_ui_read_pending import current_read_interrupts
+from app.services.ag_ui_read_pending import CurrentReadInterrupts, current_read_interrupts
 from app.services.ag_ui_read_projection import CommittedFrame, CommittedProjection, FrameBatch
 from app.services.ag_ui_read_target import ReadTarget, resolve_read_target, snapshot_required
 from app.services.chat.secrets import collect_conversation_secret_values
@@ -45,6 +44,7 @@ class _Reader:
         self.target: ReadTarget | None = None
         self.secrets: tuple[str, ...] = ()
         self.checked_at = 0.0
+        self.pending = CurrentReadInterrupts()
 
     async def _can_continue(
         self, db: AsyncSession, conversation: Conversation, target: ReadTarget
@@ -58,6 +58,7 @@ class _Reader:
             or previous.public_id != target.public_id
             or previous.version != target.version
             or previous.parent_public_id != target.parent_public_id
+            or not set(previous.tool_continuations) <= set(target.tool_continuations)
             or (before.allow_legacy_details and not after.allow_legacy_details)
             or not before.tool_call_ids <= after.tool_call_ids
             or not before.namespaces <= after.namespaces
@@ -111,7 +112,7 @@ class _Reader:
             else:
                 page = JournalPage(old.generation, (), True, False, None)
             # The terminal is emitted only after the real current tail is read.
-            batch = fresh.fold(target, replace(page, has_more=True), ())
+            batch = fresh.fold(target, replace(page, has_more=True), CurrentReadInterrupts())
             for frame in batch.frames:
                 if compared < old.frame_count:
                     compared += 1
@@ -154,6 +155,14 @@ class _Reader:
                 and not await self._can_continue(db, conversation, current)
             ):
                 raise snapshot_required()
+            if frame.kind == "terminal" and current.run and current.run.status == "interrupted":
+                # Another tab can consume an approval after the final batch is
+                # projected. Never send its former action as a current decision.
+                if (
+                    await current_read_interrupts(db, conversation, source.context, current)
+                    != self.pending
+                ):
+                    raise snapshot_required()
             self.checked_at = time.monotonic()
 
     async def poll(self) -> FrameBatch:
@@ -184,7 +193,7 @@ class _Reader:
                 raise snapshot_required()
             self.target = target
             page = None
-            pending: Sequence[ProtocolInterrupt] = ()
+            pending = CurrentReadInterrupts()
             if target.run is not None:
                 page = await read_journal_page(
                     db,
@@ -198,6 +207,7 @@ class _Reader:
                     pending = await current_read_interrupts(
                         db, conversation, source.context, target
                     )
+            self.pending = pending
             batch = self.projection.fold(target, page, pending)
             self.checked_at = time.monotonic()
             return FrameBatch(extra + batch.frames, batch.more, batch.terminal) if extra else batch
