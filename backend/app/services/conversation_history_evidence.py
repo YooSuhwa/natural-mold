@@ -398,50 +398,55 @@ async def run_history_reference(
         "source": "loop",
         **checkpoint_tenant(context.tenant_id),
     }
-    async for checkpoint in saver.alist(config, filter=metadata, limit=1):
-        returned = checkpoint.config.get("configurable", {})
-        if returned.get("thread_id") != thread_id or returned.get("checkpoint_ns") != "":
+    # Postgres holds its saver lock while its iterator is yielding. Finish this one-row
+    # query before opening another cursor to verify the checkpoint's ancestors.
+    checkpoints = [entry async for entry in saver.alist(config, filter=metadata, limit=1)]
+    if not checkpoints:
+        return None
+    checkpoint = checkpoints[0]
+    returned = checkpoint.config.get("configurable", {})
+    if returned.get("thread_id") != thread_id or returned.get("checkpoint_ns") != "":
+        return None
+    if any(checkpoint.metadata.get(key) != value for key, value in metadata.items()):
+        return None
+    try:
+        parent_id, origin = await _introducing_checkpoint(saver, thread_id, checkpoint)
+        if any(origin.metadata.get(key) != value for key, value in metadata.items()):
             return None
-        if any(checkpoint.metadata.get(key) != value for key, value in metadata.items()):
+        values = origin.checkpoint["channel_values"]
+        reference = _history_reference(values, conversation, owner)
+        if reference.kind != "jsonl":
             return None
-        try:
-            parent_id, origin = await _introducing_checkpoint(saver, thread_id, checkpoint)
-            if any(origin.metadata.get(key) != value for key, value in metadata.items()):
-                return None
-            values = origin.checkpoint["channel_values"]
-            reference = _history_reference(values, conversation, owner)
-            if reference.kind != "jsonl":
-                return None
-            event = values["_summarization_event"]
-            cutoff = event.get("cutoff_index")
-            history_id = logical_offload_id(OffloadKind.HISTORY, event["file_path"])
-            checkpoint_id = origin.config.get("configurable", {}).get("checkpoint_id")
-            if (
-                type(cutoff) is not int
-                or cutoff <= 0
-                or (history_id, cutoff) != marker
-                or not isinstance(checkpoint_id, str)
-                or not checkpoint_id
-            ):
-                return None
-            valid = await asyncio.to_thread(
-                history_archive_checkpoint_matches,
-                runtime_data_dir(),
-                owner_id=str(conversation.user_id),
-                conversation_id=thread_id,
-                actor_id=conversation.agent_id,
-                leaf=reference.leaf,
-                checkpoint_id=parent_id,
+        event = values["_summarization_event"]
+        cutoff = event.get("cutoff_index")
+        history_id = logical_offload_id(OffloadKind.HISTORY, event["file_path"])
+        checkpoint_id = origin.config.get("configurable", {}).get("checkpoint_id")
+        if (
+            type(cutoff) is not int
+            or cutoff <= 0
+            or (history_id, cutoff) != marker
+            or not isinstance(checkpoint_id, str)
+            or not checkpoint_id
+        ):
+            return None
+        valid = await asyncio.to_thread(
+            history_archive_checkpoint_matches,
+            runtime_data_dir(),
+            owner_id=str(conversation.user_id),
+            conversation_id=thread_id,
+            actor_id=conversation.agent_id,
+            leaf=reference.leaf,
+            checkpoint_id=parent_id,
+        )
+        if valid:
+            return RunHistoryReference(
+                source_run_id=run_id,
+                checkpoint_id=checkpoint_id,
+                history_id=history_id,
+                cutoff_index=cutoff,
             )
-            if valid:
-                return RunHistoryReference(
-                    source_run_id=run_id,
-                    checkpoint_id=checkpoint_id,
-                    history_id=history_id,
-                    cutoff_index=cutoff,
-                )
-        except (EvidenceUnavailable, OffloadSecurityError, FileNotFoundError, ValidationError):
-            return None
+    except (EvidenceUnavailable, OffloadSecurityError, FileNotFoundError, ValidationError):
+        return None
     return None
 
 

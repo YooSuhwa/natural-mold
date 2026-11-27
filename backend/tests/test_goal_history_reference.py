@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,6 +13,7 @@ from fastapi import FastAPI
 from httpx import AsyncClient
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import CheckpointTuple
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -93,12 +95,48 @@ class State(TypedDict, total=False):
     ended: bool
 
 
+class _CursorGuardedSaver(InMemorySaver):
+    """Emulate the PostgreSQL saver's non-reentrant lock across async list yields."""
+
+    listing = False
+    exhausted_lists = 0
+    tuple_reads = 0
+
+    async def alist(
+        self,
+        config: RunnableConfig | None,
+        *,
+        filter: dict[str, Any] | None = None,
+        before: RunnableConfig | None = None,
+        limit: int | None = None,
+    ) -> AsyncIterator[CheckpointTuple]:
+        assert not self.listing
+        self.listing = True
+        try:
+            async for checkpoint in super().alist(
+                config, filter=filter, before=before, limit=limit
+            ):
+                yield checkpoint
+            self.exhausted_lists += 1
+        finally:
+            self.listing = False
+
+    async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
+        assert not self.listing, "nested saver read while list cursor holds the lock"
+        self.tuple_reads += 1
+        return await super().aget_tuple(config)
+
+
 def _graph(
-    file: GoalFile, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    file: GoalFile,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    saver: InMemorySaver | None = None,
 ) -> tuple[CompiledStateGraph[State, None, State, State], ScopedOffloadBackend]:
     conv = file.conversation
     assert conv.agent_id
-    saver = InMemorySaver()
+    saver = saver if saver is not None else InMemorySaver()
     monkeypatch.setattr(checkpointer, "get_checkpointer", lambda: saver)
     storage = ScopedOffloadBackend(
         tmp_path, OffloadIdentity(str(conv.user_id), str(conv.id), str(file.run_id)), conv.agent_id
@@ -177,6 +215,29 @@ async def _publish_done(
             )
         )
     await db.commit()
+
+
+async def test_goal_history_releases_list_cursor_before_reading_lineage(
+    goal_file: GoalFile,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    db: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    saver = _CursorGuardedSaver()
+    graph, storage = _graph(goal_file, tmp_path, monkeypatch, saver=saver)
+    source = _config(goal_file, goal_file.run_id)
+    state = await graph.ainvoke({"question": _QUESTION, "compact": True}, source)
+    ref = storage.project_reference(state["_summarization_event"]["file_path"])
+    assert ref
+    await _publish_done(db, goal_file, ref.logical_id)
+
+    before = saver.tuple_reads
+    completed = saver.exhausted_lists
+    response = await client.get(goal_file.path, params=goal_file.params)
+    assert response.status_code == 200 and response.json()["history_id"] == ref.logical_id
+    assert saver.exhausted_lists == completed + 1
+    assert saver.tuple_reads > before
 
 
 @pytest.mark.parametrize("in_chunk", [False, True], ids=["header", "chunk"])
