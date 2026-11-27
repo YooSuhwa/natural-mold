@@ -18,7 +18,7 @@
 
 [Features](#features) · [Quick start](#quick-start) · [Local development](#local-development) · [Configuration](#configuration) · [Architecture](#architecture) · [Testing](#testing) · [Docs](#documentation)
 
-<!-- project-current-source: migration=i50_chat_model_attempts; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
+<!-- project-current-source: migration=i51_ag_ui_commands; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
 
 </div>
 
@@ -41,7 +41,7 @@ original owner checks to an OpenFGA model.
 | Frontend | Next.js 16 (App Router), React 19, TailwindCSS v4, shadcn/ui, assistant-ui, TanStack Query, Jotai, next-intl |
 | Backend | FastAPI, SQLAlchemy 2.0 async, Alembic, APScheduler, Python 3.12 |
 | Agent runtime | LangChain 1.x, LangGraph 1.2.24, `deepagents` 0.7.42 (`create_deep_agent`), LangGraph `AsyncPostgresSaver` |
-| Data | PostgreSQL 16, Alembic head `i50_chat_model_attempts` |
+| Data | PostgreSQL 16, Alembic head `i51_ag_ui_commands` |
 | Authorization | Owner checks (legacy) or OpenFGA (shadow / enforce), optional PostgreSQL row-level security |
 | License | MIT |
 
@@ -315,7 +315,7 @@ docker compose up -d postgres
 cd backend
 cp .env.example .env            # set ENCRYPTION_KEYS and JWT_SECRET
 uv sync
-uv run alembic upgrade head     # head: i50_chat_model_attempts
+uv run alembic upgrade head     # head: i51_ag_ui_commands
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 
 # Frontend (http://localhost:3000), in another terminal

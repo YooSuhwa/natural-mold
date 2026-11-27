@@ -1,6 +1,6 @@
 # Moldy — TASKS
 
-<!-- project-current-source: migration=i50_chat_model_attempts; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
+<!-- project-current-source: migration=i51_ag_ui_commands; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
 
 > Last updated: 2026-09-10
 > Source-aligned snapshot: Alembic head `m77_side_chat_link`. The
