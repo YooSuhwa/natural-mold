@@ -2938,6 +2938,7 @@
           "invalidImage": "The image file could not be read.",
           "providerError": "The model could not return an image description.",
           "pending": "Waiting for the image description.",
+          "unconfirmed": "The run ended before the image description result could be confirmed.",
           "failed": "The image description is unavailable."
         }
       }

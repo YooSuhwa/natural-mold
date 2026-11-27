@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import pytest
+from pydantic import JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
@@ -29,7 +30,7 @@ pytest_plugins = ["tests.authz.private_scope_fixture"]
 BASE_URL = "https://api.openai.com/v1"
 
 
-def policy_settings(model_id: UUID) -> dict[str, str]:
+def policy_settings(model_id: UUID) -> dict[str, JsonValue]:
     return {"model_id": str(model_id), "provider": "openai", "base_url": BASE_URL}
 
 
@@ -42,7 +43,7 @@ class Case:
     run: ConversationRun
     attachment: MessageAttachment
 
-    def policy_settings(self) -> dict[str, str]:
+    def policy_settings(self) -> dict[str, JsonValue]:
         return policy_settings(self.model.id)
 
     async def resolve(
@@ -85,7 +86,13 @@ async def case(db: AsyncSession, private_scopes: PrivateScopes) -> Case:
         default_credential_id=credential.id,
     )
     root = await make_model(db, model_name="text-only", supports_vision=False)
-    agent = await make_agent(db, **scope, model_id=root.id)
+    agent = await make_agent(
+        db,
+        user_id=context.user_id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
+        model_id=root.id,
+    )
     conversation = Conversation(
         **scope,
         agent_id=agent.id,

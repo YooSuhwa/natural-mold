@@ -11,10 +11,11 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Literal
+from itertools import batched
+from typing import Literal, NamedTuple
 from uuid import UUID
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +27,7 @@ from app.authz.scoping import private_scope_predicate
 from app.exceptions import AppError
 from app.models.chat_image_description import MAX_DESCRIPTION_CHARS, ChatImageDescription
 from app.models.conversation import Conversation
-from app.models.conversation_run import ConversationRun
+from app.models.conversation_run import RUN_TERMINAL_STATUSES, ConversationRun
 from app.models.message_attachment import MessageAttachment
 from app.services.chat.image_description_usage import (
     ImageDescriptionBilling,
@@ -63,9 +64,10 @@ async def _active_actor(db: AsyncSession, context: OrgContext) -> bool:
     return True
 
 
-def _scoped_receipts(context: OrgContext) -> Select[tuple[ChatImageDescription]]:
+def _scoped_receipts(context: OrgContext) -> Select[tuple[ChatImageDescription, str]]:
     return (
-        select(ChatImageDescription)
+        select(ChatImageDescription, ConversationRun.status)
+        .select_from(ChatImageDescription)
         .join(Conversation, Conversation.id == ChatImageDescription.conversation_id)
         .join(MessageAttachment, MessageAttachment.id == ChatImageDescription.attachment_id)
         .join(ConversationRun, ConversationRun.id == ChatImageDescription.run_id)
@@ -82,6 +84,18 @@ def _scoped_receipts(context: OrgContext) -> Select[tuple[ChatImageDescription]]
             ConversationRun.user_id == context.user_id,
         )
     )
+
+
+def description_outcome(row: ChatImageDescription, owner_run_status: str) -> DescriptionReservation:
+    if row.status == "completed":
+        return DescriptionReservation("completed", row.id, description=row.description)
+    if row.status == "failed":
+        return DescriptionReservation("failed", row.id, failure_code=row.failure_code)
+    if owner_run_status in RUN_TERMINAL_STATUSES:
+        # The provider may have received this request. Keep the original claim and any billing
+        # capability intact; reading a finished run cannot authorize another attempt.
+        return DescriptionReservation("failed", row.id, failure_code="unconfirmed")
+    return DescriptionReservation("pending", row.id)
 
 
 async def find_description(
@@ -104,7 +118,7 @@ async def find_description(
         return _UNAVAILABLE
     if not await _active_actor(db, context):
         return _UNAVAILABLE
-    row = await db.scalar(
+    result = await db.execute(
         _scoped_receipts(context)
         .where(
             ChatImageDescription.conversation_id == conversation_id,
@@ -116,13 +130,52 @@ async def find_description(
         )
         .execution_options(populate_existing=True)
     )
-    if row is None:
-        return _UNAVAILABLE
-    if row.status == "completed":
-        return DescriptionReservation("completed", row.id, description=row.description)
-    if row.status == "failed":
-        return DescriptionReservation("failed", row.id, failure_code=row.failure_code)
-    return DescriptionReservation("pending", row.id)
+    row = result.one_or_none()
+    return _UNAVAILABLE if row is None else description_outcome(row[0], row[1])
+
+
+class ImageDescriptionReceiptKey(NamedTuple):
+    attachment_id: UUID
+    content_sha256: str
+    question_sha256: str
+    model_id: UUID
+    policy_sha256: str
+
+
+async def find_file_descriptions(
+    db: AsyncSession,
+    *,
+    context: OrgContext,
+    conversation_id: UUID,
+    keys: set[ImageDescriptionReceiptKey],
+) -> dict[ImageDescriptionReceiptKey, DescriptionReservation]:
+    """Read only the requested version keys in this actor's conversation, in bounded batches."""
+    if not keys or not await _active_actor(db, context):
+        return {}
+    scoped = _scoped_receipts(context).where(
+        ChatImageDescription.conversation_id == conversation_id,
+        ConversationRun.org_id == context.org_id,
+        ConversationRun.tenant_id == context.tenant_id,
+    )
+    columns = tuple_(
+        ChatImageDescription.attachment_id,
+        ChatImageDescription.content_sha256,
+        ChatImageDescription.question_sha256,
+        ChatImageDescription.model_id,
+        ChatImageDescription.policy_sha256,
+    )
+    results: dict[ImageDescriptionReceiptKey, DescriptionReservation] = {}
+    for group in batched(keys, 128):
+        for row, owner_status in await db.execute(scoped.where(columns.in_(group))):
+            key = ImageDescriptionReceiptKey(
+                row.attachment_id,
+                row.content_sha256,
+                row.question_sha256,
+                row.model_id,
+                row.policy_sha256,
+            )
+            results[key] = description_outcome(row, owner_status)
+    return results
 
 
 async def reserve_description(

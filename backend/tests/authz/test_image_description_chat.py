@@ -23,7 +23,7 @@ from app.models.agent import Agent
 from app.models.chat_image_description import ChatImageDescription
 from app.models.conversation_run import ConversationRun
 from app.models.message_attachment import MessageAttachment
-from app.models.organization import OrganizationMember
+from app.models.organization import Organization, OrganizationMember
 from app.models.token_usage import TokenUsage
 from app.services.chat import image_description_provider as provider
 from app.services.chat.attachment_inputs import prepare_attachment_inputs
@@ -258,7 +258,7 @@ async def test_reused_image_captions_follow_their_own_questions(
     assert wire.await_count == 2
 
 
-@pytest.mark.parametrize("change", ["delete_upload", "revoke_membership"])
+@pytest.mark.parametrize("change", ["delete_upload", "revoke_membership", "disable_policy"])
 async def test_billed_call_settles_after_access_changes_during_dispatch(
     case: Case, db: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
 ) -> None:
@@ -271,6 +271,10 @@ async def test_billed_call_settles_after_access_changes_during_dispatch(
                 await admin.execute(
                     delete(MessageAttachment).where(MessageAttachment.id == case.attachment.id)
                 )
+            elif change == "disable_policy":
+                org = await admin.get(Organization, case.context.org_id)
+                assert org is not None
+                org.settings = {}
             else:
                 await admin.execute(
                     delete(OrganizationMember).where(

@@ -105,6 +105,7 @@ const descriptionReasons = {
   invalid_image: 'invalidImage',
   provider_error: 'providerError',
   pending: 'pending',
+  unconfirmed: 'unconfirmed',
 } as const
 
 function ImageDescription({ description }: { description: ChatImageDescription }) {

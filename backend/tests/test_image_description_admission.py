@@ -9,7 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
@@ -25,7 +25,11 @@ from app.models.organization import OrganizationRoleGrant
 from app.services import conversation_run_queue_service, conversation_run_queue_worker
 from app.services.chat import image_description_provider as provider
 from app.services.chat.attachment_inputs import prepare_attachment_inputs
-from app.services.chat.image_description_admission import accepted_image_description
+from app.services.chat.attachments import link_attachments_to_message
+from app.services.chat.image_description_admission import (
+    AcceptedImageDescription,
+    accepted_image_description,
+)
 from tests.conftest import TestSession
 
 if TYPE_CHECKING:
@@ -114,7 +118,7 @@ async def test_direct_command_commits_image_pin_before_worker_start(
                 root_model_id=command.root_model_id,
                 attachment_id=command.attachment_id,
             )
-            assert pin is not None
+            assert isinstance(pin, AcceptedImageDescription)
             assert pin.content_sha256 == command.digest
             assert pin.model_id == case.model.id
             assert pin.policy_fingerprint
@@ -189,7 +193,7 @@ async def test_queue_replay_and_claim_preserve_original_image_admission(
         attachment_id=command.attachment_id,
     )
     if expected_fingerprint is not None:
-        assert pin is not None
+        assert isinstance(pin, AcceptedImageDescription)
         assert pin.policy_fingerprint == expected_fingerprint
         assert pin.content_sha256 == command.digest
     else:
@@ -218,3 +222,85 @@ async def test_queue_replay_and_claim_preserve_original_image_admission(
     rendered = await _send(AttachmentInputMiddleware(inputs), ref, QUESTION)
     assert "private vision result" not in rendered
     wire.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("denial", "provider_code", "public_reason"),
+    [
+        ("oversize", "size_limit", "size_limit"),
+        ("no-input-rate", "budget_limit", "budget"),
+        ("non-vision-model", "model_unavailable", "unavailable"),
+    ],
+)
+async def test_admission_denial_is_visible_after_reconnect_without_sending_image(
+    case: Case,
+    db: AsyncSession,
+    command: UploadCommand,
+    raw_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    denial: str,
+    provider_code: str,
+    public_reason: str,
+) -> None:
+    from tests.authz.test_image_description_chat import _send
+
+    if denial == "oversize":
+        case.org.settings = {"image_description": {**case.policy_settings(), "max_input_bytes": 1}}
+    elif denial == "no-input-rate":
+        case.model.cost_per_input_token = None
+    else:
+        case.model.supports_vision = False
+    await db.commit()
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run", AsyncMock()
+    )
+    wire = AsyncMock(return_value=("should never be dispatched", 1, 1))
+    secrets = AsyncMock(return_value={"api_key": "fixture"})
+    monkeypatch.setattr(provider, "send_image_description", wire)
+    monkeypatch.setattr(provider, "open_values", secrets)
+    run_id = UUID((await command.send("reject"))["run_id"])
+    conversation_id = case.run.conversation_id
+    with pytest.raises(provider.ImageDescriptionDenied) as denied:
+        await provider.resolve_image_description_target(
+            db,
+            context=case.context,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            attachment_id=command.attachment_id,
+        )
+    assert denied.value.code == provider_code
+
+    message_id = str(uuid4())
+    payload, inputs = await prepare_attachment_inputs(
+        db,
+        context=case.context,
+        conversation_id=conversation_id,
+        run_id=run_id,
+        model_id=command.root_model_id,
+        attachment_ids=[command.attachment_id],
+        input_payload={"messages": [{"id": message_id, "role": "user", "content": QUESTION}]},
+        tag_input=True,
+    )
+    assert inputs is not None
+    ref = payload["messages"][0]["additional_kwargs"][ATTACHMENT_REFS_KEY][0]
+    assert (ref["form"], ref.get("description_error")) == ("image_description", public_reason)
+    rendered = await _send(AttachmentInputMiddleware(inputs), ref, QUESTION)
+    assert "should never be dispatched" not in rendered
+    bound = await link_attachments_to_message(
+        db,
+        conversation_id=conversation_id,
+        context=case.context,
+        attachment_ids=[command.attachment_id],
+        message_id=message_id,
+    )
+    assert bound == 1
+    await db.commit()
+
+    files = await raw_client.get(f"/api/conversations/{conversation_id}/files")
+    assert files.status_code == 200, files.text
+    file = next(item for item in files.json() if item["id"] == str(command.attachment_id))
+    outcome = {"status": "unavailable", "reason": public_reason}
+    assert file["image_description"] == outcome
+    assert file["image_description_uses"][0]["image_description"] == outcome
+    wire.assert_not_awaited()
+    secrets.assert_not_awaited()

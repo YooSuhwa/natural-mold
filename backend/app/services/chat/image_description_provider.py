@@ -62,7 +62,7 @@ _IMAGE_TYPES = frozenset({"image/png", "image/webp", "image/jpeg", "image/gif"})
 
 class ImageDescriptionDenied(Exception):
     def __init__(self, code: ImageDescriptionReason) -> None:
-        self.code = code
+        self.code: ImageDescriptionReason = code
         super().__init__(code)
 
 
@@ -283,15 +283,7 @@ async def _resolve_target(
     attachment_id: UUID,
     require_running: bool,
 ) -> ImageDescriptionTarget:
-    await require_private_actor(db, context)
-    org = await db.get(Organization, context.org_id, populate_existing=True)
-    tenant = await db.get(Tenant, context.tenant_id, populate_existing=True)
-    if not org or not tenant or org.tenant_id != tenant.id:
-        raise ImageDescriptionDenied("access_denied")
-    configured = (org.settings or {}).get("image_description")
-    if configured is None:
-        raise ImageDescriptionDenied("policy_disabled")
-    policy = ImageDescriptionPolicy.model_validate(configured)
+    org, tenant, policy = await load_image_description_policy(db, context)
     subject_id = await _credential_subject(db, context, run_id, conversation_id, require_running)
     attachment = await db.scalar(
         select(MessageAttachment)
@@ -302,52 +294,114 @@ async def _resolve_target(
         )
         .execution_options(populate_existing=True)
     )
-    if not attachment or attachment.mime_type.lower() not in _IMAGE_TYPES:
+    if attachment is None:
         raise ImageDescriptionDenied("access_denied")
-    if not 0 < attachment.size_bytes <= policy.max_input_bytes:
+    validate_image_description_attachment(attachment, policy.max_input_bytes)
+    route = await load_image_description_route(db, org, tenant, policy)
+    grant = await route.authorize(db, context, subject_id)
+    key = await _dispatch_key(route.credential, policy) if require_running else None
+    return ImageDescriptionTarget(
+        attachment,
+        route.model.id,
+        grant.policy_fingerprint,
+        policy.max_input_bytes,
+        int(route.model.context_window or 0),
+        route.model.model_name,
+        policy,
+        grant.credential_scope,
+        route.input_rate,
+        route.output_rate,
+        key,
+    )
+
+
+def validate_image_description_attachment(
+    attachment: MessageAttachment, max_input_bytes: int
+) -> None:
+    if attachment.mime_type.lower() not in _IMAGE_TYPES:
+        raise ImageDescriptionDenied("access_denied")
+    if not 0 < attachment.size_bytes <= max_input_bytes:
         raise ImageDescriptionDenied("size_limit")
-    subject = replace(context, user_id=subject_id)
-    if subject.user_id != context.user_id:
-        await require_private_actor(db, subject)
+
+
+async def load_image_description_policy(
+    db: AsyncSession,
+    context: OrgContext,
+) -> tuple[Organization, Tenant, ImageDescriptionPolicy]:
+    await require_private_actor(db, context)
+    org = await db.get(Organization, context.org_id, populate_existing=True)
+    tenant = await db.get(Tenant, context.tenant_id, populate_existing=True)
+    if not org or not tenant or org.tenant_id != tenant.id:
+        raise ImageDescriptionDenied("access_denied")
+    configured = (org.settings or {}).get("image_description")
+    if configured is None:
+        raise ImageDescriptionDenied("policy_disabled")
+    return org, tenant, ImageDescriptionPolicy.model_validate(configured)
+
+
+@dataclass(frozen=True, slots=True)
+class ImageDescriptionReadGrant:
+    model_id: UUID
+    max_input_bytes: int
+    policy_fingerprint: str
+    credential_scope: CredentialScope
+
+
+@dataclass(frozen=True, slots=True)
+class ImageDescriptionRoute:
+    model: Model
+    credential: Credential = field(repr=False)
+    input_rate: Decimal
+    output_rate: Decimal
+    policy: ImageDescriptionPolicy
+    epoch: int
+
+    async def authorize(
+        self,
+        db: AsyncSession,
+        context: OrgContext,
+        subject_id: UUID,
+    ) -> ImageDescriptionReadGrant:
+        subject = replace(context, user_id=subject_id)
+        if subject.user_id != context.user_id:
+            await require_private_actor(db, subject)
+        await _require_use(subject, f"llm_model:{self.model.id}")
+        scope = await _check_credential(db, self.credential, subject)
+        binding = {
+            "policy": self.policy.model_dump(mode="json"),
+            "authority_version": self.epoch,
+            "name": self.model.model_name,
+            "input_rate": str(self.input_rate),
+            "output_rate": str(self.output_rate),
+            "context_window": self.model.context_window,
+            "credential_id": str(self.credential.id),
+            "credential_version": self.credential.updated_at.isoformat(),
+            "subject": str(subject.user_id),
+        }
+        fingerprint = hashlib.sha256(json.dumps(binding, sort_keys=True).encode()).hexdigest()
+        return ImageDescriptionReadGrant(
+            self.model.id, self.policy.max_input_bytes, fingerprint, scope
+        )
+
+
+async def load_image_description_route(
+    db: AsyncSession,
+    org: Organization,
+    tenant: Tenant,
+    policy: ImageDescriptionPolicy,
+) -> ImageDescriptionRoute:
     model = await db.get(Model, policy.model_id, populate_existing=True)
     if not model or model.default_credential_id is None:
         raise ImageDescriptionDenied("model_unavailable")
     rate_in, rate_out = _validate_model(model, policy, org, tenant)
-    await _require_use(subject, f"llm_model:{model.id}")
     credential = await db.get(Credential, model.default_credential_id, populate_existing=True)
     if not credential or credential.definition_key != policy.provider:
         raise ImageDescriptionDenied("model_unavailable")
-    scope = await _check_credential(db, credential, subject)
     if credential.allowed_hosts and not host_allowed(
         host_of(policy.base_url), credential.allowed_hosts
     ):
         raise ImageDescriptionDenied("access_denied")
-    binding = {
-        "policy": policy.model_dump(mode="json"),
-        "authority_version": org.authz_epoch,
-        "name": model.model_name,
-        "input_rate": str(rate_in),
-        "output_rate": str(rate_out),
-        "context_window": model.context_window,
-        "credential_id": str(credential.id),
-        "credential_version": credential.updated_at.isoformat(),
-        "subject": str(subject.user_id),
-    }
-    fingerprint = hashlib.sha256(json.dumps(binding, sort_keys=True).encode()).hexdigest()
-    key = await _dispatch_key(credential, policy) if require_running else None
-    return ImageDescriptionTarget(
-        attachment,
-        model.id,
-        fingerprint,
-        policy.max_input_bytes,
-        int(model.context_window or 0),
-        model.model_name,
-        policy,
-        scope,
-        rate_in,
-        rate_out,
-        key,
-    )
+    return ImageDescriptionRoute(model, credential, rate_in, rate_out, policy, org.authz_epoch)
 
 
 async def describe_image(

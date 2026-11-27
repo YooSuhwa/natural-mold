@@ -5,8 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import AsyncIterator, Callable, Mapping
-from contextlib import asynccontextmanager
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, TypedDict
 
@@ -16,7 +15,10 @@ from app.authz.org_context import OrgContext
 from app.database import tenant_sessions
 from app.models.message_attachment import MessageAttachment
 from app.schemas.conversation import ImageDescriptionReady, ImageDescriptionUnavailable
-from app.services.chat.image_description_admission import accepted_image_description
+from app.services.chat.image_description_admission import (
+    DeniedImageDescription,
+    accepted_image_description,
+)
 from app.services.chat.image_description_input import (
     MAX_QUESTION_CHARS,
     InvalidDescriptionInput,
@@ -28,6 +30,7 @@ from app.services.chat.image_description_input import (
 )
 from app.services.chat.image_description_provider import (
     ImageDescriptionDenied,
+    ImageDescriptionTarget,
     describe_image,
     resolve_image_description_target,
 )
@@ -60,6 +63,7 @@ _MODEL_NOTES = {
     "budget": "허용된 이미지 설명 비용을 초과합니다",
     "timeout": "이미지 설명 요청 시간이 만료되었습니다",
     "pending": "이미지 설명을 확인하고 있습니다",
+    "unconfirmed": "실행이 끝나 이미지 설명 요청의 처리 결과를 확인할 수 없습니다",
     "provider_error": "보조 모델이 이미지 설명을 반환하지 못했습니다",
     "unavailable": "이 첨부 버전의 이미지 설명을 사용할 수 없습니다",
 }
@@ -77,7 +81,27 @@ class _Version(TypedDict):
     policy_key: str
 
 
-def _unavailable(code: str | None) -> ImageDescriptionUnavailable:
+async def _checked_target(
+    db: AsyncSession,
+    scope: _AttachmentScope,
+    run_id: uuid.UUID,
+    key: _Version,
+    *,
+    require_running: bool = False,
+) -> ImageDescriptionTarget:
+    target = await resolve_image_description_target(
+        db, **scope, run_id=run_id, require_running=require_running
+    )
+    if (
+        target.model_id != key["model_id"]
+        or target.policy_fingerprint != key["policy_key"]
+        or target.attachment.content_sha256 != key["content_sha256"]
+    ):
+        raise InvalidDescriptionInput("unavailable")
+    return target
+
+
+def description_unavailable(code: str | None) -> ImageDescriptionUnavailable:
     reason = _REASONS.get(code or "", code or "")
     return ImageDescriptionUnavailable(reason=reason if reason in _MODEL_NOTES else "unavailable")
 
@@ -106,6 +130,9 @@ async def pin_description(
     )
     if accepted is None:
         return
+    if isinstance(accepted, DeniedImageDescription):
+        ref.update(form="image_description", description_error=accepted.reason)
+        return
     try:
         target = await resolve_image_description_target(
             db,
@@ -116,7 +143,9 @@ async def pin_description(
         )
     except ImageDescriptionDenied as exc:
         if exc.code != "policy_disabled":
-            ref.update(form="image_description", description_error=_unavailable(exc.code).reason)
+            ref.update(
+                form="image_description", description_error=description_unavailable(exc.code).reason
+            )
         return
     ref["form"] = "image_description"
     if len(question) > MAX_QUESTION_CHARS or attachment.size_bytes > target.max_input_bytes:
@@ -175,11 +204,10 @@ class DescriptionRun:
         self,
         ref: Mapping[str, Any],
         *,
-        question: str | None = None,
-        read_db: AsyncSession | None = None,
+        question: str,
     ) -> Description:
         if error := ref.get("description_error"):
-            return _unavailable(str(error))
+            return description_unavailable(str(error))
         try:
             attachment_id = uuid.UUID(str(ref["id"]))
             model_id = uuid.UUID(str(ref["description_model"]))
@@ -187,38 +215,32 @@ class DescriptionRun:
             question_sha = str(ref["question_sha256"])
             policy_key = str(ref["description_policy"])
         except (ValueError, KeyError):
-            return _unavailable("unavailable")
+            return description_unavailable("unavailable")
         scope: _AttachmentScope = {
             "context": self.context,
             "conversation_id": self.conversation_id,
             "attachment_id": attachment_id,
         }
-        can_start = read_db is None and ref.get("description_run") == str(self.run_id)
+        key: _Version = {
+            "content_sha256": content_digest,
+            "model_id": model_id,
+            "policy_key": policy_key,
+        }
+        can_start = ref.get("description_run") == str(self.run_id)
         try:
-            async with self.sessions() if read_db is None else _existing(read_db) as db:
-                target = await resolve_image_description_target(db, run_id=self.run_id, **scope)
-                if (
-                    target.model_id != model_id
-                    or target.policy_fingerprint != policy_key
-                    or target.attachment.content_sha256 != content_digest
-                ):
-                    return _unavailable("unavailable")
+            async with self.sessions() as db:
+                target = await _checked_target(db, scope, self.run_id, key)
                 path = scoped_image_path(target.attachment.storage_path, self.context.tenant_id)
-                key: _Version = {
-                    "content_sha256": content_digest,
-                    "model_id": model_id,
-                    "policy_key": policy_key,
-                }
                 found = await find_description(db, **scope, **key, question_sha256=question_sha)
-                if question is None or not can_start or found.status != "unavailable":
+                if not can_start or found.status != "unavailable":
                     if found.status == "completed" and not await asyncio.to_thread(
                         matches_version, path, target.max_input_bytes, content_digest
                     ):
-                        return _unavailable("unavailable")
-                    return _receipt_result(found)
+                        return description_unavailable("unavailable")
+                    return receipt_result(found)
                 source, digest = await asyncio.to_thread(read_version, path, target.max_input_bytes)
                 if digest != content_digest:
-                    return _unavailable("unavailable")
+                    return description_unavailable("unavailable")
                 claim = await reserve_description(
                     db,
                     **scope,
@@ -237,7 +259,7 @@ class DescriptionRun:
                     or claim.receipt_id is None
                     or claim.settlement_token is None
                 ):
-                    return _receipt_result(claim)
+                    return receipt_result(claim)
             # Check the grant again immediately before dispatch.
             receipt_id = claim.receipt_id
             try:
@@ -245,23 +267,14 @@ class DescriptionRun:
                     description_image, source, target.attachment.mime_type, target.max_input_bytes
                 )
                 async with self.sessions() as db:
-                    allowed = await resolve_image_description_target(
-                        db,
-                        **scope,
-                        run_id=self.run_id,
-                        require_running=True,
+                    allowed = await _checked_target(
+                        db, scope, self.run_id, key, require_running=True
                     )
-                    if (
-                        allowed.policy_fingerprint != policy_key
-                        or allowed.model_id != model_id
-                        or allowed.attachment.content_sha256 != digest
-                    ):
-                        raise InvalidDescriptionInput("unavailable")
                 answer = await describe_image(
                     allowed, image=image, mime_type=mime, question=question
                 )
             except (ImageDescriptionDenied, InvalidDescriptionInput) as exc:
-                failure = _unavailable(exc.code)
+                failure = description_unavailable(exc.code)
                 async with self.sessions() as db:
                     await finish_description(
                         db,
@@ -282,7 +295,16 @@ class DescriptionRun:
                     output_tokens=answer.output_tokens,
                 )
                 if not posted:
-                    return _unavailable("unavailable")
+                    return description_unavailable("unavailable")
+                # Accounting remains valid even if an in-flight attachment or policy was revoked.
+                current = await _checked_target(db, scope, self.run_id, key)
+                current_path = scoped_image_path(
+                    current.attachment.storage_path, self.context.tenant_id
+                )
+                if not await asyncio.to_thread(
+                    matches_version, current_path, current.max_input_bytes, content_digest
+                ):
+                    return description_unavailable("unavailable")
                 finished = await finish_description(
                     db,
                     context=self.context,
@@ -295,21 +317,15 @@ class DescriptionRun:
                     credential_scope=answer.credential_scope,
                 )
                 if not finished:
-                    return _unavailable("unavailable")
-                # A grant or policy may have changed while the auxiliary provider was responding.
-                return await self.resolve(ref, read_db=db)
+                    return description_unavailable("unavailable")
+                return ImageDescriptionReady(text=answer.description)
         except (ImageDescriptionDenied, InvalidDescriptionInput) as exc:
-            return _unavailable(exc.code)
+            return description_unavailable(exc.code)
         except ForeignTenantPathError:
-            return _unavailable("unavailable")
+            return description_unavailable("unavailable")
 
 
-@asynccontextmanager
-async def _existing(db: AsyncSession) -> AsyncIterator[AsyncSession]:
-    yield db
-
-
-def _receipt_result(found: DescriptionReservation) -> Description:
+def receipt_result(found: DescriptionReservation) -> Description:
     if found.status == "completed" and found.description:
         return ImageDescriptionReady(text=found.description)
-    return _unavailable(found.failure_code or found.status)
+    return description_unavailable(found.failure_code or found.status)

@@ -180,6 +180,7 @@ it('keeps the original attachment without guessing a caption when a branch has n
 it.each([
   ['policy_denied', '이 첨부에 이미지 설명을 사용할 권한이 없습니다.'],
   ['timeout', '이미지 설명 요청 시간이 초과됐습니다.'],
+  ['unconfirmed', '실행이 끝나 이미지 설명 요청의 처리 결과를 확인할 수 없습니다.'],
   ['future_reason', '이미지 설명을 불러올 수 없습니다.'],
 ])('renders only a localized reason for unavailable descriptions (%s)', (reason, message) => {
   queryResult.data = [

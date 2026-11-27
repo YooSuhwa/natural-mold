@@ -24,10 +24,10 @@ from app.authz.scoping import private_scope_predicate
 from app.error_codes import conversation_not_found
 from app.models.conversation import Conversation
 from app.models.message_attachment import MessageAttachment
-from app.schemas.conversation import FileItem, ImageDescriptionUse
+from app.schemas.conversation import FileItem
 from app.services.artifact_service import list_conversation_artifacts
 from app.services.chat.attachment_inputs import recorded_attachment_inputs
-from app.services.chat.image_descriptions import DescriptionRun
+from app.services.chat.image_description_files import file_image_description_uses
 
 logger = logging.getLogger(__name__)
 
@@ -258,26 +258,21 @@ async def list_conversation_files(
         .all()
     )
     records = await recorded_attachment_inputs(db, conversation_id=conversation_id, context=context)
+    descriptions = await file_image_description_uses(
+        db,
+        context=context,
+        conversation_id=conversation_id,
+        attachments=attach_rows,
+        histories=records,
+    )
     for attachment in attach_rows:
         key = str(attachment.id)
         history = records.get(key)
-        uses: list[ImageDescriptionUse] = []
-        original = None
-        for message_id, entry in history.descriptions.items() if history else ():
-            if entry is None:
-                continue
-            run_id, ref = entry
-            resolver = DescriptionRun.for_run(context, conversation_id, run_id)
-            description = await resolver.resolve(ref, read_db=db)
-            uses.append(
-                ImageDescriptionUse(
-                    message_id=message_id,
-                    runtime_message_id=ref.get("runtime_message_id"),
-                    image_description=description,
-                )
-            )
-            if message_id == attachment.message_id:
-                original = description
+        uses = descriptions.get(attachment.id, [])
+        original = next(
+            (use.image_description for use in uses if use.message_id == attachment.message_id),
+            None,
+        )
         items.append(
             FileItem(
                 source="attached",

@@ -77,13 +77,12 @@ async def recorded_attachment_inputs(
     db: AsyncSession, *, conversation_id: uuid.UUID, context: OrgContext
 ) -> dict[str, AttachmentHistory]:
     records = await db.execute(
-        select(ConversationRun.id, ConversationRun.metadata_json)
+        select(ConversationRun.id, ConversationRun.metadata_json[RUN_METADATA_KEY])
         .where(ConversationRun.conversation_id == conversation_id, private_run_predicate(context))
         .order_by(ConversationRun.created_at, ConversationRun.id)
     )
     histories: dict[str, AttachmentHistory] = {}
-    for run_id, metadata in records:
-        manifest = (metadata or {}).get(RUN_METADATA_KEY)
+    for run_id, manifest in records:
         if not isinstance(manifest, dict) or not isinstance(manifest.get("items"), list):
             continue
         message_id = manifest.get("message_id")

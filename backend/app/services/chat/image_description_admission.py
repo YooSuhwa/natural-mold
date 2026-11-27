@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import select
@@ -43,6 +44,20 @@ class AcceptedImageDescription:
     model_id: UUID
     content_sha256: str
     policy_fingerprint: str
+
+
+@dataclass(frozen=True, slots=True)
+class DeniedImageDescription:
+    reason: Literal["policy_denied", "size_limit", "budget", "unavailable"]
+
+
+_DENIALS = {
+    "access_denied": DeniedImageDescription("policy_denied"),
+    "size_limit": DeniedImageDescription("size_limit"),
+    "budget_limit": DeniedImageDescription("budget"),
+    "model_unavailable": DeniedImageDescription("unavailable"),
+    "unavailable": DeniedImageDescription("unavailable"),
+}
 
 
 async def capture_admission(
@@ -105,8 +120,16 @@ async def capture_admission(
                     "model_id": str(target.model_id),
                     "policy": target.policy_fingerprint,
                 }
-        except (ImageDescriptionDenied, ForeignTenantPathError, InvalidDescriptionInput):
-            continue
+        except ImageDescriptionDenied as error:
+            # An organization which has never enabled image descriptions retains the ordinary
+            # text-only attachment behavior. Save only a safe reason for enrolled organizations.
+            if error.code in _DENIALS:
+                images[str(attachment_id)] = {"denied": error.code}
+        except InvalidDescriptionInput as error:
+            code = error.code if error.code in _DENIALS else "unavailable"
+            images[str(attachment_id)] = {"denied": code}
+        except ForeignTenantPathError:
+            images[str(attachment_id)] = {"denied": "unavailable"}
     return {"root_model_id": str(root_id), "images": images} if images else {}
 
 
@@ -152,7 +175,7 @@ async def accepted_image_description(
     run_id: UUID,
     root_model_id: str | None,
     attachment_id: UUID,
-) -> AcceptedImageDescription | None:
+) -> AcceptedImageDescription | DeniedImageDescription | None:
     """Return immutable server metadata, never dispatch or refill a missing pin."""
     metadata = await db.scalar(
         select(ConversationRun.metadata_json).where(
@@ -174,6 +197,9 @@ async def accepted_image_description(
     pin = images.get(str(attachment_id)) if isinstance(images, dict) else None
     if not isinstance(pin, dict):
         return None
+    if "denied" in pin:
+        reason = pin.get("denied")
+        return _DENIALS[reason] if isinstance(reason, str) and reason in _DENIALS else None
     digest, fingerprint, model = pin.get("content_sha256"), pin.get("policy"), pin.get("model_id")
     if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
         return None

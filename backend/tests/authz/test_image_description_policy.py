@@ -101,9 +101,11 @@ async def test_authorized_model_records_measured_usage_and_actual_cost(
     assert result.credential_scope == "personal"
     assert key not in repr(target)
     send.assert_awaited_once()
-    assert send.await_args.kwargs["endpoint"] == "https://api.openai.com/v1/chat/completions"
-    assert send.await_args.kwargs["image"] == b"imagebits"
-    assert send.await_args.kwargs["question"] == "What is drawn?"
+    call = send.await_args
+    assert call is not None
+    assert call.kwargs["endpoint"] == "https://api.openai.com/v1/chat/completions"
+    assert call.kwargs["image"] == b"imagebits"
+    assert call.kwargs["question"] == "What is drawn?"
 
 
 async def test_same_user_in_other_company_cannot_read_or_send(

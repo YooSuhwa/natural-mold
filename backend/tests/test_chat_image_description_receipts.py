@@ -202,3 +202,28 @@ async def test_terminal_run_cannot_claim_an_external_call() -> None:
         await db.commit()
         assert (await reserve_description(db, **request)).status == "unavailable"
         assert (await db.scalars(select(ChatImageDescription))).all() == []
+
+
+async def test_abandoned_claim_on_terminal_owner_stays_unconfirmed_on_reopen() -> None:
+    async with TestSession() as db:
+        conversation_id = await seed_conversation_with_agent()
+        request = await seed_receipt_request(db, conversation_id)
+        claim = await reserve_description(db, **request)
+        assert claim.status == "acquired" and claim.receipt_id is not None
+        await db.execute(
+            update(ConversationRun)
+            .where(ConversationRun.id == request["run_id"])
+            .values(status="stale")
+        )
+        await db.commit()
+    async with TestSession() as reopened:
+        result = await find_description(reopened, **_lookup_for(request))
+        assert (result.status, result.failure_code, result.receipt_id) == (
+            "failed",
+            "unconfirmed",
+            claim.receipt_id,
+        )
+        next_run = (await seed_receipt_request(reopened, conversation_id))["run_id"]
+        assert await reserve_description(reopened, **(request | {"run_id": next_run})) == result
+        original = await reopened.get(ChatImageDescription, claim.receipt_id)
+        assert original is not None and original.status == "pending"
