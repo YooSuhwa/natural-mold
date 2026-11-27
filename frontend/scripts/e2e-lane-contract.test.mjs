@@ -43,7 +43,11 @@ import {
   sanitizePlaywrightEnvironment,
   validatePlaywrightCliArguments,
 } from './e2e-lane-contract.mjs'
-import { INDEPENDENT_JOB_SPEC, independentJobBackendEnvironment } from './e2e-lane-runtime.mjs'
+import {
+  INDEPENDENT_JOB_SPEC,
+  independentJobBackendEnvironment,
+  resolveE2EChatRuntime,
+} from './e2e-lane-runtime.mjs'
 import {
   authenticationSetupFailure,
   resolveSkillNodeModulesDirectory,
@@ -111,17 +115,35 @@ describe('E2E lane contract', () => {
     expect(() => buildLaneEnvironment('scripted', optIn, 'scripted-smoke')).toThrow('scripted-full')
   })
 
-  it('builds once with webpack and serves the isolated production frontend', () => {
-    // Given: the configured chat runtime, backend origin, and frontend port.
-    const command = buildFrontendWebServerCommand('langgraph_v3', 'http://localhost:8101', '3100')
+  it.each(['legacy', 'langgraph_v3', 'ag_ui'])(
+    'uses the selected %s runtime in the launcher, production build, and server',
+    (runtime) => {
+      const environment = buildE2ELauncherEnvironment('scripted', 'scripted-full', {
+        NEXT_PUBLIC_CHAT_RUNTIME: runtime,
+      })
+      expect(environment.NEXT_PUBLIC_CHAT_RUNTIME).toBe(runtime)
+      const command = buildFrontendWebServerCommand(
+        environment.NEXT_PUBLIC_CHAT_RUNTIME,
+        'http://localhost:8101',
+        '3100',
+      )
+      expect(command).toContain('pnpm prepare:assets')
+      expect(command.match(/NEXT_PUBLIC_CHAT_RUNTIME=\w+/g)).toEqual([
+        `NEXT_PUBLIC_CHAT_RUNTIME=${runtime}`,
+        `NEXT_PUBLIC_CHAT_RUNTIME=${runtime}`,
+      ])
+      expect(command.match(/NEXT_PUBLIC_API_BASE_URL=http:\/\/localhost:8101/g)).toHaveLength(2)
+      expect(command).toContain('pnpm exec next build --webpack')
+      expect(command).toContain('pnpm exec next start --port 3100')
+      expect(command).not.toContain('next dev')
+    },
+  )
 
-    // When / Then: both build and server preserve the required startup environment.
-    expect(command).toContain('pnpm prepare:assets')
-    expect(command.match(/NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3/g)).toHaveLength(2)
-    expect(command.match(/NEXT_PUBLIC_API_BASE_URL=http:\/\/localhost:8101/g)).toHaveLength(2)
-    expect(command).toContain('pnpm exec next build --webpack')
-    expect(command).toContain('pnpm exec next start --port 3100')
-    expect(command).not.toContain('next dev')
+  it('uses v3 by default and rejects unknown chat runtime selections', () => {
+    expect(resolveE2EChatRuntime()).toBe('langgraph_v3')
+    expect(() => buildFrontendWebServerCommand('unknown', 'http://localhost:8101', '3100')).toThrow(
+      'NEXT_PUBLIC_CHAT_RUNTIME',
+    )
   })
 
   it('keeps each project artifact policy compatible with export rules', () => {

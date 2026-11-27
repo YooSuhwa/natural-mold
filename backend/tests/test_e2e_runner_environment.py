@@ -19,7 +19,7 @@ def _environment(tmp_path: Path, project: Project = "scripted-smoke") -> dict[st
     return build_lane_environment("scripted", project, dsns, tmp_path)
 
 
-@pytest.mark.parametrize("runtime", ["legacy", "langgraph_v3"])
+@pytest.mark.parametrize("runtime", ["legacy", "langgraph_v3", "ag_ui"])
 def test_valid_chat_runtime_is_forwarded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, runtime: str
 ) -> None:

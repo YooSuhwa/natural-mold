@@ -22,6 +22,7 @@ interface UseLangGraphDraftConversationResult {
   readonly conversationId: string | null
   readonly error: unknown
   readonly isBootstrapping: boolean
+  readonly retry: () => void
   readonly retainDraftConversation: () => string | null
   readonly commitDraftConversation: () => string | null
 }
@@ -37,7 +38,7 @@ function draftKey(
   isDraftConversation: boolean,
   runtimeMode: ChatRuntimeMode,
 ): string | null {
-  return isDraftConversation && runtimeMode === 'langgraph_v3' ? agentId : null
+  return isDraftConversation && runtimeMode !== 'legacy' ? agentId : null
 }
 
 export function useLangGraphDraftConversation({
@@ -101,7 +102,7 @@ export function useLangGraphDraftConversation({
   }, [key])
 
   useEffect(() => {
-    if (key === null) return
+    if (key === null || error !== null) return
     if (conversationId !== null || requestKeyRef.current === key) return
     requestKeyRef.current = key
     const requestKey = key
@@ -137,7 +138,13 @@ export function useLangGraphDraftConversation({
         }
         setState({ key: requestKey, conversationId: null, error: caught })
       })
-  }, [agentId, conversationId, key])
+  }, [agentId, conversationId, error, key])
+
+  const retry = useCallback(() => {
+    if (key === null || activeKeyRef.current !== key || error === null) return
+    requestKeyRef.current = null
+    setState(EMPTY_STATE)
+  }, [key, error])
 
   const retainDraftConversation = useCallback((): string | null => {
     const current = stateRef.current
@@ -157,6 +164,7 @@ export function useLangGraphDraftConversation({
     conversationId,
     error,
     isBootstrapping: key !== null && conversationId === null && error === null,
+    retry,
     retainDraftConversation,
     commitDraftConversation,
   }

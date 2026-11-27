@@ -199,8 +199,19 @@ export function independentJobBackendEnvironment(project, arguments_) {
   }
 }
 
+export function resolveE2EChatRuntime(runtime = 'langgraph_v3') {
+  switch (runtime) {
+    case 'legacy':
+    case 'langgraph_v3':
+    case 'ag_ui':
+      return runtime
+    default:
+      throw new Error('NEXT_PUBLIC_CHAT_RUNTIME must be legacy, langgraph_v3, or ag_ui.')
+  }
+}
+
 export function buildFrontendWebServerCommand(chatRuntime, apiBaseURL, frontendPort) {
-  const runtimeEnvironment = `NEXT_PUBLIC_CHAT_RUNTIME=${chatRuntime} NEXT_PUBLIC_API_BASE_URL=${apiBaseURL}`
+  const runtimeEnvironment = `NEXT_PUBLIC_CHAT_RUNTIME=${resolveE2EChatRuntime(chatRuntime)} NEXT_PUBLIC_API_BASE_URL=${apiBaseURL}`
   return `pnpm prepare:assets && ${runtimeEnvironment} pnpm exec next build --webpack && ${runtimeEnvironment} pnpm exec next start --port ${frontendPort}`
 }
 
@@ -281,11 +292,9 @@ export function buildE2ELauncherEnvironment(lane, project, inheritedEnvironment)
     if (hasNonEmptyValue(inheritedEnvironment, name)) environment[name] = inheritedEnvironment[name]
   }
   if (hasNonEmptyValue(inheritedEnvironment, 'NEXT_PUBLIC_CHAT_RUNTIME')) {
-    const runtime = inheritedEnvironment.NEXT_PUBLIC_CHAT_RUNTIME
-    if (runtime !== 'legacy' && runtime !== 'langgraph_v3') {
-      throw new Error('NEXT_PUBLIC_CHAT_RUNTIME must be legacy or langgraph_v3.')
-    }
-    environment.NEXT_PUBLIC_CHAT_RUNTIME = runtime
+    environment.NEXT_PUBLIC_CHAT_RUNTIME = resolveE2EChatRuntime(
+      inheritedEnvironment.NEXT_PUBLIC_CHAT_RUNTIME,
+    )
   }
   if (lane === 'live') {
     if (
