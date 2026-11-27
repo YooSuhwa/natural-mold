@@ -67,6 +67,9 @@ function currentSlots(
       other ||
       !child?.childTaskId ||
       !child.parentToolCallId ||
+      !child.parentMessageId ||
+      child.runId !== wire.interruptRunId ||
+      child.physicalRunId !== wire.physicalInterruptRunId ||
       child.status !== 'interrupted' ||
       !child.interruptIds?.includes(id) ||
       wire.subagents.some(

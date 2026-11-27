@@ -2,7 +2,7 @@ import type { Interrupt } from '@ag-ui/core'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChildTask } from '@/lib/api/child-tasks'
-import type { AgUiChatSessionState } from '@/lib/ag-ui/chat-history'
+import { createAgUiChatSession, type AgUiChatSessionState } from '@/lib/ag-ui/chat-history'
 import { parseWireChatSnapshot } from '@/lib/ag-ui/chat-history-types'
 import { HiTLContext } from '@/lib/chat/hitl-context'
 import { AgUiChildPendingForms } from '../ag-ui-child-pending-forms'
@@ -129,6 +129,8 @@ function session(
       subagents: [
         {
           subagentRunId: childRun,
+          runId: publicRun,
+          physicalRunId: physicalRun,
           parentToolCallId: task.tool_call_id,
           parentMessageId: 'assistant',
           name: task.role,
@@ -143,23 +145,20 @@ function session(
     },
     conversationId,
   )
+  const state = createAgUiChatSession({
+    conversationId,
+    readSnapshot: async () => snapshot,
+    getServerMessages: () => [],
+  }).getSnapshot()
   return {
+    ...state,
     snapshot,
     subagents: snapshot.subagents,
     interrupts: snapshot.interrupts,
     messageLinks: snapshot.messageLinks,
-    activities: [],
-    liveActivityIds: new Set(),
-    deepAgentsState: { todos: [], files: [] },
-    readDenied: false,
-    reconcileSequence: 0,
-    attachBlockedRunId: null,
     terminalSequence: 1,
     terminalRunId: publicRun,
     lastTerminalPhysicalRunId: physicalRun,
-    activeRunId: null,
-    physicalRunId: null,
-    failedPhysicalRunId: null,
   }
 }
 
@@ -251,6 +250,9 @@ describe('managed child interrupt forms', () => {
 
   it.each([
     { childTaskId: undefined },
+    { runId: 'historical-run' },
+    { physicalRunId: task.run_id },
+    { parentMessageId: undefined },
     { interruptIds: ['another-slot'] },
     { subagentRunId: 'sibling-run' },
     { status: 'completed' },
