@@ -34,6 +34,8 @@ def _stopped(status: str) -> ChildTaskStopped:
 
 def _resume_lineage(run: ConversationRun) -> Select[tuple[UUID]]:
     """Only original parent runs that actually paused this same private conversation."""
+    if run.org_id is None or run.tenant_id is None:
+        raise ChildTaskStopped("revoked")
     lineage = (
         select(ConversationRun.id, ConversationRun.source, ConversationRun.parent_run_id)
         .where(ConversationRun.id == run.id)
