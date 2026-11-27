@@ -27,6 +27,7 @@ from app.migrations.org_authz_v1.rls_children import CHILDREN
 DIRECT_TENANT: Final = frozenset(
     {
         "access_requests",
+        "ag_ui_command_receipts",
         "agent_api_keys",
         "agent_api_runs",  # I-07 tenant_id: runs outlive their deployment
         "agent_blueprints",
