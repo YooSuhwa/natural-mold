@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
@@ -11,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.exception_handlers import register_exception_handlers
 from app.models.audit_event import AuditEvent
+from app.models.mcp_app_invocation import McpAppInvocationBinding
 from app.routers.mcp_apps import router
+from app.services import mcp_apps_service
 from tests.conftest import TEST_USER_ID
 from tests.test_mcp_apps_service import _seed
 
@@ -39,6 +43,68 @@ def _app_for_session(db: AsyncSession, *, bypass_csrf: bool) -> FastAPI:
     if bypass_csrf:
         app.dependency_overrides[verify_csrf] = _csrf
     return app
+
+
+@pytest.mark.asyncio
+async def test_widget_restores_private_result_without_replaying_call_or_refreshing_credentials(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seeded = await _seed(db)
+    binding = await db.get(McpAppInvocationBinding, seeded.binding_id)
+    assert binding is not None
+    binding.structured_content = {"temperature": 23, "note": "server-secret", "api_key": "private"}
+    binding.result_meta = {"viewUUID": "view-1", "access_token": "private"}
+    await db.commit()
+    endpoints = [AsyncMock(), AsyncMock(), AsyncMock()]
+    for name, endpoint in zip(
+        ["resolve_mcp_auth", "call_mcp_tool_once", "read_mcp_resource_once"], endpoints, strict=True
+    ):
+        monkeypatch.setattr(mcp_apps_service, name, endpoint)
+
+    url = f"/api/conversations/{seeded.conversation.id}/runs/{seeded.run.id}/mcp-apps/tool-call-1"
+    app = _app_for_session(db, bypass_csrf=False)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        restored = await client.get(url, params={"binding_id": str(seeded.binding_id)})
+        assert restored.status_code == 200
+        assert restored.headers["cache-control"] == "private, no-store"
+        assert restored.json()["mcp_app"] == {
+            "version": 1,
+            "binding_id": str(seeded.binding_id),
+            "run_id": str(seeded.run.id),
+            "resource_uri": "ui://weather/dashboard",
+            "tool_meta": {"ui": {"resourceUri": "ui://weather/dashboard"}},
+            "result_meta": {"viewUUID": "view-1"},
+        }
+        assert set(restored.json()) == {"mcp_app", "structured_content"}
+        content = restored.json()["structured_content"]
+        assert content["temperature"] == 23
+        assert content["note"] != "server-secret"
+        assert "api_key" not in content
+        assert "server-secret" not in restored.text
+
+        wrong_binding = await client.get(url, params={"binding_id": str(uuid4())})
+        for wrong_url in (
+            url.replace("tool-call-1", "other-call"),
+            url.replace(str(seeded.run.id), str(uuid4())),
+            url.replace(str(seeded.conversation.id), str(uuid4())),
+        ):
+            missing = await client.get(wrong_url, params={"binding_id": str(seeded.binding_id)})
+            assert wrong_binding.status_code == missing.status_code == 404
+            assert wrong_binding.json() == missing.json()
+
+        seeded.origin.enabled = False
+        await db.commit()
+        revoked = await client.get(url, params={"binding_id": str(seeded.binding_id)})
+        assert revoked.status_code == 403
+        assert revoked.headers["cache-control"] == "private, no-store"
+        assert "view-1" not in revoked.text
+        assert "temperature" not in revoked.text
+
+    assert (
+        await db.scalar(select(AuditEvent).where(AuditEvent.target_id == str(binding.id))) is None
+    )
+    for endpoint in endpoints:
+        endpoint.assert_not_awaited()
 
 
 @pytest.mark.asyncio

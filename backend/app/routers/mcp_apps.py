@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
@@ -16,11 +16,47 @@ from app.schemas.mcp_apps import (
     McpAppsCommand,
     McpAppsListResourcesCommand,
     McpAppsReadResourceCommand,
+    McpAppWidgetResult,
 )
 from app.services import mcp_apps_service
 from app.services.audit_service import record_self_event
 
 router = APIRouter(tags=["mcp-apps"])
+
+
+@router.get(
+    "/api/conversations/{conversation_id}/runs/{run_id}/mcp-apps/{tool_call_id}",
+    response_model_exclude_none=True,
+)
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
+async def read_mcp_app_widget_result(
+    conversation_id: uuid.UUID,
+    run_id: uuid.UUID,
+    tool_call_id: Annotated[str, Path(min_length=1, max_length=255)],
+    binding_id: uuid.UUID,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    _user: CurrentUser = Depends(get_current_user),
+    org_context: OrgContext = Depends(get_org_context),
+) -> McpAppWidgetResult:
+    headers = {"Cache-Control": "private, no-store"}
+    response.headers.update(headers)
+    try:
+        context = await mcp_apps_service.authorize_binding(
+            db,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            tool_call_id=tool_call_id,
+            binding_id=binding_id,
+            context=org_context,
+        )
+        return await mcp_apps_service.read_widget_result(db, context)
+    except mcp_apps_service.McpAppsError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+            headers=headers,
+        ) from exc
 
 
 @router.post(
