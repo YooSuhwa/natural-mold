@@ -46,11 +46,13 @@ async def readable_conversation(
 
 
 async def can_read_conversation_run_id(
-    db: AsyncSession, conversation: Conversation, run_id: UUID, context: OrgContext
+    db: AsyncSession, conversation: Conversation, run_id: UUID | None, context: OrgContext
 ) -> bool:
-    """Additional lineage proof required for run-addressed reads of a background child."""
+    """Ordinary conversations allow legacy traces; child reads require a managed run ID."""
     if conversation.source != INDEPENDENT_JOB_SOURCE:
         return True
+    if run_id is None:
+        return False
     from app.services.independent_job_runs import can_read_independent_child_run
 
     return await can_read_independent_child_run(

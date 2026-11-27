@@ -6,12 +6,13 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.conversation_scope import can_read_conversation_run_id
 from app.authz.org_context import OrgContext
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.independent_chat_job import IndependentChatJob
 from app.models.message_event import MessageEvent
-from app.routers.conversation_agent_protocol_legacy import legacy_state_messages
+from app.routers.conversation_agent_protocol_state_snapshot import load_thread_state_snapshot
 from app.schemas.conversation import MessageResponse
 from app.services.chat.interrupts import _hydrate_pending_interrupt_tool_calls
 from app.services.conversation_protocol_replay import (
@@ -73,11 +74,16 @@ async def test_only_managed_child_turns_contribute_trace_metadata_and_events(
 
     conversation = await db.get(Conversation, job.child_conversation_id)
     assert conversation is not None
+    parent = await db.get(Conversation, job.parent_conversation_id)
+    assert parent is not None
+    assert await can_read_conversation_run_id(db, parent, None, context)
+    assert not await can_read_conversation_run_id(db, conversation, None, context)
     protocol_events = await load_live_protocol_events(
         LiveProtocolEventsRequest(db, conversation, context, ())
     )
     assert {event["run_id"] for event in protocol_events} == allowed
-    messages = await legacy_state_messages(db, conversation, context)
+    snapshot = await load_thread_state_snapshot(conversation, context, db)
+    messages = snapshot.values["messages"]
     assert {msg["content"] for msg in messages} == {"owned first turn", "owned resumed turn"}
 
 

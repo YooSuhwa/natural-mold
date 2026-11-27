@@ -22,6 +22,7 @@ from app.routers.conversation_agent_protocol_checkpoint_state import (
 )
 from app.routers.conversation_agent_protocol_legacy import legacy_state_messages
 from app.schemas.conversation_history import ConversationHistoryCheckpointResponse
+from app.services import trace_storage
 from app.services.conversation_protocol_projection import (
     MessageProjectionRequest,
 )
@@ -211,9 +212,10 @@ async def _legacy_thread_state_snapshot(
             checkpoint_by_message_id={},
             parent_checkpoint_by_message_id={},
         )
+    records = await trace_storage.get_readable_conversation_traces(db, conversation, context)
     messages = project_and_redact_protocol_data(
         "messages",
-        await legacy_state_messages(db, conversation, context),
+        legacy_state_messages(records),
         secret_values=secret_values,
     )
     return ThreadStateSnapshot(

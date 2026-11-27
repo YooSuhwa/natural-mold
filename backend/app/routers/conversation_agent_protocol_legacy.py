@@ -1,16 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
 from app.agent_runtime.protocol_events import StoredProtocolEvent
-from app.authz.org_context import OrgContext
-from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
-from app.services import trace_storage
 from app.services.conversation_protocol_legacy_projection import (
     LegacyEventProjectionRequest,
 )
@@ -28,12 +23,7 @@ def protocol_events_from_legacy_sse(
     return _protocol_events_from_legacy_sse(LegacyEventProjectionRequest(raw, record, seq))
 
 
-async def legacy_state_messages(
-    db: AsyncSession,
-    conversation: Conversation,
-    context: OrgContext,
-) -> list[dict[str, Any]]:
-    records = await trace_storage.get_readable_conversation_traces(db, conversation, context)
+def legacy_state_messages(records: Iterable[MessageEvent]) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
     for record in records:

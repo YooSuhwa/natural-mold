@@ -22,7 +22,6 @@ from app.authz.conversation_scope import can_read_conversation_run_id, load_priv
 from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.error_codes import conversation_not_found, resume_interrupt_pending, resume_not_found
-from app.models.conversation import INDEPENDENT_JOB_SOURCE
 from app.models.message_event import MessageEvent
 from app.routers.chat_run_entries import _broker_resume_generator, _replay_resume_generator
 from app.routers.conversation_agent_protocol_attach import while_broker_owner
@@ -237,9 +236,8 @@ async def resume_message(
         context=context,
     )
     legacy_interrupt_trace: MessageEvent | None = None
-    if conv.source == INDEPENDENT_JOB_SOURCE and (
-        parent_run is None
-        or not await can_read_conversation_run_id(db, conv, parent_run.id, context)
+    if not await can_read_conversation_run_id(
+        db, conv, parent_run.id if parent_run else None, context
     ):
         raise resume_not_found()
     if parent_run is None:
