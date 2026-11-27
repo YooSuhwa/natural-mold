@@ -1,5 +1,7 @@
 import { test, expect } from './fixtures'
 import type { ChildTaskPage } from '../src/lib/api/child-tasks'
+import type { GoalEnvelope } from '../src/lib/types/conversation-goal'
+import type { IndependentJobList } from '../src/lib/types/independent-chat-job'
 import type { ToolApprovalView } from '../src/lib/types/tool-approval'
 
 const ISO = '2026-06-04T00:00:00.000Z'
@@ -45,6 +47,7 @@ const FAKE_CONVERSATION = {
 }
 
 const FAKE_MESSAGES = {
+  conversation_source: 'ui',
   messages: [
     {
       id: 'message-user-token-usage',
@@ -188,6 +191,21 @@ test.describe('Chat token usage hover', () => {
     await page.route(`**/api/conversations/${CONVERSATION_ID}/tool-grants`, (route) =>
       route.fulfill({ json: [] }),
     )
+    await page.route(`**/api/conversations/${CONVERSATION_ID}/independent-jobs`, (route) => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      return route.fulfill({
+        json: {
+          enabled: false,
+          parent_job: null,
+          jobs: [],
+          targets: [],
+        } satisfies IndependentJobList,
+      })
+    })
+    await page.route(`**/api/conversations/${CONVERSATION_ID}/goal`, (route) => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      return route.fulfill({ json: { enabled: false, goal: null } satisfies GoalEnvelope })
+    })
     await page.route(
       `**/api/conversations/${CONVERSATION_ID}/child-tasks?limit=50&offset=0`,
       (route) => {
@@ -232,6 +250,7 @@ test.describe('Chat token usage hover', () => {
     await expect(
       page.getByText('토큰 사용량 상세 팝오버가 정상적으로 표시되는 응답입니다.'),
     ).toBeVisible()
+    await expect(page.getByPlaceholder('메시지 입력...')).toBeEditable()
 
     const tokenButton = page.getByRole('button', { name: '토큰 사용량 보기' })
     await expect(tokenButton).toBeVisible()
