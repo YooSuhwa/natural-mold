@@ -120,7 +120,7 @@ def build_persist_callback(
                         session, assistant_msg_id=run_id
                     )
                 known = seen_event_ids
-                await trace_storage.append_events(
+                trace = await trace_storage.append_events(
                     session,
                     conversation_id=conversation_id,
                     assistant_msg_id=run_id,
@@ -128,7 +128,7 @@ def build_persist_callback(
                     status="streaming",
                     known_event_ids=known,
                 )
-                last_id = events_chunk[-1].get("id")
+                last_id = trace.last_event_id if trace is not None else None
                 if isinstance(last_id, str) and last_id:
                     try:
                         run_uuid = uuid.UUID(run_id)

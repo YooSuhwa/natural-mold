@@ -5,6 +5,7 @@ import logging
 import time
 
 from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
+from app.agent_runtime.journal_continuity import trim_journal_retry_buffer
 from app.agent_runtime.langgraph_event_projection import (
     annotate_session_consent_eligibility,
     project_stable_event,
@@ -75,9 +76,8 @@ class ProtocolEventDelivery:
         except Exception:  # noqa: BLE001 - persistence failure must not kill a live stream.
             self._persist_buffer = [*events, *self._persist_buffer]
             logger.exception("protocol stream persist_callback failed (run_id=%s)", self.run_id)
-            if len(self._persist_buffer) > _MAX_RETRY_BUFFER_EVENTS:
-                overflow = len(self._persist_buffer) - _MAX_RETRY_BUFFER_EVENTS
-                del self._persist_buffer[:overflow]
+            overflow = trim_journal_retry_buffer(self._persist_buffer, _MAX_RETRY_BUFFER_EVENTS)
+            if overflow:
                 logger.warning(
                     "persist buffer overflow (run_id=%s) - dropped %d oldest events at cap=%d",
                     self.run_id,
