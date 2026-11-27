@@ -8,13 +8,14 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime import checkpointer
+from app.agent_runtime import ag_ui_v1_issuance, checkpointer
 from app.agent_runtime.protocol_events import stored_protocol_event
 from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.auth.jwt import create_access_token
 from app.child_tasks.persistence import begin_child_task
 from app.config import settings
 from app.models.agent_subagent import AgentSubAgentLink
+from app.models.message_event import MessageEvent, MessageEventChunk
 from app.services import trace_storage
 from app.tenancy.checkpoint_audit import run_configurable
 from tests.authz.test_child_task_authorization import ChildCase
@@ -22,11 +23,13 @@ from tests.authz.test_child_task_authorization import child_case as child_case
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("expire_trace", [False, True], ids=["journal", "checkpoint-only"])
 async def test_snapshot_removes_child_handle_and_messages_when_link_is_revoked(
     raw_client: AsyncClient,
     db: AsyncSession,
     child_case: ChildCase,
     monkeypatch: pytest.MonkeyPatch,
+    expire_trace: bool,
 ) -> None:
     graph = child_case.graph
     ctx = graph.context
@@ -115,7 +118,13 @@ async def test_snapshot_removes_child_handle_and_messages_when_link_is_revoked(
     assert before.status_code == 200, before.text
     [admitted] = before.json()["subagents"]
     assert admitted["childTaskId"] == str(task_id)
-    assert admitted["parentToolCallId"] == call_id
+    public_call_id = ag_ui_v1_issuance.public_tool_call_id(
+        str(child_case.run_id), None, parent.id, call_id
+    )
+    assert public_call_id != call_id and call_id not in before.text
+    issuer = next(row for row in before.json()["messages"] if row["id"] == parent.id)
+    assert issuer["toolCalls"][0]["id"] == public_call_id
+    assert admitted["parentToolCallId"] == public_call_id
     assert admitted["parentMessageId"] == parent.id
     public_id = admitted["subagentRunId"]
     assert public_id != str(task_id)
@@ -124,7 +133,7 @@ async def test_snapshot_removes_child_handle_and_messages_when_link_is_revoked(
         for message in before.json()["messages"]
     )
     assert any(
-        message.get("toolCallId") == call_id and message["content"] == tool_result.text
+        message.get("toolCallId") == public_call_id and message["content"] == tool_result.text
         for message in before.json()["messages"]
     )
 
@@ -134,6 +143,14 @@ async def test_snapshot_removes_child_handle_and_messages_when_link_is_revoked(
             AgentSubAgentLink.sub_agent_id == child_case.child_id,
         )
     )
+    if expire_trace:
+        for model in (MessageEventChunk, MessageEvent):
+            await db.execute(
+                delete(model).where(
+                    model.conversation_id == conversation_id,
+                    model.assistant_msg_id == str(child_case.run_id),
+                )
+            )
     await db.commit()
     after = await raw_client.get(endpoint, params=params)
     assert after.status_code == 200, after.text
@@ -142,6 +159,7 @@ async def test_snapshot_removes_child_handle_and_messages_when_link_is_revoked(
     for private_value in (
         str(task_id),
         public_id,
+        public_call_id,
         call_id,
         "task-result",
         child_text,
