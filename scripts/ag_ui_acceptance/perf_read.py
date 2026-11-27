@@ -91,6 +91,7 @@ def _measure_reader(
             ordinal
             for frame in frames
             if frame.event.get("type") == "TEXT_MESSAGE_CONTENT"
+            and not frame.event.get("subagentRunId")
             for ordinal in parts.get(frame.event["delta"], ())
         ]
         os.write(fd, (json.dumps(row, separators=(",", ":")) + "\n").encode("ascii"))
