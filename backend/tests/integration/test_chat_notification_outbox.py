@@ -244,11 +244,6 @@ async def completed_run(lab: RlsLab) -> AsyncIterator[tuple[OrgContext, UUID, UU
     try:
         ctx, conversation_id, run_id, _ = await _accepted_parent(admin)
         async with admin() as db:
-            run = await db.get(ConversationRun, run_id)
-            assert run is not None
-            await transition_run(db, run, "running", worker_instance_id="goal-worker")
-            await transition_run(db, run, "completed")
-            await db.commit()
             try:
                 yield ctx, conversation_id, run_id
             finally:
