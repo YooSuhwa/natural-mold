@@ -1,4 +1,8 @@
-"""Keep accepted AG-UI worker input private and bound to its original command."""
+"""Storage boundary for private AG-UI command receipts.
+
+Both formats authenticate the fixed receipt purpose and its server-issued coordinates.
+Callers supply the command identity; this boundary owns the keys and associated data.
+"""
 
 from __future__ import annotations
 
@@ -26,23 +30,24 @@ class DeliveryIdentity:
     parent_run_id: UUID | None
     checkpoint_id: str
 
-    def binding(self) -> str:
-        # Ordered JSON keeps opaque public IDs and checkpoint IDs unambiguous.
-        return json.dumps(
-            [
-                "ag_ui_command_receipts.delivery_encrypted.v1",
-                str(self.tenant_id),
-                str(self.org_id),
-                str(self.user_id),
-                str(self.conversation_id),
-                self.public_run_id,
-                str(self.run_id),
-                self.source,
-                str(self.parent_run_id) if self.parent_run_id is not None else None,
-                self.checkpoint_id,
-            ],
-            separators=(",", ":"),
-        )
+
+def _binding(identity: DeliveryIdentity) -> str:
+    # Ordered JSON keeps opaque public IDs and checkpoint IDs unambiguous.
+    return json.dumps(
+        [
+            "ag_ui_command_receipts.delivery_encrypted.v1",
+            str(identity.tenant_id),
+            str(identity.org_id),
+            str(identity.user_id),
+            str(identity.conversation_id),
+            identity.public_run_id,
+            str(identity.run_id),
+            identity.source,
+            str(identity.parent_run_id) if identity.parent_run_id is not None else None,
+            identity.checkpoint_id,
+        ],
+        separators=(",", ":"),
+    )
 
 
 class InvalidDelivery(Exception):
@@ -64,7 +69,7 @@ def _instance_delivery_key(key: cipher.CipherKey, binding: str) -> cipher.Cipher
 
 
 async def seal_delivery(db: AsyncSession, identity: DeliveryIdentity, payload: object) -> str:
-    binding = identity.binding()
+    binding = _binding(identity)
     try:
         envelope = _Envelope.model_validate({"binding": binding, "payload": payload})
         plaintext = json.dumps(envelope.model_dump(), separators=(",", ":"), allow_nan=False)
@@ -80,7 +85,7 @@ async def seal_delivery(db: AsyncSession, identity: DeliveryIdentity, payload: o
 
 
 async def open_delivery(db: AsyncSession, identity: DeliveryIdentity, blob: str) -> JsonValue:
-    binding = identity.binding()
+    binding = _binding(identity)
     try:
         key_id = cipher.tenant_blob_key_id(blob) if cipher.blob_version(blob) == 2 else None
     except cipher.DecryptionError:
