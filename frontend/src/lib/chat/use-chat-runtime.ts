@@ -724,6 +724,8 @@ export function useChatRuntime({
             }
             case 'tool_call_start': {
               const toolName = event.data.tool_name
+              // A malformed historical event cannot identify a tool card. Keep reading the reply.
+              if (typeof toolName !== 'string' || toolName.trim().length === 0) break
               const params = event.data.parameters as Record<string, unknown>
               const eventToolCallId =
                 typeof event.data.tool_call_id === 'string' && event.data.tool_call_id.trim()

@@ -632,7 +632,7 @@ describe('ChatPage', () => {
     }
   })
 
-  it('handles stream with tool calls', async () => {
+  it('displays the remaining reply when a legacy tool event lacks its public name', async () => {
     const { default: userEvent } = await import('@testing-library/user-event')
     const user = userEvent.setup()
 
@@ -679,6 +679,7 @@ describe('ChatPage', () => {
     await user.click(sendButton)
 
     expect(mockStreamChat).toHaveBeenCalled()
+    expect(await screen.findByText('Based on search...')).toBeInTheDocument()
   })
 
   // streamChat 에러 처리는 useChatRuntime 내부로 이동 (M? assistant-ui 통합).
