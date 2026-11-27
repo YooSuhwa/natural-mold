@@ -28,9 +28,12 @@ function approval(id: string) {
   }
 }
 
-function installChatApi() {
+function installChatApi(activeRunId: string | null = null) {
+  let phase: 'empty' | 'running' | 'interrupted' | 'completed' = activeRunId ? 'running' : 'empty'
+  let selectedRunId = activeRunId
+  const streamReads: string[] = []
   let pendingId = 'original-approval'
-  let userId = ''
+  let userId = activeRunId ? 'previous-user-question' : ''
   const commands: RunAgentInput[] = []
   const writes: string[] = []
   const snapshotReads = vi.fn()
@@ -50,10 +53,11 @@ function installChatApi() {
   const doneMessage = { id: 'assistant-done', role: 'assistant', content: answer }
 
   function snapshot() {
-    const pending = commands.length === 1
+    const pending = phase === 'interrupted'
+    const active = phase === 'running'
     const messages =
-      commands.length === 0 ? [] : pending ? [user(), requestingTool] : [user(), doneMessage]
-    const acceptedId = commands.at(-1)?.runId ?? null
+      phase === 'empty' ? [] : active ? [user()] : [user(), pending ? requestingTool : doneMessage]
+    const acceptedId = selectedRunId
     return {
       threadId,
       protocolVersion: '1.0',
@@ -62,9 +66,9 @@ function installChatApi() {
       activeTipMessageId: messages.at(-1)?.id ?? null,
       runId: acceptedId,
       latestPhysicalRunId: acceptedId ? physicalRunId : null,
-      runStatus: acceptedId ? (pending ? 'interrupted' : 'completed') : null,
-      activeRunId: null,
-      physicalRunId: null,
+      runStatus: acceptedId ? phase : null,
+      activeRunId: active ? selectedRunId : null,
+      physicalRunId: active ? physicalRunId : null,
       interruptRunId: pending ? acceptedId : null,
       physicalInterruptRunId: pending ? physicalRunId : null,
       messages,
@@ -87,6 +91,43 @@ function installChatApi() {
     }
   }
 
+  function streamResponse(runId: string, interrupt: boolean) {
+    const run = { threadId, runId: runId }
+    const events = [
+      { type: 'RUN_STARTED', ...run, protocolVersion: '1.0' },
+      ...(interrupt
+        ? [
+            {
+              type: 'TOOL_CALL_START',
+              toolCallId,
+              toolCallName: 'send_mail',
+              parentMessageId: 'assistant-calling',
+            },
+            { type: 'TOOL_CALL_ARGS', toolCallId, delta: JSON.stringify(args) },
+            { type: 'TOOL_CALL_END', toolCallId },
+          ]
+        : [
+            { type: 'TEXT_MESSAGE_START', messageId: doneMessage.id, role: 'assistant' },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: doneMessage.id, delta: answer },
+            { type: 'TEXT_MESSAGE_END', messageId: doneMessage.id },
+          ]),
+      {
+        type: 'RUN_FINISHED',
+        ...run,
+        outcome: interrupt
+          ? { type: 'interrupt', interrupts: [approval(pendingId)] }
+          : { type: 'success' },
+      },
+    ]
+    return new Response(events.map((event) => 'data: ' + JSON.stringify(event) + '\n\n').join(''), {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'X-Run-Id': runId,
+        'X-Moldy-Run-Id': physicalRunId,
+      },
+    })
+  }
+
   async function fetchFixture(input: RequestInfo | URL, init?: RequestInit) {
     const path = new URL(input instanceof Request ? input.url : String(input), 'http://localhost')
       .pathname
@@ -95,6 +136,17 @@ function installChatApi() {
     if (method === 'GET' && path.endsWith('/ag-ui/snapshot')) {
       snapshotReads()
       return Response.json(snapshot())
+    }
+    if (method === 'GET' && path.endsWith('/ag-ui/stream')) {
+      const address = new URL(
+        input instanceof Request ? input.url : String(input),
+        'http://localhost',
+      )
+      const runId = address.searchParams.get('runId')
+      if (!runId || runId !== selectedRunId) return new Response(null, { status: 404 })
+      streamReads.push(runId)
+      phase = 'completed'
+      return streamResponse(runId, false)
     }
     if (method === 'GET' && path.endsWith('/run-inputs'))
       return Response.json({ items: [], queue_paused: false })
@@ -116,44 +168,14 @@ function installChatApi() {
     commands.push(command)
     const isFirst = commands.length === 1
     if (isFirst) userId = command.messages.at(-1)?.id ?? ''
-    const run = { threadId, runId: command.runId }
-    const events = [
-      { type: 'RUN_STARTED', ...run, protocolVersion: '1.0' },
-      ...(isFirst
-        ? [
-            {
-              type: 'TOOL_CALL_START',
-              toolCallId,
-              toolCallName: 'send_mail',
-              parentMessageId: 'assistant-calling',
-            },
-            { type: 'TOOL_CALL_ARGS', toolCallId, delta: JSON.stringify(args) },
-            { type: 'TOOL_CALL_END', toolCallId },
-          ]
-        : [
-            { type: 'TEXT_MESSAGE_START', messageId: doneMessage.id, role: 'assistant' },
-            { type: 'TEXT_MESSAGE_CONTENT', messageId: doneMessage.id, delta: answer },
-            { type: 'TEXT_MESSAGE_END', messageId: doneMessage.id },
-          ]),
-      {
-        type: 'RUN_FINISHED',
-        ...run,
-        outcome: isFirst
-          ? { type: 'interrupt', interrupts: [approval(pendingId)] }
-          : { type: 'success' },
-      },
-    ]
-    return new Response(events.map((event) => 'data: ' + JSON.stringify(event) + '\n\n').join(''), {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'X-Run-Id': command.runId,
-        'X-Moldy-Run-Id': physicalRunId,
-      },
-    })
+    selectedRunId = command.runId
+    phase = isFirst ? 'interrupted' : 'completed'
+    return streamResponse(command.runId, isFirst)
   }
   vi.stubGlobal('fetch', vi.fn(fetchFixture))
   return {
     commands,
+    streamReads,
     writes,
     snapshotReads,
     rotateApproval: () => {
@@ -201,7 +223,7 @@ it('sends once, reopens the pending approval by GET, then resumes the current in
   expect(api.snapshotReads.mock.calls.length).toBeGreaterThan(beforeReload)
   expect(api.writes).toHaveLength(1)
   await user.click(approve)
-  expect(await screen.findByText(answer)).toBeVisible()
+  await waitFor(() => expect(screen.getByText(answer)).toBeVisible())
   const chatRunPath = '/api/conversations/' + threadId + '/ag-ui/runs'
   await waitFor(() =>
     expect(api.writes).toEqual([
@@ -222,4 +244,17 @@ it('sends once, reopens the pending approval by GET, then resumes the current in
     ],
   })
   expect(api.commands[1].runId).not.toBe(api.commands[0].runId)
+})
+
+it('replays another tab’s running answer without submitting a run or generating a new suggestion', async () => {
+  const api = installChatApi('original-active-run')
+  openChat()
+  await waitFor(() => {
+    expect(api.snapshotReads.mock.calls.length).toBeGreaterThan(1)
+    expect(screen.getByText(question)).toBeVisible()
+    expect(screen.getByText(answer)).toBeVisible()
+  })
+  expect(api.streamReads).toEqual(['original-active-run'])
+  expect(api.commands).toHaveLength(0)
+  expect(api.writes).toEqual([])
 })
