@@ -30,6 +30,9 @@ export function useConversationRun(conversationId: string, runId: string | null,
     queryKey: conversationRunKeys.detail(conversationId, runId ?? 'none'),
     queryFn: () => conversationRunsApi.get(conversationId, runId ?? ''),
     enabled: enabled && !!conversationId && !!runId,
+    // The message link can be read before the worker commits its terminal status and metrics.
+    refetchInterval: ({ state }) =>
+      state.status === 'success' && isActiveRunStatus(state.data?.status) ? 1000 : false,
     refetchOnWindowFocus: false,
   })
 }
