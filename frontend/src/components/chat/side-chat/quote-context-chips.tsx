@@ -70,7 +70,11 @@ function QuoteChip({
       )
       const message = Array.from(
         thread?.querySelectorAll<HTMLElement>('[data-moldy-message-id]') ?? [],
-      ).find((item) => item.dataset.moldyMessageId === quote.message_id)
+      ).find(
+        (item) =>
+          item.dataset.moldyMessageId === quote.message_id ||
+          item.dataset.moldyWireMessageId === quote.message_id,
+      )
       message?.scrollIntoView({
         block: 'center',
         behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
