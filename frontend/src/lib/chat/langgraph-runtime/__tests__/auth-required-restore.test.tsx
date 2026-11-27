@@ -177,29 +177,51 @@ describe('auth_required card after an SSE reconnect (G-05)', () => {
     ).toEqual([expect.objectContaining({ id: 'intr-auth:0#2' })])
   })
 
-  it('keeps the re-ask visible when a replay still carries the answered attempt', () => {
-    const answered = standardPayloadFromInterrupt({
-      id: 'intr-auth',
-      value: { ...AUTH_VALUE, attempt: 1 },
-    })
-    if (!answered) throw new Error('auth payload not recognized')
-    const { result } = renderHook(() => {
-      const view = useStreamInterruptView({
-        conversationId: 'c-1',
-        // reload state already has the re-ask; the replayed stream still has attempt 1
-        stream: viewStream([{ id: 'intr-auth', value: { ...AUTH_VALUE, attempt: 1 } }]),
-        serverInterrupts: [{ id: 'intr-auth', value: { ...AUTH_VALUE, attempt: 2 } }],
-        messages,
+  it.each(['intr-auth', 'intr-retry'])(
+    'keeps only the current re-ask when its interrupt ID is %s',
+    (currentId) => {
+      const answered = standardPayloadFromInterrupt({
+        id: 'intr-auth',
+        value: { ...AUTH_VALUE, attempt: 1 },
       })
-      return view
-    })
-    expect(result.current.payloads).toHaveLength(1)
-    const resolved = resolvedInterruptToolCallsFromDecisions(answered, [
-      { type: 'respond', message: 'retry', attempt: 1 },
-    ])
-    expect(resolved[0]?.toolCall.id).toBe('intr-auth:0#1')
-    expect(
-      authCalls(result.current.messagesWithInterrupts as unknown as ProjectedMessage[]),
-    ).toEqual([expect.objectContaining({ id: 'intr-auth:0#2' })])
+      if (!answered) throw new Error('auth payload not recognized')
+      const { result } = renderHook(() =>
+        useStreamInterruptView({
+          conversationId: 'c-1',
+          // The earlier checkpoint may predate auth_request_id.
+          stream: viewStream([{ id: 'intr-auth', value: { ...AUTH_VALUE, attempt: 1 } }]),
+          serverInterrupts: [
+            { id: currentId, value: { ...AUTH_VALUE, auth_request_id: 'intr-auth', attempt: 2 } },
+          ],
+          messages,
+        }),
+      )
+      expect([...result.current.payloadsById.keys()]).toEqual([currentId])
+      const resolved = resolvedInterruptToolCallsFromDecisions(answered, [
+        { type: 'respond', message: 'retry', attempt: 1 },
+      ])
+      expect(resolved[0]?.toolCall.id).toBe('intr-auth:0#1')
+      expect(
+        authCalls(result.current.messagesWithInterrupts as unknown as ProjectedMessage[]),
+      ).toEqual([expect.objectContaining({ id: `${currentId}:0#2` })])
+    },
+  )
+
+  it('keeps parallel requests for the same credential when live re-asks supersede cached attempts', () => {
+    const stale = { id: 'first', ns: [], value: { ...AUTH_VALUE, attempt: 1 } }
+    const parallel = { id: 'parallel', ns: [], value: { ...AUTH_VALUE, attempt: 1 } }
+    const retry = {
+      id: 'second',
+      value: { ...AUTH_VALUE, auth_request_id: 'first', attempt: 2 },
+    }
+    const { result } = renderHook(() =>
+      useStreamInterruptView({
+        conversationId: 'c-1',
+        stream: viewStream([retry]),
+        serverInterrupts: [stale, parallel],
+        messages,
+      }),
+    )
+    expect([...result.current.payloadsById.keys()]).toEqual(['second', 'parallel'])
   })
 })

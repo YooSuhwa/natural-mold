@@ -86,13 +86,15 @@ async def test_retry_re_reads_the_credential_and_asks_again_until_connected() ->
     run = run_graph([calls("a"), DONE], tools, [guard(ledger, guarded={"a": guarded("a", "c1")})])
 
     first = await run.start()
-    again = await run.resume(respond("retry"))  # second read: still broken
-    assert [p["type"] for p in interrupts(again)] == ["auth_required"]
-    # Same LangGraph interrupt id (same task), so the re-ask carries a new attempt.
-    assert [i.id for i in again["__interrupt__"]] == [i.id for i in first["__interrupt__"]]
-    assert [interrupts(first)[0]["attempt"], interrupts(again)[0]["attempt"]] == [1, 2]
+    (initial,) = first["__interrupt__"]
+    again = await run.resume({initial.id: respond("retry")})  # second read: still broken
+    (pending,) = again["__interrupt__"]
+    assert pending.value["type"] == "auth_required"
+    assert pending.id != initial.id
+    assert pending.value["auth_request_id"] == initial.value["auth_request_id"] == initial.id
+    assert [initial.value["attempt"], pending.value["attempt"]] == [1, 2]
     assert ledger.ran == []
-    await run.resume(respond("retry"))  # connected now
+    await run.resume({pending.id: respond("retry")})  # connected now
     assert ledger.ran == ["a"]
 
 
