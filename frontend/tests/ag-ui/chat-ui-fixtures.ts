@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { http, HttpResponse } from 'msw'
 import { server } from '../setup'
 import * as apiClient from '@/lib/api/client'
@@ -11,9 +12,12 @@ type RunIds = { threadId: string; runId: string }
 export const conversationId = '9deef6a4-33fc-4ba5-b788-cbf8c5ae16aa'
 export const physicalRunId = 'c67debcf-19d4-4c16-8dd2-9c8a52a04bc5'
 export const bindingId = '1264d8f6-bca0-44e7-b5d5-fd0a7112e0f4'
-export const widgetCallId = 'report-tool'
+export const widgetSourceCallId = 'report-tool'
 
-export function createFixtureAgent(buildEvents: () => Frame[], savedSnapshot?: object) {
+export function createFixtureAgent(
+  buildEvents: (runId: string) => Frame[],
+  savedSnapshot?: object,
+) {
   server.use(
     http.get(apiClient.API_BASE + '/api/conversations/' + conversationId + '/child-tasks', () =>
       HttpResponse.json({
@@ -46,7 +50,7 @@ export function createFixtureAgent(buildEvents: () => Frame[], savedSnapshot?: o
     const { threadId, runId } = request
     const frames = [
       { type: 'RUN_STARTED', threadId, runId, protocolVersion: '1.0' },
-      ...buildEvents(),
+      ...buildEvents(runId),
       { type: 'RUN_FINISHED', threadId, runId, outcome: { type: 'success' } },
     ]
     return new Response(frames.map((frame) => 'data: ' + JSON.stringify(frame) + '\n\n').join(''), {
@@ -157,19 +161,22 @@ export function savedCardSnapshot() {
   }
 }
 
-export function widgetEvents() {
+export function widgetEvents(runId: string) {
+  const issuance = JSON.stringify([runId, null, 'parent-model', widgetSourceCallId])
+  const publicToolCallId = 'tool-' + createHash('sha256').update(issuance).digest('hex')
   return [
-    ...toolCall(widgetCallId, 'report_view', { topic: 'receipts' }),
+    ...toolCall(publicToolCallId, 'report_view', { topic: 'receipts' }),
     {
       type: 'TOOL_CALL_RESULT',
-      toolCallId: widgetCallId,
+      toolCallId: publicToolCallId,
       messageId: 'widget-result',
       role: 'tool',
       content: 'Report ready',
     },
     activity('mcp_app', 'app-pointer', {
       run_id: physicalRunId,
-      tool_call_id: widgetCallId,
+      tool_call_id: widgetSourceCallId,
+      public_tool_call_id: publicToolCallId,
       binding_id: bindingId,
       public_message_id: 'parent-model',
     }),

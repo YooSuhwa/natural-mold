@@ -9,7 +9,7 @@ import {
   bindingId,
   createFixtureAgent,
   physicalRunId,
-  widgetCallId,
+  widgetSourceCallId,
   widgetEvents,
 } from '../../../../tests/ag-ui/chat-ui-fixtures'
 
@@ -53,7 +53,7 @@ async function readFrameOutput(frame: HTMLIFrameElement) {
 
 it('hydrates the bound MCP widget for its viewer and rechecks access when the messages reopen', async () => {
   const run = `${API_BASE}/api/conversations/${conversationId}/runs/${physicalRunId}`
-  const endpoint = `${run}/mcp-apps/${encodeURIComponent(widgetCallId)}`
+  const endpoint = `${run}/mcp-apps/${encodeURIComponent(widgetSourceCallId)}`
   let allowed = true
   const bindings: (string | null)[] = []
   const resourceReads: unknown[] = []
@@ -89,10 +89,10 @@ it('hydrates the bound MCP widget for its viewer and rechecks access when the me
     agent,
     session,
     fetch: runFetch,
-  } = createFixtureAgent(() => {
+  } = createFixtureAgent((runId) => {
     if (!firstRun) return []
     firstRun = false
-    return widgetEvents()
+    return widgetEvents(runId)
   })
   const user = userEvent.setup()
   const chat = render(<AgUiTestChat agent={agent} session={session} />)
@@ -102,6 +102,15 @@ it('hydrates the bound MCP widget for its viewer and rechecks access when the me
     if (!frame) throw new Error('Expected the official MCP widget host to mount')
     return frame
   })
+  expect(session.getSnapshot().activities).toContainEqual(
+    expect.objectContaining({
+      activityType: 'moldy.mcp_app',
+      content: expect.objectContaining({
+        public_tool_call_id: expect.stringMatching(/^tool-[a-f0-9]{64}$/),
+        tool_call_id: widgetSourceCallId,
+      }),
+    }),
+  )
   expect(bindings).toContain(bindingId)
   expect(resourceReads).toContainEqual(
     expect.objectContaining({ method: 'mcp-apps/read-resource' }),
