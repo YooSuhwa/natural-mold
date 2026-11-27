@@ -44,7 +44,7 @@ from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import acquire_execution_proof
 from app.exceptions import AppError
 
-PermitKind = Literal["provider", "tool", "backend", "child_launch", "summary"]
+PermitKind = Literal["provider", "tool", "backend", "child_launch", "child_control", "summary"]
 SessionFactory = Callable[[], AsyncSession]
 
 DESCRIPTOR_NOT_PREPARED = "descriptor_not_prepared"

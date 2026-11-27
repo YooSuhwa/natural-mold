@@ -51,7 +51,10 @@ def child_config(key: ChildLaunchKey) -> dict[str, Any]:
         SUBAGENT_RESPONSE_FORMAT_CONFIG_KEY: None,
         TASK_PATH_KEY: path,
     }
-    return {"configurable": configurable}
+    return {
+        "configurable": configurable,
+        "metadata": {"lc_subagent_tool_call_id": key.invocation_id},
+    }
 
 
 def private_state_keys(*schemas: type[object]) -> frozenset[str]:

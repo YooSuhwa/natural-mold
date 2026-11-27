@@ -114,6 +114,8 @@ class PreparationInputs:
     mcp_configs: tuple[dict[str, Any], ...] = ()
     # Declarative child specs; a child ``model`` must be a ``LeaseModelSpec``.
     subagents: tuple[Mapping[str, Any], ...] = ()
+    # Only linked chat children identified by the locked service adapter can be steered.
+    child_task_agents: Mapping[str, uuid.UUID] = field(default_factory=dict)
     # Stored policy: child ID -> allowed tool names (models are lease-owned).
     child_tools: Mapping[str, frozenset[str]] = field(default_factory=dict)
     custom_middleware: tuple[AgentMiddleware[Any, Any, Any], ...] = ()

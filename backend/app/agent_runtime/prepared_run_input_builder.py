@@ -17,6 +17,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from langchain.agents.middleware import AgentMiddleware
 
@@ -44,6 +45,7 @@ from app.agent_runtime.runtime_preparation import _without_stored_filesystem_int
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
 from app.agent_runtime.runtime_snapshot_catalog import SnapshotCatalogBuilder
 from app.approvals.unattended import strip_builtin_defaults
+from app.config import settings
 from app.guardrails.events import RunScope, parse_uuid
 from app.guardrails.run import effective_rules
 from app.guardrails.tool_risk import interrupts_for
@@ -77,6 +79,7 @@ class PreparedChildSource:
     model: LeaseModelSpec
     tool_configs: tuple[Mapping[str, Any], ...] = ()
     middleware_configs: tuple[Mapping[str, Any], ...] = ()
+    agent_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -345,6 +348,13 @@ def build_preparation_inputs(
         root_middleware=tuple(root_middleware),
         mcp_interrupts=not trigger,
         child_tools=child_tools,
+        child_task_agents={
+            f"root/{child.runtime_name}": child.agent_id
+            for child in sources.children
+            if child.agent_id is not None
+        }
+        if settings.child_tasks_enabled and cfg.run_path == "chat" and not trigger
+        else {},
         interrupt_on=_interrupts(
             cfg.middleware_configs,
             root_tools,

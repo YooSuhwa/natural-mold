@@ -122,6 +122,7 @@ async def resolve_prepared_children(
         out.children.append(
             PreparedChildSource(
                 runtime_name=identity.runtime_name,
+                agent_id=child.id,
                 display_name=child.name,
                 description=_subagent_description(child),
                 base_prompt=_subagent_system_prompt(child),
