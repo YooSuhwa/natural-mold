@@ -32,6 +32,7 @@ from app.agent_runtime.deep_agent_middleware_factory import (
 )
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.runtime.connection_guard_order import order_connection_guard
+from app.agent_runtime.runtime.goal_run import GoalRunMiddleware
 from app.approvals.unattended import UnattendedMode, apply_unattended
 from app.guardrails.approval import has_approval_rules, with_approvals
 from app.guardrails.middleware import Guard, guard_stack
@@ -406,6 +407,14 @@ def build_agent_impl(
                 middleware=list(compatible_middleware),
                 subagents=compatible_subagents,
             )
+    # A prepared task interceptor may execute a child without calling the next wrapper.
+    # Put the goal restriction ahead of it and of application tool emulators in both graphs.
+    goal_checks = [item for item in compatible_middleware if isinstance(item, GoalRunMiddleware)]
+    if goal_checks:
+        compatible_middleware = [
+            *goal_checks,
+            *(item for item in compatible_middleware if not isinstance(item, GoalRunMiddleware)),
+        ]
     # Structured output (workflow W0) is passed only when asked for, so factories and
     # test doubles that predate it keep their signature.
     extra: dict[str, Any] = {} if response_format is None else {"response_format": response_format}

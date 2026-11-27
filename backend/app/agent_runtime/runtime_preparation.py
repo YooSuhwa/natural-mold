@@ -14,6 +14,7 @@ from langchain_core.tools import BaseTool
 from app.agent_runtime.memory_paths import memory_access
 from app.agent_runtime.runtime import memory_context
 from app.agent_runtime.runtime.connection_guard import with_connection_guard
+from app.agent_runtime.runtime.goal_run import GoalRunMiddleware, readable_goal_tool_configs
 from app.agent_runtime.runtime.memory_recall_middleware import MemoryRecallMiddleware
 from app.agent_runtime.runtime.shared_memo import load_shared_memo, memo_governed
 from app.agent_runtime.runtime.usage_guard import with_usage_guard
@@ -59,7 +60,7 @@ async def prepare_runtime_components_impl(
     """Build standard or trigger components before Deep Agents graph creation."""
     assert_pre_marker("prepare_runtime_components_impl")
     # Skills the company switched off are not part of the run (plan 3.8).
-    cfg.agent_skills = skills_on(cfg.tool_risk, cfg.agent_skills)
+    cfg.agent_skills = [] if cfg.goal_followup else skills_on(cfg.tool_risk, cfg.agent_skills)
 
     last_mark = bindings.perf_counter()
 
@@ -83,6 +84,7 @@ async def prepare_runtime_components_impl(
     mark_timing("model_ms")
 
     langchain_tools: list[BaseTool] = []
+    goal_read_tools: list[BaseTool] = []
     mcp_configs: list[dict[str, Any]] = []
     runtime_tool_configs = [
         *cfg.tools_config,
@@ -95,6 +97,8 @@ async def prepare_runtime_components_impl(
             tenant_id=str(cfg.org_context.tenant_id),
         ),
     ]
+    if cfg.goal_followup:
+        runtime_tool_configs = readable_goal_tool_configs(runtime_tool_configs)
     for tool_config in runtime_tool_configs:
         if tool_config.get("mcp_server_url"):
             mcp_configs.append(tool_config)
@@ -102,11 +106,16 @@ async def prepare_runtime_components_impl(
         tool = bindings.create_tool_for_runtime(tool_config)
         if tool is not None:
             langchain_tools.append(tool)
+            if cfg.goal_followup:
+                goal_read_tools.append(tool)
 
     langchain_tools.extend(await bindings.build_mcp_tools(mcp_configs))
+    before_builtin_helpers = len(langchain_tools)
     bindings.append_temporal_tools(langchain_tools)
     bindings.append_e2e_scripted_search_tool(langchain_tools)
     bindings.append_e2e_ui_data_demo_tool(langchain_tools)
+    if cfg.goal_followup:
+        goal_read_tools.extend(langchain_tools[before_builtin_helpers:])
 
     memory_write_policy = await bindings.memory_write_policy_for_run(
         cfg,
@@ -298,6 +307,15 @@ async def prepare_runtime_components_impl(
     )
     middleware = with_connection_guard(middleware, cfg, langchain_tools, mode=mode)
     middleware = await with_usage_guard(middleware, cfg)
+    if include_agent_memory_file and (cfg.goal_context or cfg.goal_followup):
+        middleware.append(
+            GoalRunMiddleware(
+                cfg.thread_id,
+                cfg.goal_context,
+                automatic=cfg.goal_followup,
+                read_tools=goal_read_tools,
+            )
+        )
     return RuntimeComponents(
         model_candidates=model_candidates,
         model=model,

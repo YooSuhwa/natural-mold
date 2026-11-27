@@ -18,6 +18,7 @@ from app.agent_runtime.chat_steer_middleware import root_steer_middleware
 from app.agent_runtime.message_utils import RuntimeMessage
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.run_secrets import add_run_secrets, collect_secret_values
+from app.agent_runtime.runtime.goal_run import goal_setup_allowed
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
 from app.agent_runtime.runtime_facade_bindings import runtime_attr
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
@@ -203,6 +204,10 @@ async def _prepare_runtime_components(
 ) -> RuntimeComponents:
     """Build reusable Deep Agents runtime pieces for a parent or child agent."""
     assert_pre_marker("_prepare_runtime_components")
+    if cfg.goal_followup and not goal_setup_allowed(
+        cfg.runtime_profile, cfg.middleware_configs or []
+    ):
+        raise ValueError("goal_followup_runtime_restricted")
     if cfg.runtime_profile == "skill_builder":
         return await runtime_attr("_prepare_skill_builder_components")(
             cfg,

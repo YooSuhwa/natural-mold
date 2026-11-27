@@ -30,6 +30,12 @@ from app.agent_runtime.prepared_run_tool_inputs import (
     merged_origins,
     prepared_tool_set,
 )
+from app.agent_runtime.runtime.goal_run import (
+    GOAL_READ_BUILTINS,
+    GoalRunMiddleware,
+    goal_setup_allowed,
+    readable_goal_tool_configs,
+)
 from app.agent_runtime.runtime.memory_recall_middleware import MemoryRecallMiddleware
 from app.agent_runtime.runtime.reliability import EmptyContentRetryMiddleware
 from app.agent_runtime.runtime.shared_memo import memo_governed
@@ -257,8 +263,12 @@ def build_preparation_inputs(
 
     cfg = sources.cfg
     trigger = sources.is_trigger_mode
+    if cfg.goal_followup and not goal_setup_allowed(
+        cfg.runtime_profile, cfg.middleware_configs or []
+    ):
+        raise unsupported("goal_followup_runtime_restricted")
     builder = SnapshotCatalogBuilder()
-    skills_prefix = _freeze_skills(cfg, builder)
+    skills_prefix = None if cfg.goal_followup else _freeze_skills(cfg, builder)
     memory = _freeze_agents_md(cfg, sources.data_dir, builder)
     prompt = _prompt(cfg.system_prompt, cfg, bindings)
     if not trigger:
@@ -282,25 +292,41 @@ def build_preparation_inputs(
         ),
     ]
     root_tools = prepared_tool_set(
-        configs,
+        readable_goal_tool_configs(configs) if cfg.goal_followup else configs,
         create_tool=bindings.create_tool_for_runtime,
         allow_mcp=True,
         stored_policy=_stored(cfg),
         ask_user_tool=None if trigger else bindings.ask_user_tool,
     )
-    children, child_tools, child_sets = _child_specs(sources, bindings)
+    children, child_tools, child_sets = (
+        ([], {}, []) if cfg.goal_followup else _child_specs(sources, bindings)
+    )
     if trigger or cfg.unattended_approval is not None:
         _refuse_unattended_approvals(sources, bindings, root_tools, child_sets)
+    root_middleware: list[AgentMiddleware[Any, Any, Any]] = []
+    if cfg.goal_context or cfg.goal_followup:
+        readers = [
+            tool
+            for tool, origin in zip(root_tools.tools, root_tools.origins, strict=True)
+            if origin.source == "builtin" and origin.key in GOAL_READ_BUILTINS
+        ]
+        root_middleware.append(
+            GoalRunMiddleware(
+                cfg.thread_id, cfg.goal_context, automatic=cfg.goal_followup, read_tools=readers
+            )
+        )
     output = sources.run_root / "output"
     output.mkdir(parents=True, exist_ok=True)
     conversation_prefix = f"/conversations/{cfg.thread_id}"
     # Same write surface as the stored policy: inspect mode gets no write route.
     writes = _write_allowed(cfg)
-    root_middleware: tuple[AgentMiddleware[Any, Any, Any], ...] = root_steer_middleware(
-        cfg, run_id=sources.run_id, is_trigger_mode=trigger, prepared_output_root=output
+    root_middleware.extend(
+        root_steer_middleware(
+            cfg, run_id=sources.run_id, is_trigger_mode=trigger, prepared_output_root=output
+        )
     )
     if cfg.memory_recall_block:
-        root_middleware += (MemoryRecallMiddleware(cfg.memory_recall_block),)
+        root_middleware.append(MemoryRecallMiddleware(cfg.memory_recall_block))
     return PreparationInputs(
         thread_id=cfg.thread_id,
         system_prompt=prompt,
@@ -316,7 +342,7 @@ def build_preparation_inputs(
         mcp_configs=root_tools.mcp_configs,
         subagents=tuple(children),
         custom_middleware=(EmptyContentRetryMiddleware(max_retries=1),),
-        root_middleware=root_middleware,
+        root_middleware=tuple(root_middleware),
         mcp_interrupts=not trigger,
         child_tools=child_tools,
         interrupt_on=_interrupts(

@@ -65,6 +65,8 @@ class AgentConfig:
         default=LEGACY_RUNTIME_POLICY,
         kw_only=True,
     )
+    goal_context: str | None = field(default=None, kw_only=True)
+    goal_followup: bool = field(default=False, kw_only=True)
     model_params: dict[str, Any] | None = None
     middleware_configs: list[dict[str, Any]] | None = None
     agent_skills: list[dict[str, Any]] | None = None

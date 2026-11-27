@@ -56,6 +56,26 @@ def artifact_kind_for(mime_type: str, extension: str | None) -> str:
     return "other"
 
 
+def validate_artifact_relative_path(logical_path: str) -> None:
+    relative = Path(logical_path)
+    if relative.is_absolute():
+        raise ArtifactPathError("artifact path must be relative")
+    parts = relative.parts
+    if not parts or any(part in {"", ".", ".."} for part in parts):
+        raise ArtifactPathError("artifact path contains invalid segments")
+    if any(part in _SKIP_PARTS for part in parts) or relative.name in _SKIP_NAMES:
+        raise ArtifactPathError("artifact path is excluded")
+    if len(parts) > 12:
+        raise ArtifactPathError("artifact path is too deep")
+    if any(len(part) > 120 for part in parts):
+        raise ArtifactPathError("artifact path segment is too long")
+
+    if len(logical_path) > 500:
+        raise ArtifactPathError("artifact path is too long")
+    if any(ord(ch) < 32 for ch in logical_path):
+        raise ArtifactPathError("artifact path contains control characters")
+
+
 def normalize_output_path(base_dir: Path, path: Path) -> NormalizedArtifactPath:
     if path.is_symlink():
         raise ArtifactPathError("artifact symlinks are not allowed")
@@ -69,21 +89,8 @@ def normalize_output_path(base_dir: Path, path: Path) -> NormalizedArtifactPath:
         raise ArtifactPathError("artifact symlinks are not allowed")
 
     relative = resolved_path.relative_to(resolved_base)
-    parts = relative.parts
-    if not parts or any(part in {"", ".", ".."} for part in parts):
-        raise ArtifactPathError("artifact path contains invalid segments")
-    if any(part in _SKIP_PARTS for part in parts) or relative.name in _SKIP_NAMES:
-        raise ArtifactPathError("artifact path is excluded")
-    if len(parts) > 12:
-        raise ArtifactPathError("artifact path is too deep")
-    if any(len(part) > 120 for part in parts):
-        raise ArtifactPathError("artifact path segment is too long")
-
     logical_path = relative.as_posix()
-    if len(logical_path) > 500:
-        raise ArtifactPathError("artifact path is too long")
-    if any(ord(ch) < 32 for ch in logical_path):
-        raise ArtifactPathError("artifact path contains control characters")
+    validate_artifact_relative_path(logical_path)
 
     extension = relative.suffix.lower().lstrip(".") or None
     mime_type = _CUSTOM_MIME_TYPES.get(extension or "")

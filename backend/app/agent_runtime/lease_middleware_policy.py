@@ -53,6 +53,7 @@ LEASE_MIDDLEWARE_ALLOWLIST: frozenset[str] = frozenset(
         EMPTY_CONTENT_RETRY,
         MEMORY_RECALL,
         RUN_STEER,
+        "app.agent_runtime.runtime.goal_run.GoalRunMiddleware",
     }
 )
 INNER_TOOL_WRAPPERS: frozenset[str] = frozenset({FILESYSTEM_MIDDLEWARE})
