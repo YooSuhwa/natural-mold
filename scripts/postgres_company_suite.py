@@ -11,6 +11,7 @@ COMPANY_ADMINISTRATION_MODULES: Final[tuple[str, ...]] = (
     "tests/authz/test_ag_ui_command_receipt_integration.py",
     "tests/authz/test_ag_ui_journal_integration.py",
     "tests/authz/test_ag_ui_read_access_integration.py",
+    "tests/test_ag_ui_read_consumed_legacy.py",
     "tests/test_ag_ui_read_pending_native_legacy.py",
     "tests/authz/test_ag_ui_queue_guard_migration_integration.py",
     "tests/integration/test_ag_ui_start_attachment_concurrency.py",
