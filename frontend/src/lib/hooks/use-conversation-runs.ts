@@ -25,7 +25,12 @@ export function useActiveConversationRun(conversationId: string, enabled = true)
   })
 }
 
-export function useConversationRun(conversationId: string, runId: string | null, enabled = true) {
+export function useConversationRun(
+  conversationId: string,
+  runId: string | null,
+  enabled = true,
+  options?: { staleTime: number },
+) {
   return useQuery({
     queryKey: conversationRunKeys.detail(conversationId, runId ?? 'none'),
     queryFn: () => conversationRunsApi.get(conversationId, runId ?? ''),
@@ -34,6 +39,7 @@ export function useConversationRun(conversationId: string, runId: string | null,
     refetchInterval: ({ state }) =>
       state.status === 'success' && isActiveRunStatus(state.data?.status) ? 1000 : false,
     refetchOnWindowFocus: false,
+    ...options,
   })
 }
 

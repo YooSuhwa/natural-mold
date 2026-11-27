@@ -276,6 +276,35 @@ describe('AG-UI chat history', () => {
     expect(JSON.stringify(repo.messages)).not.toMatch(/Different conversation|private-branch-[ab]/)
   })
 
+  it('uses older row branch metadata only if the wire omitted its sibling list', async () => {
+    const row: Message = {
+      id: 'answer',
+      conversation_id: threadId,
+      role: 'assistant',
+      content: 'Reply',
+      tool_call_id: null,
+      tool_calls: null,
+      created_at: '2026-11-27T00:00:00Z',
+      sibling_checkpoint_ids: ['first-leaf', 'second-leaf'],
+      branch_index: 1,
+      branch_total: 2,
+    }
+    const read = (fields: Record<string, unknown>) =>
+      load(
+        {
+          activeTipMessageId: 'answer',
+          checkpointId: 'second-leaf',
+          messages: [{ role: 'assistant', id: 'answer', content: 'Reply' }],
+          messageLinks: [link('answer', null, { checkpointId: 'reply-origin', ...fields })],
+        },
+        [row],
+      )
+    const older = await read({})
+    expect(older.messages[0]?.message.metadata.custom.branchIndex).toBe(1)
+    const authoritative = await read({ siblingCheckpointIds: [] })
+    expect(authoritative.messages[0]?.message.metadata.custom.siblingCheckpointIds).toBeUndefined()
+  })
+
   it('omits dangling and circular lineages without hiding a valid branch', async () => {
     const repo = await load({
       activeTipMessageId: 'valid',

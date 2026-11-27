@@ -13,17 +13,24 @@ export function useCanceledRunSummary(
   latest: ConversationRun | null,
 ) {
   const id = state.activeRunId || state.readDenied ? null : state.lastTerminalPhysicalRunId
-  const fromList =
-    latest?.id === id && latest?.conversation_id === conversationId && latest.status === 'canceled'
-      ? latest
-      : null
-  const declared = state.nativeActivities.some(
-    (item) => item.runId === id && item.terminalRunStatus === 'canceled',
-  )
-  const detail = useConversationRun(conversationId, id, !!id && (declared || !!fromList))
-  if (!id || (!declared && !fromList) || detail.isError) return null
-  const run = detail.data ?? fromList
-  if (!run || run.id !== id || run.conversation_id !== conversationId || run.status !== 'canceled') {
+  const declared =
+    (latest?.id === id &&
+      latest?.conversation_id === conversationId &&
+      latest.status === 'canceled') ||
+    state.nativeActivities.some(
+      (item) => item.runId === id && item.terminalRunStatus === 'canceled',
+    )
+  // A message panel may have cached this run while it was still running.
+  // Refresh its scoped GET as soon as cancellation is confirmed on this branch.
+  const detail = useConversationRun(conversationId, id, !!id && declared, { staleTime: 0 })
+  if (!id || !declared || detail.isError) return null
+  const run = detail.data
+  if (
+    !run ||
+    run.id !== id ||
+    run.conversation_id !== conversationId ||
+    run.status !== 'canceled'
+  ) {
     return null
   }
   return buildPersistedRunSummary(run.id, run.status, run.metrics, run.error_code)

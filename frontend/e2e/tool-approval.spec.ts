@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
+import { observeApprovalCard } from './helpers/approval-card-observations'
 
 import {
   restoreCompanyPolicy,
@@ -156,6 +157,11 @@ test.describe('tool approval modes', () => {
     expect(view.tools.find((tool) => tool.name === 'execute_in_skill')).toMatchObject({
       grantable: true,
     })
+    const observer = observeApprovalCard(page, {
+      apiBase: API,
+      conversationId: conversation.id,
+      agentId,
+    })
     await page.goto(`/agents/${agentId}/conversations/${conversation.id}`)
     const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
     await expect(composer).toBeVisible(SLOW)
@@ -164,7 +170,14 @@ test.describe('tool approval modes', () => {
 
     // The default still asks; the card offers the grant.
     const grant = page.getByRole('button', { name: '이 대화 동안 이 도구는 묻지 않기' })
-    await expect(grant).toBeVisible(SLOW)
+    try {
+      await expect(grant).toBeVisible(SLOW)
+    } catch (error) {
+      await observer.attachOnFailure(test.info()).catch(() => undefined)
+      throw error
+    } finally {
+      observer.dispose()
+    }
     await grant.click()
     const chips = page.getByRole('region', { name: '이 대화에서 허용한 도구' })
     await expect(chips).toContainText('execute_in_skill', SLOW)

@@ -63,7 +63,7 @@ it('preserves a quoted side draft during hydration and sends it once when the si
     await waitFor(() => expect(api.snapshotReads).toHaveBeenCalled())
     expect(await screen.findByTestId('quote-context-chips')).toBeVisible()
     const field = screen.getByRole('textbox')
-    const send = screen.getByRole('button', { name: '전송', exact: true })
+    const send = screen.getByRole('button', { name: /^전송$/ })
     await user.type(field, text + '{Enter}')
     expect(send).toBeDisabled()
     expect(field).toHaveValue(text)
