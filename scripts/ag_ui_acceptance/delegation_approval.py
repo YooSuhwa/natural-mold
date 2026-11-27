@@ -220,6 +220,18 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
         )
         continued = checked_sse(response)
         terminal = continued[-1]
+        if terminal.get("code") == "AG_UI_SNAPSHOT_REQUIRED":
+            # Snapshot invalidation ends this reader. The accepted command has its own lifetime.
+            restored = await fresh.owner_b.json(
+                "GET", f"{base}/ag-ui/snapshot?runId={public_resume}"
+            )
+            require(
+                restored["runId"] == public_resume and restored["threadId"] == tid,
+                "read reset moved the approval to a different run",
+            )
+            record(phase="restored decision read", resetRunStatus=restored["runStatus"])
+            replay = await fresh.owner_b.send("GET", f"{base}/ag-ui/runs/{public_resume}/stream")
+            terminal = checked_sse(replay)[-1]
         record(
             phase="continuation terminal",
             terminalType=terminal["type"],
@@ -228,14 +240,19 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
             histories=model.histories,
             protectedToolResults=model.protected_results,
         )
-        require(
-            model.protected_results == [True],
-            "the approved target did not receive exactly one successful lookup of the seeded file",
+        final_snap = await fresh.owner_a.json("GET", f"{base}/ag-ui/snapshot?runId={public_resume}")
+        require(model.key not in json.dumps(final_snap), "fixture key leaked in the final read")
+        (gate.evidence_dir / "targeted-sibling-final-snapshot.json").write_text(
+            json.dumps(final_snap) + "\n"
         )
         require(
             terminal["type"] == "RUN_FINISHED"
             and terminal.get("outcome", {}).get("type", "success") == "success",
             "targeted continuation failed",
+        )
+        require(
+            model.protected_results == [True],
+            "the approved target did not receive exactly one successful lookup of the seeded file",
         )
         require(
             model.histories == {"alpha": [0, 1, 1], "beta": [0, 0]},
@@ -257,7 +274,6 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
                 and [r["status"] for r in row["instructions"]] == receipts,
                 "final result/receipt belongs to the wrong child",
             )
-        final_snap = await fresh.owner_a.json("GET", f"{base}/ag-ui/snapshot?runId={public_resume}")
         final_native = await fresh.owner_b.json(
             "GET", f"{base}/langgraph/threads/{tid}/state?read_only=true"
         )
@@ -283,9 +299,6 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
         require(
             not final_snap["interrupts"] and model.key not in json.dumps(final_snap),
             "finished snapshot exposed stale approval or credential",
-        )
-        (gate.evidence_dir / "targeted-sibling-final-snapshot.json").write_text(
-            json.dumps(final_snap) + "\n"
         )
         require(
             model.key not in json.dumps(final_page),
