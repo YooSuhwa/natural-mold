@@ -148,6 +148,11 @@ function useDecisionStyles() {
   } as const
 }
 
+export function AgUiApprovalBadge({ decision }: { decision: 'approve' | 'edit' | 'reject' }) {
+  const outcome = { approve: 'approved', edit: 'modified', reject: 'rejected' } as const
+  return <ApprovalBadge result={{ decision: outcome[decision] }} />
+}
+
 function ApprovalBadge({ result }: { result: unknown }) {
   const styles = useDecisionStyles()
   const parsed = parseApprovalResult(result)
@@ -600,6 +605,9 @@ function ApprovalFields({
 
   // ── 완료 상태 ──
   if (status.type === 'complete' || visibleResult !== null) {
+    // The native SDK closes the pending part before a committed decision is
+    // read back. Completion alone does not say what the reviewer selected.
+    if (hitl?.canRespond !== undefined && !parseApprovalResult(visibleResult)) return null
     const badge = <ApprovalBadge result={visibleResult} />
     if (!grouped) return badge
     return (

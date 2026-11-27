@@ -8,6 +8,7 @@ import {
 import { resolveDataUI } from '@/lib/chat/data-ui-registry'
 import type { Message as MoldyMessage } from '@/lib/types'
 import { parseTimestamp } from '@/lib/utils/format-relative-time'
+import { approvalDecisionsForMessage, indexApprovalDecisions } from './approval-decisions'
 import { applyMoldyActivitiesToHistory } from './activity-projection'
 import { nestAgUiHistoryChildren } from './chat-history-children'
 import { restoreAgUiInterrupts } from './chat-history-interrupts'
@@ -164,6 +165,7 @@ function restoredRoot(
   extra: readonly Message[],
   selectedCheckpoint: string | null,
   row?: MoldyMessage,
+  approvals?: ReturnType<typeof approvalDecisionsForMessage>,
 ): ThreadMessage {
   const [like] = fromAgUiMessages([record.message, ...extra], {
     showThinking: false,
@@ -182,6 +184,7 @@ function restoredRoot(
     : (row?.branch_index ?? checkpoints?.indexOf(checkpointId ?? '') ?? -1)
   const custom = {
     ...like.metadata?.custom,
+    ...(approvals && { moldyToolApprovalDecisions: Object.fromEntries(approvals) }),
     ...(selectedCheckpoint && { moldySelectedCheckpointId: selectedCheckpoint }),
     ...(link.uiMessageId && { publicMessageId: link.uiMessageId }),
     ...(checkpointId && { branchCheckpointId: checkpointId }),
@@ -240,16 +243,45 @@ export function buildAgUiChatRepository(
   const groups = new Map<string | undefined, SavedRecord[]>()
   for (const record of visible) addToGroup(groups, record.childId, record)
 
+  const selectedRoots = new Set<string>()
+  let selected = snapshot.checkpointId ? snapshot.activeTipMessageId : null
+  while (selected && valid.has(selected)) {
+    selectedRoots.add(selected)
+    selected = roots.get(selected)?.link.parentMessageId ?? null
+  }
+  const children = new Map(snapshot.subagents.map((child) => [child.subagentRunId, child]))
+  function selectedIssuer(record: SavedRecord): boolean {
+    if (!record.childId) return selectedRoots.has(record.message.id)
+    const visited = new Set<string>()
+    let child = children.get(record.childId)
+    while (child && !visited.has(child.subagentRunId)) {
+      if (!child.parentSubagentRunId)
+        return !!child.parentMessageId && selectedRoots.has(child.parentMessageId)
+      visited.add(child.subagentRunId)
+      child = children.get(child.parentSubagentRunId)
+    }
+    return false
+  }
+  const decisions = indexApprovalDecisions(snapshot.approvalDecisions ?? [])
   const rootMessages: ThreadMessage[] = []
-  const childRecords: { subagentRunId: string; message: Message }[] = []
+  const childRecords: {
+    subagentRunId: string
+    message: Message
+    approvals?: ReturnType<typeof approvalDecisionsForMessage>
+  }[] = []
   for (const [childId, group] of groups) {
     const extras = scopedExtras(group, cardGroups.get(childId) ?? [])
     for (const record of group) {
       if (record.message.role !== 'user' && record.message.role !== 'assistant') continue
       const extra = extras.get(record.message.id) ?? []
+      const approvals =
+        decisions.size && selectedIssuer(record)
+          ? approvalDecisionsForMessage(record.message, record.link, decisions)
+          : undefined
       if (childId) {
         childRecords.push(
-          ...[record.message, ...extra].map((message) => ({ subagentRunId: childId, message })),
+          { subagentRunId: childId, message: record.message, approvals },
+          ...extra.map((message) => ({ subagentRunId: childId, message })),
         )
       } else {
         const row = record.link.uiMessageId ? byPublicId.get(record.link.uiMessageId) : undefined
@@ -259,6 +291,7 @@ export function buildAgUiChatRepository(
             extra,
             snapshot.checkpointId,
             row?.role === record.message.role ? row : undefined,
+            approvals,
           ),
         )
       }

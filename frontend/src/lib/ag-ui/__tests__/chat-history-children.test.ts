@@ -138,6 +138,68 @@ describe('restoring public subagent history', () => {
     expect(JSON.stringify(index.get('right'))).not.toContain('Inner result')
   })
 
+  it('restores a verified decision only on its direct issuing child call', () => {
+    const records = [
+      {
+        ...record('left', {
+          id: 'issuer',
+          role: 'assistant',
+          subagentRunId: 'left',
+          toolCalls: [
+            tool('shared', 'lookup'),
+            tool('repeated', 'lookup'),
+            tool('repeated', 'lookup'),
+          ],
+        }),
+        approvals: new Map([
+          ['shared', 'reject'],
+          ['repeated', 'approve'],
+        ] as const),
+      },
+      {
+        ...record('left', {
+          id: 'another-issuer',
+          role: 'assistant',
+          subagentRunId: 'left',
+          toolCalls: [tool('own', 'lookup')],
+        }),
+        approvals: new Map([['other', 'edit']] as const),
+      },
+      record('right', {
+        id: 'issuer',
+        role: 'assistant',
+        subagentRunId: 'right',
+        toolCalls: [tool('shared', 'lookup')],
+      }),
+      record('right', {
+        id: 'output',
+        role: 'tool',
+        toolCallId: 'shared',
+        content: 'User rejected',
+      }),
+      {
+        ...record('left', {
+          id: 'foreign',
+          role: 'assistant',
+          subagentRunId: 'right',
+          toolCalls: [tool('crossed', 'lookup')],
+        }),
+        approvals: new Map([['crossed', 'edit']] as const),
+      },
+    ]
+    const messages = nestAgUiHistoryChildren([parent('root', 'l', 'r')], records, [
+      child('left', 'l'),
+      child('right', 'r'),
+    ])
+    const index = indexAgUiSubagents(messages)
+    const left = index.get('left')?.tools ?? []
+    expect(left.filter((call) => call.approvalDecision)).toEqual([
+      { id: 'shared', name: 'lookup', approvalDecision: 'reject' },
+    ])
+    expect(left.some((call) => call.id === 'crossed')).toBe(false)
+    expect(index.get('right')?.tools.map((call) => call.approvalDecision)).toEqual([undefined])
+  })
+
   it('uses a verified wire alias to select the parent while indexing its visible runtime ID', () => {
     const roots = ['old', 'new'].map((turn) => {
       const message = parent(`database-${turn}`, 'reused-call')
