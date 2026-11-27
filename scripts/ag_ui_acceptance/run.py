@@ -190,12 +190,12 @@ def browser_gate(
     independent = "e2e/independent-chat-jobs.spec.ts"
     run_delegation = independent in extra_specs
     ordinary = [spec for spec in extra_specs if spec != independent]
+    if ag_ui_specs:
+        suites.append(("standard-client-regressions", "ag_ui", ag_ui_specs))
     if ordinary:
         suites.extend(
             (f"ordinary-regressions-{mode}", mode, ordinary) for mode in ("langgraph_v3", "ag_ui")
         )
-    if ag_ui_specs:
-        suites.append(("standard-client-regressions", "ag_ui", ag_ui_specs))
     if run_delegation:
         suites.extend(
             (f"independent-{mode}", mode, [independent]) for mode in ("langgraph_v3", "ag_ui")
