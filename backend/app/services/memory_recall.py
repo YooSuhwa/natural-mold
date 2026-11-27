@@ -389,11 +389,13 @@ async def _projected_scores(
             postgres = db.get_bind().dialect.name == "postgresql"
             if postgres:
                 await db.execute(
-                    text(
-                        "SELECT set_config('statement_timeout', "
-                        "LEAST(NULLIF(setting::int, 0), :limit)::text, true) "
-                        "FROM pg_settings WHERE name = 'statement_timeout'"
-                    ),
+                    text("""
+                        WITH read_budget AS (
+                            SELECT LEAST(NULLIF(setting::int, 0), :limit)::text AS milliseconds
+                            FROM pg_settings WHERE name = 'statement_timeout'
+                        )
+                        SELECT set_config('statement_timeout', milliseconds, true) FROM read_budget
+                    """),
                     {"limit": max(1, int(settings.memory_recall_statement_timeout_ms))},
                 )
             scores, missing = await _vector_scores(db, context, records, embedder, query_vectors)

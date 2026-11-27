@@ -7,13 +7,16 @@ Lane only (``-m integration``).
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import AsyncIterator, Iterator
 from uuid import UUID, uuid4
 
+import numpy as np
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app import database
 from app.authz.org_context import OrgContext
@@ -156,3 +159,82 @@ async def test_recall_ranks_on_postgres_within_its_time_limit(
         assert [item.record.id for item in ranked.items][:1] == [wanted]
     # The measured value is reported by the lane; the limit itself is the database's.
     print(f"recall over 1001 memories: best {min(timings) * 1000:.0f} ms")
+
+
+@pytest.mark.parametrize(("prior", "effective_ms"), [("4s", 100), ("25ms", 25), ("0", 100)])
+async def test_vector_timeout_preserves_caller_and_keyword_fallback(
+    lab: RlsLab, app_maker: Maker, monkeypatch: pytest.MonkeyPatch, prior: str, effective_ms: int
+) -> None:
+    who = _person(lab, lab.tenant_a)
+    content = "cobalt pigment"
+    [record_id] = _memories(lab, who, [content])
+    vector = memory_embedder.normalized([1, 0, 0])
+    model = memory_embedder.OpenAIShapedEmbedder("test-model", 3, None, "https://unused.invalid")
+    with lab.admin.begin() as admin:
+        admin.execute(
+            sa.insert(MemoryEmbedding).values(
+                record_id=record_id,
+                user_id=who.user_id,
+                org_id=who.org_id,
+                tenant_id=who.tenant_id,
+                model=model.model,
+                dimensions=model.dimensions,
+                text_hash=memory_embedder.text_hash(content),
+                vector=memory_embedder.to_bytes(vector),
+            )
+        )
+    observed_budgets: list[int] = []
+    sqlstates: list[str | None] = []
+    score_vectors = memory_recall._vector_scores
+
+    async def observe(
+        db: AsyncSession,
+        context: OrgContext,
+        records: list[MemoryRecord],
+        embedder: memory_embedder.MemoryEmbedder,
+        query_vectors: list[np.ndarray],
+    ) -> tuple[dict[UUID, float], int]:
+        budget = await db.scalar(
+            sa.text("SELECT setting::int FROM pg_settings WHERE name = 'statement_timeout'")
+        )
+        assert isinstance(budget, int)
+        observed_budgets.append(budget)
+        try:
+            return await score_vectors(db, context, records, embedder, query_vectors)
+        except DBAPIError as error:
+            sqlstates.append(getattr(error.orig, "sqlstate", None))
+            raise
+
+    monkeypatch.setattr(settings, "memory_recall_statement_timeout_ms", 100)
+    monkeypatch.setattr(memory_recall, "_vector_scores", observe)
+
+    async def rank() -> memory_recall.Ranked:
+        async with tenant_session(who, maker=app_maker) as db:
+            await db.execute(
+                sa.text("SELECT set_config('statement_timeout', :prior, true)"), {"prior": prior}
+            )
+            pid = await db.scalar(sa.text("SELECT pg_backend_pid()"))
+            # Finite even if an unlimited caller fails to acquire the projection's deadline.
+            async with asyncio.timeout(6):
+                result = await memory_recall.rank(
+                    db,
+                    who,
+                    memory_recall.Query.of(["cobalt"]),
+                    memory_recall.Filters("user", None),
+                    embedder=model,
+                    query_vectors=[vector],
+                    candidate_floor=0.8,
+                )
+            assert await db.scalar(sa.text("SHOW statement_timeout")) == prior
+            assert await db.scalar(sa.text("SELECT pg_backend_pid()")) == pid
+            assert [item.record.id for item in result.items] == [record_id]
+            return result
+
+    healthy = await rank()
+    assert healthy.vector_used and healthy.fallback is None
+    with lab.admin.begin() as blocker:
+        blocker.execute(sa.text("LOCK TABLE memory_embeddings IN ACCESS EXCLUSIVE MODE"))
+        fallback = await rank()
+    assert not fallback.vector_used and fallback.fallback == "index_unavailable"
+    assert observed_budgets == [effective_ms, effective_ms]
+    assert sqlstates == ["57014"]
