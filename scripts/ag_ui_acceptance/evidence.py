@@ -249,6 +249,73 @@ def _assertion_shape(error: dict) -> dict:
     return diagnostic
 
 
+# Route labels are fixed literals. Playwright annotations can contain IDs and private URLs.
+_USAGE_ROUTES = {
+    r"/api/conversations/[^/?#]+/ag-ui/(snapshot|stream|runs|events)": "ag_ui",
+    (
+        r"/api/conversations/[^/?#]+/(messages|run-inputs|run-message-links|runs|files|"
+        r"artifacts|pinned-summary|followup-suggestion)"
+    ): "conversation",
+    r"/api/conversations/[^/?#]+/runs/[^/?#]+/(stream|events)": "run",
+    r"/api/conversations/[^/?#]+/langgraph/threads/[^/?#]+/(commands|state|history)": "langgraph",
+    r"/api/(agents/summary|auth/me|conversations/page|artifacts)": "api",
+}
+_USAGE_NETWORK_CODES = {
+    "api_request_abort",
+    "api_request_failure",
+    "api_response_failure",
+    "next_chunk_abort_current_document",
+    "next_chunk_abort_prior_document",
+    "next_chunk_abort_unobserved",
+    "other_request_abort",
+    "other_request_failure",
+    "other_response_failure",
+}
+
+
+def _usage_network_annotations(annotations: list[dict]) -> dict:
+    codes: set[str] = set()
+    failures = []
+    for item in annotations:
+        kind, value = item.get("type"), item.get("description")
+        if not isinstance(value, str):
+            continue
+        if kind == "moldy.network-failure.v1" and value in _USAGE_NETWORK_CODES:
+            codes.add(value)
+        if kind not in {"moldy.api-request-failure.v1", "moldy.response-failure.v1"}:
+            continue
+        try:
+            data = json.loads(value)
+        except ValueError:
+            continue
+        if not isinstance(data, dict) or not isinstance(path := data.get("pathname"), str):
+            continue
+        route = "other"
+        for pattern, prefix in _USAGE_ROUTES.items():
+            if match := re.fullmatch(pattern, path):
+                route = prefix + "." + match[1]
+                break
+        method = data.get("method")
+        failure = {
+            "route": route,
+            "method": method
+            if method in ("GET", "HEAD", "POST", "PATCH", "DELETE", "PUT")
+            else "other",
+        }
+        if kind == "moldy.response-failure.v1":
+            status = data.get("status")
+            if type(status) is not int or not 400 <= status <= 599:
+                continue
+            failure["status"] = status
+        else:
+            failure["transport"] = (
+                "aborted" if data.get("errorText") == "net::ERR_ABORTED" else "failed"
+            )
+        if failure not in failures:
+            failures.append(failure)
+    return {"codes": sorted(codes), "failures": failures}
+
+
 def _perf_metrics(result: dict) -> dict | None:
     annotations = [
         a.get("description") for a in result.get("annotations", []) if a.get("type") == "perf"
@@ -471,6 +538,15 @@ def _case(spec: dict, test: dict, owned_root: Path, group: str, performance_timi
         if attempt["error_count"]:
             attempt["error_source"] = _error_source(result, filename)
             attempt["assertion"] = _assertion_shape(result.get("error") or {})
+            if (
+                filename == "chat-langgraph-v3-regressions.spec.ts"
+                and title == "resets token usage state when switching between conversations"
+                and group in {"ordinary-regressions-ag_ui", "ordinary-regressions-langgraph_v3"}
+            ):
+                annotations = result.get("annotations", [])
+                if len(results) == 1:
+                    annotations = [*annotations, *test.get("annotations", [])]
+                attempt["network"] = _usage_network_annotations(annotations)
         if status == "skipped":
             types = {
                 a.get("type")
