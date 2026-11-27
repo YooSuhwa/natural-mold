@@ -4,13 +4,13 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
-from app.services.ag_ui_legacy_child_binding import LegacyChildBinding
-from app.services.ag_ui_pending_checkpoint import PendingCheckpoint
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.exceptions import NotFoundError
 from app.services import ag_ui_read_pending, conversation_run_service
+from app.services.ag_ui_legacy_child_binding import LegacyChildBinding
+from app.services.ag_ui_pending_checkpoint import PendingCheckpoint
 from tests.authz.unit_scope_fixture import unit_context
 from tests.test_conversation_run_message_links import _create_run, _seed_conversation
 
