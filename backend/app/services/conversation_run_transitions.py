@@ -28,6 +28,13 @@ from app.exceptions import AppError
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service
 from app.services.cancel_deferred import finish_then_cancel
+from app.services.conversation_run_fence import (
+    RunFence,
+    RunOwnershipLost,
+    claim_run_owner,
+    current_run_fence,
+    lock_run_fence,
+)
 from app.services.conversation_run_metrics_service import persist_run_metrics_and_usage
 from app.services.conversation_run_task_registry import (
     _CANCEL_POLL_SECONDS,
@@ -75,7 +82,15 @@ async def _transition(
     llm_credential_scope: str | None = None,
 ) -> tuple[ConversationRun | None, TerminalRunState]:
     async with _tenant_session(tenant) as session:
-        run = await session.get(ConversationRun, run_id, with_for_update=True)
+        fence = current_run_fence()
+        if fence is not None:
+            if run_id != fence.run_id:
+                raise RunOwnershipLost("Mismatched terminal run")
+            run = await lock_run_fence(session, fence, allow_canceling=True)
+        else:
+            run = await session.get(ConversationRun, run_id, with_for_update=True)
+            if run is not None and run.owner_generation > 0:
+                raise RunOwnershipLost("Missing terminal ownership")
         if run is None:
             return None, status
         effective_status = _effective_terminal_status(
@@ -152,6 +167,7 @@ async def _transition_to_running(
     *,
     worker_instance_id: str,
     start: bool = True,
+    recovery_digest: str | None = None,
 ) -> tuple[ConversationRun | None, bool]:
     """``queued -> running`` 전이 시도. ``(run, started)`` 반환.
 
@@ -207,6 +223,15 @@ async def _transition_to_running(
             "running",
             worker_instance_id=worker_instance_id,
         )
+        if (
+            recovery_digest is not None
+            and run.source in {"chat", "start"}
+            and run.runtime_materialized_at is None
+            and run.org_id
+            and run.tenant_id
+        ):
+            run.recovery_runtime_digest = recovery_digest
+            claim_run_owner(run, worker_instance_id)
         await session.commit()
         return run, True
 
@@ -226,7 +251,15 @@ async def _heartbeat_until_terminal(
         """One poll/beat; ``True`` ends the heartbeat."""
         nonlocal next_heartbeat
         async with _tenant_session(tenant) as session:
-            run = await session.get(ConversationRun, run_id)
+            fence = current_run_fence()
+            if fence is not None:
+                try:
+                    run = await lock_run_fence(session, fence, allow_canceling=True)
+                except RunOwnershipLost:
+                    registry.request_cancel(run_id, reason="ownership_lost")
+                    return True
+            else:
+                run = await session.get(ConversationRun, run_id)
             if run is None or not run.is_active:
                 # Terminalized elsewhere (archive cascade, stale sweep of another
                 # worker): stop the local task; the run finalizes nothing new.
@@ -256,13 +289,21 @@ async def _heartbeat_until_terminal(
             return
 
 
-async def _persist_shutdown_intent(run_ids: list[uuid.UUID]) -> None:
+async def _persist_shutdown_intent(run_ids: list[uuid.UUID | RunFence]) -> None:
     """Platform by design: one shutdown write for this worker's runs of every company."""
     if not run_ids:
         return
     async with _session_factory()() as session:
-        for run_id in run_ids:
-            run = await session.get(ConversationRun, run_id, with_for_update=True)
+        for ownership in run_ids:
+            if isinstance(ownership, RunFence):
+                try:
+                    run = await lock_run_fence(session, ownership)
+                except RunOwnershipLost:
+                    continue
+            else:
+                run = await session.get(ConversationRun, ownership, with_for_update=True)
+                if run is not None and run.owner_generation > 0:
+                    continue
             if run is not None and run.status in {"queued", "running"}:
                 await conversation_run_service.request_cancel_run(
                     session,

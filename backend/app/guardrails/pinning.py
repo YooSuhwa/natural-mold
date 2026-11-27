@@ -147,6 +147,16 @@ async def pin_run_guardrails(
     return pinned
 
 
+async def guardrails_for_takeover(
+    db: AsyncSession, run: ConversationRun, *, tenant_id: uuid.UUID
+) -> PinnedGuardrails | None:
+    """Load this exact turn's pinned policy and reapply current tool revocations."""
+    record = (run.metadata_json or {}).get(RUN_METADATA_KEY)
+    if not isinstance(record, dict):
+        return None
+    return _with_off(_from_snapshot(record), await disabled_tools(db, tenant_id))
+
+
 async def run_guardrails(
     db: AsyncSession,
     run: ConversationRun,

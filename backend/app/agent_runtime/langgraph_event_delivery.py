@@ -16,7 +16,9 @@ from app.agent_runtime.protocol_events import (
     protocol_event_cursor,
     to_protocol_wire_event,
 )
+from app.agent_runtime.recovery_stream import RecoveryStreamCursor, state_output_proof
 from app.agent_runtime.streaming import PersistCallback
+from app.chat_recovery.fence import current_run_fence
 
 logger = logging.getLogger(__name__)
 _FLUSH_BATCH_SIZE = 32
@@ -43,13 +45,22 @@ class ProtocolEventDelivery:
         broker: EventBroker | None = None,
         persist_callback: PersistCallback | None = None,
         session_consent_tools: list[str] | None = None,
+        continuation: RecoveryStreamCursor | None = None,
     ) -> None:
         self.run_id = run_id
         self.trace_sink = trace_sink
         self.broker = broker
         self.persist_callback = persist_callback
         self.session_consent_tools = session_consent_tools
-        self.max_emitted_seq = -1
+        self.max_emitted_seq = continuation.last_seq if continuation else -1
+        self._cursor_ids = set(continuation.event_ids) if continuation else None
+        self._durable_callback = None
+        if current_run_fence() is not None:
+            if persist_callback is None:
+                raise RuntimeError("Recoverable chat requires durable event delivery")
+            self._durable_callback = persist_callback
+            if self._cursor_ids is None:
+                self._cursor_ids = set()
         self.input_requested_emitted = False
         self.emitted: list[StoredProtocolEvent] = []
         self._persist_buffer: list[dict[str, object]] = []
@@ -93,14 +104,34 @@ class ProtocolEventDelivery:
 
     async def emit(self, event: StoredProtocolEvent) -> str:
         projected = project_stable_event(event, next_seq=self.max_emitted_seq + 1)
-        wire_event = projected.wire_event
+        wire_event: StoredProtocolEvent = projected.wire_event
+        persistable = dict(projected.persistable_event)
+        if self._cursor_ids is not None:
+            # Upstream stream IDs (including fallback seq-based IDs) can start
+            # again at zero after a process restart. A reused cursor would
+            # cause storage and reconnect clients to silently lose a new event.
+            cursor = protocol_event_cursor(wire_event)
+            if cursor in self._cursor_ids:
+                cursor = f"{self.run_id}:continued:{wire_event['seq']}"
+                wire_event = {**wire_event, "id": cursor, "upstream_event_id": cursor}
+                persistable.update(id=cursor, upstream_event_id=cursor)
+            self._cursor_ids.add(cursor)
+        if self._durable_callback is not None:
+            if wire_event["method"] in {"values", "updates"}:
+                call_ids: set[str] = set()
+                data = wire_event["data"]
+                if not isinstance(data, dict) or state_output_proof(data, call_ids):
+                    persistable["recovery_output_started"] = True
+                if call_ids:
+                    persistable["recovery_tool_call_ids"] = sorted(call_ids)
+            await self._durable_callback([persistable])
+        else:
+            self._persist_buffer.append(persistable)
         self.max_emitted_seq = wire_event["seq"]
         if wire_event["method"] == "input.requested":
             self.input_requested_emitted = True
 
-        persistable = dict(projected.persistable_event)
         self.emitted.append(wire_event)
-        self._persist_buffer.append(persistable)
         if self.trace_sink is not None:
             self.trace_sink.append(persistable)
         if self.broker is not None:

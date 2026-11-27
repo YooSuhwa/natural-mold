@@ -285,6 +285,7 @@ async def _prepare_agent(
 
     # 5. 에이전트 빌드 — create_deep_agent + checkpointer
     from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.recovery_checkpoint_saver import fenced_chat_checkpointer
 
     build_started = time.perf_counter()
     agent = runtime_attr("build_agent")(
@@ -293,7 +294,7 @@ async def _prepare_agent(
         components.system_prompt,
         middleware=middleware or None,
         interrupt_on=components.interrupt_on,
-        checkpointer=get_checkpointer(),
+        checkpointer=fenced_chat_checkpointer(get_checkpointer()),
         backend=components.backend,
         skills=components.skills_sources,
         memory=components.memory_sources,

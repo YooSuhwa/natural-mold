@@ -15,7 +15,7 @@ from app.agent_runtime.ag_ui_adapter import (
     source_event_id_from_ag_ui,
     stale_run_event,
 )
-from app.agent_runtime.event_broker import EventBroker
+from app.agent_runtime.event_broker import EventBroker, broker_for_run_owner
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.authz.org_context import OrgContext
@@ -31,6 +31,7 @@ from app.error_codes import resume_not_found
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun
 from app.models.message_event import MessageEvent
+from app.routers.conversation_agent_protocol_attach import while_broker_owner
 from app.routers.conversation_runs import _retryable_attach_error, _run_is_stale
 from app.services import conversation_run_service, trace_storage
 from app.services.chat import secrets as chat_secrets
@@ -165,6 +166,7 @@ async def stream_conversation_run_ag_ui(
         conversation_id=conversation_id,
         run_id=run_id,
         context=context,
+        for_update=True,
     )
     if run is None:
         raise resume_not_found()
@@ -173,23 +175,30 @@ async def stream_conversation_run_ag_ui(
     secrets = tuple(
         await chat_secrets.collect_conversation_secret_values(db, conversation, context)
     )
-    broker = broker_registry.get(run_id_str)
-    if broker is not None and not broker.is_closed:
+    broker = broker_for_run_owner(broker_registry.get(run_id_str), run.owner_generation)
+    if broker is not None and not broker.is_closed and (not run.owner_generation or run.is_active):
         if broker.conversation_id != str(conversation_id):
             raise resume_not_found()
+        # Release the stale-decision lock before any live stream waits for this worker.
+        await db.commit()
         return sse_response(
-            _broker_ag_ui_generator(
-                broker,
-                after_id,
+            while_broker_owner(
+                _broker_ag_ui_generator(
+                    broker,
+                    after_id,
+                    conversation_id=conversation_id,
+                    run_id=run_id,
+                    secret_values=secrets,
+                ),
+                broker=broker,
                 conversation_id=conversation_id,
-                run_id=run_id,
-                secret_values=secrets,
+                context=context,
             ),
             extra_headers=_headers(run_id_str, "live"),
         )
 
     if run.status in RUN_ACTIVE_STATUSES:
-        if not _run_is_stale(run):
+        if run.owner_generation or not _run_is_stale(run):
             raise _retryable_attach_error()
         await conversation_run_service.transition_run(
             db,

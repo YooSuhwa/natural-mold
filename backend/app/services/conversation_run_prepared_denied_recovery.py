@@ -52,7 +52,7 @@ def _lease_missing(run: ConversationRun) -> bool:
     return False
 
 
-async def _locked_run(db: AsyncSession, row: Any) -> ConversationRun | None:
+async def lock_orphan_for_terminal_status(db: AsyncSession, row: Any) -> ConversationRun | None:
     parents = (
         await db.execute(
             select(Conversation.tenant_id, Conversation.org_id).where(
@@ -63,7 +63,8 @@ async def _locked_run(db: AsyncSession, row: Any) -> ConversationRun | None:
     if parents is None:
         return None
     await lock_tenant_org_write(db, parents[0], (parents[1],))
-    await agent_lifecycle_locks.acquire_agent_lifecycle_locks(db, (row.agent_id,))
+    if row.agent_id is not None:
+        await agent_lifecycle_locks.acquire_agent_lifecycle_locks(db, (row.agent_id,))
     await db.scalar(
         select(Conversation.id).where(Conversation.id == row.conversation_id).with_for_update()
     )
@@ -83,7 +84,7 @@ async def _locked_run(db: AsyncSession, row: Any) -> ConversationRun | None:
 async def terminalize_denied_orphan(db: AsyncSession, row: Any) -> bool:
     """Terminalize one gateway-denied paired orphan; ``True`` when written."""
 
-    run = await _locked_run(db, row)
+    run = await lock_orphan_for_terminal_status(db, row)
     if (
         run is None
         or not run.is_active

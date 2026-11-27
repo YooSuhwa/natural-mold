@@ -390,6 +390,9 @@ class Settings(AuthzSettings):
     e2e_llm_model: str = ""
     # Explicit organization enrollment for continuous goals. Empty disables new work.
     conversation_goal_org_ids: frozenset[UUID] = frozenset()
+    # Opt-in for checkpoint recovery of ordinary runs with durable owner fencing.
+    chat_run_recovery_enabled: bool = False
+    chat_run_recovery_max_attempts: int = Field(default=2, ge=0)
     chat_run_stale_after_seconds: int = 300
     chat_run_stale_sweep_interval_seconds: int = 60
     # Admit text instructions for the next model call of an existing chat run.

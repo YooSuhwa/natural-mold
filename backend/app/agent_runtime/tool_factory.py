@@ -28,6 +28,7 @@ from langchain_core.tools import BaseTool, StructuredTool, ToolException
 from langgraph.errors import GraphBubbleUp
 from pydantic import BaseModel, Field, create_model
 
+from app.agent_runtime.recovery_read_tool import RecoverySafeReadTool
 from app.agent_runtime.temporal import (
     DEFAULT_TIMEZONE,
     build_temporal_context,
@@ -239,7 +240,7 @@ def _build_current_datetime_tool() -> BaseTool:
 
         return json.dumps(build_temporal_context(), ensure_ascii=False)
 
-    return StructuredTool.from_function(
+    return RecoverySafeReadTool.from_function(
         coroutine=get_current_datetime,
         name="current_datetime",
         description=(
@@ -265,7 +266,7 @@ def _build_resolve_relative_date_tool() -> BaseTool:
         )
         return json.dumps(result, ensure_ascii=False)
 
-    return StructuredTool.from_function(
+    return RecoverySafeReadTool.from_function(
         coroutine=resolve_relative_date,
         name="resolve_relative_date",
         description=(

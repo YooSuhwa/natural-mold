@@ -316,6 +316,20 @@ async def prepare_runtime_components_impl(
                 read_tools=goal_read_tools,
             )
         )
+    if include_agent_memory_file and not is_trigger_mode:
+        from app.chat_recovery.identity import verify_prepared_recovery_inputs
+
+        await verify_prepared_recovery_inputs(
+            cfg,
+            system_prompt=system_prompt,
+            tools=langchain_tools,
+            middleware=middleware,
+            interrupts=interrupt_on,
+            permissions=permissions,
+            write_policy=memory_write_policy,
+            memory_sources=memory_sources,
+            data_dir=bindings.data_dir,
+        )
     return RuntimeComponents(
         model_candidates=model_candidates,
         model=model,

@@ -160,6 +160,7 @@ def _patch_conversation_run_worker_session(monkeypatch):
     """Detached chat run workers must use the same in-memory DB as router tests."""
 
     monkeypatch.setattr("app.services.conversation_run_worker.async_session", TestSession)
+    monkeypatch.setattr("app.chat_recovery.fence.async_session", TestSession)
     monkeypatch.setattr("app.approvals.recording.async_session", TestSession)
     monkeypatch.setattr("app.approvals.inbox.async_session", TestSession)
     monkeypatch.setattr("app.approvals.triggers.async_session", TestSession)

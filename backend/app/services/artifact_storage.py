@@ -30,6 +30,7 @@ class ArtifactStorageBackend(Protocol):
         display_name: str,
         source_path: Path,
         tenant_id: uuid.UUID | None = None,
+        object_version_id: uuid.UUID | None = None,
     ) -> StoredArtifactObject: ...
 
     async def local_path(self, *, object_key: str, tenant_id: uuid.UUID | None = None) -> Path: ...
@@ -66,12 +67,19 @@ class LocalArtifactStorageBackend:
         display_name: str,
         source_path: Path,
         tenant_id: uuid.UUID | None = None,
+        object_version_id: uuid.UUID | None = None,
     ) -> StoredArtifactObject:
         """Copy into the company folder ``tenants/<tenant_id>/conversations/...`` (I-08)."""
         safe_name = safe_storage_filename(display_name)
+        # A disconnected fenced writer may finish copying after its DB transaction
+        # has rolled back. Consecutive owners can allocate the same version number.
+        # Give each attempt its own object so only the committed row exposes bytes.
+        version_dir = f"v{version_number}"
+        if object_version_id is not None:
+            version_dir = f"{version_dir}/{object_version_id}"
         object_key = tenant_relative(
             tenant_id,
-            f"conversations/{conversation_id}/{artifact_id}/v{version_number}/{safe_name}",
+            f"conversations/{conversation_id}/{artifact_id}/{version_dir}/{safe_name}",
         )
         target = (self.root_dir / object_key).resolve()
         root = self.root_dir.resolve()

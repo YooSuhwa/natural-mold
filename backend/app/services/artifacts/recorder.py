@@ -54,6 +54,7 @@ from app.services.artifacts.summary import (
     _file_event_payload,
     _summary_from_artifact,
 )
+from app.services.conversation_run_fence import RunFence, current_run_fence, lock_run_fence
 
 ARTIFACT_SOURCE_TOOL_NAMES = frozenset({"execute_in_skill", "write_file", "edit_file"})
 
@@ -82,6 +83,7 @@ class ArtifactDeltaRecorder:
         self.context = context
         self.storage = storage or get_artifact_storage_backend()
         self._snapshot = ArtifactSnapshot(files={})
+        self._fence = current_run_fence()
 
     async def prepare(self) -> None:
         async with self.session_factory() as db:
@@ -119,6 +121,7 @@ class ArtifactDeltaRecorder:
                 deltas=deltas,
                 storage=self.storage,
                 tool_call_id=tool_call_id,
+                fence=self._fence,
             )
             await db.commit()
             return events
@@ -131,10 +134,23 @@ async def ingest_changed_files(
     deltas: list[ArtifactDelta],
     storage: ArtifactStorageBackend,
     tool_call_id: str | None,
+    fence: RunFence | None = None,
 ) -> list[dict[str, object]]:
     # Call-time facade lookup: see snapshot_output_dir.
     from app.services.artifact_service import _sha256_file
 
+    # Hold the run row through the blob write, version insert and caller's commit.
+    fence = fence or current_run_fence()
+    if fence is not None:
+        run = await lock_run_fence(db, fence)
+        if (
+            str(run.id) != context.assistant_msg_id
+            or run.conversation_id != context.conversation_id
+            or run.org_id != context.org_context.org_id
+            or run.tenant_id != context.org_context.tenant_id
+            or run.user_id != context.org_context.user_id
+        ):
+            raise conversation_not_found()
     conversation = await validated_artifact_conversation(
         db, context.conversation_id, context.org_context
     )
@@ -229,6 +245,7 @@ async def ingest_changed_files(
             db.add(artifact)
             await db.flush()
 
+        version_id = uuid.uuid4()
         stored = await storage.put_file(
             conversation_id=context.conversation_id,
             artifact_id=artifact.id,
@@ -236,9 +253,10 @@ async def ingest_changed_files(
             display_name=normalized.display_name,
             source_path=state.path,
             tenant_id=context.org_context.tenant_id,
+            object_version_id=version_id if fence is not None else None,
         )
         version = ArtifactVersion(
-            id=uuid.uuid4(),
+            id=version_id,
             artifact_id=artifact.id,
             version_number=version_number,
             storage_provider=stored.storage_provider,

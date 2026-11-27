@@ -9,7 +9,7 @@ from app.config import settings
 from app.migrations.org_authz_v1.rls_policies import create_policy_sql, enable_sql, table_policy
 
 revision = "i43_chat_recovery"
-down_revision = "i39_skill_approval_default"
+down_revision = "i42_research_search_usage"
 branch_labels = None
 depends_on = None
 

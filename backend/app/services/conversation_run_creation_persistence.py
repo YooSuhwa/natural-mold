@@ -99,6 +99,9 @@ async def mark_stale_active_runs(
         reference_time <= stale_before,
         ConversationRun.status != "canceling",
     ]
+    # Enrolled owners and their cancellation state belong to the fenced recovery sweep,
+    # including the first sweep after an administrator disables new takeovers.
+    conditions.append(ConversationRun.owner_generation == 0)
     if conversation_id is not None:
         conditions.append(ConversationRun.conversation_id == conversation_id)
     if protected_run_ids:
@@ -168,6 +171,7 @@ async def _pause_uncertain_owned_run_queues(
         reference_time <= stale_before,
         pending_input_exists,
     ]
+    conditions.append(ConversationRun.owner_generation == 0)
     if protected_run_ids:
         conditions.append(ConversationRun.id.notin_(list(protected_run_ids)))
     conversation_ids = list(
@@ -217,6 +221,9 @@ async def sweep_stale_conversation_runs(
         await terminalize_orphaned_prepared_runs(
             session_factory=session_factory, stale_before=stale_before
         )
+        from app.services.conversation_run_recovery import recover_stale_chat_runs
+
+        await recover_stale_chat_runs(session_factory=session_factory, stale_before=stale_before)
         async with session_factory() as db:
             registry = get_run_task_registry()
             await _pause_uncertain_owned_run_queues(

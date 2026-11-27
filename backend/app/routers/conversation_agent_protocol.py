@@ -6,14 +6,17 @@ from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.event_broker import registry as broker_registry
 from app.authz.conversation_agent_checks import bind_request_authz
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
 from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.routers import conversation_agent_protocol_state as state_api
-from app.routers.conversation_agent_protocol_attach import wait_for_live_broker_or_terminal
+from app.routers.conversation_agent_protocol_attach import (
+    live_broker_for_run,
+    wait_for_live_broker_or_terminal,
+    while_broker_owner,
+)
 from app.routers.conversation_agent_protocol_commands import handle_thread_command
 from app.routers.conversation_agent_protocol_contracts import (
     AgentCommandRequest,
@@ -292,14 +295,10 @@ async def subscribe_thread_events(
         context=context,
     )
     if current_run is not None and current_run.is_active:
-        broker = broker_registry.get(str(current_run.id))
-        if broker is None or broker.is_closed:
+        broker = live_broker_for_run(current_run)
+        if broker is None:
             current_run = await wait_for_live_broker_or_terminal(db, current_run.id)
-            broker = (
-                broker_registry.get(str(current_run.id))
-                if current_run is not None and current_run.is_active
-                else None
-            )
+            broker = live_broker_for_run(current_run)
         if current_run is None or not current_run.is_active:
             events = await load_protocol_events(db, conversation.id, context=context)
             return sse_response(
@@ -310,13 +309,13 @@ async def subscribe_thread_events(
                 ),
                 extra_headers=protocol_headers(mode="replay"),
             )
-        if broker is not None and not broker.is_closed:
+        if broker is not None:
+            stream = protocol_broker_generator(
+                broker, thread_id=str(conversation.id), params=params, after_id=after_id
+            )
             return sse_response(
-                protocol_broker_generator(
-                    broker,
-                    thread_id=str(conversation.id),
-                    params=params,
-                    after_id=after_id,
+                while_broker_owner(
+                    stream, broker=broker, conversation_id=conversation.id, context=context
                 ),
                 extra_headers=protocol_headers(mode="live", run_id=str(current_run.id)),
             )
@@ -343,6 +342,7 @@ async def subscribe_thread_events(
                 "error": "RUN_ATTACH_RETRY",
                 "message": "Run is active but its live event stream is not attached yet.",
                 "run_id": str(current_run.id),
+                "last_event_id": current_run.last_event_id,
             },
             status_code=409,
             headers=protocol_headers(run_id=str(current_run.id)),

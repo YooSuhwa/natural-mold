@@ -13,6 +13,7 @@ from pydantic import JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
+from app.agent_runtime.event_broker import broker_for_run_owner
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.memory_paths import origin_run_path
 from app.approvals.recording import claim_resume
@@ -23,6 +24,7 @@ from app.dependencies import CurrentUser
 from app.error_codes import conversation_not_found, resume_interrupt_pending, resume_not_found
 from app.models.message_event import MessageEvent
 from app.routers.chat_run_entries import _broker_resume_generator, _replay_resume_generator
+from app.routers.conversation_agent_protocol_attach import while_broker_owner
 from app.routers.conversation_agent_protocol_interrupts import require_allowed_rest_resume
 from app.schemas.conversation import ResumeRequest
 from app.services import chat_service, conversation_run_service, trace_storage
@@ -129,8 +131,13 @@ async def stream_resume(
         raise resume_not_found()
     secrets = tuple(await chat_secrets.collect_conversation_secret_values(db, conv, context))
 
-    broker = broker_registry.get(run_id_str)
-    if broker is not None and not broker.is_closed:
+    run = await conversation_run_service.get_run_for_user(
+        db, conversation_id=conversation_id, run_id=run_id, context=context
+    )
+    # Older streams can have a trace and a local broker without a run row.
+    generation = run.owner_generation if run is not None else 0
+    broker = broker_for_run_owner(broker_registry.get(run_id_str), generation)
+    if broker is not None and not broker.is_closed and (not generation or (run and run.is_active)):
         if broker.conversation_id != str(conversation_id):
             _log_resume_reject(
                 "broker_conv_mismatch",
@@ -146,7 +153,12 @@ async def stream_resume(
             after_id,
         )
         return sse_response(
-            _broker_resume_generator(broker, after_id, secret_values=secrets),
+            while_broker_owner(
+                _broker_resume_generator(broker, after_id, secret_values=secrets),
+                broker=broker,
+                conversation_id=conversation_id,
+                context=context,
+            ),
             extra_headers={
                 "X-Run-Id": run_id_str,
                 "X-Resume-Mode": "live",
@@ -154,6 +166,10 @@ async def stream_resume(
         )
 
     record = await trace_storage.get_trace_by_msg_id(db, run_id_str)
+    if run and run.is_active and generation and (record is None or record.status == "streaming"):
+        from app.routers.conversation_runs import _retryable_attach_error
+
+        raise _retryable_attach_error()
     if record is None:
         _log_resume_reject("row_missing", conversation_id, run_id_str)
         raise resume_not_found()

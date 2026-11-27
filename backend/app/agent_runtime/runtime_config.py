@@ -148,6 +148,8 @@ class AgentConfig:
     usage_root_agent_id: str | None = None
     # "personal" / "tenant": whose key the LLM runs on (copied to token usage; plan P2 Q2).
     llm_credential_scope: str | None = None
+    # Includes automatic matches and model defaults; llm_credential_id is the agent binding.
+    resolved_model_credential_id: str | None = field(default=None, kw_only=True)
     # 1A: this conversation's attachment files and the model's vision support, loaded
     # by the run worker so preparation stays DB-free. ``None``: no attachments.
     attachment_inputs: AttachmentInputs | None = None

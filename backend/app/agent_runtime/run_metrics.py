@@ -106,6 +106,15 @@ class RunMetricsAccumulator:
             complete_event_capture=complete_event_capture, activity_limit=activity_limit
         )
 
+    def exclude_recovered_history(
+        self,
+        message_ids: Collection[MessageIdentity],
+        completed_tools: Collection[ToolCallSourceIdentity],
+    ) -> None:
+        """Install the pre-turn baseline from the validated recovery checkpoint."""
+        self._baseline_message_identities.update(message_ids)
+        self.baseline_completed_tool_call_source_identities = frozenset(completed_tools)
+
     def observe(self, event: StoredProtocolEvent) -> None:
         """Consume one post-adapter protocol event; replays are idempotent by stable IDs."""
         if self._terminal_snapshot is not None:

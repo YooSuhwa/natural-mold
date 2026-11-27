@@ -28,6 +28,12 @@ from app.agent_runtime.protocol_side_effects import (
     prepare_artifact_recorder,
 )
 from app.agent_runtime.protocol_usage import collect_protocol_usage_event
+from app.agent_runtime.recovery_stream import (
+    current_turn_messages,
+    recovery_stream_cursor,
+    state_fingerprint,
+    tool_event_key,
+)
 from app.agent_runtime.run_metrics import RunMetricsAccumulator, event_has_model_content
 from app.agent_runtime.run_start_events import head_event_specs
 from app.agent_runtime.stream_error_messages import public_stream_error_message
@@ -36,6 +42,7 @@ from app.agent_runtime.streaming import (
     PersistCallback,
     StreamErrorRecord,
 )
+from app.chat_recovery.fence import current_run_fence
 from app.config import settings
 from app.models.conversation_run import RUN_TERMINAL_STATUSES
 from app.services.conversation_run_steer_events import RunSteerReceiptFeed, uses_steer_channel
@@ -73,7 +80,9 @@ async def stream_agent_response_langgraph(
 ) -> AsyncGenerator[str, None]:
     msg_id = run_id or str(uuid.uuid4())
     thread_id = langgraph_stream_ingestion.thread_id_from_config(config, msg_id)
+    continuation = recovery_stream_cursor(msg_id, thread_id)
     delivery = ProtocolEventDelivery(
+        continuation=continuation,
         run_id=msg_id,
         trace_sink=trace_sink,
         broker=broker,
@@ -82,14 +91,31 @@ async def stream_agent_response_langgraph(
     )
     side_effect_seq = 0
     deferred_empty_input_requested: StoredProtocolEvent | None = None
-    seen_usage_keys: set[tuple[str | None, int, int, int, int, float | None]] = set()
+    seen_usage_keys = set(continuation.usage_keys) if continuation else set()
     seen_synthesized_tool_call_ids: set[str] = set()
+    # Native and values-synthesized tool events describe the same transition.
+    # Both can occur, and either one can be the last event before a crash.
+    dedupe_tool_events = continuation is not None or current_run_fence() is not None
+    durable_phases: set[tuple[tuple[str, ...], str, str]] = set()
+    if continuation:
+        durable_phases.update(((), phase, call_id) for phase, call_id in continuation.tool_phases)
+    replaying_values = continuation is not None
     compaction_namespace: tuple[str, ...] | None = None
     compaction_done_emitted = False
     previous_cutoffs: dict[tuple[str, ...], tuple[int, str | None] | None] = {}
     stream_started_at = time.monotonic()
     first_token_at: float | None = None
     artifact_recorder = await prepare_artifact_recorder(artifact_recorder, run_id=msg_id)
+
+    def tool_phase_already_sent(event: StoredProtocolEvent) -> bool:
+        key = tool_event_key(event)
+        if not dedupe_tool_events or key is None:
+            return False
+        phase = (tuple(event["namespace"]), *key)
+        if phase in durable_phases:
+            return True
+        durable_phases.add(phase)
+        return False
 
     async def emit(event: StoredProtocolEvent) -> str:
         if run_metrics is not None:
@@ -122,21 +148,19 @@ async def stream_agent_response_langgraph(
         enabled=settings.compaction_marker_enabled,
     )
     try:
-        yield await emit(
-            lifecycle_protocol_event(
-                run_id=msg_id,
-                thread_id=thread_id,
-                seq=0,
-                event="running",
-            )
+        started_event = lifecycle_protocol_event(
+            run_id=msg_id, thread_id=thread_id, seq=0, event="running"
         )
+        if continuation is None or started_event["id"] not in continuation.event_ids:
+            yield await emit(started_event)
         for name, payload, suffix in head_event_specs(
             subagent_display_names=subagent_display_names,
             recalled_memories=recalled_memories,
             skill_draft_brief=skill_draft_brief,
             excluded_capabilities=excluded_capabilities,
         ):
-            yield await emit_head_event(name, payload, suffix)
+            if continuation is None or f"{msg_id}:{suffix}" not in continuation.event_ids:
+                yield await emit_head_event(name, payload, suffix)
 
         async for ingested in events:
             if isinstance(ingested, SummaryStart) or projection.is_summary_token_event(
@@ -174,6 +198,16 @@ async def stream_agent_response_langgraph(
                         yield await emit(receipt)
                 if terminal:
                     steer_receipts = None
+            if tool_phase_already_sent(event):
+                continue
+            repeated_values = False
+            if continuation and replaying_values and method == "values" and not event["namespace"]:
+                # The first root state replay carries the checkpoint messages.
+                # Suppress an identical durable snapshot, but still synthesize
+                # a tool phase that had not yet reached the client.
+                replaying_values = False
+                compact = projection.project_stable_event(event, next_seq=0).persistable_event
+                repeated_values = state_fingerprint(compact["data"]) == continuation.last_values
             is_empty_v3_interrupt = (
                 ingested.source == "v3" and projection.is_empty_input_requested_event(event)
             )
@@ -210,7 +244,8 @@ async def stream_agent_response_langgraph(
                     )
 
             collect_root_ai_message_id(event, msg_id_sink)
-            yield await emit(event)
+            if not repeated_values:
+                yield await emit(event)
             for chunk in await delivery.emit_canonical_interrupts(event):
                 yield chunk
             if first_token_at is None and event_has_model_content(event):
@@ -226,7 +261,7 @@ async def stream_agent_response_langgraph(
                 started_at=stream_started_at,
                 first_token_at=first_token_at,
             )
-            if usage_event is not None:
+            if usage_event is not None and not repeated_values:
                 yield await emit(usage_event)
             side_effect_events, side_effect_seq = await collect_protocol_side_effect_events(
                 event,
@@ -237,16 +272,29 @@ async def stream_agent_response_langgraph(
                 yield await emit(side_effect_event)
 
             if ingested.source == "v3":
+                tool_source: StoredProtocolEvent = event
+                if continuation and event["method"] == "values" and isinstance(event["data"], dict):
+                    messages = event["data"].get("messages")
+                    if isinstance(messages, list):
+                        # The restart checkpoint baseline already includes tools
+                        # completed just before the crash. Rebuild the current
+                        # turn's missing phases; older turns stay out of scope.
+                        tool_source = {
+                            **event,
+                            "data": {"messages": current_turn_messages(messages)},
+                        }
                 for tool_event in synthesize_tool_events_from_values(
-                    event,
+                    tool_source,
                     seen_tool_call_ids=seen_synthesized_tool_call_ids,
                     baseline_completed_tool_call_source_identities=(
                         run_metrics.baseline_completed_tool_call_source_identities
-                        if run_metrics is not None
+                        if run_metrics is not None and continuation is None
                         else ()
                     ),
                     first_seq=delivery.max_emitted_seq + 1,
                 ):
+                    if tool_phase_already_sent(tool_event):
+                        continue
                     yield await emit(tool_event)
                     tool_side_effects, side_effect_seq = await collect_protocol_side_effect_events(
                         tool_event,

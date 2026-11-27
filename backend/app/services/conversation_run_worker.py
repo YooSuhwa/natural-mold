@@ -63,6 +63,7 @@ from app.services.conversation_run_delivery import (
     _trace_status_for_run,
 )
 from app.services.conversation_run_execution import AgentStreamExecutor, _run_conversation
+from app.services.conversation_run_fence import RunFence, lock_run_fence
 from app.services.conversation_run_interrupts import (
     has_interrupt_events,
     interrupt_id_from_events,
@@ -178,6 +179,7 @@ async def start_conversation_run(
     registry: RunTaskRegistry | None = None,
     attachment_ids: list[uuid.UUID] | None = None,
     config_transform: Callable[[AgentConfig], AgentConfig] | None = None,
+    recovery_fence: RunFence | None = None,
 ) -> StreamCtx:
     target = _execution_target(run_id, conversation_id, cfg)
     if user.id != target.conversation.context.user_id:
@@ -203,9 +205,19 @@ async def start_conversation_run(
 
         await configure_goal_runtime(session, run, cfg)
         registry = registry or get_run_task_registry()
+        if recovery_fence is not None:
+            if (
+                recovery_fence.run_id != run_id
+                or recovery_fence.conversation_id != conversation_id
+                or recovery_fence.worker_instance_id != registry.worker_instance_id
+            ):
+                raise conversation_not_found()
+            await lock_run_fence(session, recovery_fence)
         ctx = stream_service.prepare_stream_context(
             conversation_id, run_id=str(run_id), tenant=target.conversation.context
         )
+        if recovery_fence is not None:
+            ctx.broker.owner_generation = recovery_fence.generation
         task = asyncio.create_task(
             _run_conversation(
                 run_id=run_id,
@@ -219,6 +231,7 @@ async def start_conversation_run(
                 registry=registry,
                 attachment_ids=attachment_ids,
                 config_transform=config_transform,
+                recovery_fence=recovery_fence,
             ),
             name=f"conversation-run-{run_id}",
         )

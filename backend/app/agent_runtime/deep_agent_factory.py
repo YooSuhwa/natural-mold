@@ -415,6 +415,14 @@ def build_agent_impl(
             *goal_checks,
             *(item for item in compatible_middleware if not isinstance(item, GoalRunMiddleware)),
         ]
+    # Recovery-aware graphs are built inside the worker's fenced scope. Keeping this
+    # last puts tool receipts inside the existing guardrail and connection checks.
+    if prepared_task_middleware is None:
+        from app.agent_runtime.recovery_tool_middleware import with_recovery_fence
+
+        compatible_middleware, compatible_subagents = with_recovery_fence(
+            compatible_middleware, compatible_subagents
+        )
     # Structured output (workflow W0) is passed only when asked for, so factories and
     # test doubles that predate it keep their signature.
     extra: dict[str, Any] = {} if response_format is None else {"response_format": response_format}

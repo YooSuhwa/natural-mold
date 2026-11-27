@@ -101,6 +101,7 @@ class EventBroker:
         conversation_id: str | None = None,
     ) -> None:
         self.run_id = run_id
+        self.owner_generation = 0
         self.conversation_id = conversation_id
         self.buffer_size = buffer_size
         self._listener_queue_maxsize = listener_queue_maxsize
@@ -277,6 +278,13 @@ class EventBroker:
                 with contextlib.suppress(asyncio.QueueFull):  # pragma: no cover - defensive
                     q.put_nowait(None)
         self._listeners.clear()
+
+
+def broker_for_run_owner(broker: EventBroker | None, owner_generation: int) -> EventBroker | None:
+    """A local stream belongs to the durable generation that created it."""
+    if broker is None or broker.owner_generation != owner_generation:
+        return None
+    return broker
 
 
 class BrokerRegistry:

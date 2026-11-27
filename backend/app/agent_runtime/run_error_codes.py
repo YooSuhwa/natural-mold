@@ -68,6 +68,18 @@ def prestart_error_code(error: BaseException | None) -> str | None:
 def run_error_code(error: BaseException | None, default: str) -> str:
     """Durable ``ConversationRun.error_code`` for a failed run."""
 
+    from app.agent_runtime.recovery_stream import RecoveryOutputStarted
+    from app.agent_runtime.run_recovery_checkpoint import RecoveryCheckpointBlocked
+    from app.chat_recovery.identity import RecoveryPolicyChanged
+    from app.chat_recovery.receipts import ToolRecoveryBlocked
+
+    for item in _chain(error):
+        if isinstance(item, RecoveryOutputStarted):
+            return "recovery_output_started"
+        if isinstance(
+            item, (RecoveryPolicyChanged, RecoveryCheckpointBlocked, ToolRecoveryBlocked)
+        ):
+            return item.code
     return denial_error_code(error) or prestart_error_code(error) or default
 
 
