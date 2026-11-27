@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import anyio
@@ -19,10 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
 from app.auth.jwt import create_access_token
 from app.child_tasks.persistence import begin_child_task
+from app.exceptions import ConflictError
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.models.conversation_run import ConversationRun
 from app.services import ag_ui_read, conversation_run_service, trace_storage
+from app.services.ag_ui_read_pending import CurrentReadInterrupts
 from tests.authz.test_child_task_authorization import ChildCase
 from tests.authz.test_child_task_authorization import child_case as child_case
 
@@ -200,6 +203,44 @@ async def _through(reader: AsyncIterator[dict[str, Any]], text: str) -> list[dic
         if event.get("delta") == text:
             return prefix
     pytest.fail(f"Stream ended before {text!r}")
+
+
+@pytest.mark.parametrize("known_status", [False, True])
+async def test_interrupted_stream_requires_a_witness_for_an_unrelated_child(
+    db: AsyncSession,
+    child_case: ChildCase,
+    monkeypatch: pytest.MonkeyPatch,
+    known_status: bool,
+) -> None:
+    turn = LiveTurn(db, child_case)
+    await turn.grant_child()
+    # This committed prefix announced the child but retained no result or native close.
+    await turn.append(*turn.child_events()[:2])
+    reader = await turn.attach()
+    assert (await anext(reader))["type"] == "RUN_STARTED"
+    run = await db.get(ConversationRun, child_case.run_id)
+    assert run is not None
+    await conversation_run_service.transition_run(db, run, "interrupted", interrupt_id="root")
+    await db.commit()
+    proof = CurrentReadInterrupts(
+        interrupts=({"id": "root", "ns": [], "value": {"type": "ask_user", "question": "Next?"}},),
+        actionable=True,
+        child_terminal_statuses={CHILD: "completed"} if known_status else {},
+    )
+    monkeypatch.setattr(ag_ui_read, "current_read_interrupts", AsyncMock(return_value=proof))
+    events = [event async for event in reader]
+    if not known_status:
+        assert events[-1]["type"] == "RUN_ERROR"
+        assert events[-1]["code"] == "AG_UI_SNAPSHOT_REQUIRED"
+        assert not any(event["type"] == "RUN_FINISHED" for event in events)
+        with pytest.raises(ConflictError) as cold:
+            await turn.attach()
+        assert cold.value.code == "AG_UI_SNAPSHOT_REQUIRED"
+        return
+    (ended,) = [event for event in events if event["type"] == "SUBAGENT_FINISHED"]
+    assert ended.get("outcome", {}).get("type", "success") == "success"
+    assert events[-1]["type"] == "RUN_FINISHED"
+    assert [item["id"] for item in events[-1]["outcome"]["interrupts"]] == ["root"]
 
 
 async def test_new_child_and_file_continue_live_after_identical_prefix(
