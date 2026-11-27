@@ -266,3 +266,22 @@ def test_unknown_internal_failure_never_leaks_provider_error_in_code_or_message(
     assert isinstance(error, RunErrorEvent)
     assert error.code == "run_failed"
     assert "hidden-error" not in error.model_dump_json(by_alias=True, exclude_none=True)
+
+
+def test_partial_or_passive_group_cannot_offer_a_legacy_child_resume() -> None:
+    slots = [
+        ProtocolInterrupt(id="child", ns=["nested"], value=_auth(1, "child")),
+        ProtocolInterrupt(id="unhandled", ns=[], value={"type": "workflow_wait"}),
+    ]
+    pending = PendingInterrupts()
+    pending.replace_current(
+        slots,
+        resolve_owner=lambda ns: "child-owner" if ns else None,
+        legacy_child_ids={"child"},
+        expires_at={"child": "2026-11-28T12:00:00Z"},
+    )
+    assert all(item.response_schema is None for item in pending.public())
+    for item in pending.public():
+        assert item.metadata and item.metadata["moldy"]["actionable"] is False
+        assert "legacyInterruptAccess" not in item.metadata["moldy"]
+    assert pending.public()[0].expires_at == "2026-11-28T12:00:00Z"
