@@ -63,7 +63,7 @@ def scrub_logs(logfile: Path, env: dict[str, str]) -> str:
 
 def _exited(process: subprocess.Popen[bytes], timeout: float) -> bool:
     """Observe an exit without releasing the leader's PID before group cleanup."""
-    if sys.platform != "linux":
+    if hasattr(select, "kqueue"):
         # Darwin does not expose waitid(WNOWAIT) in CPython. Registration after
         # exit returns ESRCH, while observation of a running child returns NOTE_EXIT.
         change = select.kevent(
