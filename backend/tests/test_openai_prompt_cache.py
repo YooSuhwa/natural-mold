@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import time
 from collections.abc import AsyncIterator, Iterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
+from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -19,6 +22,7 @@ from app.agent_runtime.model_factory import clear_model_cache, create_chat_model
 from app.agent_runtime.openai_prompt_cache import conversation_prompt_cache
 from app.authz.org_context import OrgContext
 from app.config import settings
+from scripts.compare_prompt_cache import Arm, Observation, compare
 from tests.authz.lease_provider_wire import Wire, guard_for
 
 type Requests = list[tuple[httpx.URL, dict[str, Any]]]
@@ -31,6 +35,35 @@ def requests(monkeypatch: pytest.MonkeyPatch) -> Iterator[Requests]:
     def respond(req: httpx.Request) -> httpx.Response:
         body = json.loads(req.content)
         captured.append((req.url, body))
+        if body.get("stream"):
+            response_id = f"chatcmpl-fixture-{len(captured)}"
+            chunk = {
+                "id": response_id,
+                "object": "chat.completion.chunk",
+                "created": 1,
+                "model": body["model"],
+            }
+            # These are synthetic counts, including automatic hits in the omitted arm.
+            returned_usage = {
+                "prompt_tokens": 2048,
+                "completion_tokens": 1,
+                "total_tokens": 2049,
+                "prompt_tokens_details": {
+                    "cached_tokens": 1536 if "prompt_cache_key" in body else 1024
+                },
+            }
+            frames = [
+                {**chunk, "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}}]},
+                {**chunk, "choices": [{"index": 0, "delta": {"content": "ok"}}]},
+                {**chunk, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
+                {**chunk, "choices": [], "usage": returned_usage},
+            ]
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                text="".join(f"data: {json.dumps(frame)}\n\n" for frame in frames)
+                + "data: [DONE]\n\n",
+            )
         if req.url.path == "/v1/responses":
             return httpx.Response(
                 200,
@@ -238,3 +271,56 @@ async def test_unrecognized_configured_key_is_ignored_when_routing_off(
     async with model_for(leased, prompt_cache_key={"old": "unused setting"}) as model:
         await model.ainvoke("query")
     assert "prompt_cache_key" not in requests[-1][1]
+
+
+async def test_paired_sdk_streams_feed_cost_comparison_without_claiming_provider_savings(
+    requests: Requests, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    org = OrgContext(uuid4(), uuid4(), uuid4())
+    chat = uuid4()
+    monkeypatch.setattr(settings, "openai_prompt_cache_org_ids", frozenset({org.org_id}))
+    observations = []
+    async with model_for(False) as model:
+        for sequence in range(1, 31):
+            arms: tuple[Arm, Arm] = ("key_omitted", "key_supplied")
+            for arm in arms if sequence % 2 else reversed(arms):
+                scope = (
+                    conversation_prompt_cache(org, chat, run_path="chat")
+                    if arm == "key_supplied"
+                    else nullcontext()
+                )
+                first_token = None
+                usage = None
+                start = time.monotonic_ns()
+                with scope:
+                    async for delta in model.astream("fixed model input " * 1024):
+                        if delta.text and first_token is None:
+                            first_token = time.monotonic_ns()
+                        if delta.usage_metadata:
+                            usage = delta.usage_metadata
+                assert usage is not None and first_token is not None
+                body = requests[-1][1].copy()
+                routed = body.pop("prompt_cache_key", None)
+                assert bool(routed) == (arm == "key_supplied")
+                comparable = json.dumps(body, sort_keys=True).encode()
+                observations.append(
+                    Observation(
+                        arm=arm,
+                        sequence=sequence,
+                        scope="fixture-scope",
+                        model=body["model"],
+                        request_sha256=hashlib.sha256(comparable).hexdigest(),
+                        request_id=f"chatcmpl-fixture-{len(requests)}",
+                        source="fixture",
+                        input_tokens=usage["input_tokens"],
+                        cached_input_tokens=usage.get("input_token_details", {}).get(
+                            "cache_read", 0
+                        ),
+                        ttft_ms=Decimal(first_token - start) / 1_000_000,
+                    )
+                )
+    report = compare(observations, Decimal("1"), Decimal("0.5"))
+    assert report["pairs"] == 30
+    assert report["verdict"] == "fixture_only"
+    assert report["reconciled_mean_input_cost_change_pct"] is None
+    assert report["estimated_mean_input_cost_change_pct"] == Decimal(-100) / 6
