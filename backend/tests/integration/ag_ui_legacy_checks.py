@@ -18,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app import database
 from app.agent_runtime import checkpointer, langgraph_agent_stream_runner
+from app.agent_runtime.e2e_scripted_model import E2EScriptedChatModel
+from app.agent_runtime.model_provider_registry import PROVIDER_MAP
 from app.agent_runtime.runtime import usage_guard
 from app.agent_runtime.runtime_config import AgentConfig
 from app.auth.cookies import ACTIVE_ORG_COOKIE
@@ -78,6 +80,8 @@ async def assert_standard_resume(
     ):
         monkeypatch.setattr(module, "async_session", case.db)
     monkeypatch.setattr(settings, "e2e_scripted_model_enabled", True)
+    # The registry is initialized during collection, before this scoped setting takes effect.
+    monkeypatch.setitem(PROVIDER_MAP, "e2e_scripted", E2EScriptedChatModel)
     monkeypatch.setattr(settings, "prepared_run_lease_enabled", False)
     effects: list[str] = []
     async with AsyncPostgresSaver.from_conn_string(case.dsn) as saver:

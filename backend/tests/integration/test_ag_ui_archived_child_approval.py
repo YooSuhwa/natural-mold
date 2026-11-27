@@ -29,6 +29,7 @@ from sqlalchemy.engine import make_url
 
 from app.agent_runtime import checkpointer
 from app.agent_runtime.protocol_redaction import REDACTED_SENSITIVE_FIELD
+from app.approvals import service as approvals
 from app.dependencies import CurrentUser
 from app.exceptions import ConflictError
 from app.models.agent import Agent
@@ -44,7 +45,16 @@ from tests.integration.ag_ui_legacy_checks import OldRun, assert_standard_resume
 from tests.integration.test_conversation_queue_concurrency import _postgres_session_factory
 
 pytestmark = pytest.mark.integration
-_ARCHIVE = Path(__file__).parents[1] / "fixtures/ag_ui_v1/legacy_delegated_hitl_032.json.gz"
+_ARCHIVE_DIR = Path(__file__).parents[1] / "fixtures/ag_ui_v1"
+_CHECKPOINT_ONLY = (
+    "legacy_delegated_hitl_032.json.gz",
+    "e33fcab4c15017b619a7b4dad90d2a1771d4a154bb3b0d7635dffe32a45f49a9",
+)
+_RECORDED = (
+    "legacy_delegated_hitl_recorded_032.json.gz",
+    "484a1d26bfa36ccc4cad7b86918d2d58906aa28a67827673bba820db4231c64d",
+)
+_JOURNAL_TABLES = ("message_events", "message_event_chunks", "approval_requests")
 _TABLES = (
     "models",
     "agents",
@@ -52,6 +62,7 @@ _TABLES = (
     "conversations",
     "conversation_runs",
     "conversation_run_agents",
+    *_JOURNAL_TABLES,
     "checkpoints",
     "checkpoint_blobs",
     "checkpoint_writes",
@@ -62,7 +73,9 @@ async def _restore_rows(connection: psycopg.AsyncConnection[Any], archive: dict[
     # The original writer predates some current columns. Insert exactly the old
     # columns, allowing ordinary PostgreSQL migration defaults to populate newer ones.
     for table in _TABLES:
-        rows = archive[table]
+        rows = archive.get(table)
+        if not rows and table in _JOURNAL_TABLES:
+            continue
         assert rows, f"Missing old rows for {table}"
         columns = list(rows[0])
         assert all(set(row) == set(columns) for row in rows)
@@ -77,22 +90,25 @@ async def _restore_rows(connection: psycopg.AsyncConnection[Any], archive: dict[
 
 
 @asynccontextmanager
-async def _archived_run() -> AsyncIterator[OldRun]:
-    with gzip.open(_ARCHIVE, "rt", encoding="utf-8") as stream:
+async def _archived_run(*, recorded: bool = False) -> AsyncIterator[OldRun]:
+    filename, expected_digest = _RECORDED if recorded else _CHECKPOINT_ONLY
+    with gzip.open(_ARCHIVE_DIR / filename, "rt", encoding="utf-8") as stream:
         archive = json.load(stream)
     tables = archive["tables"]
     encoded = json.dumps(tables, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
-    assert hashlib.sha256(encoded).hexdigest() == archive["tablesSha256"]
+    assert hashlib.sha256(encoded).hexdigest() == archive["tablesSha256"] == expected_digest
     assert archive["source"]["deepagents"] == "0.7.32"
     assert archive["source"]["langgraph"] == "1.2.19"
     assert archive["source"]["commit"] == "631ae500aa73efcd3897f906799725faeba5a999"
-    assert (
-        archive["tablesSha256"]
-        == "e33fcab4c15017b619a7b4dad90d2a1771d4a154bb3b0d7635dffe32a45f49a9"
-    )
     assert archive["v3"]["accepted"] and archive["v3"]["effects"] == 1
     assert archive["v3"]["pending"] == 0
-    assert not tables.get("approval_requests") and not tables.get("message_events")
+    if recorded:
+        assert len(tables["approval_requests"]) == archive["paused"]["approvalRows"] == 1
+        assert tables["message_events"] and tables["message_event_chunks"]
+        assert archive["paused"]["journalEvents"] > 0
+        assert tables["approval_requests"][0]["interrupt_id"] == archive["issued"]["interruptId"]
+    else:
+        assert not any(tables.get(t) for t in _JOURNAL_TABLES)
     scope = archive["scope"]
     owner = UUID(scope["userId"])
     context = unit_context(owner)
@@ -149,6 +165,34 @@ async def _archived_run() -> AsyncIterator[OldRun]:
                     await db.execute(delete(User).where(User.id == owner))
     finally:
         await engine.dispose()
+
+
+@pytest.fixture
+async def old_run(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[OldRun]:
+    """Use the exact persisted waiting approval, including its original decision deadline."""
+    assert request.param == ("retained", "recorded")
+    async with _archived_run(recorded=True) as case:
+        async with case.db() as db:
+            approval = (
+                await db.scalars(
+                    select(ApprovalRequest).where(ApprovalRequest.run_id == case.run_id)
+                )
+            ).one()
+            assert (
+                approval.status == "pending" and approval.interrupt_id == case.issued["interruptId"]
+            )
+            created, expires = (
+                approvals.aware(approval.created_at),
+                approvals.aware(approval.expires_at),
+            )
+            assert created < expires
+        # Exercise an actual still-open historical slot at its recorded time. Re-running
+        # the suite years later must neither edit the persisted TTL nor expire the fixture.
+        waiting = created + (expires - created) / 2
+        monkeypatch.setattr(approvals, "now", lambda: waiting)
+        yield case
 
 
 async def _deny_unselected_branch(case: OldRun, patch: pytest.MonkeyPatch) -> None:

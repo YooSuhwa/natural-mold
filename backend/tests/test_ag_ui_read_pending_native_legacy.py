@@ -26,8 +26,8 @@ from app.services import conversation_stream_service
 from app.services.ag_ui_read_pending import read_proven_interrupts
 from tests.authz.unit_scope_fixture import unit_context
 from tests.integration.ag_ui_legacy_checks import OldRun
-from tests.integration.ag_ui_legacy_live import old_run as old_run
 from tests.integration.test_ag_ui_archived_child_approval import _archived_run
+from tests.integration.test_ag_ui_archived_child_approval import old_run as old_run
 
 pytestmark = pytest.mark.integration
 

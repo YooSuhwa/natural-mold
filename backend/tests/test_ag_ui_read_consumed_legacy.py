@@ -15,8 +15,8 @@ from app.models.ag_ui_command_receipt import AgUiCommandReceipt
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation_run import ConversationRun
 from tests.integration.ag_ui_legacy_checks import OldRun, assert_standard_resume
-from tests.integration.ag_ui_legacy_live import old_run as old_run
 from tests.integration.test_ag_ui_archived_child_approval import _archived_run
+from tests.integration.test_ag_ui_archived_child_approval import old_run as old_run
 from tests.test_ag_ui_read_pending_native_legacy import _read_public_views, _reader_client
 
 pytestmark = pytest.mark.integration
