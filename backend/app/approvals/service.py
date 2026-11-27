@@ -32,7 +32,9 @@ from app.authz.audit_actions import (
     APPROVAL_EXPIRED,
     APPROVAL_REQUESTED,
 )
+from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_locks import lock_query
 from app.config import settings
 from app.models.approval_request import ApprovalRequest
 from app.models.conversation_run import ConversationRun
@@ -185,9 +187,13 @@ async def record_pending(
     # Multiple inbox, worker and recovery producers share (run, interrupt) keys.
     # Serialize before looking for existing rows so unrelated new approvals in
     # the same checkpoint are not rolled back by a duplicate insert.
-    await db.execute(
-        select(ConversationRun.id).where(ConversationRun.id == run.id).with_for_update()
+    locked_run = await lock_query(
+        db,
+        LockClass.RUN,
+        select(ConversationRun).where(ConversationRun.id == run.id).with_for_update(),
     )
+    if locked_run is None:
+        return []
     secrets = list(secret_values) if secret_values is not None else None
     displays = await recorded_approval_displays(db, run) if secrets is None else {}
     parent = await _inherited(db, run) if run.parent_run_id is not None else None
