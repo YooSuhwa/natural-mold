@@ -16,10 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import delegated_child_control
 from app.agent_runtime.identity import make_agent_runtime_name
-from app.authz import child_task_authorization, child_tasks_api
+from app.authz import child_task_authorization
 from app.authz.org_context import OrgContext
 from app.exceptions import AppError
 from app.models.agent_subagent import AgentSubAgentLink
+from app.services import child_tasks_api
 from app.tenancy.checkpoint_audit import run_configurable
 from tests.authz.authz_service_testkit import RecordingClient, service
 from tests.authz.test_child_followup_runtime import (
