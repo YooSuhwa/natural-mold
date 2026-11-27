@@ -175,9 +175,13 @@ class PublicActivities:
     """One instance per run. Only allowlisted content ever enters the public transcript."""
 
     def __init__(
-        self, *, readable_artifact_versions: frozenset[tuple[str, str]] = frozenset()
+        self,
+        *,
+        readable_artifact_versions: frozenset[tuple[str, str]] = frozenset(),
+        readable_widget_bindings: frozenset[tuple[str, str]] | None = None,
     ) -> None:
         self._readable_versions = readable_artifact_versions
+        self._readable_widget_bindings = readable_widget_bindings or frozenset()
         self._usage = RunUsage()
         self._visible_messages: set[tuple[str | None, str]] = set()
         self._snapshots: dict[str, dict[str, Any]] = {}
@@ -243,7 +247,12 @@ class PublicActivities:
                     event_id=event["id"],
                 )
             pointer = widget_pointer(event)
-            if not pointer or not public_tool_call_id:
+            if (
+                not pointer
+                or not public_tool_call_id
+                or (pointer["tool_call_id"], pointer["binding_id"])
+                not in self._readable_widget_bindings
+            ):
                 return []
             name, content = "mcp_app", pointer
         else:
