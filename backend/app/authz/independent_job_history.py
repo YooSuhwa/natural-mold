@@ -30,7 +30,7 @@ from app.models.user import User
 def job_history_candidates(
     context: OrgContext,
     authz: AuthzService,
-) -> Select[tuple[UUID, UUID, UUID, UUID, str, UUID, UUID]]:
+) -> Select[tuple[UUID, UUID, UUID, UUID, str, UUID, UUID, str]]:
     child = aliased(Conversation)
     parent_agent, child_agent = aliased(Agent), aliased(Agent)
     membership = (
@@ -55,6 +55,7 @@ def job_history_candidates(
             parent_agent.identity_mode,
             parent_agent.user_id.label("parent_owner"),
             child_agent.user_id.label("child_owner"),
+            child_agent.identity_mode.label("child_identity"),
         )
         .select_from(IndependentChatJob)
         .join(Conversation, Conversation.id == IndependentChatJob.parent_conversation_id)
@@ -118,13 +119,27 @@ async def readable_job_conversations(
     if job_ids is not None and not job_ids or conversation_ids is not None and not conversation_ids:
         return {}
     engine = authz or current_authz()
-    candidates = job_history_candidates(context, engine).subquery()
-    query = select(candidates)
+    candidates = (
+        job_history_candidates(context, engine)
+        .add_columns(
+            IndependentChatJob.parent_conversation_id,
+            IndependentChatJob.parent_run_id,
+            IndependentChatJob.child_run_id,
+            AgentSubAgentLink.created_at.label("link_created_at"),
+            AgentSubAgentLink.delegated_by,
+            select(Organization.authz_epoch)
+            .where(Organization.id == context.org_id)
+            .scalar_subquery()
+            .label("authz_epoch"),
+        )
+        .subquery()
+    )
+    query = select(candidates).execution_options(autoflush=False)
     if job_ids is not None:
         query = query.where(candidates.c.job_id.in_(job_ids))
     if conversation_ids is not None:
         query = query.where(candidates.c.conversation_id.in_(conversation_ids))
-    rows = (await db.execute(query.execution_options(autoflush=False))).all()
+    rows = (await db.execute(query)).all()
     if not rows or not engine.enforces("agent"):
         return {r.job_id: r.conversation_id for r in rows}
 
@@ -134,7 +149,11 @@ async def readable_job_conversations(
         )
         allowed = set(
             await engine.filter_visible(
-                Principal.for_user(context), "can_run", requested, legacy=[]
+                Principal.for_user(context),
+                "can_run",
+                requested,
+                legacy=[],
+                consistency="HIGHER_CONSISTENCY",
             )
         )
         eligible = [
@@ -153,10 +172,16 @@ async def readable_job_conversations(
                 "agent", parent_id, context.org_id, "CHAT", acting_user_id=context.user_id
             )
             delegated[parent_id] = set(
-                await engine.filter_visible(principal, "can_run", sorted(targets), legacy=[])
+                await engine.filter_visible(
+                    principal,
+                    "can_run",
+                    sorted(targets),
+                    legacy=[],
+                    consistency="HIGHER_CONSISTENCY",
+                )
             )
-        return {
-            r.job_id: r.conversation_id
+        authorized = {
+            r
             for r in eligible
             if (
                 r.identity_mode != AGENT_IDENTITY_FIXED
@@ -168,3 +193,10 @@ async def readable_job_conversations(
         if propagate_outage:
             raise
         return {}
+
+    if not authorized:
+        return {}
+    # The local membership, origin, delegation or organization policy can change
+    # while checking OpenFGA. Only return rows proved against the same bindings.
+    current = await db.execute(query.where(candidates.c.job_id.in_([r.job_id for r in authorized])))
+    return {r.job_id: r.conversation_id for r in current if r in authorized}
