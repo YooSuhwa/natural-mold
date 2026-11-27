@@ -31076,6 +31076,62 @@
       "title": "AdminTenantDetail",
       "type": "object"
     },
+    "AgUiApprovalDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "actionIndex": {
+          "minimum": 0.0,
+          "title": "Actionindex",
+          "type": "integer"
+        },
+        "decision": {
+          "enum": [
+            "approve",
+            "edit",
+            "reject"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "interruptId": {
+          "title": "Interruptid",
+          "type": "string"
+        },
+        "messageId": {
+          "title": "Messageid",
+          "type": "string"
+        },
+        "physicalRunId": {
+          "title": "Physicalrunid",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCallId": {
+          "title": "Toolcallid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "messageId",
+        "toolCallId",
+        "physicalRunId",
+        "interruptId",
+        "actionIndex",
+        "decision"
+      ],
+      "title": "AgUiApprovalDecision",
+      "type": "object"
+    },
     "AgUiSnapshot": {
       "additionalProperties": false,
       "properties": {
@@ -31100,6 +31156,13 @@
             }
           ],
           "title": "Activetipmessageid"
+        },
+        "approvalDecisions": {
+          "items": {
+            "$ref": "#/components/schemas/AgUiApprovalDecision"
+          },
+          "title": "Approvaldecisions",
+          "type": "array"
         },
         "checkpointId": {
           "anyOf": [
