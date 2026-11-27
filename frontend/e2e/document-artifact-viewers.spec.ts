@@ -197,6 +197,9 @@ async function sendMessage(page: Page, text: string): Promise<void> {
   await expect(composer).toBeVisible({ timeout: UI_TIMEOUT_MS })
   await expect(composer).toBeEnabled({ timeout: UI_TIMEOUT_MS })
   await composer.fill(text)
+  await expect(page.getByRole('button', { name: /^(전송|Send)$/, exact: true })).toBeEnabled({
+    timeout: UI_TIMEOUT_MS,
+  })
   await composer.press('Enter')
 }
 
