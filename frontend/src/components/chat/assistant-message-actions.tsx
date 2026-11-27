@@ -18,6 +18,7 @@ import { copyTextToClipboard, getMessageCopyText } from '@/components/chat/messa
 import { reportClientWarning } from '@/lib/logging/client-logger'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { PinConversationSummaryButton } from '@/components/chat/pin-conversation-summary-button'
+import { PartialStreamRecovery } from '@/components/chat/partial-stream-recovery'
 import {
   FailedMessageRetryButton,
   useFailedMessageRetryAction,
@@ -156,6 +157,9 @@ export function RetryButton() {
     </>
   )
   if (retryResolution.kind === 'unavailable') return null
+  if (retryResolution.kind === 'partial') {
+    return <PartialStreamRecovery output={retryResolution.output} />
+  }
   if (retryResolution.kind === 'available') {
     return (
       <FailedMessageRetryButton

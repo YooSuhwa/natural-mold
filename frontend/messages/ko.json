@@ -2779,6 +2779,7 @@
         "recovery_authority_revoked": "이 작업을 계속할 권한이 없어 실행을 멈췄어요.",
         "recovery_launch_failed": "저장된 작업을 다시 시작할 수 없어 실행을 멈췄어요."
       },
+      "partialModelStream": "답변이 중간에 멈췄습니다.",
       "runFailed": "요청을 처리하지 못했어요. 다시 시도해 주세요.",
       "interruptStateLost": "응답이 일시정지되었지만 상세 정보를 불러올 수 없습니다. 새로고침해 주세요.",
       "conversationList": "대화 목록",
@@ -2883,6 +2884,16 @@
       "pinSummary": "대화 요약으로 고정",
       "unpinSummary": "대화 요약 고정 해제",
       "retry": "다시 시도",
+      "partialStream": {
+        "record": "중단 전 기록",
+        "tool": "{name} · {state}",
+        "started": "호출 시작, 결과 미확인",
+        "completed": "도구 응답 수신",
+        "unknown": "결과 미확인",
+        "truncated": "저장된 기록 중 일부만 표시합니다.",
+        "continue": "이어서 작성",
+        "instruction": "아래는 이전 응답이 멈추기 전에 저장된 기록입니다. 확인된 내용으로 남은 설명을 이어 써 주세요. 이미 시도한 도구는 다시 호출하지 말고, 결과를 알 수 없는 작업은 확인이 필요하다고 표시해 주세요."
+      },
       "feedbackUp": "도움이 됨",
       "feedbackDown": "도움이 안 됨",
       "attach": "파일 첨부",

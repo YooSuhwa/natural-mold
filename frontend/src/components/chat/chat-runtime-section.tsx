@@ -31,6 +31,7 @@ import {
 import { HiTLContext, type HiTLContextValue } from '@/lib/chat/hitl-context'
 import { ALL_DATA_UI } from '@/lib/chat/data-ui'
 import { ALL_TOOLKIT, createMoldyChatTools } from '@/lib/chat/tool-ui-registry'
+import type { PartialModelOutput } from '@/lib/chat/langgraph-runtime/partial-model-output'
 import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
 import type { User } from '@/lib/types/user'
 import type { StreamChatOptions } from '@/lib/sse/stream-chat'
@@ -255,24 +256,33 @@ function LegacyRuntimeSection({
   threadProps,
   totalCost,
 }: LegacyRuntimeSectionProps) {
-  const { runtime, onResumeDecisions, registerDecision } = useChatRuntime({
-    messages,
-    totalCost,
-    streamFn,
-    onStreamEnd,
-    conversationId: activeConversationId ?? undefined,
-    feedbackAdapter,
-    attachmentAdapter,
-    dictationAdapter,
-    activeRun,
-    latestRun,
-  })
+  const { runtime, onResumeDecisions, registerDecision, partialFailedRunId, partialOutput } =
+    useChatRuntime({
+      messages,
+      totalCost,
+      streamFn,
+      onStreamEnd,
+      conversationId: activeConversationId ?? undefined,
+      feedbackAdapter,
+      attachmentAdapter,
+      dictationAdapter,
+      activeRun,
+      latestRun,
+    })
   const hitlValue = useMemo(
     () => ({ onResumeDecisions, registerDecision }),
     [onResumeDecisions, registerDecision],
   )
 
-  return <RuntimeFrame hitlValue={hitlValue} runtime={runtime} threadProps={threadProps} />
+  return (
+    <RuntimeFrame
+      hitlValue={hitlValue}
+      runtime={runtime}
+      threadProps={threadProps}
+      failedRunId={partialFailedRunId}
+      partialOutput={partialOutput}
+    />
+  )
 }
 
 interface LangGraphRuntimeSectionProps {
@@ -363,6 +373,7 @@ function LangGraphRuntimeSection({
         runtime={assistantRuntime}
         messageQueue={messageQueue}
         retryFailedInput={retryFailedInput}
+        partialOutput={threadRunNotice?.partialOutput}
         failedRunId={
           threadRunNotice?.status === 'failed' &&
           threadRunNotice.recoveryError !== 'recovery_effect_unconfirmed'
@@ -382,6 +393,7 @@ interface RuntimeFrameProps {
   readonly hitlValue: HiTLContextValue
   readonly runtime: AssistantRuntime
   readonly failedRunId?: string
+  readonly partialOutput?: PartialModelOutput | null
   readonly messageQueue?: ServerMessageQueueController
   readonly retryFailedInput?: (input: ConversationRunInput) => Promise<void>
   readonly subagentStream?: AnyStream | null
@@ -392,6 +404,7 @@ function RuntimeFrame({
   activities,
   deepAgentsState,
   failedRunId,
+  partialOutput,
   hitlValue,
   runtime,
   messageQueue,
@@ -413,7 +426,7 @@ function RuntimeFrame({
     operation?.kind === 'queued' || operation?.kind === 'applied' ? operation.inputId : null
   const retryLastFailedInput = useFailedInputRetryAction(
     queueSnapshot?.items ?? [],
-    failedRunId,
+    partialOutput === undefined ? failedRunId : undefined,
     retryFailedInput,
   )
   const { retryLastFailedRunId: _retryLastFailedRunId, ...assistantThreadProps } = threadProps
@@ -428,6 +441,7 @@ function RuntimeFrame({
         <FailedMessageRetryProvider
           value={{
             failedRunId,
+            partialOutput,
             retryAction: retryLastFailedInput,
           }}
         >
@@ -437,6 +451,7 @@ function RuntimeFrame({
               ...assistantThreadProps.commandActions,
               retryLastFailedInput,
             }}
+            retryLastFailedInput={retryLastFailedInput}
             resourceContextResetKey={queueAcceptanceKey ?? threadProps.resourceContextResetKey}
             activities={activities}
             dataUI={ALL_DATA_UI}

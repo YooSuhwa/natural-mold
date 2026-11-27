@@ -7,6 +7,7 @@ import {
   type BaseMessage,
   type BaseMessageLike,
 } from '@langchain/core/messages'
+import { parsePartialModelOutput, type PartialModelOutput } from './partial-model-output'
 import type { LangGraphInterruptLike } from './hitl-interrupts'
 import { isTerminalNoticeStatus, type TerminalNoticeStatus } from './terminal-notice'
 import type { Message as MoldyMessage, ToolCallInfo } from '@/lib/types'
@@ -17,6 +18,7 @@ export interface ThreadRunNotice {
   readonly status: TerminalNoticeStatus
   readonly errorMessage?: string
   readonly recoveryError?: RecoveryErrorCode
+  readonly partialOutput?: PartialModelOutput | null
 }
 
 export interface ReloadRunCorrelation {
@@ -67,19 +69,25 @@ export function terminalRunNoticeFromThreadState(state: unknown): ThreadRunNotic
   if (!isRecord(state)) return null
   const metadata = isRecord(state.metadata) ? state.metadata : {}
   const run = isRecord(metadata.latest_run) ? metadata.latest_run : null
-  return run ? terminalRunNotice(run) : null
+  return run ? terminalRunNotice(run, run.partial_output) : null
 }
 
-export function terminalRunNotice(run: {
-  id?: unknown
-  status?: unknown
-  error_code?: unknown
-  error_message?: unknown
-}): ThreadRunNotice | null {
+export function terminalRunNotice(
+  run: {
+    id?: unknown
+    status?: unknown
+    error_code?: unknown
+    error_message?: unknown
+  },
+  checkpointPartialOutput?: unknown,
+): ThreadRunNotice | null {
   const { id, status } = run
   if (typeof id !== 'string' || !isTerminalNoticeStatus(status)) return null
   const recoveryError = status === 'failed' ? recoveryErrorCode(run.error_code) : undefined
   if (recoveryError) return { id, status, recoveryError }
+  if (status === 'failed' && run.error_code === 'partial_model_stream') {
+    return { id, status, partialOutput: parsePartialModelOutput(checkpointPartialOutput) }
+  }
   const rawErrorMessage = run.error_message
   const errorMessage =
     status === 'failed' && typeof rawErrorMessage === 'string' && rawErrorMessage.trim()

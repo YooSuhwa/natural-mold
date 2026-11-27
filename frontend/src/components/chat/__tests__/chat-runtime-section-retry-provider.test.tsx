@@ -11,11 +11,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RetryButton } from '@/components/chat/assistant-message-actions'
 import { ChatRuntimeSection } from '@/components/chat/chat-runtime-section'
 import type { ConversationRunInput } from '@/lib/api/conversation-run-inputs'
+import { createChatCommands } from '@/lib/chat/commands/chat-command-catalog'
+import type { ChatCommandActions } from '@/lib/chat/commands/chat-command-types'
 import type { ThreadRunNotice } from '@/lib/chat/langgraph-runtime/stream-thread-state-projection'
 import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
+import ko from '../../../../messages/ko.json'
 import { render, screen } from '../../../../tests/test-utils'
 
 const mocks = vi.hoisted(() => ({
+  threadCommands: vi.fn<(actions: ChatCommandActions) => void>(),
   retryFailedInput: vi.fn<(input: ConversationRunInput) => Promise<void>>(),
   useMoldyLangGraphStream: vi.fn(),
 }))
@@ -64,7 +68,8 @@ vi.mock('@/lib/chat/langgraph-runtime/subagent-runtime', () => ({
 }))
 
 vi.mock('../assistant-thread', () => ({
-  AssistantThread: () => {
+  AssistantThread: ({ commandActions }: { commandActions: ChatCommandActions }) => {
+    mocks.threadCommands(commandActions)
     const message = fromThreadMessageLike(
       {
         id: 'moldy-failed-run-current',
@@ -257,6 +262,39 @@ describe('ChatRuntimeSection failed-message recovery provider', () => {
         }}
       />,
     )
+    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
+    expect(mocks.retryFailedInput).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    {
+      condition: 'an authorized partial result',
+      partialOutput: {
+        text: '확인된 결과',
+        tools: [{ name: 'send_mail', state: 'started' as const }],
+        truncated: false,
+      },
+    },
+    { condition: 'a partial failure with unavailable output', partialOutput: null },
+  ])('disables command and message retries for $condition', async ({ partialOutput }) => {
+    const { rerender } = render(<RetryProviderHarness terminalNotice={RUNTIME_FAILED_NOTICE} />)
+    const retryCommand = () => {
+      const actions = mocks.threadCommands.mock.lastCall?.[0]
+      if (!actions) throw new Error('ChatRuntimeSection must supply composer command actions')
+      return createChatCommands(actions, ko.chat.commands, ko.chat.commands.unavailable).find(
+        (command) => command.id === 'retry',
+      )
+    }
+    expect(retryCommand()?.availability.kind).toBe('enabled')
+
+    await act(async () => {
+      rerender(
+        <RetryProviderHarness terminalNotice={{ ...RUNTIME_FAILED_NOTICE, partialOutput }} />,
+      )
+    })
+    const command = retryCommand()
+    expect(command?.availability.kind).toBe('disabled')
+    await command?.execute('')
     expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
     expect(mocks.retryFailedInput).not.toHaveBeenCalled()
   })

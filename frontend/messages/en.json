@@ -2779,6 +2779,7 @@
         "recovery_authority_revoked": "The run stopped because permission to continue is no longer available.",
         "recovery_launch_failed": "The run stopped because the saved work could not restart."
       },
+      "partialModelStream": "The response stopped partway through.",
       "runFailed": "The request couldn't be completed. Please try again.",
       "interruptStateLost": "Interrupt State Lost",
       "conversationList": "Conversation List",
@@ -2883,6 +2884,16 @@
       "pinSummary": "Pin as conversation summary",
       "unpinSummary": "Unpin conversation summary",
       "retry": "Retry",
+      "partialStream": {
+        "record": "Saved before the interruption",
+        "tool": "{name} · {state}",
+        "started": "Call started, outcome unconfirmed",
+        "completed": "Tool returned",
+        "unknown": "Outcome unconfirmed",
+        "truncated": "Only part of the saved output is shown.",
+        "continue": "Draft a follow-up",
+        "instruction": "The following notes were saved before the response stopped. Continue the explanation using the confirmed information. Do not call any previously attempted tool again. Flag any action whose outcome needs confirmation."
+      },
       "feedbackUp": "Feedback Up",
       "feedbackDown": "Feedback Down",
       "attach": "Attach",

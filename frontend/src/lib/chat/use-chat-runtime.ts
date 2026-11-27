@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback, useMemo, useEffect } from 'react'
 import {
+  fromThreadMessageLike,
   useExternalStoreRuntime,
   useExternalMessageConverter,
   type DictationAdapter,
@@ -38,6 +39,7 @@ import {
 } from '@/lib/stores/chat-excluded-capabilities'
 import { EXCLUDED_CAPABILITIES_EVENT, parseExcludedCapabilities } from './excluded-capabilities'
 import { convertMessage, type MessageForRender } from './convert-message'
+import { useLegacyPartialOutput } from './use-legacy-partial-output'
 import { extractText } from './utils'
 import { streamResumeDecisions } from '@/lib/sse/stream-resume'
 import { streamEdit } from '@/lib/sse/stream-edit'
@@ -498,13 +500,25 @@ export function useChatRuntime({
       ? latestRun
       : null
 
+  const partialFailedRunId =
+    !isRunning &&
+    !isActiveRunStatus(activeRun?.status) &&
+    latestRun?.status === 'failed' &&
+    latestRun.conversation_id === conversationId &&
+    latestRun.error_code === 'partial_model_stream'
+      ? latestRun.id
+      : undefined
+  const verifiedPartial = useLegacyPartialOutput(conversationId, partialFailedRunId)
+  const partialOutput = partialFailedRunId ? verifiedPartial : undefined
+
   const allMessages = useMemo(() => {
     // 검색류 N개 그룹핑은 더 이상 메시지 사전변환(deep-research compaction)에
     // 의존하지 않는다 — 렌더 시점 `MessagePrimitive.GroupedParts`가 모든 표면에서
     // 일반화해 처리한다(Phase-2b). 여기서는 fetch/stream 병합만 한다.
     const merged: MessageForRender[] = mergeMessagesForRender({
       messages,
-      streamingMessages,
+      // Failed partial turns are displayed from the branch-proved, redacted snapshot.
+      streamingMessages: partialFailedRunId ? [] : streamingMessages,
       // eslint-disable-next-line react-hooks/refs -- merge needs the last committed snapshot without triggering renders.
       previousMessages: prevMessagesRef.current,
       isRunning,
@@ -536,7 +550,7 @@ export function useChatRuntime({
     }
     if (!durableCanceledRun) return merged
     return appendDurableCanceledNotice(merged, tPage('canceled'), durableCanceledRun)
-  }, [isRunning, messages, streamingMessages, durableCanceledRun, latestRun, conversationId, tPage])
+  }, [isRunning, messages, streamingMessages, partialFailedRunId, durableCanceledRun, latestRun, conversationId, tPage])
 
   const streamingUsageTotals = useMemo(
     () => sumMessageUsage(streamingMessages),
@@ -1479,8 +1493,26 @@ export function useChatRuntime({
     }
   }, [feedbackAdapter, attachmentAdapter, dictationAdapter])
 
+  const displayedMessages = useMemo(() => {
+    if (!partialFailedRunId || !partialOutput) return threadMessages
+    const id = `moldy-failed-${partialFailedRunId}`
+    // A display-only terminal notice. No partial tool call enters the application history.
+    return [
+      ...threadMessages,
+      fromThreadMessageLike(
+        {
+          id,
+          role: 'assistant',
+          content: tPage('partialModelStream'),
+          metadata: { custom: { terminalNotice: 'failed' } },
+        },
+        id,
+        { type: 'complete', reason: 'stop' },
+      ),
+    ]
+  }, [partialFailedRunId, partialOutput, tPage, threadMessages])
   const runtime = useExternalStoreRuntime({
-    messages: threadMessages,
+    messages: displayedMessages,
     isRunning,
     onNew,
     onEdit,
@@ -1503,5 +1535,12 @@ export function useChatRuntime({
     [streamFn, _runStream],
   )
 
-  return { runtime, onResumeDecisions, registerDecision, sendMessage }
+  return {
+    runtime,
+    onResumeDecisions,
+    registerDecision,
+    sendMessage,
+    partialFailedRunId,
+    partialOutput,
+  }
 }

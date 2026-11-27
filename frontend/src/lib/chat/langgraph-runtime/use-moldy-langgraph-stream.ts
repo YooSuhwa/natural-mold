@@ -12,6 +12,7 @@ import { useChannel, type Channel } from '@langchain/react'
 import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { reduceProtocolActivity } from './activity-protocol'
+import type { ThreadRunNotice } from './stream-thread-state-projection'
 import type { RunActivity } from './activity-model'
 import { selectDeepAgentsState } from './deepagents-state'
 import { refreshThreadLifecycleStream } from './lifecycle-subscription'
@@ -108,12 +109,13 @@ export function useMoldyLangGraphStream({
     postRunHydrationPending,
   } = reconciliation
   const { pendingSubmit: cachedPendingNewSubmit, clearPendingSubmit } = submitCheckpoint
-  const durableThreadRunNotice = useMemo(() => {
+  const durableThreadRunNotice = useMemo<ThreadRunNotice | null>(() => {
     const pendingSubmitMatchesLatestRun =
       cachedPendingNewSubmit !== null &&
       serverLatestRun !== null &&
       (cachedPendingNewSubmit.acceptedRunId === serverLatestRun.id ||
         cachedPendingNewSubmit.content === serverLatestRun.input_preview)
+    const latestNotice = serverLatestRun ? terminalRunNotice(serverLatestRun) : null
     if (
       threadRunNotice?.status === 'canceling' &&
       serverLatestRun &&
@@ -122,9 +124,17 @@ export function useMoldyLangGraphStream({
         serverLatestRun.status === 'stale' ||
         serverLatestRun.status === 'failed')
     ) {
-      return terminalRunNotice(serverLatestRun)
+      return latestNotice
     }
-    if (threadRunNotice) return threadRunNotice
+    if (threadRunNotice) {
+      if (threadRunNotice.id === latestNotice?.id && threadRunNotice.status === 'failed') {
+        if (latestNotice.recoveryError) return latestNotice
+        if (threadRunNotice.partialOutput === undefined && latestNotice.partialOutput === null) {
+          return latestNotice
+        }
+      }
+      return threadRunNotice
+    }
     if (
       stream.isLoading ||
       claimedQueueRunInFlight ||
@@ -134,7 +144,7 @@ export function useMoldyLangGraphStream({
     ) {
       return null
     }
-    return terminalRunNotice(serverLatestRun)
+    return latestNotice
   }, [
     cachedPendingNewSubmit,
     claimedQueueRunInFlight,
@@ -172,13 +182,15 @@ export function useMoldyLangGraphStream({
   })
   const terminalNoticeText = durableThreadRunNotice?.recoveryError
     ? tPage(`recovery.${durableThreadRunNotice.recoveryError}`)
-    : durableThreadRunNotice?.status === 'stale'
-      ? tReconnect('stale')
-      : durableThreadRunNotice?.status === 'failed'
-        ? (durableThreadRunNotice.errorMessage ?? tPage('runFailed'))
-        : durableThreadRunNotice?.status === 'canceling'
-          ? tPage('canceling')
-          : tPage('canceled')
+    : durableThreadRunNotice?.partialOutput !== undefined
+      ? tPage('partialModelStream')
+      : durableThreadRunNotice?.status === 'stale'
+        ? tReconnect('stale')
+        : durableThreadRunNotice?.status === 'failed'
+          ? (durableThreadRunNotice.errorMessage ?? tPage('runFailed'))
+          : durableThreadRunNotice?.status === 'canceling'
+            ? tPage('canceling')
+            : tPage('canceled')
   const runtimeMessages = useStreamRuntimeMessages({
     conversationId,
     stream,
