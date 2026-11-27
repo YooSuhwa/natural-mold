@@ -233,6 +233,65 @@ async def read_files(client: httpx.AsyncClient, cid: str) -> dict[str, dict[str,
     return versions
 
 
+async def read_pinned_goal_result(
+    stack: PairedStack,
+    goal_url: str,
+    goal: dict[str, Any],
+    conn: psycopg.AsyncConnection[Any],
+    artifacts: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    if goal.get("status") != "completed":
+        return None
+    # This experiment registers one quotation file. Follow the version on its
+    # completion receipt even when an artifact now exposes another current version.
+    evidence = goal["last_evidence"]
+    (check,) = evidence["checks"]
+    if not evidence["all_passed"] or not check["passed"]:
+        raise ValueError("completed goal has no passing evidence")
+    version_id = check["version_id"]
+    run_id = check["source_run_id"]
+    artifact_id = check["artifact_id"]
+    version_path = f"{goal_url}/artifacts/{artifact_id}/versions"
+    response = await stack.client.get(f"{version_path}/{version_id}/download")
+    data = response.raise_for_status().content
+    digest = _digest(data)
+    version = await (
+        await conn.execute(
+            """SELECT v.sha256, a.assistant_msg_id AS run_id FROM artifact_versions v
+                JOIN conversation_artifacts a ON a.id = v.artifact_id
+                WHERE v.id = %s AND a.id = %s""",
+            (version_id, artifact_id),
+        )
+    ).fetchone()
+    if (
+        not version
+        or version["run_id"] != run_id
+        or digest != check["sha256"]
+        or digest != version["sha256"]
+    ):
+        raise ValueError("pinned version bytes or producing run disagree with evidence")
+    text = data.decode("utf-8")
+    # Repaired cases produced another version on the first failed attempt. The
+    # same artifact URL must reject that unrelated version, despite common ownership.
+    unrelated = next(
+        (item["version_id"] for key, item in artifacts.items() if key != run_id),
+        None,
+    )
+    wrong_status = None
+    if unrelated is not None:
+        wrong_status = (await stack.client.get(f"{version_path}/{unrelated}/download")).status_code
+        if wrong_status != 404:
+            raise ValueError("artifact/version mismatch unexpectedly returned a result")
+    return {
+        "run_id": run_id,
+        "version_id": version_id,
+        "sha256": digest,
+        "csv_text": text,
+        "matches_reference": meets_task(text),
+        "wrong_version_control_status": wrong_status,
+    }
+
+
 async def execute_case(
     stack: PairedStack,
     active: dict[str, QuoteScript],
@@ -353,6 +412,7 @@ async def execute_case(
             for r in runs
         ],
         "projected_cost_usd": str(sum(costs, Decimal(0))) if None not in costs else None,
+        "pinned_goal_result": await read_pinned_goal_result(stack, goal_url, goal, conn, artifacts),
         "goal_status": goal.get("status"),
         "goal_blocked_reason": goal.get("blocked_reason"),
         "error": error,
