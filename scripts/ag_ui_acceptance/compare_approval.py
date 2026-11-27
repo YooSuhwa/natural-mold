@@ -17,6 +17,7 @@ from typing import Any
 
 import httpx
 from ag_ui.core import (
+    Event,
     RunAgentInput,
     RunFinishedEvent,
     RunFinishedInterruptOutcome,
@@ -27,7 +28,7 @@ from fastapi import FastAPI
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import START, MessagesState, StateGraph
 from langgraph.types import interrupt
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 
 class Decision(BaseModel):
@@ -59,8 +60,12 @@ class Capture:
         command = RunAgentInput.model_validate(request)
         if not frames:
             raise ValueError("expected a non-empty approval stream")
-        first = RunStartedEvent.model_validate(frames[0])
-        last = RunFinishedEvent.model_validate(frames[-1])
+        events = TypeAdapter(list[Event]).validate_python(frames)
+        first, last = events[0], events[-1]
+        if not isinstance(first, RunStartedEvent) or not isinstance(
+            last, RunFinishedEvent
+        ):
+            raise TypeError("approval capture must start and finish the submitted run")
         for event in (first, last):
             if (event.thread_id, event.run_id) != (command.thread_id, command.run_id):
                 raise ValueError("run events did not match the submitted input")
