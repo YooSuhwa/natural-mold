@@ -6,6 +6,7 @@ import { chatArtifactsAtom } from '@/lib/stores/chat-artifacts'
 import { chatRightRailAtom, chatRightRailWidthAtom } from '@/lib/stores/chat-right-rail'
 import type { ArtifactSummary } from '@/lib/types'
 import { ChatRightRail } from '../chat-right-rail'
+import * as childTasksApi from '@/lib/api/child-tasks'
 
 vi.mock('../artifact-panel-content', () => ({
   ArtifactPanelContent: () => <div data-testid="artifact-panel-content" />,
@@ -134,6 +135,70 @@ describe('ChatRightRail', () => {
         ? splitParentRect(splitParentWidth)
         : splitParentRect(0)
     })
+  })
+
+  it('drops scoped child details when the active conversation changes to a new draft', async () => {
+    const store = createStore()
+    const resultText = 'original conversation result'
+    const child: childTasksApi.ChildTask = {
+      id: 'child-id',
+      run_id: 'run-id',
+      tool_call_id: 'call-id',
+      role: 'researcher',
+      status: 'completed',
+      checkpointed: true,
+      created_at: '2026-11-27T01:00:00Z',
+      updated_at: '2026-11-27T01:01:00Z',
+      result: resultText,
+      instructions: [],
+    }
+    const list = vi.spyOn(childTasksApi, 'listChildTasks').mockResolvedValue({
+      items: [child],
+      next_offset: null,
+      enabled: true,
+      allow_legacy_details: false,
+    })
+    const detail = vi.spyOn(childTasksApi, 'getChildTask').mockResolvedValue(child)
+    const selection = {
+      mode: 'subagent' as const,
+      subagent: {
+        conversationId: 'conversation-1',
+        childTaskId: child.id,
+        toolCallId: child.tool_call_id,
+        agentName: child.role,
+      },
+    }
+    const rail = (id?: string | null) => (
+      <Provider store={store}>
+        <ChatRightRail conversationId={id} />
+      </Provider>
+    )
+
+    store.set(chatRightRailAtom, selection)
+    const original = render(rail('conversation-1'))
+    expect((await screen.findAllByText(resultText)).length).toBeGreaterThan(0)
+    original.unmount()
+    list.mockClear()
+    detail.mockClear()
+
+    const draft = render(rail(null))
+    expect(screen.queryByText(resultText)).not.toBeInTheDocument()
+    expect(store.get(chatRightRailAtom)).toEqual({ mode: 'none' })
+    expect(list).not.toHaveBeenCalled()
+    expect(detail).not.toHaveBeenCalled()
+    draft.unmount()
+
+    store.set(chatRightRailAtom, selection)
+    const other = render(rail('conversation-2'))
+    expect(store.get(chatRightRailAtom)).toEqual({ mode: 'none' })
+    expect(list).not.toHaveBeenCalled()
+    other.unmount()
+
+    store.set(chatRightRailAtom, selection)
+    render(rail())
+    expect((await screen.findAllByText(resultText)).length).toBeGreaterThan(0)
+    expect(list.mock.calls.every(([id]) => id === 'conversation-1')).toBe(true)
+    expect(detail.mock.calls.every(([id]) => id === 'conversation-1')).toBe(true)
   })
 
   it('uses the selected file name as the artifact preview title', () => {
