@@ -15,7 +15,7 @@ interface CompactionSummaryProps {
   readonly evidence?: CompactionEvidenceTarget
 }
 
-function HistoryEvidencePanel({ target }: { readonly target: CompactionEvidenceTarget }) {
+export function HistoryEvidencePanel({ target }: { readonly target: CompactionEvidenceTarget }) {
   const t = useTranslations('chat.compaction')
   const query = useConversationHistoryEvidence(target)
   if (query.isPending) return <p role="status">{t('loading')}</p>

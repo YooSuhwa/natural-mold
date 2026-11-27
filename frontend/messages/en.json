@@ -2944,6 +2944,8 @@
       }
     },
     "goal": {
+      "showHistoryEvidence": "View chat history for this result",
+      "hideHistoryEvidence": "Hide chat history for this result",
       "heading": "Conversation goal",
       "create": "Create goal",
       "edit": "Edit goal",

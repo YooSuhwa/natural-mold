@@ -44,9 +44,11 @@ from app.models.conversation import Conversation
 from app.services.conversation_archive_public_text import (
     ArchivePublicText,
     load_archive_public_text,
+    published_compaction,
 )
 from app.services.conversation_history_secrets import collect_strict_history_secrets
 from app.services.thread_branch_service import materialize_messages_at_checkpoint
+from app.tenancy.checkpoint_audit import checkpoint_tenant
 
 
 class EvidenceUnavailable(ValueError):
@@ -355,6 +357,90 @@ async def _introducing_checkpoint(
             break
         checkpoint = parent
     raise EvidenceUnavailable
+
+
+class RunHistoryReference(BaseModel):
+    source_run_id: UUID
+    checkpoint_id: str
+    history_id: str
+    cutoff_index: int
+
+
+async def run_history_reference(
+    db: AsyncSession,
+    conversation: Conversation,
+    context: OrgContext,
+    run_id: UUID,
+) -> RunHistoryReference | None:
+    """Resolve an immutable archive published by a particular verified producer.
+
+    Only the manifest is opened here. Opening the excerpts performs full content validation.
+    """
+    if conversation.agent_id is None:
+        return None
+    marker = await published_compaction(db, conversation, run_id)
+    if marker is None:
+        return None
+    owner = await db.scalar(
+        select(Agent.user_id).where(
+            Agent.id == conversation.agent_id, Agent.tenant_id == conversation.tenant_id
+        )
+    )
+    if owner is None:
+        return None
+    saver = await loaded_conversation_checkpointer(conversation, context, db=db)
+    thread_id = str(conversation.id)
+    config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
+    metadata = {
+        "moldy_run_id": str(run_id),
+        "source": "loop",
+        **checkpoint_tenant(context.tenant_id),
+    }
+    async for checkpoint in saver.alist(config, filter=metadata, limit=1):
+        returned = checkpoint.config.get("configurable", {})
+        if returned.get("thread_id") != thread_id or returned.get("checkpoint_ns") != "":
+            return None
+        if any(checkpoint.metadata.get(key) != value for key, value in metadata.items()):
+            return None
+        try:
+            parent_id, origin = await _introducing_checkpoint(saver, thread_id, checkpoint)
+            if any(origin.metadata.get(key) != value for key, value in metadata.items()):
+                return None
+            values = origin.checkpoint["channel_values"]
+            reference = _history_reference(values, conversation, owner)
+            if reference.kind != "jsonl":
+                return None
+            event = values["_summarization_event"]
+            cutoff = event.get("cutoff_index")
+            history_id = logical_offload_id(OffloadKind.HISTORY, event["file_path"])
+            checkpoint_id = origin.config.get("configurable", {}).get("checkpoint_id")
+            if (
+                type(cutoff) is not int
+                or cutoff <= 0
+                or (history_id, cutoff) != marker
+                or not isinstance(checkpoint_id, str)
+                or not checkpoint_id
+            ):
+                return None
+            valid = await asyncio.to_thread(
+                history_archive_checkpoint_matches,
+                runtime_data_dir(),
+                owner_id=str(conversation.user_id),
+                conversation_id=thread_id,
+                actor_id=conversation.agent_id,
+                leaf=reference.leaf,
+                checkpoint_id=parent_id,
+            )
+            if valid:
+                return RunHistoryReference(
+                    source_run_id=run_id,
+                    checkpoint_id=checkpoint_id,
+                    history_id=history_id,
+                    cutoff_index=cutoff,
+                )
+        except (EvidenceUnavailable, OffloadSecurityError, FileNotFoundError, ValidationError):
+            return None
+    return None
 
 
 async def read_history_evidence(

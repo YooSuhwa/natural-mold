@@ -8,7 +8,7 @@ export const conversationQueryKeys = {
     ['conversations', conversationId, 'steers', 'before', before] as const,
   historyEvidence: (
     conversationId: string,
-    messageId: string,
+    messageId: string | undefined,
     historyId: string,
     checkpointId?: string,
     cutoffIndex?: number,
@@ -17,7 +17,7 @@ export const conversationQueryKeys = {
       'conversations',
       conversationId,
       'history-evidence',
-      messageId,
+      messageId ?? null,
       historyId,
       checkpointId ?? null,
       cutoffIndex ?? null,

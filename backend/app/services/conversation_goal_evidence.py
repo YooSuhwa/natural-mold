@@ -24,6 +24,7 @@ from app.authz.scoping import private_scope_predicate
 from app.config import settings
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
+from app.models.conversation_goal import ConversationGoal
 from app.models.conversation_run import ConversationRun
 from app.schemas.conversation_goal_criteria import (
     CsvTableCriterion,
@@ -243,6 +244,42 @@ def _trusted_checks(previous_evidence: dict | None) -> dict[int, GoalEvidenceChe
         and entry.version_id
         and entry.sha256
     }
+
+
+async def verified_goal_history_run(
+    db: AsyncSession,
+    context: OrgContext,
+    goal: ConversationGoal,
+    version_id: UUID,
+) -> UUID | None:
+    """Resolve only a current verified check to its immutable artifact's producing run."""
+    receipts = _trusted_checks(goal.last_evidence)
+    for reference in receipts.values():
+        if reference.version_id != version_id or reference.source_run_id is None:
+            continue
+        run_id = reference.source_run_id
+        return await db.scalar(
+            select(ConversationRun.id)
+            .join(
+                ConversationArtifact,
+                ConversationArtifact.conversation_id == ConversationRun.conversation_id,
+            )
+            .join(ArtifactVersion, ArtifactVersion.artifact_id == ConversationArtifact.id)
+            .where(
+                private_scope_predicate(ConversationRun, context),
+                private_artifact_predicate(context),
+                ConversationRun.conversation_id == goal.conversation_id,
+                ConversationRun.id == run_id,
+                ConversationRun.status == "completed",
+                ConversationRun.is_active.is_(False),
+                ConversationArtifact.assistant_msg_id.in_((str(run_id), run_id.hex)),
+                ConversationArtifact.id == reference.artifact_id,
+                ConversationArtifact.status == "ready",
+                ArtifactVersion.id == version_id,
+                ArtifactVersion.sha256 == reference.sha256,
+            )
+        )
+    return None
 
 
 async def _prior_files(

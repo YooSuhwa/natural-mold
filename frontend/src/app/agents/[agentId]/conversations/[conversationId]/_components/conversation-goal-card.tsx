@@ -9,6 +9,7 @@ import { DialogShell } from '@/components/shared/dialog-shell'
 import { ApiError, API_BASE } from '@/lib/api/client'
 import { useConversationGoal, goalEvidenceDownloadPath } from '@/lib/hooks/use-conversation-goal'
 import type { ConversationGoal, GoalAction, GoalCriterion } from '@/lib/types/conversation-goal'
+import { GoalHistoryEvidence } from './goal-history-evidence'
 import { GoalCriterionForm, buildCriterion, criterionDraft } from './goal-criterion-form'
 
 function passedCheckLabel(criterion: GoalCriterion) {
@@ -33,6 +34,7 @@ interface GoalCardProps {
 
 export function ConversationGoalCard({ conversationId, onCreating, onCreated }: GoalCardProps) {
   const t = useTranslations('chat.goal')
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [validationError, setValidationError] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
@@ -147,6 +149,7 @@ export function ConversationGoalCard({ conversationId, onCreating, onCreated }: 
         <details
           className="moldy-muted-panel max-h-64 overflow-y-auto px-3 py-2 text-sm"
           ref={detailsRef}
+          onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
         >
           <summary className="cursor-pointer break-words font-medium">
             <TargetIcon className="mx-1 inline size-4 text-primary-strong" aria-hidden="true" />
@@ -167,6 +170,27 @@ export function ConversationGoalCard({ conversationId, onCreating, onCreated }: 
                 (entry) => entry.criterion_index === index,
               )
               const reason = check?.reason
+              const historyReceipt =
+                detailsOpen &&
+                criterion.kind !== 'manual' &&
+                check?.passed &&
+                check.reason === 'verified' &&
+                check.logical_path === criterion.logical_path &&
+                check.artifact_id &&
+                check.version_id &&
+                check.source_run_id &&
+                typeof check.sha256 === 'string' &&
+                /^[0-9a-f]{64}$/.test(check.sha256)
+                  ? {
+                      conversationId,
+                      goalId: goal.id,
+                      goalVersion: goal.version,
+                      artifactId: check.artifact_id,
+                      versionId: check.version_id,
+                      producingRunId: check.source_run_id,
+                      sha256: check.sha256,
+                    }
+                  : null
               return (
                 <li key={index} className="break-words">
                   <p>
@@ -221,6 +245,9 @@ export function ConversationGoalCard({ conversationId, onCreating, onCreated }: 
                         {t('evidence', { path: check.logical_path, version: check.version_number })}
                       </a>
                     )}
+                  {historyReceipt && (
+                    <GoalHistoryEvidence key={JSON.stringify(historyReceipt)} {...historyReceipt} />
+                  )}
                 </li>
               )
             })}

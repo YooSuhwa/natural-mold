@@ -18,6 +18,7 @@ export interface GoalEvidenceCheck {
   criterion_index: number
   passed: boolean
   reason: string
+  source_run_id?: string | null
   artifact_id: string | null
   version_id: string | null
   version_number: number | null
@@ -46,4 +47,14 @@ export interface SaveGoalInput {
   expected_revision: number
   title: string
   criteria: GoalCriterion[]
+}
+
+export interface GoalHistoryReceipt {
+  conversationId: string
+  goalId: string
+  goalVersion: number
+  artifactId: string
+  versionId: string
+  producingRunId: string
+  sha256: string
 }

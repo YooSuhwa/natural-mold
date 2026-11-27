@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal
+from uuid import UUID
 
 from sqlalchemy import JSON, String, cast, column, func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
+from sqlalchemy.sql.selectable import TableValuedAlias
 
 from app.agent_runtime.protocol_redaction import REDACTED_SENSITIVE_FIELD
 from app.models.conversation import Conversation
@@ -62,6 +64,62 @@ def _scope(conversation: Conversation) -> tuple:
     )
 
 
+def _event_items(
+    db: AsyncSession, source: type[MessageEvent] | type[MessageEventChunk]
+) -> TableValuedAlias:
+    expand = func.json_each if db.get_bind().dialect.name == "sqlite" else func.json_array_elements
+    return expand(source.events).table_valued(column("value", JSON))
+
+
+async def published_compaction(
+    db: AsyncSession, conversation: Conversation, run_id: UUID
+) -> tuple[str, int] | None:
+    """Read the last root completion marker actually published for this turn.
+
+    A checkpoint carrying the same run tag alone cannot distinguish a replay on a fork.
+    Filter the two persisted event stores before loading any payload into memory.
+    """
+    matches: list[tuple[int, str, int]] = []
+    for source in (MessageEvent, MessageEventChunk):
+        elements = _event_items(db, source)
+        event = elements.c.value
+        data = event["data"]
+        payload = data["payload"]
+        seq = event["seq"].as_integer().label("sequence")
+        statement = (
+            select(seq, payload["history_id"].as_string(), payload["cutoff_index"].as_integer())
+            .select_from(source)
+            .join(elements, true())
+            .where(
+                source.conversation_id == conversation.id,
+                source.assistant_msg_id.in_((str(run_id), run_id.hex)),
+                event["thread_id"].as_string() == str(conversation.id),
+                event["run_id"].as_string() == source.assistant_msg_id,
+                event["method"].as_string() == "custom",
+                event["namespace"].as_string() == "[]",
+                data["name"].as_string() == "moldy.compaction",
+                payload["state"].as_string() == "done",
+            )
+            .distinct()
+            .order_by(seq.desc())
+            .limit(2)
+        )
+        for sequence, history_id, cutoff in await db.execute(statement):
+            if (
+                type(sequence) is not int
+                or not isinstance(history_id, str)
+                or type(cutoff) is not int
+            ):
+                return None
+            matches.append((sequence, history_id, cutoff))
+    if not matches:
+        return None
+    last = max(matches, key=lambda item: item[0])
+    if any(item[0] == last[0] and item != last for item in matches):
+        return None
+    return last[1], last[2]
+
+
 def _boundaries(
     db: AsyncSession,
     conversation: Conversation,
@@ -69,8 +127,7 @@ def _boundaries(
 ) -> Select:
     # Filter on the database. Trace batches also contain tool bodies, many deltas
     # and checkpoints, none of which the evidence reader needs to load.
-    expand = func.json_each if db.get_bind().dialect.name == "sqlite" else func.json_array_elements
-    elements = expand(source.events).table_valued(column("value", JSON))
+    elements = _event_items(db, source)
     event = elements.c.value
     data = event["data"]
     metadata = data["metadata"]

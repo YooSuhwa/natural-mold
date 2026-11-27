@@ -1,13 +1,14 @@
 import { apiFetch } from '@/lib/api/client'
 import { loadServerCheckpointContext } from '@/lib/chat/langgraph-runtime/thread-state-checkpoints'
 
-export interface CompactionEvidenceTarget {
+export type CompactionEvidenceTarget = {
   readonly conversationId: string
-  readonly messageId: string
   readonly historyId: string
   readonly cutoffIndex?: number
-  readonly checkpointId?: string
-}
+} & (
+  | { readonly messageId: string; readonly checkpointId?: string }
+  | { readonly checkpointId: string; readonly messageId?: never }
+)
 
 export interface EvidenceCursor {
   readonly offset: number
@@ -36,9 +37,11 @@ export async function readCompactionEvidence(
   const checkpointId =
     cursor.checkpointId ??
     target.checkpointId ??
-    (await loadServerCheckpointContext(target.conversationId)).checkpointByMessageId.get(
-      target.messageId,
-    )
+    (target.messageId
+      ? (await loadServerCheckpointContext(target.conversationId)).checkpointByMessageId.get(
+          target.messageId,
+        )
+      : undefined)
   signal.throwIfAborted()
   if (!checkpointId) throw new Error('history_evidence_unavailable')
 

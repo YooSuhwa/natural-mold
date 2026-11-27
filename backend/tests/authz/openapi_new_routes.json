@@ -5985,6 +5985,88 @@
         ]
       }
     },
+    "/api/conversations/{conversation_id}/goal/evidence/{version_id}/history-reference": {
+      "get": {
+        "operationId": "read_goal_history_reference_api_conversations__conversation_id__goal_evidence__version_id__history_reference_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "goal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Goal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "goal_version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Goal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RunHistoryReference"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Read Goal History Reference Api Conversations  Conversation Id  Goal Evidence  Version Id  History Reference Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Goal History Reference",
+        "tags": [
+          "conversations",
+          "conversation-goals"
+        ]
+      }
+    },
     "/api/conversations/{conversation_id}/history": {
       "get": {
         "operationId": "get_conversation_history_api_conversations__conversation_id__history_get",
@@ -51602,6 +51684,35 @@
         "granted_at"
       ],
       "title": "RoleGrantView",
+      "type": "object"
+    },
+    "RunHistoryReference": {
+      "properties": {
+        "checkpoint_id": {
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "cutoff_index": {
+          "title": "Cutoff Index",
+          "type": "integer"
+        },
+        "history_id": {
+          "title": "History Id",
+          "type": "string"
+        },
+        "source_run_id": {
+          "format": "uuid",
+          "title": "Source Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_run_id",
+        "checkpoint_id",
+        "history_id",
+        "cutoff_index"
+      ],
+      "title": "RunHistoryReference",
       "type": "object"
     },
     "RunMetadata": {

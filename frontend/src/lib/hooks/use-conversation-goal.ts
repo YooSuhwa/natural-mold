@@ -4,13 +4,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   changeConversationGoal,
   getConversationGoal,
+  getGoalEvidenceHistoryReference,
   putConversationGoal,
 } from '@/lib/api/conversation-goals'
-import type { GoalAction, GoalEnvelope, SaveGoalInput } from '@/lib/types/conversation-goal'
+import type {
+  GoalAction,
+  GoalEnvelope,
+  GoalHistoryReceipt,
+  SaveGoalInput,
+} from '@/lib/types/conversation-goal'
 
 type GoalCommand = { save: SaveGoalInput } | { action: GoalAction; expected_revision: number }
 
 export const conversationGoalKeys = {
+  evidenceHistory: (receipt: GoalHistoryReceipt) =>
+    ['conversation-goal', receipt.conversationId, 'history', receipt] as const,
   detail: (conversationId: string) => ['conversation-goal', conversationId] as const,
 }
 
@@ -45,4 +53,20 @@ export function useConversationGoal(conversationId: string, onSuccess: () => voi
     onSettled: () => client.invalidateQueries({ queryKey: detailKey }),
   })
   return { query, mutation }
+}
+
+export function useGoalEvidenceHistoryReference(receipt: GoalHistoryReceipt) {
+  return useQuery({
+    queryKey: conversationGoalKeys.evidenceHistory(receipt),
+    queryFn: ({ signal }) =>
+      getGoalEvidenceHistoryReference(
+        receipt.conversationId,
+        receipt.goalId,
+        receipt.goalVersion,
+        receipt.versionId,
+        signal,
+      ),
+    gcTime: 0,
+    retry: false,
+  })
 }

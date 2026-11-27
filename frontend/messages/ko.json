@@ -2944,6 +2944,8 @@
       }
     },
     "goal": {
+      "showHistoryEvidence": "결과 생성 당시 대화 보기",
+      "hideHistoryEvidence": "대화 닫기",
       "heading": "대화 목표",
       "create": "목표 만들기",
       "edit": "목표 수정",

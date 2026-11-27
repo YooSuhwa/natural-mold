@@ -1,9 +1,10 @@
 """Private ordinary-chat goals and their immutable, authenticated result versions."""
 
+from typing import Annotated
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.conversation_agent_checks import bind_request_authz, require_agent_run
@@ -23,7 +24,10 @@ from app.schemas.conversation_goal import (
 )
 from app.services import artifact_service
 from app.services.artifact_service import ArtifactNotFoundError
-from app.services.conversation_goal_evidence import read_goal_evidence_version
+from app.services.conversation_goal_evidence import (
+    read_goal_evidence_version,
+    verified_goal_history_run,
+)
 from app.services.conversation_goal_service import (
     apply_goal_action,
     get_goal,
@@ -31,6 +35,7 @@ from app.services.conversation_goal_service import (
     ordinary_conversation,
     save_goal,
 )
+from app.services.conversation_history_evidence import RunHistoryReference, run_history_reference
 from app.services.conversation_run_queue_service import require_queue_executable
 
 router = APIRouter(prefix="/api/conversations/{conversation_id}/goal", tags=["conversation-goals"])
@@ -98,6 +103,33 @@ async def change_conversation_goal_state(
     result = _response(conversation, await apply_goal_action(db, conversation, payload))
     await db.commit()
     return result
+
+
+@router.get("/evidence/{version_id}/history-reference", response_model=RunHistoryReference | None)
+@authz_policy(PRIVATE("conversations", param="conversation_id"))
+async def read_goal_history_reference(
+    conversation_id: UUID,
+    version_id: UUID,
+    goal_id: UUID,
+    goal_version: Annotated[int, Query(ge=1)],
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    context: OrgContext = Depends(get_org_context),
+) -> RunHistoryReference | None:
+    response.headers["Cache-Control"] = "private, no-store"
+    conversation = await require_private_conversation(db, conversation_id, context)
+    goal = await get_goal(db, conversation)
+    if (
+        not ordinary_conversation(conversation)
+        or goal is None
+        or goal.id != goal_id
+        or goal.version != goal_version
+    ):
+        return None
+    source_run_id = await verified_goal_history_run(db, context, goal, version_id)
+    if source_run_id is None:
+        return None
+    return await run_history_reference(db, conversation, context, source_run_id)
 
 
 @router.get("/artifacts/{artifact_id}/versions/{version_id}/download")
