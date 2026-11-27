@@ -460,7 +460,7 @@ def build_agent_impl(
             )
     # A prepared task interceptor may execute a child without calling the next wrapper.
     # Put the goal restriction ahead of it and of application tool emulators in both graphs.
-    goal_checks = [item for item in compatible_middleware if isinstance(item, GoalRunMiddleware)]
+    goal_checks = [item for item in middleware or () if isinstance(item, GoalRunMiddleware)]
     if goal_checks:
         compatible_middleware = [
             *goal_checks,
