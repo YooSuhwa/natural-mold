@@ -28,6 +28,7 @@ IMAGE: Final = "postgres:16-alpine"
 QUEUE_CONCURRENCY_TARGETS: Final = (
     "tests/integration/test_conversation_queue_concurrency.py",
     "tests/integration/test_chat_steer_concurrency.py",
+    "tests/integration/test_steer_recovery.py",
     (
         "tests/test_chat_steer_checkpoint.py"
         "::test_new_process_recovers_consumed_receipt_and_leaves_prepared_row_unconfirmed"
