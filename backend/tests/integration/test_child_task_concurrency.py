@@ -16,6 +16,7 @@ from app.authz.org_context import OrgContext
 from app.config import settings
 from app.exceptions import ConflictError
 from app.models.agent import Agent
+from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation_child_task import ConversationChildInstruction
 from app.models.conversation_run import ConversationRun
@@ -102,20 +103,20 @@ async def children(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Children]:
             )
             await db.commit()
             run_id = await _accept(db, context, agent.id, conversation_id)
-            ids = []
+            ids: list[UUID] = []
             for call in ("first", "second"):
-                ids.append(
-                    await runtime.begin_child_task(
-                        db,
-                        context=context,
-                        conversation_id=conversation_id,
-                        run_id=run_id,
-                        tool_call_id=call,
-                        child_agent_id=target.id,
-                        role="research",
-                        checkpoint_ns=f"tools:{call}",
-                    )
+                child_id = await runtime.begin_child_task(
+                    db,
+                    context=context,
+                    conversation_id=conversation_id,
+                    run_id=run_id,
+                    tool_call_id=call,
+                    child_agent_id=target.id,
+                    role="research",
+                    checkpoint_ns=f"tools:{call}",
                 )
+                assert child_id is not None
+                ids.append(child_id)
                 await db.commit()
             yield Children(sessions, context, conversation_id, run_id, agent.id, target.id, *ids)
     finally:
@@ -312,7 +313,61 @@ async def test_parent_close_fences_late_instructions_and_settles_both_children(
                 late.cancel()
                 await asyncio.gather(late, return_exceptions=True)
     async with children.sessions() as db:
-        views = await api.list_child_tasks(db, children.conversation_id, children.context)
+        page = await api.list_child_tasks(db, children.conversation_id, children.context)
+        assert page.enabled and page.next_offset is None
+        views = page.items
         assert len(views) == 2 and all(row.status == "cancelled" for row in views)
         statuses = {receipt.id: receipt.status for row in views for receipt in row.instructions}
         assert statuses == {pending_id: "cancelled", attempted_id: "review_required"}
+
+
+async def test_approval_resume_cannot_add_child_control_to_untracked_run(
+    children: Children,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with children.sessions() as db:
+        current = await db.get(ConversationRun, children.run_id, with_for_update=True)
+        assert current is not None
+        await transition_run(db, current, "completed")
+        await db.commit()
+
+        # An untracked chat receives no child-control authority at acceptance.
+        monkeypatch.setattr(settings, "child_tasks_enabled", False)
+        untracked_id = await _accept(
+            db, children.context, children.agent_id, children.conversation_id
+        )
+        untracked = await db.get(ConversationRun, untracked_id, with_for_update=True)
+        assert untracked is not None
+        await transition_run(db, untracked, "interrupted", interrupt_id="approval")
+        await db.commit()
+
+        # Approval resumes the untracked parent even after administrators enable tracking.
+        monkeypatch.setattr(settings, "child_tasks_enabled", True)
+        resumed_id = await _accept(
+            db, children.context, children.agent_id, children.conversation_id, untracked_id
+        )
+        for run_id in (untracked_id, resumed_id):
+            modes = (
+                await db.scalars(
+                    select(ConversationRunAgent.identity_mode_at_accept).where(
+                        ConversationRunAgent.run_id == run_id
+                    )
+                )
+            ).all()
+            assert modes == [None, None]
+        assert (
+            await runtime.begin_child_task(
+                db,
+                context=children.context,
+                conversation_id=children.conversation_id,
+                run_id=resumed_id,
+                tool_call_id="untracked",
+                child_agent_id=children.child_agent_id,
+                role="research",
+                checkpoint_ns="tools:untracked",
+            )
+            is None
+        )
+        await db.commit()
+        page = await api.list_child_tasks(db, children.conversation_id, children.context)
+        assert all(item.run_id not in {untracked_id, resumed_id} for item in page.items)
