@@ -7,7 +7,7 @@ from app.config import settings
 from app.migrations.org_authz_v1.rls_policies import create_policy_sql, enable_sql, table_policy
 
 revision = "i42_research_search_usage"
-down_revision = "i39_skill_approval_default"
+down_revision = "i41_chat_goals"
 branch_labels = None
 depends_on = None
 

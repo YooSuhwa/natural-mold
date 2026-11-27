@@ -35,11 +35,11 @@ async def recover_conversation_queue() -> int:
         session_factory=facade_attr("_session_factory")(),
         protected_run_ids=tuple(registry.active_run_ids()),
     )
+    from app.services.conversation_goal_worker import recover_goal_attempts
+
     await recover_terminal_steers(
         facade_attr("_session_factory")(), facade_attr("_company_session")
     )
-    from app.services.conversation_goal_worker import recover_goal_attempts
-
     await recover_goal_attempts()
     async with facade_attr("_session_factory")()() as db:
         claimed_result = await db.execute(
