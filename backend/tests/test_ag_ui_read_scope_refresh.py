@@ -235,6 +235,28 @@ async def test_new_child_and_file_continue_live_after_identical_prefix(
     assert b"private caption" not in orjson.dumps(all_events)
 
 
+async def test_late_grant_delivers_newly_visible_tail_once(
+    db: AsyncSession,
+    child_case: ChildCase,
+) -> None:
+    turn = LiveTurn(db, child_case)
+    await turn.append(turn.message("already shown"), turn.file_notice())
+    stream = await turn.attach()
+    prefix = await _through(stream, "already shown")
+
+    # The file notification was committed in the initial batch while its version
+    # was unavailable. Granting it adds a suffix to the already rendered frame list.
+    await turn.grant_file()
+    await turn.finish()
+    remaining = [event async for event in stream]
+    cold = await turn.attach()
+    assert prefix + remaining == [event async for event in cold]
+    assert [
+        e["content"]["id"] for e in remaining if e.get("activityType") == "moldy.file_event"
+    ] == [str(turn.file_id)]
+    assert remaining[-1]["type"] == "RUN_FINISHED"
+
+
 async def test_new_grant_changes_already_read_prefix_and_requires_fresh_snapshot(
     db: AsyncSession,
     child_case: ChildCase,
