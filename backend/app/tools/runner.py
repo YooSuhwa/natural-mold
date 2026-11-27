@@ -29,7 +29,7 @@ from app.exceptions import ValidationError
 from app.models.tool import Tool
 from app.outbound.client import outbound_http_client
 from app.outbound.destination import CredentialDestination, bind_destination
-from app.services.research_search_policy import ResearchSearchActor
+from app.tenancy.limit_usage import Subject
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.execution_scope import ToolRunOptions, ToolRunTarget, load_execution_tool
 from app.tools.parameters import FieldDef
@@ -138,7 +138,7 @@ async def run_tool(
             parameters=validated,
             credentials=credentials,
             http_client=client,
-            search_actor=ResearchSearchActor(
+            search_actor=Subject(
                 tenant_id=target.context.tenant_id,
                 org_id=target.context.org_id,
                 user_id=target.context.user_id,

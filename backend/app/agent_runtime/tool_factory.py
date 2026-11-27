@@ -44,7 +44,7 @@ from app.outbound.destination import (
     bind_destination,
     guarded_destination,
 )
-from app.services.research_search_policy import ResearchSearchActor
+from app.tenancy.limit_usage import Subject
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.keys import ToolRef, attach_tool_ref, builtin_key, ref_from_config
 from app.tools.parameters import FieldKind
@@ -667,7 +667,7 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
     org_uuid = _safe_uuid(tool_config.get("org_id"))
     scope_user_uuid = _safe_uuid(tool_config.get("scope_user_id", user_uuid))
     search_actor = (
-        ResearchSearchActor(
+        Subject(
             tenant_id=tenant_uuid, org_id=org_uuid, user_id=scope_user_uuid, agent_id=agent_uuid
         )
         if tenant_uuid is not None and org_uuid is not None and scope_user_uuid is not None

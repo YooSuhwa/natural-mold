@@ -18,7 +18,7 @@ from app.tools.parameters import FieldDef
 from app.tools.risk import DecisionType, ToolRiskLevel, risk_metadata_dict
 
 if TYPE_CHECKING:
-    from app.services.research_search_policy import ResearchSearchActor
+    from app.tenancy.limit_usage import Subject
 
 
 @dataclass
@@ -36,7 +36,7 @@ class ToolRunContext:
     credentials: dict[str, Any] | None
     http_client: httpx.AsyncClient
     # Bound by the execution entry point, independently of persisted and model-supplied inputs.
-    search_actor: ResearchSearchActor | None = None
+    search_actor: Subject | None = None
 
 
 # A runner is a coroutine that performs the side-effect and returns an
