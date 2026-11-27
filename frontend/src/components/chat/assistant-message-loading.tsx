@@ -7,6 +7,7 @@ import { RunActivityStrip } from '@/components/chat/run-activity-strip'
 import { SubagentProgress } from '@/components/chat/subagent-progress'
 import { WittyLoadingMessage } from '@/components/chat/witty-loading'
 import { cn } from '@/lib/utils'
+import { useAgUiStateFiles } from '@/lib/ag-ui/activity-context'
 import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
 import type { DeepAgentsStateSnapshot } from '@/lib/chat/langgraph-runtime/deepagents-state'
 import { useSubagentProgressSummary } from '@/lib/chat/langgraph-runtime/subagent-runtime'
@@ -92,6 +93,7 @@ export function StreamingMessageLoadingIndicator({
   )
   const messageId = useAuiState((state) => state.message.id)
   const subagentProgress = useSubagentProgressSummary(subagentToolCallIds, messageId)
+  const agUiFiles = useAgUiStateFiles()
   if (!isStreamingMessage) return null
   const hasActivities = progressActivities.length > 0
   // Todos are owned by the assistant message's persistent "Plan" card
@@ -99,7 +101,8 @@ export function StreamingMessageLoadingIndicator({
   // has files — its live-only content. Gating on files (not all deep-agents
   // state) keeps the planning todos from rendering twice while a run streams,
   // and avoids an empty panel when only todos exist.
-  const filesState = deepAgentsState && deepAgentsState.files.length > 0 ? deepAgentsState : null
+  const files = agUiFiles?.files ?? deepAgentsState?.files
+  const filesState = files?.length ? { todos: deepAgentsState?.todos ?? [], files } : null
   const hasSubagentProgress = subagentProgress.total > 0
   const hasStatusPanel = hasActivities || filesState !== null || hasSubagentProgress
 
@@ -110,7 +113,13 @@ export function StreamingMessageLoadingIndicator({
           className={cn('mb-1 flex flex-col gap-1.5', className)}
           data-slot="streaming-status-panel"
         >
-          {filesState ? <DeepAgentsStatePanel state={filesState} showTodos={false} /> : null}
+          {filesState ? (
+            <DeepAgentsStatePanel
+              state={filesState}
+              showTodos={false}
+              onOpenPreview={agUiFiles?.openPreview}
+            />
+          ) : null}
           {hasSubagentProgress ? <SubagentProgress summary={subagentProgress} /> : null}
           {hasActivities ? <RunActivityStrip activities={semanticActivities} /> : null}
         </div>
