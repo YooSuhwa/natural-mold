@@ -69,6 +69,7 @@ class GoalSandbox(Base):
     image: Mapped[str] = mapped_column(String(512))
     skill_id: Mapped[UUID]
     skill_hash: Mapped[str] = mapped_column(String(64))
+    skill_set: Mapped[dict[str, str]] = mapped_column(JSON)
     scope_hash: Mapped[str] = mapped_column(String(64))
     state: Mapped[str] = mapped_column(String(20))
     provider_id: Mapped[str | None] = mapped_column(String(255), unique=True)

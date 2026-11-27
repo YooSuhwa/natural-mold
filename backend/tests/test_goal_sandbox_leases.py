@@ -198,3 +198,53 @@ async def test_idle_pause_does_not_extend_last_use_retention(
     assert pause and await leases.complete_maintenance(db, pause, now=START + 2 * STEP)
     expired = await _maintenance(db, scope, 4)
     assert expired and expired.action == "delete"
+
+
+async def test_approved_skills_resume_one_workspace_and_retire_against_all_original_grants(
+    db: AsyncSession,
+    scope: leases.SandboxScope,
+) -> None:
+    other_id = uuid4()
+    other_hash = "3" * 64
+    selected = ((scope.skill_id, scope.skill_hash), (other_id, other_hash))
+    first = replace(scope, skill_set=selected)
+    second = replace(scope, skill_id=other_id, skill_hash=other_hash, skill_set=selected[::-1])
+    assert first.fingerprint == second.fingerprint
+    writer = await _start(db, first)
+    assert await leases.record_outputs_ready(db, writer, manifest=MANIFEST, now=START)
+    assert await leases.finish(db, writer, manifest=MANIFEST, now=START)
+    same = await leases.acquire(db, second, ttl=STEP, now=START)
+    assert same and same.action == "connect" and same.workspace_id == writer.workspace_id
+    assert same.scope.skill_id == other_id and same.manifest == MANIFEST
+    row = await db.get(GoalSandbox, same.workspace_id)
+    assert row and (row.skill_id, row.skill_hash) == min(selected)
+    assert leases.SandboxScope.from_workspace(row).approved_skills == tuple(sorted(selected))
+    assert await leases.record_outputs_ready(db, same, manifest=MANIFEST, now=START)
+    assert await leases.finish(db, same, manifest=MANIFEST, now=START)
+    pause = await _maintenance(db, first, 1)
+    assert pause and pause.scope.approved_skills == tuple(sorted(selected))
+    assert pause.scope.fingerprint == second.fingerprint
+
+
+async def test_unapproved_or_changed_skill_cannot_attach_to_workspace(
+    db: AsyncSession, scope: leases.SandboxScope
+) -> None:
+    other = uuid4()
+    shared = replace(scope, skill_set=((scope.skill_id, scope.skill_hash), (other, "3" * 64)))
+    claimed = await _start(db, shared)
+    for restricted in (
+        scope,
+        replace(shared, skill_set=((scope.skill_id, scope.skill_hash), (other, "4" * 64))),
+    ):
+        assert restricted.fingerprint != shared.fingerprint
+        assert not await leases.lock_writer(db, replace(claimed, scope=restricted), now=START)
+        new = await leases.acquire(db, restricted, ttl=STEP, now=START)
+        assert new and new.action == "create" and new.workspace_id != claimed.workspace_id
+    assert (
+        scope.fingerprint
+        == replace(scope, skill_set=((scope.skill_id, scope.skill_hash),)).fingerprint
+    )
+    with pytest.raises(ValueError, match="approved sandbox skill set"):
+        replace(shared, skill_id=uuid4())
+    with pytest.raises(ValueError, match="approved sandbox skill set"):
+        replace(shared, skill_set=((scope.skill_id, scope.skill_hash), (scope.skill_id, "4" * 64)))

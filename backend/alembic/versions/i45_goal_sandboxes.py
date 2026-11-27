@@ -28,6 +28,7 @@ def upgrade() -> None:
         sa.Column("image", sa.String(512), nullable=False),
         sa.Column("skill_id", sa.Uuid(), nullable=False),
         sa.Column("skill_hash", sa.String(64), nullable=False),
+        sa.Column("skill_set", sa.JSON(), nullable=False),
         sa.Column("scope_hash", sa.String(64), nullable=False),
         sa.Column("state", sa.String(20), nullable=False),
         sa.Column("provider_id", sa.String(255), unique=True),

@@ -58,6 +58,7 @@ class SandboxScope:
     skill_hash: str
     policy_version: int
     skill_id: UUID
+    skill_set: tuple[tuple[UUID, str], ...] = ()
 
     def __post_init__(self) -> None:
         if self.goal_version < 1 or self.policy_version < 1 or not 0 < len(self.image) <= 512:
@@ -65,9 +66,47 @@ class SandboxScope:
         if not _DIGEST.fullmatch(self.policy_hash) or not _DIGEST.fullmatch(self.skill_hash):
             raise ValueError("invalid goal workspace fingerprint")
 
+        if self.skill_set:
+            ordered = tuple(sorted(self.skill_set))
+            if (
+                (self.skill_id, self.skill_hash) not in ordered
+                or len({key for key, _ in ordered}) != len(ordered)
+                or any(
+                    not isinstance(key, UUID) or not _DIGEST.fullmatch(digest)
+                    for key, digest in ordered
+                )
+            ):
+                raise ValueError("invalid approved sandbox skill set")
+            object.__setattr__(self, "skill_set", ordered)
+
+    @property
+    def approved_skills(self) -> tuple[tuple[UUID, str], ...]:
+        return self.skill_set or ((self.skill_id, self.skill_hash),)
+
+    def storage_values(self) -> dict[str, object]:
+        """The approved set identifies the environment shared by its calling skills."""
+        canonical_id, canonical_hash = self.approved_skills[0]
+        return {
+            **asdict(self),
+            "skill_id": canonical_id,
+            "skill_hash": canonical_hash,
+            "skill_set": {str(key): digest for key, digest in self.approved_skills},
+        }
+
+    @classmethod
+    def from_workspace(cls, row: GoalSandbox) -> SandboxScope:
+        scope = {f.name: getattr(row, f.name) for f in fields(cls) if f.name != "skill_set"}
+        return cls(
+            **scope, skill_set=tuple((UUID(key), digest) for key, digest in row.skill_set.items())
+        )
+
     @property
     def fingerprint(self) -> str:
-        encoded = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"), default=str)
+        values = self.storage_values()
+        if len(self.approved_skills) == 1:
+            # The sole pinned ID and hash already encode a singleton policy.
+            del values["skill_set"]
+        encoded = json.dumps(values, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
@@ -145,7 +184,7 @@ async def acquire(
     await db.execute(
         insert(GoalSandbox)
         .values(
-            **asdict(scope),
+            **scope.storage_values(),
             id=uuid4(),
             scope_hash=digest,
             state="new",
@@ -368,7 +407,7 @@ async def claim_maintenance(
         # An unfinished pause touched no output. Its previous verified copy is
         # authoritative and the provider can safely be deleted after a restart.
         action = "delete"
-    scope = SandboxScope(**{f.name: getattr(row, f.name) for f in fields(SandboxScope)})
+    scope = SandboxScope.from_workspace(row)
     claim = _claim(row, scope, action, _deadline(timestamp, ttl), timestamp)
     await db.flush()
     return claim

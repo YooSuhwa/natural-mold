@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -68,23 +69,65 @@ def _scope(lab: RlsLab) -> leases.SandboxScope:
     )
 
 
-async def test_two_workers_get_one_creation_claim(lab: RlsLab, app_maker: Maker) -> None:
-    scope = _scope(lab)
+async def _compete_for_creation(
+    maker: Maker, first_scope: leases.SandboxScope, second_scope: leases.SandboxScope
+) -> leases.SandboxClaim:
     ready = asyncio.Barrier(2)
-    tenant = SessionTenant(scope.tenant_id, scope.user_id)
 
-    async def claim_one() -> leases.SandboxClaim | None:
-        async with tenant_session(tenant, maker=app_maker) as db, db.begin():
+    async def claim_one(scope: leases.SandboxScope) -> leases.SandboxClaim | None:
+        tenant = SessionTenant(scope.tenant_id, scope.user_id)
+        async with tenant_session(tenant, maker=maker) as db, db.begin():
             # Establish separate DB connections before the two inserts contend.
             await db.execute(sa.text("SELECT 1"))
             await ready.wait()
             return await leases.acquire(db, scope, ttl=TTL)
 
     async with asyncio.timeout(30):
-        first, second = await asyncio.gather(claim_one(), claim_one())
-    winners = [claim for claim in (first, second) if claim is not None]
+        results = await asyncio.gather(claim_one(first_scope), claim_one(second_scope))
+    winners = [claim for claim in results if claim is not None]
     assert len(winners) == 1
     assert winners[0].action == "create"
+    return winners[0]
+
+
+async def test_two_workers_get_one_creation_claim(lab: RlsLab, app_maker: Maker) -> None:
+    scope = _scope(lab)
+    await _compete_for_creation(app_maker, scope, scope)
+
+
+async def test_approved_skills_share_one_writer_until_the_approved_set_changes(
+    lab: RlsLab, app_maker: Maker
+) -> None:
+    base = _scope(lab)
+    partner = (uuid4(), "3" * 64)
+    members = ((base.skill_id, base.skill_hash), partner)
+    first = replace(base, skill_set=members)
+    second = replace(base, skill_id=partner[0], skill_hash=partner[1], skill_set=members[::-1])
+    claim = await _compete_for_creation(app_maker, first, second)
+    tenant = SessionTenant(base.tenant_id, base.user_id)
+    async with tenant_session(tenant, maker=app_maker) as db, db.begin():
+        assert await leases.bind_provider(db, claim, "shared-provider")
+        assert await leases.record_outputs_ready(db, claim, manifest={})
+        assert await leases.finish(db, claim, manifest={})
+
+    # The other prepared skill sees the workspace the winner initialized.
+    other = second if claim.scope.skill_id == first.skill_id else first
+    async with tenant_session(tenant, maker=app_maker) as db, db.begin():
+        joined = await leases.acquire(db, other, ttl=TTL)
+        assert joined is not None
+        assert joined.workspace_id == claim.workspace_id
+        assert joined.provider_id == "shared-provider"
+        assert joined.action == "connect"
+
+    changed_bytes = replace(first, skill_set=(members[0], (partner[0], "4" * 64)))
+    removed_member = replace(first, skill_set=(members[0],))
+    workspace_ids = {claim.workspace_id}
+    for changed in (changed_bytes, removed_member):
+        async with tenant_session(tenant, maker=app_maker) as db, db.begin():
+            fresh = await leases.acquire(db, changed, ttl=TTL)
+            assert fresh is not None and fresh.action == "create" and fresh.provider_id is None
+            assert fresh.workspace_id not in workspace_ids
+            workspace_ids.add(fresh.workspace_id)
 
 
 async def _claim_pause(
