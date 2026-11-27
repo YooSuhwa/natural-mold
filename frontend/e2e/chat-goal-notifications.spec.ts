@@ -24,7 +24,7 @@ test('a closed chat delivers one goal notification and downloads its verified fi
   request,
 }) => {
   test.skip(
-    process.env.CHAT_WORK_NOTIFICATIONS_ENABLED !== 'true',
+    process.env.E2E_CHAT_GOAL_NOTIFICATIONS !== '1',
     'Requires the goal and notification enabled scripted lane',
   )
   test.setTimeout(180_000)

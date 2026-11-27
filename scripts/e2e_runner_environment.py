@@ -56,6 +56,11 @@ def _optional_frontend_controls(project: Project) -> dict[str, str]:
         if project != "scripted-full" or org_authz != "1":
             raise E2eContractError("invalid_org_authz")
         controls["E2E_ORG_AUTHZ"] = org_authz
+    goal_notifications = os.environ.get("E2E_CHAT_GOAL_NOTIFICATIONS")
+    if goal_notifications is not None:
+        if project != "scripted-full" or goal_notifications != "1":
+            raise E2eContractError("invalid_chat_goal_notifications")
+        controls["E2E_CHAT_GOAL_NOTIFICATIONS"] = goal_notifications
     return controls
 
 
@@ -104,7 +109,9 @@ def build_lane_environment(
             "E2E_TEST_HELPERS_ENABLED": "true",
             "CHECKPOINTER_POOL_MIN_SIZE": "1",
             "CHECKPOINTER_POOL_MAX_SIZE": "2",
-            "E2E_AUTH_STATE_PATH": str(run_root / "frontend/auth" / project / f"{lane}-user.json"),
+            "E2E_AUTH_STATE_PATH": str(
+                run_root / "frontend/auth" / project / f"{lane}-user.json"
+            ),
             "E2E_NEXT_BUILD_DIR": str(run_root / "frontend/.next" / project),
             "E2E_RESULTS_DIR": str(run_root / "frontend/test-results" / project),
             "PLAYWRIGHT_JUNIT_OUTPUT_NAME": str(

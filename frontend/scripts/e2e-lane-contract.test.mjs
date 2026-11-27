@@ -80,6 +80,20 @@ describe('E2E lane contract', () => {
     expect(() => assertE2ELaneNodeVersion('not-a-version')).toThrow('E2E lanes require Node.js 22.')
   })
 
+  it('enables chat goal delivery only in the opted-in scripted organization', () => {
+    const optIn = { E2E_CHAT_GOAL_NOTIFICATIONS: '1' }
+    const env = buildLaneEnvironment('scripted', optIn, 'scripted-full')
+    expect(env.CONVERSATION_GOAL_ORG_IDS).toBe('["a79a6b5b-9a26-5e0a-8d6c-c9977f83f592"]')
+    expect(env.CHAT_WORK_NOTIFICATIONS_ENABLED).toBe('true')
+    expect(
+      buildLaneEnvironment('scripted', {
+        CONVERSATION_GOAL_ORG_IDS: '[]',
+        CHAT_WORK_NOTIFICATIONS_ENABLED: 'true',
+      }).CHAT_WORK_NOTIFICATIONS_ENABLED,
+    ).toBeUndefined()
+    expect(() => buildLaneEnvironment('scripted', optIn, 'scripted-smoke')).toThrow('scripted-full')
+  })
+
   it('builds once with webpack and serves the isolated production frontend', () => {
     // Given: the configured chat runtime, backend origin, and frontend port.
     const command = buildFrontendWebServerCommand('langgraph_v3', 'http://localhost:8101', '3100')
