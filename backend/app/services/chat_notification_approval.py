@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.conversation_checkpointer import conversation_checkpointer, deferred_saver
 from app.agent_runtime.langgraph_pending_inputs import interrupt_payloads_from_checkpointer
 from app.approvals import recording, service
+from app.authz.notification_delivery_scope import lock_active_notice_recipient
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.config import settings
@@ -69,6 +70,8 @@ async def publish_goal_approval(
     db: AsyncSession, ref: ChatNotificationOutbox
 ) -> Notification | None:
     ctx = OrgContext(org_id=ref.org_id, tenant_id=ref.tenant_id, user_id=ref.user_id)
+    if not await lock_active_notice_recipient(db, ctx):
+        return None
     # All supported chat resumes lock their conversation before creating a new
     # run. Serialize here too so a concurrent resume cannot receive a stale bell.
     name = await db.scalar(

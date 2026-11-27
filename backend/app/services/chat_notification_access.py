@@ -9,6 +9,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import denials
+from app.authz.notification_delivery_scope import lock_active_notice_recipient
 from app.authz.notifications import RETENTION, now
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
@@ -174,6 +175,8 @@ async def resolve_work_destination(
 ) -> ChatNotificationDestination | None:
     ctx = OrgContext(org_id=ref.org_id, tenant_id=ref.tenant_id, user_id=ref.user_id)
     if ref.goal_id is not None:
+        if not await lock_active_notice_recipient(db, ctx):
+            return None
         # The decision and bell commit together. An edit uses conversation -> goal;
         # if it is already writing, the outbox retries after its transaction finishes.
         conversation = await db.scalar(
