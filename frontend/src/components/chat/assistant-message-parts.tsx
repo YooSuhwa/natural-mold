@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import { MessagePrimitive, useAuiState, type EnrichedPartState } from '@assistant-ui/react'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
+import { AgUiToolDataCards } from '@/lib/ag-ui/activity-tool-cards'
 import { math } from '@streamdown/math'
 import { buildMarkdownComponents } from '@/components/chat/markdown-components'
 import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-streaming-plugins'
@@ -167,6 +168,7 @@ export function AssistantMessageParts() {
       <MessagePrimitive.GroupedParts groupBy={groupAssistantParts} indicator="never">
         {renderGroupedAssistantPart}
       </MessagePrimitive.GroupedParts>
+      <AgUiToolDataCards />
     </div>
   )
 }

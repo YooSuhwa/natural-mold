@@ -1,12 +1,19 @@
 'use client'
 
-import { makeAssistantDataUI } from '@assistant-ui/react'
+import { makeAssistantDataUI, type DataMessagePartProps } from '@assistant-ui/react'
 import { DataUIDispatcher } from '@/lib/chat/data-ui'
-import type { UIDataEventPayload } from '@/lib/types/ui-data'
+import { isBoundAgUiDataCard } from './activity-card-owner'
 
-const AgUiDataCard = makeAssistantDataUI<UIDataEventPayload>({
+function StandaloneDataCard(props: DataMessagePartProps<Record<string, unknown>>) {
+  // The SDK places activity parts on the currently active message. A late
+  // tool-bound card belongs beside the message containing its issued tool.
+  if (!props.data || isBoundAgUiDataCard(props.data)) return null
+  return <DataUIDispatcher {...props} />
+}
+
+const AgUiDataCard = makeAssistantDataUI<Record<string, unknown>>({
   name: 'agui-activity/moldy.ui_data',
-  render: DataUIDispatcher,
+  render: StandaloneDataCard,
 })
 
 export const MOLDY_AG_UI_DATA_UI = [AgUiDataCard] as const
