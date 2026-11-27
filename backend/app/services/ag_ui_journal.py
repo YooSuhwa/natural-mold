@@ -22,7 +22,7 @@ from app.models.message_event import MessageEvent, MessageEventChunk
 from app.schemas.conversation_history import JsonValue
 from app.services.ag_ui_journal_legacy import legacy_journal_events
 from app.services.ag_ui_snapshot_messages import legacy_user_messages
-from app.services.conversation_history_projection import canonical_payload_sha256
+from app.services.conversation_history_projection import retained_event_sha256
 from app.services.conversation_protocol_event_projection import (
     RawEventProjectionRequest,
     stored_events_from_raw,
@@ -381,7 +381,7 @@ async def _retained_page(
             .limit(_CHUNKS_PER_PAGE)
         )
         for start, end_index, events, checksum in parts:
-            if not isinstance(events, list) or canonical_payload_sha256(events) != checksum:
+            if not isinstance(events, list) or retained_event_sha256(events, start) != checksum:
                 return JournalPage(generation, (), False, True, "completed", horizon)
             ranges.append(_Range(start + 1, end_index + 1, events))
     return _page(

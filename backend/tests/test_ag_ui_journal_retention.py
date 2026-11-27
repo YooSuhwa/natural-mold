@@ -76,3 +76,7 @@ async def test_agent_purge_retains_gap_in_authenticated_source_sequence(
         records[1].sequence_start = records[1].sequence_end = 1
         await db.flush()
         assert not await verify_history_manifest(db, manifest)
+        tampered = await read_journal_page(
+            db, conversation=conversation, physical_run_id=rid, after=1
+        )
+        assert tampered.gap and not tampered.entries
