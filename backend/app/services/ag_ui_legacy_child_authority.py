@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.identity import make_agent_runtime_name
+from app.agent_runtime.offload_storage_types import GENERAL_PURPOSE_ACTOR
 from app.authz.child_task_authorization import (
     _require_child_available,
     _require_delegation,
@@ -23,6 +24,7 @@ from app.models.agent import Agent
 from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.services.ag_ui_general_purpose_authority import require_general_purpose_authority
 from app.services.ag_ui_pending_checkpoint import _run_lineage
 
 if TYPE_CHECKING:
@@ -40,6 +42,7 @@ async def _admissions(
     context: OrgContext,
     parent_id: UUID,
     producer_id: UUID | None,
+    include_origin: bool = False,
 ) -> set[UUID]:
     if conversation.agent_id is None:
         raise _denied()
@@ -50,6 +53,8 @@ async def _admissions(
         return {parent_id}
     if producer_id not in lineage:
         raise _denied()
+    if include_origin:
+        return lineage
     if producer_id == parent_id:
         return {parent_id}
     edges = dict(
@@ -121,13 +126,30 @@ async def require_legacy_child_binding(
     with db.no_autoflush:
         try:
             await require_private_actor(db, context)
+            implicit_child = binding.runtime_name == GENERAL_PURPOSE_ACTOR
             runs = await _admissions(
                 db,
                 conversation=conversation,
                 context=context,
                 parent_id=parent_run.id,
                 producer_id=binding.producer_run_id,
+                include_origin=implicit_child,
             )
+            if implicit_child:
+                root = await require_general_purpose_authority(
+                    db, context=context, conversation_id=conversation.id, runs=runs
+                )
+                await require_private_actor(db, context)
+                if root != root_id or runs != await _admissions(
+                    db,
+                    conversation=conversation,
+                    context=context,
+                    parent_id=parent_run.id,
+                    producer_id=binding.producer_run_id,
+                    include_origin=True,
+                ):
+                    raise _denied()
+                return root
             child = await _admitted_child(
                 db, runs=runs, parent_id=root_id, runtime_name=binding.runtime_name
             )
