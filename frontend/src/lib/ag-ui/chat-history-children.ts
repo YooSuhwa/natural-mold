@@ -27,6 +27,7 @@ export interface AgUiHistoryChild {
   readonly error?: string
   readonly interruptIds?: readonly string[]
   readonly childTaskId?: string
+  readonly legacyInterruptAccess?: true
   readonly todos?: readonly DeepAgentTodo[]
 }
 
