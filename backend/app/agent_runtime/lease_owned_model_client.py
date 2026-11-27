@@ -171,12 +171,12 @@ def build_openai_family_model(
         raise LeaseProviderTransportError(
             "an OPENAI_PROXY proxy cannot share the lease-owned transport"
         ) from exc
-    model.bind_lease_guard(guard, provider=provider)
     _verify_openai_base_url(model, kwargs.get("base_url"))
     root = model.root_async_client
     bound = root._client if root is not None else None  # noqa: SLF001 — verify SDK binding
     if root is None or bound is not owned.async_client or root.max_retries != 0:
         raise LeaseProviderTransportError("openai async client is not the lease-owned client")
+    model.bind_lease_guard(guard, provider=provider, client_base_url=str(root.base_url))
     return model
 
 
