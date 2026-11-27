@@ -15,6 +15,8 @@ import messages from '../../../../messages/en.json'
 import { createTestQueryClient } from '../../../../tests/test-utils'
 import { ChatConversationContext } from '../conversation-context'
 import { DelegatedChildTasks } from '../delegated-child-tasks'
+import { conversationQueryKeys } from '@/lib/query-keys/conversations'
+import { currentOrgScope } from '@/lib/org-scope/org-scope-signal'
 import { ApiError } from '@/lib/api/errors'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 import { ChatRightRail } from '../right-rail/chat-right-rail'
@@ -177,6 +179,87 @@ describe('managed child task controls', () => {
     expect(screen.queryByRole('heading', { name: researcher.role })).not.toBeInTheDocument()
     expect(screen.queryByText('Restricted interim report')).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it('hides a selected completed task on a newly empty full list even while its detail cache survives', async () => {
+    const receipt = {
+      id: 'ecb74af0-6a05-4158-b8de-95dd78a403a2',
+      client_request_id: '58ed908d-bcc7-4abb-960c-8b214b9691e9',
+      text: 'Restricted follow-up',
+      status: 'applied',
+      created_at: '2026-11-27T01:01:03Z',
+      applied_at: '2026-11-27T01:01:10Z',
+    }
+    const completed = {
+      ...researcher,
+      status: 'completed',
+      brief: 'Restricted brief',
+      result: 'Restricted final result',
+      instructions: [receipt],
+    }
+    serveTasks([completed])
+    const page = { enabled: false, allow_legacy_details: false, next_offset: null }
+    api.listChildTasks.mockResolvedValue({ ...page, items: [completed] })
+    const { queryClient } = renderTasks(completed.id)
+    expect(await screen.findByText(completed.brief)).toBeVisible()
+    expect(screen.getByText(receipt.text)).toBeVisible()
+
+    // Authorization has removed this child from the new, complete list.
+    // A subsequent individual read cannot complete before the old details disappear.
+    api.listChildTasks.mockResolvedValue({ ...page, items: [] })
+    api.getChildTask.mockImplementation(() => new Promise(() => undefined))
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: conversationQueryKeys.childTasks(conversationId, currentOrgScope().generation),
+        exact: true,
+      })
+    })
+
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: researcher.role })).not.toBeInTheDocument(),
+    )
+    expect(screen.queryByText(completed.brief)).not.toBeInTheDocument()
+    expect(screen.queryByText(completed.result)).not.toBeInTheDocument()
+    expect(screen.queryByText(receipt.text)).not.toBeInTheDocument()
+  })
+
+  it('requires a fresh exact read before displaying a selected task that moved beyond loaded pages', async () => {
+    const initial = { ...reviewer, status: 'completed', brief: 'Old brief', result: 'Old result' }
+    serveTasks([initial])
+    const { queryClient } = renderTasks(reviewer.id)
+    expect(await screen.findByText(initial.brief)).toBeVisible()
+
+    api.listChildTasks.mockResolvedValue({
+      items: [researcher],
+      enabled: true,
+      allow_legacy_details: false,
+      next_offset: 50,
+    })
+    const read = Promise.withResolvers<typeof initial>()
+    api.getChildTask.mockClear().mockReturnValue(read.promise)
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: conversationQueryKeys.childTasks(conversationId, currentOrgScope().generation),
+        exact: true,
+      })
+    })
+
+    await waitFor(() =>
+      expect(api.getChildTask).toHaveBeenCalledWith(
+        conversationId,
+        reviewer.id,
+        expect.any(AbortSignal),
+      ),
+    )
+    expect(screen.queryByText(initial.brief)).not.toBeInTheDocument()
+    expect(screen.queryByText(initial.result)).not.toBeInTheDocument()
+    const refreshed = { ...initial, brief: 'Verified brief', result: 'Verified result' }
+    await act(async () => {
+      read.resolve(refreshed)
+      await read.promise
+    })
+    expect(await screen.findByText(refreshed.brief)).toBeVisible()
+    expect(screen.getByText(refreshed.result)).toBeVisible()
   })
 
   it('recovers a selected task after a temporary read failure without issuing a command', async () => {

@@ -26,45 +26,58 @@ interface ManagedChildProps {
 export function ManagedChildTask({ conversationId, taskId }: ManagedChildProps) {
   const t = useTranslations('chat.childTasks')
   const list = useChildTasks(conversationId)
-  const detail = useChildTask(conversationId, taskId)
-  const names = useAtomValue(chatSubagentNamesAtom)[conversationId]
-  const error = detail.error ?? list.error
-  if (error) {
-    const retryable = isRetryableChildTaskError(error)
-    return (
-      <div className="space-y-2">
-        <p role="status">{t('unavailable')}</p>
-        {retryable && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              void detail.refetch()
-              void list.refetch()
-            }}
-          >
-            {t('retry')}
-          </Button>
-        )}
-      </div>
-    )
-  }
-  if (detail.isPending || list.isPending) return <p role="status">{t('loading')}</p>
-  const task = detail.data
-  if (!task) return <p role="status">{t('unavailable')}</p>
-  const label =
-    childTaskLabels([...list.tasks.filter((item) => item.id !== taskId), task], names).get(
-      taskId,
-    ) ?? task.role
+  if (list.error) return <ReadFailure error={list.error} retry={() => void list.refetch()} />
+  if (list.isPending) return <p role="status">{t('loading')}</p>
+  const listed = list.tasks.some((item) => item.id === taskId)
+  if (!listed && !list.hasNextPage) return <p role="status">{t('unavailable')}</p>
+  // A row can move to a later page or its authorization can be revoked.
+  // A transition off the loaded pages must pass a fresh exact-UUID read.
   return (
-    <TaskDetails
-      key={task.id}
+    <SelectedTaskDetail
+      key={`${taskId}:${listed}`}
       conversationId={conversationId}
-      task={task}
-      label={label}
+      taskId={taskId}
+      loadedTasks={list.tasks}
       canSend={list.enabled === true}
     />
   )
+}
+
+function ReadFailure({ error, retry }: { error: Error; retry: () => void }) {
+  const t = useTranslations('chat.childTasks')
+  return (
+    <div className="space-y-2">
+      <p role="status">{t('unavailable')}</p>
+      {isRetryableChildTaskError(error) && (
+        <Button size="sm" variant="outline" onClick={retry}>
+          {t('retry')}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function SelectedTaskDetail({
+  conversationId,
+  taskId,
+  loadedTasks,
+  canSend,
+}: ManagedChildProps & {
+  readonly loadedTasks: readonly ChildTask[]
+  readonly canSend: boolean
+}) {
+  const t = useTranslations('chat.childTasks')
+  const detail = useChildTask(conversationId, taskId)
+  const names = useAtomValue(chatSubagentNamesAtom)[conversationId]
+  if (detail.error) return <ReadFailure error={detail.error} retry={() => void detail.refetch()} />
+  if (detail.isPending) return <p role="status">{t('loading')}</p>
+  const task = detail.data
+  if (!task) return <p role="status">{t('unavailable')}</p>
+  const label =
+    childTaskLabels([...loadedTasks.filter((item) => item.id !== taskId), task], names).get(
+      taskId,
+    ) ?? task.role
+  return <TaskDetails conversationId={conversationId} task={task} label={label} canSend={canSend} />
 }
 
 function TaskDetails({
