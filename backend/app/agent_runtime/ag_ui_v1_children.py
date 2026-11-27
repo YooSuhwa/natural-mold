@@ -83,6 +83,20 @@ class PublicChildren:
             return tool_id in self.visibility.tool_call_ids
         return True
 
+    def allow_scoped_tool(self, name: str | None, tool_id: str, owner: str | None) -> bool:
+        if self.visibility.allow_legacy_details or (name and name != DELEGATION_TOOL):
+            return True
+        # Provider call IDs are local to the issuing model. A sibling model
+        # can reuse the same ID for another, unauthorized delegation.
+        matches = [
+            ns
+            for call_id, ns, _ in self.visibility.bindings
+            if call_id == tool_id and ns in self.visibility.namespaces and ns
+        ]
+        if len(matches) != 1:
+            return False
+        return self.owner(matches[0][:-1]) == owner
+
     def visible(self, namespace: Namespace) -> bool:
         if not namespace or self.visibility.allow_legacy_details:
             return True

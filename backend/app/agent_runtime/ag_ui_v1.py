@@ -61,7 +61,10 @@ class AgUiV1Projector:
             thread_id, child_visibility or ChildVisibility(True, frozenset(), frozenset())
         )
         self._entities = PublicChatEntities(
-            run_id, self._children.allow_tool, secret_values=self._secrets
+            run_id,
+            self._children.allow_tool,
+            secret_values=self._secrets,
+            allow_scoped_tool=self._children.allow_scoped_tool,
         )
         self._activities = PublicActivities(readable_artifact_versions=readable_artifact_versions)
         self._pending = PendingInterrupts()
@@ -104,7 +107,7 @@ class AgUiV1Projector:
         opened = self._children.start(
             namespace,
             data,
-            tool_id=self._entities.public_tool_id,
+            tool_id=self._entities.public_delegation_tool_id,
             tool_message=self._entities.tool_parent_message_id,
         )
         if opened:

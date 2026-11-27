@@ -178,3 +178,44 @@ def test_non_assistant_deltas_cannot_be_relabelled_by_an_interleaved_assistant_s
     assert not message(entities, {"id": "private", **delta})
     assert not message(entities, {"id": "invalid", "event": {"text": "private"}})
     assert text(message(entities, {"id": "answer", **delta})) == "x"
+
+
+def test_child_cause_requires_an_observed_and_still_visible_delegation_in_the_exact_owner() -> None:
+    allowed = {"delegate", "query"}
+    entities = PublicChatEntities("r", lambda _name, raw_id: raw_id in allowed)
+    for raw_id, name, owner in (("delegate", "task", "parent"), ("query", "search", "parent")):
+        message(
+            entities,
+            {"type": "ai", "id": "issuer", "tool_calls": [{"id": raw_id, "name": name}]},
+            owner=owner,
+        )
+    assert entities.public_tool_id("parent", "query")
+    assert entities.public_delegation_tool_id("parent", "query") is None
+    assert entities.public_delegation_tool_id(None, "delegate") is None
+    assert entities.public_delegation_tool_id("parent", "unseen") is None
+    assert entities.public_delegation_tool_id("parent", "delegate") == entities.public_tool_id(
+        "parent", "delegate"
+    )
+    allowed.remove("delegate")
+    assert entities.public_delegation_tool_id("parent", "delegate") is None
+
+
+def test_allowed_parent_call_id_does_not_grant_an_unrelated_nested_delegation() -> None:
+    allowed_parents: set[str | None] = {None}
+    entities = PublicChatEntities(
+        "r",
+        lambda _name, raw_id: raw_id == "duplicate",
+        allow_scoped_tool=lambda _name, _raw_id, owner: owner in allowed_parents,
+    )
+    record = {
+        "type": "ai",
+        "id": "issuer",
+        "tool_calls": [{"id": "duplicate", "name": "task", "args": {"description": "task"}}],
+    }
+    assert message(entities, record)
+    assert not message(entities, record, owner="sibling")
+    assert entities.public_delegation_tool_id(None, "duplicate") == "duplicate"
+    assert entities.public_delegation_tool_id("sibling", "duplicate") is None
+    allowed_parents.clear()
+    assert entities.public_tool_id(None, "duplicate") is None
+    assert entities.tool_parent_message_id(None, "duplicate") is None

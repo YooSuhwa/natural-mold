@@ -179,3 +179,42 @@ def test_pristine_failure_and_duplicate_authoritative_terminal() -> None:
     assert first.type == EventType.RUN_ERROR
     assert "PRIVATE" not in first.model_dump_json()
     assert stream.start() == [] and stream.finish("failed") == []
+
+
+def test_reused_parent_call_id_cannot_disclose_a_nested_unauthorized_delegation() -> None:
+    stream = projector()
+    call = {"name": "task", "id": "call", "args": {"description": "allowed"}}
+    issued = wire(
+        stream.project(event("messages", {"id": "issuer", "type": "ai", "tool_calls": [call]}))
+    )
+    assert any(item["type"] == "TOOL_CALL_START" for item in issued)
+    stream.project(
+        event(
+            "lifecycle",
+            {
+                "event": "started",
+                "namespace": list(CHILD),
+                "cause": {"type": "toolCall", "tool_call_id": "call"},
+            },
+        )
+    )
+    reused = {**call, "args": {"description": "REVOKED_CHILD_BRIEF"}}
+    same_id = stream.project(
+        event("messages", {"id": "other", "type": "ai", "tool_calls": [reused]}, CHILD)
+    )
+    assert same_id == []
+    assert (
+        stream.project(
+            event(
+                "tools",
+                {
+                    "event": "tool-finished",
+                    "tool_call_id": "call",
+                    "name": "task",
+                    "content": "REVOKED_CHILD_OUTPUT",
+                },
+                CHILD,
+            )
+        )
+        == []
+    )
