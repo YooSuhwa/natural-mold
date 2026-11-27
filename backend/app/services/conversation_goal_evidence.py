@@ -15,6 +15,7 @@ from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.authz.artifact_scope import private_artifact_predicate
 from app.authz.conversation_scope import resolve_conversation_actor
@@ -100,13 +101,33 @@ async def read_goal_evidence_version(
     version_id: UUID,
 ) -> tuple[ArtifactVersion, bytes]:
     """Open the recorded version with today's membership, even after a later rewrite."""
+    return await read_verified_artifact_version(
+        db,
+        context=context,
+        conversation_id=conversation_id,
+        artifact_id=artifact_id,
+        version_id=version_id,
+        scope=private_artifact_predicate(context),
+    )
+
+
+async def read_verified_artifact_version(
+    db: AsyncSession,
+    *,
+    context: OrgContext,
+    conversation_id: UUID,
+    artifact_id: UUID,
+    version_id: UUID,
+    scope: ColumnElement[bool],
+) -> tuple[ArtifactVersion, bytes]:
+    """Read and hash this exact version within its caller's private access predicate."""
     await require_private_actor(db, context)
     row = (
         await db.execute(
             select(ConversationArtifact, ArtifactVersion)
             .join(ArtifactVersion, ArtifactVersion.artifact_id == ConversationArtifact.id)
             .where(
-                private_artifact_predicate(context),
+                scope,
                 ConversationArtifact.conversation_id == conversation_id,
                 ConversationArtifact.id == artifact_id,
                 ConversationArtifact.status == "ready",

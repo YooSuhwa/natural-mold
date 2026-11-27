@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy.sql.expression import SQLColumnExpression
 
 from app.authz.conversation_scope import load_private_conversation, resolve_conversation_actor
 from app.authz.independent_job_history import readable_job_conversations
@@ -15,6 +16,15 @@ from app.error_codes import conversation_not_found
 from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.services.independent_job_runs import job_run_lineage
+
+
+def artifact_authored_by_run(run_id: SQLColumnExpression[UUID]) -> ColumnElement[bool]:
+    """Managed artifact IDs use the canonical UUID string on both supported databases."""
+    turn = ConversationArtifact.assistant_msg_id
+    return and_(
+        turn.like("________-____-____-____-____________"),
+        func.replace(turn, "-", "") == func.replace(cast(run_id, String), "-", ""),
+    )
 
 
 def private_artifact_predicate(context: OrgContext) -> ColumnElement[bool]:
@@ -82,14 +92,12 @@ async def readable_artifact_predicate(
     chain = job_run_lineage(context, list(jobs))
     # Managed artifact recorders use str(run.id). SQL UUIDs are stored
     # without hyphens on SQLite and with hyphens on PostgreSQL.
-    turn = ConversationArtifact.assistant_msg_id
     authorized_turn = (
         select(chain.c.run_id)
         .where(
             chain.c.conversation_id == ConversationArtifact.conversation_id,
             chain.c.agent_id == ConversationArtifact.agent_id,
-            turn.like("________-____-____-____-____________"),
-            func.replace(turn, "-", "") == func.replace(cast(chain.c.run_id, String), "-", ""),
+            artifact_authored_by_run(chain.c.run_id),
         )
         .exists()
     )

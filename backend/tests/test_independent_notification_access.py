@@ -151,6 +151,92 @@ async def test_independent_result_requires_its_parent_and_completed_resume_chain
         assert refused.value.status == 404
 
 
+@pytest.mark.parametrize("invalidation", ["different_turn", "different_agent"])
+async def test_notice_hides_misattributed_file_in_the_same_child_chat(
+    db: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    delegation: Delegation,
+    invalidation: str,
+) -> None:
+    context, parent_run, run, job = delegation
+    monkeypatch.setattr(settings, "chat_work_notifications_enabled", True)
+    monkeypatch.setattr(settings, "artifact_storage_dir", str(tmp_path / "storage"))
+    run.status, run.is_active = "completed", False
+    content, _ = await _queue_result(db, context, job, run, tmp_path)
+    assert await delivery.drain_chat_notification_outbox(db, tenant_id=context.tenant_id) == 1
+    await db.commit()
+    receipt = (await db.scalars(select(ChatNotificationOutbox))).one()
+    notice_id = receipt.notification_id
+    assert notice_id is not None
+    artifact = await db.get(ConversationArtifact, receipt.artifact_id)
+    assert artifact is not None
+    if invalidation == "different_turn":
+        artifact.assistant_msg_id = str(parent_run.id)
+    else:
+        artifact.agent_id = job.parent_agent_id
+    await db.commit()
+
+    response = await client.get("/api/notifications")
+    (item,) = response.json()["items"]
+    assert item["target"]["accessible"] is False
+    for suffix in ("destination", "result"):
+        denied = await client.get(f"/api/notifications/{notice_id}/{suffix}")
+        assert denied.status_code == 404
+        assert content not in denied.content and b"report.txt" not in denied.content
+
+
+async def test_independent_notice_returns_pinned_version_after_later_rewrite(
+    db: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    delegation: Delegation,
+) -> None:
+    context, _, run, job = delegation
+    monkeypatch.setattr(settings, "chat_work_notifications_enabled", True)
+    monkeypatch.setattr(settings, "artifact_storage_dir", str(tmp_path / "storage"))
+    run.status, run.is_active = "completed", False
+    content, name = await _queue_result(db, context, job, run, tmp_path)
+    assert await delivery.drain_chat_notification_outbox(db, tenant_id=context.tenant_id) == 1
+    await db.commit()
+    receipt = (await db.scalars(select(ChatNotificationOutbox))).one()
+    assert receipt.notification_id is not None and receipt.version_id is not None
+    artifact = await db.get(ConversationArtifact, receipt.artifact_id)
+    assert artifact is not None
+    updated = tmp_path / "rewritten.txt"
+    updated.write_bytes(b"later bytes")
+    stored = await LocalArtifactStorageBackend().put_file(
+        conversation_id=job.child_conversation_id,
+        artifact_id=artifact.id,
+        version_number=2,
+        display_name=updated.name,
+        source_path=updated,
+        tenant_id=context.tenant_id,
+    )
+    newer = ArtifactVersion(
+        artifact_id=artifact.id,
+        version_number=2,
+        object_key=stored.object_key,
+        original_filename=updated.name,
+        size_bytes=updated.stat().st_size,
+        sha256=hashlib.sha256(updated.read_bytes()).hexdigest(),
+    )
+    db.add(newer)
+    await db.flush()
+    artifact.current_version_id = newer.id
+    await db.commit()
+
+    path = f"/api/notifications/{receipt.notification_id}"
+    destination = await client.get(f"{path}/destination")
+    assert destination.status_code == 200
+    assert destination.json()["version_id"] == str(receipt.version_id)
+    assert destination.json()["filename"] == name
+    result = await client.get(f"{path}/result")
+    assert result.status_code == 200 and result.content == content
+
+
 async def test_authz_outage_retries_pending_delivery_and_masks_existing_result(
     db: AsyncSession,
     client: AsyncClient,

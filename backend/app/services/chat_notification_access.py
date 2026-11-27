@@ -9,6 +9,11 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import denials
+from app.authz.artifact_scope import (
+    artifact_authored_by_run,
+    private_artifact_predicate,
+    readable_artifact_predicate,
+)
 from app.authz.notification_delivery_scope import lock_active_notice_recipient
 from app.authz.notifications import RETENTION, now
 from app.authz.org_context import OrgContext
@@ -113,6 +118,13 @@ async def _authorized_destinations(
                     ref.kind == "chat_task.completed",
                     Conversation.source == "independent_job",
                     ConversationRun.status == "completed",
+                    or_(
+                        ref.artifact_id.is_(None),
+                        and_(
+                            artifact.agent_id == ConversationRun.agent_id,
+                            artifact_authored_by_run(ConversationRun.id),
+                        ),
+                    ),
                 ),
             ),
         )
@@ -233,18 +245,30 @@ async def open_chat_notification(
 async def get_chat_notification_result(
     db: AsyncSession, ctx: OrgContext, notification_id: UUID
 ) -> tuple[bytes, str]:
-    from app.services.conversation_goal_evidence import read_goal_evidence_version
+    from app.services.conversation_goal_evidence import read_verified_artifact_version
 
     destination = await open_chat_notification(db, ctx, notification_id)
     if destination.version_id is None or destination.artifact_id is None:
         raise denials.not_found()
+    scope = private_artifact_predicate(ctx)
+    if destination.job_id is not None:
+        turn = ConversationArtifact.assistant_msg_id == str(destination.run_id)
+        readable = await readable_artifact_predicate(
+            db,
+            ctx,
+            ConversationArtifact.id == destination.artifact_id,
+            ConversationArtifact.conversation_id == destination.conversation_id,
+            turn,
+        )
+        scope = and_(readable, turn, ConversationArtifact.agent_id == destination.agent_id)
     try:
-        version, content = await read_goal_evidence_version(
+        version, content = await read_verified_artifact_version(
             db,
             context=ctx,
             conversation_id=destination.conversation_id,
             artifact_id=destination.artifact_id,
             version_id=destination.version_id,
+            scope=scope,
         )
     except ArtifactNotFoundError as exc:
         raise denials.not_found() from exc
