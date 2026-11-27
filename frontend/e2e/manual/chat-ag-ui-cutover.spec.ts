@@ -10,6 +10,7 @@ import {
   company,
   databaseState,
   observeMutations,
+  observeStandardStreams,
   openReplica,
   requiredEnvironment,
   savedMessages,
@@ -78,6 +79,10 @@ test('reads one delegated chat across replicas, approval, AG-UI cutover and roll
   const outsider = await openReplica(browser, null)
   const reader = await replica.newPage()
   const observer = await outsider.newPage()
+  await Promise.all([
+    observeStandardStreams(page, conversationId),
+    observeStandardStreams(reader, conversationId),
+  ])
   const writes = observeMutations(page, conversationId)
   const readerWrites = observeMutations(reader, conversationId)
   const oldQuestion = `기존 대화 ${randomUUID()}`

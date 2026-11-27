@@ -40,6 +40,61 @@ export function standardPath(conversationId: string) {
   return `/api/conversations/${conversationId}/ag-ui/runs`
 }
 
+interface BrowserTranscript {
+  text: string
+  finished: boolean
+}
+
+declare global {
+  interface Window {
+    moldyCutoverTranscripts?: Map<string, BrowserTranscript>
+  }
+}
+
+/** Chromium can discard a streamed response before Playwright reads it. Observe the same fetch. */
+export async function observeStandardStreams(page: Page, conversationId: string) {
+  await page.addInitScript((path) => {
+    const recorded = new Map<string, BrowserTranscript>()
+    window.moldyCutoverTranscripts = recorded
+    const fetch = window.fetch.bind(window)
+    window.fetch = async (input, init) => {
+      const response = await fetch(input, init)
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET')
+      if (method !== 'POST' || !response.url || new URL(response.url).pathname !== path)
+        return response
+      const id = response.headers.get('X-Run-Id')
+      if (
+        !id ||
+        !response.ok ||
+        !response.headers.get('content-type')?.includes('text/event-stream')
+      )
+        return response
+      const reader = response.clone().body?.getReader()
+      if (!reader) return response
+      const transcript = { text: '', finished: false }
+      recorded.set(id, transcript)
+      void (async () => {
+        const decoder = new TextDecoder()
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            transcript.text += decoder.decode(value, { stream: true })
+          }
+        } catch {
+          // An SDK subscriber may detach immediately after a terminal event. Its preserved frames
+          // still have to pass the full SDK lifecycle validator, which rejects truncation.
+        } finally {
+          transcript.text += decoder.decode()
+          transcript.finished = true
+          reader.releaseLock()
+        }
+      })()
+      return response
+    }
+  }, standardPath(conversationId))
+}
+
 export function observeMutations(page: Page, conversationId: string) {
   const mutations: string[] = []
   page.on('request', (request) => {
@@ -81,11 +136,19 @@ export async function standardCommand(
   expect(body.threadId).toBe(conversationId)
   expect(body.protocolVersion).toBe('1.0')
   expect(await response.headerValue('x-run-id')).toBe(body.runId)
+  const transcript = await page.waitForFunction(
+    (id) => {
+      const found = window.moldyCutoverTranscripts?.get(id)
+      return found?.finished ? found.text : undefined
+    },
+    body.runId,
+    { timeout: 90_000 },
+  )
   const verified = await verifyAgUiTranscript({
     threadId: conversationId,
     runId: body.runId,
     outcome,
-    sse: await response.text(),
+    sse: z.string().parse(await transcript.jsonValue()),
     assistantText,
   })
   return { body, verified }
