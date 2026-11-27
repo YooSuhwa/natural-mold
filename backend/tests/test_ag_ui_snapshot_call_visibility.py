@@ -2,9 +2,11 @@ from typing import Any
 
 import pytest
 
+from app.agent_runtime.ag_ui_v1_issuance import public_tool_call_id, public_tool_result_id
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.schemas.ag_ui_snapshot import AgUiSnapshotMessageLink
 from app.services.ag_ui_snapshot_call_visibility import (
+    canonical_checkpoint_calls,
     filter_checkpoint_calls,
     visible_child_controls,
 )
@@ -35,12 +37,26 @@ def linked(row: Row, run: str | None = "physical") -> tuple[Row, AgUiSnapshotMes
 
 
 def access(*calls: str, legacy: bool = False) -> ChildVisibility:
-    return ChildVisibility(legacy, frozenset(calls), frozenset())
+    bindings = frozenset((cid, (f"ns-{cid}",), f"task-{cid}") for cid in calls)
+    return ChildVisibility(
+        legacy, frozenset(calls), frozenset(ns for _, ns, _ in bindings), bindings
+    )
 
 
-@pytest.mark.parametrize("grants", [{}, {"physical": access()}, {"other": access("child")}])
+def project(
+    entries: list[tuple[Row, AgUiSnapshotMessageLink]],
+    *,
+    visibility: ChildVisibility | None = None,
+    issued: dict[tuple[str | None, str], str] | None = None,
+) -> dict[str, Row]:
+    return canonical_checkpoint_calls(
+        entries, public_run_id="public", visibility=visibility, root_issuances=issued or {}
+    )
+
+
+@pytest.mark.parametrize("grant", [None, access(), access("another")])
 def test_revoke_filters_call_id_result_and_empty_placeholder_but_keeps_public_text(
-    grants: dict[str, ChildVisibility],
+    grant: ChildVisibility | None,
 ) -> None:
     child = call("child", "task")
     normal = call("clock", "current_datetime")
@@ -52,11 +68,12 @@ def test_revoke_filters_call_id_result_and_empty_placeholder_but_keeps_public_te
         linked(tool("private-result", "child")),
         linked(assistant("placeholder", call("second-child", "task"))),
     ]
-    result = filter_checkpoint_calls(entries, [], grants)
+    result = project(entries, visibility=grant)
+    opaque = public_tool_call_id("public", None, "answer", "clock")
     assert result == {
         "u": question,
-        "answer": assistant("answer", normal, text="I will check"),
-        "normal-result": tool("normal-result", "clock"),
+        "answer": assistant("answer", call(opaque, "current_datetime"), text="I will check"),
+        "normal-result": tool(public_tool_result_id(opaque), opaque),
     }
     assert entries[1][0]["toolCalls"] == [child, normal]
 
@@ -66,36 +83,92 @@ def test_current_owner_can_read_checkpoint_only_call_and_result(
     visibility: ChildVisibility,
 ) -> None:
     issuer = linked(assistant("msg", call("child", "task")))
-    result = linked(tool("result", "child"))
-    assert filter_checkpoint_calls([issuer, result], [], {"physical": visibility}) == {
-        "msg": issuer[0],
-        "result": result[0],
-    }
-    assert filter_checkpoint_calls([result], [issuer], {"physical": visibility}) == {
-        "result": result[0]
+    result = linked(tool("provider-result-id", "child"))
+    converted = project([issuer, result], visibility=visibility)
+    opaque = public_tool_call_id("public", None, "msg", "child")
+    assert converted == {
+        "msg": assistant("msg", call(opaque, "task")),
+        "provider-result-id": tool(public_tool_result_id(opaque), opaque),
     }
 
 
-def test_result_cannot_inherit_another_runs_cause_or_an_ambiguous_issuer() -> None:
-    unknown = linked(tool("no-owner", "a"), None)
-    foreign = linked(assistant("foreign", call("a", "clock")), "other")
-    ambiguous = linked(assistant("one", call("b", "clock"), call("b", "clock")))
-    denied = linked(tool("reused", "b"))
-    assert (
-        filter_checkpoint_calls(
-            [unknown, denied], [foreign, ambiguous], {"physical": access(legacy=True)}
+def test_only_a_verified_same_run_can_alias_a_missing_parent_id() -> None:
+    raw = "key"
+    registered = public_tool_call_id("public", None, None, raw)
+    entry = assistant("archived", call(raw, "clock"))
+    expected = public_tool_call_id("public", None, "archived", raw)
+    for native in [None, "different-provider-parent"]:
+        issued = {(native, raw): registered}
+        assert (
+            project([linked(entry)], issued=issued)["archived"]["toolCalls"][0]["id"] == registered
         )
+        assert (
+            project([linked(entry, None)], issued=issued)["archived"]["toolCalls"][0]["id"]
+            == expected
+        )
+    exact: dict[tuple[str | None, str], str] = {("archived", raw): registered}
+    assert (
+        project([linked(entry, None)], issued=exact)["archived"]["toolCalls"][0]["id"] == registered
+    )
+
+
+def test_reused_provider_ids_use_their_actual_preceding_issuers_and_drop_ambiguous_results() -> (
+    None
+):
+    def entry(mid: str) -> tuple[Row, AgUiSnapshotMessageLink]:
+        return linked(assistant(mid, call("repeat", "clock")))
+
+    a = public_tool_call_id("public", None, "a", "repeat")
+    b = public_tool_call_id("public", None, "b", "repeat")
+    first, second = linked(tool("first", "repeat")), linked(tool("second", "repeat"))
+    result = project([entry("a"), first, entry("b"), second])
+    assert result["first"] == tool(public_tool_result_id(a), a)
+    assert result["second"] == tool(public_tool_result_id(b), b)
+    overlap = project(
+        [entry("a"), entry("b"), first, second, entry("c"), linked(tool("third", "repeat"))]
+    )
+    assert set(overlap) == {"a", "b", "c", "third"}
+    assert overlap["third"]["toolCallId"] == public_tool_call_id("public", None, "c", "repeat")
+
+
+def test_an_authenticated_continuation_reuses_its_original_result_identity() -> None:
+    original = public_tool_call_id("original", None, "issuer", "reused")
+    result = linked(tool("native-result-id", "reused"))
+    assert project([result]) == {}
+    assert project([result], issued={("issuer", "reused"): original}) == {
+        "native-result-id": tool(public_tool_result_id(original), original)
+    }
+    assert (
+        project([result], issued={("issuer", "reused"): original, ("other", "reused"): "conflict"})
         == {}
     )
-    previous = linked(assistant("old", call("a", "clock")), None)
-    assert filter_checkpoint_calls([unknown], [foreign, previous], {}) == {}
-    assert filter_checkpoint_calls([unknown], [previous], {}) == {"no-owner": unknown[0]}
+    current_row = linked(tool(public_tool_result_id(original), original), "resumed")
+    preceding = linked(assistant("issuer", call(original, "clock")), "original")
+    assert filter_checkpoint_calls([current_row], [preceding]) == {
+        current_row[0]["id"]: current_row[0]
+    }
+    assert filter_checkpoint_calls([current_row], []) == {}
 
 
-def test_result_cannot_inherit_a_child_lanes_issuer() -> None:
-    issuer = linked(assistant("nested-parent", call("shared-call", "task"), lane="nested"))
-    result = linked(tool("root-result", "shared-call"))
-    assert filter_checkpoint_calls([result], [issuer], {"physical": access("shared-call")}) == {}
+def test_issued_nested_grant_does_not_authorize_reused_provider_id_on_the_root() -> None:
+    root, child = ("first",), ("first", "second")
+    vis = ChildVisibility(
+        False,
+        frozenset({"secret"}),
+        frozenset({root, child}),
+        frozenset({("secret", child, "nested-task")}),
+    )
+    assert project([linked(assistant("root-msg", call("secret", "task")))], visibility=vis) == {}
+
+
+def test_final_result_needs_one_visible_issuer_in_the_actual_lane() -> None:
+    cid = public_tool_call_id("public", None, "normal", "cid")
+    issuer = linked(assistant("nested-parent", call(cid, "task"), lane="nested"))
+    result = linked(tool("root-result", cid))
+    assert filter_checkpoint_calls([result], [issuer]) == {}
+    first = linked(assistant("m", call(cid, "clock")))
+    other = linked(assistant("m2", call(cid, "clock")))
+    assert filter_checkpoint_calls([result], [first, other]) == {}
 
 
 @pytest.mark.parametrize(
@@ -149,3 +222,16 @@ def test_duplicate_or_non_delegation_cause_cannot_enable_controls() -> None:
             [child], [msg for msg, _ in calls], [link for _, link in calls]
         )
         assert "childTaskId" not in filtered
+
+
+def test_repeated_model_call_copy_is_folded_and_conflicting_tool_names_are_omitted() -> None:
+    copy = call("key", "clock")
+    ans = assistant("msg", copy, copy)
+    response = tool("reply", "key")
+    normal = project([linked(ans), linked(response)])
+    assert len(normal["msg"]["toolCalls"]) == 1
+    assert normal["reply"]["toolCallId"] == normal["msg"]["toolCalls"][0]["id"]
+    conflict = assistant("msg", copy, call("key", "task"), text="Checking.")
+    assert project([linked(conflict), linked(response)], visibility=access(legacy=True)) == {
+        "msg": {"id": "msg", "role": "assistant", "content": "Checking."}
+    }
