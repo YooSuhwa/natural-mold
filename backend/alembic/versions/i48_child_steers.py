@@ -9,7 +9,7 @@ from app.config import settings
 from app.migrations.org_authz_v1.rls_policies import create_policy_sql, enable_sql, table_policy
 
 revision = "i48_child_steers"
-down_revision = "i39_skill_approval_default"
+down_revision = "i47_chat_notifications"
 branch_labels = None
 depends_on = None
 
