@@ -31,6 +31,7 @@ class ConversationChildTask(Base):
     tool_call_id: Mapped[str] = mapped_column(String(256))
     child_agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
     role: Mapped[str] = mapped_column(String(160))
+    brief: Mapped[str | None] = mapped_column(String(300))
     checkpoint_ns: Mapped[str] = mapped_column(String(1024))
     checkpoint_id: Mapped[str | None] = mapped_column(String(128))
     status: Mapped[str] = mapped_column(String(24), default="running")

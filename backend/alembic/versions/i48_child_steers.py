@@ -18,6 +18,7 @@ _RECEIPTS = "conversation_child_instructions"
 
 
 def upgrade() -> None:
+    op.add_column("conversation_run_agents", sa.Column("identity_mode_at_accept", sa.String(16)))
     op.create_table(
         _TASKS,
         sa.Column("id", sa.Uuid(), primary_key=True),
@@ -41,6 +42,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("role", sa.String(160), nullable=False),
+        sa.Column("brief", sa.String(300)),
         sa.Column("checkpoint_ns", sa.String(1024), nullable=False),
         sa.Column("checkpoint_id", sa.String(128)),
         sa.Column("status", sa.String(24), nullable=False),
@@ -89,3 +91,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table(_RECEIPTS)
     op.drop_table(_TASKS)
+    op.drop_column("conversation_run_agents", "identity_mode_at_accept")
