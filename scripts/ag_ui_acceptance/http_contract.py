@@ -9,12 +9,22 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import traceback
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 from uuid import uuid4
 
-from http_common import Gate, checked_sse, expect_status, open_gate, require
+import httpx
+import psycopg
+from http_common import (
+    Gate,
+    GateFailure,
+    checked_sse,
+    expect_status,
+    open_gate,
+    require,
+)
 
 
 def _answer(events: list[dict[str, Any]]) -> tuple[str, str]:
@@ -372,11 +382,36 @@ async def run(selected: list[str]) -> None:
     }
     async with open_gate() as gate:
         results = {}
+        failures = []
         path: Path = gate.evidence_dir / "http-contract-results.json"
         for name in selected:
-            results[name] = await cases[name](gate)
+            try:
+                results[name] = await cases[name](gate)
+            except (
+                AssertionError,
+                KeyError,
+                ValueError,
+                httpx.HTTPError,
+                psycopg.Error,
+            ) as exc:
+                # Cases create independent rooms. Preserve other outcomes even if this one
+                # fails, keeping arbitrary server/SDK values out of persistent diagnostics.
+                failures.append(name)
+                results[name] = {
+                    "failure": str(exc)
+                    if isinstance(exc, GateFailure)
+                    else type(exc).__name__,
+                    "source": [
+                        f"{Path(frame.filename).name}:{frame.lineno}"
+                        for frame in traceback.extract_tb(exc.__traceback__)
+                        if Path(frame.filename).parent == Path(__file__).parent
+                    ],
+                }
+                print(f"{name} failed", flush=True)
+            else:
+                print(f"{name} passed", flush=True)
             path.write_text(json.dumps(results, indent=2, default=str) + "\n")
-            print(f"{name} passed", flush=True)
+        require(not failures, f"failed HTTP contract cases: {', '.join(failures)}")
 
 
 if __name__ == "__main__":
