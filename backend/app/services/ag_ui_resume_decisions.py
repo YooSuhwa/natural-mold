@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, Any
 
 from app.agent_runtime.ag_ui_v1_memo_files import private_memo_file_call
 from app.exceptions import ConflictError, ValidationError
-from app.routers.conversation_agent_protocol_resume_redaction import (
+from app.services.conversation_resume_decisions import INVALID, STALE, decision_problem
+from app.services.conversation_resume_redaction import (
     RedactedResumeArgsUnavailable,
-    _restore_redacted_response,
+    restore_redacted_response,
 )
-from app.routers.conversation_resume_decisions import INVALID, STALE, decision_problem
 
 if TYPE_CHECKING:
     from ag_ui.core import ResumeEntry
@@ -139,7 +139,7 @@ def checkpoint_response(
             raise ConflictError(code, message)
         raise ValidationError(code, message)
     try:
-        restored = _restore_redacted_response(response, actions)
+        restored = restore_redacted_response(response, actions)
     except RedactedResumeArgsUnavailable as exc:
         raise _invalid("An edited field must be replaced explicitly") from exc
     for index, action in enumerate(actions):
