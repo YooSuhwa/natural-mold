@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import type { APIRequestContext, Page } from '@playwright/test'
+import type { APIRequestContext, BrowserContext, Page } from '@playwright/test'
 import {
   API_BASE,
+  E2E_EMAIL,
+  E2E_PASSWORD,
   apiDeleteOk,
   apiGetJson,
   apiJson,
@@ -63,14 +65,73 @@ async function otherOrganization(request: APIRequestContext, headers: CsrfHeader
     }),
   )
   return {
+    ownerId: stringField(me, 'id', 'owner'),
     homeId: stringField(home, 'id', 'home organization'),
     otherId: stringField(object(other.organization), 'id', 'other organization'),
   }
 }
 
-test('a goal edited during a tool call completes from one later verified result', async ({
+async function matchingGoalNotices(
+  request: APIRequestContext,
+  goalId: string,
+  runId: string,
+  versionId: string,
+): Promise<string[]> {
+  const feed = object(await apiGetJson(request, `${API_BASE}/api/notifications`))
+  const found: string[] = []
+  for (const item of records(feed.items, 'notifications')) {
+    if (item.kind !== 'chat_goal.completed' || !isRecord(item.target) || !item.target.accessible) {
+      continue
+    }
+    const id = stringField(item, 'id', 'notification')
+    const target = object(
+      await apiGetJson(request, `${API_BASE}/api/notifications/${id}/destination`),
+    )
+    if (target.goal_id === goalId) {
+      expect(target).toMatchObject({ run_id: runId, version_id: versionId })
+      found.push(id)
+    }
+  }
+  return found
+}
+
+async function signInToEmptyContext(
+  context: BrowserContext,
+  previousCsrf: string,
+  ownerId: string,
+) {
+  expect((await context.cookies()).length).toBe(0)
+  expect((await context.request.get(`${API_BASE}/api/auth/me`)).status()).toBe(401)
+  const inbox = await context.newPage()
+  inbox.setDefaultTimeout(12_000)
+  await inbox.goto('/login')
+  await inbox.locator('#login-email').fill(E2E_EMAIL)
+  await inbox.locator('#login-password').fill(E2E_PASSWORD)
+  const response = inbox.waitForResponse(
+    (res) => res.request().method() === 'POST' && new URL(res.url()).pathname === '/api/auth/login',
+  )
+  await inbox.getByRole('button', { name: /^(로그인|Log in|Sign in)$/i }).click()
+  const auth = object(await apiJson(await response, 'fresh browser login'))
+  expect(stringField(object(auth.user), 'id', 'signed-in user')).toBe(ownerId)
+  const csrf = stringField(auth, 'csrf_token', 'login session')
+  expect(csrf !== previousCsrf).toBe(true)
+  await inbox.waitForURL((url) => url.pathname === '/')
+  await expect(
+    inbox.getByRole('button', { name: process.env.E2E_USER_NAME ?? 'E2E User' }).first(),
+  ).toBeVisible()
+  const onboarding = inbox.getByRole('dialog', {
+    name: /Moldy에 오신 것을 환영합니다|Welcome to Moldy/i,
+  })
+  if (await onboarding.isVisible()) {
+    await onboarding.getByRole('button', { name: /^(나중에|Later)$/i }).click()
+  }
+  return { inbox, headers: { 'X-CSRF-Token': csrf } }
+}
+
+test('a goal edited during a tool call delivers one verified result after a fresh sign-in', async ({
   page,
   request,
+  browser,
 }, testInfo) => {
   test.skip(
     process.env.E2E_CHAT_GOAL_NOTIFICATIONS !== '1',
@@ -79,7 +140,7 @@ test('a goal edited during a tool call completes from one later verified result'
   test.setTimeout(180_000)
   page.setDefaultTimeout(12_000)
   const headers = await loginApi(request)
-  const { homeId, otherId } = await otherOrganization(request, headers)
+  const { homeId, otherId, ownerId } = await otherOrganization(request, headers)
   const models = records(await apiGetJson(request, `${API_BASE}/api/models`), 'models')
   const model = models.find(isSeededScriptedModel)
   if (!model) throw new Error('Missing seeded scripted model')
@@ -96,6 +157,7 @@ test('a goal edited during a tool call completes from one later verified result'
   })
   const childId = stringField(child, 'id', 'child')
   let parentId: string | undefined
+  let fresh: BrowserContext | undefined
   try {
     const agent = await createAgent('Goal results', {
       sub_agent_ids: [childId],
@@ -212,24 +274,12 @@ test('a goal edited during a tool call completes from one later verified result'
     await expect
       .poll(
         async () => {
-          const feed = object(await apiGetJson(request, `${API_BASE}/api/notifications`))
-          const found: string[] = []
-          for (const item of records(feed.items, 'notifications')) {
-            if (
-              item.kind !== 'chat_goal.completed' ||
-              !isRecord(item.target) ||
-              !item.target.accessible
-            )
-              continue
-            const id = stringField(item, 'id', 'notification')
-            const target = object(
-              await apiGetJson(request, `${API_BASE}/api/notifications/${id}/destination`),
-            )
-            if (target.goal_id === created.goal.id) {
-              expect(target).toMatchObject({ run_id: verifiedRun, version_id: versionId })
-              found.push(id)
-            }
-          }
+          const found = await matchingGoalNotices(
+            request,
+            stringField(created.goal, 'id', 'goal'),
+            verifiedRun,
+            versionId,
+          )
           noticeId = found[0] ?? ''
           return found.length
         },
@@ -237,31 +287,49 @@ test('a goal edited during a tool call completes from one later verified result'
       )
       .toBe(1)
 
-    await page.reload()
-    await page.getByTestId('notifications-bell').click()
-    const notice = page.locator(`[data-notification-id="${noticeId}"]`)
-    const downloadEvent = page.waitForEvent('download')
+    const frontendOrigin = new URL(page.url()).origin
+    await page.close()
+    fresh = await browser.newContext({
+      baseURL: frontendOrigin,
+      storageState: { cookies: [], origins: [] },
+    })
+    const signedIn = await signInToEmptyContext(fresh, headers['X-CSRF-Token'], ownerId)
+    const { inbox } = signedIn
+    expect(
+      await matchingGoalNotices(
+        fresh.request,
+        stringField(created.goal, 'id', 'goal'),
+        verifiedRun,
+        versionId,
+      ),
+    ).toEqual([noticeId])
+    await inbox.goto('/agents')
+    await inbox.getByTestId('notifications-bell').click()
+    const notice = inbox.locator(`[data-notification-id="${noticeId}"]`)
+    const downloadEvent = inbox.waitForEvent('download')
     await notice.click()
     const download = await downloadEvent
     expect(download.suggestedFilename()).toBe(resultFile)
     const local = await download.path()
     if (!local) throw new Error('Missing downloaded file')
     expect(await readFile(local, 'utf8')).toBe(resultBytes)
-    await expect(page).toHaveURL(new RegExp(`${chatPath}#conversation-goal$`))
-    await page.reload()
-    await page.getByTestId('notifications-bell').click()
+    await expect(inbox).toHaveURL(new RegExp(`${chatPath}#conversation-goal$`))
+    await inbox.reload()
+    await inbox.getByTestId('notifications-bell').click()
     await expect(notice).toBeVisible()
     await expect(notice).not.toHaveAttribute('data-unread', 'true')
 
-    await apiPostJson(request, `${API_BASE}/api/me/active-org`, headers, { org_id: otherId })
-    const foreign = object(await apiGetJson(request, `${API_BASE}/api/notifications`))
+    await apiPostJson(fresh.request, `${API_BASE}/api/me/active-org`, signedIn.headers, {
+      org_id: otherId,
+    })
+    const foreign = object(await apiGetJson(fresh.request, `${API_BASE}/api/notifications`))
     const foreignGoalNotices = records(foreign.items, 'other inbox').filter(
       (item) => item.id === noticeId,
     )
     expect(foreignGoalNotices).toHaveLength(0)
-    expect((await request.get(versionUrl)).status()).toBe(404)
+    expect((await fresh.request.get(versionUrl)).status()).toBe(404)
     expect(
-      (await request.get(`${API_BASE}/api/notifications/${noticeId}/destination`)).status(),
+      (await fresh.request.get(`${API_BASE}/api/notifications/${noticeId}/destination`)).status(),
     ).toBe(404)
     await testInfo.attach('goal-journey-proof', {
       contentType: 'application/json',
@@ -273,6 +341,9 @@ test('a goal edited during a tool call completes from one later verified result'
         goalId: created.goal.id,
         goalVersion: 2,
         automaticFollowups: 1,
+        freshLogin: true,
+        anonymousStatusBeforeLogin: 401,
+        sameSingleNoticeAfterLogin: true,
         verifiedRun,
         versionId,
         sha256: evidence.sha256,
@@ -284,6 +355,7 @@ test('a goal edited during a tool call completes from one later verified result'
       }),
     })
   } finally {
+    await fresh?.close()
     await apiPostJson(request, `${API_BASE}/api/me/active-org`, headers, { org_id: homeId })
     if (parentId) await apiDeleteOk(request, `${API_BASE}/api/agents/${parentId}`, headers)
     await apiDeleteOk(request, `${API_BASE}/api/agents/${childId}`, headers)
