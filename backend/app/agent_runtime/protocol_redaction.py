@@ -8,6 +8,7 @@ from typing import Any, Final
 from app.agent_runtime.memory_event_projection import MEMORY_EVENT_NAMES, MEMORY_TOOL_NAMES
 from app.agent_runtime.run_secrets import get_run_secrets
 from app.marketplace.redaction import prepare_secret_values, replace_prepared_secret_values
+from app.schemas.conversation_graph_input import STEER_RECEIPTS_CHANNEL
 
 REDACTED_MEMORY_FIELD: Final = "<redacted>"
 REDACTED_SENSITIVE_FIELD: Final = "<redacted>"
@@ -284,6 +285,7 @@ def _mask_values_recursive(data: Any, secrets: tuple[str, ...]) -> Any:
                 else key
             ): _mask_values_recursive(value, secrets)
             for key, value in data.items()
+            if key != STEER_RECEIPTS_CHANNEL
         }
     if isinstance(data, Sequence) and not isinstance(data, str | bytes | bytearray):
         return [_mask_values_recursive(item, secrets) for item in data]
@@ -292,18 +294,22 @@ def _mask_values_recursive(data: Any, secrets: tuple[str, ...]) -> Any:
     return data
 
 
-def _redact_sensitive_keys(data: Any) -> Any:
+def _redact_sensitive_keys(data: Any, *, drop_private_channels: bool = True) -> Any:
     if isinstance(data, Mapping):
         return {
             str(key): (
                 REDACTED_SENSITIVE_FIELD
                 if _is_sensitive_protocol_key(str(key))
-                else _redact_sensitive_keys(value)
+                else _redact_sensitive_keys(value, drop_private_channels=drop_private_channels)
             )
             for key, value in data.items()
+            if not (drop_private_channels and key == STEER_RECEIPTS_CHANNEL)
         }
     if isinstance(data, Sequence) and not isinstance(data, str | bytes | bytearray):
-        return [_redact_sensitive_keys(item) for item in data]
+        return [
+            _redact_sensitive_keys(item, drop_private_channels=drop_private_channels)
+            for item in data
+        ]
     if isinstance(data, str):
         return _redact_sensitive_string(data)
     return data
@@ -336,7 +342,8 @@ def _is_sensitive_protocol_key(key: str) -> bool:
 def _redact_sensitive_string(data: str) -> str:
     parsed = _parse_json_container(data)
     if parsed is not None:
-        redacted = _redact_sensitive_keys(parsed)
+        # Authored JSON text can mention the channel without containing runtime state.
+        redacted = _redact_sensitive_keys(parsed, drop_private_channels=False)
         if redacted != parsed:
             return json.dumps(redacted, ensure_ascii=False, separators=(",", ":"))
     masked = SENSITIVE_ASSIGNMENT_RE.sub(_redact_assignment_match, data)

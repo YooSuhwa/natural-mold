@@ -25,6 +25,14 @@ REPO_ROOT: Final = Path(__file__).resolve().parents[1]
 BACKEND_ROOT: Final = REPO_ROOT / "backend"
 OWNER_LABEL: Final = "dev.moldy.postgres-test-owner"
 IMAGE: Final = "postgres:16-alpine"
+QUEUE_CONCURRENCY_TARGETS: Final = (
+    "tests/integration/test_conversation_queue_concurrency.py",
+    "tests/integration/test_chat_steer_concurrency.py",
+    (
+        "tests/test_chat_steer_checkpoint.py"
+        "::test_new_process_recovers_consumed_receipt_and_leaves_prepared_row_unconfirmed"
+    ),
+)
 ExternalScenarioKind = Literal[
     "all",
     "migration-roundtrip",
@@ -316,7 +324,7 @@ def run_test_child(env: dict[str, str], kind: ScenarioKind) -> tuple[int, str]:
             "-q",
             "-p",
             "tests.postgres_execution_plugin",
-            "tests/integration/test_conversation_queue_concurrency.py",
+            *QUEUE_CONCURRENCY_TARGETS,
             "-m",
             "integration",
         ],

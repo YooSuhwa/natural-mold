@@ -14,6 +14,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.chat_steer_middleware import root_steer_middleware
 from app.agent_runtime.message_utils import RuntimeMessage
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.run_secrets import add_run_secrets, collect_secret_values
@@ -256,6 +257,7 @@ async def _prepare_agent(
         scope_offload_backend=run_id is not None,
     )
     middleware = list(components.middleware or [])
+    middleware.extend(root_steer_middleware(cfg, run_id=run_id, is_trigger_mode=is_trigger_mode))
     if cfg.attachment_inputs is not None and cfg.runtime_profile == "standard":
         from app.agent_runtime.attachment_inputs import AttachmentInputMiddleware
 

@@ -468,6 +468,7 @@ export default function ChatPage({
           ) : (
             <ToolIconProvider iconIds={toolIconIds} mcpServers={mcpServerNames}>
               <ChatRuntimeSection
+                enableRunSteer
                 activeConversationId={activeConversationId}
                 activeRun={envelope?.active_run ?? null}
                 agentId={agentId}

@@ -12,6 +12,7 @@ from app.schemas.chat_resource_context import (
     FrozenChatResourceContext,
     PublicChatResourceReference,
 )
+from app.schemas.conversation_graph_input import PublicGraphInput
 
 
 class ConversationRunInputResponse(BaseModel):
@@ -62,7 +63,7 @@ class ConversationRunInputEditRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     expected_revision: int = Field(ge=1)
-    input: dict[str, JsonValue]
+    input: PublicGraphInput[JsonValue]
 
 
 class ConversationRunInputReorderRequest(BaseModel):

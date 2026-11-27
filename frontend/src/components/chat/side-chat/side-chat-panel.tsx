@@ -102,6 +102,7 @@ function SideChatRun({
   )
   return (
     <ChatRuntimeSection
+      enableRunSteer
       activeConversationId={conversationId}
       activeRun={envelope.data?.active_run ?? null}
       agentId={agent?.id ?? ''}

@@ -27,6 +27,7 @@ import { formatComposerCost, TokenBar } from '@/components/chat/assistant-compos
 import { AttachmentChip } from '@/components/chat/assistant-composer-attachment'
 import { ComposerDictationControl } from '@/components/chat/composer-dictation-control'
 import type { DictationAvailability } from '@/components/chat/use-browser-dictation'
+import { RunSteerHistory, RunSteerSend } from '@/components/chat/run-steer-controls'
 import { ServerMessageQueuePanel } from '@/components/chat/message-queue/server-message-queue-panel'
 import { followupEnabledAtom } from '@/lib/stores/chat-followup'
 import {
@@ -58,6 +59,7 @@ export interface ThreadComposerProps {
   readonly compact?: boolean
   readonly enableAttachments?: boolean
   readonly enableMessageQueue?: boolean
+  readonly enableRunSteer?: boolean
   readonly focusKey?: string | null
   readonly dictationAvailability?: DictationAvailability
   readonly onDictationStart?: () => void
@@ -75,6 +77,7 @@ export function ThreadComposer({
   compact,
   enableAttachments = false,
   enableMessageQueue = false,
+  enableRunSteer = false,
   focusKey,
   dictationAvailability = 'unsupported',
   onDictationStart = () => {},
@@ -202,6 +205,9 @@ export function ThreadComposer({
           }}
         />
       ) : null}
+      {enableRunSteer && conversationId && (
+        <RunSteerHistory key={conversationId} conversationId={conversationId} />
+      )}
       {topBarVisible && (
         <div className="flex items-center gap-3 border-b border-border/60 bg-primary/35 px-3.5 py-1.5 text-xs text-muted-foreground">
           {showTopModelName && <span className="font-medium text-foreground/70">{modelName}</span>}
@@ -353,6 +359,15 @@ export function ThreadComposer({
               {formatComposerCost(tokenUsage.cost)}
             </span>
           )}
+          {enableRunSteer &&
+            conversationId &&
+            process.env.NEXT_PUBLIC_CHAT_STEER_ENABLED === 'true' && (
+              <RunSteerSend
+                key={conversationId}
+                conversationId={conversationId}
+                hasResourceContext={resourceContext.references.length > 0}
+              />
+            )}
           <AuiIf condition={(s) => !s.thread.isRunning}>
             <ComposerPrimitive.Send asChild>
               <Button type="submit" size="icon-sm" className="rounded-full">
@@ -363,7 +378,7 @@ export function ThreadComposer({
           </AuiIf>
           <AuiIf condition={(s) => s.thread.isRunning && s.thread.capabilities.queue}>
             <>
-              <QueueSendButton label={t('sendButton')} />
+              <QueueSendButton label={tQueue('sendNext')} />
               <QueueSteerButton
                 label={tQueue('steerNew')}
                 sendNowLabel={tQueue('sendNow')}
@@ -389,6 +404,7 @@ function QueueSendButton({ label }: { readonly label: string }) {
       size="icon-sm"
       className="rounded-full"
       disabled={isEmpty}
+      title={label}
       onClick={() => aui.composer.send({ steer: false })}
     >
       <SendIcon className="size-4" />

@@ -390,6 +390,8 @@ class Settings(AuthzSettings):
     e2e_llm_model: str = ""
     chat_run_stale_after_seconds: int = 300
     chat_run_stale_sweep_interval_seconds: int = 60
+    # Admit text instructions for the next model call of an existing chat run.
+    chat_steer_enabled: bool = False
     # Auto-compaction marker (dev-plan-context-compaction-marker.md). When on, the
     # v3 stream suppresses deepagents summarization tokens (leak guard) and emits a
     # ``moldy.compaction`` side-channel event (running/done) so the chat UI can show

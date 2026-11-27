@@ -118,7 +118,7 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
         attachment_ids = [uuid.UUID(value) for value in queued.attachment_ids]
         conversation_id = queued.conversation_id
         run_id = run.id
-        source = queued.source
+        source = "chat" if queued.source == "steer" else queued.source
 
     if error_code is not None:
         await _fail_claimed_input(input_id, error_code=error_code)

@@ -20,7 +20,7 @@ from app.services.conversation_run_queue_mutations import (
 from app.services.conversation_run_queue_payload import JsonValue, validate_queue_input_payload
 from app.services.conversation_runtime_policy import ensure_conversation_runtime_policy
 
-QueueInputSource = Literal["chat"]
+QueueInputSource = Literal["chat", "steer"]
 
 
 @dataclass(frozen=True, slots=True)

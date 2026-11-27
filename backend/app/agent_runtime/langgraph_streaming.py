@@ -37,6 +37,8 @@ from app.agent_runtime.streaming import (
     StreamErrorRecord,
 )
 from app.config import settings
+from app.models.conversation_run import RUN_TERMINAL_STATUSES
+from app.services.conversation_run_steer_events import RunSteerReceiptFeed, uses_steer_channel
 
 _compaction_history_id = projection.compaction_history_id
 _annotate_session_consent_eligibility = projection.annotate_session_consent_eligibility
@@ -67,6 +69,7 @@ async def stream_agent_response_langgraph(
     excluded_capabilities: list[dict[str, str]] | None = None,
     session_consent_tools: list[str] | None = None,
     run_metrics: RunMetricsAccumulator | None = None,
+    steer_receipts: RunSteerReceiptFeed | None = None,
 ) -> AsyncGenerator[str, None]:
     msg_id = run_id or str(uuid.uuid4())
     thread_id = langgraph_stream_ingestion.thread_id_from_config(config, msg_id)
@@ -154,6 +157,23 @@ async def stream_agent_response_langgraph(
                 continue
 
             event = ingested.event
+            method, data = event["method"], event["data"]
+            if uses_steer_channel(event):
+                # Only committed server receipts may use this channel, including in fallback mode.
+                continue
+            if steer_receipts is not None and not event["namespace"]:
+                terminal = (
+                    method == "lifecycle"
+                    and isinstance(data, dict)
+                    and data.get("event") in RUN_TERMINAL_STATUSES
+                )
+                if terminal or method in {"values", "updates"}:
+                    for receipt in await steer_receipts.changed_events(
+                        first_seq=delivery.max_emitted_seq + 1, force=terminal
+                    ):
+                        yield await emit(receipt)
+                if terminal:
+                    steer_receipts = None
             is_empty_v3_interrupt = (
                 ingested.source == "v3" and projection.is_empty_input_requested_event(event)
             )
@@ -236,6 +256,11 @@ async def stream_agent_response_langgraph(
                     for side_effect_event in tool_side_effects:
                         yield await emit(side_effect_event)
 
+        if steer_receipts is not None:
+            for receipt in await steer_receipts.changed_events(
+                first_seq=delivery.max_emitted_seq + 1, force=True
+            ):
+                yield await emit(receipt)
         pending_events = await pending_input_requested_events(
             agent,
             config,

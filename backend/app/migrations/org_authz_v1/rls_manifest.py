@@ -41,6 +41,7 @@ DIRECT_TENANT: Final = frozenset(
         "authz_revocations",
         "builder_sessions",
         "conversation_artifacts",
+        "conversation_run_steers",
         "conversation_runs",
         "conversations",
         "credential_defaults",

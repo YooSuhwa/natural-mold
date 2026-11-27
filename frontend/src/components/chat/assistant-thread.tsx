@@ -72,6 +72,7 @@ export interface AssistantThreadProps {
   deepAgentsState?: DeepAgentsStateSnapshot
   enableAttachments?: boolean
   enableMessageQueue?: boolean
+  enableRunSteer?: boolean
   conversationId?: string
   variant?: 'default' | 'builder'
   builderModelLabel?: string
@@ -103,6 +104,7 @@ export function AssistantThread({
   deepAgentsState,
   enableAttachments = false,
   enableMessageQueue = false,
+  enableRunSteer = false,
   conversationId,
   variant = 'default',
   builderModelLabel,
@@ -239,6 +241,7 @@ export function AssistantThread({
                 compact={compact}
                 enableAttachments={enableAttachments}
                 enableMessageQueue={enableMessageQueue}
+                enableRunSteer={enableRunSteer}
                 focusKey={conversationId}
                 dictationAvailability={dictationAvailability}
                 onDictationStart={onDictationStart}

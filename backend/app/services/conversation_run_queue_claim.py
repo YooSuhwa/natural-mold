@@ -22,6 +22,7 @@ from app.services.conversation_run_queue_mutations import (
     queue_input_not_found,
     require_queue_executable,
 )
+from app.services.conversation_run_steer_branch import pin_steer_continuation
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +98,9 @@ async def claim_next_input(
         context=context,
     )
     if interrupted is not None:
+        return None
+
+    if not await pin_steer_continuation(db, conversation, queued, context):
         return None
 
     accepted = await accept_owned_execution(

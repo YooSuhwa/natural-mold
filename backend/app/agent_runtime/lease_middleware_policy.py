@@ -31,6 +31,8 @@ FILESYSTEM_MIDDLEWARE = "deepagents.middleware.filesystem.FilesystemMiddleware"
 EMPTY_CONTENT_RETRY = "app.agent_runtime.runtime.reliability.EmptyContentRetryMiddleware"
 # Adds the run's one-off recall message to the model request; the root only (plan 15).
 MEMORY_RECALL = "app.agent_runtime.runtime.memory_recall_middleware.MemoryRecallMiddleware"
+# Reads the run's admitted directives at a root model boundary. Opens no tool or provider.
+RUN_STEER = "app.agent_runtime.chat_steer_middleware.RunSteerMiddleware"
 
 LEASE_MIDDLEWARE_ALLOWLIST: frozenset[str] = frozenset(
     {
@@ -50,6 +52,7 @@ LEASE_MIDDLEWARE_ALLOWLIST: frozenset[str] = frozenset(
         # opens its own fresh provider permit (``LeaseSendGuard``).
         EMPTY_CONTENT_RETRY,
         MEMORY_RECALL,
+        RUN_STEER,
     }
 )
 INNER_TOOL_WRAPPERS: frozenset[str] = frozenset({FILESYSTEM_MIDDLEWARE})

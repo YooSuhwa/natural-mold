@@ -18,6 +18,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from langchain.agents.middleware import AgentMiddleware
+
+from app.agent_runtime.chat_steer_middleware import root_steer_middleware
 from app.agent_runtime.lease_model_factory import LeaseModelSpec
 from app.agent_runtime.message_utils import RuntimeMessage, convert_to_langchain_messages
 from app.agent_runtime.prepared_run_input_policy import unsupported
@@ -293,6 +296,11 @@ def build_preparation_inputs(
     conversation_prefix = f"/conversations/{cfg.thread_id}"
     # Same write surface as the stored policy: inspect mode gets no write route.
     writes = _write_allowed(cfg)
+    root_middleware: tuple[AgentMiddleware[Any, Any, Any], ...] = root_steer_middleware(
+        cfg, run_id=sources.run_id, is_trigger_mode=trigger, prepared_output_root=output
+    )
+    if cfg.memory_recall_block:
+        root_middleware += (MemoryRecallMiddleware(cfg.memory_recall_block),)
     return PreparationInputs(
         thread_id=cfg.thread_id,
         system_prompt=prompt,
@@ -308,9 +316,7 @@ def build_preparation_inputs(
         mcp_configs=root_tools.mcp_configs,
         subagents=tuple(children),
         custom_middleware=(EmptyContentRetryMiddleware(max_retries=1),),
-        root_middleware=(
-            (MemoryRecallMiddleware(cfg.memory_recall_block),) if cfg.memory_recall_block else ()
-        ),
+        root_middleware=root_middleware,
         mcp_interrupts=not trigger,
         child_tools=child_tools,
         interrupt_on=_interrupts(

@@ -3,6 +3,9 @@ export const conversationQueryKeys = {
   agentPageRoot: (agentId: string) => ['agents', agentId, 'conversations', 'page'] as const,
   prefix: (conversationId: string) => ['conversations', conversationId] as const,
   messages: (conversationId: string) => ['conversations', conversationId, 'messages'] as const,
+  steers: (conversationId: string) => ['conversations', conversationId, 'steers'] as const,
+  steersBefore: (conversationId: string, before: number) =>
+    ['conversations', conversationId, 'steers', 'before', before] as const,
   runMessageLinksLifecycle: (conversationId: string | null) =>
     ['conversations', conversationId ?? 'none', 'run-message-links-lifecycle'] as const,
   runMessageLinkIdentity: (conversationId: string | null, messageId: string | null | undefined) =>

@@ -22,6 +22,7 @@ import { AssistantThread, type AssistantThreadProps } from '@/components/chat/as
 import { FailedMessageRetryProvider } from '@/components/chat/failed-message-retry'
 import { useBrowserDictation } from '@/components/chat/use-browser-dictation'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
+import { RunSteerStreamSync } from '@/lib/chat/langgraph-runtime/run-steer-events'
 import { useMoldyLangGraphStream } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
 import {
   SubagentRuntimeProvider,
@@ -58,6 +59,7 @@ type ThreadRenderProps = Pick<
   | 'agentImageUrl'
   | 'agentName'
   | 'composerHint'
+  | 'enableRunSteer'
   | 'conversationId'
   | 'contextWindow'
   | 'dictationAvailability'
@@ -84,6 +86,7 @@ export interface ChatRuntimeSectionProps {
   readonly attachmentAdapter?: AttachmentAdapter
   /** Composer 위 커스텀 힌트 (스킬 빌더 "예시로 시험" 등). */
   readonly composerHint?: ReactNode
+  readonly enableRunSteer?: boolean
   readonly emptyContent: ReactNode
   readonly feedbackAdapter?: FeedbackAdapter
   readonly latestRun: ConversationRun | null
@@ -115,6 +118,7 @@ export function ChatRuntimeSection({
   agentName,
   attachmentAdapter,
   composerHint,
+  enableRunSteer = false,
   emptyContent,
   feedbackAdapter,
   latestRun,
@@ -146,6 +150,7 @@ export function ChatRuntimeSection({
       agentImageUrl,
       agentName,
       composerHint,
+      enableRunSteer,
       conversationId: activeConversationId ?? undefined,
       contextWindow,
       dictationAvailability: dictation.availability,
@@ -169,6 +174,7 @@ export function ChatRuntimeSection({
       agentImageUrl,
       agentName,
       composerHint,
+      enableRunSteer,
       contextWindow,
       dictation.availability,
       dictation.resetFailure,
@@ -346,17 +352,22 @@ function LangGraphRuntimeSection({
   }, [isRunning, onRuntimeStatusChange, onStreamEnd])
 
   return (
-    <RuntimeFrame
-      activities={activities}
-      deepAgentsState={deepAgentsState}
-      hitlValue={hitlValue}
-      runtime={assistantRuntime}
-      messageQueue={messageQueue}
-      retryFailedInput={retryFailedInput}
-      failedRunId={threadRunNotice?.status === 'failed' ? threadRunNotice.id : undefined}
-      subagentStream={stream}
-      threadProps={threadProps}
-    />
+    <>
+      {threadProps.enableRunSteer && (
+        <RunSteerStreamSync conversationId={conversationId} stream={stream} />
+      )}
+      <RuntimeFrame
+        activities={activities}
+        deepAgentsState={deepAgentsState}
+        hitlValue={hitlValue}
+        runtime={assistantRuntime}
+        messageQueue={messageQueue}
+        retryFailedInput={retryFailedInput}
+        failedRunId={threadRunNotice?.status === 'failed' ? threadRunNotice.id : undefined}
+        subagentStream={stream}
+        threadProps={threadProps}
+      />
+    </>
   )
 }
 

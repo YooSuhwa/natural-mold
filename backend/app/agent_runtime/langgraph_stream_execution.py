@@ -21,6 +21,7 @@ from app.agent_runtime.run_start_events import excluded_capabilities_of
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
 from app.observability.langfuse import LangfuseTraceRecord
+from app.services.conversation_run_steer_events import RunSteerReceiptFeed
 
 _USE_PREPPED_LC_MESSAGES: Any = object()
 
@@ -205,6 +206,13 @@ async def _stream_langgraph_body(
                 excluded_capabilities=excluded_capabilities_of(cfg),
                 # AD-4 — 인터럽트 review_configs에 세션 동의 옵션 플래그 주석.
                 session_consent_tools=cfg.skill_builder_consent_offer_tools,
+                steer_receipts=RunSteerReceiptFeed.for_chat(
+                    cfg.org_context,
+                    cfg.thread_id,
+                    run_id,
+                    source=moldy_source,
+                    profile=cfg.runtime_profile,
+                ),
                 run_metrics=run_metrics,
             ):
                 yield chunk

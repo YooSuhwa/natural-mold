@@ -13,6 +13,7 @@ from app.routers import (
     conversation_messages,
     conversation_pinned_summaries,
     conversation_run_inputs,
+    conversation_run_steers,
     conversation_runs,
     conversation_side_chats,
     conversation_traces,
@@ -25,6 +26,7 @@ router.include_router(conversation_side_chats.router)
 router.include_router(conversation_traces.router)
 router.include_router(conversation_runs.router)
 router.include_router(conversation_run_inputs.router)
+router.include_router(conversation_run_steers.router)
 router.include_router(conversation_ag_ui.router)
 router.include_router(conversation_agent_protocol.router)
 router.include_router(conversation_agent_protocol_sdk.router)

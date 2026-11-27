@@ -33,7 +33,12 @@ from app.services.conversation_run_delivery import (
     _redact_run_error_message,
     _trace_status_for_run,
 )
-from app.services.conversation_run_task_registry import RunTaskRegistry, worker_attr
+from app.services.conversation_run_steer_rollover import settle_terminal_steers
+from app.services.conversation_run_task_registry import (
+    RunTaskRegistry,
+    _tenant_session,
+    worker_attr,
+)
 from app.services.conversation_run_terminal_delivery import OwnerTerminalDelivery
 from app.services.conversation_run_transitions import _execution_target, _transition_to_running
 from app.services.conversation_stream_service import StreamCtx
@@ -329,4 +334,10 @@ async def _run_conversation(
                 dispatch_next_for_conversation,
             )
 
+            await settle_terminal_steers(
+                _tenant_session,
+                conversation_id=conversation_id,
+                run_id=run_id,
+                context=cfg.org_context,
+            )
             await dispatch_next_for_conversation(conversation_id)

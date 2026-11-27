@@ -90,6 +90,10 @@ export function buildLaneEnvironment(lane, inheritedEnvironment, project) {
 
   if (lane === 'scripted') {
     environment.E2E_SCRIPTED_MODEL_ENABLED = 'true'
+    if (e2eProject === 'scripted-full') {
+      environment.CHAT_STEER_ENABLED = 'true'
+      environment.NEXT_PUBLIC_CHAT_STEER_ENABLED = 'true'
+    }
     delete environment.E2E_LLM_BASE_URL
     delete environment.E2E_LLM_API_KEY
     delete environment.E2E_LLM_MODEL

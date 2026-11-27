@@ -29,6 +29,7 @@ from langchain.agents.middleware.types import PrivateStateAttr
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
+from app.agent_runtime.chat_steer_middleware import RunSteerMiddleware
 from app.agent_runtime.lease_dispatch_permit import DispatchDeniedError
 from app.agent_runtime.prepared_child_launch import ChildLaunchKey, ChildLaunchReservation
 
@@ -67,7 +68,7 @@ def private_state_keys(*schemas: type[object]) -> frozenset[str]:
 
 
 def _default_private_keys() -> frozenset[str]:
-    return private_state_keys(SkillsState, MemoryState)
+    return private_state_keys(SkillsState, MemoryState, RunSteerMiddleware.state_schema)
 
 
 @dataclass(frozen=True, slots=True)
