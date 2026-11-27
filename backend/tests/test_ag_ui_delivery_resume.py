@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -19,6 +18,7 @@ from app.models.approval_request import ApprovalRequest
 from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import ConversationRun
 from app.services import ag_ui_delivery_resume as delivery
+from app.services.ag_ui_pending_checkpoint import PendingCheckpoint
 from tests.authz.g03_support import seed_conversation
 from tests.authz.test_independent_job_authority import delegation as delegation
 from tests.authz.unit_scope_fixture import ensure_unit_scope
@@ -140,7 +140,7 @@ async def accepted(db: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> Accepte
         delivery,
         "read_pending_checkpoint",
         AsyncMock(
-            return_value=SimpleNamespace(
+            return_value=PendingCheckpoint(
                 checkpoint_id=CHECKPOINT,
                 interrupts=[{"id": INTERRUPT, "value": VALUE, "ns": []}],
                 expires_at={INTERRUPT: row.expires_at},
@@ -297,7 +297,7 @@ async def test_inherited_approval_remains_bound_after_legacy_partial_resume(
         delivery,
         "read_pending_checkpoint",
         AsyncMock(
-            return_value=SimpleNamespace(
+            return_value=PendingCheckpoint(
                 checkpoint_id=CHECKPOINT,
                 interrupts=[{"id": INTERRUPT, "value": VALUE, "ns": []}],
                 expires_at={INTERRUPT: earlier.expires_at},
@@ -318,8 +318,6 @@ async def test_edited_argument_digest_survives_recovery(
     accepted: Accepted,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services.ag_ui_pending_checkpoint import PendingCheckpoint
-
     value = {
         "action_requests": VALUE["action_requests"],
         "review_configs": [{"action_name": "publish", "allowed_decisions": ["edit"]}],
