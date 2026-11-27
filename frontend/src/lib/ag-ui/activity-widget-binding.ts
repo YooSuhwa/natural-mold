@@ -58,9 +58,8 @@ export function findWidgetBinding(
   for (const activity of activities) {
     if (activity.activityType !== 'moldy.mcp_app') continue
     const data = activity.content
-    // Subagent streams use a lane-specific public ID. The binding route uses the original ID.
-    const publicToolCallId =
-      data.public_tool_call_id === undefined ? data.tool_call_id : data.public_tool_call_id
+    // The wire identifies the rendered tool part; the protected endpoint takes the original ID.
+    const publicToolCallId = data.public_tool_call_id
     if (publicToolCallId !== owner.toolCallId || !isToolId(data.tool_call_id)) continue
     if (!isMcpAppUuid(data.run_id) || !isMcpAppUuid(data.binding_id)) continue
     if (activity.physicalRunId && activity.physicalRunId !== data.run_id) continue
