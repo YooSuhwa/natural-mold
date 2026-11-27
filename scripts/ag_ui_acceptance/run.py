@@ -10,6 +10,7 @@ import shutil
 import signal
 import sys
 import time
+import traceback
 from collections.abc import Callable
 from contextlib import ExitStack
 from datetime import UTC, datetime
@@ -585,6 +586,10 @@ def main() -> int:
         record["passed"] = True
     except (KeyboardInterrupt, Exception) as exc:  # noqa: BLE001 - always close owned resources and write the receipt
         record["failure"] = type(exc).__name__
+        record["failure_location"] = [
+            {"file": Path(frame.filename).name, "line": frame.lineno, "function": frame.name}
+            for frame in traceback.extract_tb(exc.__traceback__)[-8:]
+        ]
         # Probe and subprocess errors can contain untrusted output. Only sanitized library
         # exceptions from the process wrapper include log tails. Details stay local in stderr.
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
