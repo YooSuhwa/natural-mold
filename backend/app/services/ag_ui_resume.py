@@ -19,13 +19,16 @@ from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.approval_request import ApprovalRequest
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
-from app.routers.conversation_agent_protocol_interrupts import ThreadInterrupt
-from app.routers.conversation_agent_protocol_resume import ResumePayload, SubmittedInterruptResponse
-from app.routers.conversation_resume_decisions import INVALID, STALE
 from app.services import conversation_run_service
 from app.services.ag_ui_pending_checkpoint import PendingCheckpoint, read_pending_checkpoint
 from app.services.ag_ui_pending_child_authority import require_pending_child_authority
 from app.services.ag_ui_resume_decisions import checkpoint_response
+from app.services.conversation_resume_decisions import INVALID, STALE
+from app.services.conversation_resume_types import (
+    ResumePayload,
+    SubmittedInterruptResponse,
+    ThreadInterrupt,
+)
 
 if TYPE_CHECKING:
     from ag_ui.core import ResumeEntry
