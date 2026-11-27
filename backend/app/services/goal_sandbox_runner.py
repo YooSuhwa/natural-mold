@@ -61,7 +61,12 @@ async def run_if_eligible(
     sandbox: Sandbox | None = None
     released = False
     try:
-        sandbox = await provider.open_workspace(claim, timeout_seconds)
+        sandbox = await provider.open_workspace(
+            workspace_id=claim.workspace_id,
+            action=claim.action,
+            provider_id=claim.provider_id,
+            timeout_seconds=timeout_seconds,
+        )
         # A create/attach can block. Verify the same goal, policy and permission
         # after provisioning and immediately before dispatching the command.
         async with tenant_session(actor) as db:

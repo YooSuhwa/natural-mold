@@ -13,6 +13,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import PrivateAttr
 
 from app.agent_runtime import skill_sandbox
+from app.agent_runtime.goal_sandbox_scope import goal_sandbox_runner_for
 from app.agent_runtime.skill_execution_policy import (
     _expand_shell_vars,
     _prepare_skill_subprocess_args,
@@ -104,10 +105,9 @@ async def _run_sandboxed(
     with skill_sandbox.trace_span(ctx.run_id, {"skill_slug": descriptor.slug, **details}) as span:
         try:
             run = None
-            if settings.goal_sandbox_enabled and ctx.goal_sandbox_run_id and not domains:
-                from app.agent_runtime.goal_sandbox_runner import run_if_eligible
-
-                run = await run_if_eligible(
+            goal_runner = goal_sandbox_runner_for(ctx.goal_sandbox_run_id)
+            if settings.goal_sandbox_enabled and goal_runner is not None and not domains:
+                run = await goal_runner(
                     ctx,
                     descriptor,
                     args,

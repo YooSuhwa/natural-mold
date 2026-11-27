@@ -2,10 +2,12 @@
 
 import asyncio
 import hashlib
+from collections.abc import AsyncGenerator, Iterator
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
@@ -16,14 +18,15 @@ from langchain_core.tools import BaseTool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime import goal_sandbox_runner as runner
 from app.agent_runtime import runtime_component_builder, skill_executor, skill_sandbox
+from app.agent_runtime.goal_sandbox_scope import goal_sandbox_runner_for, goal_sandbox_scope
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_preparation import prepare_runtime_components_impl
 from app.agent_runtime.runtime_preparation_bindings import _runtime_preparation_bindings
 from app.agent_runtime.skill_sandbox import SkillRunResult
 from app.config import settings
 from app.database import tenant_session
+from app.dependencies import CurrentUser
 from app.marketplace.skill_runtime import (
     ResolvedCredential,
     SkillRuntimeDescriptor,
@@ -31,8 +34,12 @@ from app.marketplace.skill_runtime import (
 )
 from app.migrations.org_authz_v1.contracts import ORG, TENANT
 from app.models.goal_sandbox import GoalSandbox
+from app.services import conversation_run_worker
 from app.services import goal_sandbox_leases as leases
+from app.services import goal_sandbox_runner as runner
+from tests.authz.agent_execution_runtime_fixture import seed_runtime_run
 from tests.authz.registration_fixture import seed_registration_default
+from tests.authz.run_fixture_config import run_fixture_config
 from tests.authz.unit_scope_fixture import unit_context
 from tests.sqlite_test_engine import TestSession
 
@@ -67,7 +74,16 @@ MANIFEST = {"result.txt": hashlib.sha256(CONTENT).hexdigest()}
 
 
 @pytest.fixture
-async def skill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db: AsyncSession) -> SkillRun:
+def worker_run_id() -> Iterator[str]:
+    run_id = str(uuid4())
+    with goal_sandbox_scope(run_id, runner.run_if_eligible):
+        yield run_id
+
+
+@pytest.fixture
+async def skill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db: AsyncSession, worker_run_id: str
+) -> SkillRun:
     await seed_registration_default(db)
     await db.commit()
     directory = tmp_path / "runtime" / "demo"
@@ -96,7 +112,7 @@ async def skill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db: AsyncSessio
         runtime_root=directory.parent,
         output_dir=tmp_path / "out",
         descriptors={"demo": descriptor},
-        goal_sandbox_run_id=str(uuid4()),
+        goal_sandbox_run_id=worker_run_id,
     )
     monkeypatch.setattr(settings, "goal_sandbox_enabled", True)
     monkeypatch.setattr(settings, "skill_sandbox_enabled", True)
@@ -135,6 +151,54 @@ async def skill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, db: AsyncSessio
         ephemeral,
         close,
     )
+
+
+async def test_worker_capability_is_scoped_by_run_and_lifetime() -> None:
+    run_id = str(uuid4())
+    started = asyncio.Event()
+    check_again = asyncio.Event()
+
+    async def inherited_task() -> None:
+        started.set()
+        assert goal_sandbox_runner_for(run_id) is runner.run_if_eligible
+        assert goal_sandbox_runner_for(str(uuid4())) is None
+        assert goal_sandbox_runner_for(None) is None
+        await check_again.wait()
+        assert goal_sandbox_runner_for(run_id) is None
+
+    with goal_sandbox_scope(run_id, runner.run_if_eligible):
+        inherited = asyncio.create_task(inherited_task())
+        await started.wait()
+    check_again.set()
+    await inherited
+    assert goal_sandbox_runner_for(run_id) is None
+
+
+async def test_conversation_worker_supplies_the_current_runs_sandbox_capability() -> None:
+    run, _agent, conversation = await seed_runtime_run()
+    matching: list[bool] = []
+
+    async def inspect(*_args: Any, **_kwargs: Any) -> AsyncGenerator[str, None]:
+        matching.append(goal_sandbox_runner_for(str(run.id)) is runner.run_if_eligible)
+        if False:  # a stream with no emitted frames
+            yield ""
+
+    registry = conversation_run_worker.RunTaskRegistry(worker_instance_id="sandbox-worker")
+    await conversation_run_worker.start_conversation_run(
+        run_id=run.id,
+        conversation_id=conversation.id,
+        cfg=await run_fixture_config(run.id, TestSession),
+        user=CurrentUser(id=conversation.user_id, email="owner@test", name="Owner"),
+        input_payload={"messages": [{"role": "user", "content": "run"}]},
+        moldy_source="chat",
+        executor_fn=inspect,
+        registry=registry,
+    )
+    task = registry.get(run.id)
+    assert task is not None
+    await task
+    assert matching == [True]
+    assert goal_sandbox_runner_for(str(run.id)) is None
 
 
 @pytest.mark.parametrize("mode", ["disabled", "no_goal_run", "network", "credential", "unprofiled"])
@@ -181,11 +245,11 @@ async def test_followup_uses_same_provider_workspace_after_idle(
             assert await leases.complete_maintenance(db, claim)
             await db.commit()
     assert "finished" in await skill.invoke()
-    first, second = (args.args[0] for args in skill.open.await_args_list)
-    assert first.action == "create"
-    assert second.action == ("resume" if pause else "connect")
-    assert first.workspace_id == second.workspace_id
-    assert second.provider_id == "test-workspace"
+    first, second = (call.kwargs for call in skill.open.await_args_list)
+    assert first["action"] == "create"
+    assert second["action"] == ("resume" if pause else "connect")
+    assert first["workspace_id"] == second["workspace_id"]
+    assert second["provider_id"] == "test-workspace"
     assert all(
         args.args[2]["MOLDY_GOAL_WORK_DIR"] == runner.provider.WORK_DIR
         for args in skill.command.await_args_list
@@ -205,7 +269,7 @@ async def test_changed_authorization_never_retries_on_other_runtime(
 ) -> None:
     if boundary == "after_open":
 
-        async def revoke_on_open(*_args):
+        async def revoke_on_open(**_kwargs):
             skill.resolve.return_value = None
             return SimpleNamespace(id="test-workspace", close=skill.close)
 

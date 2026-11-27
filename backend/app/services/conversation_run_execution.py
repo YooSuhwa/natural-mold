@@ -11,6 +11,7 @@ from collections.abc import AsyncGenerator, Callable
 from functools import partial
 from typing import Any
 
+from app.agent_runtime.goal_sandbox_scope import goal_sandbox_scope
 from app.agent_runtime.openai_prompt_cache import conversation_prompt_cache
 from app.agent_runtime.run_error_codes import run_error_code
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
@@ -48,6 +49,7 @@ from app.services.conversation_run_task_registry import (
 from app.services.conversation_run_terminal_delivery import OwnerTerminalDelivery
 from app.services.conversation_run_transitions import _execution_target
 from app.services.conversation_stream_service import StreamCtx
+from app.services.goal_sandbox_runner import run_if_eligible as run_goal_sandbox
 from app.services.partial_model_output import PARTIAL_STREAM_ERROR, capture_partial_output
 from app.services.stream_attempt_owner import stream_attempt_owner
 
@@ -172,6 +174,7 @@ async def _run_conversation(
         )
         with (
             conversation_prompt_cache(cfg.org_context, conversation_id, run_path=cfg.run_path),
+            goal_sandbox_scope(str(run_id), run_goal_sandbox),
             stream_attempt_owner(_execution_target(run_id, conversation_id, cfg), registry),
         ):
             async for chunk in (start.executor or executor_fn)(

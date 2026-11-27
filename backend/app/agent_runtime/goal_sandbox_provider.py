@@ -11,7 +11,6 @@ import stat
 import tempfile
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 from opensandbox import Sandbox, SandboxManager
@@ -27,9 +26,6 @@ from app.agent_runtime.skill_sandbox import (
 )
 from app.config import settings
 
-if TYPE_CHECKING:
-    from app.services.goal_sandbox_leases import SandboxClaim
-
 WORK_DIR = "/workspace/intermediate"
 # A root-owned directory in the sandbox. Commands run as uid 1000 and cannot
 # modify either the snapshot or its manifest while the app retrieves outputs.
@@ -40,32 +36,34 @@ def goal_workspace_metadata(workspace_id: UUID) -> dict[str, str]:
     return {"app": "moldy", "kind": "goal_workspace", "workspace_id": str(workspace_id)}
 
 
-async def open_workspace(claim: SandboxClaim, timeout_seconds: float) -> Sandbox:
+async def open_workspace(
+    *, workspace_id: UUID, action: str, provider_id: str | None, timeout_seconds: float
+) -> Sandbox:
     connection = skill_sandbox.connection_config(timeout_seconds)
     lifetime = timedelta(
         seconds=max(settings.goal_sandbox_retention_seconds + 120, timeout_seconds + 300)
     )
-    if claim.action == "create":
+    if action == "create":
         return await Sandbox.create(
             settings.skill_sandbox_image,
             connection_config=connection,
             network_policy=skill_sandbox.network_policy(()),
             resource={"cpu": settings.skill_sandbox_cpu, "memory": settings.skill_sandbox_memory},
-            metadata=goal_workspace_metadata(claim.workspace_id),
+            metadata=goal_workspace_metadata(workspace_id),
             timeout=lifetime,
             ready_timeout=timedelta(seconds=60),
         )
-    if claim.action not in {"resume", "connect"} or claim.provider_id is None:
+    if action not in {"resume", "connect"} or provider_id is None:
         raise SkillSandboxError("goal workspace is unavailable.")
     # Verify the resource before a resume, which is itself a remote side effect.
     async with await SandboxManager.create(connection_config=connection) as manager:
-        info = await manager.get_sandbox_info(claim.provider_id)
-        expected = goal_workspace_metadata(claim.workspace_id)
+        info = await manager.get_sandbox_info(provider_id)
+        expected = goal_workspace_metadata(workspace_id)
         if not all((info.metadata or {}).get(key) == value for key, value in expected.items()):
             raise SkillSandboxError("goal workspace identity changed.")
-    open_call = Sandbox.resume if claim.action == "resume" else Sandbox.connect
+    open_call = Sandbox.resume if action == "resume" else Sandbox.connect
     sandbox = await open_call(
-        claim.provider_id, connection_config=skill_sandbox.connection_config(timeout_seconds)
+        provider_id, connection_config=skill_sandbox.connection_config(timeout_seconds)
     )
     try:
         await sandbox.renew(lifetime)
