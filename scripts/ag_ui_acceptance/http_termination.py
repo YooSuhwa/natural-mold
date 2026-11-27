@@ -78,11 +78,41 @@ async def check_termination(gate: Gate) -> dict[str, object]:
     )
 
     broken = f"failure-{uuid4().hex}"
-    failed = checked_sse(
-        await gate.owner_a.send(
-            "POST", f"{base}/runs", _input(tid, broken, "E2E_ERROR")
+    queue_path = f"/api/conversations/{tid}/run-inputs"
+    # User stop pauses the native queue. Follow the accepted input across the explicit
+    # resume action and require the same POST stream to complete without resubmission.
+    async with (
+        asyncio.timeout(90),
+        gate.owner_a.client.stream(
+            "POST",
+            f"{base}/runs",
+            json=_input(tid, broken, "E2E_ERROR"),
+            headers=gate.owner_a.csrf,
+            timeout=90,
+        ) as pending,
+    ):
+        expect_status(pending, 200)
+        input_id = pending.headers.get("X-Moldy-Input-Id")
+        queue = await gate.owner_b.json("GET", queue_path)
+        entry = [item for item in queue["items"] if item["id"] == input_id]
+        require(
+            queue["queue_paused"] is True
+            and len(entry) == 1
+            and entry[0]["status"] == "pending"
+            and entry[0]["run_id"] is None,
+            "explicit stop did not retain the next accepted input in the paused queue",
         )
-    )
+        existing = await gate.sql(
+            "SELECT status FROM conversation_runs WHERE conversation_id=%s", (tid,)
+        )
+        require(existing == [{"status": "canceled"}], "paused queue started new work")
+        resumed = await gate.owner_b.json("POST", queue_path + "/resume")
+        require(
+            resumed["queue_paused"] is False,
+            "explicit resume did not release the queue",
+        )
+        await pending.aread()
+        failed = checked_sse(pending)
     require(failed[-1]["type"] == "RUN_ERROR", "model failure appeared as a success")
     require(
         not any("E2E scripted model error simulation" in str(e) for e in failed),
@@ -102,6 +132,7 @@ async def check_termination(gate: Gate) -> dict[str, object]:
     )
     return {
         "cancellation": "cancelled",
+        "resumed_input": input_id,
         "failure": "RUN_ERROR",
         "durable_runs": len(states),
     }
