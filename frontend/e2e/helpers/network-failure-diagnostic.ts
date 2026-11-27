@@ -118,9 +118,13 @@ export function shouldDeferApiReadAbort(
   return !alreadyExpected && isApiReadNavigationAbortCandidate(input, apiBaseUrl)
 }
 
+export type DocumentReplacement = { readonly committed: boolean }
+
 export type DocumentCommitTracker = {
   readonly generation: number
-  readonly navigationRequested: () => void
+  readonly latestNavigation: DocumentReplacement | undefined
+  readonly navigationRequested: () => DocumentReplacement
+  readonly navigationFailed: (navigation: DocumentReplacement) => void
   readonly frameNavigated: () => void
 }
 
@@ -131,46 +135,55 @@ export type DocumentCommitTracker = {
  * `framenavigated` (history API) has no navigation request and is not a commit. */
 export function createDocumentCommitTracker(): DocumentCommitTracker {
   let generation = 0
-  let navigationPending = false
+  let latest: { committed: boolean } | undefined
   return {
     get generation() {
       return generation
     },
+    get latestNavigation() {
+      return latest
+    },
     navigationRequested() {
-      navigationPending = true
+      latest = { committed: false }
+      return latest
+    },
+    navigationFailed(navigation) {
+      if (latest === navigation && !latest.committed) latest = undefined
     },
     frameNavigated() {
-      if (!navigationPending) return
-      navigationPending = false
+      if (!latest || latest.committed) return
+      latest.committed = true
       generation += 1
     },
   }
 }
 
-export type DeferredApiReadAbort = {
+export type DeferredDocumentAbort = {
   readonly input: RequestFailureDiagnosticInput
   readonly startNavigationGeneration: number
+  readonly replacement?: DocumentReplacement
 }
 
 /** Return the candidate's effective code until a later main-frame navigation
  * proves that it belonged to the prior document. */
-export function deferredApiReadAbortCode(
-  candidate: DeferredApiReadAbort,
+export function deferredDocumentAbortCode(
+  candidate: DeferredDocumentAbort,
   currentNavigationGeneration: number,
 ): NetworkFailureCode | undefined {
-  return currentNavigationGeneration > candidate.startNavigationGeneration
+  return currentNavigationGeneration > candidate.startNavigationGeneration &&
+    candidate.replacement?.committed !== false
     ? undefined
     : classifyRequestFailure(candidate.input)
 }
 
 export function collectNetworkFailureCodes(
   persistentCodes: readonly NetworkFailureCode[],
-  deferredCandidates: readonly DeferredApiReadAbort[],
+  deferredCandidates: readonly DeferredDocumentAbort[],
   currentNavigationGeneration: number,
 ): NetworkFailureCode[] {
   const codes = [...persistentCodes]
   for (const candidate of deferredCandidates) {
-    const code = deferredApiReadAbortCode(candidate, currentNavigationGeneration)
+    const code = deferredDocumentAbortCode(candidate, currentNavigationGeneration)
     if (code !== undefined && !codes.includes(code)) codes.push(code)
   }
   return codes.sort()

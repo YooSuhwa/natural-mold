@@ -2,26 +2,16 @@ import type { RunAgentInput } from '@ag-ui/core'
 import { RunAgentInputSchema } from '@ag-ui/core/schemas'
 import type { APIRequestContext, Request, Response } from '@playwright/test'
 
-import { readAcceptance, type MoldyAgUiAcceptance } from '../../src/lib/ag-ui/moldy-agent-receipt'
+import type { MoldyAgUiAcceptance } from '../../src/lib/ag-ui/moldy-agent-receipt'
 import { API_BASE, apiGetJson, expect, isRecord } from '../fixtures'
+import { acceptedAgUiStream, agUiCommandThread } from './ag-ui-stream-acceptance'
 
 type RunRequest = Pick<Request, 'url' | 'method' | 'postData'>
 type RunResponse = Pick<Response, 'status' | 'allHeaders'> & { request(): RunRequest }
 
 /** Match the authenticated run endpoint and the standard input for that same conversation. */
 export function readAgUiRunInput(req: RunRequest, conversationId?: string): RunAgentInput | null {
-  if (req.method() !== 'POST') return null
-  const url = new URL(req.url())
-  if (
-    url.origin !== new URL(API_BASE).origin ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash
-  ) {
-    return null
-  }
-  const thread = /^\/api\/conversations\/([^/]+)\/ag-ui\/runs$/.exec(url.pathname)?.[1]
+  const thread = agUiCommandThread(req, API_BASE)
   if (!thread || (conversationId !== undefined && thread !== conversationId)) return null
   const body = req.postData()
   if (!body) return null
@@ -42,19 +32,7 @@ export function readAgUiRunInput(req: RunRequest, conversationId?: string): RunA
 export async function readAgUiAcceptance(response: RunResponse): Promise<MoldyAgUiAcceptance> {
   const input = readAgUiRunInput(response.request())
   const headers = new Headers(await response.allHeaders())
-  const mediaType = headers.get('Content-Type')?.split(';')[0]?.trim().toLowerCase()
-  if (response.status() !== 200 || mediaType !== 'text/event-stream' || !input) {
-    throw new Error(
-      `The AG-UI command did not open an accepted event stream (${response.status()}).`,
-    )
-  }
-  if (headers.get('X-Run-Id') !== input.runId)
-    throw new Error('Missing or mismatched public run ID.')
-  const acceptance = readAcceptance(headers, input.runId)
-  if (!acceptance.physicalRunId && !acceptance.queue) {
-    throw new Error('The AG-UI command did not identify a run or queued input.')
-  }
-  return acceptance
+  return acceptedAgUiStream(response.status(), headers, input?.runId)
 }
 
 export async function acceptedPhysicalRun(
