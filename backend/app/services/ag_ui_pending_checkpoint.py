@@ -33,6 +33,7 @@ from app.models.conversation_run import ConversationRun
 from app.models.independent_chat_job import IndependentChatJob
 from app.models.message_event import MessageEvent
 from app.services import trace_storage
+from app.services.ag_ui_legacy_child_binding import LegacyChildBinding, read_legacy_child_bindings
 from app.services.independent_job_runs import can_read_independent_child_run
 from app.tenancy.checkpoint_audit import CHECKPOINT_TENANT_KEY
 
@@ -47,10 +48,17 @@ class PendingCheckpoint:
     native_kinds: dict[str, str] = field(default_factory=dict)
     approval_run_ids: dict[str, tuple[UUID, ...]] = field(default_factory=dict)
     root_task_ids: dict[str, str] = field(default_factory=dict)
+    legacy_child_bindings: dict[str, LegacyChildBinding | None] = field(default_factory=dict)
 
 
 class CheckpointUnavailable(RuntimeError):
     """The native saver failed a read; an admitted worker may retry."""
+
+
+def _unavailable(exc: Exception, run_id: UUID, retry: bool) -> None:
+    logger.warning("AG-UI checkpoint unavailable for run %s (%s)", run_id, type(exc).__name__)
+    if retry:
+        raise CheckpointUnavailable("Unable to read chat checkpoint") from exc
 
 
 def _root_id(config: RunnableConfig | None, thread_id: str) -> str | None:
@@ -382,14 +390,12 @@ async def read_pending_checkpoint(
             thread, context, db=db, saver=deferred_saver
         )
         try:
-            saved = await _selected_head(saver_factory(), thread, context.tenant_id, selected)
+            saver = saver_factory()
+            saved = await _selected_head(saver, thread, context.tenant_id, selected)
             if saved is None:
                 return None
         except Exception as exc:  # noqa: BLE001 - an unavailable graph cannot authorize a decision
-            logger.warning("AG-UI checkpoint unavailable for run %s (%s)", rid, type(exc).__name__)
-            if raise_on_unavailable:
-                raise CheckpointUnavailable("Unable to read chat checkpoint") from exc
-            return None
+            return _unavailable(exc, rid, raise_on_unavailable)
         try:
             pending = _unanswered(saved)
         except (TypeError, ValueError, AttributeError):
@@ -416,6 +422,19 @@ async def read_pending_checkpoint(
                 return None
         for item in pending.interrupts:
             item["ns"] = namespaces.get(item["id"], [])
-        if ids and not await _check_approval_rows(db, pending, lineage, cid, context):
-            return None
+        if ids:
+            if not await _check_approval_rows(db, pending, lineage, cid, context):
+                return None
+            try:
+                pending.legacy_child_bindings.update(
+                    await read_legacy_child_bindings(
+                        saver,
+                        saved,
+                        root_task_ids=pending.root_task_ids,
+                        tenant_id=context.tenant_id,
+                        lineage=lineage,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 - an unreadable child cannot authorize a resume
+                return _unavailable(exc, rid, raise_on_unavailable)
         return pending

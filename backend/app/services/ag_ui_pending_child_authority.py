@@ -1,62 +1,245 @@
-"""Recheck every suspended linked child before accepting or delivering its chat resume."""
+"""Authorize the children a standard chat resume will advance, including after a disconnect."""
 
 from collections.abc import Sequence
+from typing import NamedTuple
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.lease_checkpoint_namespace import NS_SEP
-from app.approvals.emergency import refuse_run
-from app.authz.child_task_authorization import _require_delegation, _target
+from app.authz.child_task_authorization import (
+    _require_child_available,
+    _require_delegation,
+    _target,
+)
 from app.authz.execution_lock_cursor import ExecutionProofError
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import acquire_execution_proof
+from app.authz.private_actor import require_private_actor
 from app.child_tasks.errors import ChildTaskStopped
-from app.child_tasks.persistence import _resume_lineage
 from app.exceptions import AppError, NotFoundError
-from app.guardrails.policy import resolve_tool_risk
 from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_child_task import ConversationChildTask
 from app.models.conversation_run import ConversationRun
-from app.services.ag_ui_pending_checkpoint import PendingCheckpoint
-from app.tools.keys import agent_ref
+from app.models.organization import Organization
+from app.services.ag_ui_pending_checkpoint import PendingCheckpoint, _run_lineage
 
 
 def _denied() -> NotFoundError:
     return NotFoundError("CHILD_TASK_NOT_FOUND", "위임한 작업을 찾을 수 없습니다.")
 
 
-def _required_children(
-    rows: Sequence[ConversationChildTask], pending: PendingCheckpoint, *, enrolled: bool
-) -> list[ConversationChildTask]:
-    # LangGraph's durable root Interrupt has no namespace. Resuming a standard batch
-    # answers every open slot, so a lost journal must not drop a waiting participant.
-    required = [row for row in rows if row.status == "awaiting_approval"]
+class _Child(NamedTuple):
+    id: UUID
+    origin: UUID
+    current: UUID
+    agent: UUID
+    tool_call_id: str
+    namespace: str
+    status: str
+
+
+async def _child_rows(db: AsyncSession, lineage: set[UUID]) -> list[_Child]:
+    child = ConversationChildTask
+    rows = await db.execute(
+        select(
+            child.id,
+            child.run_id,
+            child.current_run_id,
+            child.child_agent_id,
+            child.tool_call_id,
+            child.checkpoint_ns,
+            child.status,
+        )
+        .where(child.current_run_id.in_(lineage))
+        .order_by(child.id)
+    )
+    return [_Child(*row) for row in rows]
+
+
+def _bound_slots(rows: Sequence[_Child], pending: PendingCheckpoint) -> dict[str, tuple[str, ...]]:
+    bound: dict[str, tuple[str, ...]] = {}
     for slot in pending.interrupts:
         namespace = tuple(slot["ns"])
         root_task_id = pending.root_task_ids.get(slot["id"])
-        matches = []
+        matches: list[_Child] = []
+        task_matches = False
         for row in rows:
-            prefix = tuple(row.checkpoint_ns.split(NS_SEP))
-            # A delegated tool is invoked in the root Pregel task's namespace.
-            # Even after cancellation its suspended interrupt can remain in the
-            # saver, with the root task id intact but without a journal namespace.
-            matches_root_task = (
-                not namespace and root_task_id and prefix[0].partition(":")[2] == root_task_id
-            )
-            if matches_root_task or (row.checkpoint_ns and namespace[: len(prefix)] == prefix):
-                matches.append(row)
-        if not matches:
-            if namespace and enrolled:
+            prefix = tuple(row.namespace.split(NS_SEP))
+            # A cancelled delegated task can still own an unanswered root interrupt.
+            # The root's durable Pregel task ID survives a missing journal namespace.
+            matching_task = bool(root_task_id and prefix[0].partition(":")[2] == root_task_id)
+            matching_ns = bool(namespace and row.namespace and namespace[: len(prefix)] == prefix)
+            task_matches = task_matches or matching_task
+            if matching_ns and root_task_id and not matching_task:
                 raise _denied()
-            continue
-        if len({r.checkpoint_ns for r in matches}) != len(matches):
+            if matching_ns or (not namespace and matching_task):
+                matches.append(row)
+        if namespace and task_matches and not matches:
+            raise _denied()
+        if len({row.namespace for row in matches}) != len(matches):
             raise _denied()
         if any(row.status != "awaiting_approval" for row in matches):
             raise _denied()
-    return required
+        if matches:
+            native = pending.legacy_child_bindings.get(slot["id"])
+            if native is not None:
+                matches = [
+                    row
+                    for row in matches
+                    if row.tool_call_id == native.tool_call_id
+                    and row.namespace == native.checkpoint_ns
+                ]
+                if len(matches) != 1:
+                    raise _denied()
+            if not namespace and len(matches) != 1:
+                raise _denied()
+            bound[slot["id"]] = namespace or tuple(matches[0].namespace.split(NS_SEP))
+    return bound
+
+
+async def _check_tracked(
+    db: AsyncSession,
+    context: OrgContext,
+    parent: ConversationRun,
+    conversation: Conversation,
+    child: _Child,
+) -> None:
+    current = await _target(db, context, child.current, child.agent)
+    if current.conversation_id != conversation.id or current.parent_id != conversation.agent_id:
+        raise _denied()
+    await _require_delegation(current, context, child.agent)
+    for run_id in {child.origin, child.current, parent.id}:
+        if current != await _target(db, context, run_id, child.agent):
+            raise _denied()
+    await _require_child_available(db, context, current, child.agent)
+
+
+async def _check_batch(
+    db: AsyncSession,
+    conversation: Conversation,
+    context: OrgContext,
+    parent: ConversationRun,
+    pending: PendingCheckpoint,
+    *,
+    lock: bool,
+) -> frozenset[str]:
+    if conversation.source == INDEPENDENT_JOB_SOURCE:
+        return frozenset()  # The independent child has its own conversation and F05 authority.
+    if (
+        parent.conversation_id != conversation.id
+        or parent.agent_id is None
+        or parent.agent_id != conversation.agent_id
+        or parent.user_id != context.user_id
+        or (conversation.user_id, conversation.org_id, conversation.tenant_id)
+        != (context.user_id, context.org_id, context.tenant_id)
+        or (parent.org_id, parent.tenant_id)
+        not in {(None, None), (context.org_id, context.tenant_id)}
+        or parent.status != "interrupted"
+    ):
+        raise _denied()
+    lineage = await _run_lineage(db, parent.id, conversation.id, parent.agent_id, context)
+    if parent.id not in lineage:
+        raise _denied()
+    rows = await _child_rows(db, lineage)
+    bound = _bound_slots(rows, pending)
+    named = {slot["id"] for slot in pending.interrupts if slot["ns"]}
+    legacy = {
+        ident: binding
+        for ident, binding in pending.legacy_child_bindings.items()
+        if ident not in bound
+    }
+    if named - bound.keys() - legacy.keys():
+        enrolled = bool(rows) or await db.scalar(
+            select(ConversationRunAgent.id)
+            .where(
+                ConversationRunAgent.run_id == parent.id,
+                ConversationRunAgent.identity_mode_at_accept.is_not(None),
+            )
+            .limit(1)
+        )
+        if enrolled:
+            raise _denied()
+    # Standard resume covers every open interrupt. A retained F04 row remains
+    # authoritative when an old journal omitted the namespace on its interrupt.
+    waiting = [row for row in rows if row.status == "awaiting_approval"]
+    if not waiting and not legacy:
+        return frozenset()
+    proof = None
+    if lock:
+        proof = await acquire_execution_proof(
+            db, context, root_agent_id=parent.agent_id, conversation_ids=(conversation.id,)
+        )
+    await require_private_actor(db, context)
+    epoch = select(Organization.authz_epoch).where(Organization.id == context.org_id)
+    before = await db.scalar(epoch)
+    if before is None:
+        raise _denied()
+    checked: set[tuple[UUID, UUID, UUID]] = set()
+    for child in waiting:
+        if child.origin not in lineage or (proof and child.agent not in proof.agent_ids):
+            raise _denied()
+        key = (child.origin, child.current, child.agent)
+        if key not in checked:
+            await _check_tracked(db, context, parent, conversation, child)
+            checked.add(key)
+    for binding in legacy.values():
+        if binding is None:
+            raise _denied()
+        from app.services.ag_ui_legacy_child_authority import require_legacy_child_binding
+
+        agent_id = await require_legacy_child_binding(
+            db, conversation=conversation, context=context, parent_run=parent, binding=binding
+        )
+        if proof and agent_id not in proof.agent_ids:
+            raise _denied()
+    if rows != await _child_rows(db, lineage) or before != await db.scalar(epoch):
+        raise _denied()
+    await require_private_actor(db, context)
+    # Only successful, whole-batch proof can attribute a missing namespace. The
+    # current snapshot, the native response and its claim all use this same path.
+    namespaces = dict(bound)
+    for ident, binding in legacy.items():
+        if binding is not None:
+            namespaces[ident] = tuple(binding.checkpoint_ns.split(NS_SEP))
+    for slot in pending.interrupts:
+        if not slot["ns"] and slot["id"] in namespaces:
+            slot["ns"] = list(namespaces[slot["id"]])
+    return frozenset(legacy)
+
+
+async def _authorize(
+    db: AsyncSession,
+    conversation: Conversation,
+    context: OrgContext,
+    parent: ConversationRun,
+    pending: PendingCheckpoint,
+    *,
+    lock: bool,
+) -> frozenset[str]:
+    try:
+        with db.no_autoflush:
+            return await _check_batch(db, conversation, context, parent, pending, lock=lock)
+    except (ChildTaskStopped, ExecutionProofError):
+        raise _denied() from None
+    except AppError as exc:
+        if exc.status in {403, 404, 409}:
+            raise _denied() from None
+        raise
+
+
+async def read_pending_child_authority(
+    db: AsyncSession,
+    *,
+    conversation: Conversation,
+    context: OrgContext,
+    parent_run: ConversationRun,
+    pending: PendingCheckpoint,
+) -> frozenset[str]:
+    """Prove the whole batch without locks or writes. Return actionable pre-F04 child slot IDs."""
+    return await _authorize(db, conversation, context, parent_run, pending, lock=False)
 
 
 async def require_pending_child_authority(
@@ -66,94 +249,6 @@ async def require_pending_child_authority(
     context: OrgContext,
     parent_run: ConversationRun,
     pending: PendingCheckpoint,
-) -> None:
-    """Authorize checkpointed children as their original participants, including abandonment."""
-    if conversation.source == INDEPENDENT_JOB_SOURCE:
-        # These children have a separate conversation, lineage, and F05 execution gate.
-        return
-    if (
-        parent_run.conversation_id != conversation.id
-        or parent_run.user_id != context.user_id
-        or (conversation.user_id, conversation.org_id, conversation.tenant_id)
-        != (context.user_id, context.org_id, context.tenant_id)
-        or parent_run.status != "interrupted"
-    ):
-        raise _denied()
-    if parent_run.tenant_id is None and parent_run.org_id is None:
-        # Child enrollment was introduced after chat run attribution. A tracked row
-        # on an unattributed run cannot inherit legacy behavior.
-        existing = await db.scalar(
-            select(ConversationChildTask.id)
-            .where(ConversationChildTask.current_run_id == parent_run.id)
-            .limit(1)
-        )
-        if existing is not None:
-            raise _denied()
-        return
-    if (parent_run.org_id, parent_run.tenant_id) != (context.org_id, context.tenant_id):
-        raise _denied()
-    lineage = _resume_lineage(parent_run)
-    query = select(ConversationChildTask).where(ConversationChildTask.current_run_id.in_(lineage))
-    # F04 registers the child before it can stop the graph. Once the root is
-    # interrupted, every legitimate linked invocation already has its row.
-    has_tasks = await db.scalar(query.with_only_columns(ConversationChildTask.id).limit(1))
-    named = any(slot["ns"] for slot in pending.interrupts)
-    if not has_tasks and not named:
-        return
-    try:
-        proof = await acquire_execution_proof(
-            db, context, root_agent_id=conversation.agent_id, conversation_ids=(conversation.id,)
-        )
-        rows = (
-            await db.scalars(
-                query.order_by(ConversationChildTask.id).execution_options(populate_existing=True)
-            )
-        ).all()
-        enrolled = bool(rows)
-        if named and not enrolled:
-            enrolled = bool(
-                await db.scalar(
-                    select(ConversationRunAgent.id)
-                    .where(
-                        ConversationRunAgent.run_id == parent_run.id,
-                        ConversationRunAgent.identity_mode_at_accept.is_not(None),
-                    )
-                    .limit(1)
-                )
-            )
-        children = _required_children(rows, pending, enrolled=enrolled)
-        if not children:
-            return
-        ancestors = set(await db.scalars(lineage))
-        checked: set[tuple[UUID, UUID, UUID]] = set()
-        for child in children:
-            if child.run_id not in ancestors:
-                raise _denied()
-            key = (child.current_run_id, child.run_id, child.child_agent_id)
-            if key in checked:
-                continue
-            checked.add(key)
-            target_id = child.child_agent_id
-            if target_id not in proof.agent_ids or conversation.agent_id not in proof.agent_ids:
-                raise _denied()
-            current = await _target(db, context, child.current_run_id, target_id)
-            if (
-                current.conversation_id != conversation.id
-                or current.parent_id != conversation.agent_id
-            ):
-                raise _denied()
-            await _require_delegation(current, context, target_id)
-            for run_id in {child.run_id, child.current_run_id, parent_run.id}:
-                if current != await _target(db, context, run_id, target_id):
-                    raise _denied()
-            policy = await resolve_tool_risk(db, context.tenant_id, current.profile)
-            if policy and policy.switched_off(agent_ref(target_id, current.child_name)):
-                raise _denied()
-            await refuse_run(db, tenant_id=context.tenant_id, agent_id=current.parent_id)
-            await refuse_run(db, tenant_id=context.tenant_id, agent_id=target_id)
-    except (ChildTaskStopped, ExecutionProofError):
-        raise _denied() from None
-    except AppError as exc:
-        if exc.status in {403, 404, 409}:
-            raise _denied() from None
-        raise
+) -> frozenset[str]:
+    """Require current delegation within the submitting or delivering transaction."""
+    return await _authorize(db, conversation, context, parent_run, pending, lock=True)
