@@ -6,6 +6,22 @@ export const conversationQueryKeys = {
   steers: (conversationId: string) => ['conversations', conversationId, 'steers'] as const,
   steersBefore: (conversationId: string, before: number) =>
     ['conversations', conversationId, 'steers', 'before', before] as const,
+  historyEvidence: (
+    conversationId: string,
+    messageId: string,
+    historyId: string,
+    checkpointId?: string,
+    cutoffIndex?: number,
+  ) =>
+    [
+      'conversations',
+      conversationId,
+      'history-evidence',
+      messageId,
+      historyId,
+      checkpointId ?? null,
+      cutoffIndex ?? null,
+    ] as const,
   runMessageLinksLifecycle: (conversationId: string | null) =>
     ['conversations', conversationId ?? 'none', 'run-message-links-lifecycle'] as const,
   runMessageLinkIdentity: (conversationId: string | null, messageId: string | null | undefined) =>

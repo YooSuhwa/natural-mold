@@ -3278,7 +3278,15 @@
       "activityElapsed": "실행 후 {value}"
     },
     "compaction": {
-      "summary": "이전 대화를 요약해 컨텍스트를 정리했어요"
+      "summary": "이전 대화를 요약해 컨텍스트를 정리했어요",
+      "view": "요약 전 대화 보기",
+      "hide": "접기",
+      "loading": "요약 전 대화를 불러오는 중이에요.",
+      "unavailable": "이 요약에 연결된 대화를 확인할 수 없어요.",
+      "empty": "표시할 대화 내용이 없어요.",
+      "user": "사용자",
+      "assistant": "어시스턴트",
+      "more": "더 보기"
     },
     "subagents": {
       "progress": "서브 에이전트 {completed}/{total} 완료",

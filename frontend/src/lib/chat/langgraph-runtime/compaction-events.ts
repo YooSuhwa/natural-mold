@@ -143,7 +143,11 @@ function isAssistantMessage(message: BaseMessage): boolean {
   return kind === 'ai' || kind === 'assistant'
 }
 
-function withCompaction(message: BaseMessage, marker: CompactionMarker): CompactionMessage {
+function withCompaction(
+  message: BaseMessage,
+  marker: CompactionMarker,
+  sourceMessageId: string,
+): CompactionMessage {
   const source = message as CompactionMessage
   const additionalKwargs = isRecord(source.additional_kwargs) ? source.additional_kwargs : {}
   const metadata = isRecord(additionalKwargs.metadata) ? additionalKwargs.metadata : {}
@@ -153,6 +157,7 @@ function withCompaction(message: BaseMessage, marker: CompactionMarker): Compact
       metadata: {
         ...metadata,
         compaction: marker,
+        compactionMessageId: sourceMessageId,
       },
     },
   }) as CompactionMessage
@@ -176,16 +181,17 @@ export function attachCompactionToMessages(
   const messageIds = new Set(messages.map(messageId).filter((id): id is string => Boolean(id)))
   // Fallback (mirrors usage-events): a marker whose mapped message id is not in
   // the rendered list lands on the last assistant message of the turn.
-  const unmatched = [...compactionByMessageId.entries()].find(([id]) => !messageIds.has(id))?.[1]
+  const unmatched = [...compactionByMessageId.entries()].find(([id]) => !messageIds.has(id))
   const lastAssistantIndex = messages.findLastIndex(isAssistantMessage)
 
   return messages.map((message, index) => {
     const id = messageId(message)
-    let marker = id ? compactionByMessageId.get(id) : undefined
-    if (!marker && unmatched && index === lastAssistantIndex && isAssistantMessage(message)) {
-      marker = unmatched
+    const marker = id ? compactionByMessageId.get(id) : undefined
+    if (id && marker) return withCompaction(message, marker, id)
+    if (unmatched && index === lastAssistantIndex && isAssistantMessage(message)) {
+      return withCompaction(message, unmatched[1], unmatched[0])
     }
-    return marker ? withCompaction(message, marker) : message
+    return message
   })
 }
 

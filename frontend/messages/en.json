@@ -3278,7 +3278,15 @@
       "activityElapsed": "At {value}"
     },
     "compaction": {
-      "summary": "Older messages were summarized to free up context"
+      "summary": "Older messages were summarized to free up context",
+      "view": "View messages before summary",
+      "hide": "Collapse",
+      "loading": "Loading earlier messages…",
+      "unavailable": "The messages linked to this summary are unavailable.",
+      "empty": "There are no messages to display.",
+      "user": "User",
+      "assistant": "Assistant",
+      "more": "Show more"
     },
     "subagents": {
       "progress": "{completed}/{total} sub-agents done",
