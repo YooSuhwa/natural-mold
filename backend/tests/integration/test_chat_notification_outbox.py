@@ -55,7 +55,7 @@ async def sessions(lab: RlsLab, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
 
 
 @pytest.fixture
-async def completed_run(
+async def completed_job(
     lab: RlsLab, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[tuple[OrgContext, UUID, UUID, UUID]]:
     monkeypatch.setattr(settings, "independent_chat_jobs_enabled", True)
@@ -96,10 +96,10 @@ async def completed_run(
 
 async def test_contending_completion_producers_store_one_company_scoped_intent(
     sessions: Sessions,
-    completed_run: tuple[OrgContext, UUID, UUID, UUID],
+    completed_job: tuple[OrgContext, UUID, UUID, UUID],
     lab: RlsLab,
 ) -> None:
-    ctx, conversation_id, run_id, job_id = completed_run
+    ctx, conversation_id, run_id, job_id = completed_job
 
     async def enqueue(db: AsyncSession) -> None:
         await outbox.enqueue_independent_completion(
@@ -143,9 +143,9 @@ async def test_contending_completion_producers_store_one_company_scoped_intent(
 
 async def test_skipped_locked_delivery_survives_worker_rollback_and_reconnect(
     sessions: Sessions,
-    completed_run: tuple[OrgContext, UUID, UUID, UUID],
+    completed_job: tuple[OrgContext, UUID, UUID, UUID],
 ) -> None:
-    ctx, conversation_id, run_id, job_id = completed_run
+    ctx, conversation_id, run_id, job_id = completed_job
     worker = SessionTenant(ctx.tenant_id)
     async with tenant_session(ctx, maker=sessions) as producer:
         await outbox.enqueue_independent_completion(
@@ -193,11 +193,11 @@ async def test_skipped_locked_delivery_survives_worker_rollback_and_reconnect(
 
 async def test_disabling_new_notices_honors_an_independent_jobs_prior_admission_once(
     sessions: Sessions,
-    completed_run: tuple[OrgContext, UUID, UUID],
+    completed_job: tuple[OrgContext, UUID, UUID, UUID],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ctx, conversation_id, run_id = completed_run
-    admitted_job, later_job = uuid4(), uuid4()
+    ctx, conversation_id, run_id, admitted_job = completed_job
+    later_job = uuid4()
     monkeypatch.setattr(settings, "chat_work_notifications_enabled", False)
 
     async with tenant_session(ctx, maker=sessions) as producer:
@@ -235,6 +235,27 @@ async def test_disabling_new_notices_honors_an_independent_jobs_prior_admission_
             run_id,
             notice.id,
         )
+
+
+@pytest.fixture
+async def completed_run(lab: RlsLab) -> AsyncIterator[tuple[OrgContext, UUID, UUID]]:
+    engine = create_async_engine(async_url(lab.admin_url))
+    admin = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        ctx, conversation_id, run_id, _ = await _accepted_parent(admin)
+        async with admin() as db:
+            run = await db.get(ConversationRun, run_id)
+            assert run is not None
+            await transition_run(db, run, "running", worker_instance_id="goal-worker")
+            await transition_run(db, run, "completed")
+            await db.commit()
+            try:
+                yield ctx, conversation_id, run_id
+            finally:
+                await db.execute(delete(Conversation).where(Conversation.id == conversation_id))
+                await db.commit()
+    finally:
+        await engine.dispose()
 
 
 async def test_goal_approval_worker_reuses_the_read_approval_across_rollback(
