@@ -21,6 +21,7 @@ from app.models.conversation_run import ConversationRun
 from app.schemas.ag_ui_snapshot import AgUiSnapshot
 from app.services import ag_ui_snapshot as api
 from app.services.ag_ui_read_cursor import CursorScope
+from app.services.ag_ui_read_pending import CurrentReadInterrupts
 from app.services.ag_ui_snapshot_history import SnapshotHistory, SnapshotMessageRef
 from app.services.ag_ui_snapshot_journal import SnapshotRunReplay
 from app.services.ag_ui_snapshot_runs import SnapshotRuns
@@ -85,7 +86,7 @@ def case(monkeypatch: pytest.MonkeyPatch) -> Case:
         run=run, scope=scope, input_id=None, input_status=None, revision=None, position=None
     )
     resolve = AsyncMock(return_value=target)
-    pending = AsyncMock(return_value=None)
+    pending = AsyncMock(return_value=CurrentReadInterrupts())
     monkeypatch.setattr(api, "require_private_conversation", AsyncMock(return_value=conv))
     monkeypatch.setattr(api, "resolve_read_target", resolve)
     monkeypatch.setattr(api, "load_snapshot_history", AsyncMock(return_value=history))
@@ -94,8 +95,7 @@ def case(monkeypatch: pytest.MonkeyPatch) -> Case:
     )
     monkeypatch.setattr(api, "snapshot_runs", AsyncMock(return_value=runs))
     monkeypatch.setattr(api, "replay_snapshot_run", AsyncMock(return_value=replay))
-    monkeypatch.setattr(api, "read_pending_checkpoint", pending)
-    monkeypatch.setattr(api, "read_pending_child_authority", AsyncMock(return_value=frozenset()))
+    monkeypatch.setattr(api, "read_proven_interrupts", pending)
     return Case(
         AsyncSession(),
         conv,
@@ -118,6 +118,7 @@ async def test_checkpoint_root_has_real_controls_and_new_parser_can_drop_only_ac
     assert isinstance(view.messages[-1], AssistantMessage)
     assert view.active_tip_message_id == "answer" and view.cursor == "folded-watermark"
     assert view.active_run_id == "public-r" and view.physical_run_id == str(case.run.id)
+    assert view.selected_physical_run_id == str(case.run.id)
     assert view.interrupt_run_id is None
     assert view.message_links[-1].ui_message_id == str(
         parse_msg_id("answer", case.conversation.id, 2)
@@ -159,6 +160,9 @@ async def test_only_confirmed_pending_slots_survive_with_true_owners(case: Case)
     case.replay.pending_namespaces.update({"known": ns})
     case.replay.unresolved_pending_ids.add("revoked")
     case.pending.return_value = SimpleNamespace(
+        actionable=True,
+        legacy_child_ids=frozenset(),
+        legacy_bindings={},
         checkpoint_id="answer-cp",
         expires_at={},
         interrupts=[
@@ -215,16 +219,15 @@ async def test_requested_sibling_refused_and_queue_not_active(case: Case) -> Non
     target = SimpleNamespace(
         run=None, input_id=None, input_status="pending", revision=1, position=2, scope=None
     )
-    case.resolve.side_effect = [target, case.resolve.return_value]
+    case.resolve.side_effect = [target, case.resolve.return_value, target]
     queued = await case.load(public_run_id="queue-receipt")
     assert queued.run_id == "queue-receipt" and queued.position == 2
+    assert queued.selected_physical_run_id is None
     assert queued.active_run_id is None and queued.physical_run_id is None and queued.cursor is None
 
 
 @pytest.mark.asyncio
-async def test_live_legacy_child_requires_shared_post_authority(
-    case: Case, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_live_legacy_child_requires_shared_post_authority(case: Case) -> None:
     case.run.status, case.run.is_active = "interrupted", False
     ns = ("tools:legacy",)
     case.replay.child_namespaces[ns] = "child"
@@ -237,20 +240,33 @@ async def test_live_legacy_child_requires_shared_post_authority(
         }
     )
     case.pending.return_value = SimpleNamespace(
+        actionable=True,
+        legacy_child_ids=frozenset(),
+        legacy_bindings={},
         checkpoint_id="answer-cp",
         expires_at={},
         interrupts=[
             {"id": "live", "ns": list(ns), "value": {"type": "ask_user", "question": "Choose"}}
         ],
     )
-    probe = AsyncMock(return_value=frozenset({"live"}))
-    monkeypatch.setattr(api, "read_pending_child_authority", probe)
+    case.pending.return_value.legacy_child_ids = frozenset({"live"})
     view = await case.load()
     assert view.subagents[0].legacy_interrupt_access
     assert view.subagents[0].status == "interrupted" and view.subagents[0].interrupt_ids == ["live"]
     assert (view.interrupts[0].metadata or {})["moldy"]["legacyInterruptAccess"] is True
-    probe.side_effect = NotFoundError("CHILD_TASK_NOT_FOUND", "Unavailable")
+    case.pending.return_value.actionable = False
+    case.pending.return_value.legacy_child_ids = frozenset()
     denied = await case.load()
     assert not denied.subagents[0].legacy_interrupt_access
     assert (denied.interrupts[0].metadata or {})["moldy"]["actionable"] is False
     assert denied.interrupts[0].response_schema is None
+
+
+@pytest.mark.asyncio
+async def test_snapshot_refuses_a_legacy_grant_revoked_before_delivery(case: Case) -> None:
+    case.run.status, case.run.is_active = "interrupted", False
+    first = CurrentReadInterrupts(checkpoint_id="answer-cp", actionable=True)
+    revoked = CurrentReadInterrupts(checkpoint_id="answer-cp", actionable=False)
+    case.pending.side_effect = [first, revoked]
+    with pytest.raises(ConflictError):
+        await case.load()

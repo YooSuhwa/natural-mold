@@ -19,15 +19,13 @@ from app.agent_runtime.protocol_events import ProtocolInterrupt
 from app.authz.conversation_scope import require_private_conversation
 from app.authz.org_context import OrgContext
 from app.error_codes import resume_not_found
-from app.exceptions import NotFoundError
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun
 from app.schemas.ag_ui_snapshot import AgUiSnapshot, AgUiSnapshotMessageLink, SnapshotTodo
-from app.services.ag_ui_pending_checkpoint import read_pending_checkpoint
-from app.services.ag_ui_pending_child_authority import read_pending_child_authority
 from app.services.ag_ui_read_cursor import CursorScope
+from app.services.ag_ui_read_pending import CurrentReadInterrupts, read_proven_interrupts
 from app.services.ag_ui_read_target import resolve_read_target, snapshot_required
-from app.services.ag_ui_snapshot_assembly import SnapshotAssembly
+from app.services.ag_ui_snapshot_assembly import AssembledSnapshot, SnapshotAssembly
 from app.services.ag_ui_snapshot_history import (
     SnapshotHistory,
     SnapshotMessageRef,
@@ -111,19 +109,36 @@ async def _current_interrupts(
     history: SnapshotHistory,
     run: ConversationRun,
     replay: _RunEvidence,
+    merged: AssembledSnapshot,
+    public_run_id: str,
     secret_values: Collection[str],
-) -> list[Interrupt]:
+) -> tuple[list[Interrupt], CurrentReadInterrupts | None]:
     if run.status != "interrupted" or history.source != "checkpoint":
-        return []
-    checkpoint = await read_pending_checkpoint(
-        db, conversation=conversation, context=context, parent_run=run
+        return [], None
+    checkpoint = await read_proven_interrupts(
+        db, conversation, context, run, checkpoint_id=history.checkpoint_id
     )
-    if checkpoint is None or checkpoint.checkpoint_id != history.checkpoint_id:
-        return []
+    if not checkpoint.interrupts or checkpoint.checkpoint_id != history.checkpoint_id:
+        return [], checkpoint
+    owners = dict(replay.child_namespaces)
+    if checkpoint.legacy_bindings:
+        from app.services.ag_ui_snapshot_legacy_children import restore_legacy_children
+
+        owners.update(
+            restore_legacy_children(
+                str(conversation.id),
+                history,
+                merged,
+                checkpoint.legacy_bindings,
+                public_run_id=public_run_id,
+                physical_run_id=run.id,
+                secret_values=secret_values,
+            )
+        )
     items: list[ProtocolInterrupt] = []
     for item in checkpoint.interrupts:
         ident = item["id"]
-        if ident in replay.unresolved_pending_ids:
+        if ident in replay.unresolved_pending_ids and ident not in checkpoint.legacy_bindings:
             continue
         ns = tuple(item["ns"]) or replay.pending_namespaces.get(ident, ())
         items.append(
@@ -135,37 +150,28 @@ async def _current_interrupts(
                 ),
             )
         )
+    current_children = {
+        row["subagentRunId"]: row
+        for row in merged.subagents
+        if row.get("physicalRunId") == str(run.id)
+    }
+    actionable = checkpoint.actionable and len(items) == len(checkpoint.interrupts)
+    for item in items:
+        if not item["ns"]:
+            continue
+        child_id = owners.get(tuple(item["ns"]))
+        child = current_children.get(child_id) if child_id else None
+        if not child or not (child.get("childTaskId") or item["id"] in checkpoint.legacy_child_ids):
+            actionable = False
     pending = PendingInterrupts()
     pending.replace_current(
         items,
-        resolve_owner=replay.child_namespaces.get,
-        expires_at={ident: date.isoformat() for ident, date in checkpoint.expires_at.items()},
+        resolve_owner=owners.get,
+        expires_at=checkpoint.expires_at,
+        legacy_child_ids=checkpoint.legacy_child_ids,
+        passive=not actionable,
     )
-    visible = pending.public()
-    if {item.id for item in visible} != {item["id"] for item in checkpoint.interrupts}:
-        return [_read_only_interrupt(item) for item in visible]
-    try:
-        legacy_ids = await read_pending_child_authority(
-            db, conversation=conversation, context=context, parent_run=run, pending=checkpoint
-        )
-    except NotFoundError:
-        return [_read_only_interrupt(item) for item in visible]
-    return [
-        _mark_interrupt(item, legacyInterruptAccess=True)
-        if item.id in legacy_ids and item.subagent_run_id
-        else item
-        for item in visible
-    ]
-
-
-def _read_only_interrupt(item: Interrupt) -> Interrupt:
-    return _mark_interrupt(item, actionable=False).model_copy(update={"response_schema": None})
-
-
-def _mark_interrupt(item: Interrupt, **flags: bool) -> Interrupt:
-    metadata = dict(item.metadata or {})
-    metadata["moldy"] = {**(metadata.get("moldy") or {}), **flags}
-    return item.model_copy(update={"metadata": metadata})
+    return pending.public(), checkpoint
 
 
 def _todos(rows: Sequence[Mapping[str, Any]]) -> list[SnapshotTodo]:
@@ -231,6 +237,7 @@ async def load_ag_ui_snapshot(
             include_legacy_users=history.source == "legacy",
             require_run_link=runs.independent,
             idless_checkpoint_ids=idless_checkpoint_ids,
+            thread_id=str(conversation.id),
         )
         accepted: dict[UUID, ConversationRun] = {}
         evidence: dict[UUID, _RunEvidence] = {}
@@ -245,7 +252,9 @@ async def load_ag_ui_snapshot(
                 secret_values=secrets,
             )
             anchored = run.id in runs.branch_verified
-            if not anchored and not assembly.has_root_match(replay, run.id):
+            if not anchored and not assembly.has_root_match(
+                replay, run.id, public_run_id=runs.public_ids[run.id]
+            ):
                 continue
             assembly.add_run(
                 run.id, runs.public_ids[run.id], replay, restrict_to_checkpoint=not anchored
@@ -274,12 +283,21 @@ async def load_ag_ui_snapshot(
         )
         if queued:
             active = None
-        pending = (
+        observed_status = {key: (r.status, r.is_active) for key, r in accepted.items()}
+        pending, pending_proof = (
             await _current_interrupts(
-                db, conversation, context, history, latest, evidence[latest.id], secrets
+                db,
+                conversation,
+                context,
+                history,
+                latest,
+                evidence[latest.id],
+                merged,
+                runs.public_ids[latest.id],
+                secrets,
             )
             if latest
-            else []
+            else ([], None)
         )
         failed = chosen if chosen and chosen.status in {"failed", "stale"} and not queued else None
         error_code = partial = None
@@ -349,6 +367,7 @@ async def load_ag_ui_snapshot(
                 else chosen.status
                 if chosen
                 else None,
+                "selectedPhysicalRunId": str(chosen.id) if chosen and not queued else None,
                 "latestPhysicalRunId": str(latest.id) if latest else None,
                 "activeRunId": runs.public_ids[active.id] if active else None,
                 "physicalRunId": str(active.id) if active else None,
@@ -375,6 +394,25 @@ async def load_ag_ui_snapshot(
             raise snapshot_required()
         for ident, recovered in evidence.items():
             final_target = await resolve_read_target(db, current, context, runs.public_ids[ident])
-            if final_target.scope != recovered.scope:
+            final_run = final_target.run
+            if (
+                final_target.scope != recovered.scope
+                or final_run is None
+                or (final_run.status, final_run.is_active) != observed_status[ident]
+            ):
+                raise snapshot_required()
+        if queued and target and public_run_id:
+            latest_target = await resolve_read_target(db, current, context, public_run_id)
+            if latest_target.run is not None or (
+                latest_target.input_status,
+                latest_target.revision,
+                latest_target.position,
+            ) != (target.input_status, target.revision, target.position):
+                raise snapshot_required()
+        if pending_proof is not None and latest:
+            fresh = await read_proven_interrupts(
+                db, current, context, latest, checkpoint_id=history.checkpoint_id
+            )
+            if fresh != pending_proof:
                 raise snapshot_required()
         return snapshot

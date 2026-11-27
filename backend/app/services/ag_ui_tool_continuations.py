@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any
 from uuid import UUID
 
+import orjson
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver, CheckpointTuple
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.ag_ui_v1 import AgUiV1Projector
@@ -20,11 +23,13 @@ from app.agent_runtime.protocol_events import protocol_interrupts_from_event
 from app.authz.conversation_scope import require_private_conversation
 from app.authz.org_context import OrgContext
 from app.exceptions import AppError
+from app.models.approval_request import ApprovalRequest
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.services.ag_ui_commands import load_run_identities
 from app.services.ag_ui_journal import read_journal_page
 from app.services.ag_ui_read_access import load_child_visibility, require_read_run
+from app.services.ag_ui_tool_continuation_cache import ContinuationCache, committed_source_digest
 from app.services.chat.secrets import collect_conversation_secret_values
 from app.tenancy.checkpoint_audit import CHECKPOINT_TENANT_KEY
 
@@ -33,6 +38,7 @@ from app.tenancy.checkpoint_audit import CHECKPOINT_TENANT_KEY
 class _Predecessor:
     run: ConversationRun
     public_id: str
+    checkpoint_id: str
     interrupt_id: str
     visibility: ChildVisibility
 
@@ -75,6 +81,39 @@ async def _native_resume_edge(
     return False
 
 
+async def _matching_decision(
+    db: AsyncSession, context: OrgContext, child: ConversationRun, parent: ConversationRun
+) -> bool:
+    request = ApprovalRequest
+    decisions = (
+        await db.execute(
+            select(
+                request.conversation_id,
+                request.agent_id,
+                request.org_id,
+                request.tenant_id,
+                request.subject_user_id,
+                request.resumed_run_id,
+                request.status,
+                request.kind,
+            ).where(request.run_id == parent.id)
+        )
+    ).all()
+    # Questions and old native interrupts have no inbox row. If a row exists,
+    # the one-time claim must name this actual continuation, including rejections.
+    # A legacy partial multi-slot resume proves no blanket mapping when another
+    # slot remained pending or was consumed by a different child run.
+    return all(
+        decision.kind == "tool"
+        and decision.status in {"approved", "edited", "rejected", "expired"}
+        and (decision.conversation_id, decision.agent_id, decision.resumed_run_id)
+        == (child.conversation_id, child.agent_id, child.id)
+        and (decision.subject_user_id, decision.org_id, decision.tenant_id)
+        == (context.user_id, context.org_id, context.tenant_id)
+        for decision in decisions
+    )
+
+
 async def _predecessors(
     db: AsyncSession,
     conversation: Conversation,
@@ -96,6 +135,7 @@ async def _predecessors(
             or parent.status != "interrupted"
             or current.agent_id != parent.agent_id
             or current.agent_id != conversation.agent_id
+            or not await _matching_decision(db, context, current, parent)
         ):
             break
         identities = await load_run_identities(
@@ -131,6 +171,7 @@ async def _predecessors(
             _Predecessor(
                 parent,
                 public_id,
+                selected,
                 current.interrupt_id,
                 await load_child_visibility(db, conversation, context, parent.id),
             )
@@ -190,6 +231,44 @@ async def _issued(
             return ()
 
 
+async def _verified_issuance(
+    db: AsyncSession,
+    conversation: Conversation,
+    context: OrgContext,
+    origin: _Predecessor,
+    prior: tuple[ToolContinuation, ...],
+    secrets: Collection[str],
+    redaction: bytes,
+    cache: ContinuationCache | None,
+) -> tuple[ToolContinuation, ...]:
+    if cache is None:
+        return await _issued(db, conversation, origin, prior, secrets)
+    run = origin.run.id
+    digest = await committed_source_digest(db, conversation.id, run)
+    identity = (
+        context.user_id,
+        context.tenant_id,
+        context.org_id,
+        conversation.id,
+        origin.public_id,
+        origin.interrupt_id,
+        origin.checkpoint_id,
+        origin.visibility,
+        digest,
+        redaction,
+        prior,
+    )
+    stored = cache.entries.get(run)
+    if stored is not None and stored[0] == identity:
+        return stored[1]
+    issued = await _issued(db, conversation, origin, prior, secrets)
+    if not issued or digest != await committed_source_digest(db, conversation.id, run):
+        cache.entries.pop(run, None)
+        return ()
+    cache.entries[run] = (identity, issued)
+    return issued
+
+
 async def read_tool_continuations(
     db: AsyncSession,
     *,
@@ -197,6 +276,7 @@ async def read_tool_continuations(
     context: OrgContext,
     run: ConversationRun,
     checkpoint_id: str | None,
+    cache: ContinuationCache | None = None,
 ) -> tuple[ToolContinuation, ...]:
     """Read only public identities issued by the authenticated predecessor chain."""
     if run.source != "resume" or run.parent_run_id is None:
@@ -219,9 +299,12 @@ async def read_tool_continuations(
         if not chain:
             return ()
         secrets = await collect_conversation_secret_values(db, conversation, context)
+        redaction = sha256(orjson.dumps(sorted(secrets))).digest() if cache else b""
         pending: tuple[ToolContinuation, ...] = ()
         for origin in reversed(chain):
-            pending = await _issued(db, conversation, origin, pending, secrets)
+            pending = await _verified_issuance(
+                db, conversation, context, origin, pending, secrets, redaction, cache
+            )
         if pending:
             for origin in chain:
                 await require_read_run(
