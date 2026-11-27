@@ -16,6 +16,7 @@ import type {
   RegistrationPolicy,
 } from '@/lib/types/organization'
 import { useOrgErrorMessage } from '../lib/error-message'
+import { OrgImagePolicySection } from './org-image-policy-section'
 import { OrgSelectField } from './org-select-field'
 
 const MEMBER_ROLES: readonly DefaultMemberRole[] = ['member', 'builder']
@@ -31,7 +32,12 @@ const REGISTRATION: readonly RegistrationChoice[] = [
 /** Organization policy permissions and optimistic concurrency follow the organization view. */
 export function OrgPolicySection({ view, canEdit }: { view: OrganizationView; canEdit: boolean }) {
   // Remount on a new version so a refetch (also after stale_version) reseeds the form.
-  return <OrgPolicyForm key={view.updated_at} view={view} canEdit={canEdit} />
+  return (
+    <>
+      <OrgPolicyForm key={view.updated_at} view={view} canEdit={canEdit} />
+      <OrgImagePolicySection key={view.id + view.updated_at} view={view} canEdit={canEdit} />
+    </>
+  )
 }
 
 function OrgPolicyForm({ view, canEdit }: { view: OrganizationView; canEdit: boolean }) {

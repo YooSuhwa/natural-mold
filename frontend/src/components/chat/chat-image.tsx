@@ -20,7 +20,15 @@ export function getChatImagePreviewSrc(resolvedSrc: string): string {
   return `${resolvedSrc}${resolvedSrc.includes('?') ? '&' : '?'}variant=preview`
 }
 
-export function ChatImage({ src, alt }: { src: string; alt: string }) {
+export function ChatImage({
+  src,
+  alt,
+  openLabel,
+}: {
+  src: string
+  alt: string
+  openLabel?: string
+}) {
   const t = useTranslations('chat.markdown')
   const [open, setOpen] = useState(false)
 
@@ -58,9 +66,15 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
     )
   }
 
+  const Thumbnail = openLabel ? 'button' : 'span'
   return (
     <>
-      <span className="relative inline-block my-2">
+      <Thumbnail
+        type={openLabel ? 'button' : undefined}
+        aria-label={openLabel}
+        onClick={openLabel ? () => setOpen(true) : undefined}
+        className="relative my-2 inline-block max-w-full"
+      >
         {!loaded && <span className="block w-48 h-32 rounded-lg bg-muted animate-pulse" />}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -79,9 +93,9 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
             }
             setErrorSrc(displaySrc)
           }}
-          onClick={() => setOpen(true)}
+          onClick={openLabel ? undefined : () => setOpen(true)}
         />
-      </span>
+      </Thumbnail>
 
       <DialogShell
         open={open}

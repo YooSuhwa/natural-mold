@@ -324,6 +324,10 @@ export interface MessageAttachmentBrief {
   url: string
 }
 
+export type ChatImageDescription =
+  | { status: 'ready'; text: string }
+  | { status: 'unavailable'; reason: string }
+
 /**
  * 대화 파일 목록(`GET /api/conversations/{id}/files`)의 단일 항목.
  * `generated`(에이전트 산출물)와 `attached`(사용자가 보낸 첨부)를 한 형태로 합친다.
@@ -343,8 +347,14 @@ export interface FileItem {
   message_id?: string | null
   created_at: string
   editable: boolean
-  /** 첨부: 실행 기록상 모델 전달 형식(image/image_no_vision/text/pdf/unsupported). 기록 없으면 null. */
+  /** 첨부를 모델에 전달한 형식. 실행 기록이 없으면 null. */
   model_input?: string | null
+  image_description?: ChatImageDescription | null
+  image_description_uses?: {
+    message_id: string
+    runtime_message_id?: string | null
+    image_description: ChatImageDescription
+  }[]
 }
 
 export interface Message {

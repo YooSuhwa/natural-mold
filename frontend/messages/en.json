@@ -419,6 +419,27 @@
         "submit": "Restore organization",
         "done": "Organization restored."
       },
+      "imageDescription": {
+        "title": "Image descriptions",
+        "description": "For text-only chats, send the attached image and question to the selected model for a description.",
+        "allow": "Allow image descriptions",
+        "model": "Image description model",
+        "modelHint": "Choose an organization-approved vision model with a configured credential and pricing.",
+        "choose": "Select a model",
+        "empty": "No eligible vision model is available. Check the model settings and organization catalog.",
+        "changed": "The saved model or destination has changed. Select a model to confirm its destination.",
+        "loadError": "The allowed model list could not be loaded.",
+        "provider": "Provider",
+        "destination": "Image destination",
+        "max_input_bytes": "Maximum image size (bytes)",
+        "max_output_tokens": "Maximum output tokens",
+        "timeout_seconds": "Request timeout (seconds)",
+        "max_cost_usd": "Maximum cost per call (USD)",
+        "invalidLimits": "Enter 1–8,388,608 bytes, 1–1,024 output tokens and 1–60 seconds. The cost must be above zero and at most $10, with up to eight decimal places.",
+        "budgetTooLow": "The full input context and configured output token limit exceed the maximum cost per call.",
+        "submit": "Save image description policy",
+        "saved": "Image description policy saved."
+      },
       "policy": {
         "title": "Membership, sharing, and execution policies",
         "description": "Manage how members join, their default role, public conversation links, and workspace reuse.",
@@ -2906,7 +2927,19 @@
         "openLabel": "Open {name} file",
         "notSent": "Not sent to the model",
         "notSentNoVision": "The current model does not support images, so this image was not sent to it.",
-        "notSentUnsupported": "This file type is not sent to the model."
+        "notSentUnsupported": "This file type is not sent to the model.",
+        "imageDescription": {
+          "heading": "Attached image description",
+          "policyDenied": "You do not have permission to use image descriptions for this attachment.",
+          "unavailable": "A description is unavailable for this version of the attachment.",
+          "sizeLimit": "The image or question exceeds the allowed size.",
+          "budget": "The cost limit does not allow this image description request.",
+          "timeout": "The image description request timed out.",
+          "invalidImage": "The image file could not be read.",
+          "providerError": "The model could not return an image description.",
+          "pending": "Waiting for the image description.",
+          "failed": "The image description is unavailable."
+        }
       }
     },
     "goal": {
