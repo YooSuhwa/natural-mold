@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 from collections.abc import Callable
@@ -265,6 +266,21 @@ async def collect(lab: RlsLab, directory: Path, model_csv: str | None) -> list[d
     return rows
 
 
+def read_live_receipt(path: Path) -> str:
+    receipt = json.loads(path.read_text(encoding="utf-8"))
+    expected_call = {"method": "POST", "path_class": "chat_completions", "status": 200, "count": 1}
+    content = receipt["content"]
+    if (
+        receipt.get("http_status") != 200
+        or receipt.get("clean_stop") is not True
+        or receipt.get("proxy_calls") != [expected_call]
+        or hashlib.sha256(content.encode()).hexdigest() != receipt.get("content_sha256")
+        or not meets_task(content)
+    ):
+        raise ValueError("invalid guarded single-request receipt or unexpected synthetic CSV")
+    return content
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
@@ -276,7 +292,7 @@ def main() -> None:
     args = parser.parse_args()
     model_csv = None
     if args.replay_model_output:
-        model_csv = json.loads(args.replay_model_output.read_text(encoding="utf-8"))["content"]
+        model_csv = read_live_receipt(args.replay_model_output)
     with TemporaryDirectory(prefix="moldy-goal-documents-") as temporary:
         directory = Path(temporary)
         with temporary_postgres(
@@ -287,6 +303,14 @@ def main() -> None:
                 with lab.admin.connect() as db:
                     pg_version = db.scalar(sa.text("SHOW server_version"))
                 rows = asyncio.run(collect(lab, directory, model_csv))
+    if model_csv is not None:
+        live = [r for r in rows if r["mode"] == "single_live_sample"]
+        if len(live) != 1 or (
+            live[0]["goal_status"] != "completed"
+            or live[0]["download_matches_expected_document"] is not True
+            or live[0]["sha256"] != hashlib.sha256(model_csv.encode()).hexdigest()
+        ):
+            raise SystemExit("saved live output does not match its verified file version")
     exact = [r for r in rows if r["mode"] == "known_facts"]
     completed = [r for r in exact if r["goal_status"] == "completed"]
     incorrect = [r for r in exact if not r["answer_key_pass"]]

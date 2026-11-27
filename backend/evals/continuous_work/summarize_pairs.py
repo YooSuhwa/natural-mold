@@ -19,7 +19,15 @@ class Version(BaseModel):
     run_id: UUID
     sha256: str | None
     csv_text: str | None
+    version_id: UUID | None = None
     model_declared_done: bool
+
+
+class PinnedResult(BaseModel):
+    run_id: UUID
+    version_id: UUID
+    sha256: str
+    csv_text: str
 
 
 class Attempt(BaseModel):
@@ -46,6 +54,7 @@ class Observation(BaseModel):
     goal_status: str | None
     error: str | None
     versions: list[Version]
+    pinned_goal_result: PinnedResult | None
     goal_attempts: list[Attempt]
     provider_calls: list[Call]
     usage_rows: NonNegativeInt
@@ -74,7 +83,8 @@ def score(observation: Observation) -> dict[str, object]:
         raise ValueError("ledger estimate does not match the synthetic catalog tariff")
     if any(a.run_id not in o.run_ids for a in o.goal_attempts):
         raise ValueError("goal evidence refers to an unrelated run")
-    pinned = {receipt.version_sha256 for receipt in o.goal_attempts if receipt.passed}
+    accepted = {(r.run_id, r.version_sha256) for r in o.goal_attempts if r.passed}
+    pinned = o.pinned_goal_result
     latest = None
     correct_approved = False
     for version in o.versions:
@@ -85,7 +95,13 @@ def score(observation: Observation) -> dict[str, object]:
         if hashlib.sha256(version.csv_text.encode()).hexdigest() != version.sha256:
             raise ValueError("downloaded artifact digest does not match")
         latest = version.csv_text
-        if version.sha256 in pinned and meets_task(version.csv_text):
+        if (
+            pinned
+            and (version.run_id, version.sha256) in accepted
+            and (version.run_id, version.version_id, version.sha256, version.csv_text)
+            == (pinned.run_id, pinned.version_id, pinned.sha256, pinned.csv_text)
+            and meets_task(pinned.csv_text)
+        ):
             correct_approved = True
     passed = meets_task(latest)
     marked_complete = o.goal_status == "completed"
