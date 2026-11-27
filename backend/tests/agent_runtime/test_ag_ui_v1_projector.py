@@ -381,3 +381,69 @@ def test_ambiguous_historical_call_and_current_slot_never_create_actions() -> No
     assert final[-1]["code"] == "pending_input_unavailable"
     assert "spent-slot" not in json.dumps(final)
     assert "Old private request" not in json.dumps(final)
+
+
+def test_only_current_mcp_binding_can_expose_raw_widget_reference() -> None:
+    run = "7c3a2eee-4d19-44dc-861a-3796b3689bf6"
+    binding = "acd09417-9bb7-4dff-b6c7-31a23b24f888"
+    call = "provider/call:one"
+    sources = [
+        stored_protocol_event(
+            run_id=run,
+            thread_id=THREAD,
+            seq=0,
+            method="messages",
+            data={
+                "type": "ai",
+                "id": "source-assistant",
+                "tool_calls": [{"id": call, "name": "mcp_report", "args": {}}],
+            },
+        ),
+        stored_protocol_event(
+            run_id=run,
+            thread_id=THREAD,
+            seq=1,
+            method="messages",
+            data={
+                "type": "tool",
+                "tool_call_id": call,
+                "name": "mcp_report",
+                "content": "Public result",
+                "artifact": {
+                    "mcp_app": {
+                        "version": 1,
+                        "binding_id": binding,
+                        "run_id": run,
+                        "resource_uri": "ui://private/resource",
+                        "result_meta": {"privateField": "private-description"},
+                    }
+                },
+            },
+        ),
+    ]
+
+    def replay(allowed: frozenset[tuple[str, str]] | None) -> list[dict[str, Any]]:
+        render = AgUiV1Projector(
+            thread_id=THREAD, run_id="public", source_run_id=run, readable_widget_bindings=allowed
+        )
+        return wire([frame for row in sources for frame in render.project(row)])
+
+    positive = replay(frozenset({(call, binding)}))
+    [pointer] = [f for f in positive if f["type"] == "ACTIVITY_SNAPSHOT"]
+    assert pointer["content"]["binding_id"] == binding
+    assert pointer["content"]["tool_call_id"] == call
+    for allowed in (
+        None,
+        frozenset(),
+        frozenset({("other-call", binding)}),
+        frozenset({(call, run)}),
+    ):
+        denied = replay(allowed)
+        assert any(
+            f["type"] == "TOOL_CALL_RESULT" and f["content"] == "Public result" for f in denied
+        )
+        serialized = json.dumps(denied)
+        assert all(
+            token not in serialized
+            for token in (call, binding, "ui://", "private-description", "moldy.mcp_app")
+        )

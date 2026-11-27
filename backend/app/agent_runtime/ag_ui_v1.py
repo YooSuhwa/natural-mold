@@ -52,6 +52,7 @@ class AgUiV1Projector:
         tool_continuations: Sequence[ToolContinuation] = (),
         child_visibility: ChildVisibility | None = None,
         readable_artifact_versions: frozenset[tuple[str, str]] = frozenset(),
+        readable_widget_bindings: frozenset[tuple[str, str]] | None = None,
         defer_terminal: bool = False,
     ) -> None:
         self.thread_id = thread_id
@@ -70,7 +71,10 @@ class AgUiV1Projector:
             tool_continuations=tool_continuations,
             allow_scoped_tool=self._children.allow_scoped_tool,
         )
-        self._activities = PublicActivities(readable_artifact_versions=readable_artifact_versions)
+        self._activities = PublicActivities(
+            readable_artifact_versions=readable_artifact_versions,
+            readable_widget_bindings=readable_widget_bindings,
+        )
         self._pending = PendingInterrupts()
         self._defer_terminal = defer_terminal
         self._hidden_interrupts: set[str] = set()
