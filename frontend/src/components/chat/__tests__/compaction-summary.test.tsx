@@ -76,6 +76,23 @@ describe('CompactionSummary', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('원문을 연 뒤 체크포인트가 바뀌면 다시 열기 전까지 새 원문을 요청하지 않는다', async () => {
+    fetchMock.mockResolvedValueOnce(evidencePage('이전 분기의 발췌문'))
+    const user = userEvent.setup()
+    const { rerender } = render(<CompactionSummary evidence={evidence} />)
+    await user.click(screen.getByRole('button', { name: '요약 전 대화 보기' }))
+    expect(await screen.findByText('이전 분기의 발췌문')).toBeVisible()
+
+    rerender(<CompactionSummary evidence={{ ...evidence, checkpointId: 'next-checkpoint' }} />)
+
+    expect(screen.queryByText('이전 분기의 발췌문')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '요약 전 대화 보기' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it.each([
     { checkpoint_id: '00000000-0000-4000-8000-000000000009' },
     { history_id: 'history_aaaabbbbccccddddeeeeffff' },
