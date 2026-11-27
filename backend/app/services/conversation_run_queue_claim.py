@@ -17,6 +17,7 @@ from app.exceptions import AppError
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_service
+from app.services.ag_ui_queue_branch import pin_selected_queue_head
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
 from app.services.chat.image_description_admission import ADMISSION_KEY
 from app.services.conversation_run_queue_blocked import pause_blocked_queue
@@ -115,6 +116,8 @@ async def claim_next_input(
         return None
 
     if not await pin_steer_continuation(db, conversation, queued, context):
+        return None
+    if not await pin_selected_queue_head(db, conversation, queued, context):
         return None
 
     automatic = queued.source == "goal_followup"

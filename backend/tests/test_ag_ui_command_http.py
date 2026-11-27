@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -317,6 +317,7 @@ async def test_stream_headers_follow_the_public_input_from_queue_to_physical_cla
 
     async def first_record(*args: Any) -> AsyncIterator[bytes]:
         records = stream(*args)
+        assert isinstance(records, AsyncGenerator)
         try:
             yield await anext(records)
         finally:

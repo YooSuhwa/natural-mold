@@ -19,7 +19,9 @@ from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import JsonValue
+from app.schemas.conversation_graph_input import OMITTED_MEDIA_KEY, is_omitted_user_message
 from app.services.ag_ui_commands import AgUiRunBinding, CommandAdmission, bind_command
+from app.services.ag_ui_fork_branch import FORK_SELECTION_KEY
 from app.services.ag_ui_fork_checkpoints import ForkOperation, load_fork_checkpoint
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
 from app.services.chat_resource_context_integration import (
@@ -27,6 +29,14 @@ from app.services.chat_resource_context_integration import (
     reauthorize_resource_context_payload,
 )
 from app.services.chat_resource_context_sources import ResourceContextScope
+
+
+def _input_kwargs(message: dict[str, JsonValue]) -> dict[str, bool]:
+    if "additional_kwargs" not in message:
+        return {}
+    if is_omitted_user_message(message):
+        return {OMITTED_MEDIA_KEY: True}
+    raise HTTPException(status_code=422, detail="Invalid fork message metadata")
 
 
 def _user_delta(input_payload: dict[str, JsonValue], operation: ForkOperation) -> str | None:
@@ -38,10 +48,11 @@ def _user_delta(input_payload: dict[str, JsonValue], operation: ForkOperation) -
         if (
             isinstance(message, dict)
             and message.get("role") == "user"
-            and set(message) <= {"id", "role", "content"}
+            and set(message) <= {"id", "role", "content", "additional_kwargs"}
             and isinstance(message.get("id"), str)
             and isinstance(content := message.get("content"), str)
         ):
+            _input_kwargs(message)
             return content
     raise HTTPException(status_code=422, detail="Invalid fork input")
 
@@ -73,6 +84,7 @@ async def accept_fork(
     head, _ = await load_fork_checkpoint(
         saver,
         thread_id=str(conversation.id),
+        tenant_id=context.tenant_id,
         selected=conversation.active_branch_checkpoint_id,
         target=checkpoint_id,
         expected=expected_head,
@@ -195,16 +207,25 @@ async def prepare_fork_delivery(
         mid = message.get("id")
         if not isinstance(content, str) or (mid is not None and not isinstance(mid, str)):
             raise ValueError("Invalid stored fork message")
-        append.append(HumanMessage(content=content, id=mid))
+        append.append(
+            HumanMessage(content=content, id=mid, additional_kwargs=_input_kwargs(message))
+        )
     saver = await conversation_checkpointer(str(conversation.id), context, db=db)
     _, history = await load_fork_checkpoint(
         saver,
         thread_id=str(conversation.id),
+        tenant_id=context.tenant_id,
         selected=conversation.active_branch_checkpoint_id,
         target=checkpoint_id,
         expected=head,
         operation=operation,
     )
+    # The dispatcher commits this under its conversation lock before the
+    # physical claim. Only an authenticated, still-owned delivery enters here.
+    run.metadata_json = {
+        **(run.metadata_json or {}),
+        FORK_SELECTION_KEY: conversation.active_branch_checkpoint_id,
+    }
     return {
         "messages": Overwrite(value=[*history, *append]),
         FORK_APPEND_COUNT: len(append),

@@ -24,6 +24,7 @@ from langchain.agents.middleware import AgentMiddleware
 from app.agent_runtime.chat_steer_middleware import root_steer_middleware
 from app.agent_runtime.lease_model_factory import LeaseModelSpec
 from app.agent_runtime.message_utils import RuntimeMessage, convert_to_langchain_messages
+from app.agent_runtime.omitted_media import OmittedMediaMiddleware
 from app.agent_runtime.prepared_run_input_policy import unsupported
 from app.agent_runtime.prepared_run_inputs import PreparationInputs, PreparedGuardrails
 from app.agent_runtime.prepared_run_tool_inputs import (
@@ -308,6 +309,8 @@ def build_preparation_inputs(
     if trigger or cfg.unattended_approval is not None:
         _refuse_unattended_approvals(sources, bindings, root_tools, child_sets)
     root_middleware: list[AgentMiddleware[Any, Any, Any]] = []
+    if cfg.run_path == "chat":
+        root_middleware.append(OmittedMediaMiddleware())
     if cfg.goal_context or cfg.goal_followup:
         readers = [
             tool

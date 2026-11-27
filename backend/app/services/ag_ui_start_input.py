@@ -14,9 +14,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.models.conversation_run_input import JsonValue
 from app.schemas.chat_resource_context import ChatResourceContextRequest
+from app.schemas.conversation_graph_input import OMITTED_MEDIA_KEY
 from app.services.conversation_run_queue_payload import validate_queue_input_payload
 
 logger = logging.getLogger(__name__)
+OMITTED_MEDIA_SUFFIX = ":media-omitted"
 
 type StartOperation = Literal["send", "edit", "regenerate", "retry"]
 type QueueStrategy = Literal["enqueue", "interrupt"]
@@ -54,6 +56,11 @@ def start_message_id(conversation_id: UUID, public_run_id: str, public_message_i
     return str(uuid5(conversation_id, name))
 
 
+def validate_chat_text(text: str) -> None:
+    if "\x00" in text:
+        raise HTTPException(422, "Chat text cannot contain NUL characters")
+
+
 def _controls(props: object) -> _StartControls:
     if not isinstance(props, dict) or "moldy" not in props:
         return _StartControls()
@@ -63,9 +70,9 @@ def _controls(props: object) -> _StartControls:
         raise HTTPException(422, "Invalid AG-UI chat controls") from exc
 
 
-def _user_content(message: UserMessage) -> tuple[str, list[UUID]]:
+def _user_content(message: UserMessage) -> tuple[str, list[UUID], bool]:
     if isinstance(message.content, str):
-        return message.content, []
+        return message.content, [], False
     texts: list[str] = []
     uploads: list[UUID] = []
     skipped = False
@@ -83,7 +90,7 @@ def _user_content(message: UserMessage) -> tuple[str, list[UUID]]:
             skipped = True
     if skipped:
         logger.warning("Skipping unsupported AG-UI media in user message")
-    return "".join(texts), uploads
+    return "".join(texts), uploads, skipped
 
 
 def parse_start_input(run_input: RunAgentInput, conversation_id: UUID) -> AgUiStartInput:
@@ -111,23 +118,24 @@ def parse_start_input(run_input: RunAgentInput, conversation_id: UUID) -> AgUiSt
             or not last.id.strip()
         ):
             raise HTTPException(422, "The last message must be a root user message with an ID")
-        text, media_ids = _user_content(last)
+        text, media_ids, skipped = _user_content(last)
+        validate_chat_text(text)
         if media_ids:
             if controls.attachment_ids is not None and set(attachment_ids) != set(media_ids):
                 raise HTTPException(422, "Message attachments do not match the chat controls")
             if controls.attachment_ids is None:
                 attachment_ids = list(dict.fromkeys(media_ids))
+        message: dict[str, JsonValue] = {
+            "role": "user",
+            "id": start_message_id(conversation_id, run_input.run_id, last.id),
+            "content": text,
+        }
         if not text.strip() and not attachment_ids and not controls.resource_context:
-            raise HTTPException(
-                422, "A chat turn requires text, an attachment, or resource context"
-            )
-        payload["messages"] = [
-            {
-                "role": "user",
-                "id": start_message_id(conversation_id, run_input.run_id, last.id),
-                "content": text,
-            }
-        ]
+            if not skipped:
+                raise HTTPException(422, "A chat turn requires text, media, or resource context")
+            # Retain the empty user turn and only the fact that media was skipped.
+            message.update(content="", additional_kwargs={OMITTED_MEDIA_KEY: True})
+        payload["messages"] = [message]
         if controls.resource_context is not None:
             payload["resource_context"] = controls.resource_context.model_dump(
                 mode="json", exclude_none=True

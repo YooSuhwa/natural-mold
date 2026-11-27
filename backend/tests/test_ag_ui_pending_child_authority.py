@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.identity import make_agent_runtime_name
 from app.authz import child_task_authorization
+from app.authz.execution_transaction_tracker import current_state
 from app.authz.organization_execution_gateway import acquire_execution_proof
+from app.authz.organization_execution_proof import live_proof
 from app.child_tasks.persistence import begin_child_task
 from app.exceptions import AppError
 from app.models.agent_lifecycle import ConversationRunAgent
@@ -23,9 +25,13 @@ from app.models.conversation_run import ConversationRun
 from app.routers.conversation_agent_protocol_interrupts import ThreadInterrupt
 from app.services import ag_ui_resume, child_tasks_api
 from app.services.ag_ui_pending_checkpoint import PendingCheckpoint, read_pending_checkpoint
-from app.services.ag_ui_pending_child_authority import require_pending_child_authority
+from app.services.ag_ui_pending_child_authority import (
+    read_pending_child_authority,
+    require_pending_child_authority,
+)
 from app.tenancy.checkpoint_audit import run_configurable
 from tests.authz.authz_service_testkit import RecordingClient, service
+from tests.authz.queue_resource_fixture import queue_resource_sql
 from tests.authz.test_child_followup_runtime import (
     ResearchModel,
     SessionScope,
@@ -166,8 +172,9 @@ async def test_missing_admitted_participant_cannot_inherit_a_current_link(
     assert denied.value.status in {404, 409}
 
 
+@pytest.mark.parametrize("read_only", [False, True], ids=["dispatch", "snapshot"])
 async def test_child_authority_is_checked_again_after_admission(
-    db: AsyncSession, child_case: ChildCase, monkeypatch: pytest.MonkeyPatch
+    db: AsyncSession, child_case: ChildCase, monkeypatch: pytest.MonkeyPatch, read_only: bool
 ) -> None:
     graph = child_case.graph
     conversation = await db.get(Conversation, graph.conversation_ids[0])
@@ -195,10 +202,11 @@ async def test_child_authority_is_checked_again_after_admission(
     child_grant = (f"agent:{graph.agent_id}", "can_run", f"agent:{child_case.child_id}")
     client = RecordingClient(allowed=frozenset({root_grant, child_grant}))
     monkeypatch.setattr(child_task_authorization, "current_authz", lambda: service(client))
-    checkpoint = _pending(_slot("review", ["tools:delegate", "model:a"]))
+    checkpoint = _pending(_slot("root-review", []), _slot("review", ["tools:delegate", "model:a"]))
 
     async def authorize() -> None:
-        await require_pending_child_authority(
+        guard = read_pending_child_authority if read_only else require_pending_child_authority
+        await guard(
             db,
             conversation=conversation,
             context=graph.context,
@@ -306,6 +314,9 @@ async def test_missing_journal_keeps_native_child_cancellation_binding(
         await require_pending_child_authority(
             db, conversation=conversation, context=ctx, parent_run=agent_run, pending=pending
         )
+        assert pending.interrupts[0]["ns"] == child.checkpoint_ns.split("|")
+        # Simulate a fresh read after cancellation without a retained journal.
+        pending.interrupts[0]["ns"] = []
         await db.commit()
         await child_tasks_api.cancel_child(db, conversation_id, child.id, ctx)
         with pytest.raises(AppError) as denied:
@@ -314,3 +325,28 @@ async def test_missing_journal_keeps_native_child_cancellation_binding(
             )
         assert denied.value.status in {404, 409}
     assert not slow.started["alpha"].is_set()
+
+
+async def test_reading_mixed_pending_children_acquires_no_locks_and_never_flushes(
+    db: AsyncSession, delegation: Delegation
+) -> None:
+    conversation, parent, researcher, writer = await _suspend(db, delegation)
+    pending = _pending(_slot("root", []), _slot("research", researcher), _slot("write", writer))
+    # A dirty object exposes accidental autoflush even if the read path itself inserts nothing.
+    conversation.title = "Not yet saved"
+    with queue_resource_sql(db) as statements:
+        legacy = await read_pending_child_authority(
+            db,
+            conversation=conversation,
+            context=delegation.context,
+            parent_run=parent,
+            pending=pending,
+        )
+    assert legacy == frozenset()
+    assert statements and all(
+        sql.lstrip().upper().startswith(("SELECT", "WITH")) for sql in statements
+    )
+    assert conversation in db.dirty
+    transaction = current_state(db)
+    assert transaction and transaction.lock_count == 0
+    assert live_proof(db) is None

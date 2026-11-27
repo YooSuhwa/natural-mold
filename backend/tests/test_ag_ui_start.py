@@ -96,7 +96,8 @@ async def test_acceptance_rolls_back_queue_receipt_draft_and_audit_together(
     await db.commit()
     wire = _wire(conversation_id)
     binding = await _submit(db, wire)
-    assert binding.input_id is not None and binding.run_id is None
+    assert binding.input_id == UUID(start_message_id(conversation_id, wire.run_id, "local-input"))
+    assert binding.run_id is None
     input_row = await db.get(ConversationRunInput, binding.input_id)
     assert input_row is not None
     assert input_row.input_payload == {
@@ -120,7 +121,7 @@ async def test_acceptance_rolls_back_queue_receipt_draft_and_audit_together(
     assert await _sent_actions(db, conversation_id) == []
     accepted = await _submit(db, wire)
     await db.commit()
-    assert accepted.input_id != binding.input_id
+    assert accepted.input_id == binding.input_id
     assert await _submit(db, wire) == accepted
     with pytest.raises(ConflictError) as conflicting:
         await _submit(db, _wire(conversation_id, text="changed"))

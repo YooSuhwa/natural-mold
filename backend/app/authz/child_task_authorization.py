@@ -50,7 +50,12 @@ class ChildTarget:
 
 
 async def _target(
-    db: AsyncSession, context: OrgContext, run_id: UUID, child_id: UUID
+    db: AsyncSession,
+    context: OrgContext,
+    run_id: UUID,
+    child_id: UUID,
+    *,
+    legacy_attribution: bool = False,
 ) -> ChildTarget:
     """Read authority metadata only. Never load a child graph, model or credential here."""
     child = aliased(Agent)
@@ -58,6 +63,19 @@ async def _target(
     child_pin = ConversationRunAgent
     root_account = case((Agent.identity_mode == "per_user", context.user_id), else_=Agent.user_id)
     child_account = case((child.identity_mode == "per_user", context.user_id), else_=child.user_id)
+    # Pre-F04 admissions persisted the actual accounts on every participant, but
+    # lacked an identity-mode column. Only the legacy resume proof may use them.
+    root_mode = root_pin.identity_mode_at_accept == Agent.identity_mode
+    child_mode = child_pin.identity_mode_at_accept == child.identity_mode
+    if legacy_attribution:
+        root_mode = (
+            root_pin.identity_mode_at_accept.is_(None)
+            & (root_pin.invoker_type == "user")
+            & (ConversationRun.invoker_type == "user")
+        )
+        child_mode = child_pin.identity_mode_at_accept.is_(None) & (
+            child_pin.invoker_type == "subagent"
+        )
     row = (
         await db.execute(
             select(
@@ -102,14 +120,14 @@ async def _target(
                 root_pin.role == "root",
                 root_pin.agent_id == Agent.id,
                 root_pin.agent_id_snapshot == Agent.id,
-                root_pin.identity_mode_at_accept == Agent.identity_mode,
+                root_mode,
                 root_pin.resource_owner_user_id == Agent.user_id,
                 root_pin.credential_subject_user_id == root_account,
                 root_pin.on_behalf_of_user_id == root_account,
                 child_pin.role == "subagent",
                 child_pin.agent_id == child_id,
                 child_pin.agent_id_snapshot == child_id,
-                child_pin.identity_mode_at_accept == child.identity_mode,
+                child_mode,
                 child_pin.resource_owner_user_id == child.user_id,
                 child_pin.credential_subject_user_id == child_account,
                 child_pin.on_behalf_of_user_id == child_account,

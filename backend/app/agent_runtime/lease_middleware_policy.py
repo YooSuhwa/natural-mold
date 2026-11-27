@@ -54,6 +54,8 @@ LEASE_MIDDLEWARE_ALLOWLIST: frozenset[str] = frozenset(
         EMPTY_CONTENT_RETRY,
         MEMORY_RECALL,
         RUN_STEER,
+        # Projects an omission flag into a fixed model-only note; no I/O or tool dispatch.
+        "app.agent_runtime.omitted_media.OmittedMediaMiddleware",
         "app.agent_runtime.runtime.goal_run.GoalRunMiddleware",
     }
 )

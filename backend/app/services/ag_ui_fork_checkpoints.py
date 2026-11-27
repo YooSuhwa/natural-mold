@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from typing import Any, Literal
+from uuid import UUID
 
 from fastapi import HTTPException
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
@@ -12,6 +13,7 @@ from langgraph.channels.delta import DeltaChannel
 from langgraph.graph.message import _messages_delta_reducer  # noqa: PLC2701
 
 from app.services.thread_branch_service import without_trailing_assistant_messages
+from app.tenancy.checkpoint_audit import CHECKPOINT_TENANT_KEY
 
 type ForkOperation = Literal["edit", "regenerate"]
 
@@ -40,20 +42,34 @@ def _ancestors(checkpoint_id: str, parents: dict[str, str | None]) -> Iterator[s
         current = parents[current]
 
 
-async def _branch_head(
-    saver: Any, thread_id: str, selected: str | None, target: str, expected: str | None
+async def selected_branch_head(
+    saver: Any,
+    thread_id: str,
+    selected: str | None,
+    target: str | None,
+    expected: str | None,
+    *,
+    tenant_id: UUID,
 ) -> str:
     # Finish the generator before asking for delta history: a Postgres iterator
     # holds its connection. Keep just the root ancestry, never subgraph states.
     parents: dict[str, str | None] = {}
+    invalid: set[str] = set()
     async for row in saver.alist({"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}):
         cid = _root_id(row.config, thread_id)
         if cid is not None:
+            if (
+                row.metadata.get(CHECKPOINT_TENANT_KEY) not in (None, str(tenant_id))
+                or row.checkpoint.get("id") != cid
+            ):
+                invalid.add(cid)
             parent = _root_id(row.parent_config, thread_id)
             if row.parent_config and parent is None:
                 raise _conflict()
             parents[cid] = parent
-    if target not in parents or (selected is not None and selected not in parents):
+    if (target is not None and target not in parents) or (
+        selected is not None and selected not in parents
+    ):
         raise _conflict()
     parent_ids = set(parents.values())
     for leaf in parents:  # saver lists latest first, matching the branch picker
@@ -61,7 +77,11 @@ async def _branch_head(
             continue
         chain = set(_ancestors(leaf, parents))
         if selected is None or selected in chain:
-            if (expected is not None and expected != leaf) or target not in chain:
+            if (
+                invalid.intersection(chain)
+                or (expected is not None and expected != leaf)
+                or (target is not None and target not in chain)
+            ):
                 raise _conflict()
             return leaf
     raise _conflict()
@@ -90,17 +110,25 @@ async def load_fork_checkpoint(
     saver: Any,
     *,
     thread_id: str,
+    tenant_id: UUID,
     selected: str | None,
     target: str,
     expected: str | None,
     operation: ForkOperation,
 ) -> tuple[str, list[BaseMessage]]:
-    head = await _branch_head(saver, thread_id, selected, target, expected)
+    head = await selected_branch_head(
+        saver, thread_id, selected, target, expected, tenant_id=tenant_id
+    )
     config = {
         "configurable": {"thread_id": thread_id, "checkpoint_ns": "", "checkpoint_id": target}
     }
     row = await saver.aget_tuple(config)
-    if row is None or _root_id(row.config, thread_id) != target:
+    if (
+        row is None
+        or _root_id(row.config, thread_id) != target
+        or row.checkpoint.get("id") != target
+        or row.metadata.get(CHECKPOINT_TENANT_KEY) not in (None, str(tenant_id))
+    ):
         raise _conflict()
     checkpoint = row.checkpoint
     values = checkpoint["channel_values"]
