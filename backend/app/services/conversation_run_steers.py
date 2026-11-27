@@ -13,6 +13,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from app.agent_runtime.memory_paths import origin_run
 from app.authz.conversation_agent_checks import require_agent_run
@@ -28,6 +29,7 @@ from app.authz.organization_execution_gateway import lock_query
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.run_decisions import fresh_run_decision_scope
 from app.authz.scoping import private_scope_predicate
+from app.chat_recovery.fence import RunOwnershipLost, current_run_fence, fence_for_run
 from app.models.agent import Agent
 from app.models.approval_request import ApprovalRequest
 from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
@@ -218,6 +220,13 @@ async def list_steers(
     return rows
 
 
+def _require_worker_ownership(run: ConversationRun) -> None:
+    # The caller already holds the scoped run row lock until its steer write commits.
+    fence = current_run_fence()
+    if fence is not None and fence_for_run(run) != fence:
+        raise RunOwnershipLost("Chat run ownership has changed")
+
+
 async def claim_steers_for_model(
     db: AsyncSession,
     *,
@@ -253,6 +262,7 @@ async def claim_steers_for_model(
         run = await _lock_target_run(db, conversation_id, run_id, agent_id, context)
         if run is None or run.status != "running" or not run.is_active:
             return []
+        _require_worker_ownership(run)
         await _require_steerable(db, run, context)
     except HTTPException as exc:
         if exc.status_code != 409:
@@ -306,16 +316,19 @@ async def confirm_applied_steers(
         return
     context = OrgContext(user_id=scope.user_id, org_id=scope.org_id, tenant_id=scope.tenant_id)
     target = await db.scalar(
-        select(ConversationRun.id)
+        select(ConversationRun)
         .where(
             ConversationRun.id == run_id,
             ConversationRun.conversation_id == conversation_id,
             steer_run_actor_scope(context),
         )
-        .with_for_update()
+        .options(noload(ConversationRun.metrics))
+        .with_for_update(of=ConversationRun)
+        .execution_options(populate_existing=True)
     )
     if target is None:
         return
+    _require_worker_ownership(target)
     rows = await db.scalars(
         select(ConversationRunSteer)
         .where(
