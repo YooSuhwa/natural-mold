@@ -37,6 +37,7 @@ const history: ThreadHistoryAdapter = {
               custom: {
                 agui: { messageId: 'wire-' + id },
                 parentCheckpointId: 'before-' + id,
+                moldySelectedCheckpointId: 'last-head',
               },
             },
           },

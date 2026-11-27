@@ -175,7 +175,13 @@ export function useAgUiChatActions({
     async (operation, message, existing) => {
       const snapshot = await agent.readSnapshot()
       const link = findChatMessageLink(message, snapshot.messageLinks)
-      if (mounted.current?.scope !== scope || !link?.parentCheckpointId || !snapshot.checkpointId) {
+      if (
+        mounted.current?.scope !== scope ||
+        !link?.parentCheckpointId ||
+        !snapshot.checkpointId ||
+        message.metadata?.custom?.moldySelectedCheckpointId !== snapshot.checkpointId ||
+        message.metadata.custom.parentCheckpointId !== link.parentCheckpointId
+      ) {
         throw new Error('The message has no active branch checkpoint.')
       }
       return {

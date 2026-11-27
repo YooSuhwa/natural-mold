@@ -182,6 +182,7 @@ function restoredRoot(
     : (row?.branch_index ?? checkpoints?.indexOf(checkpointId ?? '') ?? -1)
   const custom = {
     ...like.metadata?.custom,
+    ...(selectedCheckpoint && { moldySelectedCheckpointId: selectedCheckpoint }),
     ...(link.uiMessageId && { publicMessageId: link.uiMessageId }),
     ...(checkpointId && { branchCheckpointId: checkpointId }),
     ...(link.parentCheckpointId && { parentCheckpointId: link.parentCheckpointId }),

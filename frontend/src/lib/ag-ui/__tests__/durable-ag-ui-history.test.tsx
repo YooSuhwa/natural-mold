@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { useAgUiRuntime } from '@assistant-ui/react-ag-ui'
+import { useAgUiRuntime, type UseAgUiRuntimeOptions } from '@assistant-ui/react-ag-ui'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { dispatchMoldyBranchSwitched } from '@/lib/chat/langgraph-runtime/branch-switch-events'
 import { useChatSession } from '../use-chat-session'
@@ -66,12 +66,20 @@ function intercept(reply: (call: RequestLog) => Response | Promise<Response>) {
   return requests
 }
 
-function mountChat(readOnly = false) {
+function mountChat(
+  readOnly = false,
+  observers: Pick<UseAgUiRuntimeOptions, 'logger' | 'onError'> = {},
+) {
   const onSettled = vi.fn()
+  const initialProps: { serverActiveRunId: string | null } = { serverActiveRunId: null }
   const view = renderHook(
-    ({ serverActiveRunId }: { serverActiveRunId: string | null }) => {
+    ({ serverActiveRunId }: typeof initialProps) => {
       const { agent, session } = useChatSession({ conversationId, serverMessages: [] })
-      const runtime = useAgUiRuntime({ agent, adapters: { history: session.history } })
+      const runtime = useAgUiRuntime({
+        agent,
+        adapters: { history: session.history },
+        ...observers,
+      })
       const busy = useDurableAgUiHistory({
         runtime,
         session,
@@ -81,9 +89,9 @@ function mountChat(readOnly = false) {
         serverActiveRunId,
         onSettled,
       })
-      return { runtime, busy, session }
+      return { runtime, busy, session, agent }
     },
-    { wrapper: StrictMode, initialProps: { serverActiveRunId: null } },
+    { wrapper: StrictMode, initialProps },
   )
   return { ...view, onSettled, session: view.result.current.session }
 }
@@ -219,6 +227,50 @@ afterEach(() => {
 })
 
 describe('durable official chat history', () => {
+  it('loads the newly selected branch when the first native history read is already pending', async () => {
+    let releaseInitial: ((value: Response) => void) | undefined
+    const calls = intercept(() =>
+      releaseInitial
+        ? Response.json(savedChat('selected'))
+        : new Promise<Response>((resolve) => {
+            releaseInitial = resolve
+          }),
+    )
+    const logger = { error: vi.fn() }
+    const onError = vi.fn()
+    const view = mountChat(false, { logger, onError })
+    await waitFor(() => expect(releaseInitial).toBeDefined())
+    const { thread } = view.result.current.runtime
+    const visible: string[] = []
+    const published: string[] = []
+    const stopThread = thread.subscribe(() => {
+      const head = thread.getState().messages.at(-1)?.id
+      if (head) visible.push(head)
+    })
+    const stopSession = view.session.subscribe(() => {
+      const checkpointId = view.session.getSnapshot().snapshot?.checkpointId
+      if (checkpointId) published.push(checkpointId)
+    })
+    await act(async () => dispatchMoldyBranchSwitched({ conversationId, checkpointId: 'selected' }))
+    expect(calls[0]?.signal?.aborted).toBe(false)
+    await act(async () => releaseInitial?.(Response.json(savedChat('obsolete'))))
+    await waitFor(() => expect(thread.getState().messages.at(-1)?.id).toBe('selected'))
+    expect(published).toContain('selected')
+    expect(published).not.toContain('obsolete')
+    expect(visible).toContain('selected')
+    expect(visible).not.toContain('obsolete')
+    expect(logger.error).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+    expect(calls).toHaveLength(2)
+    expect(
+      calls.every(
+        ({ method, url }) => method === 'GET' && !url.search && url.pathname.endsWith('/snapshot'),
+      ),
+    ).toBe(true)
+    stopSession()
+    stopThread()
+  })
+
   it('opens a completed conversation without starting or subscribing to a run', async () => {
     const calls = intercept(() => Response.json(savedChat('saved-answer')))
     const view = mountChat()
@@ -476,6 +528,9 @@ describe('durable official chat history', () => {
       })
       await act(async () => releaseRead?.(Response.json(stale)))
       expect(view.session.getSnapshot().snapshot?.checkpointId).toBe('initial')
+      expect(view.result.current.agent.pendingInterrupts.map(({ id }) => id)).not.toContain(
+        'obsolete-approval',
+      )
       expect(
         view.result.current.runtime.unstable_getPendingInterrupts().map(({ id }) => id),
       ).not.toContain('obsolete-approval')
