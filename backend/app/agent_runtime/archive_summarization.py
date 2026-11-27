@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterator, Mapping
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, ClassVar
@@ -15,6 +16,34 @@ from langchain_core.messages import AnyMessage
 
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.offload_storage_types import ARCHIVE_FILE, rollback_session_id
+
+
+@dataclass(slots=True)
+class _ArchiveBuild:
+    backend: ScopedOffloadBackend
+    writes_enabled: bool | None
+
+
+_archive_build: ContextVar[_ArchiveBuild | None] = ContextVar(
+    "moldy_chat_archive_build", default=None
+)
+
+
+@contextmanager
+def chat_archive_build(backend: ScopedOffloadBackend, *, writes_enabled: bool) -> Iterator[None]:
+    """Select the root's compaction format only while its synchronous graph is built."""
+    build = _ArchiveBuild(backend, writes_enabled)
+    token = _archive_build.set(build)
+    try:
+        yield
+    finally:
+        build.writes_enabled = None
+        _archive_build.reset(token)
+
+
+def chat_archive_writes_for(backend: object) -> bool | None:
+    build = _archive_build.get()
+    return build.writes_enabled if build is not None and build.backend is backend else None
 
 
 @dataclass(slots=True)
