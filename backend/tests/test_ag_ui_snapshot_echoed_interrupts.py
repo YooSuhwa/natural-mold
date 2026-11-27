@@ -4,7 +4,6 @@ from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
-from app.agent_runtime.ag_ui_v1_children import public_subagent_id
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import ProtocolInterrupt
@@ -61,9 +60,11 @@ async def test_managed_echo_can_only_restore_the_proven_slot(
         (),
     )
     if witness == "echo":
+        assert len(case.merged.subagents) == 1
+        assert case.merged.subagents[0]["childTaskId"] == str(case.task.id)
         assert [(item.id, item.subagent_run_id) for item in current] == [
             ("root-slot", None),
-            (SLOT, public_subagent_id(str(case.conversation.id), NATIVE)),
+            (SLOT, case.merged.subagents[0]["subagentRunId"]),
         ]
         assert all(item.response_schema for item in current)
     else:
