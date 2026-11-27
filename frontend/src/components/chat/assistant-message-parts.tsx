@@ -3,6 +3,8 @@
 import type { ReactNode } from 'react'
 import { MessagePrimitive, useAuiState, type EnrichedPartState } from '@assistant-ui/react'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
+import { AgUiApprovalBadge } from '@/components/chat/tool-ui/approval-card'
+import { restoredToolDecision } from '@/lib/ag-ui/approval-decisions'
 import { AgUiToolDataCards } from '@/lib/ag-ui/activity-tool-cards'
 import { math } from '@streamdown/math'
 import { buildMarkdownComponents } from '@/components/chat/markdown-components'
@@ -90,8 +92,14 @@ function OrderedToolCall({
   readonly result?: unknown
   readonly status: { readonly type: string }
 }) {
+  const decision = useAuiState((state) =>
+    state.message?.role === 'assistant'
+      ? restoredToolDecision(state.message.metadata.custom, toolCallId)
+      : null,
+  )
   return (
     <div className="order-1">
+      {decision && <AgUiApprovalBadge decision={decision} />}
       <MoldyAgUiBoundTool toolUI={toolUI}>
         <ToolCallFallback
           toolCallId={toolCallId}
