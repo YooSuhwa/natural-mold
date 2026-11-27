@@ -1,6 +1,12 @@
 import { render, screen, waitFor } from '../test-utils'
 import ChatPage from '@/app/agents/[agentId]/conversations/[conversationId]/page'
-import { mockAgent, mockMessageList } from '../mocks/fixtures'
+import * as chatRuntime from '@/components/chat/chat-runtime-section'
+import * as pinnedSummary from '@/components/chat/pinned-conversation-summary'
+import * as readiness from '@/components/readiness/agent-readiness-gate'
+import * as runtimeMode from '@/lib/chat/runtime-mode'
+import { conversationsApi } from '@/lib/api/conversations'
+import * as goalsApi from '@/lib/api/conversation-goals'
+import { mockAgent, mockConversation, mockMessageList } from '../mocks/fixtures'
 
 // Mock scrollIntoView for jsdom
 Element.prototype.scrollIntoView = vi.fn()
@@ -49,6 +55,7 @@ const mockUseAgent = vi.fn()
 const mockUseMessages = vi.fn()
 const mockUseConversationTitle = vi.fn()
 const mockInvalidateConversationNavigators = vi.fn()
+const mockUpsertConversationNavigatorCache = vi.fn()
 
 vi.mock('@/lib/hooks/use-agents', () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
@@ -70,6 +77,12 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
     debugTraceDetail: (conversationId: string, traceId: string) =>
       ['debug-traces', conversationId, traceId] as const,
   },
+  conversationDetailQueryOptions: (id: string) => ({
+    queryKey: ['conversation', id],
+    queryFn: async () => ({ ...mockConversation, id }),
+  }),
+  upsertConversationNavigatorCache: (...args: unknown[]) =>
+    mockUpsertConversationNavigatorCache(...args),
   invalidateConversationNavigators: (...args: unknown[]) =>
     mockInvalidateConversationNavigators(...args),
   // W2-7 follow-up 고스트 — 페이지 테스트에선 제안 fetch를 no-op으로.
@@ -417,6 +430,94 @@ describe('ChatPage', () => {
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/agents/agent-1/conversations/conv-started')
     })
+  })
+
+  it('promotes a draft goal into the conversation navigator before its first message', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    const initialPath = window.location.pathname
+    const conversationId = 'draft-goal'
+    const goalTitle = '첫 보고서'
+    const goal = {
+      id: 'goal-1',
+      title: goalTitle,
+      criteria: [{ kind: 'nonempty_file' as const, logical_path: 'report.csv' }],
+      status: 'active' as const,
+      version: 1,
+      revision: 1,
+      auto_followups: 0,
+      last_evidence: null,
+      blocked_reason: null,
+    }
+    const envelope = { enabled: true, goal }
+    const deleted = vi.spyOn(conversationsApi, 'delete').mockResolvedValue(undefined)
+    vi.spyOn(runtimeMode, 'getChatRuntimeMode').mockReturnValue('langgraph_v3')
+    vi.spyOn(chatRuntime, 'ChatRuntimeSection').mockReturnValue(<></>)
+    vi.spyOn(pinnedSummary, 'PinnedConversationSummary').mockReturnValue(null)
+    vi.spyOn(readiness, 'AgentReadinessGate').mockReturnValue(<></>)
+    vi.spyOn(conversationsApi, 'createDraft').mockResolvedValue({
+      ...mockConversation,
+      id: conversationId,
+    })
+    const getGoal = vi
+      .spyOn(goalsApi, 'getConversationGoal')
+      .mockResolvedValue({ enabled: true, goal: null })
+    let accept!: (response: typeof envelope) => void
+    const pendingSave = new Promise<typeof envelope>((resolve) => {
+      accept = resolve
+    })
+    const saveGoal = vi.spyOn(goalsApi, 'putConversationGoal').mockReturnValue(pendingSave)
+    mockUseAgent.mockReturnValue({ data: mockAgent })
+    mockUseMessages.mockReturnValue({ data: [], isLoading: false })
+    mockUpsertConversationNavigatorCache.mockClear()
+    window.history.replaceState(null, '', '/agents/agent-1/conversations/new')
+    let unmount: (() => void) | undefined
+    try {
+      const page = render(
+        <ChatPage
+          params={
+            { agentId: 'agent-1', conversationId: 'new' } as unknown as Promise<{
+              agentId: string
+              conversationId: string
+            }>
+          }
+        />,
+      )
+      unmount = page.unmount
+      await user.click(await screen.findByRole('button', { name: '목표 만들기' }))
+      await user.type(screen.getByRole('textbox', { name: '목표 이름' }), goalTitle)
+      await user.type(screen.getByRole('textbox', { name: '결과 파일 경로' }), 'report.csv')
+      await user.click(screen.getByRole('button', { name: '저장' }))
+      expect(saveGoal).toHaveBeenCalledWith(conversationId, {
+        expected_revision: 0,
+        title: goalTitle,
+        criteria: goal.criteria,
+      })
+      expect(window.location.pathname).toBe('/agents/agent-1/conversations/new')
+      expect(mockUpsertConversationNavigatorCache).not.toHaveBeenCalled()
+      getGoal.mockResolvedValue(envelope)
+      accept(envelope)
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(`/agents/agent-1/conversations/${conversationId}`)
+        expect(mockUpsertConversationNavigatorCache).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ id: conversationId }),
+          expect.objectContaining({ id: mockAgent.id }),
+        )
+      })
+      expect(await screen.findByText(goalTitle)).toBeVisible()
+      expect(mockStreamStartConversation).not.toHaveBeenCalled()
+      expect(mockStreamChat).not.toHaveBeenCalled()
+      unmount()
+      unmount = undefined
+      await Promise.resolve()
+      expect(deleted).not.toHaveBeenCalled()
+    } finally {
+      unmount?.()
+      await Promise.resolve()
+      window.history.replaceState(null, '', initialPath)
+      vi.restoreAllMocks()
+    }
   })
 
   it('handles stream with tool calls', async () => {

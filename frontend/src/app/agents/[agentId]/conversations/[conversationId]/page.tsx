@@ -44,6 +44,8 @@ import { useLangGraphDraftConversation } from '@/lib/chat/langgraph-runtime/use-
 import { ChatRuntimeSection } from '@/components/chat/chat-runtime-section'
 import { ToolIconProvider } from '@/components/chat/tool-ui/tool-icon-context'
 import { ChatEmptyState } from '@/components/chat/chat-empty-state'
+import { ConversationGoalCard } from './_components/conversation-goal-card'
+import { conversationGoalKeys } from '@/lib/hooks/use-conversation-goal'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
 import { PinnedConversationSummary } from '@/components/chat/pinned-conversation-summary'
 import { AgentReadinessGate } from '@/components/readiness/agent-readiness-gate'
@@ -290,6 +292,9 @@ export default function ChatPage({
       : routeConversationId
     invalidateConversationNavigators(queryClient, agentId, settledConversationId)
     if (settledConversationId) {
+      void queryClient.invalidateQueries({
+        queryKey: conversationGoalKeys.detail(settledConversationId),
+      })
       void queryClient.refetchQueries({
         queryKey: conversationKeys.messages(settledConversationId),
         type: 'active',
@@ -382,6 +387,14 @@ export default function ChatPage({
     startedConversationIdRef.current = draftConversationId
     setSuppressEmptyStateForConversationId(draftConversationId)
   }, [isDraftConversation, langGraphDraftConversationId, retainDraftConversation])
+  const handleGoalCreated = useCallback(
+    (createdConversationId: string) => {
+      if (!isDraftConversation || commitDraftConversation() !== createdConversationId) return
+      promoteDraftRoute(createdConversationId)
+      syncPromotedDraftNavigator(createdConversationId)
+    },
+    [commitDraftConversation, isDraftConversation, promoteDraftRoute, syncPromotedDraftNavigator],
+  )
   const handleNewMessageAccepted = useCallback(() => {
     const acceptedConversationId =
       commitDraftConversation() ?? startedConversationIdRef.current ?? langGraphDraftConversationId
@@ -445,6 +458,14 @@ export default function ChatPage({
             onOpenTrace={handleOpenTrace}
             onToggleArtifacts={handleToggleArtifacts}
           />
+          {activeConversationId ? (
+            <ConversationGoalCard
+              key={activeConversationId}
+              conversationId={activeConversationId}
+              onCreating={isDraftConversation ? retainDraftConversation : undefined}
+              onCreated={handleGoalCreated}
+            />
+          ) : null}
           <PinnedConversationSummary conversationId={activeConversationId} />
           <AgentReadinessGate
             agentId={agentId}
