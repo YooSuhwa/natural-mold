@@ -314,7 +314,13 @@ def test_scoped_message_link_drops_a_parent_reference_to_a_hidden_independent_tu
     visible = checkpoint(text_message("known-user", "user", "job request"), run=physical)
     hidden = checkpoint(text_message("hidden-id", "assistant", "other conversation"), run=foreign)
     reply, link = checkpoint(text_message("visible-reply", "assistant", "job result"), run=physical)
-    stale_link = link.model_copy(update={"parent_message_id": "hidden-id"})
+    stale_link = link.model_copy(
+        update={
+            "parent_message_id": "hidden-id",
+            "parent_checkpoint_id": hidden[1].checkpoint_id,
+            "sibling_checkpoint_ids": [hidden[1].checkpoint_id],
+        }
+    )
     assembly = SnapshotAssembly([visible, hidden, (reply, stale_link)], require_run_link=True)
     assembly.add_run(physical, "job", PublicReplay(messages=[reply]))
     result = assembly.finish()
@@ -325,3 +331,7 @@ def test_scoped_message_link_drops_a_parent_reference_to_a_hidden_independent_tu
         link.parent_message_id is None or link.parent_message_id in visible_ids
         for link in result.message_links
     )
+    reply_link = next(item for item in result.message_links if item.message_id == "visible-reply")
+    assert reply_link.checkpoint_id == link.checkpoint_id
+    assert reply_link.parent_checkpoint_id != hidden[1].checkpoint_id
+    assert hidden[1].checkpoint_id not in reply_link.sibling_checkpoint_ids
