@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext, Page } from '@playwright/test'
 import { isSeededScriptedModel } from './helpers/scripted-model'
+import { branchStage, observeBranch } from './helpers/branch-observation'
 
 // Detailed coverage of the core chat interactions against the live backend +
 // the keyless scripted model: branching by regenerate, branching by editing a
@@ -11,6 +12,17 @@ const API =
 const EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
+
+const branchTest = test.extend<{ branch: ReturnType<typeof observeBranch> }>({
+  branch: async ({ page }, use, info) => {
+    const branch = observeBranch(page, API)
+    await use(branch)
+    await info.attach('chat-branch-observation', {
+      body: JSON.stringify(await branch.finish()),
+      contentType: 'application/json',
+    })
+  },
+})
 
 async function login(request: APIRequestContext): Promise<Record<string, string>> {
   const res = await request.post(`${API}/api/auth/login`, {
@@ -93,37 +105,48 @@ test.describe('Chat interactions', () => {
     return conv.id
   }
 
-  test('regenerating an assistant reply forks a sibling branch and the picker navigates', async ({
-    page,
-    request,
-  }) => {
-    test.setTimeout(90_000)
-    const convId = await startTurn(page, request, 'First question for regenerate')
+  branchTest(
+    'regenerating an assistant reply forks a sibling branch and the picker navigates',
+    async ({ page, request, branch }) => {
+      test.setTimeout(90_000)
+      await startTurn(page, request, 'First question for regenerate')
+      branch.reached(branchStage.turnIdle)
 
-    // Regenerate → a second sibling forks; the <n/2> branch picker appears.
-    // (The messages API returns only the active branch — siblings show as
-    // branch_total=2 metadata, not as extra messages — so assert on the picker.)
-    await page.getByRole('button', { name: '재생성' }).first().click()
-    await expect(page.getByRole('button', { name: '이전 분기' })).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByText('2/2').first()).toBeVisible()
+      // Regenerate → a second sibling forks; the <n/2> branch picker appears.
+      // (The messages API returns only the active branch — siblings show as
+      // branch_total=2 metadata, not as extra messages — so assert on the picker.)
+      await page.getByRole('button', { name: '재생성' }).first().click()
+      branch.reached(branchStage.regenerateClicked)
+      await expect(page.getByRole('button', { name: '이전 분기' })).toBeVisible({ timeout: 60_000 })
+      branch.reached(branchStage.pickerVisible)
+      await expect(page.getByText('2/2').first()).toBeVisible()
+      branch.reached(branchStage.latestBranchVisible)
 
-    // Navigate to the earlier sibling.
-    await page.getByRole('button', { name: '이전 분기' }).click()
-    await expect(page.getByText('1/2').first()).toBeVisible()
-  })
+      // Navigate to the earlier sibling.
+      await page.getByRole('button', { name: '이전 분기' }).click()
+      branch.reached(branchStage.previousClicked)
+      await expect(page.getByText('1/2').first()).toBeVisible()
+    },
+  )
 
-  test('editing a user message forks a new branch', async ({ page, request }) => {
+  branchTest('editing a user message forks a new branch', async ({ page, request, branch }) => {
     test.setTimeout(90_000)
     await startTurn(page, request, 'Original user message')
+    branch.reached(branchStage.turnIdle)
 
     await page.getByRole('button', { name: '편집' }).first().click()
+    branch.reached(branchStage.editClicked)
     // The inline edit composer is the (autofocused) textarea with no placeholder.
     await page.locator('textarea:not([placeholder])').fill('Edited user message')
+    branch.reached(branchStage.editorFilled)
     await page.getByRole('button', { name: '저장', exact: true }).click()
+    branch.reached(branchStage.saveClicked)
 
     // The edited message forks a sibling branch (picker on the user message).
     await expect(page.getByRole('button', { name: '이전 분기' })).toBeVisible({ timeout: 60_000 })
+    branch.reached(branchStage.pickerVisible)
     await expect(page.getByText('2/2').first()).toBeVisible()
+    branch.reached(branchStage.latestBranchVisible)
   })
 
   test('thumbs-up feedback submits and sticks on the assistant message', async ({

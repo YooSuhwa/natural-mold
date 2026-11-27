@@ -90,7 +90,10 @@ export function restoreAgUiNativeActivities(snapshot: WireChatSnapshot): readonl
     })
   }
   const active = snapshot.physicalRunId === selected
-  const status = snapshot.runId && publicRunIds.has(snapshot.runId) ? snapshot.runStatus : null
+  const selectedStatusKnown = snapshot.selectedPhysicalRunId
+    ? snapshot.selectedPhysicalRunId === selected
+    : snapshot.runId && publicRunIds.has(snapshot.runId)
+  const status = selectedStatusKnown ? snapshot.runStatus : null
   const finished = !active && status === 'completed'
   const publicRecords = records.filter(
     ({ message }) => !message.subagentRunId || lanes.has(message.subagentRunId),
