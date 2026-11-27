@@ -162,6 +162,7 @@ function scopedExtras(
 function restoredRoot(
   record: SavedRecord,
   extra: readonly Message[],
+  selectedCheckpoint: string | null,
   row?: MoldyMessage,
 ): ThreadMessage {
   const [like] = fromAgUiMessages([record.message, ...extra], {
@@ -176,7 +177,10 @@ function restoredRoot(
     ? link.siblingCheckpointIds
     : row?.sibling_checkpoint_ids
   const checkpointId = link.checkpointId ?? row?.branch_checkpoint_id
-  const branchIndex = checkpointId && checkpoints ? checkpoints.indexOf(checkpointId) : -1
+  // The snapshot lists branch leaves. The checkpoint that introduced this
+  // message may precede its leaf by several model or middleware steps.
+  const branchLeaf = link.siblingCheckpointIds?.length ? selectedCheckpoint : checkpointId
+  const branchIndex = branchLeaf && checkpoints ? checkpoints.indexOf(branchLeaf) : -1
   const custom = {
     ...like.metadata?.custom,
     ...(link.uiMessageId && { publicMessageId: link.uiMessageId }),
@@ -248,7 +252,12 @@ export function buildAgUiChatRepository(
       } else {
         const row = record.link.uiMessageId ? byPublicId.get(record.link.uiMessageId) : undefined
         rootMessages.push(
-          restoredRoot(record, extra, row?.role === record.message.role ? row : undefined),
+          restoredRoot(
+            record,
+            extra,
+            snapshot.checkpointId,
+            row?.role === record.message.role ? row : undefined,
+          ),
         )
       }
     }

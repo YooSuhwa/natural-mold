@@ -75,7 +75,7 @@ describe('AG-UI chat history', () => {
         link('left', 'question', { checkpointId: 'checkpoint-left' }),
         link('right', 'question', {
           uiMessageId: databaseId,
-          checkpointId: 'checkpoint-right',
+          checkpointId: 'checkpoint-introduced-right',
           parentCheckpointId: 'checkpoint-question',
           siblingCheckpointIds: ['checkpoint-left', 'checkpoint-right'],
         }),
@@ -92,6 +92,7 @@ describe('AG-UI chat history', () => {
         metadata: {
           custom: {
             publicMessageId: databaseId,
+            branchCheckpointId: 'checkpoint-introduced-right',
             siblingCheckpointIds: ['checkpoint-left', 'checkpoint-right'],
             branchIndex: 1,
             branchTotal: 2,
