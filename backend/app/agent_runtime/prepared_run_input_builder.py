@@ -45,7 +45,6 @@ from app.agent_runtime.runtime_preparation import _without_stored_filesystem_int
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
 from app.agent_runtime.runtime_snapshot_catalog import SnapshotCatalogBuilder
 from app.approvals.unattended import strip_builtin_defaults
-from app.config import settings
 from app.guardrails.events import RunScope, parse_uuid
 from app.guardrails.run import effective_rules
 from app.guardrails.tool_risk import interrupts_for
@@ -92,6 +91,7 @@ class PreparedRunSources:
     children: tuple[PreparedChildSource, ...] = ()
     memory_prompt: str = ""
     is_trigger_mode: bool = False
+    track_child_tasks: bool = False
     secret_reference_ids: tuple[str, ...] = ()
     versions: Mapping[str, str] | None = None
     run_id: str | None = None
@@ -353,7 +353,7 @@ def build_preparation_inputs(
             for child in sources.children
             if child.agent_id is not None
         }
-        if settings.child_tasks_enabled and cfg.run_path == "chat" and not trigger
+        if sources.track_child_tasks
         else {},
         interrupt_on=_interrupts(
             cfg.middleware_configs,

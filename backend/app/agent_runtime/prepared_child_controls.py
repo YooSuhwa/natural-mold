@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -24,6 +25,34 @@ if TYPE_CHECKING:
     from app.agent_runtime.delegated_child_control import ChildTaskLifecycle
 
 
+@dataclass(frozen=True, slots=True)
+class _ControlAuthority:
+    lease: PreparedRunLease
+    child_agent_id: UUID
+    context: OrgContext
+
+
+_CONTROL_AUTHORITY = "moldy_child_control_authority"
+
+
+def lease_for_child_control(
+    db: AsyncSession, *, context: OrgContext, run_id: UUID, child_agent_id: UUID
+) -> PreparedRunLease | None:
+    """Expose the exact live worker lease to its single child-control transaction."""
+    authority = db.info.get(_CONTROL_AUTHORITY)
+    if authority is None:
+        return None
+    if not isinstance(authority, _ControlAuthority):
+        raise DispatchDeniedError("child_control_scope_mismatch")
+    if (
+        authority.lease.binding.run_id != run_id
+        or authority.context != context
+        or authority.child_agent_id != child_agent_id
+    ):
+        raise DispatchDeniedError("child_control_scope_mismatch")
+    return authority.lease
+
+
 def child_control_descriptor(path: str, agent_id: UUID) -> str:
     return f"child_control:{path}:{agent_id}"
 
@@ -32,6 +61,7 @@ def child_control_descriptor(path: str, agent_id: UUID) -> str:
 async def _control_session(
     lease: PreparedRunLease,
     descriptor: str,
+    child_agent_id: UUID,
     context: OrgContext,
     session_factory: SessionFactory,
 ) -> AsyncIterator[AsyncSession]:
@@ -47,7 +77,13 @@ async def _control_session(
         ),
         tenant_session(context, maker=session_factory) as db,
     ):
-        yield db
+        if _CONTROL_AUTHORITY in db.info:
+            raise DispatchDeniedError("child_control_scope_mismatch")
+        db.info[_CONTROL_AUTHORITY] = _ControlAuthority(lease, child_agent_id, context)
+        try:
+            yield db
+        finally:
+            del db.info[_CONTROL_AUTHORITY]
 
 
 def prepared_child_controls(
@@ -76,6 +112,8 @@ def prepared_child_controls(
             conversation_id=binding.conversation_id,
             child_agent_id=agent_id,
             role=child.name,
-            session_scope=partial(_control_session, lease, descriptor, context, session_factory),
+            session_scope=partial(
+                _control_session, lease, descriptor, agent_id, context, session_factory
+            ),
         )
     return controls
