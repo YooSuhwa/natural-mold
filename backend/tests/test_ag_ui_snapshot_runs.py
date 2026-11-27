@@ -154,16 +154,24 @@ async def test_uncheckpointed_turn_with_exact_tip_cannot_follow_a_later_branch_s
     _, conversation = await _seed_conversation(db)
     row = _run(db, conversation, 1, status=status)
     row.metadata_json = {"checkpoint_id": "left"}
+    _trace(db, row, "same-provider")
     await db.commit()
     context = unit_context(conversation.user_id)
     left = SnapshotHistory("left", (), "checkpoint", ("common", "left"), True)
-    right = SnapshotHistory("right", (), "checkpoint", ("common", "right"), True)
+    right = SnapshotHistory(
+        "right",
+        (_message("same-provider", "assistant", 0, "right"),),
+        "checkpoint",
+        ("common", "right"),
+        True,
+    )
 
     active_branch = await runs.snapshot_runs(db, conversation, context, left, [])
-    switched = await runs.snapshot_runs(db, conversation, context, right, [])
+    switched = await runs.snapshot_runs(db, conversation, context, right, ["same-provider"])
 
     assert row.id in active_branch.branch_verified
     assert row.id not in switched.branch_verified
+    assert "same-provider" not in switched.message_runs
 
 
 async def test_child_read_requires_a_permitted_run_even_with_a_real_checkpoint_stamp(
