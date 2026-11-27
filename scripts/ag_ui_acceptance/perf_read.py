@@ -47,7 +47,7 @@ def _measure_service(fn: AsyncOperation, name: str) -> AsyncOperation:
 
 
 def _measure_reader(
-    fn: AsyncOperation, name: str, fd: int, parts: Mapping[str, int]
+    fn: AsyncOperation, name: str, fd: int, parts: Mapping[str, tuple[int, ...]]
 ) -> AsyncOperation:
     @wraps(fn)
     async def measure(reader: Any, *args: Any, **kwargs: Any) -> Any:
@@ -88,10 +88,10 @@ def _measure_reader(
         row["frame_count"] = len(frames)
         # Keep ordinals of the fixed test-model strings only. Never log content or event data.
         row["text_ordinals"] = [
-            parts[frame.event["delta"]]
+            ordinal
             for frame in frames
             if frame.event.get("type") == "TEXT_MESSAGE_CONTENT"
-            and frame.event.get("delta") in parts
+            for ordinal in parts.get(frame.event["delta"], ())
         ]
         os.write(fd, (json.dumps(row, separators=(",", ":")) + "\n").encode("ascii"))
         return value
@@ -112,7 +112,12 @@ def observe_read_durations(ledger: Path) -> Iterator[None]:
     from app.agent_runtime.e2e_scripted_model import SLOW_STREAM_PARTS
     from app.services import ag_ui_read
 
-    parts = {text: i for i, text in enumerate(SLOW_STREAM_PARTS, 1)}
+    # Several committed provider tokens may be projected in a single text frame.
+    parts = {
+        "".join(SLOW_STREAM_PARTS[start:stop]): tuple(range(start + 1, stop + 1))
+        for start in range(len(SLOW_STREAM_PARTS))
+        for stop in range(start + 1, len(SLOW_STREAM_PARTS) + 1)
+    }
     with ExitStack() as stack:
         fd = os.open(
             ledger, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600
