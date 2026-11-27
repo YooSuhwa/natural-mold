@@ -28,6 +28,7 @@ class SummarySource:
     role: MessageRole
     text: str
     branch_checkpoint_id: str
+    public_message_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +37,7 @@ class PinSummaryTarget:
     context: OrgContext
     message_id: str
     active_sources: tuple[SummarySource, ...]
+    id_kind: Literal["source", "public"] = "source"
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +55,15 @@ def _bounded_snapshot(text: str) -> str:
 
 def _find_source(sources: tuple[SummarySource, ...], message_id: str) -> SummarySource | None:
     return next((source for source in sources if source.message_id == message_id), None)
+
+
+def _find_public_source(
+    sources: tuple[SummarySource, ...], message_id: str
+) -> SummarySource | None:
+    # Providers sometimes reuse a message ID across turns. Its UUID alias then
+    # identifies more than one turn, even though their visible source IDs differ.
+    matches = [source for source in sources if source.public_message_id == message_id]
+    return matches[0] if len(matches) == 1 else None
 
 
 def resolve_source_status(
@@ -76,7 +87,8 @@ async def pin_summary(
     """Persist a bounded snapshot of an assistant message on the active branch."""
 
     await lock_private_conversation(db, target.conversation_id, target.context)
-    source = _find_source(target.active_sources, target.message_id)
+    lookup = _find_public_source if target.id_kind == "public" else _find_source
+    source = lookup(target.active_sources, target.message_id)
     if source is None:
         raise InvalidPinnedSummarySourceError("missing")
     if source.role != "assistant":
@@ -125,9 +137,14 @@ def serialize_summary(
     active_sources: tuple[SummarySource, ...],
     historical_sources: tuple[SummarySource, ...],
 ) -> PinnedConversationSummaryResponse:
+    active = _find_source(active_sources, row.source_message_id)
+    public_id = active.public_message_id if active else None
+    if public_id and _find_public_source(active_sources, public_id) is None:
+        public_id = None
     return PinnedConversationSummaryResponse(
         conversation_id=row.conversation_id,
         source_message_id=row.source_message_id,
+        source_public_message_id=public_id,
         source_branch_checkpoint_id=row.source_branch_checkpoint_id,
         snapshot_text=row.snapshot_text,
         source_status=resolve_source_status(row, active_sources, historical_sources),

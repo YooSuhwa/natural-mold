@@ -162,6 +162,13 @@ export function RunSummaryPanel({ summary }: { readonly summary: RunSummary }) {
             ) : null}
             {summary.activities.map((activity) => {
               const activityElapsed = formatRunDuration(activity.elapsedMs, t)
+              const label =
+                activity.name === activity.kind &&
+                activity.kind !== 'tool' &&
+                activity.kind !== 'subagent' &&
+                activity.kind !== 'background_subagent'
+                  ? (liveActivityText(t, activity) ?? activityName(activity))
+                  : activityName(activity)
               return (
                 <li
                   key={activity.key}
@@ -169,7 +176,7 @@ export function RunSummaryPanel({ summary }: { readonly summary: RunSummary }) {
                   data-activity-kind={activity.kind}
                 >
                   <span className="min-w-0 truncate text-foreground">
-                    {activityName(activity)}
+                    {label}
                     {activity.namespace.length > 0 ? (
                       <span className="ml-1.5 text-muted-foreground">
                         {activity.namespace.join(' / ')}

@@ -417,7 +417,7 @@ async def test_create_trigger_rejects_hidden_runtime_agent(
     await ensure_unit_scope(
         db, CurrentUser(id=TEST_USER_ID, email="test@example.com", name="Test User")
     )
-    agent = await get_or_create_skill_builder_agent(db, context=unit_context(TEST_USER_ID))
+    agent, _ = await get_or_create_skill_builder_agent(db, context=unit_context(TEST_USER_ID))
     await db.commit()
 
     trigger_resp = await client.post(

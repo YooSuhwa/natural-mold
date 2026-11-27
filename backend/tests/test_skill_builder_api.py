@@ -5,12 +5,18 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.fake import FakeAuthz
+from app.authz.runtime import get_authz
+from app.authz.service import AuthzService
+from app.authz.service_types import AuthzMode
 from app.config import settings
 from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER, Agent
+from app.models.authz import AuthzOutbox
 from app.models.conversation import Conversation
 from app.models.skill import Skill
 from app.models.skill_builder_session import SkillBuilderSession
@@ -124,6 +130,60 @@ async def test_start_lazy_seeds_hidden_agent_once(client: AsyncClient, db: Async
     # 히든 에이전트는 에이전트 목록에 노출되지 않는다.
     agents = await client.get("/api/agents")
     assert first.json()["agent_id"] not in {a["id"] for a in agents.json()}
+
+
+@pytest.mark.parametrize("mode", ["legacy", "shadow", "enforce"])
+async def test_hidden_agent_creation_projects_private_access_once(
+    client: AsyncClient,
+    db: AsyncSession,
+    test_app: FastAPI,
+    mode: AuthzMode,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _configure_system_llm(db)
+    service = AuthzService(FakeAuthz(), mode=mode, enforce_types=frozenset({"agent"}))
+    monkeypatch.setitem(test_app.dependency_overrides, get_authz, lambda: service)
+
+    body = {"mode": "create", "user_request": "회의 스킬"}
+    first = await client.post(BASE, json=body)
+    second = await client.post(BASE, json=body)
+    assert first.status_code == second.status_code == 201
+    agent_id = uuid.UUID(first.json()["agent_id"])
+    assert second.json()["agent_id"] == str(agent_id)
+    writes = list(
+        await db.scalars(
+            select(AuthzOutbox.tuple_key).where(
+                AuthzOutbox.source_table == "agents", AuthzOutbox.source_id == agent_id
+            )
+        )
+    )
+    if mode == "legacy":
+        assert writes == []
+    else:
+        org = f"organization:{unit_context(TEST_USER_ID).org_id}"
+        agent = f"agent:{agent_id}"
+        assert sorted(writes) == sorted(
+            [
+                f"{org} org {agent}",
+                f"user:{TEST_USER_ID} owner {agent}",
+                f"{agent} resident_agent {org}",
+            ]
+        )
+
+
+async def test_hidden_agent_ownership_stays_private(client: AsyncClient, db: AsyncSession) -> None:
+    await _configure_system_llm(db)
+    response = await client.post(BASE, json={"mode": "create", "user_request": "회의 스킬"})
+    assert response.status_code == 201
+    resource = "/api/resources/agent/" + response.json()["agent_id"]
+    assert (await client.get(f"{resource}/grants")).status_code == 404
+    assert (await client.get(f"{resource}/access")).status_code == 404
+    recipient = str(uuid.uuid4())
+    grant = {"principal": {"type": "user", "id": recipient}, "level": "consumer"}
+    assert (await client.post(f"{resource}/grants", json=grant)).status_code == 404
+    assert (
+        await client.post(f"{resource}/transfer", json={"new_owner_id": recipient})
+    ).status_code == 404
 
 
 async def test_get_session_returns_agent_and_conversation(

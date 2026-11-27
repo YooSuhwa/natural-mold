@@ -24,8 +24,10 @@ export function usePinnedConversationSummary(conversationId: string | null) {
   const pin = useMutation({
     mutationKey,
     scope: mutationScope,
-    mutationFn: (messageId: string) =>
-      pinnedConversationSummaryApi.pin(conversationId ?? '', messageId),
+    mutationFn: (target: string | { publicId: string }) =>
+      typeof target === 'string'
+        ? pinnedConversationSummaryApi.pin(conversationId ?? '', target)
+        : pinnedConversationSummaryApi.pin(conversationId ?? '', target.publicId, 'public'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey, exact: true }),
   })
   const unpin = useMutation({
@@ -38,7 +40,8 @@ export function usePinnedConversationSummary(conversationId: string | null) {
     summary: query.data?.summary ?? null,
     isLoading: query.isLoading,
     isMutating: activeMutationCount > 0,
-    pin: pin.mutate,
+    pin: (messageId: string) => pin.mutate(messageId),
+    pinPublic: (publicId: string) => pin.mutate({ publicId }),
     unpin: unpin.mutate,
   }
 }

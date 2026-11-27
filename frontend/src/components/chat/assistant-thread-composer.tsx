@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useMemo, useRef, useState } from 'react'
 import { AuiIf, ComposerPrimitive, useAui, useAuiState } from '@assistant-ui/react'
 import {
   CoinsIcon,
@@ -22,6 +22,8 @@ import { useComposerHistory } from '@/components/chat/use-composer-history'
 import { useFollowupGhost } from '@/components/chat/use-followup-ghost'
 import { useFollowupSuggestion } from '@/components/chat/use-followup-suggestion'
 import { useChatConversationId } from '@/components/chat/conversation-context'
+import { AgUiChatActionContext } from '@/lib/ag-ui/chat-action-context'
+import { useAgUiQueueComposer } from '@/lib/ag-ui/chat-queue-composer'
 import { useInvalidateFilesOnRunComplete } from '@/components/chat/use-files-run-sync'
 import { formatComposerCost, TokenBar } from '@/components/chat/assistant-composer-usage'
 import { AttachmentChip } from '@/components/chat/assistant-composer-attachment'
@@ -105,6 +107,28 @@ export function ThreadComposer({
     resourceContextResetKey,
     conversationId === sideChat?.sideId ? sideChat?.draft.current?.references : undefined,
   )
+  const agUi = useContext(AgUiChatActionContext)
+  const { sendQueued, isSubmitting } = useAgUiQueueComposer(
+    agUi,
+    conversationId,
+    resourceContext.clear,
+  )
+  const serverQueueSend =
+    agUi && (agUi.shouldQueue || isRunning || isSubmitting) ? sendQueued : undefined
+  const canStop = agUi?.canStopActiveRun ?? isRunning
+  const stop = useCallback(async () => {
+    try {
+      if (agUi) await agUi.stopActiveRun()
+      else aui.thread.cancelRun()
+    } catch (error) {
+      reportClientWarning('ThreadComposer', 'Could not stop the active run', error)
+      toast.error(tQueue('failed'))
+    }
+  }, [agUi, aui, tQueue])
+  const sendToQueue = (steer: boolean) => {
+    if (serverQueueSend) void serverQueueSend(steer)
+    else aui.composer.send({ steer })
+  }
   const resourceCandidates = useResourceContextCandidates({ conversationId, linkedSkills })
   useFollowupSuggestion(conversationId)
   const [followupEnabled, setFollowupEnabled] = useAtom(followupEnabledAtom)
@@ -156,7 +180,7 @@ export function ThreadComposer({
         openFilesRail: conversationId ? openFilesPanel : undefined,
         openFilePicker: enableAttachments ? openFilePicker : undefined,
         retryLastFailedInput,
-        stopRunAndPauseQueue: isRunning ? () => aui.thread.cancelRun() : undefined,
+        stopRunAndPauseQueue: canStop ? stop : undefined,
         openHelp: (argument) => aui.composer.setText(`/${argument}`),
       },
       commandCopy,
@@ -168,7 +192,8 @@ export function ThreadComposer({
     commandCopy,
     conversationId,
     enableAttachments,
-    isRunning,
+    canStop,
+    stop,
     openFilesPanel,
     openFilePicker,
     retryLastFailedInput,
@@ -179,6 +204,14 @@ export function ThreadComposer({
     <ComposerPrimitive.Root
       className="moldy-chat-card relative z-20 overflow-visible @container"
       data-moldy-thread-composer
+      onSubmit={
+        serverQueueSend
+          ? (event) => {
+              event.preventDefault()
+              void serverQueueSend(false)
+            }
+          : undefined
+      }
     >
       {enableMessageQueue ? (
         <ServerMessageQueuePanel
@@ -238,7 +271,11 @@ export function ThreadComposer({
             removeLabel={(label) => tContext('remove', { label })}
             onRemove={resourceContext.remove}
           />
-          <QuoteComposerBridge context={resourceContext} inputRef={composerTextareaRef} />
+          <QuoteComposerBridge
+            context={resourceContext}
+            inputRef={composerTextareaRef}
+            queueSend={serverQueueSend}
+          />
           <QuoteContextChips
             references={resourceContext.references}
             onRemove={resourceContext.remove}
@@ -251,6 +288,7 @@ export function ThreadComposer({
               autoFocusKey={focusKey}
               placeholder={ghostVisible ? '' : t('placeholder')}
               submitMode="enter"
+              queueSend={serverQueueSend}
               onKeyDown={(event) => {
                 if (
                   event.key === 'Enter' &&
@@ -260,9 +298,15 @@ export function ThreadComposer({
                 ) {
                   event.preventDefault()
                   const commandText = aui.composer.getState().text
+                  const commandInput = event.currentTarget
                   void dispatchChatCommand(commandText, commands).then((result) => {
                     if (result.kind === 'handled' && result.commandId !== 'help') {
-                      aui.composer.setText('')
+                      if (
+                        commandInput === composerTextareaRef.current &&
+                        aui.composer.getState().text === commandText
+                      ) {
+                        aui.composer.setText('')
+                      }
                     } else if (result.kind === 'blocked') {
                       toast.error(
                         result.reason === 'arguments-not-supported'
@@ -366,9 +410,10 @@ export function ThreadComposer({
                 key={conversationId}
                 conversationId={conversationId}
                 hasResourceContext={resourceContext.references.length > 0}
+                submissionPending={isSubmitting}
               />
             )}
-          <AuiIf condition={(s) => !s.thread.isRunning}>
+          <AuiIf condition={(s) => !s.thread.isRunning && !serverQueueSend}>
             <ComposerPrimitive.Send asChild>
               <Button type="submit" size="icon-sm" className="rounded-full">
                 <SendIcon className="size-4" />
@@ -376,36 +421,52 @@ export function ThreadComposer({
               </Button>
             </ComposerPrimitive.Send>
           </AuiIf>
-          <AuiIf condition={(s) => s.thread.isRunning && s.thread.capabilities.queue}>
+          <AuiIf
+            condition={(s) =>
+              Boolean(serverQueueSend) || (s.thread.isRunning && s.thread.capabilities.queue)
+            }
+          >
             <>
-              <QueueSendButton label={tQueue('sendNext')} />
+              <QueueSendButton
+                label={tQueue('sendNext')}
+                onSend={sendToQueue}
+                pending={isSubmitting}
+              />
               <QueueSteerButton
                 label={tQueue('steerNew')}
                 sendNowLabel={tQueue('sendNow')}
                 cancelLabel={tQueue('cancelSteer')}
+                onSend={sendToQueue}
+                pending={isSubmitting}
               />
             </>
           </AuiIf>
-          <AuiIf condition={(s) => s.thread.isRunning}>
-            <StopButton />
-          </AuiIf>
+          {canStop && <StopButton onStop={stop} />}
         </div>
       </div>
     </ComposerPrimitive.Root>
   )
 }
 
-function QueueSendButton({ label }: { readonly label: string }) {
-  const aui = useAui()
+interface QueueButtonAction {
+  readonly onSend: (steer: boolean) => void
+  readonly pending: boolean
+}
+
+function QueueSendButton({
+  label,
+  onSend,
+  pending,
+}: QueueButtonAction & { readonly label: string }) {
   const isEmpty = useAuiState((state) => state.composer.isEmpty)
   return (
     <Button
       type="button"
       size="icon-sm"
       className="rounded-full"
-      disabled={isEmpty}
+      disabled={isEmpty || pending}
       title={label}
-      onClick={() => aui.composer.send({ steer: false })}
+      onClick={() => onSend(false)}
     >
       <SendIcon className="size-4" />
       <span className="sr-only">{label}</span>
@@ -417,12 +478,13 @@ function QueueSteerButton({
   label,
   sendNowLabel,
   cancelLabel,
-}: {
+  onSend,
+  pending,
+}: QueueButtonAction & {
   readonly label: string
   readonly sendNowLabel: string
   readonly cancelLabel: string
 }) {
-  const aui = useAui()
   const isEmpty = useAuiState((state) => state.composer.isEmpty)
   const [armed, setArmed] = useState(false)
 
@@ -432,11 +494,11 @@ function QueueSteerButton({
         <Button
           type="button"
           size="sm"
-          disabled={isEmpty}
+          disabled={isEmpty || pending}
           aria-label={sendNowLabel}
           data-moldy-queue-send-now-new
           onClick={() => {
-            aui.composer.send({ steer: true })
+            onSend(true)
             setArmed(false)
           }}
         >
@@ -462,7 +524,7 @@ function QueueSteerButton({
       size="icon-sm"
       variant="outline"
       className="rounded-full"
-      disabled={isEmpty}
+      disabled={isEmpty || pending}
       aria-label={label}
       title={label}
       data-moldy-queue-steer-new
@@ -473,22 +535,15 @@ function QueueSteerButton({
   )
 }
 
-function StopButton() {
-  const aui = useAui()
+function StopButton({ onStop }: { readonly onStop: () => Promise<void> }) {
   const tMsg = useTranslations('chat.message')
   const isCanceling = useAtomValue(chatCancelInFlightAtom)
-  const handleStop = () => {
-    if (isCanceling) return
-    try {
-      aui.thread.cancelRun()
-    } catch (error) {
-      reportClientWarning('StopButton', 'cancelRun error:', error)
-    }
-  }
   return (
     <button
       type="button"
-      onClick={handleStop}
+      onClick={() => {
+        if (!isCanceling) void onStop()
+      }}
       disabled={isCanceling}
       aria-label={tMsg('stop')}
       data-moldy-stop-button="true"

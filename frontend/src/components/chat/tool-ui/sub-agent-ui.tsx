@@ -71,6 +71,7 @@ export function SubAgentToolCard({ toolCallId, args, statusType }: SubAgentToolC
     () => taskToolCallIdsFromKey(turnToolCallIdKey),
     [turnToolCallIdKey],
   )
+  const parentMessageId = useAuiState((state) => state.message.id)
   const agentName = resolveAgentName(args, t('fallbackName'))
   const input = resolveInput(args)
 
@@ -82,6 +83,7 @@ export function SubAgentToolCard({ toolCallId, args, statusType }: SubAgentToolC
         status: pillStatusFromAssistantUi(statusType),
       }}
       toolCallId={toolCallId}
+      parentMessageId={parentMessageId}
       turnToolCallIds={turnToolCallIds}
     />
   )

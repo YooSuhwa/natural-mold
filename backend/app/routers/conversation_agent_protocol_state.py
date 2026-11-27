@@ -114,7 +114,11 @@ async def update_thread_state_response(
     user: CurrentUser,
     context: OrgContext,
 ) -> ThreadStateResponse:
+    from app.services.ag_ui_delivery_scope import require_mutable_branch
+
     await require_executable_conversation(db, conversation.id, context)
+    # The saver writes outside the ORM transaction, so guard it before aupdate_state.
+    await require_mutable_branch(db, conversation.id)
     cfg = await resolve_agent_context(
         db,
         conversation.id,

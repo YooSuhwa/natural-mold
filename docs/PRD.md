@@ -1,6 +1,6 @@
 # Moldy PRD
 
-<!-- project-current-source: migration=i50_chat_model_attempts; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
+<!-- project-current-source: migration=i52_ag_ui_queue_claim_guard; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
 
 > Last updated: 2026-09-10
 > Version: v0.7

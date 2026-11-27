@@ -1,8 +1,9 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 import {
   AlertTriangleIcon,
   CheckIcon,
@@ -14,6 +15,7 @@ import {
 import { resolveImageUrl } from '@/lib/utils'
 import { toRespond } from '@/lib/chat/decision-mappers'
 import { useHiTL, type HiTLContextValue } from '@/lib/chat/hitl-context'
+import { canRespondToAction, useApprovalGeneration } from '@/lib/chat/hitl-readiness'
 import { MintActionButton, OutlineActionButton } from './builder-form-controls'
 import {
   BuilderActionRow,
@@ -26,12 +28,72 @@ import {
 } from './builder-primitives'
 import { PhaseCard, PhaseCardFooter, PhaseCardHeader } from './phase-card'
 
-async function submitChoice(
-  hitl: HiTLContextValue | null,
-  payload: Record<string, unknown>,
-  display: string,
-) {
-  await hitl?.onResumeDecisions([toRespond(JSON.stringify(payload))], display)
+interface ImageDecisionTarget {
+  hitl_interrupt_id?: string
+  hitl_action_index?: number
+}
+
+function useImageDecisionKey(toolCallId: string, target: ImageDecisionTarget) {
+  const hitl = useHiTL()
+  const generation = useApprovalGeneration(hitl)
+  return hitl?.canRespond !== undefined || hitl?.canRespondTo
+    ? JSON.stringify([toolCallId, target.hitl_interrupt_id, target.hitl_action_index, generation])
+    : toolCallId
+}
+
+function useImageDecision(complete: boolean, target: ImageDecisionTarget, initialPrompt: string) {
+  const hitl = useHiTL()
+  const t = useTranslations('chat.approval')
+  const [submitted, setSubmitted] = useState(false)
+  const [editPrompt, setPrompt] = useState(initialPrompt)
+  const sending = useRef(false)
+  const activeContext = useRef<HiTLContextValue | null>(null)
+  const scoped = hitl?.canRespond !== undefined || Boolean(hitl?.canRespondTo)
+  const ready =
+    !complete && canRespondToAction(hitl, target) && (!scoped || Boolean(hitl?.registerDecision))
+
+  useLayoutEffect(() => {
+    activeContext.current = ready ? hitl : null
+    return () => {
+      activeContext.current = null
+    }
+  }, [hitl, ready])
+
+  const canAct = () =>
+    ready && activeContext.current === hitl && !sending.current && canRespondToAction(hitl, target)
+
+  async function submit(payload: Record<string, unknown>, display: string) {
+    if (!hitl || !canAct()) return
+    const decision = toRespond(JSON.stringify(payload))
+    let send: () => Promise<void>
+    if (scoped) {
+      const { registerDecision } = hitl
+      const { hitl_action_index: index, hitl_interrupt_id: id } = target
+      if (!registerDecision || index === undefined || !id) return
+      send = () => registerDecision(index, decision, display, id)
+    } else {
+      send = () => hitl.onResumeDecisions([decision], display)
+    }
+    sending.current = true
+    setSubmitted(true)
+    try {
+      await send()
+    } catch {
+      sending.current = false
+      setSubmitted(false)
+      if (activeContext.current === hitl) toast.error(t('resumeFailed'))
+    }
+  }
+
+  return {
+    finished: submitted || complete,
+    disabled: submitted || !ready,
+    submit,
+    editPrompt,
+    setEditPrompt: (value: string) => {
+      if (canAct()) setPrompt(value)
+    },
+  }
 }
 
 function ImageHeader({
@@ -100,7 +162,7 @@ function PromptEditor({
 // Phase 6 1차: skip / generate 선택
 // ---------------------------------------------------------------------------
 
-interface ImageChoiceArgs {
+interface ImageChoiceArgs extends ImageDecisionTarget {
   phase: number
   title?: string
   auto_prompt?: string
@@ -135,11 +197,11 @@ function ImageChoice({
   status: 'running' | 'complete' | 'incomplete' | 'requires-action'
 }) {
   const t = useTranslations('chat.imageGeneration')
-  const hitl = useHiTL()
-  const [submitted, setSubmitted] = useState<string | null>(null)
-  const [editPrompt, setEditPrompt] = useState(args.auto_prompt ?? '')
-  const isRunning = status !== 'complete'
-  const isLocked = !!submitted || !isRunning
+  const { finished, disabled, submit, editPrompt, setEditPrompt } = useImageDecision(
+    status === 'complete',
+    args,
+    args.auto_prompt ?? '',
+  )
   const available = args.available !== false
 
   if (!available) {
@@ -147,14 +209,8 @@ function ImageChoice({
   }
 
   const handle = async (choice: 'skip' | 'generate') => {
-    if (submitted) return
-    setSubmitted(choice)
     const display = choice === 'skip' ? t('skip') : t('generate')
-    await submitChoice(
-      hitl,
-      { choice, prompt: choice === 'generate' ? editPrompt : undefined },
-      display,
-    )
+    await submit({ choice, prompt: choice === 'generate' ? editPrompt : undefined }, display)
   }
 
   const title = args.title || t('choiceTitle')
@@ -164,18 +220,18 @@ function ImageChoice({
       <PhaseCard
         header={<ImageHeader phase={args.phase} title={title} subtitle={t('reviewRequired')} />}
         footer={
-          isLocked ? null : (
+          finished ? null : (
             <PhaseCardFooter>
               <BuilderActionRow className="justify-end">
                 <OutlineActionButton
                   onClick={() => void handle('skip')}
-                  disabled={isLocked}
+                  disabled={disabled}
                   label={t('skip')}
                   icon={<SkipForwardIcon className="size-3" strokeWidth={2.5} />}
                 />
                 <MintActionButton
                   onClick={() => void handle('generate')}
-                  disabled={isLocked}
+                  disabled={disabled}
                   label={t('generate')}
                   icon={<SparklesIcon className="size-3" strokeWidth={2.5} />}
                 />
@@ -189,7 +245,7 @@ function ImageChoice({
             label={t('autoPrompt')}
             value={editPrompt}
             onChange={setEditPrompt}
-            disabled={isLocked}
+            disabled={disabled}
           />
         </BuilderBody>
       </PhaseCard>
@@ -200,15 +256,18 @@ function ImageChoice({
 export function ImageChoiceToolUI({
   args,
   status,
+  toolCallId,
 }: ToolCallMessagePartProps<ImageChoiceArgs, unknown>) {
-  return <ImageChoice args={args} status={status.type} />
+  return (
+    <ImageChoice key={useImageDecisionKey(toolCallId, args)} args={args} status={status.type} />
+  )
 }
 
 // ---------------------------------------------------------------------------
 // Phase 6 2차: 미리보기 + 확정/재생성/skip
 // ---------------------------------------------------------------------------
 
-interface ImageApprovalArgs {
+interface ImageApprovalArgs extends ImageDecisionTarget {
   phase: number
   title?: string
   image_url?: string | null
@@ -266,17 +325,16 @@ function ImageApproval({
   status: 'running' | 'complete' | 'incomplete' | 'requires-action'
 }) {
   const t = useTranslations('chat.imageGeneration')
-  const hitl = useHiTL()
-  const [submitted, setSubmitted] = useState<string | null>(null)
-  const [editPrompt, setEditPrompt] = useState(args.prompt ?? '')
-  const isRunning = status !== 'complete'
-  const isLocked = !!submitted || !isRunning
+  const { finished, disabled, submit, editPrompt, setEditPrompt } = useImageDecision(
+    status === 'complete',
+    args,
+    args.prompt ?? '',
+  )
 
   const handle = async (choice: 'confirm' | 'regenerate' | 'skip') => {
-    if (submitted) return
-    setSubmitted(choice)
+    if (choice === 'confirm' && !args.image_url) return
     const display = { confirm: t('confirm'), regenerate: t('regenerate'), skip: t('skip') }[choice]
-    await submitChoice(hitl, { choice, prompt: editPrompt }, display)
+    await submit({ choice, prompt: editPrompt }, display)
   }
 
   const title = args.title || t('previewTitle')
@@ -286,24 +344,24 @@ function ImageApproval({
       <PhaseCard
         header={<ImageHeader phase={args.phase} title={title} subtitle={t('reviewRequired')} />}
         footer={
-          isLocked ? null : (
+          finished ? null : (
             <PhaseCardFooter>
               <BuilderActionRow className="flex-wrap justify-end">
                 <OutlineActionButton
                   onClick={() => void handle('skip')}
-                  disabled={isLocked}
+                  disabled={disabled}
                   label={t('skip')}
                   icon={<SkipForwardIcon className="size-3" strokeWidth={2.5} />}
                 />
                 <OutlineActionButton
                   onClick={() => void handle('regenerate')}
-                  disabled={isLocked}
+                  disabled={disabled}
                   label={t('regenerate')}
                   icon={<RotateCwIcon className="size-3" strokeWidth={2.5} />}
                 />
                 <MintActionButton
                   onClick={() => void handle('confirm')}
-                  disabled={isLocked || !args.image_url}
+                  disabled={disabled || !args.image_url}
                   label={t('confirm')}
                   icon={<CheckIcon className="size-3" strokeWidth={3} />}
                 />
@@ -317,7 +375,7 @@ function ImageApproval({
           error={args.error}
           prompt={editPrompt}
           setPrompt={setEditPrompt}
-          disabled={isLocked}
+          disabled={disabled}
         />
       </PhaseCard>
     </div>
@@ -327,6 +385,9 @@ function ImageApproval({
 export function ImageApprovalToolUI({
   args,
   status,
+  toolCallId,
 }: ToolCallMessagePartProps<ImageApprovalArgs, unknown>) {
-  return <ImageApproval args={args} status={status.type} />
+  return (
+    <ImageApproval key={useImageDecisionKey(toolCallId, args)} args={args} status={status.type} />
+  )
 }

@@ -12,6 +12,7 @@ from app.agent_runtime import langgraph_event_projection as projection
 from app.agent_runtime import langgraph_stream_ingestion
 from app.agent_runtime.chat_steer_protocol import SteerReceiptFeed, uses_steer_channel
 from app.agent_runtime.event_broker import EventBroker
+from app.agent_runtime.journal_continuity import journal_commit_interval
 from app.agent_runtime.langgraph_compaction_start import SummaryStart, with_compaction_starts
 from app.agent_runtime.langgraph_event_delivery import ProtocolEventDelivery
 from app.agent_runtime.langgraph_lifecycle_events import (
@@ -83,6 +84,7 @@ async def stream_agent_response_langgraph(
     continuation = recovery_stream_cursor(msg_id, thread_id)
     delivery = ProtocolEventDelivery(
         continuation=continuation,
+        journal_interval=journal_commit_interval(msg_id),
         run_id=msg_id,
         trace_sink=trace_sink,
         broker=broker,

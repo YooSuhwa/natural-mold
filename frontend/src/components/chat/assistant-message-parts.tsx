@@ -3,12 +3,14 @@
 import type { ReactNode } from 'react'
 import { MessagePrimitive, useAuiState, type EnrichedPartState } from '@assistant-ui/react'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
+import { AgUiToolDataCards } from '@/lib/ag-ui/activity-tool-cards'
 import { math } from '@streamdown/math'
 import { buildMarkdownComponents } from '@/components/chat/markdown-components'
 import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-streaming-plugins'
 import { GenericToolFallback } from '@/components/chat/tool-ui/generic-tool-ui'
 import { ToolGroupContainer } from '@/components/chat/tool-ui/tool-group-container'
 import { GroupedApprovalCard } from '@/components/chat/tool-ui/grouped-approval-card'
+import { MoldyAgUiBoundTool } from '@/lib/ag-ui/activity-widget'
 import {
   groupAssistantParts,
   groupToolName,
@@ -90,7 +92,7 @@ function OrderedToolCall({
 }) {
   return (
     <div className="order-1">
-      {toolUI ?? (
+      <MoldyAgUiBoundTool toolUI={toolUI}>
         <ToolCallFallback
           toolCallId={toolCallId}
           toolName={toolName}
@@ -98,7 +100,7 @@ function OrderedToolCall({
           result={result}
           status={status}
         />
-      )}
+      </MoldyAgUiBoundTool>
     </div>
   )
 }
@@ -166,6 +168,7 @@ export function AssistantMessageParts() {
       <MessagePrimitive.GroupedParts groupBy={groupAssistantParts} indicator="never">
         {renderGroupedAssistantPart}
       </MessagePrimitive.GroupedParts>
+      <AgUiToolDataCards />
     </div>
   )
 }

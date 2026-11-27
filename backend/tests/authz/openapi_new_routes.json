@@ -5224,6 +5224,460 @@
         ]
       }
     },
+    "/api/conversations/{conversation_id}/ag-ui/events": {
+      "get": {
+        "operationId": "read_events_by_query_api_conversations__conversation_id__ag_ui_events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Runid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 64,
+              "maximum": 256,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Events By Query Api Conversations  Conversation Id  Ag Ui Events Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Events By Query",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/runs": {
+      "post": {
+        "operationId": "post_ag_ui_run_api_conversations__conversation_id__ag_ui_runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunAgentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Ag Ui Run",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/runs/{public_run_id}/events": {
+      "get": {
+        "operationId": "read_events_by_path_api_conversations__conversation_id__ag_ui_runs__public_run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "public_run_id",
+            "required": true,
+            "schema": {
+              "title": "Public Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 64,
+              "maximum": 256,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Events By Path Api Conversations  Conversation Id  Ag Ui Runs  Public Run Id  Events Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Events By Path",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/runs/{public_run_id}/stream": {
+      "get": {
+        "operationId": "attach_by_path_api_conversations__conversation_id__ag_ui_runs__public_run_id__stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "public_run_id",
+            "required": true,
+            "schema": {
+              "title": "Public Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Committed AG-UI lifecycle"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach By Path",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/snapshot": {
+      "get": {
+        "operationId": "read_snapshot_api_conversations__conversation_id__ag_ui_snapshot_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgUiSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Snapshot",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/stream": {
+      "get": {
+        "operationId": "attach_by_query_api_conversations__conversation_id__ag_ui_stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Runid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Committed AG-UI lifecycle"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach By Query",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
     "/api/conversations/{conversation_id}/artifacts": {
       "get": {
         "operationId": "list_conversation_artifacts_api_conversations__conversation_id__artifacts_get",
@@ -8164,6 +8618,78 @@
       }
     },
     "/api/conversations/{conversation_id}/runs/{run_id}/mcp-apps/{tool_call_id}": {
+      "get": {
+        "operationId": "read_mcp_app_widget_result_api_conversations__conversation_id__runs__run_id__mcp_apps__tool_call_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_call_id",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Tool Call Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpAppWidgetResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Mcp App Widget Result",
+        "tags": [
+          "mcp-apps"
+        ]
+      },
       "post": {
         "operationId": "execute_mcp_apps_command_api_conversations__conversation_id__runs__run_id__mcp_apps__tool_call_id__post",
         "parameters": [
@@ -30434,6 +30960,61 @@
       "title": "ActiveOrganizationResponse",
       "type": "object"
     },
+    "ActivityMessage": {
+      "additionalProperties": true,
+      "description": "Structured progress that is not conversation content, materialised as a\nmessage so it keeps its place in the sequence. Stands alone rather than\ncomposing BaseMessage, because its content is an object rather than a\nstring.",
+      "properties": {
+        "activityType": {
+          "title": "Activitytype",
+          "type": "string"
+        },
+        "content": {
+          "additionalProperties": true,
+          "title": "Content",
+          "type": "object"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "role": {
+          "const": "activity",
+          "default": "activity",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "activityType",
+        "content"
+      ],
+      "title": "ActivityMessage",
+      "type": "object"
+    },
     "AdminTenantDetail": {
       "additionalProperties": false,
       "properties": {
@@ -30493,6 +31074,396 @@
         "active_member_count"
       ],
       "title": "AdminTenantDetail",
+      "type": "object"
+    },
+    "AgUiSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "activeRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activerunid"
+        },
+        "activeTipMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activetipmessageid"
+        },
+        "checkpointId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Checkpointid"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cursor"
+        },
+        "errorCode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Errorcode"
+        },
+        "failedPhysicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Failedphysicalrunid"
+        },
+        "inputId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Inputid"
+        },
+        "inputRevision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Inputrevision"
+        },
+        "inputStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Inputstatus"
+        },
+        "interruptRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Interruptrunid"
+        },
+        "interrupts": {
+          "items": {
+            "$ref": "#/components/schemas/Interrupt"
+          },
+          "title": "Interrupts",
+          "type": "array"
+        },
+        "latestPhysicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latestphysicalrunid"
+        },
+        "messageLinks": {
+          "items": {
+            "$ref": "#/components/schemas/AgUiSnapshotMessageLink"
+          },
+          "title": "Messagelinks",
+          "type": "array"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/components/schemas/PublicMessage"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "partialOutput": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/PartialOutput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "physicalInterruptRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalinterruptrunid"
+        },
+        "physicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalrunid"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Position"
+        },
+        "projectionVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Projectionversion",
+          "type": "string"
+        },
+        "protocolVersion": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Protocolversion",
+          "type": "string"
+        },
+        "queueStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Queuestatus"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runid"
+        },
+        "runStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runstatus"
+        },
+        "selectedPhysicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Selectedphysicalrunid"
+        },
+        "subagents": {
+          "items": {
+            "$ref": "#/components/schemas/SnapshotSubagent"
+          },
+          "title": "Subagents",
+          "type": "array"
+        },
+        "threadId": {
+          "title": "Threadid",
+          "type": "string"
+        },
+        "todos": {
+          "items": {
+            "$ref": "#/components/schemas/SnapshotTodo"
+          },
+          "title": "Todos",
+          "type": "array"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "AgUiSnapshot",
+      "type": "object"
+    },
+    "AgUiSnapshotMessageLink": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpointId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Checkpointid"
+        },
+        "createdAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Createdat"
+        },
+        "messageId": {
+          "title": "Messageid",
+          "type": "string"
+        },
+        "parentCheckpointId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentcheckpointid"
+        },
+        "parentMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentmessageid"
+        },
+        "parentToolCallId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parenttoolcallid"
+        },
+        "physicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalrunid"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runid"
+        },
+        "siblingCheckpointIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Siblingcheckpointids",
+          "type": "array"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "uiMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Uimessageid"
+        }
+      },
+      "required": [
+        "messageId"
+      ],
+      "title": "AgUiSnapshotMessageLink",
       "type": "object"
     },
     "AgentAccessResponse": {
@@ -34493,6 +35464,188 @@
       "title": "ArtifactTextContent",
       "type": "object"
     },
+    "AssistantMessage-Input": {
+      "additionalProperties": true,
+      "description": "A message from the agent. Content is optional because a turn may consist\nonly of tool calls.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "assistant",
+          "default": "assistant",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCalls": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/ToolCall"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Toolcalls"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "AssistantMessage",
+      "type": "object"
+    },
+    "AssistantMessage-Output": {
+      "additionalProperties": true,
+      "description": "A message from the agent. Content is optional because a turn may consist\nonly of tool calls.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "assistant",
+          "default": "assistant",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCalls": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/ToolCall"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Toolcalls"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "AssistantMessage",
+      "type": "object"
+    },
     "AssistantMessageRequest": {
       "description": "POST /api/agents/{agent_id}/assistant/message \u2014 \uba54\uc2dc\uc9c0 \uc694\uccad.",
       "properties": {
@@ -34569,6 +35722,65 @@
         "decisions"
       ],
       "title": "AssistantResumeRequest",
+      "type": "object"
+    },
+    "AudioPart": {
+      "additionalProperties": true,
+      "description": "An audio part.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "metadata": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "data": "#/components/schemas/DataSource",
+              "file": "#/components/schemas/FileSource",
+              "url": "#/components/schemas/UrlSource"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            {
+              "$ref": "#/components/schemas/UrlSource"
+            },
+            {
+              "$ref": "#/components/schemas/FileSource"
+            }
+          ],
+          "title": "Source"
+        },
+        "type": {
+          "const": "audio",
+          "default": "audio",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "AudioPart",
       "type": "object"
     },
     "AuditEventPageResponse": {
@@ -35963,6 +37175,26 @@
         }
       },
       "title": "Condition",
+      "type": "object"
+    },
+    "Context": {
+      "additionalProperties": true,
+      "description": "A named piece of ambient information given to the agent for the run,\ndistinct from the conversation.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description",
+        "value"
+      ],
+      "title": "Context",
       "type": "object"
     },
     "ConversationAgentBrief": {
@@ -38740,6 +39972,32 @@
       "title": "CsvTableCriterion",
       "type": "object"
     },
+    "DataSource": {
+      "additionalProperties": true,
+      "description": "Bytes carried inline.",
+      "properties": {
+        "mimeType": {
+          "title": "Mimetype",
+          "type": "string"
+        },
+        "type": {
+          "const": "data",
+          "default": "data",
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "mimeType"
+      ],
+      "title": "DataSource",
+      "type": "object"
+    },
     "DebugTraceDetailResponse": {
       "properties": {
         "conversation_id": {
@@ -39157,6 +40415,77 @@
       "title": "DelegationStats",
       "type": "object"
     },
+    "DeveloperMessage": {
+      "additionalProperties": true,
+      "description": "Instructions from the application developer.",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "developer",
+          "default": "developer",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "title": "DeveloperMessage",
+      "type": "object"
+    },
     "DirectoryPage_CapabilityGrantView_": {
       "properties": {
         "has_more": {
@@ -39535,6 +40864,65 @@
         "source"
       ],
       "title": "DiscoveredModelSchema",
+      "type": "object"
+    },
+    "DocumentPart": {
+      "additionalProperties": true,
+      "description": "A document part.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "metadata": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "data": "#/components/schemas/DataSource",
+              "file": "#/components/schemas/FileSource",
+              "url": "#/components/schemas/UrlSource"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            {
+              "$ref": "#/components/schemas/UrlSource"
+            },
+            {
+              "$ref": "#/components/schemas/FileSource"
+            }
+          ],
+          "title": "Source"
+        },
+        "type": {
+          "const": "document",
+          "default": "document",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "DocumentPart",
       "type": "object"
     },
     "DraftAgentConfig": {
@@ -40109,6 +41497,49 @@
       "title": "FileItem",
       "type": "object"
     },
+    "FileSource": {
+      "additionalProperties": true,
+      "description": "Bytes already at the provider, named by a handle the provider issued: an\nOpenAI or Anthropic file id, a Gemini file URI, a storage URL only that\nprovider can read. No bytes travel and nothing is fetched. Only the\nprovider that minted the handle can resolve it; a peer that cannot drops\nthe part as it drops any part it cannot use.",
+      "properties": {
+        "mimeType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mimetype"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider"
+        },
+        "type": {
+          "const": "file",
+          "default": "file",
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "FileSource",
+      "type": "object"
+    },
     "FilesystemPolicyV1": {
       "additionalProperties": false,
       "description": "Filesystem capability selection persisted in RuntimePolicyV1.",
@@ -40144,6 +41575,26 @@
         "suggestion"
       ],
       "title": "FollowupSuggestionResponse",
+      "type": "object"
+    },
+    "FunctionCall": {
+      "additionalProperties": true,
+      "description": "The name and arguments of a tool call.",
+      "properties": {
+        "arguments": {
+          "title": "Arguments",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "arguments"
+      ],
+      "title": "FunctionCall",
       "type": "object"
     },
     "GenerateImageResponse": {
@@ -41990,6 +43441,65 @@
       "title": "ImageDescriptionUse",
       "type": "object"
     },
+    "ImagePart": {
+      "additionalProperties": true,
+      "description": "An image part.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "metadata": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "data": "#/components/schemas/DataSource",
+              "file": "#/components/schemas/FileSource",
+              "url": "#/components/schemas/UrlSource"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            {
+              "$ref": "#/components/schemas/UrlSource"
+            },
+            {
+              "$ref": "#/components/schemas/FileSource"
+            }
+          ],
+          "title": "Source"
+        },
+        "type": {
+          "const": "image",
+          "default": "image",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "ImagePart",
+      "type": "object"
+    },
     "InboxDecision": {
       "additionalProperties": false,
       "properties": {
@@ -42334,6 +43844,94 @@
         "platform_tenant_management_enabled"
       ],
       "title": "InstallationResponse",
+      "type": "object"
+    },
+    "Interrupt": {
+      "additionalProperties": true,
+      "description": "Something a run needs from outside before it can continue, such as an\napproval or a missing value.",
+      "properties": {
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expiresat"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "responseSchema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Responseschema"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCallId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Toolcallid"
+        }
+      },
+      "required": [
+        "id",
+        "reason"
+      ],
+      "title": "Interrupt",
       "type": "object"
     },
     "InvitationAccept": {
@@ -43856,6 +45454,81 @@
         "created_at"
       ],
       "title": "MarketplaceVersionSummary",
+      "type": "object"
+    },
+    "McpAppArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "format": "uuid",
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "resource_uri": {
+          "title": "Resource Uri",
+          "type": "string"
+        },
+        "result_meta": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result Meta"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "tool_meta": {
+          "additionalProperties": true,
+          "title": "Tool Meta",
+          "type": "object"
+        },
+        "version": {
+          "const": 1,
+          "default": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "binding_id",
+        "run_id",
+        "resource_uri",
+        "tool_meta"
+      ],
+      "title": "McpAppArtifact",
+      "type": "object"
+    },
+    "McpAppWidgetResult": {
+      "additionalProperties": false,
+      "properties": {
+        "mcp_app": {
+          "$ref": "#/components/schemas/McpAppArtifact"
+        },
+        "structured_content": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Structured Content"
+        }
+      },
+      "required": [
+        "mcp_app"
+      ],
+      "title": "McpAppWidgetResult",
       "type": "object"
     },
     "McpAppsCallParams": {
@@ -50328,6 +52001,55 @@
       "title": "OwnershipTransferResult",
       "type": "object"
     },
+    "PartialOutput": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "maxLength": 16384,
+          "title": "Text",
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/components/schemas/PartialTool"
+          },
+          "maxItems": 32,
+          "title": "Tools",
+          "type": "array"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "tools",
+        "truncated"
+      ],
+      "title": "PartialOutput",
+      "type": "object"
+    },
+    "PartialTool": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/components/schemas/ToolState"
+        }
+      },
+      "required": [
+        "name",
+        "state"
+      ],
+      "title": "PartialTool",
+      "type": "object"
+    },
     "PendingCount": {
       "properties": {
         "count": {
@@ -50344,6 +52066,15 @@
     "PinConversationSummaryRequest": {
       "description": "Select an existing assistant message as the conversation summary.",
       "properties": {
+        "id_kind": {
+          "default": "source",
+          "enum": [
+            "source",
+            "public"
+          ],
+          "title": "Id Kind",
+          "type": "string"
+        },
         "message_id": {
           "maxLength": 255,
           "minLength": 1,
@@ -50399,6 +52130,17 @@
         "source_message_id": {
           "title": "Source Message Id",
           "type": "string"
+        },
+        "source_public_message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Public Message Id"
         },
         "source_status": {
           "enum": [
@@ -50906,6 +52648,31 @@
       ],
       "title": "PublicChatResourceReference",
       "type": "object"
+    },
+    "PublicMessage": {
+      "discriminator": {
+        "mapping": {
+          "activity": "#/components/schemas/ActivityMessage",
+          "assistant": "#/components/schemas/AssistantMessage-Output",
+          "tool": "#/components/schemas/ToolMessage-Output",
+          "user": "#/components/schemas/UserMessage-Output"
+        },
+        "propertyName": "role"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/components/schemas/UserMessage-Output"
+        },
+        {
+          "$ref": "#/components/schemas/AssistantMessage-Output"
+        },
+        {
+          "$ref": "#/components/schemas/ToolMessage-Output"
+        },
+        {
+          "$ref": "#/components/schemas/ActivityMessage"
+        }
+      ]
     },
     "PublicationRejection": {
       "additionalProperties": false,
@@ -51642,6 +53409,66 @@
         "agent_ids"
       ],
       "title": "ReadinessSummaryRequest",
+      "type": "object"
+    },
+    "ReasoningMessage": {
+      "additionalProperties": true,
+      "description": "A span of the agent's reasoning, materialised as a message. Stands alone\nrather than composing BaseMessage, because it carries no name.",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "role": {
+          "const": "reasoning",
+          "default": "reasoning",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "title": "ReasoningMessage",
       "type": "object"
     },
     "ReconcileCounts": {
@@ -52474,6 +54301,51 @@
       "title": "ResourcePublicationSummaryOut",
       "type": "object"
     },
+    "ResumeEntry": {
+      "additionalProperties": true,
+      "description": "An answer to one interrupt, sent on the run that continues from it.",
+      "properties": {
+        "interruptId": {
+          "title": "Interruptid",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "payload": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Payload"
+        },
+        "status": {
+          "enum": [
+            "resolved",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "interruptId",
+        "status"
+      ],
+      "title": "ResumeEntry",
+      "type": "object"
+    },
     "ResumeRequest": {
       "description": "HiTL resume \uc694\uccad. LangChain ``HITLResponse`` \ud638\ud658 \ud45c\uc900 wire.",
       "properties": {
@@ -52705,6 +54577,150 @@
         "granted_at"
       ],
       "title": "RoleGrantView",
+      "type": "object"
+    },
+    "RunAgentInput": {
+      "additionalProperties": true,
+      "description": "A request to run an agent. Also echoed back as RUN_STARTED.input. Only\nthreadId, runId and messages are required: those are the three the SDKs\nalready agree on, and for tools and context an absent key and an empty\narray mean the same thing, so requiring them would catch nothing a\nproducer could get wrong.",
+      "properties": {
+        "context": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/Context"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Context"
+        },
+        "forwardedProps": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Forwardedprops"
+        },
+        "messages": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "activity": "#/components/schemas/ActivityMessage",
+                "assistant": "#/components/schemas/AssistantMessage-Input",
+                "developer": "#/components/schemas/DeveloperMessage",
+                "reasoning": "#/components/schemas/ReasoningMessage",
+                "system": "#/components/schemas/SystemMessage",
+                "tool": "#/components/schemas/ToolMessage-Input",
+                "user": "#/components/schemas/UserMessage-Input"
+              },
+              "propertyName": "role"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DeveloperMessage"
+              },
+              {
+                "$ref": "#/components/schemas/SystemMessage"
+              },
+              {
+                "$ref": "#/components/schemas/AssistantMessage-Input"
+              },
+              {
+                "$ref": "#/components/schemas/UserMessage-Input"
+              },
+              {
+                "$ref": "#/components/schemas/ToolMessage-Input"
+              },
+              {
+                "$ref": "#/components/schemas/ActivityMessage"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningMessage"
+              }
+            ]
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "parentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentrunid"
+        },
+        "protocolVersion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Protocolversion"
+        },
+        "resume": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/ResumeEntry"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resume"
+        },
+        "runId": {
+          "title": "Runid",
+          "type": "string"
+        },
+        "state": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "State"
+        },
+        "threadId": {
+          "title": "Threadid",
+          "type": "string"
+        },
+        "tools": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/Tool"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tools"
+        }
+      },
+      "required": [
+        "threadId",
+        "runId",
+        "messages"
+      ],
+      "title": "RunAgentInput",
       "type": "object"
     },
     "RunHistoryReference": {
@@ -55634,6 +57650,195 @@
       "title": "SkillUsageSummaryResponse",
       "type": "object"
     },
+    "SnapshotSubagent": {
+      "additionalProperties": false,
+      "properties": {
+        "childTaskId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Childtaskid"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error"
+        },
+        "interruptIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Interruptids",
+          "type": "array"
+        },
+        "legacyInterruptAccess": {
+          "default": false,
+          "title": "Legacyinterruptaccess",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parentMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentmessageid"
+        },
+        "parentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentrunid"
+        },
+        "parentSubagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentsubagentrunid"
+        },
+        "parentToolCallId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parenttoolcallid"
+        },
+        "physicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalrunid"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runid"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "completed",
+            "failed",
+            "interrupted",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "title": "Subagentrunid",
+          "type": "string"
+        },
+        "todos": {
+          "items": {
+            "$ref": "#/components/schemas/SnapshotTodo"
+          },
+          "title": "Todos",
+          "type": "array"
+        }
+      },
+      "required": [
+        "subagentRunId",
+        "name",
+        "status"
+      ],
+      "title": "SnapshotSubagent",
+      "type": "object"
+    },
+    "SnapshotTodo": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "completed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "status"
+      ],
+      "title": "SnapshotTodo",
+      "type": "object"
+    },
     "SsoConnectionList": {
       "properties": {
         "items": {
@@ -56637,6 +58842,77 @@
         }
       },
       "title": "SystemLlmSettingUpdate",
+      "type": "object"
+    },
+    "SystemMessage": {
+      "additionalProperties": true,
+      "description": "Instructions from the system.",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "system",
+          "default": "system",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "title": "SystemMessage",
       "type": "object"
     },
     "SystemStatusOut": {
@@ -59361,6 +61637,47 @@
       "title": "TenantUsageSummary",
       "type": "object"
     },
+    "TextPart": {
+      "additionalProperties": true,
+      "description": "A text part.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "metadata": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "type": {
+          "const": "text",
+          "default": "text",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "TextPart",
+      "type": "object"
+    },
     "ThreadCheckpoint": {
       "additionalProperties": true,
       "properties": {
@@ -59676,6 +61993,47 @@
         "cache_read_tokens"
       ],
       "title": "TokenUsageBreakdown",
+      "type": "object"
+    },
+    "Tool": {
+      "additionalProperties": true,
+      "description": "A tool the agent may call.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parameters"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "title": "Tool",
       "type": "object"
     },
     "ToolApprovalCell": {
@@ -60097,6 +62455,54 @@
       "title": "ToolBrief",
       "type": "object"
     },
+    "ToolCall": {
+      "additionalProperties": true,
+      "description": "A call an assistant message made. Carries no subagent attribution of its\nown and inherits its containing message's, since several calls can share\none parent.",
+      "properties": {
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "function": {
+          "$ref": "#/components/schemas/FunctionCall"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "type": {
+          "const": "function",
+          "default": "function",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "function"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    },
     "ToolCreate": {
       "properties": {
         "credential_id": {
@@ -60462,6 +62868,230 @@
         "updated_at"
       ],
       "title": "ToolInstanceResponse",
+      "type": "object"
+    },
+    "ToolMessage-Input": {
+      "additionalProperties": true,
+      "description": "What a tool returned, as a message in the conversation. Stands alone\nrather than composing BaseMessage, because it carries no name.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "audio": "#/components/schemas/AudioPart",
+                    "document": "#/components/schemas/DocumentPart",
+                    "image": "#/components/schemas/ImagePart",
+                    "text": "#/components/schemas/TextPart",
+                    "video": "#/components/schemas/VideoPart"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImagePart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AudioPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VideoPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentPart"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "role": {
+          "const": "tool",
+          "default": "tool",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCallId": {
+          "title": "Toolcallid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "toolCallId"
+      ],
+      "title": "ToolMessage",
+      "type": "object"
+    },
+    "ToolMessage-Output": {
+      "additionalProperties": true,
+      "description": "What a tool returned, as a message in the conversation. Stands alone\nrather than composing BaseMessage, because it carries no name.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "audio": "#/components/schemas/AudioPart",
+                    "document": "#/components/schemas/DocumentPart",
+                    "image": "#/components/schemas/ImagePart",
+                    "text": "#/components/schemas/TextPart",
+                    "video": "#/components/schemas/VideoPart"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImagePart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AudioPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VideoPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentPart"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "role": {
+          "const": "tool",
+          "default": "tool",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCallId": {
+          "title": "Toolcallid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "toolCallId"
+      ],
+      "title": "ToolMessage",
       "type": "object"
     },
     "ToolPatch": {
@@ -60977,6 +63607,14 @@
       ],
       "title": "ToolRunResponse",
       "type": "object"
+    },
+    "ToolState": {
+      "enum": [
+        "unknown",
+        "started",
+        "completed"
+      ],
+      "type": "string"
     },
     "TraceEvent": {
       "additionalProperties": true,
@@ -62062,6 +64700,38 @@
       "title": "UploadResponse",
       "type": "object"
     },
+    "UrlSource": {
+      "additionalProperties": true,
+      "description": "Bytes referenced by URL, fetched by whoever needs them.",
+      "properties": {
+        "mimeType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mimetype"
+        },
+        "type": {
+          "const": "url",
+          "default": "url",
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "UrlSource",
+      "type": "object"
+    },
     "UsageLimitUpdate": {
       "additionalProperties": false,
       "description": "A full replacement of the scope's limits; omitted fields keep their value.\n\n``member_limit``, ``concurrent_run_limit`` and ``request_rate_limit`` are company-only\nand ``default_member_limit`` organization-only (422 elsewhere).",
@@ -62538,6 +65208,220 @@
       "title": "UserMemorySettingsUpdate",
       "type": "object"
     },
+    "UserMessage-Input": {
+      "additionalProperties": true,
+      "description": "A message from the person using the application.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "audio": "#/components/schemas/AudioPart",
+                    "document": "#/components/schemas/DocumentPart",
+                    "image": "#/components/schemas/ImagePart",
+                    "text": "#/components/schemas/TextPart",
+                    "video": "#/components/schemas/VideoPart"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImagePart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AudioPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VideoPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentPart"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "user",
+          "default": "user",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "title": "UserMessage",
+      "type": "object"
+    },
+    "UserMessage-Output": {
+      "additionalProperties": true,
+      "description": "A message from the person using the application.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "audio": "#/components/schemas/AudioPart",
+                    "document": "#/components/schemas/DocumentPart",
+                    "image": "#/components/schemas/ImagePart",
+                    "text": "#/components/schemas/TextPart",
+                    "video": "#/components/schemas/VideoPart"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImagePart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AudioPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VideoPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentPart"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "user",
+          "default": "user",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "title": "UserMessage",
+      "type": "object"
+    },
     "UserPrincipal": {
       "additionalProperties": false,
       "properties": {
@@ -62706,6 +65590,65 @@
         "type"
       ],
       "title": "ValidationError",
+      "type": "object"
+    },
+    "VideoPart": {
+      "additionalProperties": true,
+      "description": "A video part.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "metadata": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "data": "#/components/schemas/DataSource",
+              "file": "#/components/schemas/FileSource",
+              "url": "#/components/schemas/UrlSource"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            {
+              "$ref": "#/components/schemas/UrlSource"
+            },
+            {
+              "$ref": "#/components/schemas/FileSource"
+            }
+          ],
+          "title": "Source"
+        },
+        "type": {
+          "const": "video",
+          "default": "video",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "VideoPart",
       "type": "object"
     },
     "WorkerOut": {

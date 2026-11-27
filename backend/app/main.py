@@ -252,6 +252,7 @@ def create_app() -> FastAPI:
             "Authorization",
             "X-Api-Key",
             "X-CSRF-Token",
+            "Last-Event-ID",
             # Company and organization writes send their version (``If-Match``); without it
             # the browser's preflight fails every such write from another origin.
             "If-Match",
@@ -260,7 +261,19 @@ def create_app() -> FastAPI:
         # ``X-Run-Id`` (resume 식별자) / ``X-Resume-Mode`` (관찰성) 를 읽으려면
         # CORS expose_headers 에 명시해야 한다. 누락 시 browser fetch.headers.get
         # 은 항상 null 을 반환해 auto-resume 가 silent no-op.
-        expose_headers=["X-Run-Id", "X-Resume-Mode", "X-Request-Id", "X-Conversation-Id"],
+        expose_headers=[
+            "X-Run-Id",
+            "X-Resume-Mode",
+            "X-Request-Id",
+            "X-Conversation-Id",
+            "X-Stream-Protocol",
+            "X-Moldy-Run-Id",
+            "X-Moldy-Message-Id",
+            "X-Moldy-Input-Id",
+            "X-Moldy-Input-Status",
+            "X-Moldy-Input-Position",
+            "X-Moldy-Input-Revision",
+        ],
     )
 
     @app.middleware("http")

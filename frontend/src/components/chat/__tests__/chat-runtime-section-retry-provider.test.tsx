@@ -1,5 +1,6 @@
 import { useCallback, useMemo, type ReactNode } from 'react'
 import {
+  ComposerPrimitive,
   MessageProvider,
   fromThreadMessageLike,
   useLocalRuntime,
@@ -80,9 +81,12 @@ vi.mock('../assistant-thread', () => ({
       { type: 'complete', reason: 'stop' },
     )
     return (
-      <MessageProvider message={message} index={0}>
-        <RetryButton />
-      </MessageProvider>
+      <>
+        <MessageProvider message={message} index={0}>
+          <RetryButton />
+        </MessageProvider>
+        <ComposerPrimitive.Input aria-label="thread draft" />
+      </>
     )
   },
 }))
@@ -271,14 +275,17 @@ describe('ChatRuntimeSection failed-message recovery provider', () => {
   it.each([
     'recovery_effect_unconfirmed',
     'recovery_steer_unconfirmed',
+    'recovery_output_started',
     'recovery_model_attempt_limit',
     'recovery_model_attempt_unproven',
-  ] as const)('disables message and command retries after %s', async (recoveryError) => {
+  ] as const)('blocks retries but keeps the draft editable after %s', async (recoveryError) => {
     render(
       <RetryProviderHarness
         terminalNotice={{ id: FAILED_RUN.id, status: 'failed', recoveryError }}
       />,
     )
+    const draft = screen.getByRole('textbox', { name: 'thread draft' })
+    fireEvent.change(draft, { target: { value: '새 요청을 직접 작성합니다' } })
     expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
     const actions = mocks.threadCommands.mock.lastCall?.[0]
     if (!actions) throw new Error('Expected composer command actions')
@@ -288,6 +295,7 @@ describe('ChatRuntimeSection failed-message recovery provider', () => {
     expect(retry?.availability.kind).toBe('disabled')
     await retry?.execute('')
     expect(mocks.retryFailedInput).not.toHaveBeenCalled()
+    expect(draft).toHaveValue('새 요청을 직접 작성합니다')
   })
 
   it.each([

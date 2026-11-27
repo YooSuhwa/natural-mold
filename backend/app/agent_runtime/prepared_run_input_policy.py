@@ -80,6 +80,7 @@ LEGACY_FALLBACK_REASONS: frozenset[str] = frozenset(
         "recursion_limit",
         "runtime_profile",
         "skill_execution",
+        "workflow_resume_schema",
     }
 )
 

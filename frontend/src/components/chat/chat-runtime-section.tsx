@@ -1,80 +1,34 @@
 'use client'
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from 'react'
-import {
-  AuiConfig,
-  AssistantRuntimeProvider,
-  type AssistantRuntime,
-  type AttachmentAdapter,
-  type DictationAdapter,
-  type FeedbackAdapter,
-} from '@assistant-ui/react'
-import type { AnyStream } from '@langchain/react'
-import { AssistantThread, type AssistantThreadProps } from '@/components/chat/assistant-thread'
-import { FailedMessageRetryProvider } from '@/components/chat/failed-message-retry'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import dynamic from 'next/dynamic'
+import type { AttachmentAdapter, DictationAdapter, FeedbackAdapter } from '@assistant-ui/react'
+import { RuntimeFrame, type ThreadRenderProps } from './chat-runtime-frame'
+import { currentOrgScope } from '@/lib/org-scope/org-scope-signal'
 import { useBrowserDictation } from '@/components/chat/use-browser-dictation'
 import { blocksInputRetry } from '@/lib/chat-runs/recovery-error'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { RunSteerStreamSync } from '@/lib/chat/langgraph-runtime/run-steer-events'
 import { useMoldyLangGraphStream } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
-import { ScopedSubagentRuntimeProvider } from '@/components/chat/delegated-child-tasks'
 import { usePublishSubagentRuntime } from '@/lib/chat/langgraph-runtime/subagent-runtime'
-import { HiTLContext, type HiTLContextValue } from '@/lib/chat/hitl-context'
-import { ALL_DATA_UI } from '@/lib/chat/data-ui'
-import { ALL_TOOLKIT, createMoldyChatTools } from '@/lib/chat/tool-ui-registry'
-import type { PartialModelOutput } from '@/lib/chat/langgraph-runtime/partial-model-output'
 import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
 import type { User } from '@/lib/types/user'
 import type { StreamChatOptions } from '@/lib/sse/stream-chat'
 import type { ConversationRuntimeStatus } from '@/lib/stores/chat-navigator-store'
-import { ServerMessageQueueProvider } from '@/lib/chat/message-queue/server-message-queue-context'
-import type {
-  ConversationRunInput,
-  ServerMessageQueueController,
-} from '@/lib/chat/message-queue/server-message-queue-contract'
 import type { ChatCommandActions } from '@/lib/chat/commands/chat-command-types'
 import type { SkillBrief } from '@/lib/types'
-import { useFailedInputRetryAction } from '@/lib/chat/commands/failed-input-retry'
 import { isActiveRunStatus } from '@/lib/chat-runs/status'
+
+const AgUiRuntimeSection = dynamic(
+  () => import('./ag-ui-runtime-section').then((module) => module.AgUiRuntimeSection),
+  { ssr: false },
+)
 
 type StreamFn = (
   content: string,
   signal: AbortSignal,
   options?: StreamChatOptions,
 ) => AsyncGenerator<SSEEvent>
-
-const EMPTY_SUBSCRIBE = (): (() => void) => () => {}
-const EMPTY_QUEUE_SNAPSHOT = (): null => null
-
-type ThreadRenderProps = Pick<
-  AssistantThreadProps,
-  | 'agentImageUrl'
-  | 'agentName'
-  | 'readOnlyConversation'
-  | 'composerHint'
-  | 'enableRunSteer'
-  | 'conversationId'
-  | 'contextWindow'
-  | 'dictationAvailability'
-  | 'emptyContent'
-  | 'modelName'
-  | 'showContextGauge'
-  | 'user'
-  | 'onDictationStart'
-  | 'commandActions'
-  | 'linkedSkills'
-  | 'resourceContextResetKey'
-  | 'compact'
-  | 'threadHeader'
-> & { readonly retryLastFailedRunId?: string }
 
 export interface ChatRuntimeSectionProps {
   readonly readOnlyConversation?: boolean
@@ -104,6 +58,7 @@ export interface ChatRuntimeSectionProps {
   readonly onStreamEnd: (didMutate: boolean) => void
   readonly streamFn: StreamFn
   readonly totalCost?: number
+  readonly useAgUiRuntime?: boolean
   readonly useLangGraphRuntime: boolean
   readonly user?: User | null
   readonly commandActions?: ChatCommandActions
@@ -136,6 +91,7 @@ export function ChatRuntimeSection({
   streamFn,
   totalCost,
   useLangGraphRuntime,
+  useAgUiRuntime = false,
   user,
   commandActions,
   linkedSkills,
@@ -166,9 +122,10 @@ export function ChatRuntimeSection({
       linkedSkills,
       retryLastFailedRunId: latestRun?.status === 'failed' ? latestRun.id : undefined,
       // A delayed run-query refresh must not clear quotes added to the next draft.
-      resourceContextResetKey: useLangGraphRuntime
-        ? `${activeConversationId ?? 'draft'}:${acceptedSubmission}`
-        : `${latestRun?.id ?? 'none'}:${acceptedSubmission}`,
+      resourceContextResetKey:
+        useAgUiRuntime || useLangGraphRuntime
+          ? `${activeConversationId ?? 'draft'}:${acceptedSubmission}`
+          : `${latestRun?.id ?? 'none'}:${acceptedSubmission}`,
       onDictationStart: dictation.resetFailure,
     }),
     [
@@ -193,8 +150,30 @@ export function ChatRuntimeSection({
       latestRun?.status,
       acceptedSubmission,
       useLangGraphRuntime,
+      useAgUiRuntime,
     ],
   )
+
+  if (useAgUiRuntime && activeConversationId) {
+    return (
+      <AgUiRuntimeSection
+        key={`${currentOrgScope().generation}:${activeConversationId}`}
+        agentId={agentId}
+        attachmentAdapter={attachmentAdapter}
+        conversationId={activeConversationId}
+        dictationAdapter={dictation.adapter}
+        feedbackAdapter={feedbackAdapter}
+        onBeforeNewMessage={onBeforeNewMessage}
+        onNewMessageAccepted={handleNewMessageAccepted}
+        onRuntimeStatusChange={onRuntimeStatusChange}
+        onStreamEnd={onStreamEnd}
+        serverActiveRunId={activeRun?.id}
+        serverLatestRun={latestRun}
+        serverMessages={messages}
+        threadProps={threadProps}
+      />
+    )
+  }
 
   if (useLangGraphRuntime && activeConversationId) {
     return (
@@ -387,99 +366,5 @@ function LangGraphRuntimeSection({
         threadProps={threadProps}
       />
     </>
-  )
-}
-
-interface RuntimeFrameProps {
-  readonly activities?: AssistantThreadProps['activities']
-  readonly deepAgentsState?: AssistantThreadProps['deepAgentsState']
-  readonly hitlValue: HiTLContextValue
-  readonly runtime: AssistantRuntime
-  readonly failedRunId?: string
-  readonly partialOutput?: PartialModelOutput | null
-  readonly messageQueue?: ServerMessageQueueController
-  readonly retryFailedInput?: (input: ConversationRunInput) => Promise<void>
-  readonly subagentStream?: AnyStream | null
-  readonly threadProps: ThreadRenderProps
-}
-
-function RuntimeFrame({
-  activities,
-  deepAgentsState,
-  failedRunId: terminalFailedRunId,
-  partialOutput,
-  hitlValue,
-  runtime,
-  messageQueue,
-  retryFailedInput,
-  subagentStream,
-  threadProps,
-}: RuntimeFrameProps) {
-  const failedRunId = threadProps.readOnlyConversation ? undefined : terminalFailedRunId
-  const queueSnapshot = useSyncExternalStore(
-    messageQueue?.subscribe ?? EMPTY_SUBSCRIBE,
-    messageQueue?.getSnapshot ?? EMPTY_QUEUE_SNAPSHOT,
-    () => null,
-  )
-  useEffect(() => {
-    if (!messageQueue || !failedRunId) return
-    void messageQueue.refresh()
-  }, [failedRunId, messageQueue])
-  const operation = queueSnapshot?.lastOperation
-  const queueAcceptanceKey =
-    operation?.kind === 'queued' || operation?.kind === 'applied' ? operation.inputId : null
-  const retryLastFailedInput = useFailedInputRetryAction(
-    queueSnapshot?.items ?? [],
-    partialOutput === undefined ? failedRunId : undefined,
-    retryFailedInput,
-  )
-  const { retryLastFailedRunId: _retryLastFailedRunId, ...assistantThreadProps } = threadProps
-  void _retryLastFailedRunId
-  const config = AuiConfig({
-    tools: createMoldyChatTools(ALL_TOOLKIT, threadProps.conversationId),
-  })
-
-  const thread = (
-    <HiTLContext.Provider value={hitlValue}>
-      <ScopedSubagentRuntimeProvider
-        conversationId={threadProps.conversationId}
-        stream={subagentStream}
-      >
-        <FailedMessageRetryProvider
-          value={{
-            failedRunId,
-            partialOutput,
-            retryAction: retryLastFailedInput,
-          }}
-        >
-          <AssistantThread
-            {...assistantThreadProps}
-            commandActions={{
-              ...assistantThreadProps.commandActions,
-              retryLastFailedInput,
-            }}
-            retryLastFailedInput={retryLastFailedInput}
-            resourceContextResetKey={queueAcceptanceKey ?? threadProps.resourceContextResetKey}
-            activities={activities}
-            dataUI={ALL_DATA_UI}
-            deepAgentsState={deepAgentsState}
-            showTokenBar
-            showMessageTimestamp
-            enableAttachments
-            enableMessageQueue={Boolean(messageQueue)}
-          />
-        </FailedMessageRetryProvider>
-      </ScopedSubagentRuntimeProvider>
-    </HiTLContext.Provider>
-  )
-
-  return (
-    <AssistantRuntimeProvider runtime={runtime} config={config}>
-      {messageQueue ? (
-        <ServerMessageQueueProvider controller={messageQueue}>{thread}</ServerMessageQueueProvider>
-      ) : (
-        thread
-      )}
-    </AssistantRuntimeProvider>
   )
 }

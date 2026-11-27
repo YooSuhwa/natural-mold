@@ -602,7 +602,7 @@ async def test_prepare_agent_installs_the_middleware_only_with_inputs(
     if with_inputs:
         assert isinstance(middleware[-1], AttachmentInputMiddleware)
     else:
-        assert len(middleware) == 1
+        assert not any(isinstance(item, AttachmentInputMiddleware) for item in middleware)
 
 
 @pytest.mark.asyncio

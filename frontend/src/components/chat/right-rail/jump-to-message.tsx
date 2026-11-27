@@ -17,7 +17,9 @@ function findMessageAnchor(messageId: string): HTMLElement | null {
     typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
       ? CSS.escape(messageId)
       : messageId.replace(/["\\]/g, '\\$&')
-  const el = document.querySelector(`[data-moldy-message-id="${escaped}"]`)
+  const el = document.querySelector(
+    `[data-moldy-message-id="${escaped}"], [data-moldy-wire-message-id="${escaped}"]`,
+  )
   return el instanceof HTMLElement ? el : null
 }
 
@@ -64,7 +66,12 @@ function subscribeAnchors(onStoreChange: () => void): () => void {
   anchorListeners.add(onStoreChange)
   if (!anchorObserver) {
     anchorObserver = new MutationObserver(scheduleAnchorNotify)
-    anchorObserver.observe(document.body, { childList: true, subtree: true })
+    anchorObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-moldy-message-id', 'data-moldy-wire-message-id'],
+    })
   }
   return () => {
     anchorListeners.delete(onStoreChange)

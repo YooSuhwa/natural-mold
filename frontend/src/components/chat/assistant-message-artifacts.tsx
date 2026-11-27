@@ -17,22 +17,31 @@ import {
 import { sourceMessageIdFromThreadMessageId } from '@/lib/chat/langgraph-runtime/message-list'
 import type { ArtifactSummary } from '@/lib/types'
 import { isRecord } from '@/lib/chat/langgraph-runtime/usage-normalization'
+import { useAgUiMessageActivity } from '@/lib/ag-ui/activity-context'
+import { mergeActivityFiles } from '@/lib/ag-ui/activity-projection'
 
 function useMessageArtifacts(): readonly ArtifactSummary[] {
-  return useAuiState((s) => selectMessageArtifactsFromMessage(s.message))
+  const activity = useAgUiMessageActivity()
+  const saved = useAuiState((s) => selectMessageArtifactsFromMessage(s.message))
+  return mergeActivityFiles(saved, activity?.fileEvents)
 }
 
 export function AssistantCompactionMarker() {
   const conversationId = useChatConversationId()
-  const messageId = useAuiState((s) => sourceMessageIdFromThreadMessageId(s.message?.id))
+  const messageId = useAuiState((s) => {
+    const agui = s.message?.metadata?.custom?.agui
+    const wireId = isRecord(agui) && typeof agui.messageId === 'string' ? agui.messageId : undefined
+    return sourceMessageIdFromThreadMessageId(wireId ?? s.message?.id)
+  })
   const metadata = useAuiState((s) => s.message?.metadata?.custom)
-  const compaction = metadata?.compaction
+  const activity = useAgUiMessageActivity()
+  const compaction = activity?.compaction ?? metadata?.compaction
   if (!isRecord(compaction)) return null
   const historyId = compaction.historyId
   const cutoff = compaction.cutoffIndex
 
-  const source = metadata?.compactionMessageId
-  const checkpoint = metadata?.checkpoint_id
+  const source = activity?.compaction ? activity.compactionMessageId : metadata?.compactionMessageId
+  const checkpoint = metadata?.checkpoint_id ?? metadata?.branchCheckpointId
   const evidence =
     conversationId &&
     typeof source === 'string' &&
@@ -43,6 +52,7 @@ export function AssistantCompactionMarker() {
           conversationId,
           messageId: source,
           historyId,
+          activityId: typeof compaction.activityId === 'string' ? compaction.activityId : undefined,
           cutoffIndex:
             typeof cutoff === 'number' && Number.isSafeInteger(cutoff) ? cutoff : undefined,
           checkpointId:

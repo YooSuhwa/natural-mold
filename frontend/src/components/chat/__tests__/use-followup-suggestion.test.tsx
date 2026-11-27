@@ -1,3 +1,5 @@
+import type { PropsWithChildren } from 'react'
+import { AgUiFollowupCompletionContext } from '@/lib/ag-ui/followup-completion-context'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useFollowupSuggestion } from '../use-followup-suggestion'
@@ -6,6 +8,7 @@ type FollowupResponse = { suggestion?: string | null }
 
 const mocks = vi.hoisted(() => ({
   isRunning: true,
+  enabled: true,
   fetchSuggestion: vi.fn<(conversationId: string) => Promise<FollowupResponse>>(),
   setFollowup: vi.fn(),
   reportClientError: vi.fn(),
@@ -20,7 +23,7 @@ vi.mock('jotai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('jotai')>()
   return {
     ...actual,
-    useAtomValue: () => true,
+    useAtomValue: () => mocks.enabled,
     useSetAtom: () => mocks.setFollowup,
   }
 })
@@ -45,6 +48,46 @@ describe('useFollowupSuggestion', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.isRunning = true
+    mocks.enabled = true
+  })
+
+  it('skips GET replay and interrupts, and only suggests once for a locally completed AG-UI turn', async () => {
+    let receipt: string | null = null
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <AgUiFollowupCompletionContext.Provider value={receipt}>
+        {children}
+      </AgUiFollowupCompletionContext.Provider>
+    )
+    mocks.fetchSuggestion.mockResolvedValue({ suggestion: 'Keep going' })
+    const { rerender } = renderHook(() => useFollowupSuggestion('conversation-1'), { wrapper })
+    mocks.isRunning = false
+    rerender()
+    expect(mocks.fetchSuggestion).not.toHaveBeenCalled()
+    mocks.isRunning = true
+    rerender()
+    receipt = 'successful-local-run'
+    rerender()
+    expect(mocks.fetchSuggestion).not.toHaveBeenCalled()
+    mocks.isRunning = false
+    rerender()
+    await waitFor(() =>
+      expect(mocks.setFollowup).toHaveBeenCalledWith({
+        conversationId: 'conversation-1',
+        suggestion: 'Keep going',
+      }),
+    )
+    rerender()
+    expect(mocks.fetchSuggestion).toHaveBeenCalledTimes(1)
+    receipt = null
+    mocks.enabled = false
+    mocks.isRunning = true
+    rerender()
+    receipt = 'user-disabled-suggestions'
+    mocks.isRunning = false
+    rerender()
+    mocks.enabled = true
+    rerender()
+    expect(mocks.fetchSuggestion).toHaveBeenCalledTimes(1)
   })
 
   it('ignores a rejected suggestion request after cleanup', async () => {

@@ -41,12 +41,9 @@ export function shouldRouteComposerToServerQueue(
 export function createServerMessageQueue(
   options: ServerMessageQueueOptions,
 ): ServerMessageQueueController {
-  let callbacks = {
-    submit: options.submit,
-    createRequestId: options.createRequestId,
-    onClaimedRun: options.onClaimedRun,
-  }
+  let callbacks: Parameters<ServerMessageQueueController['updateCallbacks']>[0] = options
   let serverInputs: readonly ConversationRunInput[] = []
+  let latestListRequest = 0
   let queuePaused = false
   let lastOperation: QueueOperationState = { kind: 'idle' }
   let reconciliationError: string | null = null
@@ -89,25 +86,46 @@ export function createServerMessageQueue(
   const applyList = (list: ConversationRunInputList): void => {
     queuePaused = list.queue_paused
     reconciliationError = null
-    if (lastOperation.kind === 'reconciling') {
-      const reconciled = reconciledQueueOperation(lastOperation, list)
-      if (reconciled.accepted) rejectedSubmission = null
-      lastOperation = reconciled.operation
-    }
     applyInputs(list.items)
+  }
+  const readList = async (): Promise<ConversationRunInput | null> => {
+    const version = ++latestListRequest
+    const operation = lastOperation
+    const resolving = operation.kind === 'reconciling'
+    // Some transports use opaque public command IDs. Resolve the durable input
+    // from the owner's command receipt before reading its queue row.
+    const inputId =
+      resolving && callbacks.resolveRequestInputId
+        ? await callbacks.resolveRequestInputId(operation.requestId)
+        : undefined
+    const list = await options.api.list(options.conversationId)
+    let accepted: ConversationRunInput | undefined
+    if (resolving) {
+      accepted = list.items.find((row) =>
+        inputId === undefined ? row.client_request_id === operation.requestId : row.id === inputId,
+      )
+      if (inputId && !accepted) throw new Error('The accepted queue row is not visible yet')
+      if (lastOperation === operation && version === latestListRequest) {
+        const reconciled = reconciledQueueOperation(operation, accepted)
+        if (reconciled.accepted) rejectedSubmission = null
+        lastOperation = reconciled.operation
+      }
+    }
+    if (version === latestListRequest) applyList(list)
+    return accepted ?? null
   }
   const submit = async (
     message: AppendMessage,
     strategy: 'enqueue' | 'interrupt',
+    requestId = callbacks.createRequestId(),
   ): Promise<void> => {
-    const requestId = callbacks.createRequestId()
     setOperation({ kind: 'sending', requestId })
     try {
       const accepted = await callbacks.submit(message, { strategy, requestId })
       rejectedSubmission = null
       setOperation(claimedRuns.recordAccepted(accepted, requestId))
       try {
-        applyList(await options.api.list(options.conversationId))
+        await readList()
       } catch (error) {
         reconciliationError = errorMessage(error)
         emit()
@@ -117,7 +135,7 @@ export function createServerMessageQueue(
       const failureMessage = errorMessage(error)
       lastOperation = { kind: 'reconciling', requestId }
       try {
-        applyList(await options.api.list(options.conversationId))
+        await readList()
         if (snapshot.lastOperation.kind === 'failed') {
           lastOperation = { kind: 'failed', requestId, message: failureMessage }
           emit()
@@ -158,8 +176,8 @@ export function createServerMessageQueue(
     updateCallbacks: (nextCallbacks) => {
       callbacks = nextCallbacks
     },
-    enqueue: (message) => submit(message, 'enqueue'),
-    steer: (message) => submit(message, 'interrupt'),
+    enqueue: (message, requestId) => submit(message, 'enqueue', requestId),
+    steer: (message, requestId) => submit(message, 'interrupt', requestId),
     edit: async (inputId, message) => {
       const input = serverInputs.find((item) => item.id === inputId && item.status === 'pending')
       if (!input) {
@@ -215,7 +233,7 @@ export function createServerMessageQueue(
     },
     refresh: async () => {
       try {
-        applyList(await options.api.list(options.conversationId))
+        await readList()
       } catch (error) {
         reconciliationError = errorMessage(error)
         emit()
@@ -223,9 +241,7 @@ export function createServerMessageQueue(
     },
     reconcileRequest: async (requestId) => {
       setOperation({ kind: 'reconciling', requestId })
-      const list = await options.api.list(options.conversationId)
-      applyList(list)
-      return list.items.find((input) => input.client_request_id === requestId) ?? null
+      return readList()
     },
     dismissRejectedSubmission: () => {
       rejectedSubmission = null

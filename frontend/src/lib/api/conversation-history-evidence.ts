@@ -7,6 +7,7 @@ import {
 export type CompactionEvidenceTarget = {
   readonly conversationId: string
   readonly historyId: string
+  readonly activityId?: string
   readonly cutoffIndex?: number
 } & (
   | { readonly messageId: string; readonly checkpointId?: string }

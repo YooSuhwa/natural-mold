@@ -37,6 +37,7 @@ class EventProjection:
     assistant_message_id: str
     events: list[JsonValue]
     payload_sha256: str
+    sequence_start: int = 0
 
 
 @dataclass(frozen=True, slots=True)

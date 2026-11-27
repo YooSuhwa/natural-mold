@@ -189,6 +189,7 @@ async def authorize_binding(
     run_id: uuid.UUID,
     tool_call_id: str,
     context: OrgContext,
+    binding_id: uuid.UUID | None = None,
 ) -> AuthorizedBinding:
     binding = await db.scalar(
         private_mcp_app_binding_query(
@@ -198,6 +199,7 @@ async def authorize_binding(
     run = await load_private_mcp_app_run(db, McpAppRunTarget(conversation_id, run_id), context)
     if (
         binding is None
+        or (binding_id is not None and binding.id != binding_id)
         or run is None
         or run.agent_id is None
         or binding.agent_id != run.agent_id

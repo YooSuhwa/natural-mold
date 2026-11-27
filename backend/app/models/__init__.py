@@ -2,6 +2,7 @@
 # modules picking them up via ``Base.metadata`` see the new schema.
 # Existing domain models.
 from app.models.access_request import AccessRequest
+from app.models.ag_ui_command_receipt import AgUiCommandReceipt
 from app.models.agent import Agent
 from app.models.agent_api import (
     AgentApiKey,
@@ -157,6 +158,7 @@ __all__ = [
     "EmergencyStop",
     "AgentUserPreference",
     "AccessRequest",
+    "AgUiCommandReceipt",
     "AuditEvent",
     "AuthzOutbox",
     "AuthzRevocation",

@@ -12,6 +12,7 @@ describe('resolveDataUI', () => {
 
   it('returns null for an unknown type (fail-safe)', () => {
     expect(resolveDataUI('not_a_registered_type', { text: 'hello' })).toBeNull()
+    expect(resolveDataUI('constructor', {})).toBeNull()
   })
 
   it('returns null when props fail Zod validation (fail-safe)', () => {

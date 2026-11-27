@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
-from langgraph.types import Interrupt
+from langgraph.checkpoint.base import CheckpointMetadata
+from langgraph.types import Interrupt, StateSnapshot
 
 from app.agent_runtime.langgraph_pending_inputs import (
+    PendingInputStateUnavailable,
     _interrupt_payloads_from_pending_writes,
     pending_input_requested_events,
 )
+from app.tenancy.checkpoint_audit import CHECKPOINT_TENANT_KEY
 
 _APPROVAL_VALUE = {
     "action_requests": [{"name": "execute_in_skill", "args": {"command": "make-docx"}}],
@@ -182,3 +187,167 @@ async def test_pending_input_events_skips_checkpointer_when_state_has_interrupts
 
     assert len(events) == 1
     assert events[0]["data"]["interrupt_id"] == "intr-state"
+
+
+def _snapshot(
+    checkpoint: str,
+    producer: str,
+    *interrupts: str,
+    tenant: str = "tenant-1",
+    thread: str = "thread-1",
+    namespace: str = "",
+) -> StateSnapshot:
+    return StateSnapshot(
+        values={},
+        next=("tools",),
+        config={
+            "configurable": {
+                "thread_id": thread,
+                "checkpoint_ns": namespace,
+                "checkpoint_id": checkpoint,
+            }
+        },
+        metadata=cast(
+            CheckpointMetadata, {"moldy_run_id": producer, CHECKPOINT_TENANT_KEY: tenant}
+        ),
+        created_at=None,
+        parent_config=None,
+        tasks=(),
+        interrupts=tuple(_real_approval_interrupt(item) for item in interrupts),
+    )
+
+
+class _ForkedAgent:
+    def __init__(self, latest: StateSnapshot, *history: StateSnapshot) -> None:
+        self.latest = latest
+        self.history = history
+        self.checkpointer = SimpleNamespace(aget_tuple=AsyncMock())
+
+    async def aget_state(self, config: dict[str, Any]) -> StateSnapshot:
+        if config["configurable"].get("checkpoint_id") == "seed":
+            return _snapshot("seed", "parent", "already-answered", "still-pending")
+        return self.latest
+
+    async def aget_state_history(
+        self,
+        config: dict[str, Any],
+        *,
+        filter: dict[str, str],  # noqa: A002 - LangGraph signature
+        limit: int,
+    ) -> AsyncIterator[StateSnapshot]:
+        assert config["configurable"]["thread_id"] == "thread-1"
+        assert "checkpoint_id" not in config["configurable"]
+        assert filter == {"moldy_run_id": "run-1", CHECKPOINT_TENANT_KEY: "tenant-1"}
+        assert limit == 1
+        for state in self.history:
+            yield state
+
+
+async def _pinned_events(agent: _ForkedAgent) -> list[str]:
+    config = {
+        "configurable": {
+            "thread_id": "thread-1",
+            "checkpoint_id": "seed",
+            "moldy_run_id": "run-1",
+            CHECKPOINT_TENANT_KEY: "tenant-1",
+        }
+    }
+    events = await pending_input_requested_events(
+        agent,
+        config,
+        run_id="run-1",
+        thread_id="thread-1",
+        emitted=[],
+    )
+    assert config["configurable"]["checkpoint_id"] == "seed"
+    return [event["data"]["interrupt_id"] for event in events]
+
+
+async def test_parallel_resume_reads_live_interrupts_at_the_accepted_seed() -> None:
+    agent = _ForkedAgent(_snapshot("seed", "parent", "still-pending"))
+    assert await _pinned_events(agent) == ["still-pending"]
+    agent.checkpointer.aget_tuple.assert_not_called()
+
+
+async def test_matching_seed_id_with_foreign_tenant_fails_closed() -> None:
+    agent = _ForkedAgent(_snapshot("seed", "parent", "private", tenant="other-tenant"))
+    with pytest.raises(PendingInputStateUnavailable):
+        await _pinned_events(agent)
+    agent.checkpointer.aget_tuple.assert_not_called()
+
+
+@pytest.mark.parametrize("missing", ["moldy_run_id", CHECKPOINT_TENANT_KEY])
+async def test_pinned_read_requires_all_current_run_coordinates(missing: str) -> None:
+    coordinates = {
+        "thread_id": "thread-1",
+        "checkpoint_id": "seed",
+        "moldy_run_id": "run-1",
+        CHECKPOINT_TENANT_KEY: "tenant-1",
+    }
+    del coordinates[missing]
+    agent = _ForkedAgent(_snapshot("output", "run-1", "still-pending"))
+    with pytest.raises(PendingInputStateUnavailable):
+        await pending_input_requested_events(
+            agent, {"configurable": coordinates}, run_id="run-1", thread_id="thread-1", emitted=[]
+        )
+    agent.checkpointer.aget_tuple.assert_not_called()
+
+
+async def test_own_history_uses_unanswered_writes_when_a_sibling_is_newer() -> None:
+    history = _snapshot("our-output", "run-1", "already-answered", "still-pending")
+    agent = _ForkedAgent(_snapshot("their-output", "sibling", "not-ours"), history)
+    agent.checkpointer.aget_tuple.return_value = SimpleNamespace(
+        config=history.config,
+        metadata=history.metadata,
+        checkpoint={"id": "our-output"},
+        pending_writes=[
+            ("finished", "__interrupt__", [_real_approval_interrupt("already-answered")]),
+            ("finished", "__no_writes__", None),
+            ("open", "__interrupt__", [_real_approval_interrupt("still-pending")]),
+        ],
+    )
+    assert await _pinned_events(agent) == ["still-pending"]
+    agent.checkpointer.aget_tuple.assert_awaited_once_with(history.config)
+
+
+@pytest.mark.parametrize(
+    "history",
+    [
+        None,
+        _snapshot("other-thread-output", "run-1", "private", thread="other-thread"),
+        _snapshot("other-company-output", "run-1", "private", tenant="other-tenant"),
+        _snapshot("nested-output", "run-1", "private", namespace="child:task"),
+        _snapshot("other-output", "other", "private"),
+    ],
+)
+async def test_sibling_head_without_scoped_run_history_fails_closed(
+    history: StateSnapshot | None,
+) -> None:
+    agent = _ForkedAgent(
+        _snapshot("sibling", "sibling", "private"), *((history,) if history else ())
+    )
+    with pytest.raises(PendingInputStateUnavailable):
+        await _pinned_events(agent)
+    agent.checkpointer.aget_tuple.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "saved",
+    [
+        _snapshot("sibling", "run-1"),
+        _snapshot("output", "other"),
+        _snapshot("output", "run-1", tenant="other-tenant"),
+    ],
+)
+async def test_fallback_does_not_expose_unrelated_raw_writes(saved: StateSnapshot) -> None:
+    owned = _snapshot("output", "run-1")
+    agent = _ForkedAgent(owned)
+    agent.checkpointer.aget_tuple.return_value = SimpleNamespace(
+        config=saved.config,
+        metadata=saved.metadata,
+        checkpoint={"id": saved.config.get("configurable", {}).get("checkpoint_id")},
+        pending_writes=[("task", "__interrupt__", [_real_approval_interrupt("private")])],
+    )
+    with pytest.raises(PendingInputStateUnavailable):
+        await _pinned_events(agent)
+    agent.checkpointer.aget_tuple.assert_awaited_once_with(owned.config)

@@ -12,6 +12,7 @@ from functools import partial
 from typing import Any
 
 from app.agent_runtime.goal_sandbox_scope import goal_sandbox_scope
+from app.agent_runtime.journal_continuity import ag_ui_journal_scope
 from app.agent_runtime.openai_prompt_cache import conversation_prompt_cache
 from app.agent_runtime.run_error_codes import run_error_code
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
@@ -23,6 +24,8 @@ from app.approvals.waiters import settle_best_effort
 from app.authz.worker_conversation_scope import WorkerConversationTarget
 from app.dependencies import CurrentUser
 from app.services import conversation_stream_service as stream_service
+from app.services.ag_ui_fork_branch import tracks_fork_branch
+from app.services.ag_ui_start_effects import materialize_builder_attachments
 from app.services.conversation_run_delivery import (
     _audit_action_for_terminal_status,
     _publish_error,
@@ -149,6 +152,20 @@ async def _run_conversation(
                 )
                 finalize_needed = False
             return
+        if cfg.runtime_profile == "skill_builder" and attachment_ids:
+            async with _tenant_session(cfg.org_context) as session:
+                await materialize_builder_attachments(
+                    session,
+                    target=_execution_target(run_id, conversation_id, cfg),
+                    cfg=cfg,
+                    worker_instance_id=registry.worker_instance_id,
+                    attachment_ids=attachment_ids,
+                )
+        owner_context.enter_context(
+            ag_ui_journal_scope(
+                str(run.id), version=(run.metadata_json or {}).get("ag_ui_projection_version")
+            )
+        )
         await run_audit(action="conversation.run_start", run=run, status="running")
         heartbeat_task = asyncio.create_task(
             worker_attr("_heartbeat_until_terminal")(run_id, registry, cfg.org_context),
@@ -270,6 +287,11 @@ async def _run_conversation(
 
         async def _finalize_run_status() -> TerminalRunState:
             nonlocal has_goal_attempt
+            sealed_fork = (
+                moldy_source in {"edit", "regenerate"}
+                and start is not None
+                and tracks_fork_branch(start.run)
+            )
             try:
                 final_run, effective_status = await worker_attr("_transition")(
                     run_id,
@@ -282,6 +304,11 @@ async def _run_conversation(
                     run_metrics=run_metrics,
                     model_name=getattr(cfg, "model_name", "unknown"),
                     tenant=cfg.org_context,
+                    **(
+                        {"fork_target": WorkerConversationTarget(conversation_id, cfg.org_context)}
+                        if sealed_fork
+                        else {}
+                    ),
                     llm_credential_scope=getattr(cfg, "llm_credential_scope", None),
                     **(
                         {
@@ -312,11 +339,12 @@ async def _run_conversation(
                 action = _audit_action_for_terminal_status(effective_status)
                 if final_run is not None and action is not None:
                     await run_audit(action=action, run=final_run, status=effective_status)
-                await worker_attr("_activate_latest_branch_leaf_if_needed")(
-                    target=WorkerConversationTarget(conversation_id, cfg.org_context),
-                    moldy_source=moldy_source,
-                    final_status=effective_status,
-                )
+                if not sealed_fork:
+                    await worker_attr("_activate_latest_branch_leaf_if_needed")(
+                        target=WorkerConversationTarget(conversation_id, cfg.org_context),
+                        moldy_source=moldy_source,
+                        final_status=effective_status,
+                    )
             except RunOwnershipLost:
                 raise
             except Exception:

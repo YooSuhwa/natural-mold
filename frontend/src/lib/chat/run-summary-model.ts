@@ -99,7 +99,8 @@ function stableCount(
   for (const activity of activities) {
     if (!kinds.includes(activity.kind)) continue
     if (activity.namespace.length > 0 !== descendant) continue
-    keys.add(activity.toolCallId ?? activity.id)
+    const identity = activity.kind === 'tool' ? (activity.toolCallId ?? activity.id) : activity.id
+    keys.add(JSON.stringify([activity.namespace, identity]))
   }
   return keys.size
 }
@@ -152,15 +153,16 @@ export function buildLiveRunSummary(
   const runId = activities.at(-1)?.runId
   if (!runId) return null
   const current = activities.filter((activity) => activity.runId === runId)
+  const terminal = current.findLast((activity) => activity.terminalRunStatus)?.terminalRunStatus
   const [elapsedMs, startedAtMs] = liveElapsedMs(current, nowMs)
   return {
     runId,
-    status: 'running',
+    status: terminal ?? 'running',
     elapsedMs,
     startedAtMs,
-    isLive: current.some(
-      (activity) => activity.status === 'running' || activity.status === 'pending',
-    ),
+    isLive:
+      !terminal &&
+      current.some((activity) => activity.status === 'running' || activity.status === 'pending'),
     rootToolCalls: stableCount(current, ['tool'], false),
     descendantToolCalls: stableCount(current, ['tool'], true),
     rootSubagentCalls: stableCount(current, ['subagent', 'background_subagent'], false),

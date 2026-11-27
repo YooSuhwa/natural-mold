@@ -13,7 +13,10 @@ from app.models.conversation_history import (
     ConversationHistoryManifest,
 )
 from app.schemas.conversation_history import JsonValue
-from app.services.conversation_history_projection import canonical_payload_sha256
+from app.services.conversation_history_projection import (
+    canonical_payload_sha256,
+    retained_event_sha256,
+)
 
 
 def _checkpoint_payload(row: ConversationHistoryCheckpoint) -> dict[str, JsonValue]:
@@ -54,6 +57,7 @@ async def verify_history_manifest(
             .order_by(
                 ConversationHistoryEvent.created_at,
                 ConversationHistoryEvent.assistant_message_id,
+                ConversationHistoryEvent.sequence_start,
             )
         )
     )
@@ -66,7 +70,12 @@ async def verify_history_manifest(
         for row in checkpoints
     ):
         return False
-    if any(canonical_payload_sha256(_event_payload(row)) != row.payload_sha256 for row in events):
+    if any(
+        row.sequence_start < 0
+        or row.sequence_end != row.sequence_start + max(0, len(row.events) - 1)
+        or retained_event_sha256(_event_payload(row), row.sequence_start) != row.payload_sha256
+        for row in events
+    ):
         return False
     payload: JsonValue = {
         "schema_version": 1,
@@ -78,6 +87,7 @@ async def verify_history_manifest(
         ],
         "events": [
             {
+                **({"sequence_start": row.sequence_start} if row.sequence_start else {}),
                 "assistant_message_id": row.assistant_message_id,
                 "events": row.events,
                 "payload_sha256": row.payload_sha256,

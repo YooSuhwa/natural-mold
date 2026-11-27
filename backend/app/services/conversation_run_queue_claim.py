@@ -17,6 +17,11 @@ from app.exceptions import AppError
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_service
+from app.services.ag_ui_queue_branch import (
+    DEFAULT_BRANCH_AT_CLAIM,
+    input_projection_version,
+    pin_selected_queue_head,
+)
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
 from app.services.chat.image_description_admission import ADMISSION_KEY
 from app.services.conversation_run_queue_blocked import pause_blocked_queue
@@ -116,6 +121,9 @@ async def claim_next_input(
 
     if not await pin_steer_continuation(db, conversation, queued, context):
         return None
+    version = await db.scalar(input_projection_version(context, conversation_id, queued.id))
+    if version is not None and not await pin_selected_queue_head(db, conversation, queued, context):
+        return None
 
     automatic = queued.source == "goal_followup"
     if automatic:
@@ -137,10 +145,19 @@ async def claim_next_input(
         input_preview=None,
         run_metadata={
             **(
+                {DEFAULT_BRANCH_AT_CLAIM: True}
+                if version is not None
+                and queued.source == "chat"
+                and conversation.active_branch_checkpoint_id is None
+                and queued.checkpoint_id is None
+                else {}
+            ),
+            **(
                 {ADMISSION_KEY: queued.image_description_admission}
                 if queued.image_description_admission
                 else {}
             ),
+            **({"ag_ui_projection_version": version} if version is not None else {}),
             "queue_input_id": str(queued.id),
             "client_request_id": queued.client_request_id,
             "checkpoint_id": queued.checkpoint_id,

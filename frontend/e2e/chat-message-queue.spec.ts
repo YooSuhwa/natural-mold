@@ -1,6 +1,8 @@
 import type { Request } from '@playwright/test'
 
-import { API_BASE, apiDeleteOk, apiJson, expect, isRecord, test } from './fixtures'
+import { API_BASE, apiDeleteOk, apiGetJson, apiJson, expect, isRecord, test } from './fixtures'
+import { readAgUiRunInput } from './helpers/ag-ui-run-receipt'
+import { commandMethod } from './helpers/run-start'
 import { retireSeededRun } from './helpers/seeded-run-cleanup'
 import {
   beginPersistedEnqueue,
@@ -109,6 +111,35 @@ test.describe('Server-backed chat message queue', () => {
     const setup = await setupLangGraphV3Agent(request)
     try {
       await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
+      const cid = setup.conversationId
+      const base = `${API_BASE}/api/conversations/${cid}`
+      const thread = page.locator(`[data-chat-selection-thread="${cid}"]`)
+      const reloadThread = async () => {
+        const readUrl =
+          process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui'
+            ? `${base}/ag-ui/snapshot`
+            : `${base}/langgraph/threads/${cid}/state`
+        const [read] = await Promise.all([
+          page.waitForResponse((res) => {
+            const { origin, pathname } = new URL(res.url())
+            return res.request().method() === 'GET' && origin + pathname === readUrl
+          }),
+          page.reload({ waitUntil: 'domcontentloaded' }),
+        ])
+        expect(read.status()).toBe(200)
+      }
+      const expectIdle = async () => {
+        await expect(thread.locator('textarea[data-moldy-composer-input="true"]')).toBeVisible()
+        await expect.poll(() => apiGetJson(request, `${base}/runs/active`)).toBeNull()
+        await expect(
+          thread.locator(
+            '[data-moldy-stop-button]:visible, [data-slot="streaming-status-panel"]:visible, [data-chat-streaming="true"]',
+          ),
+        ).toHaveCount(0, { timeout: 15_000 })
+        await expect(page.locator(`[data-moldy-run-spinner="${cid}"]:visible`)).toHaveCount(0, {
+          timeout: 15_000,
+        })
+      }
       const activeRunId = await sendMessageForRun(
         page,
         setup.conversationId,
@@ -132,9 +163,19 @@ test.describe('Server-backed chat message queue', () => {
         .poll(async () => (await queueState(request, setup.conversationId)).paused)
         .toBe(true)
 
-      await page.reload()
-      await expect(page.locator(`[data-moldy-queue-item="${queuedId}"]`)).toBeVisible()
-      await page.locator('[data-moldy-queue-resume]').click()
+      await reloadThread()
+      await expectIdle()
+      const persisted = await queueState(request, cid)
+      expect(persisted.paused).toBe(true)
+      expect(persisted.items.filter((item) => item.status === 'pending')).toMatchObject([
+        { id: queuedId, conversation_id: cid, run_id: null },
+      ])
+      const queuedRow = thread.locator(`[data-moldy-queue-item="${queuedId}"]`)
+      const resume = thread.locator('[data-moldy-queue-resume]')
+      await expect(queuedRow).toBeVisible()
+      await expect(resume).toBeVisible()
+      await expect(resume).toBeEnabled()
+      await resume.click()
 
       let resumedRunId = ''
       await expect
@@ -146,12 +187,27 @@ test.describe('Server-backed chat message queue', () => {
           return item?.status === 'claimed' && resumedRunId ? resumedRunId : null
         })
         .not.toBeNull()
-      await waitForRunStatus(request, setup.conversationId, resumedRunId, 'completed')
-      await expectUniqueTranscriptTurn(
-        page,
-        'durable after stop',
-        'E2E scripted document model is ready.',
-      )
+      expect(resumedRunId).not.toBe(activeRunId)
+      await waitForRunStatus(request, cid, resumedRunId, 'completed')
+      const expectDrained = async () => {
+        const queue = await queueState(request, cid)
+        expect(queue.paused).toBe(false)
+        expect(queue.items.filter((item) => item.id === queuedId)).toMatchObject([
+          { conversation_id: cid, run_id: resumedRunId, status: 'claimed' },
+        ])
+        expect(queue.items.filter((item) => item.status === 'pending')).toHaveLength(0)
+        await expectUniqueTranscriptTurn(
+          page,
+          'durable after stop',
+          'E2E scripted document model is ready.',
+        )
+        await expect(queuedRow).toHaveCount(0)
+        await expect(resume).toBeHidden()
+        await expectIdle()
+      }
+      await expectDrained()
+      await reloadThread()
+      await expectDrained()
       await page.screenshot({
         path: testInfo.outputPath('queue-stop-resume-live.png'),
         fullPage: true,
@@ -172,11 +228,9 @@ test.describe('Server-backed chat message queue', () => {
     const expectedAssistant = 'E2E scripted document model is ready.'
     const runStarts: Request[] = []
     page.on('request', (value) => {
-      try {
-        const body = value.postDataJSON() as { method?: unknown }
-        if (body.method === 'run.start') runStarts.push(value)
-      } catch {
-        // Non-JSON requests are unrelated to run submission.
+      const input = readAgUiRunInput(value, setup.conversationId)
+      if ((input && !input.resume?.length) || commandMethod(value) === 'run.start') {
+        runStarts.push(value)
       }
     })
     try {
@@ -213,6 +267,13 @@ test.describe('Server-backed chat message queue', () => {
       await expect.poll(() => runStarts.length, { timeout: 5_000, intervals: [250, 500] }).toBe(2)
       const secondRunStart = runStarts.at(1)
       if (!secondRunStart) throw new Error('explicit steer did not issue a second run.start')
+      if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
+        const original = readAgUiRunInput(runStarts[0], setup.conversationId)
+        const successor = readAgUiRunInput(secondRunStart, setup.conversationId)
+        expect(original?.runId).toBeTruthy()
+        expect(successor?.runId).toBeTruthy()
+        expect(successor?.runId).not.toBe(original?.runId)
+      }
       expect(commandStrategy(secondRunStart)).toBe('interrupt')
       expect(runStartHasExactHuman(secondRunStart, expectedHuman)).toBe(true)
       expect(inputHasExactHuman(acceptedInput?.input_payload, expectedHuman)).toBe(true)

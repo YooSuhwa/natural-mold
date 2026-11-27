@@ -26,6 +26,7 @@ vi.mock('@/components/chat/conversation-context', () => ({
 }))
 
 vi.mock('@/lib/chat/langgraph-runtime/subagent-runtime', () => ({
+  useRequiresProjectedSubagent: () => false,
   useSubagentInlinePolicy: mocks.useSubagentInlinePolicy,
   useSubagentSnapshot: mocks.useSubagentSnapshot,
   useSubagentStream: mocks.useSubagentStream,

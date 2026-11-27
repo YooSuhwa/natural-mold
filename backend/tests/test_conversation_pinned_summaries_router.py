@@ -62,6 +62,27 @@ def test_summary_sources_match_visible_cross_turn_message_identities() -> None:
     ]
 
 
+def test_ambiguous_public_id_is_not_a_pin_target() -> None:
+    from app.services.conversation_pinned_summary_service import _find_public_source
+
+    conversation_id = uuid.uuid4()
+    sources = conversation_pinned_summaries._sources_for_messages(
+        [
+            HumanMessage(id="u1", content="First"),
+            AIMessage(id="reused", content="First answer"),
+            HumanMessage(id="u2", content="Second"),
+            AIMessage(id="reused", content="Second answer"),
+            AIMessage(id=None, content="Historical answer without a provider ID"),
+        ],
+        "active",
+        conversation_id,
+    )
+    reused = str(uuid.uuid5(uuid.NAMESPACE_URL, "reused"))
+    assert _find_public_source(sources, reused) is None
+    anonymous = _find_public_source(sources, str(uuid.uuid5(conversation_id, "4")))
+    assert anonymous is not None and anonymous.message_id == "synthetic-4"
+
+
 def test_summary_sources_preserve_existing_visible_identity_within_turn() -> None:
     # Given: a later streamed replacement carries a pre-disambiguated id.
     messages = (
@@ -71,13 +92,18 @@ def test_summary_sources_preserve_existing_visible_identity_within_turn() -> Non
     )
 
     # When
-    sources = conversation_pinned_summaries._sources_for_messages(messages, "checkpoint-1")
+    sources = conversation_pinned_summaries._sources_for_messages(
+        messages, "checkpoint-1", uuid.uuid4()
+    )
 
     # Then: replacement content wins without changing the visible identity already rendered.
     assistant_sources = [source for source in sources if source.role == "assistant"]
     assert [(source.message_id, source.text) for source in assistant_sources] == [
         ("assistant-shared", "Final"),
     ]
+    assert assistant_sources[0].public_message_id == str(
+        uuid.uuid5(uuid.NAMESPACE_URL, "assistant-shared::moldy-turn-0")
+    )
 
 
 def _current_user(user: User) -> CurrentUser:
@@ -129,10 +155,12 @@ class _CheckpointSource:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("retained", [False, True])
+@pytest.mark.parametrize("public", [False, True])
 async def test_pinned_summary_http_round_trip_survives_reload(
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
     retained: bool,
+    public: bool,
 ) -> None:
     # Given
     user, _, agent = await seed_agent(db)
@@ -164,16 +192,21 @@ async def test_pinned_summary_http_round_trip_survives_reload(
     transport = ASGITransport(app=app)
     csrf = create_csrf_token(user.id)
 
+    public_id = str(uuid.uuid5(uuid.NAMESPACE_URL, message_id))
+    selection = (
+        {"message_id": public_id, "id_kind": "public"} if public else {"message_id": message_id}
+    )
+
     # When
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         client.cookies.set(settings.cookie_name_csrf, csrf)
         denied = await client.put(
             f"/api/conversations/{conversation.id}/pinned-summary",
-            json={"message_id": message_id},
+            json=selection,
         )
         pinned = await client.put(
             f"/api/conversations/{conversation.id}/pinned-summary",
-            json={"message_id": message_id},
+            json=selection,
             headers={"X-CSRF-Token": csrf},
         )
     async with TestSession() as reload_db:
@@ -192,6 +225,7 @@ async def test_pinned_summary_http_round_trip_survives_reload(
     assert pinned.status_code == 200
     assert restored.status_code == 200
     assert restored.json()["summary"]["source_message_id"] == message_id
+    assert restored.json()["summary"]["source_public_message_id"] == public_id
     assert restored.json()["summary"]["snapshot_text"] == "Persisted answer"
     assert restored.json()["summary"]["source_branch_checkpoint_id"] == "checkpoint-1"
     assert restored.json()["summary"]["source_status"] == "current"

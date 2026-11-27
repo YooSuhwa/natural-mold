@@ -13,9 +13,11 @@ import { useSideChatDraft } from './use-side-chat-draft'
 export function QuoteComposerBridge({
   context,
   inputRef,
+  queueSend,
 }: {
   readonly context: ReturnType<typeof useResourceContextComposer>
   readonly inputRef: React.RefObject<HTMLTextAreaElement | null>
+  readonly queueSend?: (steer: boolean) => void
 }) {
   const workspace = useSideChat()
   const conversationId = useChatConversationId()
@@ -40,11 +42,12 @@ export function QuoteComposerBridge({
           ),
         })
         aui.composer.setText(request.prompt)
-        aui.composer.send()
+        if (queueSend) queueSend(false)
+        else aui.composer.send()
       }
       inputRef.current?.focus()
     }
     workspace.acknowledge(request.id)
-  }, [workspace, conversationId, context, aui, inputRef, t])
+  }, [workspace, conversationId, context, aui, inputRef, queueSend, t])
   return null
 }

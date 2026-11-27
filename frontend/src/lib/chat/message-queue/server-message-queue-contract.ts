@@ -68,10 +68,13 @@ export type ServerMessageQueueSnapshot = {
 export interface ServerMessageQueueController {
   readonly adapter: ExternalThreadQueueAdapter
   updateCallbacks(
-    callbacks: Pick<ServerMessageQueueOptions, 'submit' | 'createRequestId' | 'onClaimedRun'>,
+    callbacks: Pick<
+      ServerMessageQueueOptions,
+      'submit' | 'createRequestId' | 'onClaimedRun' | 'resolveRequestInputId'
+    >,
   ): void
-  enqueue(message: AppendMessage): Promise<void>
-  steer(message: AppendMessage): Promise<void>
+  enqueue(message: AppendMessage, requestId?: string): Promise<void>
+  steer(message: AppendMessage, requestId?: string): Promise<void>
   edit(inputId: string, message: AppendMessage): Promise<void>
   move(inputId: string, placement: Parameters<ExternalThreadQueueAdapter['move']>[1]): Promise<void>
   remove(inputId: string): Promise<void>
@@ -90,6 +93,7 @@ export type ServerMessageQueueOptions = {
     message: AppendMessage,
     options: { readonly strategy: 'enqueue' | 'interrupt'; readonly requestId: string },
   ) => Promise<QueueRunStartAcceptance>
+  readonly resolveRequestInputId?: (requestId: string) => Promise<string | null>
   readonly createRequestId: () => string
   readonly onClaimedRun: (runId: string) => void
 }

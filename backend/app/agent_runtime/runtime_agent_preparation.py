@@ -19,6 +19,7 @@ from app.agent_runtime.archive_summarization import chat_archive_build
 from app.agent_runtime.chat_steer_middleware import root_steer_middleware
 from app.agent_runtime.message_utils import RuntimeMessage
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
+from app.agent_runtime.omitted_media import OmittedMediaMiddleware
 from app.agent_runtime.run_secrets import add_run_secrets, collect_secret_values
 from app.agent_runtime.runtime.goal_run import goal_setup_allowed
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
@@ -267,6 +268,8 @@ async def _prepare_agent(
         scope_offload_backend=run_id is not None,
     )
     middleware = list(components.middleware or [])
+    if cfg.run_path == "chat":
+        middleware.append(OmittedMediaMiddleware())
     middleware.extend(root_steer_middleware(cfg, run_id=run_id, is_trigger_mode=is_trigger_mode))
     if cfg.subagents_config and cfg.run_path == "chat" and not is_trigger_mode:
         from app.agent_runtime.delegated_child_control import DelegatedTaskDispatch, task_lifecycles

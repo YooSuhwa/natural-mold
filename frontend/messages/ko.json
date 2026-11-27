@@ -2815,6 +2815,9 @@
       "expired": "만료됨"
     },
     "page": {
+      "historyUnavailable": "이 대화를 열 수 없어요.",
+      "draftStartFailed": "새 대화를 준비하지 못했어요.",
+      "retryDraft": "다시 시도",
       "sourceUnavailable": "대화 유형을 확인할 수 없습니다.",
       "retrySource": "다시 확인",
       "settings": "설정",

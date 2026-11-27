@@ -17,6 +17,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.services.chat.conversations import require_executable_conversation
+from app.services.chat_resource_context_sources import ResourceContextScope
 from app.services.conversation_run_queue_payload import JsonValue, validate_queue_input_payload
 
 
@@ -147,7 +148,20 @@ async def edit_pending_input(
         context=context,
         expected_revision=expected_revision,
     )
-    queued.input_payload = input_payload
+    from app.services.ag_ui_queue_edit import public_queue_edit
+    from app.services.chat_resource_context_integration import freeze_resource_context_payload
+
+    if queued.agent_id is None:
+        raise queue_input_not_found()
+    public = await public_queue_edit(db, context, queued, input_payload)
+    frozen = await freeze_resource_context_payload(
+        db,
+        ResourceContextScope(
+            context=context, agent_id=queued.agent_id, conversation_id=conversation_id
+        ),
+        public,
+    )
+    queued.input_payload = validate_queue_input_payload(frozen)
     queued.revision += 1
     await db.flush()
     return queued

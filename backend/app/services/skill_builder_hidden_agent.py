@@ -36,8 +36,10 @@ _PLACEHOLDER_PROMPT = (
 )
 
 
-async def get_or_create_skill_builder_agent(db: AsyncSession, context: OrgContext) -> Agent:
-    """사용자의 히든 빌더 에이전트를 반환한다 (없으면 생성, flush까지만)."""
+async def get_or_create_skill_builder_agent(
+    db: AsyncSession, context: OrgContext
+) -> tuple[Agent, bool]:
+    """Return the scoped hidden agent and whether this transaction created it."""
 
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
@@ -54,7 +56,7 @@ async def get_or_create_skill_builder_agent(db: AsyncSession, context: OrgContex
     )
     existing = result.scalar_one_or_none()
     if existing is not None:
-        return existing
+        return existing, False
 
     # Parent creation gate before the hidden Agent insert (archived org denies).
     await require_execution_prefix(db, context)
@@ -71,7 +73,7 @@ async def get_or_create_skill_builder_agent(db: AsyncSession, context: OrgContex
     )
     db.add(agent)
     await db.flush()
-    return agent
+    return agent, True
 
 
 async def _seed_model_id(db: AsyncSession, model_name: str) -> uuid.UUID:

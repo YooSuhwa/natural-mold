@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
+from httpx import Response
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from app.authz.service import AuthzService
 from app.credentials import service as credential_service
 from app.credentials.creation import CredentialCreation
 from app.mcp.auth import ResolvedMcpAuth
+from app.models.mcp_app_invocation import McpAppInvocationBinding
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.resource_credential_binding import ResourceCredentialBinding
@@ -46,6 +48,13 @@ async def _call(case: McpAppCase):
     return await case.client.post(url, json=command, headers={"X-CSRF-Token": token or ""})
 
 
+async def _widget(db: AsyncSession, case: McpAppCase) -> Response:
+    binding_id = await db.scalar(select(McpAppInvocationBinding.id))
+    assert binding_id is not None
+    url = f"/api/conversations/{case.conversation_id}/runs/{case.run_id}/mcp-apps/fixture-call"
+    return await case.client.get(url, params={"binding_id": str(binding_id)})
+
+
 @pytest.fixture
 def wire(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     call = AsyncMock(return_value={"success": True, "content": []})
@@ -61,10 +70,12 @@ async def test_mcp_app_call_refuses_after_can_invoke_is_revoked(
     tool_id = await db.scalar(select(McpTool.id).where(McpTool.name == "fixture"))
     me, obj = f"user:{mcp_app_case.context.user_id}", f"mcp_tool:{tool_id}"
     _enforce(monkeypatch, (me, "can_invoke", obj))
+    assert (await _widget(db, mcp_app_case)).status_code == 200
     assert (await _call(mcp_app_case)).status_code == 200
     wire.assert_awaited_once()
 
     _enforce(monkeypatch)  # can_invoke revoked
+    assert (await _widget(db, mcp_app_case)).status_code == 403
     denied = await _call(mcp_app_case)
     assert (denied.status_code, denied.json()["error"]["code"]) == (
         403,
@@ -94,11 +105,13 @@ async def test_mcp_app_call_refuses_after_the_connection_is_removed(
         )
     )
     await db.commit()
+    assert (await _widget(db, mcp_app_case)).status_code == 200
     assert (await _call(mcp_app_case)).status_code == 200
     wire.assert_awaited_once()
 
     await db.execute(delete(ResourceCredentialBinding))  # the caller's connection removed
     await db.commit()
+    assert (await _widget(db, mcp_app_case)).status_code == 409
     denied = await _call(mcp_app_case)
     assert (denied.status_code, denied.json()["error"]["code"]) == (
         409,

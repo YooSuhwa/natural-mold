@@ -187,8 +187,8 @@ async def materialize_conversation_history(
                     manifest_id=manifest.id,
                     conversation_id=conversation.id,
                     assistant_message_id=item.assistant_message_id,
-                    sequence_start=0,
-                    sequence_end=max(0, len(item.events) - 1),
+                    sequence_start=item.sequence_start,
+                    sequence_end=item.sequence_start + max(0, len(item.events) - 1),
                     events=item.events,
                     payload_sha256=item.payload_sha256,
                 )

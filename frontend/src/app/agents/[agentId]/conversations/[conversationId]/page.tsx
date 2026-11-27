@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useCallback, useMemo, useRef, useState } from 'react'
+import { use, useEffect, useLayoutEffect, useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
@@ -19,7 +19,7 @@ import {
 import { useConversationTitle } from '@/lib/hooks/use-conversation-title'
 import { useQueryClient } from '@tanstack/react-query'
 import { streamChat, streamStartConversation, type StreamChatOptions } from '@/lib/sse/stream-chat'
-import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
+import { latestTurnUsageAtom, sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { chatRightRailAtom, toggleArtifactListRailState } from '@/lib/stores/chat-right-rail'
 import {
   conversationRuntimeStatusAtom,
@@ -124,6 +124,7 @@ export default function ChatPage({
   const { mutate: markRead, isPending: isMarkingRead } = markConversationRead
   const t = useTranslations('chat.page')
   const setSessionTokenUsage = useSetAtom(sessionTokenUsageAtom)
+  const setLatestTurnUsage = useSetAtom(latestTurnUsageAtom)
   const setRightRail = useSetAtom(chatRightRailAtom)
   const setConversationRuntimeStatus = useSetAtom(conversationRuntimeStatusAtom)
 
@@ -157,10 +158,10 @@ export default function ChatPage({
   }, [agentId, routeKey])
 
   useEffect(() => {
-    setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
+    if (runtimeMode !== 'ag_ui') setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
     markedReadKeyRef.current = null
     startedConversationIdRef.current = null
-  }, [agentId, conversationId, setSessionTokenUsage])
+  }, [agentId, conversationId, runtimeMode, setSessionTokenUsage])
 
   // M4 — read 처리 effect.
   // ``currentConversation``은 (전체 목록 구독을 피하려고) 캐시에서 동기적으로
@@ -206,6 +207,7 @@ export default function ChatPage({
   const {
     conversationId: langGraphDraftConversationId,
     isBootstrapping: isLangGraphDraftBootstrapping,
+    retry: retryDraft,
     retainDraftConversation,
     commitDraftConversation,
   } = useLangGraphDraftConversation({
@@ -217,6 +219,19 @@ export default function ChatPage({
   const activeConversationId =
     (isDraftConversation ? langGraphDraftConversationId : routeConversationId) || null
   const resolvedSideEffectConversationId = activeConversationId ?? routeConversationId
+  // Clear the previous chat before the AG-UI child restores its cached usage in a passive effect.
+  // The persisted draft keeps the same ID when its URL is promoted.
+  useLayoutEffect(() => {
+    if (runtimeMode !== 'ag_ui') return
+    setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
+    setLatestTurnUsage(null)
+  }, [
+    agentId,
+    resolvedSideEffectConversationId,
+    runtimeMode,
+    setLatestTurnUsage,
+    setSessionTokenUsage,
+  ])
   const independentJobs = useIndependentChatJobs(
     activeConversationId,
     envelope?.active_run?.id ?? envelope?.latest_run?.id ?? null,
@@ -340,7 +355,7 @@ export default function ChatPage({
     const createdConversationId = startedConversationIdRef.current
     if (createdConversationId) {
       setSuppressEmptyStateForConversationId(createdConversationId)
-      if (runtimeMode !== 'langgraph_v3') {
+      if (runtimeMode === 'legacy') {
         router.replace(`/agents/${agentId}/conversations/${createdConversationId}`)
       }
     }
@@ -387,7 +402,7 @@ export default function ChatPage({
       },
     },
   )
-  const useLangGraphRuntime = runtimeMode === 'langgraph_v3' && activeConversationId !== null
+  const hasPersistedRuntime = runtimeMode !== 'legacy' && activeConversationId !== null
 
   function handleNewConversation() {
     clearChatRouteReplacement()
@@ -461,7 +476,7 @@ export default function ChatPage({
 
   const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
   const shouldSuppressEmptyContent =
-    useLangGraphRuntime &&
+    hasPersistedRuntime &&
     ((activeConversationId !== null &&
       suppressEmptyStateForConversationId === activeConversationId) ||
       messages.length > 0)
@@ -475,7 +490,7 @@ export default function ChatPage({
     <SideChatWorkspace
       disabled={readOnlyConversation}
       key={activeConversationId ?? 'draft'}
-      conversationId={useLangGraphRuntime ? activeConversationId : null}
+      conversationId={hasPersistedRuntime ? activeConversationId : null}
       title={currentTitle ?? agent?.name ?? ''}
     >
       <div className="moldy-app-surface flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
@@ -538,6 +553,13 @@ export default function ChatPage({
                   ))}
                 </div>
               </div>
+            ) : runtimeMode === 'ag_ui' && !activeConversationId ? (
+              <div role="alert" className="flex items-center gap-2 px-4 py-2 text-sm">
+                <span>{t('draftStartFailed')}</span>
+                <Button size="sm" variant="outline" onClick={retryDraft}>
+                  {t('retryDraft')}
+                </Button>
+              </div>
             ) : (
               <ToolIconProvider iconIds={toolIconIds} mcpServers={mcpServerNames}>
                 <ChatRuntimeSection
@@ -562,7 +584,8 @@ export default function ChatPage({
                   onStreamEnd={onStreamEnd}
                   streamFn={streamFn}
                   totalCost={envelope?.total_estimated_cost}
-                  useLangGraphRuntime={useLangGraphRuntime}
+                  useLangGraphRuntime={runtimeMode === 'langgraph_v3' && hasPersistedRuntime}
+                  useAgUiRuntime={runtimeMode === 'ag_ui' && hasPersistedRuntime}
                   user={user}
                   linkedSkills={agent?.skills}
                   commandActions={{
