@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
@@ -28,7 +29,9 @@ from app.agent_runtime.stream_retry_policy import (
     stop_delegation_retry,
     stream_error_retryable,
     stream_retry_enabled,
+    verified_stream_origin,
 )
+from app.chat_gateway_origin import gateway_origin
 
 
 class _OutputBoundary(BaseCallbackHandler):
@@ -76,15 +79,43 @@ def configured_attempts(middleware_configs: list[dict[str, Any]] | None) -> int:
     return 3
 
 
+def _approved_direct_origin(model: BaseChatModel) -> str | None:
+    provider = (model.metadata or {}).get("moldy_provider")
+    if not isinstance(provider, str):
+        return None
+    sdk = getattr(model, "root_async_client", None)
+    # Responses uses the SDK root; chat.completions holds its own reference
+    # to that SDK. A replaced resource cannot inherit the original origin pin.
+    if sdk is None or getattr(getattr(model, "async_client", None), "_client", None) is not sdk:
+        return None
+    base = gateway_origin(getattr(sdk, "base_url", None))
+    if base != getattr(model, "_moldy_stream_retry_origin", None):
+        return None
+    return verified_stream_origin(provider, base)
+
+
 def _retryable_direct_error(model: BaseChatModel, exc: Exception) -> bool:
     provider = (model.metadata or {}).get("moldy_provider")
     # Dynamic model-routing middleware may substitute an ordinary SDK client
     # with its own retry budget. Only our single-send candidates may be replayed.
-    if not isinstance(provider, str) or not stream_error_retryable(
-        exc, is_retryable_provider_error
-    ):
-        return False
-    return stream_retry_enabled(provider) or gateway_stream_status(exc) is None
+    return isinstance(provider, str) and stream_error_retryable(
+        exc,
+        is_retryable_provider_error,
+        provider=provider,
+        client_base_url=_approved_direct_origin(model),
+    )
+
+
+@dataclass(frozen=True)
+class _GatewayResend:
+    issuer: BaseChatModel
+    error: Exception
+
+    def verify(self, destination: BaseChatModel) -> None:
+        if not _retryable_direct_error(self.issuer, self.error) or not _approved_direct_origin(
+            destination
+        ):
+            raise self.error
 
 
 class DirectStreamRetryMiddleware(AgentMiddleware):
@@ -116,7 +147,9 @@ class DirectStreamRetryMiddleware(AgentMiddleware):
             stop_delegation_retry(exc)
             raise
 
-    async def _admit(self, number: int) -> None:
+    async def _admit(
+        self, number: int, gateway: _GatewayResend | None, destination: BaseChatModel
+    ) -> None:
         if number == 1:
             await self.check_authority()
             return
@@ -125,7 +158,13 @@ class DirectStreamRetryMiddleware(AgentMiddleware):
         # only after the next send has passed cancellation and ownership checks.
         try:
             await asyncio.sleep(self.initial_delay * 2 ** (previous - 1))
+            if gateway is not None:
+                gateway.verify(destination)
             await self.check_authority()
+            if gateway is not None:
+                # Ownership and budget admission can suspend while an operator
+                # revokes a gateway. No provider send has occurred yet.
+                gateway.verify(destination)
         except asyncio.CancelledError:
             record_stream_attempt(attempt=previous, output_started=False, outcome="cancelled")
             raise
@@ -141,17 +180,18 @@ class DirectStreamRetryMiddleware(AgentMiddleware):
     ) -> ModelResponse:
         candidates = (request.model, *self.fallbacks)
         candidate_index = 0
+        gateway: _GatewayResend | None = None
         for number in range(1, self.max_attempts + 1):
             candidate = candidates[candidate_index]
             attempt_request = (
                 _sanitize_request_for_fallback(request, candidate) if candidate_index else request
             )
-            boundary = _OutputBoundary()
-            attempt_request = attempt_request.override(model=boundary.attach(candidate))
             with model_attempt_scope(
                 getattr(request.runtime, "execution_info", None), self.max_attempts
             ):
-                await self._admit(number)
+                await self._admit(number, gateway, candidate)
+            boundary = _OutputBoundary()
+            attempt_request = attempt_request.override(model=boundary.attach(candidate))
             try:
                 response = await handler(attempt_request)
             except asyncio.CancelledError:
@@ -170,7 +210,12 @@ class DirectStreamRetryMiddleware(AgentMiddleware):
                 elif number == self.max_attempts:
                     outcome = "exhausted"
                 else:
-                    candidate_index = min(candidate_index + 1, len(candidates) - 1)
+                    next_index = min(candidate_index + 1, len(candidates) - 1)
+                    gateway = _GatewayResend(candidate, exc) if gateway_stream_status(exc) else None
+                    # An in-band frame authorizes an opted-in gateway resend.
+                    # Keep its issuer when the next fallback lacks an approved origin.
+                    if gateway is None or _approved_direct_origin(candidates[next_index]):
+                        candidate_index = next_index
                     continue
                 record_stream_attempt(
                     attempt=number, output_started=boundary.started, outcome=outcome

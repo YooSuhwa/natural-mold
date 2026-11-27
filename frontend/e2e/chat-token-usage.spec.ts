@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures'
+import type { ChildTaskPage } from '../src/lib/api/child-tasks'
 import type { ToolApprovalView } from '../src/lib/types/tool-approval'
 
 const ISO = '2026-06-04T00:00:00.000Z'
@@ -186,6 +187,20 @@ test.describe('Chat token usage hover', () => {
     )
     await page.route(`**/api/conversations/${CONVERSATION_ID}/tool-grants`, (route) =>
       route.fulfill({ json: [] }),
+    )
+    await page.route(
+      `**/api/conversations/${CONVERSATION_ID}/child-tasks?limit=50&offset=0`,
+      (route) => {
+        if (route.request().method() !== 'GET') return route.fallback()
+        return route.fulfill({
+          json: {
+            items: [],
+            next_offset: null,
+            enabled: false,
+            allow_legacy_details: true,
+          } satisfies ChildTaskPage,
+        })
+      },
     )
     await page.route(`**/api/conversations/${CONVERSATION_ID}/pinned-summary`, (route) =>
       route.fulfill({ json: { summary: null } }),

@@ -91,6 +91,63 @@ describe('useMessageRunSummary finalization', () => {
     })
 
     expect(apiFetch).toHaveBeenCalledTimes(1)
+    expect(conversationRunsApi.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('refreshes an active detail until the linked run commits its terminal metrics', async () => {
+    vi.useFakeTimers()
+    const messageId = 'lc_run--final'
+    const run = completedRun()
+    vi.mocked(apiFetch).mockResolvedValue([{ message_id: messageId, run_id: RUN_ID }])
+    vi.mocked(conversationRunsApi.get)
+      .mockResolvedValueOnce({ ...run, status: 'running' })
+      .mockResolvedValue({
+        ...run,
+        metrics: {
+          terminal_state: 'completed',
+          elapsed_ms: 951.1,
+          ttft_ms: null,
+          generation_ms: null,
+          tokens_per_second: null,
+          prompt_tokens: null,
+          completion_tokens: null,
+          cache_creation_tokens: null,
+          cache_read_tokens: null,
+          estimated_cost: null,
+          usage_complete: false,
+          root_tool_calls: 0,
+          descendant_tool_calls: 0,
+          root_subagent_calls: 0,
+          descendant_subagent_calls: 0,
+          activity_json: [],
+          activity_truncated: false,
+        },
+      })
+
+    const { result } = renderHook(
+      () => useMessageRunSummary('conversation-1', messageId, [messageId], false),
+      { wrapper: createWrapper() },
+    )
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50)
+    })
+    expect(result.current.summary).toMatchObject({
+      runId: RUN_ID,
+      status: 'running',
+      elapsedMs: null,
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000)
+    })
+    expect(result.current.summary).toMatchObject({
+      runId: RUN_ID,
+      status: 'completed',
+      elapsedMs: 951.1,
+      rootToolCalls: 0,
+      rootSubagentCalls: 0,
+    })
+    expect(conversationRunsApi.get).toHaveBeenCalledTimes(2)
   })
 
   it('keeps a completed summary visible while a newer thread run is active', async () => {

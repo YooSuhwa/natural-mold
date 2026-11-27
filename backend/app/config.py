@@ -7,10 +7,13 @@ from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.authz.config import AuthzSettings
+from app.chat_gateway_origin import StreamRetryOrigin, StreamRetryProvider
 
 
 class Settings(AuthzSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True
+    )
 
     # Runtime mode. ``production`` triggers strict boot-time validation
     # of auth/cookie/CORS/secret settings (see app.security.production_check).
@@ -38,9 +41,10 @@ class Settings(AuthzSettings):
     openai_prompt_cache_org_ids: frozenset[UUID] = frozenset()
     anthropic_api_key: str = ""
     google_api_key: str = ""
-    # Provider families whose gateway stream errors have been verified by the operator.
-    chat_stream_retry_providers: frozenset[Literal["openai", "openai_compatible", "openrouter"]] = (
-        frozenset()
+    # The family switch arms bounded attempts. In-band frame retries also require an exact origin.
+    chat_stream_retry_providers: frozenset[StreamRetryProvider] = frozenset()
+    chat_stream_retry_origins: dict[StreamRetryProvider, frozenset[StreamRetryOrigin]] = Field(
+        default_factory=dict
     )
 
     # Naver Open API

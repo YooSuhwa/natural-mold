@@ -30,7 +30,14 @@ export function useIndependentChatJobs(
     enabled: !!conversationId && running,
     refetchInterval: running ? 2000 : false,
   })
-  const runId = (running && activeRun.data?.id) || envelopeRunId
+  const run = activeRun.data
+  const runId =
+    running &&
+    conversationId &&
+    !activeRun.isPlaceholderData &&
+    run?.conversation_id === conversationId
+      ? run.id
+      : envelopeRunId
   return useIndependentJobListing(conversationId, runId, running)
 }
 

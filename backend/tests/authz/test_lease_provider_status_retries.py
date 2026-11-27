@@ -108,6 +108,9 @@ async def test_opted_in_gateway_never_replays_an_emitted_stream_chunk(
     from app.config import settings
 
     monkeypatch.setattr(settings, "chat_stream_retry_providers", {"openai"})
+    monkeypatch.setattr(
+        settings, "chat_stream_retry_origins", {"openai": ["https://api.openai.com"]}
+    )
     first = _openai_chunk("hello" if case == "text" else "")
     if case.startswith("tool"):
         first["choices"][0]["delta"]["tool_calls"] = [
@@ -158,6 +161,9 @@ async def test_durable_cancel_during_stream_retry_backoff_prevents_next_permit(
     from app.config import settings
 
     monkeypatch.setattr(settings, "chat_stream_retry_providers", {"openai"})
+    monkeypatch.setattr(
+        settings, "chat_stream_retry_origins", {"openai": ["https://api.openai.com"]}
+    )
     checks = 0
     attempts = []
 
@@ -201,6 +207,9 @@ async def test_empty_reply_middleware_respects_lease_attempt_budget(
     from tests.authz.test_lease_provider_retries import OPENAI_COMPLETION
 
     monkeypatch.setattr(settings, "chat_stream_retry_providers", {"openai"} if enabled else set())
+    monkeypatch.setattr(
+        settings, "chat_stream_retry_origins", {"openai": ["https://api.openai.com"]}
+    )
 
     def empty_response(_: Any, lib: ModuleType) -> Any:
         if stream:
@@ -250,6 +259,9 @@ async def test_stream_body_numeric_code_is_not_a_transient_http_status(
     from app.config import settings
 
     monkeypatch.setattr(settings, "chat_stream_retry_providers", {"openai"})
+    monkeypatch.setattr(
+        settings, "chat_stream_retry_origins", {"openai": ["https://api.openai.com"]}
+    )
     frame = {"error": {"message": message, "code": code, "type": kind}}
 
     def handler(_: Any, lib: ModuleType) -> Any:
@@ -263,5 +275,174 @@ async def test_stream_body_numeric_code_is_not_a_transient_http_status(
         with pytest.raises(openai.APIError):
             await drive(owned, "astream")
         assert _kinds(wire) == ["open", "send", "close"]
+    finally:
+        await owned.aclose()
+
+
+@pytest.mark.parametrize(
+    ("provider", "enabled", "family", "approved", "sends"),
+    [
+        ("openai_compatible", True, "openai_compatible", "https://model.invalid:8443", 2),
+        ("openai_compatible", True, "openai_compatible", "https://model.invalid", 1),
+        ("openai_compatible", True, "openai", "https://model.invalid:8443", 1),
+        ("openai", True, "openai", "https://api.openai.com", 1),
+        ("openai", True, "openai", None, 1),
+        ("openai", False, "openai", "https://model.invalid:8443", 1),
+        ("custom", False, "openai_compatible", "https://model.invalid:8443", 1),
+    ],
+)
+async def test_numeric_sse_error_requires_its_actual_post_origin_and_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    wire: Wire,
+    provider: str,
+    enabled: bool,
+    family: str,
+    approved: str | None,
+    sends: int,
+) -> None:
+    from app.agent_runtime.lease_model_factory import LeaseModelSpec, create_lease_chat_model
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "chat_stream_retry_providers", {provider} if enabled else set())
+    monkeypatch.setattr(
+        settings, "chat_stream_retry_origins", {family: [approved]} if approved else {}
+    )
+    frame = {
+        "error": {"message": "bad response status code 504", "code": 504, "type": "openai_error"}
+    }
+
+    def respond(request: Any, lib: ModuleType) -> Any:
+        assert str(request.url) == "https://model.invalid:8443/v1/chat/completions"
+        payload = frame if wire.sends == 1 else _openai_chunk("recovered")
+        return lib.Response(
+            200, headers={"content-type": "text/event-stream"}, content=_sse(payload, done=True)
+        )
+
+    wire.handler = respond
+    spec = LeaseModelSpec(
+        provider, "test-model", "fixture-key", base_url="https://model.invalid:8443/v1"
+    )
+    owned = create_lease_chat_model(spec, guard=guard_for(wire, policy=RETRY_TWICE))
+    try:
+        if sends == 1:
+            with pytest.raises(openai.APIError):
+                await drive(owned, "astream")
+        else:
+            chunks = await drive(owned, "astream")
+            assert "".join(chunk.content for chunk in chunks) == "recovered"
+        assert wire.opened == wire.sends == sends
+    finally:
+        await owned.aclose()
+
+
+@pytest.mark.parametrize("failure", ["http_503", "connect_error"])
+async def test_real_transport_or_http_failure_keeps_retry_without_approved_sse_origin(
+    monkeypatch: pytest.MonkeyPatch, wire: Wire, failure: str
+) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "chat_stream_retry_providers", {"openai"})
+    monkeypatch.setattr(settings, "chat_stream_retry_origins", {})
+
+    def respond(request: Any, lib: ModuleType) -> Any:
+        if wire.sends == 1:
+            if failure == "http_503":
+                return status_503(request, lib)
+            raise lib.ConnectError("fixture refused", request=request)
+        return lib.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=_sse(_openai_chunk("ok"), done=True),
+        )
+
+    wire.handler = respond
+    owned = build("openai", guard_for(wire, policy=RETRY_TWICE))
+    try:
+        chunks = await drive(owned, "astream")
+        assert "".join(chunk.content for chunk in chunks) == "ok"
+        assert wire.opened == wire.sends == 2
+    finally:
+        await owned.aclose()
+
+
+@pytest.mark.parametrize("redirect_to_pinned", [False, True])
+async def test_lease_stream_never_retries_across_two_approved_origins(
+    monkeypatch: pytest.MonkeyPatch, wire: Wire, redirect_to_pinned: bool
+) -> None:
+    from app.agent_runtime.lease_model_factory import LeaseModelSpec, create_lease_chat_model
+    from app.agent_runtime.lease_owned_model_client import LeaseChatOpenAI
+    from app.config import settings
+
+    family = "openai_compatible"
+    pinned = "https://original.invalid"
+    alternate = "https://alternate.invalid"
+    monkeypatch.setattr(settings, "chat_stream_retry_providers", {family})
+    monkeypatch.setattr(settings, "chat_stream_retry_origins", {family: [pinned, alternate]})
+    error = {"error": {"message": "bad response status code 504", "code": 504}}
+
+    def respond(request: Any, lib: ModuleType) -> Any:
+        if redirect_to_pinned and request.url.host == "alternate.invalid":
+            return lib.Response(307, headers={"location": f"{pinned}/v1/chat/completions"})
+        return lib.Response(
+            200, headers={"content-type": "text/event-stream"}, content=_sse(error, done=True)
+        )
+
+    wire.handler = respond
+    spec = LeaseModelSpec(family, "fixture", "fixture-key", base_url=f"{pinned}/v1")
+    owned = create_lease_chat_model(spec, guard=guard_for(wire, policy=RETRY_TWICE))
+    try:
+        assert isinstance(owned.model, LeaseChatOpenAI) and owned.model.root_async_client
+        assert isinstance(owned.model.http_async_client, httpx.AsyncClient)
+        # Move the SDK base after materialization. The alternate endpoint may
+        # reply itself or redirect the POST back to the pinned, approved origin.
+        owned.model.root_async_client.base_url = f"{alternate}/v1"
+        owned.model.http_async_client.follow_redirects = True
+        with pytest.raises(openai.APIError) as caught:
+            await drive(owned, "astream")
+        expected = (
+            ["alternate.invalid", "original.invalid"]
+            if redirect_to_pinned
+            else ["alternate.invalid"]
+        )
+        assert caught.value.request.url.host == expected[-1]
+        assert wire.hosts == expected and wire.opened == 1
+    finally:
+        await owned.aclose()
+
+
+@pytest.mark.parametrize("change", ["revoke_origin", "move_base", "disable_family"])
+async def test_lease_rechecks_in_band_retry_after_backoff_before_provider_send(
+    monkeypatch: pytest.MonkeyPatch, wire: Wire, change: str
+) -> None:
+    from app.agent_runtime.lease_owned_model_client import LeaseChatOpenAI
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "chat_stream_retry_providers", {"openai"})
+    monkeypatch.setattr(
+        settings, "chat_stream_retry_origins", {"openai": ["https://api.openai.com"]}
+    )
+
+    async def update(_: float) -> None:
+        if change == "revoke_origin":
+            monkeypatch.setattr(settings, "chat_stream_retry_origins", {})
+        elif change == "disable_family":
+            monkeypatch.setattr(settings, "chat_stream_retry_providers", set())
+        else:
+            assert isinstance(owned.model, LeaseChatOpenAI) and owned.model.root_async_client
+            owned.model.root_async_client.base_url = "https://moved.invalid/v1"
+
+    def respond(_: Any, lib: ModuleType) -> Any:
+        frame = {"error": {"message": "bad response status code 504", "code": 504}}
+        return lib.Response(
+            200, headers={"content-type": "text/event-stream"}, content=_sse(frame, done=True)
+        )
+
+    wire.handler = respond
+    owned = build("openai", guard_for(wire, policy=RETRY_TWICE, sleep=update))
+    try:
+        with pytest.raises(openai.APIError) as caught:
+            await drive(owned, "astream")
+        assert caught.value.request.url.host == "api.openai.com"
+        assert wire.hosts == ["api.openai.com"]
     finally:
         await owned.aclose()

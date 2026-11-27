@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from functools import partial
+from multiprocessing.connection import Connection
 from uuid import UUID
 
 import pytest
@@ -49,12 +52,14 @@ pytestmark = [
 ]
 
 
-def _replacement_process(run_id: UUID, worker: str) -> None:
+def _replacement_process(run_id: UUID, worker: str, control: Connection) -> None:
     """Claim independently, without inheriting the first worker's registry or connection."""
 
     async def transfer() -> None:
         sessions, engine = _postgres_session_factory()
         try:
+            control.send_bytes(b"ready")
+            assert control.recv_bytes(8) == b"claim"
             async with sessions() as db:
                 locked = await db.get(ConversationRun, run_id, with_for_update=True)
                 assert locked is not None
@@ -63,7 +68,37 @@ def _replacement_process(run_id: UUID, worker: str) -> None:
         finally:
             await engine.dispose()
 
-    asyncio.run(transfer())
+    with control:
+        asyncio.run(transfer())
+
+
+@asynccontextmanager
+async def _ready_replacement(
+    run_id: UUID, worker: str
+) -> AsyncIterator[Callable[[], Awaitable[None]]]:
+    # Cold interpreter and SDK imports are outside the timed handoff. The second
+    # process cannot claim the row until the original model's first send fails.
+    spawn = multiprocessing.get_context("spawn")
+    parent, child = spawn.Pipe()
+    replacement = spawn.Process(target=_replacement_process, args=(run_id, worker, child))
+    with parent, child:
+        replacement.start()
+        child.close()
+        try:
+            assert await asyncio.to_thread(parent.poll, 120), "replacement worker did not start"
+            assert parent.recv_bytes(8) == b"ready"
+
+            async def claim() -> None:
+                parent.send_bytes(b"claim")
+                await asyncio.to_thread(replacement.join, 30)
+                assert replacement.exitcode == 0
+
+            yield claim
+        finally:
+            if replacement.is_alive():
+                replacement.kill()
+                await asyncio.to_thread(replacement.join, 5)
+            replacement.close()
 
 
 async def test_gateway_retry_fences_replaced_worker_before_second_send(
@@ -140,23 +175,15 @@ async def test_gateway_retry_fences_replaced_worker_before_second_send(
                         tenant=context,
                     )
 
-        async with asyncio.timeout(45), asyncio.TaskGroup() as tasks:
+        async with (
+            _ready_replacement(first.run_id, registry.worker_instance_id) as claim,
+            asyncio.timeout(45),
+            asyncio.TaskGroup() as tasks,
+        ):
             task = tasks.create_task(old_worker())
             registry.start(first.run_id, task)
             await first_attempt_failed.wait()
-            replacement = multiprocessing.get_context("spawn").Process(
-                target=_replacement_process,
-                args=(first.run_id, registry.worker_instance_id),
-            )
-            replacement.start()
-            try:
-                await asyncio.to_thread(replacement.join, 30)
-                assert replacement.exitcode == 0
-            finally:
-                if replacement.is_alive():
-                    replacement.kill()
-                    await asyncio.to_thread(replacement.join, 5)
-                replacement.close()
+            await claim()
             async with sessions() as db:
                 current = await db.get(ConversationRun, first.run_id)
                 assert current is not None

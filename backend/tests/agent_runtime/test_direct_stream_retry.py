@@ -15,6 +15,7 @@ import httpx2
 import openai
 import pytest
 from langchain.agents import create_agent
+from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.errors import NodeCancelledError
 
@@ -62,12 +63,14 @@ def _stream(*frames: dict[str, Any]) -> httpx.Response:
 class Gateway:
     respond: Callable[[], httpx.Response]
     models: list[str] = field(default_factory=list)
+    hosts: list[str] = field(default_factory=list)
     message_roles: tuple[str, ...] = ()
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
         assert request.method == "POST" and request.url.path == "/v1/chat/completions"
         assert payload["stream"] is True
+        self.hosts.append(request.url.host)
         self.models.append(payload["model"])
         self.message_roles = tuple(message["role"] for message in payload["messages"])
         return self.respond()
@@ -97,6 +100,17 @@ async def gateway(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Gateway]:
             )
             monkeypatch.setattr("app.agent_runtime.checkpointer.get_checkpointer", InMemorySaver)
             monkeypatch.setattr(settings, "chat_stream_retry_providers", {"openai_compatible"})
+            monkeypatch.setattr(
+                settings,
+                "chat_stream_retry_origins",
+                {
+                    "openai_compatible": [
+                        "https://gateway.test",
+                        "https://fallback.test",
+                        "https://child.test",
+                    ]
+                },
+            )
             yield wire
 
 
@@ -162,7 +176,7 @@ async def test_early_sse_error_recovers_once_in_100_graph_runs(
         frames = [frame async for frame in _messages(graph, [{"role": "user", "content": "Hi"}])]
         assert _text(frames) == ["finished"]
         assert sum(frame["event"] == "message-finish" for frame in frames) == 1
-    assert len(gateway.models) == 200
+    assert gateway.hosts == ["gateway.test", "fallback.test"] * 100
 
 
 @pytest.mark.parametrize(
@@ -555,3 +569,191 @@ async def test_only_fallback_provider_opted_in_shares_the_attempt_budget(gateway
     frames = [frame async for frame in _messages(graph, history, config)]
     assert gateway.models == ["gpt-4o-mini", "gpt-4o", "gpt-4o"]
     assert _text(frames) == ["finished"]
+
+
+@pytest.mark.parametrize(
+    ("mode", "base_host", "response_host"),
+    [
+        ("override", "unknown.test", "unknown.test"),
+        ("fallback", "gateway.test", "unknown.test"),
+        ("redirect", "gateway.test", "unknown.test"),
+        ("redirect", "unknown.test", "gateway.test"),
+        ("redirect", "gateway.test", "fallback.test"),
+    ],
+)
+async def test_unverified_origin_stops_sse_retry(
+    gateway: Gateway,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    base_host: str,
+    response_host: str,
+) -> None:
+    cfg = _config()
+    cfg.base_url = f"https://{base_host}/v1"
+    if mode == "fallback":
+        cfg.model_fallback_chain = [
+            {
+                "provider": "openai_compatible",
+                "model_name": "gpt-4o",
+                "base_url": f"https://{response_host}/v1",
+            }
+        ]
+    if mode == "redirect":
+        # Ordinary egress pins redirect-following off. Force it on for this
+        # client to check that the SDK reports the final response's origin.
+        client = model_provider_builders.outbound_http_client(timeout=5.0)
+        monkeypatch.setattr(client, "follow_redirects", True)
+
+    def response() -> httpx.Response:
+        if gateway.hosts[-1] == response_host:
+            return _stream(_error(TIMEOUT))
+        if mode == "redirect":
+            return httpx.Response(
+                307, headers={"Location": f"https://{response_host}/v1/chat/completions"}
+            )
+        return httpx.Response(429, json={"error": {"message": "Too many requests"}})
+
+    gateway.respond = response
+    graph, history, config = await _prepare_agent(
+        cfg, messages_history=[{"role": "user", "content": "Hi"}]
+    )
+    with pytest.raises(openai.APIError) as error:
+        async for _ in _messages(graph, history, config):
+            pass
+    assert error.value.request.url.host == response_host
+    assert gateway.hosts == ([base_host] if mode == "override" else [base_host, response_host])
+
+
+@pytest.mark.parametrize("original_host", ["unknown.test", "fallback.test", None])
+async def test_mutated_or_unpinned_client_does_not_retry_known_frame(
+    gateway: Gateway, original_host: str | None
+) -> None:
+    from app.agent_runtime.runtime.direct_stream_retry import DirectStreamRetryMiddleware
+
+    cfg = _config()
+    cfg.base_url = f"https://{original_host or 'gateway.test'}/v1"
+    primary, fallback = _build_model_candidates(cfg)
+    # The original origin must stay out of LangChain run metadata and Pydantic
+    # serialization, which are observable to tracers and other middleware.
+    assert "_moldy_stream_retry_origin" not in primary.model_dump()
+    assert "_moldy_stream_retry_origin" not in (primary.metadata or {})
+    if original_host is None:
+        # An externally supplied or previously created client has no origin pin.
+        object.__delattr__(primary, "_moldy_stream_retry_origin")
+    else:
+        assert isinstance(primary, ChatOpenAI)
+        primary.root_async_client.base_url = "https://gateway.test/v1"
+    graph = create_agent(
+        model=primary,
+        middleware=[DirectStreamRetryMiddleware(fallbacks=[fallback], initial_delay=0)],
+    )
+    gateway.respond = lambda: _stream(_error(TIMEOUT))
+    with pytest.raises(openai.APIError) as error:
+        async for _ in _messages(graph, [{"role": "user", "content": "Hi"}]):
+            pass
+    assert error.value.request.url.host == "gateway.test"
+    assert gateway.hosts == ["gateway.test"]
+
+
+@pytest.mark.parametrize(
+    ("http_status", "result_host"),
+    [(200, "gateway.test"), (429, "fallback.test")],
+    ids=["verified-stream-stays-on-primary", "ordinary-http-uses-fallback"],
+)
+async def test_unverified_fallback_cannot_receive_in_band_retry(
+    gateway: Gateway, monkeypatch: pytest.MonkeyPatch, http_status: int, result_host: str
+) -> None:
+    from app.agent_runtime.runtime.direct_stream_retry import DirectStreamRetryMiddleware
+
+    monkeypatch.setattr(
+        settings, "chat_stream_retry_origins", {"openai_compatible": ["https://gateway.test"]}
+    )
+    primary, fallback = _build_model_candidates(_config())
+    graph = create_agent(
+        model=primary,
+        middleware=[DirectStreamRetryMiddleware(fallbacks=[fallback], initial_delay=0)],
+    )
+    if http_status == 200:
+        failure = _stream(_error(TIMEOUT))
+    else:
+        failure = httpx.Response(429, json={"error": {"message": "Too many requests"}})
+    gateway.respond = lambda: (
+        failure if len(gateway.hosts) == 1 else _stream(_chunk(content="done"))
+    )
+    frames = [frame async for frame in _messages(graph, [{"role": "user", "content": "Hi"}])]
+    assert _text(frames) == ["done"]
+    assert gateway.hosts == ["gateway.test", result_host]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "source_revoked",
+        "destination_revoked",
+        "source_moved",
+        "destination_moved",
+        "resource_replaced",
+    ],
+)
+async def test_origin_change_during_stream_backoff_denies_the_pending_send(
+    gateway: Gateway, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, change: str
+) -> None:
+    from app.agent_runtime.runtime.direct_stream_retry import DirectStreamRetryMiddleware
+
+    metric_logger = "app.agent_runtime.stream_retry_policy"
+    caplog.set_level(logging.INFO, logger=metric_logger)
+    primary, fallback = _build_model_candidates(_config())
+    assert isinstance(primary, ChatOpenAI) and isinstance(fallback, ChatOpenAI)
+    checks = 0
+
+    async def authorize() -> None:
+        nonlocal checks
+        checks += 1
+        if checks != 2:
+            return
+        if change in {"source_revoked", "destination_revoked"}:
+            remaining = "fallback.test" if change == "source_revoked" else "gateway.test"
+            monkeypatch.setattr(
+                settings,
+                "chat_stream_retry_origins",
+                {"openai_compatible": [f"https://{remaining}"]},
+            )
+        elif change == "resource_replaced":
+            foreign = _config()
+            foreign.base_url = "https://unknown.test/v1"
+            replacement = _build_model_candidates(foreign)[0]
+            assert isinstance(replacement, ChatOpenAI)
+            fallback.async_client = replacement.async_client
+        else:
+            changed_model = primary if change == "source_moved" else fallback
+            # This host is also allowlisted, but it differs from the model's pinned origin.
+            changed_model.root_async_client.base_url = "https://child.test/v1"
+
+    graph = create_agent(
+        model=primary,
+        middleware=[
+            DirectStreamRetryMiddleware(
+                fallbacks=[fallback], check_authority=authorize, initial_delay=0
+            )
+        ],
+    )
+    gateway.respond = lambda: (
+        _stream(_error(TIMEOUT))
+        if len(gateway.hosts) == 1
+        else _stream(_chunk(content="unexpected"))
+    )
+
+    async def consume() -> None:
+        async for _ in _messages(graph, [{"role": "user", "content": "Hi"}]):
+            pass
+
+    with pytest.raises(openai.APIError) as error:
+        await consume()
+    assert type(error.value) is openai.APIError
+    assert error.value.message == TIMEOUT
+    assert error.value.request.url.host == "gateway.test"
+    assert checks == 2
+    assert gateway.hosts == ["gateway.test"]
+    assert [entry.getMessage() for entry in caplog.records if entry.name == metric_logger] == [
+        "model_stream_attempt attempt=1 output_started=False outcome=denied"
+    ]
