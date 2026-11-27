@@ -109,6 +109,7 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
             model.key not in json.dumps(snapshot),
             "fixture key leaked into standard snapshot",
         )
+        require(model.marker not in json.dumps(snapshot), "unapproved file content was exposed")
         (gate.evidence_dir / "targeted-sibling-pending-snapshot.json").write_text(
             json.dumps(snapshot) + "\n"
         )
@@ -250,6 +251,15 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
             and terminal.get("outcome", {}).get("type", "success") == "success",
             "targeted continuation failed",
         )
+        public_result_owners = [
+            message.get("subagentRunId")
+            for message in final_snap["messages"]
+            if message.get("role") == "tool" and model.marker in str(message.get("content", ""))
+        ]
+        require(
+            public_result_owners == [sid],
+            "the public lookup result is missing, duplicated, or attached to the sibling",
+        )
         require(
             model.protected_results == [True],
             "the approved target did not receive exactly one successful lookup of the seeded file",
@@ -335,4 +345,5 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
             decisions=decisions,
             modelCalls=model_calls,
             readModelCalls=model.requests - model_calls,
+            publicProtectedResultOwners=public_result_owners,
         )
