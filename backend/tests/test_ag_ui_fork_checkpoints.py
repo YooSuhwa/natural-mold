@@ -19,7 +19,7 @@ _TEST_TENANT = uuid.uuid4()
 
 def conversation_graph(saver: InMemorySaver) -> Any:
     graph = StateGraph(DeepAgentState)
-    graph.add_node("answer", lambda _: {"messages": [AIMessage(content="answer", id="reply")]})
+    graph.add_node("answer", lambda state: {"messages": [AIMessage(content="answer", id="reply")]})
     graph.add_edge(START, "answer")
     graph.add_edge("answer", END)
     return graph.compile(checkpointer=saver)
@@ -31,7 +31,7 @@ async def test_fork_matches_the_native_delta_channel_including_deletions_and_ove
     thread = str(uuid.uuid4())
     config: RunnableConfig = {"configurable": {"thread_id": thread}}
     await graph.ainvoke({"messages": [HumanMessage(content="original", id="u1")]}, config)
-    root = [row async for row in saver.alist(config)][-1].config["configurable"]["checkpoint_id"]
+    root = [row async for row in saver.alist(config)][-1].checkpoint["id"]
     await graph.aupdate_state(config, {"messages": [HumanMessage(content="edited", id="u1")]})
     await graph.aupdate_state(config, {"messages": [RemoveMessage(id="reply")]})
     current = await graph.aget_state(config)
@@ -227,7 +227,7 @@ async def test_committed_fork_rebuilds_just_its_branch_after_reopening_database(
     )
     state = await graph.aget_state(graph_cfg)
     head = state.config["configurable"]["checkpoint_id"]
-    root = [row async for row in saver.alist(graph_cfg)][-1].config["configurable"]["checkpoint_id"]
+    root = [row async for row in saver.alist(graph_cfg)][-1].checkpoint["id"]
     target = root if operation == "edit" else head
     latest = (
         [{"role": "user", "id": "browser-id", "content": "edited turn"}]

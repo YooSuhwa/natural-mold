@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import uuid
+from typing import TypedDict
 
 import pytest
 from ag_ui.core import ResumeEntry, RunAgentInput
 from deepagents.graph import DeepAgentState
 from fastapi import HTTPException
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import get_checkpoint_id
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Command, interrupt
+from langgraph.types import Command, Overwrite, interrupt
 from starlette.requests import Request
 
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
@@ -35,6 +37,10 @@ from tests.authz.execution_gateway_testkit import seed_graph
 from tests.conftest import TestSession
 
 
+class ForkGraphInput(TypedDict):
+    messages: list[BaseMessage] | Overwrite
+
+
 def ask_fork(state: DeepAgentState) -> dict:
     request = state["messages"][-1].content
     if request == "fork":
@@ -54,7 +60,7 @@ async def test_interrupted_fork_moves_only_its_original_selection_and_can_resume
     request = Request({"type": "http", "method": "POST", "path": "/", "headers": []})
     saver = InMemorySaver()
     monkeypatch.setattr("app.agent_runtime.checkpointer.get_checkpointer", lambda: saver)
-    builder = StateGraph(DeepAgentState)
+    builder = StateGraph(DeepAgentState, input_schema=ForkGraphInput)
     builder.add_node("answer", ask_fork)
     builder.add_edge(START, "answer")
     builder.add_edge("answer", END)
@@ -64,11 +70,13 @@ async def test_interrupted_fork_moves_only_its_original_selection_and_can_resume
     }
     await graph.ainvoke({"messages": [HumanMessage(content="original")]}, config)
     old = await graph.aget_state(config)
-    selected = old.config["configurable"]["checkpoint_id"]
-    target = [r async for r in saver.alist(config)][-1].config["configurable"]["checkpoint_id"]
+    selected = get_checkpoint_id(old.config)
+    assert selected
+    target = [r async for r in saver.alist(config)][-1].checkpoint["id"]
     assert old.parent_config
     await graph.ainvoke({"messages": [HumanMessage(content="other branch")]}, old.parent_config)
-    other = (await graph.aget_state(config)).config["configurable"]["checkpoint_id"]
+    other = get_checkpoint_id((await graph.aget_state(config)).config)
+    assert other
     async with TestSession() as db:
         await set_active_branch(db, ConversationBranchMutation(cid, ctx, selected))
         await db.commit()
@@ -108,10 +116,14 @@ async def test_interrupted_fork_moves_only_its_original_selection_and_can_resume
         await runs.transition_run(db, pre.run, "running", worker_instance_id="fork-worker")
         await db.commit()
     conf = run_configurable(str(cid), physical, ctx.tenant_id)
-    paused = await graph.ainvoke(native, {"configurable": {**conf, "checkpoint_id": target}})
+    assert isinstance(native, dict) and isinstance(native.get("messages"), Overwrite)
+    paused = await graph.ainvoke(
+        {"messages": native["messages"]}, {"configurable": {**conf, "checkpoint_id": target}}
+    )
     pending_id = paused["__interrupt__"][0].id
     active = await graph.aget_state(config)
-    created = active.config["configurable"]["checkpoint_id"]
+    created = get_checkpoint_id(active.config)
+    assert created
     assert created not in {other, selected, target}
     if switch:
         async with TestSession() as db:
@@ -180,7 +192,8 @@ async def test_foreign_checkpoint_in_ancestor_chain_prevents_delta_replay() -> N
     current: RunnableConfig = {"configurable": run_configurable(thread, uuid.uuid4(), tenant)}
     await graph.ainvoke({"messages": [HumanMessage(content="own turn")]}, current)
     head = (await graph.aget_state(current)).config["configurable"]["checkpoint_id"]
-    assert (await saver.aget_tuple(current)).metadata["moldy_tenant_id"] == str(tenant)
+    record = await saver.aget_tuple(current)
+    assert record is not None and record.metadata.get("moldy_tenant_id") == str(tenant)
     with pytest.raises(HTTPException) as exc:
         await load_fork_checkpoint(
             saver,
